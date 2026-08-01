@@ -289,7 +289,17 @@ export const chat = {
   getReactionDetails: (chatId, messageId) => api.get(`/chat/${chatId}/messages/${messageId}/reactions`),
 
   // Forward messages
-  forwardMessages: (targetChatId, messageIds) => api.post('/chat/forward', { targetChatId, messageIds })
+  forwardMessages: (targetChatId, messageIds) => api.post('/chat/forward', { targetChatId, messageIds }),
+
+  // Голосовое сообщение. Отдельный маршрут: сервер приводит запись к общему
+  // для всех платформ формату и определяет длительность.
+  uploadVoice: (blob, filename = 'voice.webm') => {
+    const formData = new FormData();
+    formData.append('file', blob, filename);
+    return api.post('/chat/voice', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
 };
 
 // Accreditations

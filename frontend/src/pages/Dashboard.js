@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2
+  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -17,6 +17,7 @@ import ChatNotification from '../components/ChatNotification';
 import MessageReactions from '../components/chat/MessageReactions';
 import ReactionMenu from '../components/chat/ReactionMenu';
 import ReactionDetailsModal from '../components/chat/ReactionDetailsModal';
+import VoiceMessage from '../components/chat/VoiceMessage';
 import EmailComposeModal from '../components/EmailComposeModal';
 import './Dashboard.css';
 
@@ -36,6 +37,12 @@ export default function Dashboard() {
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  // Запись голосового
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const voiceRecorderRef = useRef(null);
+  const voiceChunksRef = useRef([]);
+  const voiceTimerRef = useRef(null);
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
@@ -429,6 +436,82 @@ export default function Dashboard() {
   };
 
   const removeAttachment = (index) => setAttachments(prev => prev.filter((_, i) => i !== index));
+
+  // ── Голосовые сообщения ──────────────────────────────────────────────────
+  //
+  // MediaRecorder в Chrome и Firefox пишет webm/opus, в Safari — mp4/aac.
+  // Разбираться в этом клиенту не нужно: что получилось, то и отправляем,
+  // а сервер приводит запись к единому формату (backend/services/voiceService.js).
+  const startRecording = async () => {
+    if (recording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      voiceChunksRef.current = [];
+
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) voiceChunksRef.current.push(ev.data);
+      };
+      recorder.onstop = () => {
+        // Дорожку обязательно закрываем, иначе индикатор записи в браузере
+        // продолжает гореть и микрофон остаётся занятым
+        stream.getTracks().forEach(t => t.stop());
+      };
+
+      voiceRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setRecordSeconds(0);
+      voiceTimerRef.current = setInterval(() => {
+        setRecordSeconds(prev => {
+          if (prev >= 300) { stopRecording(true); return prev; }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err) {
+      toast.error('Нет доступа к микрофону');
+    }
+  };
+
+  const finishRecording = (send) => {
+    const recorder = voiceRecorderRef.current;
+    if (!recorder) return;
+    if (voiceTimerRef.current) { clearInterval(voiceTimerRef.current); voiceTimerRef.current = null; }
+
+    const handleStop = async () => {
+      const chunks = voiceChunksRef.current;
+      voiceChunksRef.current = [];
+      voiceRecorderRef.current = null;
+      setRecording(false);
+
+      if (!send || chunks.length === 0) { setRecordSeconds(0); return; }
+
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      // Меньше секунды — почти всегда случайный тап, а не сообщение
+      if (blob.size < 1200) { setRecordSeconds(0); return; }
+
+      try {
+        setSending(true);
+        const ext = (recorder.mimeType || '').includes('mp4') ? 'm4a' : 'webm';
+        const { data: att } = await chat.uploadVoice(blob, `voice.${ext}`);
+        await chat.sendMessage(activeChat.id, '', [att], replyingToMessage?.id || null);
+        setReplyingToMessage(null);
+        loadMessages(activeChat.id, true);
+        loadChats();
+      } catch (err) {
+        toast.error('Не удалось отправить голосовое');
+      } finally {
+        setSending(false);
+        setRecordSeconds(0);
+      }
+    };
+
+    recorder.addEventListener('stop', handleStop, { once: true });
+    if (recorder.state !== 'inactive') recorder.stop();
+    else handleStop();
+  };
+
+  const stopRecording = (send = true) => finishRecording(send);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -1133,8 +1216,26 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [lightboxOpen, lightboxImages.length, videoPreview.open, pdfPreview.open]);
 
-  const renderAttachments = (msgAttachments, isOwn) => {
+  const renderAttachments = (msgAttachments, isOwn, msgId) => {
     if (!msgAttachments || msgAttachments.length === 0) return null;
+
+    // Голосовое всегда приходит одним вложением и рисуется плеером,
+    // а не карточкой файла
+    const voice = msgAttachments.length === 1 && msgAttachments[0]?.kind === 'voice'
+      ? msgAttachments[0]
+      : null;
+    if (voice) {
+      return (
+        <div className="message-attachments">
+          <VoiceMessage
+            url={fixUrl(voice.url || voice.path)}
+            duration={voice.duration}
+            messageId={msgId}
+            isOwn={isOwn}
+          />
+        </div>
+      );
+    }
     const imageAtts = msgAttachments.filter(a => a.mimeType?.startsWith('image/')).map(a => fixUrl(a.url || a.path));
     
     return (
@@ -1381,7 +1482,7 @@ export default function Dashboard() {
                                   <span>Переслано от <strong>{msg.forwardedFrom.senderName}</strong></span>
                                 </div>
                               )}
-                              {renderAttachments(msg.attachments, isOwn)}
+                              {renderAttachments(msg.attachments, isOwn, msg.id)}
                               {hasText && (
                                 <div
                                   className="message-content"
@@ -1469,30 +1570,57 @@ export default function Dashboard() {
               {currentMembership?.isReadOnly ? null : (
                 <form className="chat-input" onSubmit={handleSendMessage}>
                   <input type="file" ref={fileInputRef} hidden multiple onChange={handleFileSelect} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
-                  {!editingMessage && (
-                    <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
-                      {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
-                    </button>
+                  {recording ? (
+                    <>
+                      <button type="button" className="btn-icon-chat" onClick={() => stopRecording(false)} title="Отменить запись">
+                        <Trash2 size={20} />
+                      </button>
+                      <div className="voice-recorder">
+                        <span className="voice-recorder-dot" />
+                        <span className="voice-recorder-time">
+                          {`${Math.floor(recordSeconds / 60)}:${String(recordSeconds % 60).padStart(2, '0')}`}
+                        </span>
+                        <span className="voice-recorder-hint">Идёт запись — нажмите, чтобы отправить</span>
+                      </div>
+                      <button type="button" className="btn btn-primary btn-icon" onClick={() => stopRecording(true)} disabled={sending} title="Отправить">
+                        <Send size={20} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {!editingMessage && (
+                        <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
+                          {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
+                        </button>
+                      )}
+                      <div className="chat-input-wrapper">
+                        <input
+                          ref={messageInputRef}
+                          placeholder={editingMessage ? "Введите новый текст..." : "Введите сообщение..."}
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn-icon-chat emoji-picker-button"
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          title="Эмодзи"
+                        >
+                          <Smile size={20} />
+                        </button>
+                      </div>
+                      {/* Пусто — микрофон, есть что отправить — самолётик. Как в Telegram */}
+                      {!editingMessage && !newMessage.trim() && attachments.length === 0 ? (
+                        <button type="button" className="btn btn-primary btn-icon" onClick={startRecording} title="Записать голосовое">
+                          <Mic size={20} />
+                        </button>
+                      ) : (
+                        <button type="submit" className="btn btn-primary btn-icon" disabled={(!newMessage.trim() && attachments.length === 0) || sending}>
+                          <Send size={20} />
+                        </button>
+                      )}
+                    </>
                   )}
-                  <div className="chat-input-wrapper">
-                    <input
-                      ref={messageInputRef}
-                      placeholder={editingMessage ? "Введите новый текст..." : "Введите сообщение..."}
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="btn-icon-chat emoji-picker-button"
-                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                      title="Эмодзи"
-                    >
-                      <Smile size={20} />
-                    </button>
-                  </div>
-                  <button type="submit" className="btn btn-primary btn-icon" disabled={(!newMessage.trim() && attachments.length === 0) || sending}>
-                    <Send size={20} />
-                  </button>
                 </form>
               )}
               {showEmojiPicker && (

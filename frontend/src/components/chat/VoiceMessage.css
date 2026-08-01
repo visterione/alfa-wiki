@@ -1,0 +1,118 @@
+/* Плеер голосового сообщения в пузырьке чата */
+
+.voice-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  max-width: 300px;
+  padding: 2px 0;
+}
+
+.voice-play {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: #fff;
+  transition: transform 0.12s, opacity 0.12s;
+}
+
+.voice-play:hover { opacity: 0.88; }
+.voice-play:active { transform: scale(0.94); }
+
+/* В своём пузырьке фон уже синий — кнопка инвертируется, иначе сливается */
+.voice-message.own .voice-play {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--primary);
+}
+
+.voice-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.voice-wave {
+  flex: 1;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.voice-bar {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--text-tertiary, #b0b0b8);
+  transition: background 0.15s;
+}
+
+.voice-bar.played { background: var(--primary); }
+
+.voice-message.own .voice-bar { background: rgba(255, 255, 255, 0.45); }
+.voice-message.own .voice-bar.played { background: #fff; }
+
+.voice-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums; /* цифры не «прыгают» при отсчёте */
+  color: var(--text-secondary);
+}
+
+.voice-message.own .voice-time { color: rgba(255, 255, 255, 0.85); }
+
+/* ── Запись в строке ввода ─────────────────────────────────────────────── */
+
+.voice-recorder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  padding: 0 14px;
+  height: 42px;
+  border-radius: 21px;
+  background: var(--bg-secondary);
+}
+
+.voice-recorder-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e53e3e;
+  animation: voice-blink 1s steps(2, start) infinite;
+  flex-shrink: 0;
+}
+
+@keyframes voice-blink {
+  to { opacity: 0.25; }
+}
+
+.voice-recorder-time {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  min-width: 44px;
+}
+
+.voice-recorder-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+/* Пользователи с prefers-reduced-motion не должны видеть мигание */
+@media (prefers-reduced-motion: reduce) {
+  .voice-recorder-dot { animation: none; }
+}
