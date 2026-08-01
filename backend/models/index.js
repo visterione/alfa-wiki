@@ -3455,6 +3455,53 @@ ReleaseNote.hasMany(ReleaseNoteRead, { foreignKey: 'releaseNoteId', as: 'reads',
 ReleaseNoteRead.belongsTo(ReleaseNote, { foreignKey: 'releaseNoteId', as: 'releaseNote' });
 ReleaseNoteRead.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+// === USER DEVICE MODEL (push-уведомления) ===
+// Одна строка — один установленный экземпляр приложения. У пользователя их может
+// быть несколько (телефон + планшет), поэтому уникален токен, а не userId.
+//
+// platform и provider намеренно разведены: сегодня iOS живёт без APNs (нет платной
+// подписки Apple) и уведомления получает только через сокет, пока приложение открыто.
+// Когда APNs появится — iOS-устройства начнут регистрироваться с provider='apns',
+// а таблица и логика рассылки останутся прежними.
+const UserDevice = sequelize.define('UserDevice', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  token: {
+    type: DataTypes.STRING(512),
+    allowNull: false,
+    unique: true,
+    comment: 'FCM registration token / APNs device token'
+  },
+  platform: { type: DataTypes.ENUM('android', 'ios', 'web'), allowNull: false },
+  provider: {
+    type: DataTypes.ENUM('fcm', 'apns', 'webpush'),
+    allowNull: false,
+    defaultValue: 'fcm',
+    comment: 'Через какой шлюз слать. iOS до покупки APNs сюда не попадает'
+  },
+  appVersion: { type: DataTypes.STRING(50), allowNull: true },
+  deviceName: { type: DataTypes.STRING(120), allowNull: true, comment: 'Для списка «мои устройства»' },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  lastSeenAt: { type: DataTypes.DATE, allowNull: true, comment: 'Обновляется при каждой регистрации токена' },
+  failureCount: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Подряд неудачных отправок. FCM UNREGISTERED сразу гасит устройство'
+  }
+}, {
+  tableName: 'user_devices',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['token'] },
+    { fields: ['userId'] },
+    { fields: ['userId', 'isActive'] }
+  ]
+});
+
+UserDevice.belongsTo(User, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
+User.hasMany(UserDevice, { foreignKey: 'userId', as: 'devices', onDelete: 'CASCADE' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -3594,4 +3641,6 @@ module.exports = {
   // Release notes module (Центр обновлений)
   ReleaseNote,
   ReleaseNoteRead,
+  // Push-уведомления: зарегистрированные устройства
+  UserDevice,
 };

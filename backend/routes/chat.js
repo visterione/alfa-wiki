@@ -6,10 +6,11 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
-const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter } = require('../models');
+const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter, UserDevice } = require('../models');
 const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
+const pushService = require('../services/pushService');
 
 /**
  * Бота добавили в чат или убрали — рассылаем my_chat_member и правим подписки на формы.
@@ -359,6 +360,66 @@ router.get('/unread/count', authenticate, async (req, res) => {
   }
 });
 
+// ─── Push-устройства ────────────────────────────────────────────────────────
+// Объявлены ДО всех '/:chatId'-маршрутов: иначе DELETE /chat/devices попадёт
+// в DELETE /chat/:chatId и вместо отписки устройства удалит чат с id 'devices'.
+
+// Регистрация токена. Клиент вызывает при каждом запуске и при обновлении токена
+// в FCM — оба случая обрабатываются одинаково.
+router.post('/devices', authenticate, async (req, res) => {
+  try {
+    const { token, platform, provider = 'fcm', appVersion, deviceName } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'token is required' });
+    }
+    if (!['android', 'ios', 'web'].includes(platform)) {
+      return res.status(400).json({ error: 'platform must be android | ios | web' });
+    }
+    if (!['fcm', 'apns', 'webpush'].includes(provider)) {
+      return res.status(400).json({ error: 'provider must be fcm | apns | webpush' });
+    }
+
+    // Токен уникален глобально: тот же телефон под другим аккаунтом должен
+    // переехать на нового владельца, иначе пуши продолжат уходить прежнему.
+    await UserDevice.upsert({
+      userId: req.user.id,
+      token,
+      platform,
+      provider,
+      appVersion: appVersion || null,
+      deviceName: deviceName || null,
+      isActive: true,
+      lastSeenAt: new Date(),
+      failureCount: 0
+    }, { conflictFields: ['token'] });
+
+    res.json({ registered: true });
+  } catch (error) {
+    console.error('Register device error:', error);
+    res.status(500).json({ error: 'Failed to register device' });
+  }
+});
+
+// Отзыв токена — вызывается при выходе из аккаунта.
+// Строку не удаляем, а гасим: так остаётся видна история устройств пользователя.
+router.delete('/devices', authenticate, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ error: 'token is required' });
+    }
+    await UserDevice.update(
+      { isActive: false },
+      { where: { token, userId: req.user.id } }
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Unregister device error:', error);
+    res.status(500).json({ error: 'Failed to unregister device' });
+  }
+});
+
 // Search messages in a specific chat
 router.get('/:chatId/messages/search', authenticate, async (req, res) => {
   try {
@@ -602,6 +663,13 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       });
     }
 
+    // Push на мобильные устройства (fire-and-forget).
+    // Сокет доставляет сообщение только пока приложение открыто; всё остальное
+    // время работает этот канал.
+    if (chat) {
+      pushService.notifyNewMessage({ message: fullMessage, chat, senderId: req.user.id }).catch(() => {});
+    }
+
     // Deliver message to any bots in this chat (fire-and-forget)
     botWebhookService.onNewMessage(fullMessage).catch(() => {});
 
@@ -828,13 +896,16 @@ router.post('/forward', authenticate, async (req, res) => {
       }]
     });
 
+    // Последнее из пересланных — оно же идёт в сокет и в push как превью пачки
+    const lastCreated = createdMessages[createdMessages.length - 1];
+    const fullMsg = targetChat && lastCreated
+      ? await Message.findByPk(lastCreated.id, {
+          include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+        })
+      : null;
+
     const io = req.app.get('io');
     if (io && targetChat) {
-      const lastCreated = createdMessages[createdMessages.length - 1];
-      const fullMsg = await Message.findByPk(lastCreated.id, {
-        include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] }]
-      });
-
       targetChat.members.forEach(member => {
         if (member.userId !== req.user.id) {
           let chatDisplayName = targetChat.name;
@@ -852,6 +923,10 @@ router.post('/forward', authenticate, async (req, res) => {
           });
         }
       });
+    }
+
+    if (targetChat && fullMsg) {
+      pushService.notifyNewMessage({ message: fullMsg, chat: targetChat, senderId: req.user.id }).catch(() => {});
     }
 
     res.status(201).json({ forwarded: createdMessages.length });

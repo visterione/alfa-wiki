@@ -237,9 +237,12 @@ export function SocketProvider({ children }) {
       return;
     }
 
-    // Connect to Socket.IO server
+    // Connect to Socket.IO server.
+    // Токен обязателен: сервер берёт личность пользователя только из него,
+    // без токена handshake отклоняется (см. io.use в backend/server.js).
     const socket = io(BASE_URL.replace('/api', ''), {
       transports: ['websocket', 'polling'],
+      auth: { token: localStorage.getItem('token') },
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5
@@ -251,6 +254,16 @@ export function SocketProvider({ children }) {
       console.log('Socket.IO connected');
       setIsConnected(true);
       socket.emit('join', user.id);
+    });
+
+    socket.on('connect_error', (err) => {
+      // AUTH_EXPIRED — токен протух: дальше ретраить бессмысленно, нужен релогин.
+      // Молча уходим в оффлайн-режим; api-интерцептор выкинет на /login при первом же запросе.
+      if (err.message === 'AUTH_EXPIRED' || err.message === 'AUTH_INVALID' || err.message === 'AUTH_REQUIRED') {
+        console.warn('[Socket.IO] auth failed:', err.message);
+        socket.disconnect();
+        setIsConnected(false);
+      }
     });
 
     socket.on('disconnect', () => {

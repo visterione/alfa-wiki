@@ -6,6 +6,7 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
@@ -123,23 +124,59 @@ app.set('io', io);
 const onlineUsers = new Map();
 app.set('onlineUsers', onlineUsers);
 
+// Socket.IO authentication.
+// Раньше клиент сам присылал userId в событии `join`, и сервер ему верил — любой,
+// кто дотянулся до порта, мог подписаться на чужую комнату и читать чужие сообщения.
+// Теперь личность берётся исключительно из JWT в handshake.
+io.use((socket, next) => {
+  const { token } = socket.handshake.auth || {};
+  const headerToken = socket.handshake.headers?.authorization?.startsWith('Bearer ')
+    ? socket.handshake.headers.authorization.slice(7)
+    : null;
+  const raw = token || headerToken || socket.handshake.query?.token;
+
+  if (!raw) {
+    return next(new Error('AUTH_REQUIRED'));
+  }
+
+  try {
+    const decoded = jwt.verify(raw, process.env.JWT_SECRET);
+    socket.userId = decoded.userId;
+    next();
+  } catch (err) {
+    // TokenExpiredError сообщаем отдельно: клиенту нужно обновить токен, а не ретраить вечно
+    next(new Error(err.name === 'TokenExpiredError' ? 'AUTH_EXPIRED' : 'AUTH_INVALID'));
+  }
+});
+
+// Регистрирует сокет в личной комнате пользователя и обновляет онлайн-статус.
+// Идемпотентно: вызывается и при подключении, и на legacy-событие `join`.
+function registerSocket(socket) {
+  const userId = socket.userId;
+  if (!userId) return;
+
+  socket.join(`user:${userId}`);
+
+  if (!onlineUsers.has(userId)) {
+    onlineUsers.set(userId, new Set());
+  }
+  const wasOffline = onlineUsers.get(userId).size === 0;
+  onlineUsers.get(userId).add(socket.id);
+
+  if (wasOffline) {
+    // Broadcast to all connected clients that this user is now online
+    socket.broadcast.emit('user_status_changed', { userId, isOnline: true });
+  }
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  socket.on('join', (userId) => {
-    socket.join(`user:${userId}`);
-    socket.userId = userId;
+  // Личность уже известна из токена — комнату занимаем сразу, не дожидаясь `join`
+  registerSocket(socket);
 
-    if (!onlineUsers.has(userId)) {
-      onlineUsers.set(userId, new Set());
-    }
-    const wasOffline = onlineUsers.get(userId).size === 0;
-    onlineUsers.get(userId).add(socket.id);
-
-    if (wasOffline) {
-      // Broadcast to all connected clients that this user is now online
-      socket.broadcast.emit('user_status_changed', { userId, isOnline: true });
-    }
-  });
+  // Legacy-событие: старые клиенты присылают сюда userId. Аргумент игнорируем —
+  // доверяем только токену. Оставлено, чтобы не ломать уже собранный фронт.
+  socket.on('join', () => registerSocket(socket));
 
   // Chat room join/leave (for typing indicators)
   socket.on('join_chat', ({chatId}) => {
