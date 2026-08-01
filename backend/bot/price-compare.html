@@ -386,6 +386,13 @@
   min-width: 100px;
   max-width: 100px;
 }
+/* Заголовок колонки — ручка её перетаскивания: порядок правят прямо
+   в таблице, а не в отдельном окне со списком */
+.price-table th.pc-col-drag { cursor: grab; user-select: none; }
+.price-table th.pc-col-dragging { opacity: .4; cursor: grabbing; }
+.price-table th.pc-drop-before { box-shadow: inset 3px 0 0 #3b82f6; }
+.price-table th.pc-drop-after { box-shadow: inset -3px 0 0 #3b82f6; }
+
 .price-table th.col-diff-competitor { width: 80px; }
 .price-table th.col-actions { width: 80px; }
 .price-table th.hidden, .price-table td.hidden { display: none; }
@@ -1633,6 +1640,7 @@ window.priceApp = (function() {
   var currentItems = [];
   var allColumns = []; // Список всех колонок (своих + конкурентов)
   var hiddenColumns = []; // Список скрытых колонок
+  var columnOrder = []; // Порядок колонок, расставленный человеком
   var availableClinics = []; // Список клиник из МИС
   var parserCompetitors = [];      // Клиники-конкуренты из парсера (зеркало в вики)
   var parserCompetitorChoices = []; // Отдельные варианты колонок по филиалам
@@ -1770,8 +1778,10 @@ window.priceApp = (function() {
 
   function columnHeadingHtml(col, suffix) {
     var logo = parserLogoForColumn(col.name) || staticLogoForColumn(col.name);
+    // draggable=false у значка обязателен: иначе браузер тащит саму картинку,
+    // а не заголовок, и колонку не переставить
     var logoHtml = logo
-      ? '<img class="price-column-logo" src="' + logo + '" alt="" onerror="this.hidden=true">'
+      ? '<img class="price-column-logo" draggable="false" src="' + logo + '" alt="" onerror="this.hidden=true">'
       : '';
     return '<span class="price-column-heading">' + logoHtml +
       '<span class="price-column-heading-text">' + col.name + (suffix || '') + '</span></span>';
@@ -1825,6 +1835,7 @@ window.priceApp = (function() {
     currentItems = [];
     allColumns = [];
     hiddenColumns = [];
+    columnOrder = [];
     baseColumnName = null;
     viewMode = 'price';
     document.getElementById('view-price-btn').classList.add('active');
@@ -1961,6 +1972,7 @@ window.priceApp = (function() {
     fetchAPI(API_URL + '/' + comparisonId).then(function(comparison) {
       currentComparison = comparison;
       currentItems = comparison.items || [];
+      columnOrder = comparison.columnOrder || [];
 
       // Обрабатываем priceHistory для каждого item
       currentItems.forEach(function(item) {
@@ -2138,9 +2150,9 @@ window.priceApp = (function() {
       html += sectionHtml(currentMode === 'lab' ? 'Наши лаборатории' : 'Наши клиники') + ownRows;
     }
 
-    // Парсер ходит по сайтам клиник, и на листе лабораторий его дерево —
-    // чистый шум: колонки там заводят руками
-    var treeRows = currentMode === 'lab' ? '' : competitorTree.map(colGroupHtml).join('');
+    // Дерево парсера нужно в обоих режимах: те же анализы продают и клиники,
+    // и на листе лабораторий их цены — такой же конкурент
+    var treeRows = competitorTree.map(colGroupHtml).join('');
     if (treeRows) html += sectionHtml('Конкуренты') + treeRows;
 
     var manualRows = manualColumnRowsHtml();
@@ -2418,6 +2430,129 @@ window.priceApp = (function() {
     });
   }
 
+  /* ── Порядок колонок ─────────────────────────────────────────────────────
+   *
+   * Порядок расставляет человек, перетаскивая заголовок таблицы: рядом
+   * ставят то, что сравнивают глазами, а общего правила для этого нет.
+   * Пока порядок не тронули, он прежний — эталон первым, остальные как
+   * пришли. После первого перетаскивания эталон с места не срывается:
+   * иначе колонки переезжали бы сами от одного нажатия на весы.
+   */
+  function orderedColumns() {
+    if (!columnOrder.length) {
+      return allColumns.filter(function(col) { return col.name === baseColumnName; })
+        .concat(allColumns.filter(function(col) { return col.name !== baseColumnName; }));
+    }
+
+    var known = [];
+    columnOrder.forEach(function(name) {
+      var col = allColumns.filter(function(c) { return c.name === name; })[0];
+      if (col && known.indexOf(col) < 0) known.push(col);
+    });
+    // Колонку, которой в сохранённом порядке нет (только что завели), ставим
+    // в конец: угадывать за человека её место неоткуда
+    return known.concat(allColumns.filter(function(col) { return known.indexOf(col) < 0; }));
+  }
+
+  /**
+   * Сохранить сам лист. Маршрут ждёт весь набор полей разом, поэтому
+   * недостающее берём из того, что уже загружено, — иначе сохранение
+   * порядка колонок стирало бы, например, привязки к клиникам.
+   */
+  function saveComparison(changes) {
+    var body = {
+      name: currentComparison.name,
+      description: currentComparison.description,
+      ownMedCenters: currentComparison.ownMedCenters,
+      competitors: currentComparison.competitors || [],
+      competitorBindings: currentComparison.competitorBindings || {}
+    };
+    Object.keys(changes || {}).forEach(function(key) { body[key] = changes[key]; });
+
+    return fetchAPI(API_URL + '/' + currentComparison.id, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    });
+  }
+
+  function saveColumnOrder(names) {
+    columnOrder = names;
+    renderTable();
+    if (!currentComparison) return;
+
+    // Порядок — вещь мелкая: показываем его сразу, а неудачу сохранения
+    // просто проговариваем, не перерисовывая таблицу обратно
+    currentComparison.columnOrder = names;
+    saveComparison({ columnOrder: names }).catch(function(e) {
+      showToast('Порядок колонок не сохранился: ' + e.message, 'error');
+    });
+  }
+
+  var dragColumnName = null;
+
+  function clearDropMarks() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('.pc-drop-before, .pc-drop-after'),
+      function(el) { el.classList.remove('pc-drop-before', 'pc-drop-after'); }
+    );
+  }
+
+  function onColDragStart(e) {
+    var th = e.currentTarget;
+    dragColumnName = th.getAttribute('data-col');
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox не начинает перетаскивание, пока в буфере пусто
+    e.dataTransfer.setData('text/plain', dragColumnName);
+    th.classList.add('pc-col-dragging');
+  }
+
+  function onColDragEnd(e) {
+    dragColumnName = null;
+    e.currentTarget.classList.remove('pc-col-dragging');
+    clearDropMarks();
+  }
+
+  // Куда встанет колонка — до или после той, над которой её держат:
+  // ближе к какому краю курсор, туда и встанет
+  function dropAfter(e) {
+    var rect = e.currentTarget.getBoundingClientRect();
+    return e.clientX > rect.left + rect.width / 2;
+  }
+
+  function onColDragOver(e) {
+    var th = e.currentTarget;
+    if (!dragColumnName || th.getAttribute('data-col') === dragColumnName) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    th.classList.remove('pc-drop-before', 'pc-drop-after');
+    th.classList.add(dropAfter(e) ? 'pc-drop-after' : 'pc-drop-before');
+  }
+
+  function onColDragLeave(e) {
+    e.currentTarget.classList.remove('pc-drop-before', 'pc-drop-after');
+  }
+
+  function onColDrop(e) {
+    e.preventDefault();
+    var target = e.currentTarget.getAttribute('data-col');
+    var after = dropAfter(e);
+    var moved = dragColumnName;
+    dragColumnName = null;
+    clearDropMarks();
+    if (!moved || moved === target) return;
+
+    // Порядок считаем по нынешнему виду таблицы, включая скрытые колонки:
+    // они на листе остаются, и вернувшись, должны встать на своё место
+    var names = orderedColumns().map(function(col) { return col.name; });
+    var from = names.indexOf(moved);
+    if (from < 0) return;
+    names.splice(from, 1);
+    var at = names.indexOf(target);
+    if (at < 0) return;
+    names.splice(at + (after ? 1 : 0), 0, moved);
+    saveColumnOrder(names);
+  }
+
   function renderTable() {
     var thead = document.getElementById('table-header');
     var tbody = document.getElementById('price-table-body');
@@ -2430,23 +2565,7 @@ window.priceApp = (function() {
       return;
     }
 
-    // Переупорядочиваем колонки: базовая колонка всегда первая
-    var orderedColumns = [];
-    var baseCol = null;
-    var otherCols = [];
-
-    allColumns.forEach(function(col) {
-      if (col.name === baseColumnName) {
-        baseCol = col;
-      } else {
-        otherCols.push(col);
-      }
-    });
-
-    if (baseCol) {
-      orderedColumns.push(baseCol);
-    }
-    orderedColumns = orderedColumns.concat(otherCols);
+    var ordered = orderedColumns();
 
     // Заголовок таблицы - одна строка
     var headerRow = '<tr>';
@@ -2458,19 +2577,26 @@ window.priceApp = (function() {
     // Считаем общее количество колонок для colspan
     var totalDataCols = 0;
 
-    orderedColumns.forEach(function(col) {
+    ordered.forEach(function(col) {
       var isHidden = hiddenColumns.indexOf(col.name) >= 0;
       var hiddenClass = isHidden ? ' hidden' : '';
       var isBase = col.name === baseColumnName;
+      // Заголовок — он же ручка перетаскивания: порядок колонок правят прямо
+      // в таблице, где его и видят
+      var drag = ' draggable="true" data-col="' + escAttr(col.name) + '"' +
+        ' title="Перетащите, чтобы переставить колонку"' +
+        ' ondragstart="priceApp.onColDragStart(event)" ondragend="priceApp.onColDragEnd(event)"' +
+        ' ondragover="priceApp.onColDragOver(event)" ondragleave="priceApp.onColDragLeave(event)"' +
+        ' ondrop="priceApp.onColDrop(event)"';
 
       if (isBase) {
         // Эталонная колонка - только 1 колонка (без разницы)
-        headerRow += '<th class="col-price-competitor col-clinic-single' + hiddenClass + '">' +
+        headerRow += '<th class="col-price-competitor col-clinic-single pc-col-drag' + hiddenClass + '"' + drag + '>' +
           columnHeadingHtml(col, ' (эталон)') + '</th>';
         totalDataCols += 1;
       } else {
         // Остальные колонки имеют 2 подколонки (цена и разница), но без подзаголовков
-        headerRow += '<th class="col-price-competitor col-clinic-pair' + hiddenClass + '" colspan="2">' +
+        headerRow += '<th class="col-price-competitor col-clinic-pair pc-col-drag' + hiddenClass + '" colspan="2"' + drag + '>' +
           columnHeadingHtml(col) + '</th>';
         totalDataCols += 2;
       }
@@ -2512,7 +2638,7 @@ window.priceApp = (function() {
       var basePrice = currentPrices[baseColumnName] || null;
 
       // Колонки с ценами (используем переупорядоченный массив)
-      orderedColumns.forEach(function(col) {
+      ordered.forEach(function(col) {
         var isHidden = hiddenColumns.indexOf(col.name) >= 0;
         var hiddenClass = isHidden ? ' hidden' : '';
         var isBase = col.name === baseColumnName;
@@ -3176,15 +3302,9 @@ window.priceApp = (function() {
       filialId: choice.filialId
     };
 
-    return fetchAPI(API_URL + '/' + currentComparison.id, {
-      method: 'PUT',
-      body: JSON.stringify({
-        name: currentComparison.name,
-        description: currentComparison.description,
-        ownMedCenters: currentComparison.ownMedCenters,
-        competitors: newCompetitors,
-        competitorBindings: newBindings
-      })
+    return saveComparison({
+      competitors: newCompetitors,
+      competitorBindings: newBindings
     }).then(function() {
       // Местное состояние держим в актуальном виде: следующая колонка
       // в очереди считает свой список от него, а не от того, что было
@@ -3368,16 +3488,7 @@ window.priceApp = (function() {
 
     setManualColumnBusy(true);
 
-    fetchAPI(API_URL + '/' + currentComparison.id, {
-      method: 'PUT',
-      body: JSON.stringify({
-        name: currentComparison.name,
-        description: currentComparison.description,
-        ownMedCenters: currentComparison.ownMedCenters,
-        competitors: newCompetitors,
-        competitorBindings: currentComparison.competitorBindings || {}
-      })
-    }).then(function() {
+    saveComparison({ competitors: newCompetitors }).then(function() {
       setManualColumnBusy(false);
       closeModal('add-competitor-modal');
       showToast('Колонка добавлена', 'success');
@@ -3440,15 +3551,7 @@ window.priceApp = (function() {
       // Для конкурентов удаляем из списка competitors
       var newCompetitors = currentComparison.competitors.filter(function(comp) { return comp !== col.name; });
 
-      fetchAPI(API_URL + '/' + currentComparison.id, {
-        method: 'PUT',
-        body: JSON.stringify({
-          name: currentComparison.name,
-          description: currentComparison.description,
-          ownMedCenters: currentComparison.ownMedCenters,
-          competitors: newCompetitors
-        })
-      }).then(function() {
+      saveComparison({ competitors: newCompetitors }).then(function() {
         showToast('Колонка удалена', 'success');
         loadComparison();
       }).catch(function(e) {
@@ -4082,28 +4185,11 @@ window.priceApp = (function() {
       worksheet.addRow([]);
     }
 
-    // Считаем видимые колонки
-    var visibleColumns = allColumns.filter(function(col) {
+    // Порядок колонок в выгрузке — тот же, что человек видит в таблице,
+    // включая расставленный им самим
+    var orderedVisibleColumns = orderedColumns().filter(function(col) {
       return hiddenColumns.indexOf(col.name) < 0;
     });
-
-    // Переупорядочиваем колонки: базовая колонка всегда первая
-    var orderedVisibleColumns = [];
-    var baseCol = null;
-    var otherCols = [];
-
-    visibleColumns.forEach(function(col) {
-      if (col.name === baseColumnName) {
-        baseCol = col;
-      } else {
-        otherCols.push(col);
-      }
-    });
-
-    if (baseCol) {
-      orderedVisibleColumns.push(baseCol);
-    }
-    orderedVisibleColumns = orderedVisibleColumns.concat(otherCols);
 
     // Одна строка заголовков
     var headerRow = ['Артикул', 'Название услуги'];
@@ -5279,6 +5365,11 @@ window.priceApp = (function() {
     commitRename: commitRename,
     cancelRename: cancelRename,
     onRenameKeydown: onRenameKeydown,
+    onColDragStart: onColDragStart,
+    onColDragEnd: onColDragEnd,
+    onColDragOver: onColDragOver,
+    onColDragLeave: onColDragLeave,
+    onColDrop: onColDrop,
     removeColumn: removeColumn,
     toggleColumn: toggleColumn,
     setBaseColumn: setBaseColumn,

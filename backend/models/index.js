@@ -762,6 +762,14 @@ const PriceComparison = sequelize.define('PriceComparison', {
     type: DataTypes.JSONB,
     defaultValue: [],
     comment: 'Массив своих медцентров для сравнения: ["Альфа", "Кидс"]'
+  },
+  // Порядок колонок человек расставляет сам, перетаскивая заголовки: рядом
+  // ставят то, что сравнивают глазами, и общего правила для этого нет.
+  // Пустой массив — порядок по умолчанию (эталон первым, дальше как пришли).
+  columnOrder: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Порядок колонок в таблице: ["Альфа", "Неомед", "Кидс"]'
   }
 }, {
   tableName: 'price_comparisons',

@@ -38,7 +38,7 @@ router.get('/', authenticate, async (req, res) => {
       order: [['createdAt', 'DESC']],
       attributes: [
         'id', 'name', 'description', 'competitors', 'competitorBindings',
-        'ownMedCenters', 'comparisonType', 'createdAt', 'updatedAt'
+        'ownMedCenters', 'columnOrder', 'comparisonType', 'createdAt', 'updatedAt'
       ]
     });
 
@@ -105,6 +105,7 @@ router.post('/',
         ownMedCenters = [],
         competitors = [],
         competitorBindings = {},
+        columnOrder = [],
         comparisonType = 'external'
       } = req.body;
 
@@ -114,6 +115,7 @@ router.post('/',
         ownMedCenters,
         competitors,
         competitorBindings: pruneBindings(competitorBindings, competitors),
+        columnOrder,
         comparisonType,
         createdBy: req.user.id
       });
@@ -156,7 +158,8 @@ router.put('/:id',
         description,
         ownMedCenters,
         competitors,
-        competitorBindings
+        competitorBindings,
+        columnOrder
       } = req.body;
 
       const comparison = await PriceComparison.findOne({
@@ -172,6 +175,9 @@ router.put('/:id',
       // сохраняет сравнение и при переименовании листа. Что не прислали —
       // оставляем как было, а привязки удалённых колонок убираем сами:
       // отдельной кнопки «отвязать клинику» у человека нет и не нужно.
+      //
+      // Порядок колонок — того же рода: его меняют перетаскиванием заголовка,
+      // и остальные сохранения листа не должны его сбрасывать.
       await comparison.update({
         name,
         description,
@@ -180,7 +186,8 @@ router.put('/:id',
         competitorBindings: pruneBindings(
           competitorBindings || comparison.competitorBindings,
           competitors
-        )
+        ),
+        columnOrder: Array.isArray(columnOrder) ? columnOrder : comparison.columnOrder
       });
 
       const changes = [];
@@ -263,7 +270,10 @@ router.put('/:id/columns/rename',
 
       await comparison.update({
         competitors: competitors.map(column => (column === from ? to : column)),
-        competitorBindings: bindings
+        competitorBindings: bindings,
+        // Порядок колонок тоже держится на именах: не переименуешь здесь —
+        // колонка уедет в конец таблицы как незнакомая
+        columnOrder: (comparison.columnOrder || []).map(column => (column === from ? to : column))
       });
 
       for (const item of items) {
