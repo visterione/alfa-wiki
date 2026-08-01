@@ -584,42 +584,44 @@ function LocationsModal({ source, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay ap-loc-overlay" onClick={onClose}>
       <div className="modal modal-lg ap-loc-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Адреса: {source.display_name || source.name}</h2>
-          <button className="btn-icon" onClick={onClose}><X size={20} /></button>
-        </div>
-
-        {/* Карта и кнопки прибиты, прокручивается только список: точек
-            бывает под два десятка, и уезжающая вверх карта делает
-            расстановку меток невозможной */}
-        <div className="ap-loc-fixed">
-          <div className="ap-loc-toolbar">
-            <button className="btn" onClick={collect} disabled={!!busy}>
-              {busy === 'collect' ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
-              {busy === 'collect' ? 'Ищем…' : 'Собрать с сайта'}
-            </button>
-            <button className="btn" onClick={geocode} disabled={!!busy || !items.length}>
-              {busy === 'geocode' ? <Loader2 size={16} className="spin" /> : <Crosshair size={16} />}
-              {busy === 'geocode' ? 'Определяем…' : 'Определить координаты'}
-            </button>
-            <span className="text-muted">
-              точек: {items.length} · на карте: {items.filter(i => i.lat !== null).length}
-            </span>
+        {/* Шапка с картой прилипает к верху, форма — к низу, а прокручивается
+            само окно целиком: своего контейнера прокрутки у списка нет, и
+            колесо мыши работает в любой его точке, а не только над списком */}
+        <div className="ap-loc-top">
+          <div className="modal-header">
+            <h2>Адреса: {source.display_name || source.name}</h2>
+            <button className="btn-icon" onClick={onClose}><X size={20} /></button>
           </div>
 
-          {/* Карта над списком: метку двигают мышью, и после этого координаты
-              считаются выверенными — автогеокодер их больше не трогает */}
-          <div className="ap-map" ref={mapNode} />
-          <div className="ap-map-hint">
-            {selected
-              ? 'Кликните по карте, чтобы поставить выбранную точку'
-              : 'Метку можно перетащить — так координаты закрепляются за адресом навсегда'}
+          <div className="ap-loc-fixed">
+            <div className="ap-loc-toolbar">
+              <button className="btn" onClick={collect} disabled={!!busy}>
+                {busy === 'collect' ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
+                {busy === 'collect' ? 'Ищем…' : 'Собрать с сайта'}
+              </button>
+              <button className="btn" onClick={geocode} disabled={!!busy || !items.length}>
+                {busy === 'geocode' ? <Loader2 size={16} className="spin" /> : <Crosshair size={16} />}
+                {busy === 'geocode' ? 'Определяем…' : 'Определить координаты'}
+              </button>
+              <span className="text-muted">
+                точек: {items.length} · на карте: {items.filter(i => i.lat !== null).length}
+              </span>
+            </div>
+
+            {/* Карта над списком: метку двигают мышью, и после этого координаты
+                считаются выверенными — автогеокодер их больше не трогает */}
+            <div className="ap-map" ref={mapNode} />
+            <div className="ap-map-hint">
+              {selected
+                ? 'Кликните по карте, чтобы поставить выбранную точку'
+                : 'Метку можно перетащить — так координаты закрепляются за адресом навсегда'}
+            </div>
           </div>
         </div>
 
-        <div className="modal-body ap-loc-scroll">
+        <div className="ap-loc-body">
           {loading ? (
             <div className="admin-loading"><div className="loading-spinner" /></div>
           ) : items.length === 0 ? (
@@ -1949,17 +1951,6 @@ export default function AdminParser() {
                 {toDelete.display_name || toDelete.name}
                 {toDelete.city && <span className="text-muted"> · {toDelete.city}</span>}
               </div>
-
-              {/* Что уйдёт и что останется — тремя строками: у окна один
-                  вопрос, и читать перед ответом абзацы никто не станет */}
-              <ul className="ap-confirm-list">
-                <li>
-                  Уйдут услуги ({Number(toDelete.services_total || 0).toLocaleString('ru-RU')}),
-                  их цены и история обходов
-                </li>
-                <li>Принятые в сравнениях цены останутся, но обновляться перестанут</li>
-                <li>Вернуть можно только повторным разбором по ссылке</li>
-              </ul>
 
               {/* Рукописный рецепт повторным разбором не воспроизводится: автоматика
                   этот сайт разобрать не смогла, потому его и писали руками */}
