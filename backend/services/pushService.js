@@ -210,17 +210,13 @@ async function notifyNewMessage({ message, chat, senderId }) {
 
     const senderName = message.sender?.displayName || message.sender?.username || 'Сообщение';
 
-    let title = senderName;
-    let body = message.content || '';
-    if (chat.type === 'group') {
-      // В группе важнее её название, автор уходит в текст
-      title = chat.name || 'Группа';
-      body = `${senderName}: ${body}`;
-    }
-    if (!message.content && message.attachments?.length) {
+    // Текст сообщения без префикса с именем: имя клиент подставит сам, оно едет
+    // отдельным полем и в уведомлении показывается рядом с аватаркой
+    let body = message.content?.trim() || '';
+    if (!body && message.attachments?.length) {
       const allImages = message.attachments.every(a => a.mimeType?.startsWith('image/'));
-      const label = allImages ? '📷 Фото' : '📎 Файл';
-      body = chat.type === 'group' ? `${senderName}: ${label}` : label;
+      const suffix = message.attachments.length > 1 ? ` (${message.attachments.length})` : '';
+      body = allImages ? `📷 Фото${suffix}` : `📎 Файл${suffix}`;
     }
     if (body.length > 200) body = `${body.slice(0, 200)}…`;
 
@@ -230,8 +226,16 @@ async function notifyNewMessage({ message, chat, senderId }) {
       chatType: chat.type,
       messageId: message.id,
       senderId,
-      title,
-      body
+      senderName,
+      // Путь как он лежит в БД, без хоста: абсолютный URL соберёт клиент через
+      // CONFIG.fileUrl. Иначе пришлось бы завязываться на BASE_URL бэкенда,
+      // а там адрес с портом 9001, недоступный снаружи.
+      senderAvatar: message.sender?.avatar || '',
+      chatName: chat.type === 'group' ? (chat.name || 'Группа') : senderName,
+      body,
+      // Заголовок оставлен для совместимости со старыми сборками приложения,
+      // которые ещё не умеют собирать уведомление из отдельных полей
+      title: chat.type === 'group' ? (chat.name || 'Группа') : senderName
     });
   } catch (err) {
     // Push — вспомогательный канал: его падение не должно ломать отправку сообщения
