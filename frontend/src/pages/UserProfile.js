@@ -85,7 +85,10 @@ export default function UserProfile() {
       : profile.role?.name || 'Пользователь';
   const medCenters = profile.medCenters || [];
   const completedCourses = profile.completedCourses || [];
-  const lastSeen = formatLastSeen(profile.lastSeen);
+  // isOnline приходит с сервера из presence-сервиса. Одного lastSeen мало:
+  // у активного пользователя метка обновляется раз в минуту и всегда чуть в
+  // прошлом, так что он показывался бы «5 мин. назад», сидя в чате.
+  const lastSeen = profile.isOnline ? 'в сети' : formatLastSeen(profile.lastSeen);
 
   return (
     <div className="up-page">
@@ -106,7 +109,7 @@ export default function UserProfile() {
           </div>
           {lastSeen && (
             <div className="up-lastseen">
-              <span className="up-lastseen-dot" />
+              <span className={`up-lastseen-dot ${profile.isOnline ? 'is-online' : ''}`} />
               {lastSeen}
             </div>
           )}

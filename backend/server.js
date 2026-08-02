@@ -10,10 +10,12 @@ const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
-const { sequelize, User } = require('./models');
+const { sequelize } = require('./models');
 const { initBot } = require('./bot/telegramBot');
 const { initDoctorReindexJob } = require('./jobs/doctorServicesReindex');
 const notificationService = require('./services/notificationService');
+const presence = require('./services/presence');
+const sessions = require('./services/sessions');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -120,15 +122,32 @@ const io = new Server(server, {
 // Make io accessible to routes
 app.set('io', io);
 
-// Online users: userId → Set<socketId>
-const onlineUsers = new Map();
-app.set('onlineUsers', onlineUsers);
+// Онлайн-статусы. Раньше здесь жила карта userId → Set<socketId>, и «в сети»
+// означало «есть коннект» — из-за чего свёрнутое мобильное приложение висело
+// онлайном часами. Теперь статус считает presence по heartbeat активности,
+// а карта сокетов нужна только для принудительного разрыва отозванных сессий.
+presence.init(io);
+
+// sid → Set<socket>: чтобы снятая сессия отваливалась сразу, а не доживала до exp
+const socketsBySession = new Map();
+
+sessions.setRevocationListener((sids) => {
+  for (const sid of sids) {
+    const set = socketsBySession.get(sid);
+    if (!set) continue;
+    for (const socket of set) {
+      socket.emit('session_revoked');
+      socket.disconnect(true);
+    }
+    socketsBySession.delete(sid);
+  }
+});
 
 // Socket.IO authentication.
 // Раньше клиент сам присылал userId в событии `join`, и сервер ему верил — любой,
 // кто дотянулся до порта, мог подписаться на чужую комнату и читать чужие сообщения.
 // Теперь личность берётся исключительно из JWT в handshake.
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const { token } = socket.handshake.auth || {};
   const headerToken = socket.handshake.headers?.authorization?.startsWith('Bearer ')
     ? socket.handshake.headers.authorization.slice(7)
@@ -141,7 +160,21 @@ io.use((socket, next) => {
 
   try {
     const decoded = jwt.verify(raw, process.env.JWT_SECRET);
+
+    // Сессия могла быть снята («выйти со всех устройств», потерянный телефон).
+    // Токены без sid — легаси до ver. 6.49, живут до естественного истечения.
+    if (decoded.sid) {
+      const session = await sessions.getActiveSession(decoded.sid);
+      if (!session || session.userId !== decoded.userId) {
+        return next(new Error('AUTH_REVOKED'));
+      }
+      socket.sessionId = decoded.sid;
+    }
+
     socket.userId = decoded.userId;
+    // Момент, когда токен перестаёт быть валидным: сокет живёт неделями и
+    // проверки в handshake недостаточно — иначе он переживёт свой токен.
+    socket.tokenExpiresAt = decoded.exp ? decoded.exp * 1000 : null;
     next();
   } catch (err) {
     // TokenExpiredError сообщаем отдельно: клиенту нужно обновить токен, а не ретраить вечно
@@ -149,7 +182,7 @@ io.use((socket, next) => {
   }
 });
 
-// Регистрирует сокет в личной комнате пользователя и обновляет онлайн-статус.
+// Регистрирует сокет в личной комнате пользователя.
 // Идемпотентно: вызывается и при подключении, и на legacy-событие `join`.
 function registerSocket(socket) {
   const userId = socket.userId;
@@ -157,15 +190,11 @@ function registerSocket(socket) {
 
   socket.join(`user:${userId}`);
 
-  if (!onlineUsers.has(userId)) {
-    onlineUsers.set(userId, new Set());
-  }
-  const wasOffline = onlineUsers.get(userId).size === 0;
-  onlineUsers.get(userId).add(socket.id);
-
-  if (wasOffline) {
-    // Broadcast to all connected clients that this user is now online
-    socket.broadcast.emit('user_status_changed', { userId, isOnline: true });
+  if (socket.sessionId) {
+    if (!socketsBySession.has(socket.sessionId)) {
+      socketsBySession.set(socket.sessionId, new Set());
+    }
+    socketsBySession.get(socket.sessionId).add(socket);
   }
 }
 
@@ -177,6 +206,16 @@ io.on('connection', (socket) => {
   // Legacy-событие: старые клиенты присылают сюда userId. Аргумент игнорируем —
   // доверяем только токену. Оставлено, чтобы не ломать уже собранный фронт.
   socket.on('join', () => registerSocket(socket));
+
+  // Heartbeat активности: клиент шлёт его, пока реально на переднем плане
+  // (AppState=active / visibilityState=visible), а не просто пока жив коннект.
+  socket.on('presence:active', () => {
+    if (socket.userId) presence.touch(socket.userId);
+  });
+  // Ушёл в фон / спрятал вкладку — гасим сразу, не дожидаясь протухания пинга
+  socket.on('presence:away', () => {
+    if (socket.userId) presence.away(socket.userId);
+  });
 
   // Chat room join/leave (for typing indicators)
   socket.on('join_chat', ({chatId}) => {
@@ -196,24 +235,42 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', async () => {
-    const userId = socket.userId;
-    if (!userId) return;
-
-    const sockets = onlineUsers.get(userId);
-    if (sockets) {
-      sockets.delete(socket.id);
-      if (sockets.size === 0) {
-        onlineUsers.delete(userId);
-        const lastSeen = new Date();
-        // Persist lastSeen to DB (fire-and-forget)
-        User.update({ lastSeen }, { where: { id: userId } }).catch(() => {});
-        // Notify all clients this user went offline
-        io.emit('user_status_changed', { userId, isOnline: false, lastSeen: lastSeen.toISOString() });
+  socket.on('disconnect', () => {
+    if (socket.sessionId) {
+      const set = socketsBySession.get(socket.sessionId);
+      if (set) {
+        set.delete(socket);
+        if (set.size === 0) socketsBySession.delete(socket.sessionId);
       }
     }
+    // Статус здесь намеренно не гасим: обрыв сокета на переключении сети или
+    // при reload вкладки — не уход человека. Если он действительно ушёл,
+    // пинги прекратятся и presence погасит его сам через ONLINE_TTL.
+    // Явный уход клиент сообщает событием presence:away.
   });
 });
+
+// Сокет живёт неделями, а токен когда-нибудь протухает — проверки в handshake
+// мало. Это подстраховка: отзыв сессии рвёт сокеты сразу через
+// setRevocationListener, а сюда попадает то, что случилось в обход процесса
+// (правка в БД руками). Отсюда и редкий интервал — чаще незачем.
+setInterval(async () => {
+  const now = Date.now();
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.tokenExpiresAt && socket.tokenExpiresAt <= now) {
+      socket.emit('session_expired');
+      socket.disconnect(true);
+      continue;
+    }
+    if (socket.sessionId) {
+      const session = await sessions.getActiveSession(socket.sessionId);
+      if (!session) {
+        socket.emit('session_revoked');
+        socket.disconnect(true);
+      }
+    }
+  }
+}, 5 * 60 * 1000).unref();
 
 // Security middleware with CSP configuration for PDF preview
 app.use(helmet({
@@ -242,7 +299,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   // X-Api-Key нужен публичному контуру /api/public: без него браузер не пропустит
   // preflight, и форма с сайта не уйдёт (curl это не воспроизводит — он preflight не шлёт)
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key', 'Idempotency-Key']
+  // X-Client-Type/X-Device-Name читает реестр сессий: по ним определяются срок
+  // токена и подпись устройства в списке «мои устройства». Мобильное приложение
+  // preflight не шлёт, но десктопная сборка и веб — да.
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key', 'Idempotency-Key', 'X-Client-Type', 'X-Device-Name']
 }));
 
 // Публичный API для внешних интеграций (сайт клиники и т.д.).
@@ -480,6 +540,27 @@ async function startServer() {
 }
 
 startServer();
+
+// Корректный останов. `pm2 reload` шлёт SIGINT/SIGTERM — до этой обработки
+// онлайн-карта просто исчезала вместе с процессом, никому не записав lastSeen,
+// и после рестарта все, кто был в сети, показывались «был(а) давно».
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} — сохраняем онлайн-статусы`);
+  try {
+    await presence.shutdown();
+  } catch (e) {
+    console.error('[shutdown] presence error:', e.message);
+  }
+  server.close(() => process.exit(0));
+  // pm2 всё равно добьёт через kill_timeout (5с) — не висим дольше
+  setTimeout(() => process.exit(0), 4000).unref();
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Catch unhandled promise rejections (async errors not caught by try/catch)
 process.on('unhandledRejection', (reason, promise) => {

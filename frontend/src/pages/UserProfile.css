@@ -93,8 +93,14 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent, #34c759);
+  /* Серый по умолчанию: раньше точка всегда была зелёной и «был(а) 3 дня
+     назад» выглядело как «в сети» */
+  background: var(--text-tertiary);
   flex-shrink: 0;
+}
+
+.up-lastseen-dot.is-online {
+  background: var(--accent, #34c759);
 }
 
 /* ─── Hero info ──────────────────────────────────────────── */

@@ -1,10 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { User, Role, MedCenter } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { generateCode, send2FACode } = require('../services/emailService');
+const sessions = require('../services/sessions');
 
 const router = express.Router();
 
@@ -98,12 +98,9 @@ router.post('/login', [
     // Если 2FA не включена - обычная авторизация
     await user.update({ lastLogin: new Date() });
 
-    const isMobile = req.headers['x-client-type'] === 'mobile';
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: isMobile ? '365d' : (process.env.JWT_EXPIRES_IN || '7d') }
-    );
+    // Токен подписывается вместе с записью в реестре сессий: без неё его
+    // нельзя было бы отозвать, а на мобиле он живёт год (см. ver. 6.49).
+    const { token } = await sessions.issueToken(user, req);
 
     const userData = user.toJSON();
     delete userData.password;
@@ -214,13 +211,8 @@ router.post('/verify-2fa', [
       lastLogin: new Date()
     });
 
-    // Генерируем токен
-    const isMobile = req.headers['x-client-type'] === 'mobile';
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: isMobile ? '365d' : (process.env.JWT_EXPIRES_IN || '7d') }
-    );
+    // Генерируем токен вместе с записью в реестре сессий (см. ver. 6.49)
+    const { token } = await sessions.issueToken(user, req);
 
     const userData = user.toJSON();
     delete userData.password;
@@ -349,6 +341,10 @@ router.post('/change-password', authenticate, [
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await user.update({ password: hashedPassword });
 
+    // Смена пароля выкидывает остальные устройства: если пароль меняют потому,
+    // что его увели, старый токен не должен пережить смену.
+    await sessions.revokeAllForUser(user.id, req.sessionId, 'password_change');
+
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to change password' });
@@ -402,6 +398,71 @@ router.put('/profile', authenticate, [
 // Verify token
 router.get('/verify', authenticate, (req, res) => {
   res.json({ valid: true, user: req.user });
+});
+
+// === СЕССИИ ===
+// Раньше выход был чисто клиентским: приложение стирало токен у себя, а сам
+// токен оставался валидным до exp — на мобиле это год. Теперь выход снимает
+// сессию на сервере и рвёт её сокеты.
+
+// Выход с текущего устройства
+router.post('/logout', authenticate, async (req, res) => {
+  try {
+    // Токены до ver. 6.49 идут без sid — снимать нечего, но ответ должен быть
+    // успешным, иначе старый клиент застрянет на экране выхода.
+    if (req.sessionId) await sessions.revoke(req.sessionId, 'logout');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Не удалось выйти' });
+  }
+});
+
+// Список активных сессий — «мои устройства»
+router.get('/sessions', authenticate, async (req, res) => {
+  try {
+    const list = await sessions.listForUser(req.user.id);
+    res.json(list.map(s => ({
+      id: s.id,
+      platform: s.platform,
+      deviceName: s.deviceName,
+      ip: s.ip,
+      createdAt: s.createdAt,
+      lastActivityAt: s.lastActivityAt,
+      expiresAt: s.expiresAt,
+      isCurrent: s.id === req.sessionId,
+    })));
+  } catch (error) {
+    console.error('List sessions error:', error);
+    res.status(500).json({ error: 'Не удалось получить список сессий' });
+  }
+});
+
+// Снять конкретную сессию (потерянный телефон)
+router.delete('/sessions/:id', authenticate, async (req, res) => {
+  try {
+    const list = await sessions.listForUser(req.user.id);
+    // Чужую сессию снять нельзя: сверяем владельца, а не просто id из URL
+    if (!list.some(s => s.id === req.params.id)) {
+      return res.status(404).json({ error: 'Сессия не найдена' });
+    }
+    await sessions.revoke(req.params.id, 'logout');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Revoke session error:', error);
+    res.status(500).json({ error: 'Не удалось завершить сессию' });
+  }
+});
+
+// Выйти со всех устройств, кроме текущего
+router.post('/sessions/revoke-all', authenticate, async (req, res) => {
+  try {
+    const revoked = await sessions.revokeAllForUser(req.user.id, req.sessionId, 'logout_all');
+    res.json({ success: true, revoked });
+  } catch (error) {
+    console.error('Revoke all sessions error:', error);
+    res.status(500).json({ error: 'Не удалось завершить сессии' });
+  }
 });
 
 module.exports = router;

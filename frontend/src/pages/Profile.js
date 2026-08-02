@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { User, Lock, Camera, Save, Eye, EyeOff, Phone, Briefcase, FileText, Building2, Calendar } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { User, Lock, Camera, Save, Eye, EyeOff, Phone, Briefcase, FileText, Building2, Calendar, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { auth, media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -16,6 +16,16 @@ function getPasswordStrength(password) {
   if (score <= 1) return { level: 'weak', label: 'Слабый', width: '33%' };
   if (score <= 3) return { level: 'medium', label: 'Средний', width: '66%' };
   return { level: 'strong', label: 'Надёжный', width: '100%' };
+}
+
+function formatSessionActivity(iso) {
+  if (!iso) return 'активности не было';
+  const diffMin = Math.floor((Date.now() - new Date(iso)) / 60000);
+  if (diffMin < 5) return 'активна сейчас';
+  if (diffMin < 60) return `${diffMin} мин назад`;
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+  });
 }
 
 function getInitials(displayName, username) {
@@ -53,6 +63,11 @@ export default function Profile() {
     confirm: false
   });
 
+  // Активные сессии — «мои устройства». Появились в ver. 6.49 вместе с реестром
+  // токенов: до него выданный токен нельзя было отозвать вообще никак.
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
   const toggleShowPassword = (field) =>
     setShowPasswords(prev => ({ ...prev, [field]: !prev[field] }));
 
@@ -83,12 +98,48 @@ export default function Profile() {
     setSaving(true);
     try {
       await auth.changePassword(passwordForm.currentPassword, passwordForm.newPassword);
-      toast.success('Пароль изменён');
+      // Сервер при смене пароля снимает все остальные сессии — список надо
+      // перечитать, иначе в нём останутся уже мёртвые устройства.
+      toast.success('Пароль изменён. Другие устройства отключены');
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      loadSessions();
     } catch (e) {
       toast.error(e.response?.data?.error || 'Неверный текущий пароль');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const loadSessions = useCallback(() => {
+    setSessionsLoading(true);
+    auth.sessions()
+      .then(({ data }) => setSessions(data))
+      .catch(() => setSessions([]))
+      .finally(() => setSessionsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'security') loadSessions();
+  }, [activeTab, loadSessions]);
+
+  const handleRevokeSession = async (id) => {
+    try {
+      await auth.revokeSession(id);
+      setSessions(prev => prev.filter(s => s.id !== id));
+      toast.success('Сессия завершена');
+    } catch (e) {
+      toast.error('Не удалось завершить сессию');
+    }
+  };
+
+  const handleRevokeAll = async () => {
+    if (!window.confirm('Выйти на всех остальных устройствах?')) return;
+    try {
+      const { data } = await auth.revokeAllSessions();
+      setSessions(prev => prev.filter(s => s.isCurrent));
+      toast.success(data.revoked ? `Отключено устройств: ${data.revoked}` : 'Других устройств нет');
+    } catch (e) {
+      toast.error('Не удалось завершить сессии');
     }
   };
 
@@ -396,6 +447,60 @@ export default function Profile() {
                 {saving ? <div className="loading-spinner" style={{ width: 18, height: 18 }} /> : <Lock size={16} />}
                 Изменить пароль
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Активные сессии */}
+        {activeTab === 'security' && (
+          <div className="card">
+            <div className="card-header profile-sessions-header">
+              <h3>Активные сессии</h3>
+              {sessions.filter(s => !s.isCurrent).length > 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={handleRevokeAll}>
+                  <LogOut size={14} />
+                  Выйти везде
+                </button>
+              )}
+            </div>
+            <div className="card-body">
+              {sessionsLoading ? (
+                <div className="loading-spinner" style={{ width: 20, height: 20 }} />
+              ) : sessions.length === 0 ? (
+                <p className="profile-sessions-empty">
+                  Список пуст. Так бывает, если вход был выполнен до обновления —
+                  переавторизуйтесь, и сессия появится здесь.
+                </p>
+              ) : (
+                <div className="profile-sessions">
+                  {sessions.map(s => (
+                    <div key={s.id} className="profile-session">
+                      <div className="profile-session-icon">
+                        {s.platform === 'mobile' ? <Smartphone size={18} /> : <Monitor size={18} />}
+                      </div>
+                      <div className="profile-session-info">
+                        <div className="profile-session-name">
+                          {s.deviceName || (s.platform === 'mobile' ? 'Мобильное приложение' : 'Браузер')}
+                          {s.isCurrent && <span className="profile-session-badge">это устройство</span>}
+                        </div>
+                        <div className="profile-session-meta">
+                          {formatSessionActivity(s.lastActivityAt)}
+                          {s.ip ? ` · ${s.ip}` : ''}
+                        </div>
+                      </div>
+                      {!s.isCurrent && (
+                        <button
+                          className="profile-session-revoke"
+                          onClick={() => handleRevokeSession(s.id)}
+                          title="Завершить сессию"
+                        >
+                          <LogOut size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

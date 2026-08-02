@@ -47,6 +47,12 @@ export const auth = {
   resend2FA: (userId) => api.post('/auth/resend-2fa', { userId }),
   register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
+  // Выход снимает сессию на сервере. Раньше он был чисто клиентским — токен
+  // просто стирали, а сам он оставался валидным до exp.
+  logout: () => api.post('/auth/logout'),
+  sessions: () => api.get('/auth/sessions'),
+  revokeSession: (id) => api.delete(`/auth/sessions/${id}`),
+  revokeAllSessions: () => api.post('/auth/sessions/revoke-all'),
   changePassword: (currentPassword, newPassword) => api.post('/auth/change-password', { currentPassword, newPassword }),
   updateProfile: (data) => api.put('/auth/profile', data),
   uploadAvatar: (file) => {

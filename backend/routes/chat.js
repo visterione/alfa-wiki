@@ -12,6 +12,7 @@ const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
 const pushService = require('../services/pushService');
 const voiceService = require('../services/voiceService');
+const presence = require('../services/presence');
 
 /**
  * Бота добавили в чат или убрали — рассылаем my_chat_member и правим подписки на формы.
@@ -38,9 +39,6 @@ async function notifyBotMembership({ chatId, userId, actorId, status }) {
     console.error('[chat] уведомление о членстве бота не прошло:', err.message);
   }
 }
-
-// ID Ассистента
-const ASSISTANT_ID = notificationService.ASSISTANT_ID;
 
 // File upload configuration
 const storage = multer.diskStorage({
@@ -270,14 +268,11 @@ router.get('/', authenticate, async (req, res) => {
 
       let displayName = chat.name;
       let avatar = chat.avatar;
-      let isAssistantChat = false;
 
       if (chat.type === 'private' && otherMembers.length > 0) {
         const otherUser = otherMembers[0].user;
         displayName = otherUser.displayName || otherUser.username;
         avatar = otherUser.avatar;
-        // Проверяем, является ли это чатом с Ассистентом
-        isAssistantChat = otherUser.id === ASSISTANT_ID || otherUser.isBot === true;
       }
 
       // Считаем точное количество непрочитанных сообщений
@@ -309,7 +304,6 @@ router.get('/', authenticate, async (req, res) => {
         members: chat.members,
         unreadCount,
         createdBy: chat.createdBy,
-        isAssistantChat, // Флаг для закрепления вверху
         isPinned: m.isPinned || false,
         pinnedOrder: m.pinnedOrder != null ? m.pinnedOrder : null,
         isNotificationMuted: m.isNotificationMuted || false
@@ -317,11 +311,10 @@ router.get('/', authenticate, async (req, res) => {
 
       // Добавляем otherUser для приватных чатов (с онлайн-статусом)
       if (chat.type === 'private' && otherMembers.length > 0) {
-        const onlineUsersMap = req.app.get('onlineUsers') || new Map();
         const otherUserId = otherMembers[0].userId;
         result.otherUser = {
           ...otherMembers[0].user.toJSON(),
-          isOnline: onlineUsersMap.has(otherUserId)
+          isOnline: presence.isOnline(otherUserId)
         };
         result.otherMemberLastReadAt = otherMembers[0].lastReadAt || null;
       }
@@ -329,18 +322,19 @@ router.get('/', authenticate, async (req, res) => {
       return result;
     }));
 
-    // Сортируем: Ассистент → Закреплённые (по pinnedOrder) → Остальные (по дате)
+    // Сортируем: Закреплённые (по pinnedOrder) → остальные по дате.
+    //
+    // Раньше первым шёл «ассистент», причём флаг ставился любому чату с ботом,
+    // а не только настоящему Ассистенту. Из-за этого служебные чаты вроде
+    // «Работа с негативом» всегда висели выше закреплённых, и порядок
+    // невозможно было изменить закреплением. Кому нужен чат наверху — тот
+    // его и закрепит.
     chatsWithUnreadCount.sort((a, b) => {
-      if (a.isAssistantChat && !b.isAssistantChat) return -1;
-      if (!a.isAssistantChat && b.isAssistantChat) return 1;
-      // Оба не ассистент: закреплённые идут перед обычными
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
-      // Оба закреплённые — сортируем по pinnedOrder
       if (a.isPinned && b.isPinned) {
         return (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0);
       }
-      // Оба обычные — по дате
       const dateA = a.lastMessageAt ? new Date(a.lastMessageAt) : new Date(0);
       const dateB = b.lastMessageAt ? new Date(b.lastMessageAt) : new Date(0);
       return dateB - dateA;

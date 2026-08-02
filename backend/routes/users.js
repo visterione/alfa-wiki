@@ -6,6 +6,7 @@ const { Op, Sequelize } = require('sequelize');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { send2FADisabledNotification, sendCredentials } = require('../services/emailService');
 const notificationService = require('../services/notificationService');
+const presence = require('../services/presence');
 const axios = require('axios');
 const qs = require('qs');
 const fs = require('fs');
@@ -193,7 +194,10 @@ router.get('/:id/public', authenticate, async (req, res) => {
       order: [['completedAt', 'DESC']]
     });
 
-    res.json({ ...user.toJSON(), completedCourses });
+    // isOnline тут же, рядом с lastSeen: иначе профиль показывал бы «был(а) в
+    // сети» человеку, который прямо сейчас онлайн (lastSeen у активных
+    // обновляется раз в минуту и всегда немного в прошлом).
+    res.json({ ...user.toJSON(), isOnline: presence.isOnline(user.id), completedCourses });
   } catch (error) {
     console.error('Get public profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });

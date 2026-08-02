@@ -250,31 +250,93 @@ export function SocketProvider({ children }) {
 
     socketRef.current = socket;
 
+    // Heartbeat присутствия.
+    //
+    // «В сети» больше не значит «есть коннект»: открытая всю ночь вкладка
+    // держала сокет и человек вечно висел онлайном. Пинг уходит, только пока
+    // вкладка видима, а на уход в фон шлём presence:away — сервер гасит статус
+    // сразу, не дожидаясь протухания пинга.
+    const PRESENCE_PING_MS = 30 * 1000;
+    let presenceTimer = null;
+
+    const sendPresence = () => {
+      if (document.visibilityState === 'visible') {
+        socket.emit('presence:active');
+      }
+    };
+
+    const startPresence = () => {
+      if (presenceTimer) return;
+      sendPresence();
+      presenceTimer = setInterval(sendPresence, PRESENCE_PING_MS);
+    };
+
+    const stopPresence = ({ notify } = { notify: true }) => {
+      if (presenceTimer) {
+        clearInterval(presenceTimer);
+        presenceTimer = null;
+      }
+      if (notify && socket.connected) socket.emit('presence:away');
+    };
+
+    const handlePresenceVisibility = () => {
+      if (document.visibilityState === 'visible') startPresence();
+      else stopPresence();
+    };
+
+    // Вкладку закрывают — сообщаем до разрыва, иначе статус погаснет только
+    // через ONLINE_TTL и собеседник ещё минуту будет видеть «в сети».
+    const handleUnload = () => {
+      if (socket.connected) socket.emit('presence:away');
+    };
+
+    document.addEventListener('visibilitychange', handlePresenceVisibility);
+    window.addEventListener('pagehide', handleUnload);
+
     socket.on('connect', () => {
       console.log('Socket.IO connected');
       setIsConnected(true);
       socket.emit('join', user.id);
+      handlePresenceVisibility();
     });
 
     socket.on('connect_error', (err) => {
-      // AUTH_EXPIRED — токен протух: дальше ретраить бессмысленно, нужен релогин.
-      // Молча уходим в оффлайн-режим; api-интерцептор выкинет на /login при первом же запросе.
-      if (err.message === 'AUTH_EXPIRED' || err.message === 'AUTH_INVALID' || err.message === 'AUTH_REQUIRED') {
+      // AUTH_EXPIRED — токен протух, AUTH_REVOKED — сессию сняли с другого
+      // устройства. И то и другое лечится только релогином, ретраить незачем.
+      if (['AUTH_EXPIRED', 'AUTH_INVALID', 'AUTH_REQUIRED', 'AUTH_REVOKED'].includes(err.message)) {
         console.warn('[Socket.IO] auth failed:', err.message);
         socket.disconnect();
         setIsConnected(false);
       }
     });
 
+    // Сессию сняли («выйти со всех устройств») или токен истёк, пока сокет жил.
+    // Токен уже недействителен — чистим и уводим на вход, не дожидаясь, пока
+    // это заметит первый же HTTP-запрос.
+    const handleSessionEnd = () => {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    };
+    socket.on('session_revoked', handleSessionEnd);
+    socket.on('session_expired', handleSessionEnd);
+
     socket.on('disconnect', () => {
       console.log('Socket.IO disconnected');
       setIsConnected(false);
+      // Пинговать в никуда бессмысленно; на reconnect таймер поднимет connect.
+      stopPresence({ notify: false });
     });
 
     socket.on('user_status_changed', (data) => {
       setUserStatuses(prev => ({
         ...prev,
-        [data.userId]: { isOnline: data.isOnline, lastSeen: data.lastSeen || null }
+        [data.userId]: {
+          isOnline: data.isOnline,
+          // Событие «человек вошёл в сеть» приходит без lastSeen — прошлую
+          // метку в этом случае держим, иначе после его ухода и возврата
+          // в шапке чата мигало бы «был(а) давно».
+          lastSeen: data.lastSeen || prev[data.userId]?.lastSeen || null
+        }
       }));
     });
 
@@ -330,6 +392,9 @@ export function SocketProvider({ children }) {
     });
 
     return () => {
+      document.removeEventListener('visibilitychange', handlePresenceVisibility);
+      window.removeEventListener('pagehide', handleUnload);
+      stopPresence();
       socket.disconnect();
       setIsConnected(false);
     };

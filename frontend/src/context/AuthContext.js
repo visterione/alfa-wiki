@@ -51,7 +51,15 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Сессию снимаем на сервере, но локальные данные чистим в любом случае:
+    // если запрос не прошёл (сети нет, токен уже недействителен), человек всё
+    // равно должен оказаться на экране входа.
+    try {
+      await auth.logout();
+    } catch (e) {
+      // ignore
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);

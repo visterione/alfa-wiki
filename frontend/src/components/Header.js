@@ -230,8 +230,10 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // Ждём: logout теперь ходит на сервер снимать сессию, и уводить на /login
+    // до ответа нельзя — размонтирование оборвало бы запрос.
+    await logout();
     navigate('/login');
   };
 

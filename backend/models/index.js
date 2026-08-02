@@ -3503,6 +3503,43 @@ const UserDevice = sequelize.define('UserDevice', {
 UserDevice.belongsTo(User, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
 User.hasMany(UserDevice, { foreignKey: 'userId', as: 'devices', onDelete: 'CASCADE' });
 
+// === USER SESSION MODEL (реестр выданных токенов) ===
+// Одна строка — один выданный при входе JWT. До этой таблицы токен было
+// невозможно отозвать: мобильный живёт 365 дней, и потерянный телефон означал
+// год доступа. Теперь в payload лежит `sid`, а middleware сверяется с этой
+// строкой — снятая сессия перестаёт работать сразу, не дожидаясь exp.
+const UserSession = sequelize.define('UserSession', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  platform: {
+    type: DataTypes.ENUM('web', 'mobile', 'desktop'),
+    allowNull: false,
+    defaultValue: 'web',
+    comment: 'Откуда вошли. Мобильным выдаётся токен на 365 дней, остальным — на 7'
+  },
+  deviceName: { type: DataTypes.STRING(200), allowNull: true, comment: 'Для списка «мои устройства»' },
+  ip: { type: DataTypes.STRING(64), allowNull: true },
+  userAgent: { type: DataTypes.STRING(512), allowNull: true },
+  lastActivityAt: { type: DataTypes.DATE, allowNull: true, comment: 'Обновляется троттлингом, раз в 5 минут' },
+  expiresAt: { type: DataTypes.DATE, allowNull: false, comment: 'Совпадает с exp токена' },
+  revokedAt: { type: DataTypes.DATE, allowNull: true },
+  revokedReason: {
+    type: DataTypes.ENUM('logout', 'logout_all', 'admin', 'password_change'),
+    allowNull: true
+  }
+}, {
+  tableName: 'user_sessions',
+  timestamps: true,
+  indexes: [
+    { fields: ['userId'] },
+    { fields: ['userId', 'revokedAt'] },
+    { fields: ['expiresAt'] }
+  ]
+});
+
+UserSession.belongsTo(User, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
+User.hasMany(UserSession, { foreignKey: 'userId', as: 'sessions', onDelete: 'CASCADE' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -3644,4 +3681,6 @@ module.exports = {
   ReleaseNoteRead,
   // Push-уведомления: зарегистрированные устройства
   UserDevice,
+  // Реестр сессий (отзыв токенов, «мои устройства»)
+  UserSession,
 };

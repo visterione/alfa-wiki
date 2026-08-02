@@ -1,5 +1,13 @@
 const jwt = require('jsonwebtoken');
 const { User, Role, MedCenter } = require('../models');
+const sessions = require('../services/sessions');
+
+// Токены без `sid` выданы до ver. 6.49, когда реестра сессий ещё не было.
+// Принимаем их до естественного истечения — иначе выкат разлогинил бы разом
+// всех, включая мобильных с годовым токеном. Когда старые токены вымрут
+// (веб — неделя, мобилки — по мере перезахода), флаг можно снять, и тогда
+// каждый запрос будет обязан предъявить живую сессию.
+const LEGACY_TOKENS_OK = process.env.ALLOW_LEGACY_TOKENS !== 'false';
 
 // Verify JWT token
 const authenticate = async (req, res, next) => {
@@ -11,6 +19,18 @@ const authenticate = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.sid) {
+      const session = await sessions.getActiveSession(decoded.sid);
+      if (!session || session.userId !== decoded.userId) {
+        // Отдельный код, чтобы клиент понял: релогин, а не «сервер прилёг»
+        return res.status(401).json({ error: 'Session revoked', code: 'SESSION_REVOKED' });
+      }
+      sessions.touchActivity(decoded.sid);
+      req.sessionId = decoded.sid;
+    } else if (!LEGACY_TOKENS_OK) {
+      return res.status(401).json({ error: 'Session revoked', code: 'SESSION_REVOKED' });
+    }
 
     const user = await User.findByPk(decoded.userId, {
       include: [
