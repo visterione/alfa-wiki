@@ -81,6 +81,8 @@ async function main() {
       continue;
     }
 
+    console.log(`    → duration=${result.duration ?? 'ВСЁ ЕЩЁ null'}, size=${result.size}`);
+
     // В базе путь хранится относительным — приводим обратно
     const relative = path.relative(path.join(__dirname, '..'), result.path).replace(/\\/g, '/');
 

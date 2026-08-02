@@ -151,7 +151,11 @@ router.get('/search', authenticate, async (req, res) => {
             as: 'messages',
             limit: 1,
             order: [['createdAt', 'DESC']],
-            separate: true
+            separate: true,
+            // Автор последнего сообщения — для строки «Имя: текст» в списке
+            // чатов. Сам текст лежит готовым превью в chat.lastMessage, но
+            // имени отправителя там нет.
+            include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }]
           }
         ]
       }],
@@ -190,6 +194,14 @@ router.get('/search', authenticate, async (req, res) => {
         avatarUrl: avatar,
         lastMessage: chat.lastMessage,
         lastMessageAt: chat.lastMessageAt,
+        // Кто отправил последнее сообщение. null для системных и старых чатов,
+        // где сообщения ещё не приходили.
+        lastMessageSender: chat.messages?.[0]?.sender
+          ? {
+              id: chat.messages[0].sender.id,
+              displayName: chat.messages[0].sender.displayName || chat.messages[0].sender.username,
+            }
+          : null,
         members: chat.members,
         unreadCount,
         createdBy: chat.createdBy
@@ -242,7 +254,9 @@ router.get('/', authenticate, async (req, res) => {
             as: 'messages',
             limit: 1,
             order: [['createdAt', 'DESC']],
-            separate: true
+            separate: true,
+            // Автор последнего сообщения — для строки «Имя: текст» в списке чатов
+            include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }]
           }
         ]
       }],
@@ -285,6 +299,13 @@ router.get('/', authenticate, async (req, res) => {
         avatarUrl: avatar,
         lastMessage: chat.lastMessage,
         lastMessageAt: chat.lastMessageAt,
+        // Кто отправил последнее сообщение. null, если сообщений ещё не было.
+        lastMessageSender: chat.messages?.[0]?.sender
+          ? {
+              id: chat.messages[0].sender.id,
+              displayName: chat.messages[0].sender.displayName || chat.messages[0].sender.username,
+            }
+          : null,
         members: chat.members,
         unreadCount,
         createdBy: chat.createdBy,
