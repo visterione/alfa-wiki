@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, RefreshCw, Upload, X } from 'lucide-react';
+import { Save, RefreshCw, Upload, X, ShieldOff, AlertTriangle } from 'lucide-react';
 import { settings, roles, media, BASE_URL } from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import toast from 'react-hot-toast';
@@ -20,6 +20,10 @@ export default function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  // Рубильник 2FA живёт отдельно от form: он применяется сразу по клику, а не
+  // по кнопке «Сохранить» — это аварийная мера, и лишний шаг тут только вредит.
+  const [twoFactorDisabled, setTwoFactorDisabled] = useState(false);
+  const [togglingTwoFactor, setTogglingTwoFactor] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -34,9 +38,23 @@ export default function AdminSettings() {
         defaultRole: s.data.defaultRole || '',
         allowRegistration: s.data.allowRegistration || false
       });
+      setTwoFactorDisabled(s.data.twoFactorDisabled === true);
       setRoleList(r.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const handleToggleTwoFactor = async () => {
+    const next = !twoFactorDisabled;
+    setTogglingTwoFactor(true);
+    try {
+      await settings.update('twoFactorDisabled', next);
+      setTwoFactorDisabled(next);
+      toast.success(next
+        ? 'Двухфакторная аутентификация отключена для всех'
+        : 'Двухфакторная аутентификация возвращена');
+    } catch (e) { toast.error('Не удалось изменить настройку'); }
+    finally { setTogglingTwoFactor(false); }
   };
 
   const handleSave = async () => {
@@ -262,10 +280,54 @@ export default function AdminSettings() {
           </div>
         </div>
 
+        <div className="card">
+          <div className="card-header"><h3>Безопасность</h3></div>
+          <div className="card-body">
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Двухфакторная аутентификация</label>
+              <div className="twofa-switch">
+                <div className="twofa-switch-text">
+                  <strong>{twoFactorDisabled ? 'Отключена для всех' : 'Работает в обычном режиме'}</strong>
+                  <small className="text-muted">
+                    Аварийное отключение на время сбоя почты: пользователи с 2FA войдут
+                    по логину и паролю. Персональные настройки не сбрасываются — снимите
+                    отключение, и второй фактор снова заработает у всех, у кого он был включён.
+                  </small>
+                </div>
+                <button
+                  className={`btn ${twoFactorDisabled ? 'btn-secondary' : 'btn-danger'}`}
+                  onClick={handleToggleTwoFactor}
+                  disabled={togglingTwoFactor}
+                  style={{ flexShrink: 0 }}
+                >
+                  {togglingTwoFactor
+                    ? <div className="loading-spinner" style={{ width: 18, height: 18 }} />
+                    : <ShieldOff size={18} />}
+                  {twoFactorDisabled ? 'Включить обратно' : 'Отключить для всех'}
+                </button>
+              </div>
+              {twoFactorDisabled && (
+                <div className="twofa-warning">
+                  <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                  <span>Вход защищён только паролем. Не забудьте вернуть 2FA, когда почта заработает.</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <style>{`
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; }
+        .twofa-switch { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
+        .twofa-switch-text { display: flex; flex-direction: column; gap: 4px; }
+        .twofa-warning {
+          display: flex; align-items: center; gap: 10px; margin-top: 16px;
+          padding: 12px; border-radius: var(--radius-md);
+          background: rgba(239, 68, 68, 0.1); color: var(--error);
+          font-size: 13px;
+        }
         .color-presets { display: flex; gap: 10px; flex-wrap: wrap; }
         .color-preset { 
           width: 40px; height: 40px; border-radius: 10px; 

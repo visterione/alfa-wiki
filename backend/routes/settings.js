@@ -113,7 +113,8 @@ router.post('/init', authenticate, requireAdminAccess('settings'), async (req, r
       accentColor: { value: '#5856D6', description: 'Accent color' },
       defaultRole: { value: null, description: 'Default role for new users' },
       allowRegistration: { value: false, description: 'Allow public registration' },
-      maintenanceMode: { value: false, description: 'Maintenance mode' }
+      maintenanceMode: { value: false, description: 'Maintenance mode' },
+      twoFactorDisabled: { value: false, description: 'Аварийное отключение 2FA для всех (на время сбоя почты)' }
     };
 
     for (const [key, data] of Object.entries(defaults)) {

@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
-const { User, Role, MedCenter } = require('../models');
+const { User, Role, MedCenter, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { generateCode, send2FACode } = require('../services/emailService');
 const sessions = require('../services/sessions');
@@ -10,6 +10,22 @@ const router = express.Router();
 
 // Временное хранилище кодов в памяти (для обхода проблем с timezone)
 const twoFactorCodes = new Map();
+
+// Аварийный рубильник 2FA (настройка `twoFactorDisabled` в админке).
+// Нужен на случай, когда лежит почтовый сервер: код отправить некуда, и все
+// пользователи с 2FA намертво застревают на входе. Рубильник не трогает флаги
+// twoFactorEnabled — обратное включение это просто снятие галочки в настройках.
+// Если настройку прочитать не удалось, считаем 2FA включённой: отказ БД не
+// должен по-тихому открывать вход без второго фактора.
+const isTwoFactorGloballyDisabled = async () => {
+  try {
+    const setting = await Setting.findByPk('twoFactorDisabled');
+    return setting?.value === true;
+  } catch (error) {
+    console.error('Failed to read twoFactorDisabled setting:', error);
+    return false;
+  }
+};
 
 // Login (Step 1: проверка логина/пароля)
 router.post('/login', [
@@ -43,7 +59,9 @@ router.post('/login', [
     }
 
     // Проверяем, включена ли 2FA для пользователя
-    if (user.twoFactorEnabled) {
+    if (user.twoFactorEnabled && await isTwoFactorGloballyDisabled()) {
+      console.warn(`⚠️  2FA отключена глобально — вход без второго фактора: ${username}`);
+    } else if (user.twoFactorEnabled) {
       // Проверяем наличие email
       if (!user.email) {
         return res.status(400).json({ 
