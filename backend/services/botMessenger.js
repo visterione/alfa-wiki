@@ -58,12 +58,15 @@ async function resolveChat(chatIdParam) {
  *   вызовов: доказывать бэкенду самому себе нечего, секрет тут не нужен
  * @param {string|number} params.chatId    UUID чата или целочисленный ID
  * @param {string}        params.text      Текст сообщения
- * @param {Array}        [params.attachments] Вложения [{ filename, url, size, mimeType }]
+ * @param {Array}        [params.attachments] Вложения [{ name, path, size, mimeType }] —
+ *   в том же виде, в каком их хранит мессенджер
+ * @param {Array}        [params.actions] Кнопки под сообщением — см.
+ *   migrations/ver. 6.51 message-actions.sql
  * @param {Object}       [params.io]       Socket.IO; если не передан — берётся из notificationService
  * @returns {Promise<{ messageId: number, messageUuid: string, chat: Object }>}
  * @throws {BotMessengerError}
  */
-async function sendBotMessage({ botToken, botId, chatId, text, attachments = [], io }) {
+async function sendBotMessage({ botToken, botId, chatId, text, attachments = [], actions = [], io }) {
   const bot = botId
     ? await BotToken.findOne({ where: { id: botId, isActive: true } })
     : await BotToken.findOne({ where: { token: botToken, isActive: true } });
@@ -85,7 +88,8 @@ async function sendBotMessage({ botToken, botId, chatId, text, attachments = [],
     senderId: bot.userId,
     content:  text,
     type:     messageType,
-    attachments
+    attachments,
+    actions
   });
 
   // message_id выдаёт BIGSERIAL таблицы bot_updates — как update_id в Telegram Bot API

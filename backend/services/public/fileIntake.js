@@ -4,7 +4,7 @@
  * Приём файлов, приложенных к заявке публичного API.
  *
  * Файлы кладём в uploads/public-submissions/ГГГГ-ММ/ и описываем в payload заявки
- * в том же виде, в каком мессенджер хранит вложения ({ filename, url, size, mimeType }) —
+ * в том же виде, в каком мессенджер хранит вложения ({ name, path, size, mimeType }) —
  * поэтому их можно без переработки отправить в чат вместе с текстом заявки.
  *
  * Форма объявляет файловые поля так:
@@ -109,11 +109,15 @@ function validateFiles(files, form, value) {
     }
 
     attachments[spec.key] = uploaded.map(file => ({
-      filename: sanitizeName(file.originalname),
+      // Ключи ровно те, что кладёт в attachments сам мессенджер (см. POST /chat/upload):
+      // name и path без ведущего слэша. С парой filename/url файл в чате не открывался —
+      // клиент собирает адрес как `${BASE_URL}/${path}`, и ведущий слэш давал
+      // «//uploads/...», куда не попадает ни express.static, ни location в nginx
+      name: sanitizeName(file.originalname),
       // Путь берём у самого файла, а не собираем заново: так он верен и когда
       // запрос пришёлся на смену месяца
-      url:      '/uploads/public-submissions/' + path.relative(UPLOAD_ROOT, file.path).split(path.sep).join('/'),
-      size:     file.size,
+      path: 'uploads/public-submissions/' + path.relative(UPLOAD_ROOT, file.path).split(path.sep).join('/'),
+      size: file.size,
       mimeType: file.mimetype
     }));
   }

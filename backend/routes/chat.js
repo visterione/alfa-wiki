@@ -10,6 +10,7 @@ const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter, UserD
 const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
+const messageActions = require('../services/messageActions');
 const pushService = require('../services/pushService');
 const voiceService = require('../services/voiceService');
 const presence = require('../services/presence');
@@ -821,6 +822,10 @@ router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
 });
 
 // Delete message
+//
+// Своё сообщение удаляет автор. Чужое — только суперадминистратор (isAdmin):
+// в рабочие группы попадает мусор, который убрать больше некому — тестовые заявки
+// от ботов, ошибочные пересылки. Автор такого сообщения (бот) сам его не удалит.
 router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => {
   try {
     const { chatId, messageId } = req.params;
@@ -834,7 +839,15 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
     }
 
     if (message.senderId !== req.user.id) {
-      return res.status(403).json({ error: 'Can only delete own messages' });
+      if (!req.user.isAdmin) {
+        return res.status(403).json({ error: 'Can only delete own messages' });
+      }
+      // Чужое сообщение админ убирает только в чате, где он сам состоит:
+      // право «удалять» не означает доступ в переписки, куда его не звали
+      const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+      if (!membership) {
+        return res.status(403).json({ error: 'Not a member of this chat' });
+      }
     }
 
     if (message.type === 'system') {
@@ -845,6 +858,9 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
     await message.update({
       content: 'Сообщение удалено',
       attachments: [],
+      // Кнопки без текста заявки бессмысленны и опасны: нажать «создать пациента»
+      // можно было бы, уже не видя, кого именно создаёшь
+      actions: [],
       type: 'system'
     });
 
@@ -867,6 +883,16 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
         { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
       ]
     });
+
+    // Мусор, убранный админом, должен пропасть у всех сразу, а не после
+    // перезагрузки чата — иначе смысла в уборке немного
+    const io = req.app.get('io');
+    if (io) {
+      const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+      members.forEach(m => {
+        io.to(`user:${m.userId}`).emit('message_deleted', { chatId, messageId: message.id });
+      });
+    }
 
     res.json(updatedMessage);
   } catch (error) {
@@ -1772,6 +1798,86 @@ router.patch('/pins/reorder', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to reorder pinned chats' });
   }
 });
+
+// ====================================================================
+// MESSAGE ACTIONS — кнопки под сообщениями бота
+// ====================================================================
+
+/**
+ * Нажатие кнопки под сообщением.
+ *
+ * Что заявку уже взяли, видно по 👍 — его ставит сам сервер от нажавшего.
+ * Отдельного состояния у кнопки нет: реакции для этого достаточно.
+ */
+router.post('/:chatId/messages/:messageId/actions/:actionId', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId, actionId } = req.params;
+
+    const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+    if (membership.isReadOnly) {
+      return res.status(403).json({ error: 'Вам ограничены действия в этом чате' });
+    }
+
+    const message = await Message.findOne({ where: { id: messageId, chatId } });
+    if (!message) return res.status(404).json({ error: 'Message not found' });
+
+    const action = (Array.isArray(message.actions) ? message.actions : [])
+      .find(a => a.id === actionId);
+    if (!action) return res.status(404).json({ error: 'Action not found' });
+
+    let result = null;
+    try {
+      result = await messageActions.runAction(action, req.user);
+    } catch (error) {
+      // Ошибку показываем сотруднику как есть: «МИС недоступна», «заявка не найдена»
+      console.error(`[chat] действие ${actionId} для сообщения ${messageId}:`, error.message);
+      return res.status(502).json({ error: error.message });
+    }
+
+    // Сбой лайка не должен выглядеть как сбой самого действия — оно уже выполнено
+    const reactions = await addThumbsUp(messageId, req.user.id).catch(err => {
+      console.error('[chat] лайк после действия не поставился:', err.message);
+      return null;
+    });
+
+    const io = req.app.get('io');
+    if (io && reactions) {
+      const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+      members.forEach(m => {
+        io.to(`user:${m.userId}`).emit('message_reaction_updated', {
+          chatId,
+          messageId,
+          reactions: reactions.map(({ emoji, count, users }) => ({
+            emoji,
+            count,
+            hasReacted: users.some(u => u.id === m.userId)
+          }))
+        });
+      });
+    }
+
+    res.json({ result });
+  } catch (error) {
+    console.error('Run message action error:', error);
+    res.status(500).json({ error: 'Failed to run action' });
+  }
+});
+
+/**
+ * Ставит 👍 от нажавшего кнопку. Если он уже отметил сообщение другим эмодзи —
+ * оставляем его выбор: реакция здесь только отметка «взято в работу», перебивать
+ * ей осознанно поставленную не за чем.
+ */
+async function addThumbsUp(messageId, userId) {
+  await MessageReaction.findOrCreate({
+    where:    { messageId, userId },
+    defaults: { messageId, userId, emoji: '👍' }
+  });
+  return aggregateReactions(messageId, userId);
+}
 
 // ====================================================================
 // MESSAGE REACTIONS

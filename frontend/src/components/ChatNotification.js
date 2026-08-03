@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { User, Users, X } from 'lucide-react';
 import { BASE_URL } from '../services/api';
+import { stripFormatting } from '../utils/richText';
 import './ChatNotification.css';
 
 export default function ChatNotification({ notification, onClose, onClick }) {
@@ -37,7 +38,8 @@ export default function ChatNotification({ notification, onClose, onClick }) {
       return message.content;
     }
 
-    let preview = message.content || '';
+    // В уведомлении форматирования нет — маркеры разметки только мешают читать
+    let preview = stripFormatting(message.content);
 
     if (message.attachments && message.attachments.length > 0) {
       const allImages = message.attachments.every(a => a.mimeType?.startsWith('image/'));

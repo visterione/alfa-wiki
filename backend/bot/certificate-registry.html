@@ -1221,12 +1221,45 @@ window.registryApp = (function() {
     } catch (e) { /* вне wiki — игнорируем */ }
   }
 
+  // Поля, которые разрешено подставлять из адреса страницы. Открытый список был бы
+  // дырой: в форму можно было бы подсунуть что угодно ссылкой из чата.
+  var PREFILL_FIELDS = [
+    'tpFio', 'tpInn', 'tpBirthDate', 'tpDocCode', 'tpDocSeries', 'tpDocDate',
+    'ptFio', 'ptInn', 'ptBirthDate', 'ptDocCode', 'ptDocSeries', 'ptDocDate',
+    'clinics'
+  ];
+
+  /**
+   * Данные из адреса страницы — сюда приводит кнопка «Внести в реестр справок»
+   * под заявкой в чате (backend/services/public/forms/taxDeductionCertificate.js).
+   * Заполняем только блоки налогоплательщика и пациента: номер, суммы и даты
+   * сотрудник ставит сам.
+   */
+  function prefillFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var data = {};
+    PREFILL_FIELDS.forEach(function(name) {
+      var value = params.get(name);
+      if (value) data[name] = value.slice(0, 200);
+    });
+    // «Одно лицо»: галочка сама скопирует блок налогоплательщика в блок пациента
+    if (params.get('samePerson') === '1') samePerson = true;
+    return Object.keys(data).length || samePerson ? data : null;
+  }
+
   function init() {
     collapseSidebar();
     resolveWikiPageId();
     buildTabs();
     renderTabs();
-    renderForm();
+
+    var prefill = prefillFromUrl();
+    renderForm(prefill);
+    if (prefill && samePerson) copyToPatient();
+    if (prefill) {
+      showToast('Данные из заявки подставлены — проверьте и дозаполните', 'success');
+    }
+
     loadYears();
     reload();
     api('/whoami').then(function(info) {

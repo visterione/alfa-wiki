@@ -103,6 +103,50 @@ function formatMessage(p) {
   return lines.join('\n');
 }
 
+/** Страница реестра справок в вики — туда уходит сотрудник по кнопке */
+const REGISTRY_PAGE = '/explorer/otchyoty/reestr-spravok';
+
+/**
+ * Кнопка под сообщением: открыть реестр справок с уже заполненной формой.
+ *
+ * Данные передаём в адресе страницы под теми же именами, что у полей реестра
+ * (tpFio, ptInn и т.д.), — страница разбирает их сама (backend/bot/certificate-registry.html).
+ * Заполняем только то, что собирает форма: ИНН пациента и паспорта она не
+ * спрашивает, эти поля сотрудник дозаполняет на месте.
+ *
+ * @param {Object} p Нормализованный payload
+ * @param {Object} submission Запись заявки
+ * @returns {Array} кнопки для message.actions
+ */
+function buildActions(p, submission) {
+  const prefill = {
+    tpFio:       p.fullName,
+    tpInn:       p.inn,
+    tpBirthDate: formatDate(p.birthDate)
+  };
+
+  if (p.taxpayerIsPatient) {
+    // Галочка «одно лицо» на странице сама копирует блок налогоплательщика в блок пациента
+    prefill.samePerson = '1';
+  } else {
+    prefill.ptFio       = p.patientFullName;
+    prefill.ptBirthDate = formatDate(p.patientBirthDate);
+  }
+
+  const query = Object.entries(prefill)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
+
+  return [{
+    id:    'open-cert-registry',
+    kind:  'link',
+    label: 'Внести в реестр справок',
+    url:   `${REGISTRY_PAGE}?${query}`,
+    submissionId: submission.id
+  }];
+}
+
 // ── Форматирование для человека ───────────────────────────────────────────
 
 function formatDate(iso) {
@@ -118,5 +162,6 @@ module.exports = {
   files,
   validateAll,
   formatMessage,
+  buildActions,
   limits: { maxFileMb: 5, maxFiles: 3 }
 };

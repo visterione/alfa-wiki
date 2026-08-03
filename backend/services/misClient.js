@@ -45,6 +45,62 @@ async function getPatientsByPhone(mobile) {
 }
 
 /**
+ * Телефон в том виде, в каком его ждёт МИС: «+7 (XXX) XXX-XX-XX».
+ * Публичное API форм хранит его как «+7XXXXXXXXXX».
+ */
+function formatMobile(raw) {
+  const d = normalizePhone(raw);
+  if (d.length !== 11) return String(raw || '');
+  return `+${d[0]} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
+}
+
+/**
+ * Заводит пациента в МИС.
+ *
+ * Метод принимает только ФИО, дату рождения, пол и контакты — паспорт и адрес,
+ * которые собирает анкета с сайта, ему передать нечем. Их дозаполняют в МИС
+ * руками по тексту заявки в чате.
+ *
+ * @param {Object} p
+ * @param {string} p.lastName
+ * @param {string} p.firstName
+ * @param {string} [p.middleName]
+ * @param {string} [p.birthDate]  ISO ГГГГ-ММ-ДД
+ * @param {'male'|'female'} [p.gender]
+ * @param {string} [p.phone]
+ * @param {string} [p.email]
+ * @returns {Promise<Object>} карточка пациента: { patient_id, number, ... }
+ */
+async function createPatient(p) {
+  const params = {
+    last_name:  p.lastName,
+    first_name: p.firstName
+  };
+
+  if (p.middleName) params.third_name = p.middleName;
+  if (p.birthDate) {
+    const [y, m, d] = String(p.birthDate).split('-');
+    params.birth_date = `${d}.${m}.${y}`;
+  }
+  if (p.gender) params.gender = p.gender === 'female' ? 2 : 1;
+  if (p.phone) params.mobile = formatMobile(p.phone);
+  if (p.email) params.email = p.email;
+
+  const res = await misRequest('createPatient', params);
+
+  // МИС отвечает { error, data }; при отказе текст ошибки лежит в error
+  if (res && typeof res === 'object' && res.error) {
+    throw new Error(typeof res.error === 'string' ? res.error : 'МИС отклонила создание пациента');
+  }
+
+  const data = res && typeof res === 'object' && 'data' in res ? res.data : res;
+  if (!data || !data.patient_id) {
+    throw new Error('МИС не вернула карточку пациента');
+  }
+  return data;
+}
+
+/**
  * Добавляет категорию пациенту. МИС возвращает true при успехе.
  */
 async function addPatientCategory(patientId, categoryId) {
@@ -59,7 +115,9 @@ async function addPatientCategory(patientId, categoryId) {
 module.exports = {
   misRequest,
   normalizePhone,
+  formatMobile,
   getPatientsByPhone,
+  createPatient,
   addPatientCategory,
   MIS_API_KEY,
   MIS_BASE_URL

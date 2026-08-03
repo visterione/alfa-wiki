@@ -11,7 +11,8 @@
     "backup": "node scripts/backup.js",
     "sync-worker": "node scripts/syncWorker.js",
     "sync-once": "node scripts/syncPartnerServices.js",
-    "migrate:public-api": "node scripts/migratePublicApi.js"
+    "migrate:public-api": "node scripts/migratePublicApi.js",
+    "migrate:message-actions": "node scripts/migrateMessageActions.js"
   },
   "dependencies": {
     "archiver": "^6.0.1",

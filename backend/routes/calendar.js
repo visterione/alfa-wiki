@@ -623,7 +623,31 @@ router.put('/events/:id', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'End time must be after start time' });
     }
 
+    /**
+     * Перенесли событие или поменяли набор напоминаний — снимаем отметки об
+     * уже отправленных.
+     *
+     * В sentReminders cron складывает пары «получатель + за сколько минут» и
+     * пропускает всё, что там есть (см. wasReminderSent в
+     * cron/calendarRemindersCron.js). Отметки переживали правку события,
+     * поэтому напоминание срабатывало ровно один раз: после переноса времени
+     * оно считалось уже отправленным и по новому времени не приходило.
+     */
+    const timeChanged =
+      startTime !== undefined &&
+      new Date(startTime).getTime() !== new Date(event.startTime).getTime();
+    const remindersChanged =
+      reminders !== undefined &&
+      JSON.stringify(reminders) !== JSON.stringify(event.reminders || []);
+
+    if (timeChanged || remindersChanged) {
+      // Sequelize сравнивает JSONB по ссылке, поэтому пустой массив надо
+      // пометить изменённым явно — иначе UPDATE до поля не дойдёт
+      event.changed('sentReminders', true);
+    }
+
     await event.update({
+      ...((timeChanged || remindersChanged) && { sentReminders: [], lastReminderSent: null }),
       ...(title !== undefined && { title }),
       ...(description !== undefined && { description }),
       ...(startTime !== undefined && { startTime }),

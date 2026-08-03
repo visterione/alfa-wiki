@@ -106,6 +106,25 @@ function formatMessage(p) {
   return lines.join('\n');
 }
 
+/**
+ * Кнопка под сообщением: завести пациента в МИС, не перенабирая анкету руками.
+ *
+ * Метод МИС принимает только ФИО, дату рождения, пол и контакты — паспорт и
+ * адрес из анкеты передать нечем, их дозаполняют в карточке по тексту заявки.
+ *
+ * @param {Object} p Нормализованный payload
+ * @param {Object} submission Запись заявки
+ * @returns {Array} кнопки для message.actions
+ */
+function buildActions(p, submission) {
+  return [{
+    id:    'mis-create-patient',
+    kind:  'api',
+    label: 'Создать пациента в МИС',
+    submissionId: submission.id
+  }];
+}
+
 // ── Форматирование для человека ───────────────────────────────────────────
 
 function formatDate(iso) {
@@ -119,6 +138,7 @@ module.exports = {
   title: 'Регистрация пациента',
   fields,
   formatMessage,
+  buildActions,
   // Экспортируем словари — пригодятся для документации и будущего UI
   dictionaries: { GENDER, MARITAL_STATUS, DOCUMENT_TYPE }
 };

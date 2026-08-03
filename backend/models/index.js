@@ -355,6 +355,10 @@ const Message = sequelize.define('Message', {
   // 'voice' — голосовое сообщение, рисуется плеером, а не карточкой файла
   type: { type: DataTypes.ENUM('text', 'image', 'file', 'system', 'voice'), defaultValue: 'text' },
   attachments: { type: DataTypes.JSONB, defaultValue: [] },
+  // Кнопки действий под сообщением — их ставят боты на заявки с сайта
+  // (создать пациента в МИС, открыть реестр справок). Формат и смысл —
+  // в migrations/ver. 6.51 message-actions.sql
+  actions: { type: DataTypes.JSONB, defaultValue: [] },
   isEdited: { type: DataTypes.BOOLEAN, defaultValue: false },
   replyToId: { type: DataTypes.UUID },
   forwardedFrom: { type: DataTypes.JSONB, allowNull: true, defaultValue: null },

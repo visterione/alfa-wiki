@@ -511,6 +511,115 @@
   padding: 6px 6px 0;
 }
 
+/* ========== РАЗМЕТКА В СООБЩЕНИИ ========== */
+/* Спойлер: до клика текст закрыт плашкой, после — обычный. Обратно не закрывается.
+   Прячем через color: transparent, а не opacity, — так скрытое не выделяется
+   мышью и не утекает в буфер обмена вместе с остальным текстом */
+.message-content .chat-spoiler {
+  border-radius: 4px;
+  background: var(--text-secondary);
+  color: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.message.own .message-content .chat-spoiler {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* Ссылка и код внутри спойлера красятся своим цветом — гасим и их */
+.message-content .chat-spoiler:not(.revealed) * {
+  color: transparent;
+  background: none;
+}
+
+.message-content .chat-spoiler.revealed,
+.message.own .message-content .chat-spoiler.revealed {
+  background: none;
+  color: inherit;
+  cursor: auto;
+  user-select: auto;
+}
+
+.message-content .chat-code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: inherit;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.message-content .chat-pre {
+  margin: 4px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  /* Длинная строка кода не должна растягивать пузырёк на весь экран */
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* В своём (синем) пузырьке светлая подложка кода нечитаема */
+.message.own .message-content .chat-code,
+.message.own .message-content .chat-pre {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.message-content .chat-link {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* На синем фоне своего пузырька синяя ссылка нечитаема */
+.message.own .message-content .chat-link {
+  color: inherit;
+}
+
+/* ========== КНОПКИ ДЕЙСТВИЙ ПОД СООБЩЕНИЕМ ========== */
+/* Заявки с сайта: «Создать пациента в МИС», «Внести в реестр справок» */
+.message-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-light);
+}
+
+.message-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.message-action-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+/* Пока действие выполняется — кнопка неактивна, чтобы не нажали второй раз */
+.message-action-btn:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.message.own .message-actions {
+  border-top-color: rgba(255, 255, 255, 0.25);
+}
+
 .message-meta {
   display: flex;
   align-items: center;
@@ -795,6 +904,7 @@
 }
 
 .chat-input-wrapper {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -804,6 +914,41 @@
   border-radius: 100px;
   background: var(--bg-primary);
   transition: border-color var(--transition-fast);
+}
+
+/* ========== ПАНЕЛЬ ФОРМАТИРОВАНИЯ ========== */
+/* Всплывает над полем ввода, пока в нём выделен текст */
+.format-toolbar {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 12px;
+  z-index: 20;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+}
+
+.format-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.format-toolbar button:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .chat-input-wrapper:focus-within {

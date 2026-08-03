@@ -4,7 +4,8 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic
+  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic,
+  Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2, Zap
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -19,6 +20,7 @@ import ReactionMenu from '../components/chat/ReactionMenu';
 import ReactionDetailsModal from '../components/chat/ReactionDetailsModal';
 import VoiceMessage from '../components/chat/VoiceMessage';
 import EmailComposeModal from '../components/EmailComposeModal';
+import { renderRichHtml, stripFormatting, toggleMarkup } from '../utils/richText';
 import './Dashboard.css';
 
 export default function Dashboard() {
@@ -84,6 +86,11 @@ export default function Dashboard() {
   const [renameGroupValue, setRenameGroupValue] = useState('');
   const [quickAddRoleFilter, setQuickAddRoleFilter] = useState('');
   const [quickAddMedCenterFilter, setQuickAddMedCenterFilter] = useState('');
+
+  // В поле ввода что-то выделено — показываем панель форматирования
+  const [hasSelection, setHasSelection] = useState(false);
+  // Кнопка под сообщением, которая сейчас выполняется: «<messageId>:<actionId>»
+  const [runningAction, setRunningAction] = useState(null);
 
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
@@ -311,6 +318,20 @@ export default function Dashboard() {
 
     socket.on('message_reaction_updated', handleReactionUpdate);
 
+    // Сообщение удалили (своё или чужое — админом): подменяем на заглушку у всех,
+    // кто держит чат открытым
+    const handleMessageDeleted = ({ chatId, messageId }) => {
+      loadChats();
+      if (chatId === activeChatRef.current?.id) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, content: 'Сообщение удалено', type: 'system', attachments: [] }
+            : msg
+        ));
+      }
+    };
+    socket.on('message_deleted', handleMessageDeleted);
+
     const handleMessagesRead = (data) => {
       if (data.chatId === activeChatRef.current?.id && data.readBy !== user?.id) {
         setOtherLastReadAt(data.lastReadAt);
@@ -346,6 +367,7 @@ export default function Dashboard() {
     return () => {
       socket.off('new_message', handleNewMessage);
       socket.off('message_reaction_updated', handleReactionUpdate);
+      socket.off('message_deleted', handleMessageDeleted);
       socket.off('messages_read', handleMessagesRead);
       socket.off('group_deleted', handleGroupDeleted);
       socket.off('member_updated', handleMemberUpdated);
@@ -548,8 +570,13 @@ export default function Dashboard() {
     finally { setSending(false); }
   };
 
-  const handleDeleteMessage = async (messageId) => {
-    if (!window.confirm('Удалить сообщение?')) return;
+  const handleDeleteMessage = async (messageId, isOwnMessage = true) => {
+    // Чужое сообщение удаляет админ — предупреждаем явно, чтобы это не вышло
+    // случайным движением в чужой переписке
+    const question = isOwnMessage
+      ? 'Удалить сообщение?'
+      : 'Удалить чужое сообщение? Оно пропадёт у всех участников чата.';
+    if (!window.confirm(question)) return;
     try {
       await chat.deleteMessage(activeChat.id, messageId);
       await loadMessages(activeChat.id, false); // НЕ прокручиваем после удаления
@@ -558,18 +585,52 @@ export default function Dashboard() {
     } catch (e) { toast.error('Ошибка удаления'); }
   };
 
+  /**
+   * Нажатие кнопки под сообщением бота. От нажавшего сервер ставит 👍 — по нему
+   * в чате и видно, что заявку уже взяли.
+   *
+   * Создание пациента переспрашиваем: в МИС оно необратимо, а кнопку в общем
+   * чате видят все. Переход на страницу реестра — без вопросов.
+   */
+  const handleMessageAction = async (msg, action) => {
+    if (runningAction) return;
+
+    if (action.kind === 'api' && !window.confirm(`${action.label}?`)) return;
+
+    setRunningAction(`${msg.id}:${action.id}`);
+    try {
+      const { data } = await chat.runMessageAction(activeChat.id, msg.id, action.id);
+      if (action.kind === 'link' && action.url) {
+        navigate(action.url);
+      } else {
+        toast.success(data.result ? `Готово: ${data.result}` : 'Готово');
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось выполнить действие');
+    } finally {
+      setRunningAction(null);
+    }
+  };
+
+  const closeContextMenu = () =>
+    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false, canDelete: false });
+
   const handleContextMenu = (e, msg) => {
     e.preventDefault();
     if (msg.type === 'system') return;
 
     // Открываем единое контекстное меню с реакциями и опциями редактирования/удаления
+    const isOwnMessage = msg.senderId === user.id;
     setContextMenu({
       visible: true,
       x: e.clientX,
       y: e.clientY,
       messageId: msg.id,
       message: msg,
-      isOwnMessage: msg.senderId === user.id
+      isOwnMessage,
+      // Редактировать можно только своё, а удалять — ещё и чужое, если ты
+      // суперадминистратор: сообщения ботов и мусор в группах убирать больше некому
+      canDelete: isOwnMessage || !!user.isAdmin
     });
   };
 
@@ -613,10 +674,79 @@ export default function Dashboard() {
     messageInputRef.current?.focus();
   };
 
+  // ── Форматирование текста в поле ввода ──────────────────────────────────
+  // Панель показывается над полем, пока в нём что-то выделено, — как в Telegram.
+  // Горячие клавиши те же: Ctrl+B/I/U и Ctrl+Shift+X/P/M
+
+  const FORMAT_BUTTONS = [
+    { d: '*',  icon: Bold,          title: 'Жирный (Ctrl+B)' },
+    { d: '_',  icon: Italic,        title: 'Курсив (Ctrl+I)' },
+    { d: '__', icon: Underline,     title: 'Подчёркнутый (Ctrl+U)' },
+    { d: '~',  icon: Strikethrough, title: 'Зачёркнутый (Ctrl+Shift+X)' },
+    { d: '||', icon: EyeOff,        title: 'Спойлер (Ctrl+Shift+P)' },
+    { d: '`',  icon: Code,          title: 'Моноширинный (Ctrl+Shift+M)' },
+  ];
+
+  const applyFormat = (delimiter) => {
+    const input = messageInputRef.current;
+    if (!input) return;
+
+    const { selectionStart: start, selectionEnd: end } = input;
+    if (start === end) return;
+
+    const next = toggleMarkup(newMessage, start, end, delimiter);
+    setNewMessage(next.text);
+    // Выделение возвращаем после перерисовки: React ставит каретку в конец поля
+    requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(next.start, next.end);
+      setHasSelection(next.end > next.start);
+    });
+  };
+
+  const applyLink = () => {
+    const input = messageInputRef.current;
+    if (!input) return;
+
+    const { selectionStart: start, selectionEnd: end } = input;
+    if (start === end) return;
+
+    const url = window.prompt('Адрес ссылки:', 'https://');
+    if (!url || url === 'https://') return;
+
+    const label = newMessage.slice(start, end);
+    const text = `${newMessage.slice(0, start)}[${label}](${url})${newMessage.slice(end)}`;
+    setNewMessage(text);
+    requestAnimationFrame(() => {
+      input.focus();
+      const caret = start + label.length + url.length + 4;
+      input.setSelectionRange(caret, caret);
+      setHasSelection(false);
+    });
+  };
+
+  const handleInputKeyDown = (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+
+    const key = e.key.toLowerCase();
+    const delimiter = e.shiftKey
+      ? { x: '~', p: '||', m: '`' }[key]
+      : { b: '*', i: '_', u: '__', k: 'link' }[key];
+    if (!delimiter) return;
+
+    e.preventDefault();
+    if (delimiter === 'link') applyLink();
+    else applyFormat(delimiter);
+  };
+
+  // Пересчитываем по любому событию, способному сдвинуть выделение: у input нет
+  // отдельного события «выделение изменилось» для клавиатуры
+  const syncSelection = (e) => setHasSelection(e.target.selectionEnd > e.target.selectionStart);
+
   const startEditMessage = (msg) => {
     setEditingMessage(msg);
     setNewMessage(msg.content);
-    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+    closeContextMenu();
     messageInputRef.current?.focus();
   };
 
@@ -629,7 +759,7 @@ export default function Dashboard() {
     setReplyingToMessage(msg);
     setEditingMessage(null);
     setNewMessage('');
-    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+    closeContextMenu();
     messageInputRef.current?.focus();
   };
 
@@ -647,7 +777,7 @@ export default function Dashboard() {
   const startForwardMode = (msg) => {
     setForwardMode(true);
     setSelectedMessages([msg.id]);
-    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+    closeContextMenu();
   };
 
   const cancelForwardMode = () => {
@@ -683,7 +813,7 @@ export default function Dashboard() {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
-        setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+        closeContextMenu();
       }
       if (chatContextMenuRef.current && !chatContextMenuRef.current.contains(e.target)) {
         setChatContextMenu({ visible: false, x: 0, y: 0, chatId: null, chat: null });
@@ -1029,7 +1159,9 @@ export default function Dashboard() {
       return `${BASE_URL}/${p}`;
     }
     if (avatar.startsWith('http')) return avatar;
-    return `${BASE_URL}/${avatar}`;
+    // Ведущий слэш срезаем: с ним получалось «//uploads/...», а такой путь мимо
+    // express.static и мимо location /uploads в nginx — файл скачивался битым
+    return `${BASE_URL}/${avatar.replace(/^\/+/, '')}`;
   };
 
   const getFileIcon = (mime) => {
@@ -1061,42 +1193,15 @@ export default function Dashboard() {
     return format(date, 'd MMMM yyyy', { locale: ru });
   };
 
-  // Converts markdown [text](url) links and bare https:// URLs to <a> tags.
-  // Internal links (starting with /) are handled via data attribute for SPA navigation.
-  const linkifyContent = (text) => {
-    if (!text) return '';
-    const escaped = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    // Markdown links: [text](url)
-    const withMarkdown = escaped.replace(
-      /\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g,
-      (_, label, url) => {
-        const isInternal = url.startsWith('/');
-        return isInternal
-          ? `<a href="${url}" data-internal="1" class="chat-link">${label}</a>`
-          : `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-link">${label}</a>`;
-      }
-    );
-    // Bare https:// URLs (not already inside an href)
-    const withBare = withMarkdown.replace(
-      /(?<!href=")(https?:\/\/[^\s<]+)/g,
-      (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-link">${url}</a>`
-    );
-    // Жирный: *текст* → <strong>текст</strong> (без переноса строки внутри)
-    const withBold = withBare.replace(
-      /\*(\S(?:[^*\n]*\S)?)\*/g,
-      '<strong>$1</strong>'
-    );
-    // Preserve newlines as <br>
-    return withBold.replace(/\n/g, '<br>');
-  };
-
-  // Превью в списке чатов — простой текст, поэтому маркеры жирного *...* просто снимаем
-  const stripBold = (text) => (text || '').replace(/\*(\S(?:[^*\n]*\S)?)\*/g, '$1');
-
   const handleMessageContentClick = (e) => {
+    // Спойлер открывается по клику и обратно не закрывается — как в Telegram
+    const spoiler = e.target.closest('.chat-spoiler');
+    if (spoiler && !spoiler.classList.contains('revealed')) {
+      e.preventDefault();
+      spoiler.classList.add('revealed');
+      return;
+    }
+
     const link = e.target.closest('a[data-internal]');
     if (link) {
       e.preventDefault();
@@ -1243,11 +1348,13 @@ export default function Dashboard() {
         {msgAttachments.map((att, idx) => {
           const url = fixUrl(att.url || att.path);
           const thumbUrl = fixUrl(att.thumbnailUrl || att.thumbnailPath);
-          
+          // filename — вложения заявок с сайта, отправленные до перехода на name
+          const name = att.name || att.filename;
+
           if (att.mimeType?.startsWith('image/')) {
             return (
               <div key={idx} className="attachment-image" onClick={() => openLightbox(imageAtts, imageAtts.indexOf(url))}>
-                <img src={thumbUrl || url} alt={att.name} />
+                <img src={thumbUrl || url} alt={name} />
               </div>
             );
           }
@@ -1257,14 +1364,14 @@ export default function Dashboard() {
               <div 
                 key={idx} 
                 className={`attachment-video ${isOwn ? 'own' : ''}`}
-                onClick={() => setVideoPreview({ open: true, url, name: att.name })}
+                onClick={() => setVideoPreview({ open: true, url, name })}
               >
                 <div className="attachment-video-thumb">
                   <Film size={32} />
                   <div className="attachment-video-play">▶</div>
                 </div>
                 <div className="attachment-file-info">
-                  <div className="attachment-file-name">{att.name}</div>
+                  <div className="attachment-file-name">{name}</div>
                   <div className="attachment-file-size">{formatFileSize(att.size)}</div>
                 </div>
               </div>
@@ -1276,12 +1383,12 @@ export default function Dashboard() {
               <div 
                 key={idx} 
                 className={`attachment-file ${isOwn ? 'own' : ''}`}
-                onClick={() => openPdfPreview(url, att.name)}
+                onClick={() => openPdfPreview(url, name)}
                 style={{ cursor: 'pointer' }}
               >
                 <div className="attachment-file-icon"><FileText size={20} /></div>
                 <div className="attachment-file-info">
-                  <div className="attachment-file-name">{att.name}</div>
+                  <div className="attachment-file-name">{name}</div>
                   <div className="attachment-file-size">{formatFileSize(att.size)}</div>
                 </div>
                 <Eye size={18} />
@@ -1293,16 +1400,44 @@ export default function Dashboard() {
             <div 
               key={idx} 
               className={`attachment-file ${isOwn ? 'own' : ''}`}
-              onClick={(e) => downloadFile(e, url, att.name)}
+              onClick={(e) => downloadFile(e, url, name)}
               style={{ cursor: 'pointer' }}
             >
               <div className="attachment-file-icon">{getFileIcon(att.mimeType)}</div>
               <div className="attachment-file-info">
-                <div className="attachment-file-name">{att.name}</div>
+                <div className="attachment-file-name">{name}</div>
                 <div className="attachment-file-size">{formatFileSize(att.size)}</div>
               </div>
               <Download size={18} />
             </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Кнопки под сообщением бота: создать пациента в МИС, открыть реестр справок.
+  // Что заявку уже взяли, видно по 👍 — его ставит сервер от нажавшего
+  const renderMessageActions = (msg) => {
+    if (!msg.actions?.length) return null;
+
+    return (
+      <div className="message-actions">
+        {msg.actions.map(action => {
+          const busy = runningAction === `${msg.id}:${action.id}`;
+
+          return (
+            <button
+              key={action.id}
+              className="message-action-btn"
+              disabled={busy}
+              onClick={() => handleMessageAction(msg, action)}
+            >
+              {busy
+                ? <div className="loading-spinner" style={{ width: 14, height: 14 }} />
+                : <Zap size={15} />}
+              {action.label}
+            </button>
           );
         })}
       </div>
@@ -1357,7 +1492,7 @@ export default function Dashboard() {
                   </div>
                   <div className="chat-item-content">
                     <div className="chat-item-name">{chatItem.displayName}</div>
-                    <div className="chat-item-preview">{stripBold(chatItem.lastMessage) || 'Нет сообщений'}</div>
+                    <div className="chat-item-preview">{stripFormatting(chatItem.lastMessage) || 'Нет сообщений'}</div>
                   </div>
                   <div className="chat-item-right">
                     <div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div>
@@ -1473,7 +1608,7 @@ export default function Dashboard() {
                               {msg.replyTo && (
                                 <div className="reply-quote" onClick={() => scrollToMessage(msg.replyTo.id)}>
                                   <div className="reply-quote-sender">{msg.replyTo.sender?.displayName || msg.replyTo.sender?.username}</div>
-                                  <div className="reply-quote-content">{msg.replyTo.content?.substring(0, 100)}{msg.replyTo.content?.length > 100 ? '...' : ''}</div>
+                                  <div className="reply-quote-content">{stripFormatting(msg.replyTo.content).substring(0, 100)}{stripFormatting(msg.replyTo.content).length > 100 ? '...' : ''}</div>
                                 </div>
                               )}
                               {msg.forwardedFrom && (
@@ -1487,9 +1622,10 @@ export default function Dashboard() {
                                 <div
                                   className="message-content"
                                   onClick={handleMessageContentClick}
-                                  dangerouslySetInnerHTML={{ __html: linkifyContent(msg.content) }}
+                                  dangerouslySetInnerHTML={{ __html: renderRichHtml(msg.content) }}
                                 />
                               )}
+                              {renderMessageActions(msg)}
                               <div className="message-meta">
                                 <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
                                 {msg.isEdited && <span className="message-edited">изменено</span>}
@@ -1535,7 +1671,7 @@ export default function Dashboard() {
                 <div className="reply-banner">
                   <div className="reply-banner-info">
                     <CornerUpLeft size={16} />
-                    <span>Ответ <strong>{replyingToMessage.sender?.displayName || replyingToMessage.sender?.username || ''}</strong>{replyingToMessage.content ? `: ${replyingToMessage.content.substring(0, 60)}${replyingToMessage.content.length > 60 ? '...' : ''}` : ''}</span>
+                    <span>Ответ <strong>{replyingToMessage.sender?.displayName || replyingToMessage.sender?.username || ''}</strong>{replyingToMessage.content ? `: ${stripFormatting(replyingToMessage.content).substring(0, 60)}${stripFormatting(replyingToMessage.content).length > 60 ? '...' : ''}` : ''}</span>
                   </div>
                   <button onClick={cancelReply}><X size={16} /></button>
                 </div>
@@ -1594,11 +1730,28 @@ export default function Dashboard() {
                         </button>
                       )}
                       <div className="chat-input-wrapper">
+                        {hasSelection && (
+                          // onMouseDown гасим: без него нажатие уводит фокус из поля
+                          // и выделение, к которому применяется разметка, пропадает
+                          <div className="format-toolbar" onMouseDown={(e) => e.preventDefault()}>
+                            {FORMAT_BUTTONS.map(({ d, icon: Icon, title }) => (
+                              <button key={d} type="button" title={title} onClick={() => applyFormat(d)}>
+                                <Icon size={16} />
+                              </button>
+                            ))}
+                            <button type="button" title="Ссылка (Ctrl+K)" onClick={applyLink}>
+                              <Link2 size={16} />
+                            </button>
+                          </div>
+                        )}
                         <input
                           ref={messageInputRef}
                           placeholder={editingMessage ? "Введите новый текст..." : "Введите сообщение..."}
                           value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
+                          onChange={(e) => { setNewMessage(e.target.value); syncSelection(e); }}
+                          onKeyDown={handleInputKeyDown}
+                          onSelect={syncSelection}
+                          onBlur={() => setHasSelection(false)}
                         />
                         <button
                           type="button"
@@ -1742,7 +1895,7 @@ export default function Dashboard() {
                 className="context-menu-reaction-btn"
                 onClick={() => {
                   handleAddReaction(contextMenu.messageId, emoji);
-                  setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+                  closeContextMenu();
                 }}
               >
                 {emoji}
@@ -1761,17 +1914,17 @@ export default function Dashboard() {
             <Send size={16} />
             Переслать
           </button>
-          {/* Опции редактирования/удаления (только для своих сообщений) */}
-          {contextMenu.isOwnMessage && (
+          {/* Редактирование — только своё; удаление — своё либо любое, если админ */}
+          {contextMenu.canDelete && (
             <>
               <div className="context-menu-divider" />
-              {!contextMenu.message?.forwardedFrom && (
+              {contextMenu.isOwnMessage && !contextMenu.message?.forwardedFrom && (
                 <button onClick={() => { startEditMessage(contextMenu.message); }}>
                   <Edit2 size={16} />
                   Редактировать
                 </button>
               )}
-              <button onClick={() => { handleDeleteMessage(contextMenu.messageId); setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false }); }} className="danger">
+              <button onClick={() => { handleDeleteMessage(contextMenu.messageId, contextMenu.isOwnMessage); closeContextMenu(); }} className="danger">
                 <Trash2 size={16} />
                 Удалить
               </button>

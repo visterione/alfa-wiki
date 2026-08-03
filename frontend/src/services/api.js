@@ -294,6 +294,10 @@ export const chat = {
   removeReaction: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}/reactions`),
   getReactionDetails: (chatId, messageId) => api.get(`/chat/${chatId}/messages/${messageId}/reactions`),
 
+  // Кнопка под сообщением бота: создать пациента в МИС, открыть реестр справок
+  runMessageAction: (chatId, messageId, actionId) =>
+    api.post(`/chat/${chatId}/messages/${messageId}/actions/${actionId}`),
+
   // Forward messages
   forwardMessages: (targetChatId, messageIds) => api.post('/chat/forward', { targetChatId, messageIds }),
 

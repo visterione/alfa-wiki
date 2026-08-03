@@ -115,12 +115,16 @@ async function deliverOne(submission, delivery, io) {
     const text = form.formatMessage(submission.payload, submission);
     // Файлы заявки уходят вложениями к тому же сообщению
     const attachments = Object.values(submission.payload.attachments || {}).flat();
+    // Кнопки под сообщением: создать пациента в МИС, открыть реестр справок.
+    // Форма может их не объявлять — тогда сообщение просто без кнопок
+    const actions = form.buildActions ? form.buildActions(submission.payload, submission) : [];
 
     const { messageId } = await sendBotMessage({
       botId:  delivery.botId,
       chatId: delivery.chatId,
       text,
       attachments,
+      actions,
       io
     });
 
