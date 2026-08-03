@@ -142,10 +142,33 @@ function removeFile(file) {
  * На диск оно не попадает — там имена генерируются.
  */
 function sanitizeName(name) {
-  return String(name || 'файл')
+  return String(decodeName(name) || 'файл')
     .replace(/[\\/\u0000-\u001f]/g, '')
     .trim()
     .slice(0, 150) || 'файл';
+}
+
+/**
+ * Возвращает имя файла в UTF-8.
+ *
+ * multipart передаёт имя байтами, а multer читает их как latin1 — русское
+ * название приезжает как «Ð½Ð¾Ð¼ÐµÑÐ¾Ð².pdf». В проекте это лечится так же
+ * (routes/media.js, routes/accreditations.js), но там перекодируют вслепую.
+ * Здесь так нельзя: заявки шлют сторонние сайты, и уже правильное имя обратная
+ * перекодировка сломала бы.
+ */
+function decodeName(name) {
+  const str = String(name || '');
+  const code = (ch) => ch.codePointAt(0);
+
+  // Ни одного символа из верхней половины latin1 — перекодировать нечего.
+  // Проверяем кодами, а не регуляркой: диапазон 0x80–0x9F это невидимые
+  // управляющие символы, в исходнике их легко потерять при правке
+  if (![...str].some(ch => code(ch) >= 0x80 && code(ch) <= 0xFF)) return str;
+
+  const decoded = Buffer.from(str, 'latin1').toString('utf8');
+  // U+FFFD значит, что это были не UTF-8 байты — оставляем имя как пришло
+  return [...decoded].some(ch => code(ch) === 0xFFFD) ? str : decoded;
 }
 
 function monthFolder() {
