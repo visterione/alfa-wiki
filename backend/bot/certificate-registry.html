@@ -275,7 +275,8 @@ window.registryApp = (function() {
   // Вкладка = организация + год (как лист в исходном Excel).
   var ORGS = [
     { id: 'prestige', title: 'Престиж' },
-    { id: 'labgroup', title: 'Лабгрупп' }
+    { id: 'labgroup', title: 'Лабгрупп' },
+    { id: 'alex', title: 'Алекс', firstYear: 2026 }
   ];
   // Годы вкладок: с 2024 по «следующий после текущего», чтобы вкладка на будущий год
   // всегда была заранее и список не пришлось править руками каждый январь.
@@ -292,11 +293,13 @@ window.registryApp = (function() {
     ? CURRENT_YEAR
     : BASE_YEARS[BASE_YEARS.length - 1];
 
-  // Порядок как в файле: по годам, внутри года — Престиж, затем Лабгрупп
+  // Порядок как в файле: по годам, внутри года — Престиж, Лабгрупп и Алекс.
+  // Алекс ведётся только с 2026 года, поэтому более ранние вкладки не создаём.
   function buildTabs() {
     tabs = [];
     years.forEach(function(y) {
       ORGS.forEach(function(o) {
+        if (o.firstYear && y < o.firstYear) return;
         tabs.push({ org: o.id, year: y, title: o.title + ' ' + y });
       });
     });
@@ -314,6 +317,9 @@ window.registryApp = (function() {
     { name: 'certNumber', label: '№ справки', short: '№ спр.', type: 'text' },
     { name: 'correctionNumber', label: '№ корректировки', short: '№ корр.', type: 'text' },
 
+    { name: 'sumCode1', label: 'По коду услуги 1', short: 'Код 1', group: 'Сумма расходов', type: 'number', step: '0.01' },
+    { name: 'sumCode2', label: 'По коду услуги 2', short: 'Код 2', group: 'Сумма расходов', type: 'number', step: '0.01' },
+
     { name: 'tpFio', label: 'Фамилия, имя, отчество', short: 'ФИО', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpInn', label: 'ИНН', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpBirthDate', label: 'Дата рождения', short: 'Д. р.', group: 'Налогоплательщик', type: 'date' },
@@ -327,9 +333,6 @@ window.registryApp = (function() {
     { name: 'ptDocCode', label: 'Код документа', short: 'Код док.', group: 'Пациент', type: 'text', info: 'docCodes' },
     { name: 'ptDocSeries', label: 'Серия, номер', short: 'Серия, №', group: 'Пациент', type: 'text' },
     { name: 'ptDocDate', label: 'Дата выдачи', short: 'Выдан', group: 'Пациент', type: 'date' },
-
-    { name: 'sumCode1', label: 'По коду услуги 1', short: 'Код 1', group: 'Сумма расходов', type: 'number', step: '0.01' },
-    { name: 'sumCode2', label: 'По коду услуги 2', short: 'Код 2', group: 'Сумма расходов', type: 'number', step: '0.01' },
 
     { name: 'issuerName', label: 'ФИО выдавшего справку', short: 'Кто выдал', type: 'text' },
     { name: 'formDate', label: 'Дата формирования', short: 'Дата форм.', type: 'date' },
@@ -349,9 +352,10 @@ window.registryApp = (function() {
   // перечисления через запятую, например «Престиж, Кидс»).
   var CLINIC_OPTIONS = {
     prestige: ['Престиж', 'Кидс', 'Линия'],
-    labgroup: ['Смайл', '3К']
+    labgroup: ['Смайл', '3К'],
+    alex: ['Алекс']
   };
-  var ALL_CLINICS = ['Престиж', 'Кидс', 'Линия', 'Смайл', '3К'];
+  var ALL_CLINICS = ['Престиж', 'Кидс', 'Линия', 'Смайл', '3К', 'Алекс'];
 
   // Приводим подпись клиники к единому виду («ПРестиж»/«КИДС» → «Престиж»/«Кидс»)
   function prettyClinic(label) {

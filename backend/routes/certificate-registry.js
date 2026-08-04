@@ -11,7 +11,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const sequelize = CertificateRegistryEntry.sequelize;
 
-const ORGS = ['prestige', 'labgroup'];
+const ORGS = ['prestige', 'labgroup', 'alex'];
 // Разумный диапазон годов — чтобы в фильтр не попадали кривые даты из исходников
 const MIN_YEAR = 2000;
 const MAX_YEAR = 2100;
@@ -20,7 +20,11 @@ function parseYear(value) {
   const n = Number(String(value == null ? '' : value).trim());
   return Number.isInteger(n) && n >= MIN_YEAR && n <= MAX_YEAR ? n : null;
 }
-const ORG_TITLES = { prestige: 'Престиж', labgroup: 'Лабгрупп' };
+const ORG_TITLES = { prestige: 'Престиж', labgroup: 'Лабгрупп', alex: 'Алекс' };
+
+function isValidOrgYear(org, year) {
+  return ORGS.includes(org) && (org !== 'alex' || year >= 2026);
+}
 
 // Подписи полей для «Журнала изменений» wiki-страницы (в порядке формы).
 // Дублирующиеся подписи налогоплательщика/пациента различаем префиксом.
@@ -528,8 +532,9 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/next-number', authenticate, async (req, res) => {
   try {
     const { org, excludeId } = req.query;
-    if (!ORGS.includes(org)) return res.status(400).json({ error: 'Неверная организация' });
-    const nextNumber = await getNextNumber(org, parseYear(req.query.year), excludeId);
+    const year = parseYear(req.query.year);
+    if (!isValidOrgYear(org, year)) return res.status(400).json({ error: 'Неверная организация или год' });
+    const nextNumber = await getNextNumber(org, year, excludeId);
     res.json({ nextNumber });
   } catch (err) {
     console.error('GET /api/certificate-registry/next-number error:', err);
@@ -683,9 +688,8 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
 router.post('/', authenticate, async (req, res) => {
   try {
     const org = req.body.org;
-    if (!ORGS.includes(org)) return res.status(400).json({ error: 'Неверная организация' });
-
     const year = parseYear(req.body.year);
+    if (!isValidOrgYear(org, year)) return res.status(400).json({ error: 'Неверная организация или год' });
     const data = normalizeDataDates({ ...(req.body.data || {}) });
     let seqNumber = req.body.seqNumber ? Number(req.body.seqNumber) : null;
     if (!Number.isFinite(seqNumber) || seqNumber <= 0) seqNumber = await getNextNumber(org, year);
@@ -718,6 +722,7 @@ router.put('/:id', authenticate, async (req, res) => {
 
     const org = ORGS.includes(req.body.org) ? req.body.org : row.org;
     const year = parseYear(req.body.year) || row.year;
+    if (!isValidOrgYear(org, year)) return res.status(400).json({ error: 'Неверная организация или год' });
     const oldData = row.data || {};
     const data = normalizeDataDates({ ...(req.body.data || {}) });
     let seqNumber = req.body.seqNumber ? Number(req.body.seqNumber) : null;

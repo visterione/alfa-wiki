@@ -9,10 +9,11 @@
 
 | Файл | Тема |
 |------|------|
+| [../DATABASE_CURRENT.md](../DATABASE_CURRENT.md) | Краткая актуальная карта production-БД, ER-схемы и эксплуатация |
 | [01-project-overview.md](01-project-overview.md) | Что это за проект, из чего состоит, как части связаны |
 | [02-tech-stack.md](02-tech-stack.md) | Стек технологий: каждая библиотека, зачем она и как работает |
 | [03-backend-architecture.md](03-backend-architecture.md) | Express, middleware, маршруты — архитектура сервера |
-| [04-database.md](04-database.md) | PostgreSQL, Sequelize ORM, все модели, паттерны |
+| [04-database.md](04-database.md) | Историческое подробное описание БД; актуальность сверять с картой выше |
 | [05-auth-security.md](05-auth-security.md) | JWT, bcrypt, роли, права доступа |
 | [06-frontend-react.md](06-frontend-react.md) | React: компоненты, состояние, роутинг, контексты |
 | [07-realtime-sockets.md](07-realtime-sockets.md) | Socket.IO: как работает реальное время |
@@ -24,4 +25,4 @@
 
 ---
 
-Версия проекта: **3.26** (апрель 2026)
+Версия проекта: **6.54** (август 2026)

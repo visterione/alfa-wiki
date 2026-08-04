@@ -1,5 +1,5 @@
 DO $$ BEGIN
-  CREATE TYPE certificate_registry_org AS ENUM ('prestige', 'labgroup');
+  CREATE TYPE certificate_registry_org AS ENUM ('prestige', 'labgroup', 'alex');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;

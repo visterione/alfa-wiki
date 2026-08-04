@@ -2912,11 +2912,11 @@ const AmbulanceReportEntry = sequelize.define('AmbulanceReportEntry', {
 });
 
 // === CERTIFICATE REGISTRY MODEL (Реестр справок) ===
-// org — организация (престиж / лабгрупп); одинаковая структура таблицы для обеих
+// org — организация (престиж / лабгрупп / алекс); структура таблицы одинакова
 const CertificateRegistryEntry = sequelize.define('CertificateRegistryEntry', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   org: {
-    type: DataTypes.ENUM('prestige', 'labgroup'),
+    type: DataTypes.ENUM('prestige', 'labgroup', 'alex'),
     allowNull: false
   },
   year: { type: DataTypes.INTEGER, allowNull: true, comment: 'Год реестра — вкладка (лист исходного Excel)' },
