@@ -42,6 +42,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   const [activeClinic, setActiveClinic] = useState('global');
   const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
   const [bonuses, setBonuses] = useState([]);
+  const [bonusTotal, setBonusTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Add form state
@@ -64,33 +65,48 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const searchTimerRef = useRef(null);
+  const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
+  const REF_PAGE_SIZE = 50;
 
   // ── Load bonuses ──
   const loadBonuses = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await rbApi.getByDoctor(doctor.id);
-      const data = Array.isArray(res.data) ? res.data : [];
-      setBonuses(data);
-      setBonusCounts(prev => ({ ...prev, [doctor.id]: data.length }));
+      if (refShowAll) {
+        // Явно выбранный режим «Все» сохраняет прежнее поведение.
+        const res = await rbApi.getByDoctor(doctor.id);
+        const all = Array.isArray(res.data) ? res.data : [];
+        const clinicRows = all.filter(b => (b.clinicId || '') === dbClinicId);
+        setBonuses(clinicRows);
+        setBonusTotal(clinicRows.length);
+        setBonusCounts(prev => ({ ...prev, [doctor.id]: all.length }));
+      } else {
+        const res = await rbApi.getByDoctorPage(doctor.id, {
+          clinicId: dbClinicId,
+          limit: REF_PAGE_SIZE,
+          offset: (refPage - 1) * REF_PAGE_SIZE,
+        });
+        const data = res.data || {};
+        setBonuses(Array.isArray(data.rows) ? data.rows : []);
+        setBonusTotal(Number(data.count) || 0);
+        setBonusCounts(prev => ({ ...prev, [doctor.id]: Number(data.totalAll) || 0 }));
+      }
     } catch (err) {
       console.error('Load bonuses error:', err);
       setBonuses([]);
+      setBonusTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [doctor.id, setBonusCounts]);
+  }, [doctor.id, dbClinicId, refPage, refShowAll, setBonusCounts]);
 
   useEffect(() => { loadBonuses(); }, [loadBonuses]);
 
-  // ── Filtered bonuses for current clinic tab ──
-  const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
-  const filteredBonuses = bonuses.filter(b => (b.clinicId || '') === dbClinicId);
-
-  const REF_PAGE_SIZE = 50;
-  const refTotalPages = Math.max(1, Math.ceil(filteredBonuses.length / REF_PAGE_SIZE));
+  // ── Pagination for current clinic tab ──
+  const filteredBonuses = bonuses;
+  const refTotalPages = Math.max(1, Math.ceil(bonusTotal / REF_PAGE_SIZE));
   const refPageSafe = Math.min(refPage, refTotalPages);
-  const refPageData = refShowAll ? filteredBonuses : filteredBonuses.slice((refPageSafe - 1) * REF_PAGE_SIZE, refPageSafe * REF_PAGE_SIZE);
+  const refPageData = filteredBonuses;
 
   function RefPagination() {
     if (refShowAll || refTotalPages <= 1) return null;
@@ -340,7 +356,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
                   onKeyDown={e => { if (e.key === 'Escape') handleClearService(); }}
                 />
                 <button
-                  onClick={() => setRefShowAll(v => !v)}
+                  onClick={() => { setRefShowAll(v => !v); setRefPage(1); }}
                   title={refShowAll ? 'Включить пагинацию' : 'Показать все записи'}
                   style={{ padding: '4px 10px', fontSize: 12, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}
                 >

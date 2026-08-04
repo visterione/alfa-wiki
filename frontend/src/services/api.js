@@ -146,7 +146,8 @@ export const journal = {
 };
 
 export const rbActivityLog = {
-  list:  (params) => api.get('/rb-activity-log',       { params }),
+  list:  (params) => api.get('/rb-activity-log',       { params: { ...params, includeDiff: false } }),
+  get:   (id)     => api.get(`/rb-activity-log/${encodeURIComponent(id)}`),
   tabs:  ()       => api.get('/rb-activity-log/tabs'),
   users: ()       => api.get('/rb-activity-log/users'),
 };
@@ -625,8 +626,11 @@ export const referralBonusAccess = {
 
 // === REFERRAL BONUSES MODULE ===
 export const referralBonuses = {
-  getByDoctor: (misUserId) => api.get('/referral-bonuses', { params: { misUserId } }),
+  getByDoctor: (misUserId) => api.get('/referral-bonuses', { params: { misUserId, compact: true } }),
+  getByDoctorPage: (misUserId, params) => api.get('/referral-bonuses', { params: { misUserId, ...params } }),
   getByService: (serviceCode) => api.get('/referral-bonuses/by-service', { params: { serviceCode } }),
+  getByServices: (serviceCodes, misUserIds) => api.post('/referral-bonuses/by-services', { serviceCodes, misUserIds }),
+  getByDoctorServices: (misUserId, serviceCodes) => api.post('/referral-bonuses/by-doctor-services', { misUserId, serviceCodes }),
   save: (data) => api.post('/referral-bonuses', data),
   saveBulk: (data) => api.post('/referral-bonuses/bulk', data),
   delete: (id) => api.delete(`/referral-bonuses/${id}`),

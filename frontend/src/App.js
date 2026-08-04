@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -6,44 +6,51 @@ import { ThemeProvider } from './context/ThemeContext';
 import { SocketProvider } from './context/SocketContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import PageView from './pages/PageView';
-import PageEditor from './pages/PageEditor';
-import Profile from './pages/Profile';
-import UserProfile from './pages/UserProfile';
-import Favorites from './pages/Favorites';
-import AdminUsers from './pages/admin/AdminUsers';
-import AdminBots from './pages/admin/AdminBots';
-import AdminIntegrations from './pages/admin/AdminIntegrations';
-import AdminRoles from './pages/admin/AdminRoles';
-import AdminSidebar from './pages/admin/AdminSidebar';
-import AdminPages from './pages/admin/AdminPages';
-import AdminSettings from './pages/admin/AdminSettings';
-import AdminBackup from './pages/admin/AdminBackup';
-import Courses from './pages/Courses';
-import CourseView from './pages/CourseView';
-import AdminCourses from './pages/admin/AdminCourses';
-import AdminCourseEditor from './pages/admin/AdminCourseEditor';
-import AdminJournal from './pages/admin/AdminJournal';
-import AdminRbAccess from './pages/admin/AdminRbAccess';
-import AdminParser from './pages/admin/AdminParser';
-import Calendar from './pages/Calendar';
-import Kanban from './pages/Kanban';
-import KanbanArchive from './pages/KanbanArchive';
-import BoardsList from './pages/BoardsList';
-import BoardSettings from './pages/BoardSettings';
-// Referral Bonuses module
-import ReferralBonusesPage from './pages/ReferralBonuses';
-import StatisticsPage from './pages/Statistics';
-// Reviews module
-import ReviewBoardsList from './pages/ReviewBoardsList';
-import ReviewBoard from './pages/ReviewBoard';
-import ReviewBoardSettings from './pages/ReviewBoardSettings';
-import ReviewArchive from './pages/ReviewArchive';
-import ReviewStatistics from './pages/ReviewStatistics';
-import Dashboard from './pages/Dashboard';
-import WhatsNew from './pages/WhatsNew';
-import AdminReleaseNotes from './pages/admin/AdminReleaseNotes';
 import './index.css';
+
+const PageView = lazy(() => import('./pages/PageView'));
+const PageEditor = lazy(() => import('./pages/PageEditor'));
+const Profile = lazy(() => import('./pages/Profile'));
+const UserProfile = lazy(() => import('./pages/UserProfile'));
+const Favorites = lazy(() => import('./pages/Favorites'));
+const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
+const AdminBots = lazy(() => import('./pages/admin/AdminBots'));
+const AdminIntegrations = lazy(() => import('./pages/admin/AdminIntegrations'));
+const AdminRoles = lazy(() => import('./pages/admin/AdminRoles'));
+const AdminSidebar = lazy(() => import('./pages/admin/AdminSidebar'));
+const AdminPages = lazy(() => import('./pages/admin/AdminPages'));
+const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
+const AdminBackup = lazy(() => import('./pages/admin/AdminBackup'));
+const Courses = lazy(() => import('./pages/Courses'));
+const CourseView = lazy(() => import('./pages/CourseView'));
+const AdminCourses = lazy(() => import('./pages/admin/AdminCourses'));
+const AdminCourseEditor = lazy(() => import('./pages/admin/AdminCourseEditor'));
+const AdminJournal = lazy(() => import('./pages/admin/AdminJournal'));
+const AdminRbAccess = lazy(() => import('./pages/admin/AdminRbAccess'));
+const AdminParser = lazy(() => import('./pages/admin/AdminParser'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Kanban = lazy(() => import('./pages/Kanban'));
+const KanbanArchive = lazy(() => import('./pages/KanbanArchive'));
+const BoardsList = lazy(() => import('./pages/BoardsList'));
+const BoardSettings = lazy(() => import('./pages/BoardSettings'));
+const ReferralBonusesPage = lazy(() => import('./pages/ReferralBonuses'));
+const StatisticsPage = lazy(() => import('./pages/Statistics'));
+const ReviewBoardsList = lazy(() => import('./pages/ReviewBoardsList'));
+const ReviewBoard = lazy(() => import('./pages/ReviewBoard'));
+const ReviewBoardSettings = lazy(() => import('./pages/ReviewBoardSettings'));
+const ReviewArchive = lazy(() => import('./pages/ReviewArchive'));
+const ReviewStatistics = lazy(() => import('./pages/ReviewStatistics'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const WhatsNew = lazy(() => import('./pages/WhatsNew'));
+const AdminReleaseNotes = lazy(() => import('./pages/admin/AdminReleaseNotes'));
+
+function PageLoader() {
+  return (
+    <div style={{ minHeight: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="loading-spinner" />
+    </div>
+  );
+}
 
 
 function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null }) {
@@ -89,7 +96,8 @@ function AppRoutes() {
   }
 
   return (
-    <Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       
       <Route path="/" element={
@@ -201,7 +209,8 @@ function AppRoutes() {
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }
 

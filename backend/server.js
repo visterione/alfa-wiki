@@ -11,6 +11,9 @@ const { Server } = require('socket.io');
 require('dotenv').config();
 
 const { sequelize } = require('./models');
+const { buildDatabaseRuntimeConfig, getPoolStats } = require('./utils/databaseRuntimeConfig');
+const { envFlag } = require('./utils/env');
+const { socketIoAdapter } = require('./services/socketIoAdapter');
 const { initBot } = require('./bot/telegramBot');
 const { initDoctorReindexJob } = require('./jobs/doctorServicesReindex');
 const notificationService = require('./services/notificationService');
@@ -429,6 +432,51 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Readiness отделён от liveness: процесс может быть жив, но не готов
+// принимать трафик из-за недоступной БД или насыщенного пула.
+app.get('/api/ready', async (req, res) => {
+  const config = buildDatabaseRuntimeConfig();
+  const startedAt = Date.now();
+  let timer;
+
+  try {
+    const socketAdapterStatus = socketIoAdapter.getStatus();
+    if (!socketAdapterStatus.ready) {
+      return res.status(503).json({
+        status: 'not_ready',
+        socketAdapter: socketAdapterStatus,
+        pool: getPoolStats(sequelize.connectionManager.pool, config.pool),
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    await Promise.race([
+      sequelize.query('SELECT 1', { logging: false }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('database readiness timeout')), config.readinessTimeoutMs);
+      }),
+    ]);
+
+    res.json({
+      status: 'ready',
+      databaseLatencyMs: Date.now() - startedAt,
+      socketAdapter: socketAdapterStatus,
+      pool: getPoolStats(sequelize.connectionManager.pool, config.pool),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'not_ready',
+      databaseLatencyMs: Date.now() - startedAt,
+      socketAdapter: socketIoAdapter.getStatus(),
+      pool: getPoolStats(sequelize.connectionManager.pool, config.pool),
+      timestamp: new Date().toISOString(),
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+});
+
 // Global error handler — catches errors passed via next(err) in any route
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
@@ -461,11 +509,15 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const PORT = process.env.PORT || 9001;
+const RUN_BACKGROUND_JOBS = envFlag(process.env.RUN_BACKGROUND_JOBS, true);
 
 async function startServer() {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connected');
+    const dbConfig = buildDatabaseRuntimeConfig();
+    console.log(`✅ Database pool configured: min=${dbConfig.pool.min}, max=${dbConfig.pool.max}`);
+    await socketIoAdapter.initialize(io);
 
     // Sync models (in development)
     // if (process.env.NODE_ENV === 'development') {
@@ -473,60 +525,33 @@ async function startServer() {
     //   console.log('✅ Models synchronized');
     // }
 
-    // Initialize Telegram bot
-    initBot();
-
-    // Initialize doctor services reindex cron job
-    initDoctorReindexJob();
-
-    // Initialize analyses price update cron job
-    require('./cron/analysesCron');
-
-    // Initialize services price update cron job
-    require('./cron/servicesCron');
-
-    // Initialize RB employee registry archive cron job (14-day stale → archived)
-    require('./cron/rbEmployeeArchiveCron');
-
     // Initialize notification service with Socket.IO
     notificationService.init(io);
 
-    // Initialize calendar reminders cron job
-    require('./cron/calendarRemindersCron');
+    if (RUN_BACKGROUND_JOBS) {
+      // Боты и cron-задачи должны работать только на одном экземпляре.
+      initBot();
+      initDoctorReindexJob();
+      require('./cron/analysesCron');
+      require('./cron/servicesCron');
+      require('./cron/rbEmployeeArchiveCron');
+      require('./cron/calendarRemindersCron');
+      require('./cron/accreditationsVehiclesCron');
+      require('./cron/reviewSyncCron');
+      require('./cron/reviewArchiveCron');
+      require('./cron/missedCallsCron');
+      require('./cron/misScheduleAutoImportCron');
+      require('./cron/misAppointmentsSyncCron');
+      require('./cron/misPaymentsSyncCron');
+      require('./cron/submissionsRetryCron');
+      require('./cron/competitorPricesCron');
 
-    // Initialize accreditations/vehicles reminders cron job (sends to chat)
-    require('./cron/accreditationsVehiclesCron');
-
-    // Initialize review sync cron job (twice a day: 08:00 and 20:00 MSK)
-    require('./cron/reviewSyncCron');
-
-    // Initialize review auto-archive cron job (daily at 04:00 MSK)
-    require('./cron/reviewArchiveCron');
-
-    // Initialize missed calls polling cron job (every minute, polls Nextcloud for ATC data)
-    require('./cron/missedCallsCron');
-
-    // Кэш услуг партнёров синхронизирует отдельный воркер scripts/syncWorker.js
-    // (кросс-платформенно, через день, не зависит от веб-сервера). Здесь расписание не регистрируем.
-
-    // Initialize MIS schedule auto-import cron job (14th and 28th at 03:00 MSK)
-    require('./cron/misScheduleAutoImportCron');
-
-    // Initialize MIS appointments daily sync cron job (00:05 MSK)
-    require('./cron/misAppointmentsSyncCron');
-
-    // Initialize MIS payments (списания/возвраты) daily sync cron job (00:10 MSK)
-    require('./cron/misPaymentsSyncCron');
-
-    // Повторная доставка заявок публичного API в чат (ежеминутно)
-    require('./cron/submissionsRetryCron');
-
-    // Забор прайсов конкурентов из alfa-parser (03:30 МСК)
-    require('./cron/competitorPricesCron');
-
-    // Ensure АТС bot user exists
-    const { initMissedCallsBot } = require('./services/notificationService');
-    await initMissedCallsBot();
+      const { initMissedCallsBot } = require('./services/notificationService');
+      await initMissedCallsBot();
+      console.log('✅ Background jobs enabled');
+    } else {
+      console.log('ℹ️ Background jobs disabled for this web replica');
+    }
 
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
@@ -535,6 +560,7 @@ async function startServer() {
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
+    await Promise.allSettled([socketIoAdapter.close(), sequelize.close()]);
     process.exit(1);
   }
 }
@@ -554,7 +580,16 @@ async function gracefulShutdown(signal) {
   } catch (e) {
     console.error('[shutdown] presence error:', e.message);
   }
-  server.close(() => process.exit(0));
+  server.close(async () => {
+    try {
+      await socketIoAdapter.close();
+      await sequelize.close();
+    } catch (e) {
+      console.error('[shutdown] database close error:', e.message);
+    } finally {
+      process.exit(0);
+    }
+  });
   // pm2 всё равно добьёт через kill_timeout (5с) — не висим дольше
   setTimeout(() => process.exit(0), 4000).unref();
 }

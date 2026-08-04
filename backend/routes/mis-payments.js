@@ -15,6 +15,7 @@ const { Op }  = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 const { MisPayment } = require('../models');
 const { syncState, syncDateRange } = require('../services/misPaymentsSync');
+const { parseRequiredDateRange } = require('../utils/dateRange');
 
 // ── GET /sync/status ──────────────────────────────────────────────────────────
 router.get('/sync/status', authenticate, async (req, res) => {
@@ -51,9 +52,15 @@ router.post('/sync/trigger', authenticate, async (req, res) => {
 // ── GET / — запрос списаний/возвратов из БД ──────────────────────────────────
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { date_from, date_to, clinic_id, author_id, refunds_only, show_deleted } = req.query;
+    const { clinic_id, author_id, refunds_only, show_deleted } = req.query;
+    const range = parseRequiredDateRange(req.query);
+    if (range.error) {
+      return res.status(400).json({ error: 1, message: range.error });
+    }
 
-    const where = {};
+    const where = {
+      opDate: { [Op.between]: [range.start, range.end] }
+    };
     // По умолчанию отдаём только возвраты
     if (refunds_only === undefined || refunds_only === '1' || refunds_only === 'true') {
       where.isRefund = true;
@@ -61,11 +68,6 @@ router.get('/', authenticate, async (req, res) => {
     // По умолчанию скрываем корзину
     if (!(show_deleted === '1' || show_deleted === 'true')) {
       where.isDeleted = false;
-    }
-    if (date_from || date_to) {
-      where.opDate = {};
-      if (date_from) where.opDate[Op.gte] = new Date(date_from);
-      if (date_to)   where.opDate[Op.lte] = new Date(date_to);
     }
     if (clinic_id) where.clinicId = Number(clinic_id);
     if (author_id) where.authorId = Number(author_id);

@@ -529,8 +529,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     setCorpRecalcState(null);
   }, [selectedDoctor?.id]); // eslint-disable-line
 
-  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [], holidayDates = null }) => {
-    const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
+  const runBuildReport = async ({ rows, colMap, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [], holidayDates = null }) => {
     const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
     const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
     const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
@@ -538,7 +537,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     );
     const result = await buildReport({
       rows, colMap, doctor: selectedDoctor,
-      referralBonuses, performedDbBonuses, execSettings,
+      referralBonuses: null, performedDbBonuses, execSettings,
       dateFrom: dateFrom || null, dateTo: dateTo || null,
       allDoctors: doctors, savedAssistanceIncome,
       interim, normedOnly: isNormed && !uploadedFile,
@@ -552,7 +551,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
     // Save context for post-generation re-editing
     if (corpRows?.length > 0) {
-      setCorpRecalcState({ corpRows, colMap, corpIncludedKeys, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes } });
+      setCorpRecalcState({ corpRows, colMap, corpIncludedKeys, pendingData: { rows, colMap, pbRes, execSettings, savedAsstRes } });
     } else {
       setCorpRecalcState(null);
     }
@@ -563,8 +562,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
     setGenerating(true); setError(''); setReportData(null);
     try {
-      const [rbRes, pbRes, execSettings, savedAsstRes, schedRes, holidaysRes] = await Promise.all([
-        rbApi.getByDoctor(selectedDoctor.id),
+      const [pbRes, execSettings, savedAsstRes, schedRes, holidaysRes] = await Promise.all([
         psbApi.getByDoctor(selectedDoctor.id),
         loadExecSettings(selectedDoctor.id, selectedDoctor.roles),
         (dateFrom || dateTo) ? salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) : Promise.resolve({ data: [] }),
@@ -606,11 +604,11 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       if (corpRows.length > 0) {
         // Pause generation, show modal
         setGenerating(false);
-        setCorpModalState({ corpRows, colMap, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, scheduleEntries, holidayDates } });
+        setCorpModalState({ corpRows, colMap, pendingData: { rows, colMap, pbRes, execSettings, savedAsstRes, scheduleEntries, holidayDates } });
         return;
       }
 
-      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries, holidayDates });
+      await runBuildReport({ rows, colMap, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries, holidayDates });
     } catch (e) {
       setError(e.message || 'Ошибка при построении отчёта');
     } finally {
@@ -904,13 +902,11 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
     const { rows, colMap, savedAssistanceIncome, corpIncludedKeys, holidayDates } = params;
     setRerunningIds(prev => new Set([...prev, doctor.id]));
     try {
-      const [rbRes, pbRes, execSettings, schedRes] = await Promise.all([
-        rbApi.getByDoctor(doctor.id),
+      const [pbRes, execSettings, schedRes] = await Promise.all([
         psbApi.getByDoctor(doctor.id),
         loadExecSettings(doctor.id, doctor.roles),
         schedulesApi.list(doctor.misUserId || doctor.id).catch(() => ({ data: [] })),
       ]);
-      const referralBonuses    = Array.isArray(rbRes.data)   ? rbRes.data   : [];
       const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
       const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
       const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
@@ -918,7 +914,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
       );
       const result = await buildReport({
         rows, colMap, doctor,
-        referralBonuses, performedDbBonuses, execSettings,
+        referralBonuses: null, performedDbBonuses, execSettings,
         dateFrom: dateFrom || null, dateTo: dateTo || null,
         allDoctors: doctors, savedAssistanceIncome,
         interim, normedOnly: isNormed && !uploadedFile,
@@ -950,13 +946,11 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
 
     const processOne = async (doctor, idx) => {
       try {
-        const [rbRes, pbRes, execSettings, schedRes] = await Promise.all([
-          rbApi.getByDoctor(doctor.id),
+        const [pbRes, execSettings, schedRes] = await Promise.all([
           psbApi.getByDoctor(doctor.id),
           loadExecSettings(doctor.id, doctor.roles),
           schedulesApi.list(doctor.misUserId || doctor.id).catch(() => ({ data: [] })),
         ]);
-        const referralBonuses    = Array.isArray(rbRes.data)   ? rbRes.data   : [];
         const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
         const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
         const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
@@ -964,7 +958,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         );
         const result = await buildReport({
           rows, colMap, doctor,
-          referralBonuses, performedDbBonuses, execSettings,
+          referralBonuses: null, performedDbBonuses, execSettings,
           dateFrom: dateFrom || null, dateTo: dateTo || null,
           allDoctors: doctors, savedAssistanceIncome,
           interim, normedOnly: isNormed && !uploadedFile,

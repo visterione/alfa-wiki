@@ -14,6 +14,7 @@ const { Op }  = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 const { MisAppointment } = require('../models');
 const { syncState, syncDateRange } = require('../services/misAppointmentsSync');
+const { parseRequiredDateRange } = require('../utils/dateRange');
 
 // ── GET /sync/status ──────────────────────────────────────────────────────────
 router.get('/sync/status', authenticate, async (req, res) => {
@@ -49,14 +50,17 @@ router.post('/sync/trigger', authenticate, async (req, res) => {
 // ── GET / — запрос визитов из БД ─────────────────────────────────────────────
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { date_from, date_to, clinic_id, room, status_id } = req.query;
-
-    const where = {};
-    if (date_from || date_to) {
-      where.timeStart = {};
-      if (date_from) where.timeStart[Op.gte] = new Date(date_from);
-      if (date_to)   where.timeStart[Op.lte] = new Date(date_to);
+    const { clinic_id, room, status_id } = req.query;
+    const range = parseRequiredDateRange(req.query);
+    if (range.error) {
+      return res.status(400).json({ error: 1, message: range.error });
     }
+
+    // Без обязательного периода endpoint мог случайно выгрузить все сотни тысяч
+    // визитов в память Node.js и одним ответом отправить их клиенту.
+    const where = {
+      timeStart: { [Op.between]: [range.start, range.end] }
+    };
     if (clinic_id) where.clinicId = Number(clinic_id);
     if (room)      where.room     = room;
     if (status_id) where.statusId = Number(status_id);

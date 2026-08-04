@@ -14,6 +14,8 @@ const messageActions = require('../services/messageActions');
 const pushService = require('../services/pushService');
 const voiceService = require('../services/voiceService');
 const presence = require('../services/presence');
+const { getUnreadCounts } = require('../services/unreadService');
+const { parsePagination } = require('../utils/pagination');
 
 /**
  * Бота добавили в чат или убрали — рассылаем my_chat_member и правим подписки на формы.
@@ -161,8 +163,10 @@ router.get('/search', authenticate, async (req, res) => {
       order: [[{ model: Chat, as: 'chat' }, 'lastMessageAt', 'DESC NULLS LAST']]
     });
 
-    // Форматируем результат
-    const chatsWithUnreadCount = await Promise.all(chatsData.map(async (m) => {
+    const unreadByChat = await getUnreadCounts(req.user.id, chatIdsWithMessages);
+
+    // Форматируем результат. Счётчики уже получены одним агрегатным запросом.
+    const chatsWithUnreadCount = chatsData.map((m) => {
       const chat = m.chat;
       const otherMembers = chat.members.filter(member => member.userId !== req.user.id);
 
@@ -175,14 +179,7 @@ router.get('/search', authenticate, async (req, res) => {
         avatar = otherUser.avatar;
       }
 
-      const lastReadDate = new Date(m.lastReadAt || 0);
-      const unreadCount = await Message.count({
-        where: {
-          chatId: chat.id,
-          createdAt: { [Op.gt]: lastReadDate },
-          senderId: { [Op.ne]: req.user.id }
-        }
-      });
+      const unreadCount = unreadByChat.get(String(chat.id)) || 0;
 
       const result = {
         id: chat.id,
@@ -211,7 +208,7 @@ router.get('/search', authenticate, async (req, res) => {
       }
 
       return result;
-    }));
+    });
 
     res.json(chatsWithUnreadCount);
   } catch (error) {
@@ -262,8 +259,10 @@ router.get('/', authenticate, async (req, res) => {
       order: [[{ model: Chat, as: 'chat' }, 'lastMessageAt', 'DESC NULLS LAST']]
     });
 
-    // Получаем количество непрочитанных сообщений для каждого чата
-    const chatsWithUnreadCount = await Promise.all(memberships.map(async (m) => {
+    const unreadByChat = await getUnreadCounts(req.user.id, memberships.map(m => m.chatId));
+
+    // Получаем количество непрочитанных сообщений для каждого чата одним SQL.
+    const chatsWithUnreadCount = memberships.map((m) => {
       const chat = m.chat;
       const otherMembers = chat.members.filter(member => member.userId !== req.user.id);
 
@@ -276,15 +275,7 @@ router.get('/', authenticate, async (req, res) => {
         avatar = otherUser.avatar;
       }
 
-      // Считаем точное количество непрочитанных сообщений
-      const lastReadDate = new Date(m.lastReadAt || 0);
-      const unreadCount = await Message.count({
-        where: {
-          chatId: chat.id,
-          createdAt: { [Op.gt]: lastReadDate },
-          senderId: { [Op.ne]: req.user.id } // Не считаем свои сообщения
-        }
-      });
+      const unreadCount = unreadByChat.get(String(chat.id)) || 0;
 
       const result = {
         id: chat.id,
@@ -321,7 +312,7 @@ router.get('/', authenticate, async (req, res) => {
       }
 
       return result;
-    }));
+    });
 
     // Сортируем: Закреплённые (по pinnedOrder) → остальные по дате.
     //
@@ -351,24 +342,8 @@ router.get('/', authenticate, async (req, res) => {
 // Get unread messages count
 router.get('/unread/count', authenticate, async (req, res) => {
   try {
-    const memberships = await ChatMember.findAll({
-      where: { userId: req.user.id },
-      attributes: ['chatId', 'lastReadAt']
-    });
-
-    // Считаем общее количество непрочитанных сообщений во всех чатах
-    let totalUnread = 0;
-    for (const m of memberships) {
-      const lastReadDate = new Date(m.lastReadAt || 0);
-      const unreadCount = await Message.count({
-        where: {
-          chatId: m.chatId,
-          createdAt: { [Op.gt]: lastReadDate },
-          senderId: { [Op.ne]: req.user.id } // Не считаем свои сообщения
-        }
-      });
-      totalUnread += unreadCount;
-    }
+    const unreadByChat = await getUnreadCounts(req.user.id);
+    const totalUnread = [...unreadByChat.values()].reduce((sum, count) => sum + count, 0);
 
     res.json({ unreadCount: totalUnread });
   } catch (error) {
@@ -476,7 +451,8 @@ router.get('/:chatId/messages/search', authenticate, async (req, res) => {
 router.get('/:chatId/messages', authenticate, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { limit = 50, before } = req.query;
+    const { before } = req.query;
+    const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const membership = await ChatMember.findOne({
       where: { chatId, userId: req.user.id }
@@ -507,7 +483,7 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
         }
       ],
       order: [['createdAt', 'DESC']],
-      limit: parseInt(limit)
+      limit
     });
 
     // Process reactions for each message

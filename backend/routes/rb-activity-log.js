@@ -5,10 +5,32 @@ const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { Op } = require('sequelize');
 const { TAB_LABELS, ACTION_LABELS } = require('../services/rbLogger');
 const { canSeeAup, AUP_CLINIC_ID } = require('../services/aupFilter');
+const { parsePagination } = require('../utils/pagination');
+
+function serializeLog(record, seeAup) {
+  const row = {
+    ...record.toJSON(),
+    tabLabel: TAB_LABELS[record.tab] || record.tab,
+    actionLabel: ACTION_LABELS[record.action] || record.action,
+  };
+
+  // Защитно: не показываем изменения по клинике АУП пользователям без флага.
+  if (!seeAup && row.diff && Array.isArray(row.diff.changes)) {
+    row.diff = {
+      ...row.diff,
+      changes: row.diff.changes.filter(c => String(c.clinicId) !== AUP_CLINIC_ID),
+    };
+  }
+
+  return row;
+}
 
 // GET /api/rb-activity-log
 router.get('/', authenticate, requireAdminAccess('journal'), async (req, res) => {
   try {
+    // Default remains backward-compatible for older clients. Updated clients
+    // explicitly opt out and load the heavy field from /:id only when needed.
+    const includeDiff = req.query.includeDiff !== 'false';
     const {
       tab,
       userId,
@@ -16,9 +38,8 @@ router.get('/', authenticate, requireAdminAccess('journal'), async (req, res) =>
       doctorName,
       dateFrom,
       dateTo,
-      limit  = 100,
-      offset = 0,
     } = req.query;
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 500 });
 
     const where = {};
 
@@ -35,29 +56,19 @@ router.get('/', authenticate, requireAdminAccess('journal'), async (req, res) =>
 
     const { count, rows } = await RbActivityLog.findAndCountAll({
       where,
+      ...(includeDiff ? {} : { attributes: { exclude: ['diff'] } }),
       include: [{
         model: User,
         as:    'user',
         attributes: ['id', 'displayName', 'username', 'avatar'],
       }],
       order:  [['created_at', 'DESC']],
-      limit:  Math.min(parseInt(limit)  || 100, 500),
-      offset: parseInt(offset) || 0,
+      limit,
+      offset,
     });
 
     const seeAup = canSeeAup(req.user);
-    const result = rows.map(r => {
-      const row = {
-        ...r.toJSON(),
-        tabLabel:    TAB_LABELS[r.tab]    || r.tab,
-        actionLabel: ACTION_LABELS[r.action] || r.action,
-      };
-      // Защитно: не показываем изменения по клинике АУП пользователям без флага.
-      if (!seeAup && row.diff && Array.isArray(row.diff.changes)) {
-        row.diff = { ...row.diff, changes: row.diff.changes.filter(c => String(c.clinicId) !== AUP_CLINIC_ID) };
-      }
-      return row;
-    });
+    const result = rows.map(r => serializeLog(r, seeAup));
 
     res.json({ count, rows: result });
   } catch (err) {
@@ -104,6 +115,26 @@ router.get('/users', authenticate, requireAdminAccess('journal'), async (req, re
   } catch (err) {
     console.error('GET /api/rb-activity-log/users error:', err);
     res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// GET /api/rb-activity-log/:id — полная запись с JSONB diff для drawer.
+router.get('/:id', authenticate, requireAdminAccess('journal'), async (req, res) => {
+  try {
+    const record = await RbActivityLog.findByPk(req.params.id, {
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['id', 'displayName', 'username', 'avatar'],
+      }],
+    });
+
+    if (!record) return res.status(404).json({ error: 'Запись журнала не найдена' });
+
+    res.json(serializeLog(record, canSeeAup(req.user)));
+  } catch (err) {
+    console.error('GET /api/rb-activity-log/:id error:', err);
+    res.status(500).json({ error: 'Ошибка получения записи журнала' });
   }
 });
 

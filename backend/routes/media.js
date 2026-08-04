@@ -9,6 +9,7 @@ const XLSX = require('xlsx-js-style');
 const { Media } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { convertXlsxToUniver } = require('../utils/xlsxConverter');
+const { parsePagination } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -117,7 +118,8 @@ const upload = multer({
 // Get all media
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { type, limit = 50, offset = 0 } = req.query;
+    const { type } = req.query;
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 200 });
     
     const where = {};
     if (type) {
@@ -127,8 +129,8 @@ router.get('/', authenticate, async (req, res) => {
     const media = await Media.findAndCountAll({
       where,
       order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+      limit,
+      offset
     });
 
     res.json(media);

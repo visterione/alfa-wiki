@@ -1,5 +1,8 @@
 const { Sequelize, DataTypes } = require('sequelize');
 require('dotenv').config();
+const { buildDatabaseRuntimeConfig } = require('../utils/databaseRuntimeConfig');
+
+const databaseRuntimeConfig = buildDatabaseRuntimeConfig();
 
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -10,11 +13,9 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT,
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
+    pool: databaseRuntimeConfig.pool,
     timezone: '+00:00', // Храним в UTC
-    dialectOptions: {
-      timezone: 'Etc/GMT'
-    }
+    dialectOptions: databaseRuntimeConfig.dialectOptions,
   }
 );
 

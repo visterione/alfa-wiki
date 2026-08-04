@@ -3,6 +3,7 @@ const router = express.Router();
 const { Page, User, Folder, PageHistory } = require('../models');
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { Op } = require('sequelize');
+const { parsePagination } = require('../utils/pagination');
 
 // Рекурсивная функция построения пути папки
 async function buildFolderPath(folder) {
@@ -33,10 +34,9 @@ router.get('/', authenticate, requireAdminAccess('journal'), async (req, res) =>
       dateTo,
       folderId,
       createdBy,
-      isPublished,
-      limit = 50,
-      offset = 0
+      isPublished
     } = req.query;
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 500 });
 
     const where = {};
 
@@ -92,8 +92,8 @@ router.get('/', authenticate, requireAdminAccess('journal'), async (req, res) =>
         }
       ],
       order: [['updatedAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit,
+      offset,
       attributes: ['id', 'title', 'slug', 'contentType', 'isPublished',
                    'createdAt', 'updatedAt', 'folderId', 'createdBy', 'updatedBy']
     });
@@ -140,10 +140,9 @@ router.get('/activities', authenticate, requireAdminAccess('journal'), async (re
       pageSlug,
       userId: userIdFilter,
       dateFrom,
-      dateTo,
-      limit = 100,
-      offset = 0
+      dateTo
     } = req.query;
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 500 });
 
     const { Sequelize } = require('../models');
 
@@ -176,8 +175,8 @@ router.get('/activities', authenticate, requireAdminAccess('journal'), async (re
         }
       ],
       order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+      limit,
+      offset
     });
 
     const result = rows.map(entry => ({

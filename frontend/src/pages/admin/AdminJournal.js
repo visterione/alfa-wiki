@@ -434,6 +434,30 @@ export default function AdminJournal() {
     setRbPage(1);
   };
 
+  const handleSelectRbEntry = async (entry) => {
+    if (selectedEntry?.id === entry.id) {
+      setSelectedEntry(null);
+      return;
+    }
+
+    // Совместимость при поэтапном деплое: старый backend уже отдаёт diff в списке.
+    if (Object.prototype.hasOwnProperty.call(entry, 'diff')) {
+      setSelectedEntry(entry);
+      return;
+    }
+
+    setSelectedEntry({ ...entry, detailLoading: true });
+    try {
+      const { data } = await rbActivityLog.get(entry.id);
+      // Не перезатираем drawer, если пока шёл запрос открыли другую запись.
+      setSelectedEntry(current => current?.id === entry.id ? data : current);
+    } catch (err) {
+      toast.error('Ошибка загрузки деталей записи');
+      console.error(err);
+      setSelectedEntry(current => current?.id === entry.id ? null : current);
+    }
+  };
+
   const toggleRow = (id) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -716,7 +740,7 @@ export default function AdminJournal() {
                     return (
                       <div
                         key={entry.id}
-                        onClick={() => setSelectedEntry(isSelected ? null : entry)}
+                        onClick={() => handleSelectRbEntry(entry)}
                         style={{
                           display: 'flex', alignItems: 'stretch', cursor: 'pointer',
                           borderBottom: idx < rbLogs.length - 1 ? '1px solid #e5e7eb' : 'none',
@@ -837,7 +861,9 @@ export default function AdminJournal() {
                         </div>
 
                         {/* Diff */}
-                        {selectedEntry.diff ? (
+                        {selectedEntry.detailLoading ? (
+                          <div style={{ fontSize: 13, color: '#6b7280' }}>Загрузка деталей…</div>
+                        ) : selectedEntry.diff ? (
                           <>
                             <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>
                               Изменения

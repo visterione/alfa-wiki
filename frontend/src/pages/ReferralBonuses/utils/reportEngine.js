@@ -296,6 +296,32 @@ export async function buildReport({
     );
   }
 
+  // Для расчёта нужны только правила услуг, которые реально есть в файле.
+  // Раньше каждый расчёт загружал все тысячи правил врача.
+  let effectiveReferralBonuses = referralBonuses;
+  if (!Array.isArray(effectiveReferralBonuses)) {
+    const referralServiceCodes = [...new Set(allRelevant
+      .filter(r => colMap.referrer && rbNamesMatch(doctorName, r[colMap.referrer] || ''))
+      .map(r => colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '')
+      .filter(Boolean))];
+
+    if (referralServiceCodes.length) {
+      const response = await rbApi.getByDoctorServices(doctor.id, referralServiceCodes);
+      effectiveReferralBonuses = Array.isArray(response.data) ? response.data : [];
+    } else {
+      effectiveReferralBonuses = [];
+    }
+  }
+
+  // Индекс сохраняет прежний приоритет: правило клиники, затем global.
+  const referralBonusIndex = new Map();
+  effectiveReferralBonuses.forEach(bonus => {
+    const code = rbNormalizeName(bonus.serviceCode);
+    const clinicId = String(bonus.clinicId || '');
+    const key = `${code}\u0000${clinicId}`;
+    if (code && !referralBonusIndex.has(key)) referralBonusIndex.set(key, bonus);
+  });
+
   // ── Group by clinic ──
   const rawByClinic = {};
   allRelevant.forEach(r => {
@@ -375,16 +401,25 @@ export async function buildReport({
     .map(r => colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '')
     .filter(Boolean))];
 
+  const relevantReferrerNames = [...new Set(allRelevant
+    .filter(r => colMap.executor && rbNamesMatch(doctorName, r[colMap.executor] || ''))
+    .map(r => colMap.referrer ? String(r[colMap.referrer] || '').trim() : '')
+    .filter(name => name && !rbNamesMatch(doctorName, name)))];
+  const relevantReferrerIds = [...new Set(relevantReferrerNames
+    .map(name => (allDoctors || []).find(candidate => rbNamesMatch(candidate.name, name))?.id)
+    .filter(Boolean))];
+
   const bonusesByServiceCode = {};
-  if (allServiceCodes.length) {
-    await Promise.all(allServiceCodes.map(async code => {
-      try {
-        const res = await rbApi.getByService(code);
-        bonusesByServiceCode[code] = res.data;
-      } catch {
-        bonusesByServiceCode[code] = {};
-      }
-    }));
+  if (allServiceCodes.length && relevantReferrerIds.length) {
+    const BATCH_SIZE = 250;
+    const batches = [];
+    for (let i = 0; i < allServiceCodes.length; i += BATCH_SIZE) {
+      batches.push(allServiceCodes.slice(i, i + BATCH_SIZE));
+    }
+    const responses = await Promise.all(batches.map(batch =>
+      rbApi.getByServices(batch, relevantReferrerIds).catch(() => ({ data: {} }))
+    ));
+    responses.forEach(response => Object.assign(bonusesByServiceCode, response.data || {}));
   }
 
   // ── Load hour norms for normed/hourly pay types ──
@@ -547,10 +582,11 @@ export async function buildReport({
       });
       const dbClinicId = (clinicId !== 'unknown') ? String(clinicId) : '';
       const services = Object.values(byService).map(s => {
+        const normalizedCode = rbNormalizeName(s.code);
         const bonus = (dbClinicId
-          ? referralBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (b.clinicId || '') === dbClinicId)
+          ? referralBonusIndex.get(`${normalizedCode}\u0000${dbClinicId}`)
           : null)
-          || referralBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === ''));
+          || referralBonusIndex.get(`${normalizedCode}\u0000`);
         let bonusAmount = 0, bonusLabel = '—';
         if (bonus) {
           if (bonus.bonusPercent != null) {

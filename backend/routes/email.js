@@ -7,6 +7,7 @@ const { sendBulkEmail } = require('../services/emailService');
 const { Op } = require('sequelize');
 const multer = require('multer');
 const XLSX = require('xlsx-js-style');
+const { parsePagination } = require('../utils/pagination');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -198,7 +199,7 @@ router.get('/send/status/:jobId', authenticate, (req, res) => {
 // GET /api/email/history - История рассылок
 router.get('/history', authenticate, async (req, res) => {
   try {
-    const { limit = 50, offset = 0 } = req.query;
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 200 });
 
     // Админы видят все, обычные пользователи - только свои
     const where = req.user.isAdmin ? {} : { sentBy: req.user.id };
@@ -207,8 +208,8 @@ router.get('/history', authenticate, async (req, res) => {
       where,
       include: [{ model: User, as: 'sender', attributes: ['id', 'displayName', 'username'] }],
       order: [['sentAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+      limit,
+      offset
     });
 
     res.json({ total: count, logs: rows });

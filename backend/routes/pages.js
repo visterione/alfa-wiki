@@ -10,6 +10,7 @@ const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory, Media } = req
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { convertXlsxToUniver, convertUniverToXlsx } = require('../utils/xlsxConverter');
 const { generatePageHistoryPdf } = require('../services/pdfService');
+const { parsePagination } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -148,7 +149,8 @@ function generateSlug(title) {
 // Get all pages (with filtering)
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { published, search, folderId, limit = 50, offset = 0 } = req.query;
+    const { published, search, folderId } = req.query;
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 200 });
     
     const where = {};
     if (published !== undefined) {
@@ -168,8 +170,8 @@ router.get('/', authenticate, async (req, res) => {
         { model: Folder, as: 'folder', attributes: ['id', 'title'] }
       ],
       order: [['sortOrder', 'ASC'], ['updatedAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit,
+      offset,
       attributes: { exclude: ['content', 'customCss', 'customJs'] }
     });
 

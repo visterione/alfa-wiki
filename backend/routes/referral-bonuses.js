@@ -1,8 +1,14 @@
 const express = require('express');
-const { Op } = require('sequelize');
-const { ReferralBonus, RbUserPermission, User, Setting } = require('../models');
+const { Op, QueryTypes } = require('sequelize');
+const { sequelize, ReferralBonus, RbUserPermission, User, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity } = require('../services/rbLogger');
+const { parsePagination } = require('../utils/pagination');
+const {
+  normalizeRequestedCodes,
+  normalizeServiceCode,
+  bonusesByServiceCode,
+} = require('../utils/referralBonusLookup');
 
 const router = express.Router();
 
@@ -40,12 +46,41 @@ router.put('/suggests', authenticate, async (req, res) => {
 // Получить все бонусы для врача
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { misUserId } = req.query;
+    const { misUserId, clinicId } = req.query;
     if (!misUserId) {
       return res.status(400).json({ error: 'misUserId обязателен' });
     }
+
+    const where = { misUserId };
+    if (clinicId !== undefined) where.clinicId = String(clinicId).slice(0, 50);
+
+    const compactAttributes = [
+      'id', 'misUserId', 'serviceCode', 'serviceName',
+      'bonusPercent', 'bonusRub', 'clinicId'
+    ];
+
+    // Старые клиенты и расчёт отчётов по-прежнему получают массив.
+    // Новый UI явно передаёт limit/offset и получает пагинированный ответ.
+    const paginated = req.query.limit !== undefined || req.query.offset !== undefined;
+    if (paginated) {
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 500 });
+      const [{ count, rows }, totalAll] = await Promise.all([
+        ReferralBonus.findAndCountAll({
+          where,
+          attributes: compactAttributes,
+          order: [['createdAt', 'ASC']],
+          limit,
+          offset,
+        }),
+        ReferralBonus.count({ where: { misUserId } }),
+      ]);
+
+      return res.json({ count, totalAll, rows });
+    }
+
     const bonuses = await ReferralBonus.findAll({
-      where: { misUserId },
+      where,
+      ...(req.query.compact === 'true' ? { attributes: compactAttributes } : {}),
       order: [['createdAt', 'ASC']]
     });
     res.json(bonuses);
@@ -74,6 +109,80 @@ router.get('/by-service', authenticate, async (req, res) => {
   } catch (err) {
     console.error('Get bonuses by-service error:', err);
     res.status(500).json({ error: 'Ошибка получения бонусов' });
+  }
+});
+
+// Пакетный аналог /by-service для расчёта отчётов.
+// Вместо сотен HTTP-запросов UI делает один запрос на пачку кодов.
+router.post('/by-services', authenticate, async (req, res) => {
+  try {
+    if (!Array.isArray(req.body?.serviceCodes)) {
+      return res.status(400).json({ error: 'serviceCodes должен быть массивом' });
+    }
+    const serviceCodes = normalizeRequestedCodes(req.body.serviceCodes);
+    const misUserIds = normalizeRequestedCodes(req.body?.misUserIds, 100);
+
+    if (serviceCodes.length > 500) {
+      return res.status(400).json({ error: 'Не более 500 кодов услуг за запрос' });
+    }
+    if (misUserIds.length > 500) {
+      return res.status(400).json({ error: 'Не более 500 врачей за запрос' });
+    }
+    if (!serviceCodes.length) return res.json({});
+
+    const bonuses = await ReferralBonus.findAll({
+      where: {
+        serviceCode: { [Op.in]: serviceCodes },
+        ...(misUserIds.length ? { misUserId: { [Op.in]: misUserIds } } : {}),
+      },
+      attributes: ['id', 'misUserId', 'serviceCode', 'bonusPercent', 'bonusRub'],
+      raw: true,
+    });
+
+    res.json(bonusesByServiceCode(serviceCodes, bonuses));
+  } catch (err) {
+    console.error('Get bonuses by-services error:', err);
+    res.status(500).json({ error: 'Ошибка получения бонусов по услугам' });
+  }
+});
+
+// Возвращает только те правила врача, которые встретились в отчёте.
+// Фильтрация после выборки по врачу сохраняет прежнюю нормализацию кодов.
+router.post('/by-doctor-services', authenticate, async (req, res) => {
+  try {
+    const misUserId = String(req.body?.misUserId || '').trim();
+    if (!misUserId) return res.status(400).json({ error: 'misUserId обязателен' });
+    if (!Array.isArray(req.body?.serviceCodes)) {
+      return res.status(400).json({ error: 'serviceCodes должен быть массивом' });
+    }
+    const serviceCodes = normalizeRequestedCodes(req.body.serviceCodes);
+    if (serviceCodes.length > 5000) {
+      return res.status(400).json({ error: 'Не более 5000 кодов услуг за запрос' });
+    }
+    if (!serviceCodes.length) return res.json([]);
+
+    const normalizedCodes = [...new Set(serviceCodes.map(normalizeServiceCode))];
+    const bonuses = await sequelize.query(`
+      SELECT
+        id,
+        "misUserId",
+        "serviceCode",
+        "serviceName",
+        "bonusPercent",
+        "bonusRub",
+        "clinicId"
+      FROM referral_bonuses
+      WHERE "misUserId" = $misUserId
+        AND lower(regexp_replace(btrim("serviceCode"), '\\s+', ' ', 'g')) = ANY($serviceCodes::text[])
+    `, {
+      bind: { misUserId, serviceCodes: normalizedCodes },
+      type: QueryTypes.SELECT,
+    });
+
+    res.json(bonuses);
+  } catch (err) {
+    console.error('Get bonuses by-doctor-services error:', err);
+    res.status(500).json({ error: 'Ошибка получения бонусов врача' });
   }
 });
 
@@ -151,30 +260,39 @@ router.post('/bulk', authenticate, async (req, res) => {
       .filter(s => s.bonusPercent == null && s.bonusRub == null)
       .map(s => s.serviceCode);
 
-    if (toDeleteCodes.length) {
-      await ReferralBonus.destroy({ where: { misUserId, serviceCode: toDeleteCodes, clinicId } });
-    }
-
-    if (toUpsert.length) {
-      const records = toUpsert.map(s => ({
-        misUserId,
-        doctorName: doctorName || '',
-        serviceCode: String(s.serviceCode || '').slice(0, 100),
-        serviceName: String(s.serviceName || '').slice(0, 500),
-        bonusPercent: s.bonusPercent != null ? parseFloat(s.bonusPercent) : null,
-        bonusRub:     s.bonusRub    != null ? parseFloat(s.bonusRub)     : null,
-        clinicId,
-        createdBy: req.user.id
-      }));
-
-      const BATCH_SIZE = 500;
-      for (let i = 0; i < records.length; i += BATCH_SIZE) {
-        await ReferralBonus.bulkCreate(records.slice(i, i + BATCH_SIZE), {
-          updateOnDuplicate: ['doctorName', 'serviceName', 'bonusPercent', 'bonusRub', 'clinicId', 'createdBy', 'updatedAt'],
-          conflictAttributes: ['misUserId', 'serviceCode', 'clinicId']
+    // Удаление пустых правил и upsert новых должны фиксироваться атомарно.
+    // Раньше ошибка на любом batch после destroy оставляла врачу частично
+    // обновлённую конфигурацию без возможности автоматически откатиться.
+    await ReferralBonus.sequelize.transaction(async transaction => {
+      if (toDeleteCodes.length) {
+        await ReferralBonus.destroy({
+          where: { misUserId, serviceCode: toDeleteCodes, clinicId },
+          transaction
         });
       }
-    }
+
+      if (toUpsert.length) {
+        const records = toUpsert.map(s => ({
+          misUserId,
+          doctorName: doctorName || '',
+          serviceCode: String(s.serviceCode || '').slice(0, 100),
+          serviceName: String(s.serviceName || '').slice(0, 500),
+          bonusPercent: s.bonusPercent != null ? parseFloat(s.bonusPercent) : null,
+          bonusRub:     s.bonusRub    != null ? parseFloat(s.bonusRub)     : null,
+          clinicId,
+          createdBy: req.user.id
+        }));
+
+        const BATCH_SIZE = 500;
+        for (let i = 0; i < records.length; i += BATCH_SIZE) {
+          await ReferralBonus.bulkCreate(records.slice(i, i + BATCH_SIZE), {
+            updateOnDuplicate: ['doctorName', 'serviceName', 'bonusPercent', 'bonusRub', 'clinicId', 'createdBy', 'updatedAt'],
+            conflictAttributes: ['misUserId', 'serviceCode', 'clinicId'],
+            transaction
+          });
+        }
+      }
+    });
 
     // Compute changes for diff
     const newNameMap = Object.fromEntries(toUpsert.map(s => [String(s.serviceCode), s.serviceName || s.serviceCode]));

@@ -3,13 +3,15 @@ const { Op } = require('sequelize');
 const { ReferralReport } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity } = require('../services/rbLogger');
+const { parsePagination } = require('../utils/pagination');
 
 const router = express.Router();
 
 // Получить список отчётов
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { reportType, misUserId, limit = 50, offset = 0 } = req.query;
+    const { reportType, misUserId } = req.query;
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 200 });
     const where = {};
     if (reportType) where.reportType = reportType;
     if (misUserId) where.misUserId = misUserId;
@@ -17,8 +19,8 @@ router.get('/', authenticate, async (req, res) => {
     const { count, rows } = await ReferralReport.findAndCountAll({
       where,
       order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit,
+      offset,
       attributes: { exclude: ['reportData'] }
     });
 
