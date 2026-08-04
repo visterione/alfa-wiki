@@ -141,7 +141,7 @@ function buildActions(p, submission) {
   return [{
     id:    'open-cert-registry',
     kind:  'link',
-    label: 'Внести в реестр справок',
+    label: 'Внести в реестр',
     url:   `${REGISTRY_PAGE}?${query}`,
     submissionId: submission.id
   }];

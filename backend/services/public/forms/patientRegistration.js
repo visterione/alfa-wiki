@@ -120,7 +120,7 @@ function buildActions(p, submission) {
   return [{
     id:    'mis-create-patient',
     kind:  'api',
-    label: 'Создать пациента в МИС',
+    label: 'Создать пациента',
     submissionId: submission.id
   }];
 }

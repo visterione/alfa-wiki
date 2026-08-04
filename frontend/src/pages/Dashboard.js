@@ -5,7 +5,7 @@ import {
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
   Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic,
-  Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2, Zap
+  Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -1433,9 +1433,7 @@ export default function Dashboard() {
               disabled={busy}
               onClick={() => handleMessageAction(msg, action)}
             >
-              {busy
-                ? <div className="loading-spinner" style={{ width: 14, height: 14 }} />
-                : <Zap size={15} />}
+              {busy && <div className="loading-spinner" style={{ width: 14, height: 14 }} />}
               {action.label}
             </button>
           );
