@@ -177,6 +177,7 @@ export default function AdminIntegrations() {
   };
 
   const formTitle = (formType) => forms.find(f => f.formType === formType)?.title || formType;
+  const scopeTitle = (scope) => forms.find(f => f.scope === scope)?.title || formTitle(scope.replace('forms:', ''));
 
   return (
     <div className="admin-page">
@@ -244,7 +245,7 @@ export default function AdminIntegrations() {
                       {(client.scopes || []).length === 0
                         ? <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>нет прав</span>
                         : (client.scopes || []).map(s => (
-                            <div key={s} style={{ fontSize: 12 }}>{formTitle(s.replace('forms:', ''))}</div>
+                            <div key={s} style={{ fontSize: 12 }}>{scopeTitle(s)}</div>
                           ))
                       }
                     </td>
@@ -389,9 +390,9 @@ export default function AdminIntegrations() {
               )}
 
               <div className="form-group">
-                <label className="form-label">Какие формы разрешены</label>
+                <label className="form-label">Какие действия разрешены</label>
                 {forms.length === 0 ? (
-                  <small className="text-muted">Форм пока нет</small>
+                  <small className="text-muted">Доступных действий пока нет</small>
                 ) : forms.map(f => (
                   <label key={f.scope} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
                     <input

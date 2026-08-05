@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Тест онлайн-записи</title>
+<style>
+#obt-app{max-width:1000px;margin:0 auto;padding:20px;font-family:Inter,Arial,sans-serif;color:#172033}.obt-card{background:#fff;border:1px solid #dfe5ee;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(15,23,42,.05)}.obt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.obt-field{display:flex;flex-direction:column;gap:6px}.obt-field label{font-size:12px;font-weight:700;color:#5d6878}.obt-field select,.obt-field input{padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:14px}.obt-field select:disabled,.obt-field input:disabled{background:#f3f5f8;color:#9aa4b2}.obt-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.obt-pill{padding:7px 10px;border-radius:8px;background:#eef4ff;color:#254a84;font-size:12px}.obt-pill.good{background:#e8f8ef;color:#18733d}.obt-pill.fallback{background:#fff4dc;color:#8a5b00}.obt-slots{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.obt-slot{border:1px solid #9cc9ac;background:#edf9f1;color:#176035;border-radius:8px;padding:9px 12px;font-weight:700}.obt-empty{padding:18px;text-align:center;color:#7c8797;background:#f7f9fb;border-radius:10px;margin-top:12px}.obt-error{padding:10px 12px;background:#feecec;color:#a12626;border-radius:8px;margin-top:12px;display:none}.obt-debug{margin-top:14px;background:#101827;color:#d7e3f4;border-radius:10px;padding:12px;white-space:pre-wrap;font:12px/1.5 monospace;overflow:auto}.obt-note{font-size:12px;color:#677386;line-height:1.5}@media(max-width:700px){.obt-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="obt-app">
+  <div class="obt-card">
+    <h2 style="margin:0 0 8px">Тест онлайн-записи</h2>
+    <div class="obt-note">Стенд ничего не записывает в МИС. Он проверяет врачей, услуги, фактическую длительность и доступные слоты.</div>
+  </div>
+  <div class="obt-card">
+    <div class="obt-grid">
+      <div class="obt-field"><label>1. Клиника</label><select id="obt-clinic"><option value="">Выберите клинику</option></select></div>
+      <div class="obt-field"><label>2. Врач</label><select id="obt-doctor" disabled><option value="">Сначала выберите клинику</option></select></div>
+      <div class="obt-field"><label>3. Услуга онлайн-записи</label><select id="obt-service" disabled><option value="">Сначала выберите врача</option></select></div>
+      <div class="obt-field"><label>4. Дата</label><input id="obt-date" type="date" disabled></div>
+    </div>
+    <div id="obt-meta" class="obt-meta"></div>
+    <div id="obt-error" class="obt-error"></div>
+  </div>
+  <div class="obt-card">
+    <h3 style="margin:0">Доступное время</h3>
+    <div id="obt-slots" class="obt-empty">Выберите клинику, врача, услугу и дату</div>
+    <div id="obt-debug" class="obt-debug" style="display:none"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var API=(location.port==='9000'?location.protocol+'//'+location.hostname+':9001':location.origin)+'/api';
+  var TYPES={2:'Онлайн-запись',3:'Онлайн-запись (Кидс)',1:'Онлайн-запись (Проф)',6:'Онлайн-запись (Линия)',4:'Онлайн-запись (3К)'};
+  var state={clinic:null,doctor:null,service:null,duration:null};
+  var el={clinic:document.getElementById('obt-clinic'),doctor:document.getElementById('obt-doctor'),service:document.getElementById('obt-service'),date:document.getElementById('obt-date'),meta:document.getElementById('obt-meta'),slots:document.getElementById('obt-slots'),error:document.getElementById('obt-error'),debug:document.getElementById('obt-debug')};
+  function api(path,options){options=options||{};return fetch(API+path,{method:options.method||'GET',headers:{'Content-Type':'application/json','Authorization':'Bearer '+localStorage.getItem('token')},body:options.body?JSON.stringify(options.body):undefined}).then(function(r){return r.json().then(function(data){if(!r.ok)throw new Error(data.message||data.error||'Ошибка запроса');return data})})}
+  function setOptions(select,rows,placeholder,valueKey,label){select.innerHTML='<option value="">'+placeholder+'</option>'+rows.map(function(row){return '<option value="'+String(row[valueKey])+'">'+escapeHtml(label(row))+'</option>'}).join('');select.disabled=false}
+  function escapeHtml(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function showError(message){el.error.textContent=message;el.error.style.display=message?'block':'none'}
+  function resetAfter(level){showError('');if(level<2){el.doctor.disabled=true;el.doctor.innerHTML='<option>Загрузка…</option>'}if(level<3){el.service.disabled=true;el.service.innerHTML='<option>Сначала выберите врача</option>'}if(level<4){el.date.disabled=true;state.duration=null;el.meta.innerHTML=''}el.slots.className='obt-empty';el.slots.textContent='Выберите клинику, врача, услугу и дату';el.debug.style.display='none'}
+  function doctorName(d){return d.name||[d.last_name,d.first_name,d.middle_name].filter(Boolean).join(' ')||('Врач '+d.id)}
+  function typeMatches(service,title){return String(service.type_titles||'').split(',').map(function(v){return v.trim()}).indexOf(title)!==-1}
+  function fmtDate(value){var p=value.split('-');return p[2]+'.'+p[1]+'.'+p[0]}
+  function timeOnly(value){return String(value||'').split(' ')[1]?.slice(0,5)||String(value||'').slice(11,16)||'—'}
+  function loadClinics(){api('/mis/clinics').then(function(res){var rows=(res.data||[]).filter(function(c){return TYPES[c.id]});setOptions(el.clinic,rows,'Выберите клинику','id',function(c){return c.name})}).catch(function(e){showError(e.message)})}
+  el.clinic.addEventListener('change',function(){state.clinic=this.value||null;state.doctor=null;state.service=null;resetAfter(1);if(!state.clinic)return;api('/mis/doctors',{method:'POST',body:{clinic_id:state.clinic,show_all:true,roles:['doctor']}}).then(function(res){var rows=Array.isArray(res.data)?res.data:[];rows.sort(function(a,b){return doctorName(a).localeCompare(doctorName(b),'ru')});setOptions(el.doctor,rows,'Выберите врача','id',doctorName)}).catch(function(e){showError(e.message)})});
+  el.doctor.addEventListener('change',function(){state.doctor=this.value||null;state.service=null;resetAfter(2);if(!state.doctor)return;api('/mis/doctor-info',{method:'POST',body:{userId:state.doctor}}).then(function(info){var ids=info.data&&info.data.services||[];if(!ids.length)return {error:0,data:[]};return api('/mis/services',{method:'POST',body:{service_ids:ids,clinic_id:state.clinic,show_all:true}})}).then(function(res){var wanted=TYPES[state.clinic];var rows=(Array.isArray(res.data)?res.data:[]).filter(function(s){return typeMatches(s,wanted)});setOptions(el.service,rows,'Выберите услугу','service_id',function(s){return (s.code?s.code+' — ':'')+s.title});el.service._rows=rows}).catch(function(e){showError(e.message)})});
+  el.service.addEventListener('change',function(){var id=this.value;state.service=(this._rows||[]).find(function(s){return String(s.service_id||s.id)===String(id)})||null;resetAfter(3);if(!state.service)return;var q='?doctor_id='+encodeURIComponent(state.doctor)+'&clinic_id='+encodeURIComponent(state.clinic)+'&service_id='+encodeURIComponent(id);api('/doctor-cards/booking-duration'+q).then(function(res){state.duration=res.duration;el.date.disabled=false;el.meta.innerHTML='<span class="obt-pill">МИС: '+escapeHtml(state.service.duration||'—')+' мин</span><span class="obt-pill '+(res.source==='doctor_override'?'good':'fallback')+'">Итог: '+res.duration+' мин</span><span class="obt-pill">Источник: '+escapeHtml(res.source)+'</span>';if(el.date.value)loadSlots()}).catch(function(e){showError(e.message)})});
+  el.date.addEventListener('change',loadSlots);
+  function loadSlots(){if(!el.date.value||!state.duration)return;showError('');el.slots.className='obt-empty';el.slots.textContent='Загрузка расписания…';var day=fmtDate(el.date.value);Promise.all([api('/mis/schedule-periods',{method:'POST',body:{user_id:state.doctor,clinic_id:state.clinic,time_start:day+' 00:00',time_end:day+' 23:59'}}),api('/mis/schedule',{method:'POST',body:{user_id:state.doctor,clinic_id:state.clinic,time_start:day+' 00:00',time_end:day+' 23:59',show_busy:true,show_past:false,step:state.duration}})]).then(function(results){var raw=results[1].data;var rows=Array.isArray(raw)?raw:(raw&&raw[state.doctor]||[]);rows=rows.filter(function(s){return String(s.user_id||state.doctor)===String(state.doctor)&&String(s.clinic_id||state.clinic)===String(state.clinic)&&!s.is_busy});if(!rows.length){el.slots.className='obt-empty';el.slots.textContent='Свободных слотов не найдено'}else{el.slots.className='obt-slots';el.slots.innerHTML=rows.map(function(s){return '<button type="button" class="obt-slot" title="'+escapeHtml(timeOnly(s.time_start)+'–'+timeOnly(s.time_end))+'">'+escapeHtml(timeOnly(s.time_start))+'</button>'}).join('')}el.debug.style.display='block';el.debug.textContent=JSON.stringify({doctor_id:state.doctor,clinic_id:state.clinic,service_id:String(state.service.service_id||state.service.id),duration:state.duration,date:day,periods:results[0].data,slots_returned:rows.length},null,2)}).catch(function(e){showError(e.message);el.slots.textContent='Не удалось загрузить расписание'})}
+  var today=new Date();el.date.min=today.toISOString().slice(0,10);loadClinics();
+})();
+</script>
+</body>
+</html>

@@ -289,6 +289,10 @@ input, select, textarea, button { font-family: inherit; }
 .dc-service-btn:hover { transform: scale(1.1); }
 .dc-service-btn svg { width: 14px; height: 14px; }
 .dc-service-fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dc-duration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 6px; }
+.dc-duration-clinic { display: flex; flex-direction: column; gap: 3px; }
+.dc-duration-clinic span { font-size: 10px; color: var(--dc-text-secondary); }
+.dc-duration-hint { font-size: 10px; color: var(--dc-text-secondary); margin-top: 3px; }
 .dc-service-btn-visibility { color: var(--dc-primary); border-color: var(--dc-primary); background: #eff6ff; }
 .dc-service-btn-visibility:hover { background: #dbeafe; box-shadow: 0 2px 4px rgba(37,99,235,0.2); }
 .dc-service-btn-visibility.hidden { color: var(--dc-text-secondary); border-color: var(--dc-border); background: white; }
@@ -669,6 +673,7 @@ window.dcApp = (function() {
   // Services management
   var modalServices = [];
   var serviceOverrides = {};
+  var serviceDurations = {};
   var draggedServiceIndex = null;
   var modalClinicIds = [];  // Список ID клиник для текущей карточки в модальном окне
 
@@ -2178,10 +2183,23 @@ window.dcApp = (function() {
     // Конвертируем старые ID в новые (для API МИС)
     var clinicIds = cardClinics.length > 0 ? convertOldClinicIds(cardClinics) : [];
 
-    fetchAPI(API_BASE + '/mis/doctor-info', {
-      method: 'POST',
-      body: JSON.stringify({ userId: misUserId })
-    }).then(function(data) {
+    Promise.all([
+      fetchAPI(API_BASE + '/mis/doctor-info', {
+        method: 'POST',
+        body: JSON.stringify({ userId: misUserId })
+      }),
+      fetchAPI(API_BASE + '/doctor-cards/service-durations?doctor_id=' + encodeURIComponent(misUserId))
+        .catch(function() { return []; })
+    ]).then(function(results) {
+      var data = results[0];
+      var durationRows = Array.isArray(results[1]) ? results[1] : [];
+      var cardDurationMap = {};
+      durationRows.forEach(function(row) {
+        var sid = String(row.serviceId);
+        var cid = String(row.clinicId);
+        if (!cardDurationMap[sid]) cardDurationMap[sid] = {};
+        cardDurationMap[sid][cid] = row.durationMinutes;
+      });
       console.log('🔍 doctor-info response for misUserId:', misUserId, 'data:', data);
       if (data.success && data.data && data.data.services && data.data.services.length > 0) {
         var serviceIds = data.data.services;
@@ -2288,7 +2306,17 @@ window.dcApp = (function() {
 
         // Use alias if available, otherwise use original
         var title = override.aliasName || s.title || '—';
-        var duration = override.aliasDuration || (s.duration ? s.duration + ' мин' : '—');
+        var structured = cardDurationMap[String(s.service_id || s.id)] || {};
+        var configuredDurations = clinicIds.filter(function(cid) {
+          return structured[String(cid)] != null;
+        }).map(function(cid) {
+          return { clinicId: cid, duration: structured[String(cid)] };
+        });
+        var duration = configuredDurations.length > 0
+          ? configuredDurations.map(function(item) {
+              return item.duration + ' мин' + (clinicIds.length > 1 ? ' (' + (CLINIC_SHORT_NAMES[item.clinicId] || item.clinicId) + ')' : '');
+            }).join(', ')
+          : (override.aliasDuration || (s.duration ? s.duration + ' мин' : '—'));
 
         // Формируем строку с ценами по клиникам
         var priceStr = '—';
@@ -2606,6 +2634,8 @@ window.dcApp = (function() {
         var checkbox = this.querySelector('input');
         checkbox.checked = !checkbox.checked;
         this.classList.toggle('selected', checkbox.checked);
+        modalClinicIds = getSelectedClinics();
+        if (modalServices.length > 0) renderModalServices();
       });
     });
   }
@@ -2704,6 +2734,7 @@ window.dcApp = (function() {
     document.getElementById('dc-modal').classList.remove('active');
     modalServices = [];
     serviceOverrides = {};
+    serviceDurations = {};
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -2739,10 +2770,23 @@ window.dcApp = (function() {
       modalClinicIds = cardClinics.length > 0 ? convertOldClinicIds(cardClinics) : [];
     }
 
-    fetchAPI(API_BASE + '/mis/doctor-info', {
-      method: 'POST',
-      body: JSON.stringify({ userId: misUserId })
-    }).then(function(data) {
+    Promise.all([
+      fetchAPI(API_BASE + '/mis/doctor-info', {
+        method: 'POST',
+        body: JSON.stringify({ userId: misUserId })
+      }),
+      fetchAPI(API_BASE + '/doctor-cards/service-durations?doctor_id=' + encodeURIComponent(misUserId))
+        .catch(function() { return []; })
+    ]).then(function(results) {
+      var data = results[0];
+      var durationRows = Array.isArray(results[1]) ? results[1] : [];
+      serviceDurations = {};
+      durationRows.forEach(function(row) {
+        var sid = String(row.serviceId);
+        var cid = String(row.clinicId);
+        if (!serviceDurations[sid]) serviceDurations[sid] = {};
+        serviceDurations[sid][cid] = row.durationMinutes;
+      });
       console.log('🔍 doctor-info response for misUserId:', misUserId, 'data:', data);
       if (data.success && data.data && data.data.services && data.data.services.length > 0) {
         var serviceIds = data.data.services;
@@ -2822,6 +2866,7 @@ window.dcApp = (function() {
           code: item.service.code || item.service.sub_code || '',
           title: item.service.title || '',
           duration: item.service.duration || '',
+          durationByClinic: Object.assign({}, serviceDurations[String(serviceId)] || {}),
           prices: item.prices,  // Теперь хранит цены по клиникам
           aliasName: override.aliasName || '',
           aliasDuration: override.aliasDuration || '',
@@ -2885,6 +2930,18 @@ window.dcApp = (function() {
 
     var html = modalServices.map(function(service, index) {
       var hiddenClass = service.isHidden ? ' hidden' : '';
+      var durationInputs = modalClinicIds.length > 0
+        ? '<div class="dc-duration-grid">' + modalClinicIds.map(function(clinicId) {
+            var clinic = getClinicById(clinicId);
+            var value = service.durationByClinic && service.durationByClinic[String(clinicId)] != null
+              ? service.durationByClinic[String(clinicId)] : '';
+            return '<label class="dc-duration-clinic"><span>' + escapeHtml(clinic.name) + '</span>' +
+              '<input type="number" min="1" step="1" inputmode="numeric" class="dc-service-duration-input" ' +
+              'placeholder="МИС: ' + escapeHtml(service.duration || '—') + '" value="' + escapeHtml(value) + '" ' +
+              'oninput="dcApp.updateServiceDuration(' + index + ', ' + clinicId + ', this.value)"></label>';
+          }).join('') + '</div>' +
+          '<div class="dc-duration-hint">Пусто — использовать стандартную длительность МИС</div>'
+        : '<div class="dc-duration-hint">Сначала выберите клинику в левой части карточки</div>';
       return '<div class="dc-service-item' + hiddenClass + '" draggable="true" data-index="' + index + '">' +
         '<div class="dc-service-left-col">' +
           '<div class="dc-service-drag-handle" title="Перетащите для изменения порядка">' +
@@ -2923,10 +2980,8 @@ window.dcApp = (function() {
                   'oninput="dcApp.updateServiceAlias(' + index + ', \'name\', this.value)">' +
               '</div>' +
               '<div class="dc-service-field">' +
-                '<label class="dc-service-field-label">Длительность</label>' +
-                '<input type="text" class="dc-service-duration-input" placeholder="' + (service.duration ? service.duration + ' мин' : 'Не указана') + '" ' +
-                  'value="' + escapeHtml(service.aliasDuration) + '" ' +
-                  'oninput="dcApp.updateServiceAlias(' + index + ', \'duration\', this.value)">' +
+                '<label class="dc-service-field-label">Длительность по клиникам, мин</label>' +
+                durationInputs +
               '</div>' +
             '</div>' +
             '<div class="dc-service-field">' +
@@ -2977,6 +3032,12 @@ window.dcApp = (function() {
     } else if (field === 'info') {
       modalServices[index].aliasInfo = value;
     }
+  }
+
+  function updateServiceDuration(index, clinicId, value) {
+    if (!modalServices[index]) return;
+    if (!modalServices[index].durationByClinic) modalServices[index].durationByClinic = {};
+    modalServices[index].durationByClinic[String(clinicId)] = value;
   }
 
   function toggleServiceVisibility(index) {
@@ -3111,6 +3172,29 @@ window.dcApp = (function() {
 
     var url = id ? API_BASE + '/doctor-cards/' + id : API_BASE + '/doctor-cards';
     fetchAPI(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(data) })
+      .then(function(savedCard) {
+        if (modalServices.length === 0 || !data.misUserId) return savedCard;
+        var selectedClinics = getSelectedClinics();
+        var durationItems = [];
+        modalServices.forEach(function(service) {
+          selectedClinics.forEach(function(clinicId) {
+            var raw = service.durationByClinic && service.durationByClinic[String(clinicId)];
+            durationItems.push({
+              service_id: service.id,
+              clinic_id: clinicId,
+              duration: raw === '' || raw == null ? null : Number(raw)
+            });
+          });
+        });
+        return fetchAPI(API_BASE + '/doctor-cards/service-durations', {
+          method: 'PUT',
+          body: JSON.stringify({
+            doctor_id: data.misUserId,
+            source_card_id: id || (savedCard && savedCard.id) || null,
+            items: durationItems
+          })
+        });
+      })
       .then(function() {
         showToast(id ? 'Карточка обновлена' : 'Врач добавлен', 'success');
         closeModal();
@@ -3201,6 +3285,7 @@ window.dcApp = (function() {
     loadDaySchedule: loadDaySchedule,
     backToCalendar: backToCalendar,
     updateServiceAlias: updateServiceAlias,
+    updateServiceDuration: updateServiceDuration,
     toggleServiceVisibility: toggleServiceVisibility,
     toggleServiceFavorite: toggleServiceFavorite,
     setView: setView,

@@ -16,6 +16,10 @@
     "migrate:message-actions": "node scripts/migrateMessageActions.js",
     "migrate:user-mis-id": "node scripts/migrate-user-mis-id.js",
     "migrate:user-mis-id:check": "node scripts/migrate-user-mis-id.js --check",
+    "migrate:doctor-service-durations": "node scripts/migrateDoctorServiceDurations.js",
+    "migrate:doctor-service-durations:check": "node scripts/migrateDoctorServiceDurations.js --check",
+    "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",
+    "migrate:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js --apply",
     "migrate:safe-db": "node scripts/migrateSafeDatabase.js",
     "migrate:safe-db:check": "node scripts/migrateSafeDatabase.js --check"
   },

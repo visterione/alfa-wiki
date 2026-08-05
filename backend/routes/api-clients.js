@@ -32,6 +32,8 @@ const { hashKey, KEY_PREFIX_LENGTH } = require('../middleware/publicApi');
 const formRegistry = require('../services/public/formRegistry');
 const submissionService = require('../services/public/submissionService');
 
+const BOOKING_DURATION_SCOPE = 'booking:duration:read';
+
 const router = express.Router();
 
 function requireAdmin(req, res, next) {
@@ -51,7 +53,10 @@ function generateKey() {
  * командной строки, и опечатка молча создавала ключ, который потом отдавал 403.
  */
 function sanitizeScopes(scopes) {
-  const known = new Set(formRegistry.listFormTypes().map(t => formRegistry.scopeFor(t)));
+  const known = new Set([
+    ...formRegistry.listFormTypes().map(t => formRegistry.scopeFor(t)),
+    BOOKING_DURATION_SCOPE
+  ]);
   return [...new Set((scopes || []).filter(s => known.has(s)))];
 }
 
@@ -74,7 +79,14 @@ router.get('/meta', authenticate, requireAdmin, async (req, res) => {
     });
 
     res.json({
-      forms: formRegistry.listForms().map(f => ({ ...f, scope: formRegistry.scopeFor(f.formType) })),
+      forms: [
+        ...formRegistry.listForms().map(f => ({ ...f, scope: formRegistry.scopeFor(f.formType) })),
+        {
+          formType: 'booking-duration',
+          title: 'Чтение длительности онлайн-записи',
+          scope: BOOKING_DURATION_SCOPE
+        }
+      ],
       // Реестр подписок: конфигурация размазана по чатам, и без общего списка
       // никто не сможет ответить, куда уходят заявки, не обойдя все чаты руками
       subscriptions: subscriptions.map(s => ({

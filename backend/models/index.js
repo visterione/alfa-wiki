@@ -1261,6 +1261,28 @@ const DoctorCard = sequelize.define('DoctorCard', {
   ]
 });
 
+// === DOCTOR SERVICE DURATION MODEL ===
+// Фактическая длительность онлайн-приёма зависит не только от услуги, но и от
+// врача и клиники. Храним её отдельно от презентационных настроек карточки
+// (псевдоним, справка, порядок), потому что у врача может быть несколько карточек.
+const DoctorServiceDuration = sequelize.define('DoctorServiceDuration', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId: { type: DataTypes.STRING(50), allowNull: false, comment: 'ID врача/сотрудника в МИС' },
+  clinicId: { type: DataTypes.STRING(50), allowNull: false, comment: 'Актуальный clinic_id из МИС' },
+  serviceId: { type: DataTypes.STRING(50), allowNull: false, comment: 'service_id из МИС' },
+  durationMinutes: { type: DataTypes.INTEGER, allowNull: false, validate: { min: 1 }, comment: 'Фактическая длительность в минутах' },
+  sourceCardId: { type: DataTypes.UUID, allowNull: true, comment: 'Карточка, из которой значение редактировали/мигрировали' },
+  updatedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'doctor_service_durations',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['misUserId', 'clinicId', 'serviceId'] },
+    { fields: ['misUserId'] },
+    { fields: ['serviceId'] }
+  ]
+});
+
 // === COURSE MODEL ===
 const Course = sequelize.define('Course', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -3575,6 +3597,7 @@ module.exports = {
   VehicleFile,
   MapMarker,
   DoctorCard,
+  DoctorServiceDuration,
   Course,
   Lesson,
   TestQuestion,

@@ -42,7 +42,7 @@ async function run() {
 
   if (existing) {
     const before = existing.content ? existing.content.length : 0;
-    await existing.update({ content });
+    await existing.update({ content, contentType: 'html' });
     console.log(`✅ Обновлена «${existing.title}»: было ${Math.round(before / 1024)} КБ, стало ${Math.round(content.length / 1024)} КБ`);
     return;
   }
@@ -51,7 +51,7 @@ async function run() {
     throw new Error('страницы с таким адресом нет — укажите третьим аргументом её название');
   }
 
-  const page = await Page.create({ slug: slugArg, title: titleArg, content });
+  const page = await Page.create({ slug: slugArg, title: titleArg, content, contentType: 'html' });
   console.log(`✅ Заведена страница «${page.title}» по адресу /${page.slug}`);
   console.log('   Права доступа и папку задайте в интерфейсе вики.');
 }

@@ -13,6 +13,7 @@ const router = express.Router();
 
 const { auditLog, rateLimitByIp, limitBodySize } = require('../../middleware/publicApi');
 const formsRoutes = require('./v1/forms');
+const bookingRoutes = require('./v1/booking');
 
 // Порядок важен: сначала лог и грубые лимиты, потом разбор тела, потом маршруты
 router.use(auditLog());
@@ -41,6 +42,7 @@ router.get('/v1/ping', (req, res) => {
 });
 
 router.use('/v1/forms', formsRoutes);
+router.use('/v1/booking', bookingRoutes);
 
 router.use((req, res) => {
   res.locals.errorCode = 'not_found';

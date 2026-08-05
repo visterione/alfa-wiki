@@ -4,8 +4,9 @@ const { Op } = require('sequelize');
 const { diffLines } = require('diff');
 const axios = require('axios');
 const qs = require('qs');
-const { DoctorCard, SearchIndex, User, Role, Page, PageHistory } = require('../models');
+const { DoctorCard, DoctorServiceDuration, SearchIndex, User, Role, Page, PageHistory, sequelize } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { resolveBookingDuration } = require('../services/bookingDurationService');
 
 const router = express.Router();
 
@@ -23,6 +24,11 @@ const hasDoctorRole = (user) => {
 };
 
 const cardMisUserId = (card) => String(card?.metadata?.misUserId || '');
+const normalizeOptionalUrl = (value) => {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  return normalized || null;
+};
 
 async function resolvePersonalDoctorCard(user) {
   const cards = await DoctorCard.findAll({ order: [['sortOrder', 'ASC']] });
@@ -335,6 +341,98 @@ router.get('/page/:pageSlug', authenticate, async (req, res) => {
   }
 });
 
+// Структурированные длительности для редактора карточки и внутреннего стенда.
+router.get('/service-durations', authenticate, async (req, res) => {
+  try {
+    const doctorId = String(req.query.doctor_id || '').trim();
+    if (!doctorId) return res.status(400).json({ error: 'doctor_id обязателен' });
+    const where = { misUserId: doctorId };
+    const serviceIds = String(req.query.service_ids || '')
+      .split(',').map(value => value.trim()).filter(Boolean);
+    if (serviceIds.length) where.serviceId = { [Op.in]: serviceIds };
+    const rows = await DoctorServiceDuration.findAll({
+      where,
+      order: [['serviceId', 'ASC'], ['clinicId', 'ASC']]
+    });
+    res.json(rows);
+  } catch (error) {
+    console.error('Get doctor service durations error:', error);
+    res.status(500).json({ error: 'Failed to fetch service durations' });
+  }
+});
+
+router.get('/booking-duration', authenticate, async (req, res) => {
+  try {
+    const result = await resolveBookingDuration(req.query);
+    res.json({
+      success: true,
+      doctor_id: result.doctorId,
+      clinic_id: result.clinicId,
+      service_id: result.serviceId,
+      duration: result.duration,
+      default_duration: result.defaultDuration,
+      source: result.source,
+      updated_at: result.updatedAt
+    });
+  } catch (error) {
+    const status = error.status || 500;
+    if (status >= 500) console.error('Resolve internal booking duration error:', error);
+    res.status(status).json({ error: error.code || 'internal_error', message: error.message });
+  }
+});
+
+// Пакетное сохранение затрагивает только явно переданные тройки. Пустая
+// длительность удаляет override и тем самым возвращает fallback getServices.
+router.put('/service-durations', authenticate, canEditDoctorCards, async (req, res) => {
+  const doctorId = String(req.body.doctor_id || '').trim();
+  const sourceCardId = req.body.source_card_id || null;
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+  if (!doctorId) return res.status(400).json({ error: 'doctor_id обязателен' });
+  if (items.length > 5000) return res.status(400).json({ error: 'Слишком много значений в одном запросе' });
+
+  const normalized = [];
+  for (const item of items) {
+    const clinicId = String(item.clinic_id || '').trim();
+    const serviceId = String(item.service_id || '').trim();
+    const raw = item.duration;
+    if (!clinicId || !serviceId) {
+      return res.status(400).json({ error: 'У каждого значения обязательны clinic_id и service_id' });
+    }
+    if (raw === '' || raw == null) {
+      normalized.push({ clinicId, serviceId, duration: null });
+      continue;
+    }
+    const duration = Number(raw);
+    if (!Number.isSafeInteger(duration) || duration <= 0) {
+      return res.status(400).json({ error: `Некорректная длительность для услуги ${serviceId}, клиники ${clinicId}` });
+    }
+    normalized.push({ clinicId, serviceId, duration });
+  }
+
+  try {
+    await sequelize.transaction(async transaction => {
+      for (const item of normalized) {
+        const where = { misUserId: doctorId, clinicId: item.clinicId, serviceId: item.serviceId };
+        if (item.duration == null) {
+          await DoctorServiceDuration.destroy({ where, transaction });
+        } else {
+          await DoctorServiceDuration.upsert({
+            ...where,
+            durationMinutes: item.duration,
+            sourceCardId,
+            updatedBy: req.user.id
+          }, { transaction });
+        }
+      }
+    });
+    const rows = await DoctorServiceDuration.findAll({ where: { misUserId: doctorId } });
+    res.json(rows);
+  } catch (error) {
+    console.error('Save doctor service durations error:', error);
+    res.status(500).json({ error: 'Failed to save service durations' });
+  }
+});
+
 // Получить список уникальных специальностей для страницы
 router.get('/page/:pageSlug/specialties', authenticate, async (req, res) => {
   try {
@@ -462,7 +560,7 @@ router.post('/', authenticate, canEditDoctorCards, [
       fullName,
       specialty: specialty || (professionTitles && professionTitles[0]) || '',
       experience,
-      profileUrl,
+      profileUrl: normalizeOptionalUrl(profileUrl),
       photo,
       description: description || notes || '',
       phones: phones || [],
@@ -529,7 +627,7 @@ router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
     if (fullName) updateData.fullName = fullName;
     if (specialty !== undefined) updateData.specialty = specialty;
     if (experience !== undefined) updateData.experience = experience;
-    if (profileUrl !== undefined) updateData.profileUrl = profileUrl;
+    if (profileUrl !== undefined) updateData.profileUrl = normalizeOptionalUrl(profileUrl);
     if (photo !== undefined) updateData.photo = photo;
     if (description !== undefined) updateData.description = description;
     if (notes !== undefined) updateData.description = notes;
