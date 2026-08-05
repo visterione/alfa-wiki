@@ -8,6 +8,7 @@ const axios = require('axios');
 const qs = require('qs');
 const { authenticate } = require('../middleware/auth');
 const { syncAndAnnotate } = require('../services/rbEmployeeRegistry');
+const { resolveBookingDuration, addMinutesToMisDateTime } = require('../services/bookingDurationService');
 
 const router = express.Router();
 
@@ -472,6 +473,106 @@ router.post('/search-mis', authenticate, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 // ВИЗИТЫ (APPOINTMENTS)
 // ═══════════════════════════════════════════════════════════════
+
+// Реальное создание визита из внутреннего тестового стенда. time_end от браузера
+// не принимаем: повторно получаем фактическую длительность и считаем его здесь.
+router.post('/create-appointment', authenticate, async (req, res) => {
+  try {
+    if (!req.user.isAdmin && !req.user.canEditDoctorCards) {
+      return res.status(403).json({
+        success: false,
+        error: 'forbidden',
+        message: 'Создавать тестовые визиты могут администраторы и редакторы карточек врачей'
+      });
+    }
+    const doctorId = String(req.body.doctor_id || '').trim();
+    const clinicId = String(req.body.clinic_id || '').trim();
+    const serviceId = String(req.body.service_id || '').trim();
+    const timeStart = String(req.body.time_start || '').trim();
+    const patientId = String(req.body.patient_id || '').trim();
+    const mobile = String(req.body.mobile || '').trim();
+
+    if (!doctorId || !clinicId || !serviceId || !timeStart) {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_parameters',
+        message: 'doctor_id, clinic_id, service_id и time_start обязательны'
+      });
+    }
+    if (!patientId && !mobile && !(req.body.first_name && req.body.last_name && req.body.third_name && req.body.birth_date)) {
+      return res.status(400).json({
+        success: false,
+        error: 'patient_not_identified',
+        message: 'Укажите patient_id, мобильный телефон или полностью ФИО и дату рождения'
+      });
+    }
+
+    const resolved = await resolveBookingDuration({
+      doctor_id: doctorId,
+      clinic_id: clinicId,
+      service_id: serviceId
+    });
+    const timeEnd = addMinutesToMisDateTime(timeStart, resolved.duration);
+    const testComment = '[Тест онлайн-записи Alfa Wiki]';
+    const userComment = String(req.body.comment || '').trim();
+    const params = {
+      doctor_id: doctorId,
+      clinic_id: clinicId,
+      time_start: timeStart,
+      time_end: timeEnd,
+      check_intersection: 1,
+      services: JSON.stringify([{ service_id: serviceId, count: 1 }]),
+      comment: userComment ? `${testComment} ${userComment}` : testComment
+    };
+
+    if (patientId) {
+      params.patient_id = patientId;
+    } else {
+      if (req.body.first_name) params.first_name = String(req.body.first_name).trim();
+      if (req.body.last_name) params.last_name = String(req.body.last_name).trim();
+      if (req.body.third_name) params.third_name = String(req.body.third_name).trim();
+      if (req.body.birth_date) params.birth_date = String(req.body.birth_date).trim();
+      if (mobile) params.mobile = mobile;
+      if ([1, 2, '1', '2'].includes(req.body.gender)) params.gender = Number(req.body.gender);
+      if (req.body.email) params.email = String(req.body.email).trim();
+    }
+    if (req.body.room) params.room = String(req.body.room).trim();
+    if (req.body.confirmation_code) params.confirmation_code = String(req.body.confirmation_code).trim();
+    if (req.body.no_sms) params.no_sms = 1;
+    if (req.body.no_email) params.no_email = 1;
+
+    const data = await misRequest('createAppointment', params);
+    if (data && typeof data === 'object' && 'error' in data && Number(data.error) !== 0) {
+      const message = data.data?.desc || data.desc || (typeof data.error === 'string' ? data.error : 'МИС отклонила создание визита');
+      return res.status(422).json({ success: false, error: 'mis_rejected', message });
+    }
+
+    const rawAppointment = data && typeof data === 'object' && 'data' in data ? data.data : data;
+    const appointmentId = rawAppointment && typeof rawAppointment === 'object'
+      ? (rawAppointment.appointment_id ?? rawAppointment.id ?? rawAppointment)
+      : rawAppointment;
+    console.log('✅ Тестовый визит создан:', appointmentId);
+    res.status(201).json({
+      success: true,
+      appointment_id: appointmentId,
+      doctor_id: doctorId,
+      clinic_id: clinicId,
+      service_id: serviceId,
+      time_start: timeStart,
+      time_end: timeEnd,
+      duration: resolved.duration,
+      duration_source: resolved.source
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('❌ Ошибка /mis/create-appointment:', err.code || err.message);
+    res.status(status).json({
+      success: false,
+      error: err.code || 'create_appointment_failed',
+      message: status >= 500 ? 'Не удалось создать визит в МИС' : err.message
+    });
+  }
+});
 
 // getAppointments v2 — список визитов пациентов
 // Фронтенд вызывает порциями (по неделям), поэтому date_from/date_to обязательны

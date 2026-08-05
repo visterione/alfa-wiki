@@ -42,6 +42,36 @@ function normalizeRequest(input) {
   return { doctorId, clinicId, serviceId };
 }
 
+function addMinutesToMisDateTime(value, minutes) {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})$/.exec(String(value || '').trim());
+  const duration = Number(minutes);
+  if (!match || !Number.isSafeInteger(duration) || duration <= 0) {
+    const error = new Error('Некорректные дата начала или длительность');
+    error.code = 'invalid_appointment_time';
+    error.status = 400;
+    throw error;
+  }
+  const date = new Date(Date.UTC(
+    Number(match[3]), Number(match[2]) - 1, Number(match[1]),
+    Number(match[4]), Number(match[5])
+  ));
+  if (
+    date.getUTCFullYear() !== Number(match[3]) ||
+    date.getUTCMonth() !== Number(match[2]) - 1 ||
+    date.getUTCDate() !== Number(match[1]) ||
+    date.getUTCHours() !== Number(match[4]) ||
+    date.getUTCMinutes() !== Number(match[5])
+  ) {
+    const error = new Error('Некорректная дата начала визита');
+    error.code = 'invalid_appointment_time';
+    error.status = 400;
+    throw error;
+  }
+  date.setUTCMinutes(date.getUTCMinutes() + duration);
+  const pad = number => String(number).padStart(2, '0');
+  return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}.${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+}
+
 function extractServices(response) {
   const data = response && typeof response === 'object' && 'data' in response ? response.data : response;
   if (data == null) return [];
@@ -119,6 +149,7 @@ module.exports = {
   normalizeMisId,
   parseDurationMinutes,
   normalizeRequest,
+  addMinutesToMisDateTime,
   getMisDuration,
   resolveBookingDuration,
   clearFallbackCache

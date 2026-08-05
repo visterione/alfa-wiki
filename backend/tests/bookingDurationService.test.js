@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const {
   parseDurationMinutes,
   normalizeRequest,
+  addMinutesToMisDateTime,
   resolveBookingDuration,
   clearFallbackCache
 } = require('../services/bookingDurationService');
@@ -15,6 +16,15 @@ test('parseDurationMinutes accepts legacy numeric minute formats', () => {
   assert.equal(parseDurationMinutes('20 мин'), 20);
   assert.equal(parseDurationMinutes('20 минут'), 20);
   assert.equal(parseDurationMinutes('20мин.'), 20);
+});
+
+test('addMinutesToMisDateTime calculates appointment end without timezone shifts', () => {
+  assert.equal(addMinutesToMisDateTime('05.08.2026 13:40', 30), '05.08.2026 14:10');
+  assert.equal(addMinutesToMisDateTime('31.12.2026 23:40', 30), '01.01.2027 00:10');
+  assert.throws(
+    () => addMinutesToMisDateTime('31.02.2026 10:00', 30),
+    error => error.code === 'invalid_appointment_time'
+  );
 });
 
 test('parseDurationMinutes rejects ambiguous and invalid values', () => {
