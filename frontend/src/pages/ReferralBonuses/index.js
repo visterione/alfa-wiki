@@ -448,24 +448,56 @@ export default function ReferralBonusesPage() {
   // selections for disambiguation modal: { [caseIdx]: clinicId }
   const [disambigSelections, setDisambigSelections] = useState({});
 
-  // ── Global reset all unlocked items ──
+  // ── Selective reset of unlocked items ──
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetClinicIds, setResetClinicIds] = useState(() => new Set());
+  const [resetPreview, setResetPreview] = useState(null);
+  const [resetPreviewLoading, setResetPreviewLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const handleGlobalReset = useCallback(() => {
+    setResetClinicIds(new Set(filterClinic ? [String(filterClinic)] : []));
+    setResetPreview(null);
     setShowResetConfirm(true);
+  }, [filterClinic]);
+
+  const toggleResetClinic = useCallback((clinicId) => {
+    setResetClinicIds(prev => {
+      const next = new Set(prev);
+      if (next.has(clinicId)) next.delete(clinicId); else next.add(clinicId);
+      return next;
+    });
+    setResetPreview(null);
   }, []);
 
-  const handleConfirmReset = useCallback(async () => {
-    setShowResetConfirm(false);
+  const handleResetPreview = useCallback(async () => {
+    if (!resetClinicIds.size) return;
+    setResetPreviewLoading(true);
     try {
-      await execSettingsApi.resetAll();
+      const response = await execSettingsApi.getResetPreview([...resetClinicIds]);
+      setResetPreview(response.data);
+    } catch {
+      toast.error('Не удалось сформировать предварительный просмотр');
+    } finally {
+      setResetPreviewLoading(false);
+    }
+  }, [resetClinicIds]);
+
+  const handleConfirmReset = useCallback(async () => {
+    if (!resetPreview || resetting) return;
+    setResetting(true);
+    try {
+      const response = await execSettingsApi.resetAll([...resetClinicIds]);
       clearExecCache();
       setSettingsResetKey(k => k + 1);
-      toast.success('Незафиксированные записи сброшены у всех врачей');
+      setShowResetConfirm(false);
+      toast.success(`Сброс выполнен: ${response.data?.count || 0} сотрудников`);
     } catch {
-      toast.error('Ошибка глобального сброса');
+      toast.error('Ошибка выборочного сброса');
+    } finally {
+      setResetting(false);
     }
-  }, []);
+  }, [resetClinicIds, resetPreview, resetting]);
 
   const matchDoctorByName = useCallback((excelName) => {
     const normalized = rbNormalizeName(excelName);
@@ -1005,33 +1037,119 @@ export default function ReferralBonusesPage() {
         })}
       </div>
 
-      {/* Global reset confirm modal */}
+      {/* Selective reset: clinic selection and server-side preview */}
       {showResetConfirm && (
-        <div className="rb-modal-overlay" onClick={() => setShowResetConfirm(false)}>
-          <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <div className="rb-modal-overlay" onClick={() => !resetting && setShowResetConfirm(false)}>
+          <div className="rb-modal rb-reset-modal" onClick={e => e.stopPropagation()}>
             <div className="rb-modal-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
                   <polyline points="1 4 1 10 7 10"/>
                   <path d="M3.51 15a9 9 0 1 0 .49-4.02"/>
                 </svg>
-                Сбросить всех врачей
+                Выборочный сброс данных
               </h3>
-              <button className="rb-modal-close" onClick={() => setShowResetConfirm(false)}>×</button>
+              <button className="rb-modal-close" disabled={resetting} onClick={() => setShowResetConfirm(false)}>×</button>
             </div>
-            <div className="rb-modal-body">
-              <p style={{ fontSize: 14, color: 'var(--rb-text)', lineHeight: 1.6, margin: '0 0 10px' }}>
-                Будут удалены все <strong>незафиксированные</strong> записи (расходники, штрафы, материалы, дополнительно) у всех врачей.
-              </p>
+            <div className="rb-modal-body rb-reset-modal-body">
+              <section className="rb-reset-section">
+                <div className="rb-reset-section-title">1. Выберите клиники</div>
+                <p className="rb-reset-hint">Данные остальных клиник затронуты не будут. Записи с замочком сохранятся.</p>
+                <div className="rb-reset-selection-actions">
+                  <button type="button" onClick={() => {
+                    setResetClinicIds(new Set([
+                      ...clinics.filter(clinic => !HIDDEN_CLINIC_IDS.includes(String(clinic.id))).map(clinic => String(clinic.id)),
+                      'global',
+                    ]));
+                    setResetPreview(null);
+                  }}>Выбрать все</button>
+                  <button type="button" onClick={() => { setResetClinicIds(new Set()); setResetPreview(null); }}>Очистить</button>
+                </div>
+                <div className="rb-reset-clinics">
+                  {[...clinics
+                    .filter(clinic => !HIDDEN_CLINIC_IDS.includes(String(clinic.id)))
+                    .map(clinic => ({ id: String(clinic.id), name: clinic.name })),
+                    { id: 'global', name: 'Общие настройки' }]
+                    .map(clinic => (
+                      <label key={clinic.id} className={'rb-reset-clinic' + (resetClinicIds.has(clinic.id) ? ' selected' : '')}>
+                        <input
+                          type="checkbox"
+                          checked={resetClinicIds.has(clinic.id)}
+                          onChange={() => toggleResetClinic(clinic.id)}
+                        />
+                        <span>{clinic.name}</span>
+                      </label>
+                    ))}
+                </div>
+              </section>
+
+              <section className="rb-reset-section">
+                <div className="rb-reset-section-title">2. Предварительный просмотр</div>
+                {!resetPreview && !resetPreviewLoading && (
+                  <div className="rb-reset-empty">Выберите клиники и нажмите «Показать данные».</div>
+                )}
+                {resetPreviewLoading && <div className="rb-reset-empty"><span className="rb-spinner" /> Формируем список…</div>}
+                {resetPreview && resetPreview.employeeCount === 0 && (
+                  <div className="rb-reset-empty rb-reset-empty-success">Незафиксированных данных для удаления нет.</div>
+                )}
+                {resetPreview && resetPreview.employeeCount > 0 && (
+                  <>
+                    <div className="rb-reset-summary">
+                      Сотрудников: <strong>{resetPreview.employeeCount}</strong>
+                      <span>Записей и значений: <strong>{resetPreview.changeCount}</strong></span>
+                    </div>
+                    <div className="rb-reset-employees">
+                      {resetPreview.employees.map(employee => (
+                        <details key={employee.misUserId} className="rb-reset-employee">
+                          <summary>
+                            <span>{employee.doctorName}</span>
+                            <span className="rb-reset-employee-count">
+                              {employee.clinics.reduce((sum, clinic) => sum + clinic.changes.reduce((n, change) => n + change.count, 0), 0)}
+                            </span>
+                          </summary>
+                          <div className="rb-reset-employee-body">
+                            {employee.clinics.map(clinic => (
+                              <div key={clinic.clinicId} className="rb-reset-preview-clinic">
+                                <strong>{clinic.clinicId === 'global' ? 'Общие настройки' : getClinicName(clinic.clinicId)}</strong>
+                                {clinic.changes.map(change => (
+                                  <div key={change.key} className="rb-reset-change">
+                                    <span>{change.label}</span>
+                                    <span>
+                                      {change.items?.length ? change.items.join(', ') : String(change.value)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </section>
             </div>
             <div className="rb-modal-footer">
-              <button className="rb-btn rb-btn-secondary" onClick={() => setShowResetConfirm(false)}>Отмена</button>
+              <button className="rb-btn rb-btn-secondary" disabled={resetting} onClick={() => setShowResetConfirm(false)}>Отмена</button>
+              {!resetPreview && (
+                <button
+                  className="rb-btn"
+                  disabled={!resetClinicIds.size || resetPreviewLoading}
+                  onClick={handleResetPreview}
+                >
+                  {resetPreviewLoading ? 'Загрузка…' : 'Показать данные'}
+                </button>
+              )}
+              {resetPreview && (
+                <button className="rb-btn rb-btn-secondary" disabled={resetting} onClick={handleResetPreview}>Обновить</button>
+              )}
               <button
                 className="rb-btn"
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                disabled={!resetPreview || resetPreview.employeeCount === 0 || resetting}
+                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: resetPreview?.employeeCount && !resetting ? 'pointer' : 'not-allowed', fontSize: 13, opacity: resetPreview?.employeeCount && !resetting ? 1 : 0.45 }}
                 onClick={handleConfirmReset}
               >
-                Сбросить
+                {resetting ? 'Сбрасываем…' : 'Сбросить выбранное'}
               </button>
             </div>
           </div>

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { User, Lock, Camera, Save, Eye, EyeOff, Phone, Briefcase, FileText, Building2, Calendar, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { User, Lock, Camera, Save, Eye, EyeOff, Phone, Briefcase, FileText, Building2, Calendar, Monitor, Smartphone, LogOut, Stethoscope } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { auth, media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './Profile.css';
+import DoctorProfileTab from './DoctorProfileTab';
 
 function getPasswordStrength(password) {
   if (!password) return null;
@@ -189,6 +190,8 @@ export default function Profile() {
     : null;
 
   const medCenters = user?.medCenters || [];
+  const userRoleNames = [user?.role, ...(user?.roles || [])].filter(Boolean).map(role => role.name);
+  const canViewDoctorTab = Boolean(user?.isAdmin || userRoleNames.includes('Врач'));
 
   return (
     <div className="profile-page">
@@ -255,9 +258,20 @@ export default function Profile() {
           <Lock size={16} />
           Безопасность
         </button>
+        {canViewDoctorTab && (
+          <button
+            className={`profile-tab ${activeTab === 'doctor' ? 'active' : ''}`}
+            onClick={() => setActiveTab('doctor')}
+          >
+            <Stethoscope size={16} />
+            Врач
+          </button>
+        )}
       </div>
 
       <div className="profile-content">
+
+        {activeTab === 'doctor' && <DoctorProfileTab isAdmin={Boolean(user?.isAdmin)} />}
 
         {/* Таб: Профиль */}
         {activeTab === 'profile' && (

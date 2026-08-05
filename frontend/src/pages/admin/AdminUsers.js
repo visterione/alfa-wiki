@@ -198,6 +198,7 @@ export default function AdminUsers() {
     phone: '',
     position: '',
     specialty: '',
+    misUserId: '',
     gender: '',
     birthDate: '',
     bio: '',
@@ -303,6 +304,7 @@ export default function AdminUsers() {
       }
       setForm(prev => ({
         ...prev,
+        misUserId: String(emp.id || ''),
         displayName: emp.name || '',
         email: emp.email || '',
         avatar,
@@ -480,6 +482,7 @@ export default function AdminUsers() {
         phone: user.phone || '',
         position: user.position || '',
         specialty: user.specialty || '',
+        misUserId: user.misUserId || '',
         gender: user.gender || '',
         birthDate: user.birthDate || '',
         bio: user.bio || '',
@@ -523,6 +526,7 @@ export default function AdminUsers() {
         phone: '',
         position: '',
         specialty: '',
+        misUserId: '',
         gender: '',
         birthDate: '',
         bio: '',
@@ -1248,6 +1252,20 @@ export default function AdminUsers() {
                       placeholder="Терапевт, хирург..."
                       style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
                     />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">ID сотрудника в МИС</label>
+                    <input
+                      className="input"
+                      value={form.misUserId}
+                      onChange={e => setForm({...form, misUserId: e.target.value.trim()})}
+                      placeholder="Заполняется при выборе сотрудника Renovatio"
+                      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                    />
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      Используется для персональной карточки врача
+                    </small>
                   </div>
 
 

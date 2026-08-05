@@ -3,6 +3,7 @@ const { ExecutorSettings, RbScheduleCategory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity, diffExecSettings } = require('../services/rbLogger');
 const { AUP_CLINIC_ID, canSeeAup, settingsHasAup, stripAupSettings, mergeAupBack } = require('../services/aupFilter');
+const { buildResetPreview, resetClinicData } = require('../services/executorSettingsReset');
 
 const router = express.Router();
 
@@ -150,36 +151,45 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// POST /api/executor-settings/reset-all
+function selectedResetClinics(req) {
+  const raw = req.method === 'GET' ? String(req.query.clinicIds || '').split(',') : req.body?.clinicIds;
+  if (!Array.isArray(raw)) return [];
+  const clinicIds = [...new Set(raw.map(String).map(id => id.trim()).filter(Boolean))];
+  return canSeeAup(req.user) ? clinicIds : clinicIds.filter(id => id !== AUP_CLINIC_ID);
+}
+
+// GET /api/executor-settings/reset-preview?clinicIds=2,4
+router.get('/reset-preview', authenticate, async (req, res) => {
+  try {
+    const clinicIds = selectedResetClinics(req);
+    if (!clinicIds.length) return res.status(400).json({ error: 'Выберите хотя бы одну клинику' });
+    const all = await ExecutorSettings.findAll({ attributes: ['misUserId', 'doctorName', 'settings'] });
+    res.json(buildResetPreview(all, clinicIds));
+  } catch (err) {
+    console.error('Reset preview executor settings error:', err);
+    res.status(500).json({ error: 'Ошибка предварительного просмотра сброса' });
+  }
+});
+
+// POST /api/executor-settings/reset-all — body: { clinicIds: string[] }
 router.post('/reset-all', authenticate, async (req, res) => {
   try {
+    const clinicIds = selectedResetClinics(req);
+    if (!clinicIds.length) return res.status(400).json({ error: 'Выберите хотя бы одну клинику' });
     const all = await ExecutorSettings.findAll();
-    const resetSection = (arr) => (arr || []).filter(it => it.locked === true);
-    const seeAup = canSeeAup(req.user);
+    const preview = buildResetPreview(all, clinicIds);
+    const selected = new Set(clinicIds);
+    const affectedIds = new Set(preview.employees.map(employee => employee.misUserId));
 
     await Promise.all(all.map(async record => {
+      if (!affectedIds.has(String(record.misUserId))) return;
       const s = record.settings || {};
       const cs = s.clinicSettings || {};
-      const newCs = {};
-      for (const [clinicId, clinicData] of Object.entries(cs)) {
-        // Без флага АУП не сбрасываем — оставляем блок как есть.
-        if (clinicId === AUP_CLINIC_ID && !seeAup) { newCs[clinicId] = clinicData; continue; }
-        const lockedCabs = clinicData.lockedCabinets || [];
-        newCs[clinicId] = {
-          ...clinicData,
-          deductions:      resetSection(clinicData.deductions),
-          materials:       resetSection(clinicData.materials),
-          serviceMaterials: resetSection(clinicData.serviceMaterials),
-          extras:          resetSection(clinicData.extras),
-          ...(clinicData.lockedAdvance      ? {} : { advance: 0 }),
-          ...(clinicData.lockedMainPayment  ? {} : { mainPayment: 0 }),
-          ...(clinicData.lockedFixedSalary  ? {} : { fixedSalary: 0 }),
-          ...(clinicData.lockedHourlyRate   ? {} : { hourlyRate: 0 }),
-          ...(clinicData.lockedHoursWorked  ? {} : { hoursWorked: 0 }),
-          ...(clinicId === 'global' ? {
-            cabinets: (clinicData.cabinets || []).filter(c => lockedCabs.includes(c)),
-          } : {}),
-        };
+      const newCs = { ...cs };
+      for (const clinicId of selected) {
+        if (Object.prototype.hasOwnProperty.call(cs, clinicId) && cs[clinicId]) {
+          newCs[clinicId] = resetClinicData(clinicId, cs[clinicId]);
+        }
       }
       await record.update({ settings: { ...s, clinicSettings: newCs } });
     }));
@@ -189,10 +199,11 @@ router.post('/reset-all', authenticate, async (req, res) => {
       tab:     'executors',
       action:  'reset',
       entityType: 'executor_settings_all',
-      summary: `Глобальный сброс незафиксированных данных по всем сотрудникам (${all.length} сотр.)`,
+      summary: `Сброс незафиксированных данных по клиникам ${clinicIds.join(', ')} (${preview.employeeCount} сотр.)`,
+      diff: { clinicIds, employeeCount: preview.employeeCount, changeCount: preview.changeCount },
     });
 
-    res.json({ ok: true, count: all.length });
+    res.json({ ok: true, count: preview.employeeCount, changeCount: preview.changeCount });
   } catch (err) {
     console.error('Reset-all executor settings error:', err);
     res.status(500).json({ error: 'Ошибка сброса настроек' });

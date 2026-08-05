@@ -4,10 +4,52 @@ const { Op } = require('sequelize');
 const { diffLines } = require('diff');
 const axios = require('axios');
 const qs = require('qs');
-const { DoctorCard, SearchIndex, User, Page, PageHistory } = require('../models');
+const { DoctorCard, SearchIndex, User, Role, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+const normalizeFullName = (value) => String(value || '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toLocaleLowerCase('ru-RU')
+  .replace(/ё/g, 'е');
+
+const hasDoctorRole = (user) => {
+  const roleNames = [user.role, ...(user.roles || [])]
+    .filter(Boolean)
+    .map(role => normalizeFullName(role.name));
+  return roleNames.includes(normalizeFullName('Врач'));
+};
+
+const cardMisUserId = (card) => String(card?.metadata?.misUserId || '');
+
+async function resolvePersonalDoctorCard(user) {
+  const cards = await DoctorCard.findAll({ order: [['sortOrder', 'ASC']] });
+
+  if (user.misUserId) {
+    const byMisId = cards.find(card => cardMisUserId(card) === String(user.misUserId));
+    if (byMisId) return { card: byMisId, matchSource: 'misUserId' };
+  }
+
+  const normalizedName = normalizeFullName(user.displayName);
+  if (!normalizedName) return { card: null, matchSource: null };
+  const matches = cards.filter(card => normalizeFullName(card.fullName) === normalizedName);
+  if (matches.length !== 1) return { card: null, matchSource: null };
+
+  const card = matches[0];
+  const misUserId = cardMisUserId(card);
+  if (misUserId && !user.misUserId) {
+    try {
+      await user.update({ misUserId });
+    } catch (error) {
+      // Возможный конфликт уникальности не должен мешать безопасному просмотру
+      // однозначно найденной по ФИО карточки.
+      console.warn('Doctor profile auto-link failed:', error.message);
+    }
+  }
+  return { card, matchSource: 'fullName' };
+}
 
 // MIS API конфигурация
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
@@ -319,6 +361,62 @@ router.get('/page/:pageSlug/stats', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get stats error:', error);
     res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// Список карточек для диагностического выбора в профиле администратора.
+router.get('/profile/options', authenticate, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user?.isAdmin) return res.status(403).json({ error: 'Доступ запрещён' });
+
+    const cards = await DoctorCard.findAll({
+      attributes: ['id', 'fullName', 'specialty', 'metadata', 'sortOrder'],
+      order: [['fullName', 'ASC']]
+    });
+    res.json(cards.map(card => ({
+      id: card.id,
+      fullName: card.fullName,
+      specialty: card.specialty,
+      misUserId: cardMisUserId(card) || null
+    })));
+  } catch (error) {
+    console.error('Get doctor profile options error:', error);
+    res.status(500).json({ error: 'Failed to fetch doctor cards' });
+  }
+});
+
+// Персональная карточка. Врач получает только свою, администратор может выбрать
+// любую карточку через cardId для проверки внешнего вида и интеграций.
+router.get('/profile/me', authenticate, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } }
+      ]
+    });
+    if (!user || (!user.isAdmin && !hasDoctorRole(user))) {
+      return res.status(403).json({ error: 'Доступ разрешён только врачам и администраторам' });
+    }
+
+    if (user.isAdmin && req.query.cardId) {
+      const card = await DoctorCard.findByPk(req.query.cardId);
+      if (!card) return res.status(404).json({ error: 'Карточка врача не найдена' });
+      return res.json({ card, matchSource: 'adminSelection' });
+    }
+
+    const result = await resolvePersonalDoctorCard(user);
+    if (!result.card) {
+      return res.status(404).json({
+        error: 'Карточка врача пока не найдена',
+        code: 'DOCTOR_CARD_NOT_LINKED'
+      });
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('Get personal doctor card error:', error);
+    res.status(500).json({ error: 'Failed to fetch doctor card' });
   }
 });
 

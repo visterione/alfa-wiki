@@ -14,6 +14,8 @@
     "sync-once": "node scripts/syncPartnerServices.js",
     "migrate:public-api": "node scripts/migratePublicApi.js",
     "migrate:message-actions": "node scripts/migrateMessageActions.js",
+    "migrate:user-mis-id": "node scripts/migrate-user-mis-id.js",
+    "migrate:user-mis-id:check": "node scripts/migrate-user-mis-id.js --check",
     "migrate:safe-db": "node scripts/migrateSafeDatabase.js",
     "migrate:safe-db:check": "node scripts/migrateSafeDatabase.js --check"
   },

@@ -240,6 +240,7 @@ export const chat = {
   search: (query) => api.get('/chat/search', { params: { q: query } }),
   getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
+  getCommands: (chatId) => api.get(`/chat/${chatId}/commands`),
   getUsers: () => api.get('/chat/users'),
   getBots: () => api.get('/chat/bots'),
   sendMessage: (chatId, content, attachments = [], replyToId = null) => {
@@ -649,7 +650,8 @@ export const performedServiceBonuses = {
 export const executorSettings = {
   get: (misUserId) => api.get('/executor-settings', { params: { misUserId } }),
   save: (data) => api.post('/executor-settings', data),
-  resetAll: () => api.post('/executor-settings/reset-all'),
+  getResetPreview: (clinicIds) => api.get('/executor-settings/reset-preview', { params: { clinicIds: clinicIds.join(',') } }),
+  resetAll: (clinicIds) => api.post('/executor-settings/reset-all', { clinicIds }),
   getAllDisabledClinics: () => api.get('/executor-settings/disabled-clinics'),
   getScheduleFill: () => api.get('/executor-settings/schedule-fill'),
   setScheduleFill: (misUserId, doctorName, status) => api.post('/executor-settings/schedule-fill', { misUserId, doctorName, status }),
@@ -682,7 +684,13 @@ export const mis = {
   getServices: (params) => api.get('/mis/services', { params }),
   searchServices: (term, clinic_id) => api.post('/mis/search-mis', { term, ...(clinic_id ? { clinic_id } : {}) }),
   getDoctorInfo: (userId) => api.post('/mis/doctor-info', { userId }),
-  getServicesByIds: (serviceIds) => api.post('/mis/services', { service_ids: serviceIds, show_all: true }),
+  getSchedulePeriods: (data) => api.post('/mis/schedule-periods', data),
+  getSchedule: (data) => api.post('/mis/schedule', data),
+  getServicesByIds: (serviceIds, clinicId) => api.post('/mis/services', {
+    service_ids: serviceIds,
+    show_all: true,
+    ...(clinicId ? { clinic_id: clinicId } : {})
+  }),
   getServiceCategories: () => api.post('/mis/get-service-categories', {}),
   getServicesByCategory: (categoryId, clinicId) => api.post('/mis/get-services', {
     category_id: categoryId,
@@ -692,6 +700,11 @@ export const mis = {
   getAllServices: (clinicId) => api.post('/mis/all-services', clinicId ? { clinic_id: clinicId } : {}),
   getAppointments: (params) => api.post('/mis/appointments', params),
   getDebtors: (params) => api.post('/mis/debtors', params || {}),
+};
+
+export const doctorCards = {
+  getMyProfile: (cardId) => api.get('/doctor-cards/profile/me', { params: cardId ? { cardId } : undefined }),
+  getProfileOptions: () => api.get('/doctor-cards/profile/options')
 };
 
 export const directories = {

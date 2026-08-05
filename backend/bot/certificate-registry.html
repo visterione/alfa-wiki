@@ -84,6 +84,7 @@ button, input, textarea, select { font-family: inherit; }
   text-transform: uppercase; letter-spacing: .05em;
 }
 .reg-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 0; min-width: 0; }
+.reg-field.row-start { grid-column-start: 1; }
 .reg-field.full { grid-column: 1 / -1; }
 .reg-field label {
   font-size: 10px; font-weight: 700; color: #94a3b8;
@@ -317,9 +318,6 @@ window.registryApp = (function() {
     { name: 'certNumber', label: '№ справки', short: '№ спр.', type: 'text' },
     { name: 'correctionNumber', label: '№ корректировки', short: '№ корр.', type: 'text' },
 
-    { name: 'sumCode1', label: 'По коду услуги 1', short: 'Код 1', group: 'Сумма расходов', type: 'number', step: '0.01' },
-    { name: 'sumCode2', label: 'По коду услуги 2', short: 'Код 2', group: 'Сумма расходов', type: 'number', step: '0.01' },
-
     { name: 'tpFio', label: 'Фамилия, имя, отчество', short: 'ФИО', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpInn', label: 'ИНН', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpBirthDate', label: 'Дата рождения', short: 'Д. р.', group: 'Налогоплательщик', type: 'date' },
@@ -334,11 +332,29 @@ window.registryApp = (function() {
     { name: 'ptDocSeries', label: 'Серия, номер', short: 'Серия, №', group: 'Пациент', type: 'text' },
     { name: 'ptDocDate', label: 'Дата выдачи', short: 'Выдан', group: 'Пациент', type: 'date' },
 
+    { name: 'sumCode1', label: 'По коду услуги 1', short: 'Код 1', group: 'Сумма расходов', type: 'number', step: '0.01' },
+    { name: 'sumCode2', label: 'По коду услуги 2', short: 'Код 2', group: 'Сумма расходов', type: 'number', step: '0.01' },
+
     { name: 'issuerName', label: 'ФИО выдавшего справку', short: 'Кто выдал', type: 'text' },
     { name: 'formDate', label: 'Дата формирования', short: 'Дата форм.', type: 'date' },
     { name: 'status', label: 'Статус', type: 'text' },
     { name: 'clinics', label: 'Клиники', type: 'text', datalist: 'clinics' }
   ];
+
+  // В форме суммы идут сразу после № корректировки и без отдельного заголовка.
+  // Основной fields сохраняет прежний порядок таблицы и Excel-выгрузки.
+  var FORM_FIELD_ORDER = [
+    'printed', 'seqNumber', 'certNumber', 'correctionNumber', 'sumCode1', 'sumCode2',
+    'tpFio', 'tpInn', 'tpBirthDate', 'tpDocCode', 'tpDocSeries', 'tpDocDate',
+    'ptFio', 'ptInn', 'ptBirthDate', 'ptDocCode', 'ptDocSeries', 'ptDocDate',
+    'issuerName', 'formDate', 'status', 'clinics'
+  ];
+  var formFields = FORM_FIELD_ORDER.map(function(name) {
+    var field = fields.find(function(f) { return f.name === name; });
+    return (name === 'sumCode1' || name === 'sumCode2')
+      ? Object.assign({}, field, { group: null })
+      : field;
+  });
 
   // Пары «поле налогоплательщика → поле пациента» для галочки «одно лицо».
   var SAME_PERSON_MAP = [
@@ -353,9 +369,9 @@ window.registryApp = (function() {
   var CLINIC_OPTIONS = {
     prestige: ['Престиж', 'Кидс', 'Линия'],
     labgroup: ['Смайл', '3К'],
-    alex: ['Алекс']
+    alex: ['Сукко']
   };
-  var ALL_CLINICS = ['Престиж', 'Кидс', 'Линия', 'Смайл', '3К', 'Алекс'];
+  var ALL_CLINICS = ['Престиж', 'Кидс', 'Линия', 'Смайл', '3К', 'Сукко'];
 
   // Приводим подпись клиники к единому виду («ПРестиж»/«КИДС» → «Престиж»/«Кидс»)
   function prettyClinic(label) {
@@ -580,7 +596,7 @@ window.registryApp = (function() {
     data = data || {};
     var html = '';
     var lastGroup = null;
-    fields.forEach(function(field) {
+    formFields.forEach(function(field) {
       if (field.type === 'checkbox') return;   // галочки живут отдельным блоком под сеткой
       if (field.group && field.group !== lastGroup) {
         html += '<div class="reg-group-title">' + escapeHtml(field.group) + '</div>';
@@ -596,7 +612,9 @@ window.registryApp = (function() {
         if (field.name === 'issuerName') value = currentIssuer;
         else if (field.name === 'formDate') value = todayDMY();
       }
-      var cls = 'reg-field';
+      // У Алекса только одна клиника: подставляем её без ручного выбора.
+      if (field.name === 'clinics' && activeOrg === 'alex') value = 'Сукко';
+      var cls = 'reg-field' + (field.name === 'issuerName' ? ' row-start' : '');
       var infoBtn = field.info ? ' <button type="button" class="reg-info-btn" onclick="registryApp.showInfo(\'' + field.info + '\')" title="Справочная информация">i</button>' : '';
       var label = '<label for="reg-' + field.name + '">' + escapeHtml(field.label) + infoBtn + '</label>';
       var input;
@@ -607,7 +625,8 @@ window.registryApp = (function() {
         inputType = 'text';
         extraAttr = ' data-mask="date" placeholder="ДД.ММ.ГГГГ" maxlength="10" autocomplete="off"';
       }
-      var listAttr = field.datalist ? ' list="reg-dl-' + field.name + '" autocomplete="off"' : '';
+      if (field.name === 'clinics' && activeOrg === 'alex') extraAttr += ' readonly';
+      var listAttr = field.datalist && activeOrg !== 'alex' ? ' list="reg-dl-' + field.name + '" autocomplete="off"' : '';
       input = '<input class="reg-input" id="reg-' + field.name + '" name="' + field.name + '" type="' + inputType + '" value="' + escapeHtml(value) + '"' + step + extraAttr + listAttr + '>';
       if (field.datalist === 'clinics') {
         input += '<datalist id="reg-dl-' + field.name + '">' +

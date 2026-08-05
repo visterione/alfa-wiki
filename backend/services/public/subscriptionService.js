@@ -20,8 +20,8 @@ const formRegistry = require('./formRegistry');
 const COMMANDS = [
   { command: 'forms',         description: 'Какие формы существуют' },
   { command: 'subscriptions', description: 'Что получает этот чат' },
-  { command: 'subscribe',     description: 'Подписать чат на форму' },
-  { command: 'unsubscribe',   description: 'Отписать чат от формы' }
+  { command: 'subscribe',     description: 'Подписать чат на форму', usage: '<тип формы>' },
+  { command: 'unsubscribe',   description: 'Отписать чат от формы', usage: '[тип формы]' }
 ];
 
 // ── Подписки ──────────────────────────────────────────────────────────────

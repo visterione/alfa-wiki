@@ -42,6 +42,11 @@ const User = sequelize.define('User', {
   phone: { type: DataTypes.STRING(50) },
   position: { type: DataTypes.STRING(100) },
   specialty: { type: DataTypes.STRING(200) },
+  misUserId: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: 'ID сотрудника в МИС для персональных разделов врача'
+  },
   gender: { type: DataTypes.STRING(10) },
   birthDate: { type: DataTypes.DATEONLY, field: 'birth_date' },
   bio: { type: DataTypes.TEXT },

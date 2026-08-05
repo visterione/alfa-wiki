@@ -34,6 +34,9 @@ export default function Dashboard() {
   // Время последнего прочтения собеседника (для статуса сообщений)
   const [otherLastReadAt, setOtherLastReadAt] = useState(null);
   const [newMessage, setNewMessage] = useState('');
+  const [chatCommands, setChatCommands] = useState([]);
+  const [commandSelection, setCommandSelection] = useState(0);
+  const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -107,6 +110,18 @@ export default function Dashboard() {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeChat?.id) {
+      setChatCommands([]);
+      return undefined;
+    }
+    chat.getCommands(activeChat.id)
+      .then(({ data }) => { if (!cancelled) setChatCommands(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setChatCommands([]); });
+    return () => { cancelled = true; };
+  }, [activeChat?.id]);
 
   // На мобильном кнопка «Сообщения» в сайдбаре должна возвращать из открытого
   // чата к списку чатов (на десктопе поведение не меняем — там список и чат видны сразу).
@@ -318,16 +333,18 @@ export default function Dashboard() {
 
     socket.on('message_reaction_updated', handleReactionUpdate);
 
-    // Сообщение удалили (своё или чужое — админом): подменяем на заглушку у всех,
-    // кто держит чат открытым
-    const handleMessageDeleted = ({ chatId, messageId }) => {
+    // Обычное удаление показывает заглушку; администратор убирает сообщение и
+    // ссылки ответов на него целиком у всех, кто держит чат открытым.
+    const handleMessageDeleted = ({ chatId, messageId, hardDeleted }) => {
       loadChats();
       if (chatId === activeChatRef.current?.id) {
-        setMessages(prev => prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, content: 'Сообщение удалено', type: 'system', attachments: [] }
-            : msg
-        ));
+        setMessages(prev => hardDeleted
+          ? prev
+              .filter(msg => msg.id !== messageId)
+              .map(msg => msg.replyTo?.id === messageId ? { ...msg, replyTo: null, replyToId: null } : msg)
+          : prev.map(msg => msg.id === messageId
+              ? { ...msg, content: 'Сообщение удалено', type: 'system', attachments: [] }
+              : msg));
       }
     };
     socket.on('message_deleted', handleMessageDeleted);
@@ -578,8 +595,14 @@ export default function Dashboard() {
       : 'Удалить чужое сообщение? Оно пропадёт у всех участников чата.';
     if (!window.confirm(question)) return;
     try {
-      await chat.deleteMessage(activeChat.id, messageId);
-      await loadMessages(activeChat.id, false); // НЕ прокручиваем после удаления
+      const { data } = await chat.deleteMessage(activeChat.id, messageId);
+      setMessages(prev => data.hardDeleted
+        ? prev
+            .filter(msg => msg.id !== messageId)
+            .map(msg => msg.replyTo?.id === messageId ? { ...msg, replyTo: null, replyToId: null } : msg)
+        : prev.map(msg => msg.id === messageId
+            ? { ...msg, content: 'Сообщение удалено', type: 'system', attachments: [] }
+            : msg));
       await loadChats();
       toast.success('Сообщение удалено');
     } catch (e) { toast.error('Ошибка удаления'); }
@@ -687,6 +710,23 @@ export default function Dashboard() {
     { d: '`',  icon: Code,          title: 'Моноширинный (Ctrl+Shift+M)' },
   ];
 
+  const commandMatch = !editingMessage && newMessage.match(/^[\\/]([^\s]*)$/);
+  const commandQuery = commandMatch?.[1]?.toLowerCase() || '';
+  const visibleCommands = commandMatch
+    ? chatCommands.filter(item => item.command.toLowerCase().includes(commandQuery)).slice(0, 8)
+    : [];
+  const showCommandMenu = isMessageInputFocused && visibleCommands.length > 0;
+
+  useEffect(() => {
+    setCommandSelection(0);
+  }, [commandQuery, activeChat?.id]);
+
+  const chooseCommand = (item) => {
+    setNewMessage(`${item.insertText}${item.usage ? ' ' : ''}`);
+    setCommandSelection(0);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
   const applyFormat = (delimiter) => {
     const input = messageInputRef.current;
     if (!input) return;
@@ -726,6 +766,24 @@ export default function Dashboard() {
   };
 
   const handleInputKeyDown = (e) => {
+    if (showCommandMenu) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const direction = e.key === 'ArrowDown' ? 1 : -1;
+        setCommandSelection(index => (index + direction + visibleCommands.length) % visibleCommands.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        chooseCommand(visibleCommands[commandSelection] || visibleCommands[0]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setNewMessage('');
+        return;
+      }
+    }
     if (!e.ctrlKey && !e.metaKey) return;
 
     const key = e.key.toLowerCase();
@@ -1728,6 +1786,24 @@ export default function Dashboard() {
                         </button>
                       )}
                       <div className="chat-input-wrapper">
+                        {showCommandMenu && (
+                          <div className="command-suggestions" role="listbox">
+                            {visibleCommands.map((item, index) => (
+                              <button
+                                key={`${item.botUsername}:${item.command}`}
+                                type="button"
+                                className={index === commandSelection ? 'active' : ''}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => chooseCommand(item)}
+                                role="option"
+                                aria-selected={index === commandSelection}
+                              >
+                                <span className="command-suggestions-name">{item.insertText}{item.usage ? ` ${item.usage}` : ''}</span>
+                                <span className="command-suggestions-description">{item.description}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {hasSelection && (
                           // onMouseDown гасим: без него нажатие уводит фокус из поля
                           // и выделение, к которому применяется разметка, пропадает
@@ -1749,7 +1825,8 @@ export default function Dashboard() {
                           onChange={(e) => { setNewMessage(e.target.value); syncSelection(e); }}
                           onKeyDown={handleInputKeyDown}
                           onSelect={syncSelection}
-                          onBlur={() => setHasSelection(false)}
+                          onFocus={() => setIsMessageInputFocused(true)}
+                          onBlur={() => { setHasSelection(false); setIsMessageInputFocused(false); }}
                         />
                         <button
                           type="button"

@@ -6,7 +6,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
-const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter, UserDevice } = require('../models');
+const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
 const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
@@ -447,6 +447,60 @@ router.get('/:chatId/messages/search', authenticate, async (req, res) => {
   }
 });
 
+// Команды активных ботов в конкретном чате. Клиент показывает их над строкой
+// ввода при наборе "/" или "\\", поэтому список не приходится дублировать во
+// фронтенде и новые команды появляются там автоматически.
+router.get('/:chatId/commands', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+    if (!membership) return res.status(403).json({ error: 'Not a member of this chat' });
+
+    const botMembers = await ChatMember.findAll({
+      where: { chatId },
+      include: [{
+        model: User,
+        as: 'user',
+        where: { isBot: true, isActive: true },
+        attributes: ['id', 'displayName', 'username'],
+        required: true
+      }]
+    });
+    if (botMembers.length === 0) return res.json([]);
+
+    const bots = await BotToken.findAll({
+      where: { userId: botMembers.map(member => member.userId), isActive: true }
+    });
+    const needMention = bots.length > 1;
+    const result = [];
+
+    for (const bot of bots) {
+      const builtIn = (bot.servesForms || []).length > 0 ? subscriptionService.COMMANDS : [];
+      const commands = [...builtIn, ...(Array.isArray(bot.commands) ? bot.commands : [])];
+      const seen = new Set();
+
+      for (const item of commands) {
+        const command = String(item?.command || '').replace(/^[/\\]+/, '').toLowerCase();
+        if (!/^[a-z0-9_]{1,32}$/.test(command) || seen.has(command)) continue;
+        seen.add(command);
+        result.push({
+          command,
+          description: String(item.description || ''),
+          usage: String(item.usage || ''),
+          botName: bot.name,
+          botUsername: bot.username,
+          insertText: `/${command}${needMention ? `@${bot.username}` : ''}`
+        });
+      }
+    }
+
+    res.json(result.sort((a, b) => a.command.localeCompare(b.command)));
+  } catch (error) {
+    console.error('Get chat commands error:', error);
+    res.status(500).json({ error: 'Failed to fetch chat commands' });
+  }
+});
+
 // Get messages for a chat
 router.get('/:chatId/messages', authenticate, async (req, res) => {
   try {
@@ -830,35 +884,48 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
       return res.status(400).json({ error: 'Cannot delete system messages' });
     }
 
-    // Вместо физического удаления, помечаем как удалённое
-    await message.update({
-      content: 'Сообщение удалено',
-      attachments: [],
-      // Кнопки без текста заявки бессмысленны и опасны: нажать «создать пациента»
-      // можно было бы, уже не видя, кого именно создаёшь
-      actions: [],
-      type: 'system'
-    });
+    const hardDeleted = !!req.user.isAdmin;
+    let responseMessage = null;
 
-    // Обновляем lastMessage в чате, если это последнее сообщение
-    const lastMessage = await Message.findOne({
-      where: { chatId },
-      order: [['createdAt', 'DESC']]
-    });
+    if (hardDeleted) {
+      // У системного администратора удаление означает полное сокрытие. Сначала
+      // отвязываем ответы и реакции, чтобы удаление не зависело от FK конкретной БД.
+      await Message.update({ replyToId: null }, { where: { replyToId: message.id } });
+      await MessageReaction.destroy({ where: { messageId: message.id } });
+      await message.destroy();
 
-    if (lastMessage && lastMessage.id === message.id) {
-      await Chat.update(
-        { lastMessage: 'Сообщение удалено' },
-        { where: { id: chatId } }
-      );
+      const previous = await Message.findOne({
+        where: { chatId },
+        order: [['createdAt', 'DESC']]
+      });
+      await Chat.update({
+        lastMessage: previous?.content || '',
+        lastMessageAt: previous?.createdAt || null
+      }, { where: { id: chatId } });
+    } else {
+      // У обычного пользователя сохраняем привычную заглушку и место сообщения
+      // в переписке.
+      await message.update({
+        content: 'Сообщение удалено',
+        attachments: [],
+        actions: [],
+        type: 'system'
+      });
+
+      const lastMessage = await Message.findOne({
+        where: { chatId },
+        order: [['createdAt', 'DESC']]
+      });
+      if (lastMessage && lastMessage.id === message.id) {
+        await Chat.update({ lastMessage: 'Сообщение удалено' }, { where: { id: chatId } });
+      }
+      responseMessage = await Message.findByPk(message.id, {
+        include: [
+          { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+          { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
+        ]
+      });
     }
-
-    const updatedMessage = await Message.findByPk(message.id, {
-      include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
-        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
-      ]
-    });
 
     // Мусор, убранный админом, должен пропасть у всех сразу, а не после
     // перезагрузки чата — иначе смысла в уборке немного
@@ -866,11 +933,11 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
     if (io) {
       const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
       members.forEach(m => {
-        io.to(`user:${m.userId}`).emit('message_deleted', { chatId, messageId: message.id });
+        io.to(`user:${m.userId}`).emit('message_deleted', { chatId, messageId: message.id, hardDeleted });
       });
     }
 
-    res.json(updatedMessage);
+    res.json({ message: responseMessage, hardDeleted });
   } catch (error) {
     console.error('Delete message error:', error);
     res.status(500).json({ error: 'Failed to delete message' });
