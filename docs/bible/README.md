@@ -10,6 +10,7 @@
 | Файл | Тема |
 |------|------|
 | [../DATABASE_CURRENT.md](../DATABASE_CURRENT.md) | Краткая актуальная карта production-БД, ER-схемы и эксплуатация |
+| [../PERFORMANCE_REPORT_2026-08-05.md](../PERFORMANCE_REPORT_2026-08-05.md) | Пострелизные метрики масштабирования и фактическое использование индексов |
 | [01-project-overview.md](01-project-overview.md) | Что это за проект, из чего состоит, как части связаны |
 | [02-tech-stack.md](02-tech-stack.md) | Стек технологий: каждая библиотека, зачем она и как работает |
 | [03-backend-architecture.md](03-backend-architecture.md) | Express, middleware, маршруты — архитектура сервера |

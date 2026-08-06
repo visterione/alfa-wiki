@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, Edit2, RefreshCw, Copy, Check, KeyRound, X, Send, AlertTriangle } from 'lucide-react';
 import { apiClients as apiClientsApi } from '../../services/api';
 import toast from 'react-hot-toast';
+import '../Admin.css';
 
 /**
  * Ключи публичного API и реестр доставки заявок.

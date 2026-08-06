@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, RefreshCw, Copy, Check, Bot, X, Eye, EyeOff } from 'lucide-react';
 import { bots as botsApi, apiClients as apiClientsApi, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
+import '../Admin.css';
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);

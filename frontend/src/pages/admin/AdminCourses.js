@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { courses, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
+import '../Admin.css';
 import './AdminCourses.css';
 
 export default function AdminCourses() {
