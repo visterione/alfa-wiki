@@ -361,6 +361,45 @@ router.get('/service-durations', authenticate, async (req, res) => {
   }
 });
 
+// Старое поле aliasDuration могло содержать не только число, но и свободный
+// текст с рабочими пометками. Структурированная таблица длительностей намеренно
+// не хранит такой текст, поэтому отдаём его отдельно для экрана аудита.
+router.get('/service-duration-notes', authenticate, async (req, res) => {
+  try {
+    const doctorId = String(req.query.doctor_id || '').trim();
+    if (!doctorId) return res.status(400).json({ error: 'doctor_id обязателен' });
+
+    const cards = await DoctorCard.findAll({
+      attributes: ['id', 'fullName', 'pageSlug', 'metadata'],
+      order: [['updatedAt', 'DESC']]
+    });
+    const notes = [];
+    const seen = new Set();
+    for (const card of cards) {
+      if (cardMisUserId(card) !== doctorId) continue;
+      const overrides = card.metadata?.serviceOverrides || {};
+      for (const [serviceId, override] of Object.entries(overrides)) {
+        const text = String(override?.aliasDuration || '').trim();
+        if (!text) continue;
+        const key = `${serviceId}\u0000${text}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        notes.push({
+          serviceId: String(serviceId),
+          text,
+          cardId: card.id,
+          cardName: card.fullName,
+          pageSlug: card.pageSlug
+        });
+      }
+    }
+    res.json(notes);
+  } catch (error) {
+    console.error('Get legacy service duration notes error:', error);
+    res.status(500).json({ error: 'Failed to fetch legacy service duration notes' });
+  }
+});
+
 router.get('/booking-duration', authenticate, async (req, res) => {
   try {
     const result = await resolveBookingDuration(req.query);
