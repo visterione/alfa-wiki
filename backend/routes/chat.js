@@ -5,8 +5,9 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { authenticate } = require('../middleware/auth');
-const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
+const { sequelize, Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
 const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
@@ -16,6 +17,7 @@ const voiceService = require('../services/voiceService');
 const presence = require('../services/presence');
 const { getUnreadCounts } = require('../services/unreadService');
 const { parsePagination } = require('../utils/pagination');
+const { serializePollMessage, applyVote } = require('../utils/chatPoll');
 
 /**
  * Бота добавили в чат или убрали — рассылаем my_chat_member и правим подписки на формы.
@@ -145,7 +147,7 @@ router.get('/search', authenticate, async (req, res) => {
           {
             model: ChatMember,
             as: 'members',
-            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
           },
           {
             model: Message,
@@ -164,6 +166,9 @@ router.get('/search', authenticate, async (req, res) => {
     });
 
     const unreadByChat = await getUnreadCounts(req.user.id, chatIdsWithMessages);
+    const searchMemberStatuses = presence.getStatuses([
+      ...new Set(chatsData.flatMap(m => (m.chat?.members || []).map(member => member.userId)))
+    ]);
 
     // Форматируем результат. Счётчики уже получены одним агрегатным запросом.
     const chatsWithUnreadCount = chatsData.map((m) => {
@@ -198,7 +203,13 @@ router.get('/search', authenticate, async (req, res) => {
               displayName: chat.messages[0].sender.displayName || chat.messages[0].sender.username,
             }
           : null,
-        members: chat.members,
+        members: chat.members.map(member => ({
+          ...member.toJSON(),
+          user: member.user ? {
+            ...member.user.toJSON(),
+            isOnline: searchMemberStatuses.get(member.userId) || false
+          } : null
+        })),
         unreadCount,
         createdBy: chat.createdBy
       };
@@ -243,7 +254,7 @@ router.get('/', authenticate, async (req, res) => {
           {
             model: ChatMember,
             as: 'members',
-            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'isBot', 'lastSeen'] }]
+            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge', 'isBot', 'lastSeen'] }]
           },
           {
             model: Message,
@@ -260,6 +271,9 @@ router.get('/', authenticate, async (req, res) => {
     });
 
     const unreadByChat = await getUnreadCounts(req.user.id, memberships.map(m => m.chatId));
+    const memberStatuses = presence.getStatuses([
+      ...new Set(memberships.flatMap(m => (m.chat?.members || []).map(member => member.userId)))
+    ]);
 
     // Получаем количество непрочитанных сообщений для каждого чата одним SQL.
     const chatsWithUnreadCount = memberships.map((m) => {
@@ -293,7 +307,13 @@ router.get('/', authenticate, async (req, res) => {
               displayName: chat.messages[0].sender.displayName || chat.messages[0].sender.username,
             }
           : null,
-        members: chat.members,
+        members: chat.members.map(member => ({
+          ...member.toJSON(),
+          user: member.user ? {
+            ...member.user.toJSON(),
+            isOnline: memberStatuses.get(member.userId) || false
+          } : null
+        })),
         unreadCount,
         createdBy: chat.createdBy,
         isPinned: m.isPinned || false,
@@ -434,7 +454,7 @@ router.get('/:chatId/messages/search', authenticate, async (req, res) => {
       include: [{
         model: User,
         as: 'sender',
-        attributes: ['id', 'username', 'displayName', 'avatar']
+        attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge']
       }],
       order: [['createdAt', 'DESC']],
       limit: 200
@@ -501,6 +521,56 @@ router.get('/:chatId/commands', authenticate, async (req, res) => {
   }
 });
 
+// Адресаты для @-упоминаний. Группы раскрываются только в участников текущего
+// чата, чтобы нельзя было уведомить или перечислить посторонних сотрудников.
+router.get('/:chatId/mention-targets', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const requester = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+    if (!requester) return res.status(403).json({ error: 'Not a member of this chat' });
+
+    const members = await ChatMember.findAll({
+      where: { chatId },
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['id', 'username', 'displayName', 'chatBadge'],
+        include: [
+          { model: Role, as: 'role', attributes: ['id', 'name'] },
+          { model: Role, as: 'roles', through: { attributes: [] }, attributes: ['id', 'name'] },
+          { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name', 'displayName'] }
+        ]
+      }]
+    });
+
+    const targets = [];
+    const grouped = new Map();
+    for (const member of members) {
+      const u = member.user;
+      if (!u) continue;
+      targets.push({ targetId: `user:${u.id}`, type: 'user', label: u.displayName || u.username, userIds: [u.id], badge: u.chatBadge });
+      const roles = [...(u.roles || []), ...(u.role ? [u.role] : [])];
+      for (const role of roles) {
+        const key = `role:${role.id}`;
+        if (!grouped.has(key)) grouped.set(key, { targetId: key, type: 'role', label: role.name, userIds: new Set() });
+        grouped.get(key).userIds.add(u.id);
+      }
+      for (const mc of u.medCenters || []) {
+        const key = `medcenter:${mc.id}`;
+        if (!grouped.has(key)) grouped.set(key, { targetId: key, type: 'medcenter', label: mc.displayName || mc.name, userIds: new Set() });
+        grouped.get(key).userIds.add(u.id);
+      }
+    }
+    for (const item of grouped.values()) {
+      targets.push({ ...item, userIds: [...item.userIds], count: item.userIds.size });
+    }
+    res.json(targets);
+  } catch (error) {
+    console.error('Get mention targets error:', error);
+    res.status(500).json({ error: 'Failed to fetch mention targets' });
+  }
+});
+
 // Get messages for a chat
 router.get('/:chatId/messages', authenticate, async (req, res) => {
   try {
@@ -524,7 +594,7 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
     const messages = await Message.findAll({
       where: whereClause,
       include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] },
         {
           model: Message,
           as: 'replyTo',
@@ -533,7 +603,7 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
         {
           model: MessageReaction,
           as: 'reactions',
-          include: [{ model: User, as: 'user', attributes: ['id', 'displayName', 'username', 'avatar'] }]
+          include: [{ model: User, as: 'user', attributes: ['id', 'displayName', 'username', 'avatar', 'chatBadge'] }]
         }
       ],
       order: [['createdAt', 'DESC']],
@@ -569,7 +639,7 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
       }
 
       messageData.reactions = Object.values(grouped);
-      return messageData;
+      return serializePollMessage(messageData, req.user.id);
     });
 
     res.json(messagesWithReactions.reverse());
@@ -654,11 +724,106 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
   }
 });
 
+// Create poll in a group chat
+router.post('/:chatId/polls', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const question = String(req.body.question || '').trim();
+    const optionTexts = Array.isArray(req.body.options)
+      ? req.body.options.map(value => String(value || '').trim()).filter(Boolean)
+      : [];
+    if (!question || question.length > 300) return res.status(400).json({ error: 'Вопрос должен содержать от 1 до 300 символов' });
+    if (optionTexts.length < 2 || optionTexts.length > 10) return res.status(400).json({ error: 'Нужно указать от 2 до 10 вариантов' });
+    if (optionTexts.some(value => value.length > 100)) return res.status(400).json({ error: 'Вариант ответа не должен превышать 100 символов' });
+
+    const [chat, membership] = await Promise.all([
+      Chat.findByPk(chatId),
+      ChatMember.findOne({ where: { chatId, userId: req.user.id } })
+    ]);
+    if (!chat || chat.type !== 'group') return res.status(400).json({ error: 'Опросы доступны только в групповых чатах' });
+    if (!membership) return res.status(403).json({ error: 'Not a member of this chat' });
+    if (membership.isReadOnly) return res.status(403).json({ error: 'You are in read-only mode in this chat' });
+
+    const poll = {
+      question,
+      options: optionTexts.map(text => ({ id: crypto.randomUUID(), text })),
+      multipleChoice: Boolean(req.body.multipleChoice),
+      anonymous: req.body.anonymous !== false,
+      votes: {},
+      closedAt: null
+    };
+    const message = await Message.create({ chatId, senderId: req.user.id, content: question, type: 'poll', poll });
+    await Promise.all([
+      Chat.update({ lastMessage: `📊 ${question}`, lastMessageAt: new Date() }, { where: { id: chatId } }),
+      ChatMember.update({ isHidden: false }, { where: { chatId, isHidden: true } })
+    ]);
+    const fullMessage = await Message.findByPk(message.id, {
+      include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
+    });
+    const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+    const io = req.app.get('io');
+    for (const member of members) {
+      const payload = serializePollMessage(fullMessage, member.userId);
+      if (io && String(member.userId) !== String(req.user.id)) {
+        io.to(`user:${member.userId}`).emit('new_message', {
+          message: payload,
+          chat: { id: chat.id, type: chat.type, displayName: chat.name, avatar: chat.avatar }
+        });
+      }
+    }
+    pushService.notifyNewMessage({ message: fullMessage, chat: { ...chat.toJSON(), members }, senderId: req.user.id }).catch(() => {});
+    res.status(201).json(serializePollMessage(fullMessage, req.user.id));
+  } catch (error) {
+    console.error('Create poll error:', error);
+    res.status(500).json({ error: 'Не удалось создать опрос' });
+  }
+});
+
+// Replace the current user's vote. Empty optionIds retracts the vote.
+router.post('/:chatId/messages/:messageId/poll-vote', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const requestedIds = Array.isArray(req.body.optionIds) ? [...new Set(req.body.optionIds.map(String))] : [];
+    const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+    if (!membership) return res.status(403).json({ error: 'Not a member of this chat' });
+
+    const updated = await sequelize.transaction(async transaction => {
+      const message = await Message.findOne({
+        where: { id: messageId, chatId, type: 'poll' },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!message?.poll) return null;
+      await message.update({ poll: applyVote(message.poll, req.user.id, requestedIds) }, { transaction });
+      return message;
+    });
+    if (!updated) return res.status(404).json({ error: 'Опрос не найден' });
+
+    const fullMessage = await Message.findByPk(updated.id, {
+      include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
+    });
+    const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+    const io = req.app.get('io');
+    if (io) {
+      for (const member of members) {
+        io.to(`user:${member.userId}`).emit('poll_updated', {
+          chatId,
+          message: serializePollMessage(fullMessage, member.userId)
+        });
+      }
+    }
+    res.json(serializePollMessage(fullMessage, req.user.id));
+  } catch (error) {
+    console.error('Vote poll error:', error);
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Не удалось сохранить голос' });
+  }
+});
+
 // Send message
 router.post('/:chatId/messages', authenticate, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { content, attachments = [], replyToId } = req.body;
+    const { content, attachments = [], replyToId, mentions: requestedMentions = [] } = req.body;
 
     const membership = await ChatMember.findOne({
       where: { chatId, userId: req.user.id }
@@ -684,12 +849,49 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       }
     }
 
+    let mentions = [];
+    if (Array.isArray(requestedMentions) && requestedMentions.length > 0) {
+      const memberRows = await ChatMember.findAll({
+        where: { chatId },
+        include: [{
+          model: User, as: 'user', attributes: ['id', 'username', 'displayName'],
+          include: [
+            { model: Role, as: 'role', attributes: ['id', 'name'] },
+            { model: Role, as: 'roles', through: { attributes: [] }, attributes: ['id', 'name'] },
+            { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name', 'displayName'] }
+          ]
+        }]
+      });
+      const allowedTargets = new Map();
+      for (const row of memberRows) {
+        const u = row.user;
+        if (!u) continue;
+        allowedTargets.set(`user:${u.id}`, { type: 'user', label: u.displayName || u.username, userIds: [String(u.id)] });
+        for (const role of [...(u.roles || []), ...(u.role ? [u.role] : [])]) {
+          const key = `role:${role.id}`;
+          if (!allowedTargets.has(key)) allowedTargets.set(key, { type: 'role', label: role.name, userIds: [] });
+          allowedTargets.get(key).userIds.push(String(u.id));
+        }
+        for (const mc of u.medCenters || []) {
+          const key = `medcenter:${mc.id}`;
+          if (!allowedTargets.has(key)) allowedTargets.set(key, { type: 'medcenter', label: mc.displayName || mc.name, userIds: [] });
+          allowedTargets.get(key).userIds.push(String(u.id));
+        }
+      }
+      mentions = requestedMentions.slice(0, 20).map(item => {
+        const targetId = String(item.targetId || '').slice(0, 120);
+        const allowed = allowedTargets.get(targetId);
+        return allowed && { targetId, ...allowed, userIds: [...new Set(allowed.userIds)].slice(0, 500) };
+      }).filter(Boolean);
+    }
+
     const message = await Message.create({
       chatId,
       senderId: req.user.id,
       content: content?.trim() || '',
       type: messageType,
       attachments: attachments,
+      mentions,
       replyToId
     });
 
@@ -716,7 +918,7 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
 
     const fullMessage = await Message.findByPk(message.id, {
       include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] },
         { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
       ]
     });
@@ -726,7 +928,7 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       include: [{
         model: ChatMember,
         as: 'members',
-        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
       }]
     });
 
@@ -805,6 +1007,9 @@ router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
     if (message.type === 'system') {
       return res.status(400).json({ error: 'Cannot edit system messages' });
     }
+    if (message.type === 'poll') {
+      return res.status(400).json({ error: 'Опрос нельзя редактировать после публикации' });
+    }
 
     if (message.forwardedFrom) {
       return res.status(400).json({ error: 'Cannot edit forwarded messages' });
@@ -839,7 +1044,7 @@ router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
 
     const updatedMessage = await Message.findByPk(message.id, {
       include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] },
         { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
       ]
     });
@@ -921,7 +1126,7 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
       }
       responseMessage = await Message.findByPk(message.id, {
         include: [
-          { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+          { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] },
           { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
         ]
       });
@@ -1027,7 +1232,7 @@ router.post('/forward', authenticate, async (req, res) => {
       include: [{
         model: ChatMember,
         as: 'members',
-        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
       }]
     });
 
@@ -1035,7 +1240,7 @@ router.post('/forward', authenticate, async (req, res) => {
     const lastCreated = createdMessages[createdMessages.length - 1];
     const fullMsg = targetChat && lastCreated
       ? await Message.findByPk(lastCreated.id, {
-          include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+          include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
         })
       : null;
 
@@ -1144,7 +1349,7 @@ router.post('/private', authenticate, async (req, res) => {
         include: [{
           model: ChatMember,
           as: 'members',
-          include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+          include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
         }]
       });
       return res.json(chat);
@@ -1164,7 +1369,7 @@ router.post('/private', authenticate, async (req, res) => {
       include: [{
         model: ChatMember,
         as: 'members',
-        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
       }]
     });
 
@@ -1221,7 +1426,7 @@ router.post('/group', authenticate, async (req, res) => {
       include: [{
         model: ChatMember,
         as: 'members',
-        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }]
       }]
     });
 
@@ -1670,9 +1875,10 @@ router.get('/users', authenticate, async (req, res) => {
       },
       include: [
         { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
         { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name', 'displayName'] }
       ],
-      attributes: ['id', 'username', 'displayName', 'avatar', 'email', 'isActive'],
+      attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge', 'position', 'email', 'isActive'],
       order: [['displayName', 'ASC']]
     });
 

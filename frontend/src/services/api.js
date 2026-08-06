@@ -241,14 +241,18 @@ export const chat = {
   getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
   getCommands: (chatId) => api.get(`/chat/${chatId}/commands`),
+  getMentionTargets: (chatId) => api.get(`/chat/${chatId}/mention-targets`),
+  createPoll: (chatId, data) => api.post(`/chat/${chatId}/polls`, data),
+  votePoll: (chatId, messageId, optionIds) => api.post(`/chat/${chatId}/messages/${messageId}/poll-vote`, { optionIds }),
   getUsers: () => api.get('/chat/users'),
   getBots: () => api.get('/chat/bots'),
-  sendMessage: (chatId, content, attachments = [], replyToId = null) => {
+  sendMessage: (chatId, content, attachments = [], replyToId = null, mentions = []) => {
     const type = attachments.length > 0
       ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
       : 'text';
     const body = { content, type, attachments };
     if (replyToId) body.replyToId = replyToId;
+    if (mentions.length) body.mentions = mentions;
     return api.post(`/chat/${chatId}/messages`, body);
   },
   markAsRead: (chatId) => api.post(`/chat/${chatId}/read`),

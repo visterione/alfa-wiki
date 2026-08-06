@@ -39,6 +39,11 @@ const User = sequelize.define('User', {
   displayName: { type: DataTypes.STRING(100) },
   email: { type: DataTypes.STRING(255) },
   avatar: { type: DataTypes.STRING(500) },
+  chatBadge: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment: 'Администраторская метка в чате: { type, value, color, label }'
+  },
   phone: { type: DataTypes.STRING(50) },
   position: { type: DataTypes.STRING(100) },
   specialty: { type: DataTypes.STRING(200) },
@@ -359,8 +364,18 @@ const Message = sequelize.define('Message', {
   senderId: { type: DataTypes.UUID, allowNull: false },
   content: { type: DataTypes.TEXT, allowNull: false },
   // 'voice' — голосовое сообщение, рисуется плеером, а не карточкой файла
-  type: { type: DataTypes.ENUM('text', 'image', 'file', 'system', 'voice'), defaultValue: 'text' },
+  type: { type: DataTypes.ENUM('text', 'image', 'file', 'system', 'voice', 'poll'), defaultValue: 'text' },
   attachments: { type: DataTypes.JSONB, defaultValue: [] },
+  mentions: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Снимок адресатов упоминания: targetId, label, userIds'
+  },
+  poll: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment: 'Опрос: вопрос, варианты, настройки и карта голосов'
+  },
   // Кнопки действий под сообщением — их ставят боты на заявки с сайта
   // (создать пациента в МИС, открыть реестр справок). Формат и смысл —
   // в migrations/ver. 6.51 message-actions.sql

@@ -5,7 +5,7 @@ import {
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
   Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic,
-  Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2
+  Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2, BarChart3, PlusCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -19,9 +19,20 @@ import MessageReactions from '../components/chat/MessageReactions';
 import ReactionMenu from '../components/chat/ReactionMenu';
 import ReactionDetailsModal from '../components/chat/ReactionDetailsModal';
 import VoiceMessage from '../components/chat/VoiceMessage';
+import UserBadge from '../components/chat/UserBadge';
+import PollMessage from '../components/chat/PollMessage';
 import EmailComposeModal from '../components/EmailComposeModal';
 import { renderRichHtml, stripFormatting, toggleMarkup } from '../utils/richText';
 import './Dashboard.css';
+
+const formatMemberCount = count => {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  const word = mod10 === 1 && mod100 !== 11 ? 'участник'
+    : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'участника'
+    : 'участников';
+  return `${count} ${word}`;
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -36,6 +47,9 @@ export default function Dashboard() {
   const [newMessage, setNewMessage] = useState('');
   const [chatCommands, setChatCommands] = useState([]);
   const [commandSelection, setCommandSelection] = useState(0);
+  const [mentionTargets, setMentionTargets] = useState([]);
+  const [selectedMentions, setSelectedMentions] = useState([]);
+  const [mentionSelection, setMentionSelection] = useState(0);
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -89,6 +103,8 @@ export default function Dashboard() {
   const [renameGroupValue, setRenameGroupValue] = useState('');
   const [quickAddRoleFilter, setQuickAddRoleFilter] = useState('');
   const [quickAddMedCenterFilter, setQuickAddMedCenterFilter] = useState('');
+  const [showPollEditor, setShowPollEditor] = useState(false);
+  const [pollDraft, setPollDraft] = useState({ question: '', options: ['', ''], multipleChoice: false, anonymous: true });
 
   // В поле ввода что-то выделено — показываем панель форматирования
   const [hasSelection, setHasSelection] = useState(false);
@@ -122,6 +138,19 @@ export default function Dashboard() {
       .catch(() => { if (!cancelled) setChatCommands([]); });
     return () => { cancelled = true; };
   }, [activeChat?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSelectedMentions([]);
+    if (!activeChat?.id || activeChat.type !== 'group') {
+      setMentionTargets([]);
+      return undefined;
+    }
+    chat.getMentionTargets(activeChat.id)
+      .then(({ data }) => { if (!cancelled) setMentionTargets(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setMentionTargets([]); });
+    return () => { cancelled = true; };
+  }, [activeChat?.id, activeChat?.type]);
 
   // На мобильном кнопка «Сообщения» в сайдбаре должна возвращать из открытого
   // чата к списку чатов (на десктопе поведение не меняем — там список и чат видны сразу).
@@ -333,6 +362,13 @@ export default function Dashboard() {
 
     socket.on('message_reaction_updated', handleReactionUpdate);
 
+    const handlePollUpdated = ({ chatId, message }) => {
+      if (chatId === activeChatRef.current?.id) {
+        setMessages(prev => prev.map(msg => msg.id === message.id ? message : msg));
+      }
+    };
+    socket.on('poll_updated', handlePollUpdated);
+
     // Обычное удаление показывает заглушку; администратор убирает сообщение и
     // ссылки ответов на него целиком у всех, кто держит чат открытым.
     const handleMessageDeleted = ({ chatId, messageId, hardDeleted }) => {
@@ -384,6 +420,7 @@ export default function Dashboard() {
     return () => {
       socket.off('new_message', handleNewMessage);
       socket.off('message_reaction_updated', handleReactionUpdate);
+      socket.off('poll_updated', handlePollUpdated);
       socket.off('message_deleted', handleMessageDeleted);
       socket.off('messages_read', handleMessagesRead);
       socket.off('group_deleted', handleGroupDeleted);
@@ -563,14 +600,38 @@ export default function Dashboard() {
     
     setSending(true);
     try {
-      await chat.sendMessage(activeChat.id, newMessage.trim() || '', attachments, replyingToMessage?.id || null);
+      const activeMentions = selectedMentions.filter(item => newMessage.includes(`@${item.label}`));
+      await chat.sendMessage(activeChat.id, newMessage.trim() || '', attachments, replyingToMessage?.id || null, activeMentions);
       setNewMessage('');
+      setSelectedMentions([]);
       setAttachments([]);
       setReplyingToMessage(null);
       await loadMessages(activeChat.id, true); // Прокручиваем после отправки
       await refreshActiveChat();
     } catch (e) { toast.error('Ошибка отправки'); }
     finally { setSending(false); }
+  };
+
+  const createPoll = async () => {
+    const options = pollDraft.options.map(value => value.trim()).filter(Boolean);
+    if (!pollDraft.question.trim() || options.length < 2) {
+      toast.error('Укажите вопрос и минимум два варианта ответа');
+      return;
+    }
+    try {
+      const { data } = await chat.createPoll(activeChat.id, { ...pollDraft, question: pollDraft.question.trim(), options });
+      setMessages(prev => [...prev, data]);
+      setShowPollEditor(false);
+      setPollDraft({ question: '', options: ['', ''], multipleChoice: false, anonymous: true });
+      await refreshActiveChat();
+    } catch (e) { toast.error(e.response?.data?.error || 'Не удалось создать опрос'); }
+  };
+
+  const votePoll = async (messageId, optionIds) => {
+    try {
+      const { data } = await chat.votePoll(activeChat.id, messageId, optionIds);
+      setMessages(prev => prev.map(msg => msg.id === messageId ? data : msg));
+    } catch (e) { toast.error(e.response?.data?.error || 'Не удалось сохранить голос'); }
   };
 
   const handleEditMessage = async () => {
@@ -716,14 +777,31 @@ export default function Dashboard() {
     ? chatCommands.filter(item => item.command.toLowerCase().includes(commandQuery)).slice(0, 8)
     : [];
   const showCommandMenu = isMessageInputFocused && visibleCommands.length > 0;
+  const mentionMatch = !editingMessage && activeChat?.type === 'group' && newMessage.match(/(?:^|\s)@([^@\n]*)$/);
+  const mentionQuery = mentionMatch?.[1]?.trim().toLowerCase() || '';
+  const visibleMentions = mentionMatch
+    ? mentionTargets.filter(item => item.label.toLowerCase().includes(mentionQuery)).slice(0, 8)
+    : [];
+  const showMentionMenu = isMessageInputFocused && !showCommandMenu && visibleMentions.length > 0;
 
   useEffect(() => {
     setCommandSelection(0);
   }, [commandQuery, activeChat?.id]);
 
+  useEffect(() => { setMentionSelection(0); }, [mentionQuery, activeChat?.id]);
+
   const chooseCommand = (item) => {
     setNewMessage(`${item.insertText}${item.usage ? ' ' : ''}`);
     setCommandSelection(0);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
+  const chooseMention = (item) => {
+    const matchIndex = newMessage.lastIndexOf('@');
+    const prefix = matchIndex >= 0 ? newMessage.slice(0, matchIndex) : newMessage;
+    setNewMessage(`${prefix}@${item.label} `);
+    setSelectedMentions(prev => prev.some(m => m.targetId === item.targetId) ? prev : [...prev, item]);
+    setMentionSelection(0);
     requestAnimationFrame(() => messageInputRef.current?.focus());
   };
 
@@ -766,6 +844,23 @@ export default function Dashboard() {
   };
 
   const handleInputKeyDown = (e) => {
+    if (showMentionMenu) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const direction = e.key === 'ArrowDown' ? 1 : -1;
+        setMentionSelection(index => (index + direction + visibleMentions.length) % visibleMentions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        chooseMention(visibleMentions[mentionSelection] || visibleMentions[0]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        return;
+      }
+    }
     if (showCommandMenu) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -1196,11 +1291,12 @@ export default function Dashboard() {
       ]
     : chats;
 
-  const uniqueRoles = [...new Set(usersList.map(u => u.role?.name).filter(Boolean))].sort();
+  const getUserRoleNames = (u) => [...new Set([u.role?.name, ...(u.roles || []).map(r => r.name)].filter(Boolean))];
+  const uniqueRoles = [...new Set(usersList.flatMap(getUserRoleNames))].sort();
   const uniqueMedCenters = [...new Set(usersList.flatMap(u => (u.medCenters || []).map(m => m.name)).filter(Boolean))].sort();
 
   const matchesQuickFilters = (u) => {
-    if (quickAddRoleFilter && u.role?.name !== quickAddRoleFilter) return false;
+    if (quickAddRoleFilter && !getUserRoleNames(u).includes(quickAddRoleFilter)) return false;
     if (quickAddMedCenterFilter && !(u.medCenters || []).some(m => m.name === quickAddMedCenterFilter)) return false;
     return true;
   };
@@ -1209,6 +1305,12 @@ export default function Dashboard() {
     const displayName = (u.displayName || u.username || '').toLowerCase();
     return displayName.includes(userSearchQuery.toLowerCase()) && matchesQuickFilters(u);
   });
+
+  const activeGroupMembers = activeChat?.type === 'group' ? (activeChat.members || []) : [];
+  const activeGroupOnlineCount = activeGroupMembers.filter(member => {
+    const liveStatus = userStatuses[member.userId];
+    return liveStatus ? Boolean(liveStatus.isOnline) : Boolean(member.user?.isOnline);
+  }).length;
 
   const getAvatarUrl = (avatar) => {
     if (!avatar) return null;
@@ -1323,7 +1425,20 @@ export default function Dashboard() {
     return 'sent';
   };
 
-  const openLightbox = (images, index) => { setLightboxImages(images); setLightboxIndex(index); setLightboxOpen(true); setLightboxZoom(1); };
+  const chatMedia = [...messages].reverse().flatMap(msg => (msg.attachments || []).map((att, idx) => ({
+    key: `${msg.id}:${idx}`,
+    url: fixUrl(att.url || att.path),
+    name: att.name || att.filename || '',
+    mimeType: att.mimeType || '',
+    messageId: msg.id,
+  })).filter(att => att.url && /^(image|video)\//.test(att.mimeType)));
+  const openLightbox = (key) => {
+    const index = chatMedia.findIndex(item => item.key === key);
+    setLightboxImages(chatMedia);
+    setLightboxIndex(index >= 0 ? index : 0);
+    setLightboxOpen(true);
+    setLightboxZoom(1);
+  };
   const closeLightbox = () => { setLightboxOpen(false); setLightboxZoom(1); };
   
   const openPdfPreview = async (url, name) => {
@@ -1399,8 +1514,6 @@ export default function Dashboard() {
         </div>
       );
     }
-    const imageAtts = msgAttachments.filter(a => a.mimeType?.startsWith('image/')).map(a => fixUrl(a.url || a.path));
-    
     return (
       <div className="message-attachments">
         {msgAttachments.map((att, idx) => {
@@ -1411,7 +1524,7 @@ export default function Dashboard() {
 
           if (att.mimeType?.startsWith('image/')) {
             return (
-              <div key={idx} className="attachment-image" onClick={() => openLightbox(imageAtts, imageAtts.indexOf(url))}>
+              <div key={idx} className="attachment-image" onClick={() => openLightbox(`${msgId}:${idx}`)}>
                 <img src={thumbUrl || url} alt={name} />
               </div>
             );
@@ -1422,7 +1535,7 @@ export default function Dashboard() {
               <div 
                 key={idx} 
                 className={`attachment-video ${isOwn ? 'own' : ''}`}
-                onClick={() => setVideoPreview({ open: true, url, name })}
+                onClick={() => openLightbox(`${msgId}:${idx}`)}
               >
                 <div className="attachment-video-thumb">
                   <Film size={32} />
@@ -1599,7 +1712,7 @@ export default function Dashboard() {
                   <div className="chat-main-name">{activeChat.displayName}</div>
                   <div className="chat-main-status">
                     {activeChat.type === 'group'
-                      ? `${activeChat.members?.length || 0} участников`
+                      ? `${formatMemberCount(activeGroupMembers.length)} · ${activeGroupOnlineCount} онлайн`
                       : (() => {
                           const otherId = activeChat.otherUser?.id;
                           const st = userStatuses[otherId];
@@ -1634,7 +1747,7 @@ export default function Dashboard() {
                   const showDateSeparator = shouldShowDateSeparator(msg, messages[idx - 1]);
                   
                   const hasAttachments = msg.attachments && msg.attachments.length > 0;
-                  const hasText = msg.content && msg.content !== 'Сообщение удалено';
+                  const hasText = msg.type !== 'poll' && msg.content && msg.content !== 'Сообщение удалено';
                   
                   return (
                     <React.Fragment key={msg.id}>
@@ -1660,7 +1773,7 @@ export default function Dashboard() {
                           >
                             {!isOwn && showAvatar && <div className="message-avatar" style={msg.sender?.id ? { cursor: 'pointer' } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}>{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
                             <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
-                              {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender" style={msg.sender?.id ? { cursor: 'pointer' } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}>{msg.sender?.displayName || msg.sender?.username}</div>}
+                              {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender" style={msg.sender?.id ? { cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}><span>{msg.sender?.displayName || msg.sender?.username}</span><UserBadge badge={msg.sender?.chatBadge} size={14} /></div>}
                               {msg.replyTo && (
                                 <div className="reply-quote" onClick={() => scrollToMessage(msg.replyTo.id)}>
                                   <div className="reply-quote-sender">{msg.replyTo.sender?.displayName || msg.replyTo.sender?.username}</div>
@@ -1674,6 +1787,7 @@ export default function Dashboard() {
                                 </div>
                               )}
                               {renderAttachments(msg.attachments, isOwn, msg.id)}
+                              {msg.type === 'poll' && <PollMessage message={msg} onVote={optionIds => votePoll(msg.id, optionIds)} />}
                               {hasText && (
                                 <div
                                   className="message-content"
@@ -1781,9 +1895,12 @@ export default function Dashboard() {
                   ) : (
                     <>
                       {!editingMessage && (
-                        <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
-                          {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
-                        </button>
+                        <>
+                          <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
+                            {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
+                          </button>
+                          {activeChat.type === 'group' && <button type="button" className="btn-icon-chat" onClick={() => setShowPollEditor(true)} title="Создать опрос"><BarChart3 size={20} /></button>}
+                        </>
                       )}
                       <div className="chat-input-wrapper">
                         {showCommandMenu && (
@@ -1800,6 +1917,26 @@ export default function Dashboard() {
                               >
                                 <span className="command-suggestions-name">{item.insertText}{item.usage ? ` ${item.usage}` : ''}</span>
                                 <span className="command-suggestions-description">{item.description}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {showMentionMenu && (
+                          <div className="command-suggestions" role="listbox">
+                            {visibleMentions.map((item, index) => (
+                              <button
+                                key={item.targetId}
+                                type="button"
+                                className={index === mentionSelection ? 'active' : ''}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => chooseMention(item)}
+                                role="option"
+                                aria-selected={index === mentionSelection}
+                              >
+                                <span className="command-suggestions-name">@{item.label}</span>
+                                <span className="command-suggestions-description">
+                                  {item.type === 'user' ? 'Сотрудник' : item.type === 'role' ? `Роль · ${item.count} чел.` : `Медцентр · ${item.count} чел.`}
+                                </span>
                               </button>
                             ))}
                           </div>
@@ -1993,7 +2130,7 @@ export default function Dashboard() {
           {contextMenu.canDelete && (
             <>
               <div className="context-menu-divider" />
-              {contextMenu.isOwnMessage && !contextMenu.message?.forwardedFrom && (
+              {contextMenu.isOwnMessage && !contextMenu.message?.forwardedFrom && contextMenu.message?.type !== 'poll' && (
                 <button onClick={() => { startEditMessage(contextMenu.message); }}>
                   <Edit2 size={16} />
                   Редактировать
@@ -2031,6 +2168,35 @@ export default function Dashboard() {
       )}
 
       {/* Modals */}
+      {showPollEditor && (
+        <div className="modal-overlay" onClick={() => setShowPollEditor(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h2>Новый опрос</h2><button className="modal-close" onClick={() => setShowPollEditor(false)}><X size={20} /></button></div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Вопрос</label>
+                <input className="input" maxLength={300} value={pollDraft.question} onChange={e => setPollDraft({...pollDraft, question: e.target.value})} placeholder="Что нужно решить?" autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Варианты ответа</label>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {pollDraft.options.map((option, index) => (
+                    <div key={index} style={{ display: 'flex', gap: 8 }}>
+                      <input className="input" maxLength={100} value={option} onChange={e => setPollDraft({...pollDraft, options: pollDraft.options.map((value, i) => i === index ? e.target.value : value)})} placeholder={`Вариант ${index + 1}`} />
+                      {pollDraft.options.length > 2 && <button type="button" className="btn-icon-chat" onClick={() => setPollDraft({...pollDraft, options: pollDraft.options.filter((_, i) => i !== index)})}><X size={18} /></button>}
+                    </div>
+                  ))}
+                </div>
+                {pollDraft.options.length < 10 && <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 8 }} onClick={() => setPollDraft({...pollDraft, options: [...pollDraft.options, '']})}><PlusCircle size={16} /> Добавить вариант</button>}
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}><input type="checkbox" checked={pollDraft.multipleChoice} onChange={e => setPollDraft({...pollDraft, multipleChoice: e.target.checked})} /> Несколько вариантов ответа</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={pollDraft.anonymous} onChange={e => setPollDraft({...pollDraft, anonymous: e.target.checked})} /> Анонимное голосование</label>
+            </div>
+            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setShowPollEditor(false)}>Отмена</button><button className="btn btn-primary" onClick={createPoll}>Создать опрос</button></div>
+          </div>
+        </div>
+      )}
+
       {showNewChat && (
         <div className="modal-overlay" onClick={() => { setShowNewChat(false); setUserSearchQuery(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -2048,7 +2214,10 @@ export default function Dashboard() {
                 {filteredUsers.map(u => (
                   <div key={u.id} className="user-item" onClick={() => startPrivateChat(u.id)}>
                     <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
-                    <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
+                    <div className="user-item-info">
+                      <div className="user-item-name" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span>{u.displayName || u.username}</span><UserBadge badge={u.chatBadge} /></div>
+                      <div className="user-item-username">{u.role?.name || u.position || `@${u.username}`}</div>
+                    </div>
                   </div>
                 ))}
                 {filteredUsers.length === 0 && <div className="text-muted text-center">Нет пользователей</div>}
@@ -2100,9 +2269,9 @@ export default function Dashboard() {
                     <div key={u.id} className={`user-item ${selectedUsers.includes(u.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(u.id)}>
                       <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
                       <div className="user-item-info">
-                        <div className="user-item-name">{u.displayName || u.username}</div>
+                        <div className="user-item-name" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span>{u.displayName || u.username}</span><UserBadge badge={u.chatBadge} /></div>
                         <div className="user-item-username">
-                          {u.role?.name && <span style={{ marginRight: '6px' }}>{u.role.name}</span>}
+                          {getUserRoleNames(u).length > 0 && <span style={{ marginRight: '6px' }}>{getUserRoleNames(u).join(', ')}</span>}
                           {(u.medCenters || []).map(m => m.name).join(', ')}
                         </div>
                       </div>
@@ -2155,9 +2324,9 @@ export default function Dashboard() {
                   <div key={u.id} className="user-item" onClick={() => addMemberToGroup(u.id)}>
                     <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
                     <div className="user-item-info">
-                      <div className="user-item-name">{u.displayName || u.username}</div>
+                      <div className="user-item-name" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span>{u.displayName || u.username}</span><UserBadge badge={u.chatBadge} /></div>
                       <div className="user-item-username">
-                        {u.role?.name && <span style={{ marginRight: '6px' }}>{u.role.name}</span>}
+                        {getUserRoleNames(u).length > 0 && <span style={{ marginRight: '6px' }}>{getUserRoleNames(u).join(', ')}</span>}
                         {(u.medCenters || []).map(m => m.name).join(', ')}
                       </div>
                     </div>
@@ -2221,14 +2390,18 @@ export default function Dashboard() {
             <span>{Math.round(lightboxZoom * 100)}%</span>
             <button onClick={(e) => { e.stopPropagation(); setLightboxZoom(z => Math.min(3, z + 0.25)); }}><ZoomIn size={20} /></button>
             {lightboxImages.length > 1 && <span className="lightbox-counter">{lightboxIndex + 1} / {lightboxImages.length}</span>}
-            <button className="lightbox-download" onClick={(e) => { e.stopPropagation(); downloadFile(e, lightboxImages[lightboxIndex], `image-${lightboxIndex + 1}.jpg`); }}><Download size={20} /></button>
+            <button className="lightbox-download" onClick={(e) => { e.stopPropagation(); downloadFile(e, lightboxImages[lightboxIndex]?.url, lightboxImages[lightboxIndex]?.name || `media-${lightboxIndex + 1}`); }}><Download size={20} /></button>
           </div>
-          <img 
-            src={lightboxImages[lightboxIndex]} 
-            alt="" 
-            onClick={(e) => e.stopPropagation()} 
-            style={{ transform: `scale(${lightboxZoom})`, maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', transition: 'transform 0.2s' }} 
-          />
+          {lightboxImages[lightboxIndex]?.mimeType?.startsWith('video/') ? (
+            <video key={lightboxImages[lightboxIndex].key} src={lightboxImages[lightboxIndex].url} controls autoPlay onClick={e => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '82vh' }} />
+          ) : (
+            <img
+              src={lightboxImages[lightboxIndex]?.url}
+              alt={lightboxImages[lightboxIndex]?.name || ''}
+              onClick={(e) => e.stopPropagation()}
+              style={{ transform: `scale(${lightboxZoom})`, maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', transition: 'transform 0.2s' }}
+            />
+          )}
         </div>
       )}
 

@@ -4,8 +4,16 @@ import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, Use
 import { users, roles, BASE_URL, referralBonusAccess } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import DatePickerInput from '../../components/DatePickerInput';
+import UserBadge, { CHAT_BADGE_ICONS } from '../../components/chat/UserBadge';
 import toast from 'react-hot-toast';
 import '../Admin.css';
+
+const CHAT_BADGE_DEFAULT = { type: 'icon', value: '', color: '#2563eb', label: '' };
+const CHAT_BADGE_ICON_LABELS = {
+  BadgeCheck: 'Подтверждён', Building2: 'Клиника', Crown: 'Руководитель',
+  Headphones: 'Call-центр', HeartPulse: 'Медицина', ShieldCheck: 'Ответственный',
+  Star: 'Особая отметка', Stethoscope: 'Врач'
+};
 
 // Компонент для множественного выбора
 function MultiSelect({ label, placeholder, value, onChange, options, optionKey = 'id', optionLabel = 'name', optionDescription = null }) {
@@ -188,6 +196,7 @@ export default function AdminUsers() {
   const [trashList, setTrashList] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState({ root: true, admin: true, modules: true, salary: true, statistics: true, salary_clinics: false, salary_workTime: false, salary_archive: false, statistics_kpi: false, statistics_directories: false, statistics_services: false });
   const avatarInputRef = useRef(null);
+  const badgeImageInputRef = useRef(null);
   const misDropdownRef = useRef(null);
   const [form, setForm] = useState({
     username: '',
@@ -202,6 +211,7 @@ export default function AdminUsers() {
     gender: '',
     birthDate: '',
     bio: '',
+    chatBadge: { ...CHAT_BADGE_DEFAULT },
     roleIds: [],
     medCenterIds: [],
     isAdmin: false,
@@ -259,6 +269,21 @@ export default function AdminUsers() {
       setForm(prev => ({ ...prev, avatar: res.data.avatarPath }));
     } catch {
       toast.error('Ошибка загрузки фото');
+    }
+  };
+
+  const handleBadgeImageChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const res = await users.uploadAvatar(file);
+      setForm(prev => ({
+        ...prev,
+        chatBadge: { ...prev.chatBadge, type: 'image', value: res.data.avatarPath }
+      }));
+    } catch {
+      toast.error('Не удалось загрузить изображение метки');
     }
   };
 
@@ -486,6 +511,7 @@ export default function AdminUsers() {
         gender: user.gender || '',
         birthDate: user.birthDate || '',
         bio: user.bio || '',
+        chatBadge: user.chatBadge ? { ...CHAT_BADGE_DEFAULT, ...user.chatBadge } : { ...CHAT_BADGE_DEFAULT },
         roleIds: user.roles ? user.roles.map(r => r.id) : [],
         medCenterIds: user.medCenters ? user.medCenters.map(mc => mc.id) : [],
         isAdmin: user.isAdmin,
@@ -530,6 +556,7 @@ export default function AdminUsers() {
         gender: '',
         birthDate: '',
         bio: '',
+        chatBadge: { ...CHAT_BADGE_DEFAULT },
         roleIds: [],
         medCenterIds: [],
         isAdmin: false,
@@ -1196,6 +1223,48 @@ export default function AdminUsers() {
                       options={medCenterList}
                       optionLabel="name"
                     />
+                  </div>
+
+                  <div className="form-group" style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
+                    <label className="form-label">Метка сотрудника в чатах</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, .7fr) minmax(180px, 1fr) 64px', gap: 10, alignItems: 'center' }}>
+                      <select
+                        className="input"
+                        value={form.chatBadge.type}
+                        onChange={e => setForm({...form, chatBadge: {...form.chatBadge, type: e.target.value, value: ''}})}
+                      >
+                        <option value="icon">Иконка</option>
+                        <option value="emoji">Эмодзи</option>
+                        <option value="image">Изображение</option>
+                      </select>
+
+                      {form.chatBadge.type === 'icon' && (
+                        <select className="input" value={form.chatBadge.value} onChange={e => setForm({...form, chatBadge: {...form.chatBadge, value: e.target.value}})}>
+                          <option value="">Без метки</option>
+                          {CHAT_BADGE_ICONS.map(icon => <option key={icon} value={icon}>{CHAT_BADGE_ICON_LABELS[icon] || icon}</option>)}
+                        </select>
+                      )}
+                      {form.chatBadge.type === 'emoji' && (
+                        <input className="input" value={form.chatBadge.value} maxLength={12} placeholder="Например, 🏥" onChange={e => setForm({...form, chatBadge: {...form.chatBadge, value: e.target.value}})} />
+                      )}
+                      {form.chatBadge.type === 'image' && (
+                        <>
+                          <input ref={badgeImageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBadgeImageChange} />
+                          <button type="button" className="btn btn-ghost" onClick={() => badgeImageInputRef.current?.click()}>
+                            <Camera size={16} /> {form.chatBadge.value ? 'Заменить' : 'Загрузить'}
+                          </button>
+                        </>
+                      )}
+
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 40 }}>
+                        <UserBadge badge={form.chatBadge} size={24} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: 10, marginTop: 10 }}>
+                      <input type="color" className="input" value={form.chatBadge.color} disabled={form.chatBadge.type !== 'icon'} onChange={e => setForm({...form, chatBadge: {...form.chatBadge, color: e.target.value}})} title="Цвет иконки" />
+                      <input className="input" value={form.chatBadge.label} maxLength={80} placeholder="Подпись, например «Call-центр»" onChange={e => setForm({...form, chatBadge: {...form.chatBadge, label: e.target.value}})} />
+                    </div>
+                    {form.chatBadge.value && <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 8 }} onClick={() => setForm({...form, chatBadge: {...CHAT_BADGE_DEFAULT}})}>Убрать метку</button>}
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
