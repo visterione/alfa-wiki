@@ -2182,6 +2182,9 @@ window.dcApp = (function() {
     var cardClinics = (card && card.metadata && card.metadata.clinics) || [];
     // Конвертируем старые ID в новые (для API МИС)
     var clinicIds = cardClinics.length > 0 ? convertOldClinicIds(cardClinics) : [];
+    // Карта используется и в следующем обработчике Promise при рендеринге услуг,
+    // поэтому должна жить в области видимости всей функции loadServices.
+    var cardDurationMap = {};
 
     Promise.all([
       fetchAPI(API_BASE + '/mis/doctor-info', {
@@ -2193,7 +2196,6 @@ window.dcApp = (function() {
     ]).then(function(results) {
       var data = results[0];
       var durationRows = Array.isArray(results[1]) ? results[1] : [];
-      var cardDurationMap = {};
       durationRows.forEach(function(row) {
         var sid = String(row.serviceId);
         var cid = String(row.clinicId);

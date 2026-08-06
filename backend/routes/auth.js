@@ -5,6 +5,7 @@ const { User, Role, MedCenter, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { generateCode, send2FACode } = require('../services/emailService');
 const sessions = require('../services/sessions');
+const { mergeMobilePreferences } = require('../services/mobilePreferences');
 
 const router = express.Router();
 
@@ -410,6 +411,23 @@ router.put('/profile', authenticate, [
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Настройки мобильного приложения синхронизируются между устройствами.
+// Они лежат в своём namespace, чтобы частичное обновление темы или звука не
+// затёрло настройки календаря и другие данные из users.settings.
+router.patch('/mobile-settings', authenticate, async (req, res) => {
+  try {
+    const settings = mergeMobilePreferences(req.user.settings, req.body);
+    await req.user.update({ settings });
+    res.json(settings.mobile);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Update mobile settings error:', error);
+    res.status(500).json({ error: 'Failed to update mobile settings' });
   }
 });
 
