@@ -5,8 +5,8 @@ const ALLOWED_VALUES = {
   accent: new Set(['blue', 'pink', 'orange', 'sand', 'lavender', 'graphite', 'purple', 'green']),
   fontScale: new Set(['normal', 'large', 'huge']),
   chatBackground: new Set([
-    'plain', 'dots', 'grid', 'hex', 'waves', 'confetti', 'icons',
-    'pulse', 'care', 'crosses', 'pills', 'dna', 'atoms'
+    'plain', 'dots', 'hex', 'waves', 'confetti', 'pulse', 'care',
+    'crosses', 'pills'
   ]),
   notificationSound: new Set(['default', 'sol', 'luna', 'terra'])
 };

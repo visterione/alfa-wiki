@@ -21,6 +21,7 @@ test('mobile preferences accept supported values', () => {
 
 test('mobile preferences reject unknown keys and values', () => {
   assert.throws(() => normalizeMobilePreferences({ accent: 'rainbow' }), /accent/);
+  assert.throws(() => normalizeMobilePreferences({ chatBackground: 'grid' }), /chatBackground/);
   assert.throws(() => normalizeMobilePreferences({ admin: true }), /Неизвестные/);
 });
 
