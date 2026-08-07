@@ -28,7 +28,23 @@ const Role = sequelize.define('Role', {
     type: DataTypes.JSONB, 
     defaultValue: { pages: { read: true, write: false, delete: false, admin: false } }
   },
-  isSystem: { type: DataTypes.BOOLEAN, defaultValue: false }
+  isSystem: { type: DataTypes.BOOLEAN, defaultValue: false },
+  chatBadgeIcon: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: 'Имя lucide-иконки метки в чате'
+  },
+  chatBadgeLabel: {
+    type: DataTypes.STRING(80),
+    allowNull: true,
+    comment: 'Подпись метки (tooltip); пусто — берётся название иконки'
+  },
+  badgePriority: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Чем больше, тем важнее роль при выборе иконки у мультиролевого сотрудника'
+  }
 }, { tableName: 'roles', timestamps: true });
 
 // === USER MODEL (С 2FA) ===
@@ -39,10 +55,17 @@ const User = sequelize.define('User', {
   displayName: { type: DataTypes.STRING(100) },
   email: { type: DataTypes.STRING(255) },
   avatar: { type: DataTypes.STRING(500) },
+  // Вычисляется services/userChatBadge.js из ролей, клиник и chatBadgeOverride.
+  // Напрямую из API не пишется — все запросы чата читают именно это поле.
   chatBadge: {
     type: DataTypes.JSONB,
     allowNull: true,
-    comment: 'Администраторская метка в чате: { type, value, color, label }'
+    comment: 'Вычисленная метка в чате: { type, value, color, label }'
+  },
+  chatBadgeOverride: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment: 'Ручное переопределение метки: { value, color, label }'
   },
   phone: { type: DataTypes.STRING(50) },
   position: { type: DataTypes.STRING(100) },
@@ -743,7 +766,18 @@ const MedCenter = sequelize.define('MedCenter', {
     type: DataTypes.STRING(100),
     comment: 'Полное название для отображения'
   },
-  description: { type: DataTypes.TEXT }
+  description: { type: DataTypes.TEXT },
+  color: {
+    type: DataTypes.STRING(7),
+    allowNull: true,
+    comment: 'Цвет клиники (#rrggbb) — им красится метка сотрудника в чате'
+  },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 100,
+    comment: 'Чем меньше, тем приоритетнее клиника при выборе цвета метки'
+  }
 }, {
   tableName: 'med_centers',
   timestamps: true

@@ -1,28 +1,26 @@
 import React from 'react';
-import { BadgeCheck, Building2, Crown, Headphones, HeartPulse, ShieldCheck, Star, Stethoscope } from 'lucide-react';
-import { BASE_URL } from '../../services/api';
+import { BadgeCheck } from 'lucide-react';
+import { CHAT_BADGE_ICON_MAP, CHAT_BADGE_ICON_LABELS, DEFAULT_BADGE_COLOR } from './badgeIcons';
 
-const ICONS = { BadgeCheck, Building2, Crown, Headphones, HeartPulse, ShieldCheck, Star, Stethoscope };
-
-const imageUrl = (value) => {
-  if (!value) return '';
-  if (/^https?:\/\//i.test(value)) return value;
-  return `${BASE_URL}/${value.replace(/^\/+/, '')}`;
-};
-
+// Метка сотрудника рядом с именем. Значение приходит из users.chatBadge —
+// это уже вычисленная бэкендом метка (иконка от роли, цвет от клиники,
+// плюс ручные переопределения из карточки пользователя).
 export default function UserBadge({ badge, size = 16, className = '' }) {
   if (!badge?.value) return null;
-  const title = badge.label || 'Метка сотрудника';
 
-  if (badge.type === 'image') {
-    return <img className={className} src={imageUrl(badge.value)} alt={title} title={title} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;
-  }
-  if (badge.type === 'emoji') {
-    return <span className={className} title={title} aria-label={title} style={{ fontSize: size, lineHeight: 1, flexShrink: 0 }}>{badge.value}</span>;
-  }
+  const Icon = CHAT_BADGE_ICON_MAP[badge.value] || BadgeCheck;
+  const title = badge.label || CHAT_BADGE_ICON_LABELS[badge.value] || 'Метка сотрудника';
 
-  const Icon = ICONS[badge.value] || BadgeCheck;
-  return <Icon className={className} size={size} color={badge.color || '#2563eb'} title={title} aria-label={title} style={{ flexShrink: 0 }} />;
+  return (
+    <Icon
+      className={className}
+      size={size}
+      color={badge.color || DEFAULT_BADGE_COLOR}
+      title={title}
+      aria-label={title}
+      style={{ flexShrink: 0 }}
+    />
+  );
 }
 
-export const CHAT_BADGE_ICONS = Object.keys(ICONS);
+export { CHAT_BADGE_ICONS, CHAT_BADGE_ICON_LABELS, CHAT_BADGE_ICON_GROUPS, DEFAULT_BADGE_COLOR } from './badgeIcons';

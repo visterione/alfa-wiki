@@ -20,6 +20,8 @@
     "migrate:doctor-service-durations:check": "node scripts/migrateDoctorServiceDurations.js --check",
     "migrate:chat-enhancements": "node scripts/migrateChatEnhancements.js",
     "migrate:chat-enhancements:check": "node scripts/migrateChatEnhancements.js --check",
+    "migrate:role-badges": "node scripts/migrateRoleChatBadges.js",
+    "migrate:role-badges:check": "node scripts/migrateRoleChatBadges.js --check",
     "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",
     "migrate:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js --apply",
     "migrate:safe-db": "node scripts/migrateSafeDatabase.js",

@@ -1,9 +1,30 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Role, User } = require('../models');
+const { Role, User, UserRole } = require('../models');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
+const { isValidBadgeIcon } = require('../utils/chatBadgeIcons');
+const userChatBadge = require('../services/userChatBadge');
 
 const router = express.Router();
+
+// Настройки метки в чате. Иконка задаётся ролью, приоритет решает, чья иконка
+// победит у сотрудника с несколькими ролями.
+const badgeFields = (body) => {
+  const fields = {};
+
+  if (body.chatBadgeIcon !== undefined) {
+    fields.chatBadgeIcon = isValidBadgeIcon(body.chatBadgeIcon) ? body.chatBadgeIcon : null;
+  }
+  if (body.chatBadgeLabel !== undefined) {
+    fields.chatBadgeLabel = String(body.chatBadgeLabel || '').trim().slice(0, 80) || null;
+  }
+  if (body.badgePriority !== undefined) {
+    const n = Number(body.badgePriority);
+    fields.badgePriority = Number.isFinite(n) ? Math.trunc(n) : 0;
+  }
+
+  return fields;
+};
 
 // Get all roles with user count
 router.get('/', authenticate, async (req, res) => {
@@ -72,7 +93,8 @@ router.post('/', authenticate, requireAdminAccess('roles'), [
     const role = await Role.create({
       name,
       description,
-      permissions: permissions || defaultPermissions
+      permissions: permissions || defaultPermissions,
+      ...badgeFields(req.body)
     });
 
     res.status(201).json(role);
@@ -90,8 +112,10 @@ router.put('/:id', authenticate, requireAdminAccess('roles'), async (req, res) =
 
     const { name, description, permissions } = req.body;
 
+    const badge = badgeFields(req.body);
+
     if (role.isSystem) {
-      // System roles: allow name/description edits, ignore permissions
+      // System roles: allow name/description/badge edits, ignore permissions
       if (name && name !== role.name) {
         const existing = await Role.findOne({ where: { name } });
         if (existing) return res.status(400).json({ error: 'Role name already exists' });
@@ -99,7 +123,9 @@ router.put('/:id', authenticate, requireAdminAccess('roles'), async (req, res) =
       await role.update({
         ...(name && { name }),
         ...(description !== undefined && { description }),
+        ...badge
       });
+      if (Object.keys(badge).length) await userChatBadge.recomputeForRole(role.id);
       return res.json(role);
     }
 
@@ -112,8 +138,11 @@ router.put('/:id', authenticate, requireAdminAccess('roles'), async (req, res) =
     await role.update({
       ...(name && { name }),
       ...(description !== undefined && { description }),
-      ...(permissions && { permissions })
+      ...(permissions && { permissions }),
+      ...badge
     });
+
+    if (Object.keys(badge).length) await userChatBadge.recomputeForRole(role.id);
 
     res.json(role);
   } catch (error) {
@@ -140,7 +169,14 @@ router.delete('/:id', authenticate, requireAdminAccess('roles'), async (req, res
       });
     }
 
+    // Роль могла быть привязана через many-to-many — после удаления
+    // у этих сотрудников метку нужно пересчитать.
+    const affected = await UserRole.findAll({ where: { roleId: role.id }, attributes: ['userId'] });
+
     await role.destroy();
+
+    await userChatBadge.recomputeForUsers(affected.map(link => link.userId));
+
     res.json({ message: 'Role deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete role' });

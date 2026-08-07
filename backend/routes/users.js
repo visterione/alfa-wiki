@@ -7,6 +7,7 @@ const { authenticate, requireAdmin, requireAdminAccess } = require('../middlewar
 const { send2FADisabledNotification, sendCredentials } = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 const presence = require('../services/presence');
+const userChatBadge = require('../services/userChatBadge');
 const axios = require('axios');
 const qs = require('qs');
 const fs = require('fs');
@@ -27,18 +28,6 @@ const avatarStorage = multer.diskStorage({
 const uploadAvatarMulter = multer({ storage: avatarStorage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 const router = express.Router();
-
-const normalizeChatBadge = (badge) => {
-  if (!badge || typeof badge !== 'object' || !badge.value) return null;
-  const type = ['icon', 'emoji', 'image'].includes(badge.type) ? badge.type : 'icon';
-  const color = /^#[0-9a-fA-F]{6}$/.test(badge.color || '') ? badge.color : '#2563eb';
-  return {
-    type,
-    value: String(badge.value).trim().slice(0, 500),
-    color,
-    label: String(badge.label || '').trim().slice(0, 80)
-  };
-};
 
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
@@ -246,7 +235,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, avatar, chatBadge, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, avatar, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -302,7 +291,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       displayName: displayName || username,
       email: email || null,
       avatar: avatar || null,
-      chatBadge: normalizeChatBadge(chatBadge),
+      chatBadgeOverride: userChatBadge.normalizeBadgeOverride(chatBadgeOverride),
       phone: phone || null,
       position: position || null,
       specialty: specialty || null,
@@ -347,6 +336,9 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       );
     }
 
+    // Роли и клиники уже привязаны — можно посчитать метку в чатах.
+    await userChatBadge.recomputeForUsers(user.id);
+
     const created = await User.findByPk(user.id, {
       include: [
         { model: Role, as: 'role' },
@@ -389,7 +381,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, chatBadge, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -453,7 +445,9 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       ...(gender !== undefined && { gender: gender || null }),
       ...(birthDate !== undefined && { birthDate: birthDate || null }),
       ...(bio !== undefined && { bio: bio || null }),
-      ...(chatBadge !== undefined && { chatBadge: normalizeChatBadge(chatBadge) }),
+      ...(chatBadgeOverride !== undefined && {
+        chatBadgeOverride: userChatBadge.normalizeBadgeOverride(chatBadgeOverride)
+      }),
       ...(roleId !== undefined && { roleId: roleId || null }),
       ...(isAdmin !== undefined && { isAdmin }),
       ...(isActive !== undefined && { isActive }),
@@ -529,6 +523,9 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
         );
       }
     }
+
+    // Метка зависит от ролей, клиник и override — пересчитываем после их записи.
+    await userChatBadge.recomputeForUsers(user.id);
 
     const updated = await User.findByPk(user.id, {
       include: [

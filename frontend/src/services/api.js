@@ -94,6 +94,12 @@ export const roles = {
   delete: (id) => api.delete(`/roles/${id}`)
 };
 
+// Медцентры: цвет клиники красит метку сотрудника в чатах
+export const medCenters = {
+  list: () => api.get('/med-centers'),
+  update: (id, data) => api.put(`/med-centers/${id}`, data)
+};
+
 // Pages
 export const pages = {
   list: (params) => api.get('/pages', { params }),
