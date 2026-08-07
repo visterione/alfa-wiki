@@ -888,6 +888,18 @@ const PriceComparisonItem = sequelize.define('PriceComparisonItem', {
     defaultValue: '',
     comment: 'Лаборатория, выполняющая анализ'
   },
+  // Лист лабораторий собран по коду 804н, а артикул у каждой лаборатории свой:
+  // у A09.05.042 это ALFA03-001 у «Альфа» и 8 у «Инвитро». В таблице артикул
+  // не нужен, а для файла импорта в МИС он единственный ключ обновления.
+  // Массив на лабораторию — потому что у одного кода 804н их бывает несколько
+  // (обычная услуга и профосмотровая): такие позиции выгрузка пропускает,
+  // и чтобы сказать об этом человеку, надо знать, что их несколько.
+  misRefs: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    allowNull: false,
+    comment: 'Услуги МИС за колонкой: {"CL-LAB": [{code, serviceId, title, categoryPath}]}'
+  },
   sortOrder: {
     type: DataTypes.INTEGER,
     defaultValue: 0,

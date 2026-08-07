@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { PriceComparison, PriceComparisonItem, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { pruneBindings } = require('../services/comparisonBindings');
+const { generateMisImportPdf } = require('../services/priceImportPdf');
 
 const router = express.Router();
 
@@ -64,7 +65,7 @@ router.get('/:id', authenticate, async (req, res) => {
           as: 'items',
           attributes: [
             'id', 'serviceCode', 'serviceName', 'misServiceId', 'prices',
-            'priceHistory', 'priceSources', 'costPrices', 'lab', 'sortOrder'
+            'priceHistory', 'priceSources', 'costPrices', 'misRefs', 'lab', 'sortOrder'
           ],
           order: [['sortOrder', 'ASC']]
         }
@@ -366,6 +367,7 @@ router.post('/:id/items',
         misServiceId = null,
         prices = {},
         costPrices = {},
+        misRefs = {},
         lab = ''
       } = req.body;
 
@@ -389,6 +391,7 @@ router.post('/:id/items',
         misServiceId,
         prices,
         costPrices,
+        misRefs,
         lab,
         sortOrder: maxSortOrder + 1
       });
@@ -452,6 +455,110 @@ router.put('/:id/items/cost-prices',
     } catch (error) {
       console.error('Error bulk updating comparison cost prices:', error);
       res.status(500).json({ error: 'Ошибка при сохранении себестоимостей' });
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
+// PUT /api/price-comparisons/:id/items/mis-refs - Пакетно сохранить артикулы
+//
+// Артикулы приходят из прейскуранта МИС, а не из базы: страница читает его
+// при сборке файла импорта и складывает найденное сюда, чтобы в следующий раз
+// не перечитывать. Как и себестоимости — одним запросом на весь лист.
+//
+// Маршрут объявлен до /:id/items/:itemId: иначе «mis-refs» уехало бы в itemId.
+// ═══════════════════════════════════════════════════════════════
+router.put('/:id/items/mis-refs',
+  authenticate,
+  [
+    body('updates').isArray().withMessage('updates должен быть массивом'),
+    body('updates.*.id').isUUID().withMessage('Некорректный ID услуги'),
+    body('updates.*.misRefs').isObject().withMessage('misRefs должен быть объектом')
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const { id } = req.params;
+      const { updates } = req.body;
+
+      const comparison = await PriceComparison.findOne({ where: { id } });
+      if (!comparison) {
+        return res.status(404).json({ error: 'Сравнение не найдено' });
+      }
+
+      await Promise.all(updates.map(update =>
+        PriceComparisonItem.update(
+          { misRefs: update.misRefs },
+          { where: { id: update.id, comparisonId: id } }
+        )
+      ));
+
+      // В историю страницы не пишем: артикулы не редактируются человеком,
+      // это снимок прейскуранта МИС, и в ленте изменений он только шумит.
+      res.json({ updated: updates.length });
+    } catch (error) {
+      console.error('Error bulk updating comparison mis refs:', error);
+      res.status(500).json({ error: 'Ошибка при сохранении артикулов' });
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/price-comparisons/:id/mis-import/report - Отчёт по файлу импорта
+//
+// CSV уходит в МИС, а этот PDF — людям: что подорожает и на сколько, а внизу
+// то, что в файл не вошло и что придётся править руками.
+//
+// Строки считает страница: у неё в руках прейскурант МИС и цены листа, и
+// отчёт обязан совпадать с файлом строка в строку. Пересчитывать их здесь
+// заново значило бы держать те же правила в двух местах и однажды разойтись.
+// ═══════════════════════════════════════════════════════════════
+router.post('/:id/mis-import/report',
+  authenticate,
+  [
+    body('rows').isArray({ max: 20000 }).withMessage('rows должен быть массивом'),
+    body('target').isString().trim().notEmpty().withMessage('Не указана лаборатория'),
+    body('source').isString().withMessage('Не указан источник цен')
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const comparison = await PriceComparison.findOne({ where: { id: req.params.id } });
+      if (!comparison) {
+        return res.status(404).json({ error: 'Сравнение не найдено' });
+      }
+
+      const { target, source, rule = '', rounding = '', rows = [], skipped = {} } = req.body;
+
+      const fileName = `Изменение прайса ${target} ${new Date().toISOString().slice(0, 10)}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+
+      await generateMisImportPdf(res, {
+        comparisonName: comparison.name,
+        target,
+        source,
+        rule,
+        rounding,
+        rows,
+        skipped,
+        generatedBy: req.user.displayName || req.user.username || null
+      });
+    } catch (error) {
+      console.error('Error building MIS import report:', error);
+      // Заголовки уже ушли вместе с началом PDF — сказать об ошибке можно
+      // только оборвав поток: браузер покажет незавершённую загрузку
+      if (!res.headersSent) res.status(500).json({ error: 'Ошибка при формировании отчёта' });
+      else res.end();
     }
   }
 );

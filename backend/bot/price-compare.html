@@ -952,6 +952,100 @@
   padding: 28px 12px; text-align: center; color: #9ca3af; font-size: 14px;
 }
 
+/* ═══ Окно «Файл импорта для МИС» ═══
+   Прайс лаборатории правят не по одной услуге, а целиком: берут цены соседней
+   колонки, добавляют наценку и выгружают файл, по которому МИС обновит
+   полтысячи позиций разом. Поэтому окно — не форма, а отчёт: сверху правило,
+   ниже что попадёт в файл и, главное, что не попадёт и почему. */
+.pc-import-modal {
+  max-width: 760px;
+  display: flex; flex-direction: column;
+  max-height: 90vh; overflow: hidden;
+}
+.pc-import-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Правило читается одной строкой: «прайс CL-LAB ← CL-ЛАБ (Анапа) + 30 ₽» */
+.pc-import-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+.pc-import-form .price-form-group { margin-bottom: 0; }
+.pc-import-form .price-select { width: 100%; min-width: 0; }
+.pc-import-delta { display: flex; gap: 8px; }
+.pc-import-delta .price-input { flex: 1; min-width: 0; }
+.pc-import-delta .price-select { width: 80px; min-width: 80px; flex-shrink: 0; }
+
+.pc-import-check {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13px; color: #374151; cursor: pointer; margin-bottom: 16px;
+}
+.pc-import-check input { margin-top: 2px; flex-shrink: 0; }
+.pc-import-hint { display: block; font-size: 11px; color: #9ca3af; margin-top: 1px; }
+
+.pc-import-state {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: #6b7280; margin-bottom: 12px;
+}
+.pc-import-state:empty { display: none; }
+
+.pc-import-stats {
+  display: flex; gap: 24px; flex-wrap: wrap;
+  padding: 14px 16px; margin-bottom: 12px;
+  background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;
+}
+.pc-import-stat-value { font-size: 22px; font-weight: 700; color: #1e40af; line-height: 1; }
+.pc-import-stat-value.warn { color: #d97706; }
+.pc-import-stat-value.muted { color: #6b7280; }
+.pc-import-stat-label {
+  font-size: 11px; color: #6b7280; margin-top: 3px;
+  text-transform: uppercase; letter-spacing: .3px;
+}
+
+/* Пропущенное свёрнуто, но не спрятано: услуг с двумя артикулами десяток,
+   и разбирать их будут руками — значит список должен быть под рукой */
+.pc-import-group {
+  border: 1px solid #e5e7eb; border-radius: 8px;
+  margin-bottom: 8px; overflow: hidden;
+}
+.pc-import-group summary {
+  padding: 10px 14px; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: #374151; background: #f9fafb;
+}
+.pc-import-group summary::marker { color: #9ca3af; }
+.pc-import-group-why {
+  padding: 10px 14px 0; font-size: 12px; color: #6b7280;
+}
+.pc-import-list {
+  max-height: 240px; overflow-y: auto;
+  margin: 0; padding: 8px 14px 12px; list-style: none;
+  font-size: 12px; color: #4b5563;
+}
+.pc-import-list li { padding: 5px 0; border-bottom: 1px solid #f3f4f6; }
+.pc-import-list li:last-child { border-bottom: none; }
+.pc-import-list code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: #1f2937; background: #f3f4f6;
+  padding: 1px 5px; border-radius: 4px;
+}
+
+.pc-import-table {
+  width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px;
+}
+.pc-import-table th, .pc-import-table td {
+  padding: 6px 8px; border: 1px solid #e5e7eb; text-align: left;
+}
+.pc-import-table th { background: #f9fafb; font-weight: 600; color: #4b5563; }
+.pc-import-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pc-import-table .was { color: #6b7280; }
+.pc-import-table .now { color: #16a34a; font-weight: 600; }
+.pc-import-caption { font-size: 12px; color: #6b7280; margin: 14px 0 6px; }
+
+@media (max-width: 640px) {
+  .pc-import-form { grid-template-columns: 1fr; }
+}
+
 /* Print styles */
 @media print {
   @page {
@@ -1392,6 +1486,13 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             <span class="pc-menu-item-body">Скачать Excel</span>
           </button>
+          <button type="button" class="pc-menu-item" id="menu-mis-import"
+                  onclick="priceApp.runAction('mis-import')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 9l5-5 5 5M12 4v12"/></svg>
+            <span class="pc-menu-item-body">Файл импорта для МИС
+              <span class="pc-menu-item-sub">пересчитать прайс своей лаборатории</span>
+            </span>
+          </button>
         </div>
       </div>
     </div>
@@ -1622,6 +1723,75 @@
           <button type="submit" class="price-btn price-btn-primary">Добавить</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Модальное окно: файл импорта прайса в МИС -->
+  <div id="mis-import-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('mis-import-modal')">
+    <div class="price-modal-content pc-import-modal">
+      <div class="price-modal-header">
+        <h3>Файл импорта для МИС</h3>
+        <button class="price-modal-close" onclick="priceApp.closeModal('mis-import-modal')">&times;</button>
+      </div>
+      <div class="price-modal-body pc-import-body">
+        <div class="pc-import-form">
+          <div class="price-form-group">
+            <label>Чей прайс правим <span>*</span></label>
+            <select id="import-target" class="price-select" onchange="priceApp.onImportSettings()"></select>
+          </div>
+          <div class="price-form-group">
+            <label>Берём цены из <span>*</span></label>
+            <select id="import-source" class="price-select" onchange="priceApp.onImportSettings()"></select>
+          </div>
+          <div class="price-form-group">
+            <label>Изменение</label>
+            <div class="pc-import-delta">
+              <input type="number" id="import-delta" class="price-input" step="0.01" value="0"
+                     oninput="priceApp.onImportSettings()">
+              <select id="import-delta-unit" class="price-select" onchange="priceApp.onImportSettings()">
+                <option value="rub">₽</option>
+                <option value="pct">%</option>
+              </select>
+            </div>
+          </div>
+          <div class="price-form-group">
+            <label>Округление</label>
+            <select id="import-round" class="price-select" onchange="priceApp.onImportSettings()">
+              <option value="none">Без округления</option>
+              <option value="1">До рубля вверх</option>
+              <option value="10">До 10 ₽ вверх</option>
+              <option value="50">До 50 ₽ вверх</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="pc-import-check">
+          <input type="checkbox" id="import-with-cost" onchange="priceApp.onImportSettings()">
+          <span>Заполнить себестоимость значением из МИС
+            <span class="pc-import-hint">на случай, если МИС затирает пустые поля при обновлении</span>
+          </span>
+        </label>
+
+        <div id="import-state" class="pc-import-state"></div>
+        <div id="import-summary"></div>
+        <div id="import-skipped"></div>
+        <div id="import-preview"></div>
+      </div>
+      <div class="price-form-actions">
+        <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.closeModal('mis-import-modal')">Закрыть</button>
+        <!-- Отчёт — не про МИС, а про людей: что подорожает и что придётся
+             править руками. Поэтому рядом с файлом, а не вместо него. -->
+        <button type="button" class="price-btn price-btn-secondary" id="import-report-btn" disabled
+                onclick="priceApp.downloadMisImportReport()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          PDF-отчёт
+        </button>
+        <button type="button" class="price-btn price-btn-primary" id="import-download-btn" disabled
+                onclick="priceApp.downloadMisImport()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Скачать CSV
+        </button>
+      </div>
     </div>
   </div>
 
@@ -2041,6 +2211,7 @@ window.priceApp = (function() {
     var addService = document.getElementById('menu-add-service');
     var columns = document.getElementById('menu-columns');
     var excel = document.getElementById('menu-excel');
+    var misImport = document.getElementById('menu-mis-import');
     var sub = document.getElementById('menu-columns-sub');
 
     // Услуги добавляют в таблицу; на карте пункт не к месту
@@ -2050,6 +2221,13 @@ window.priceApp = (function() {
     }
     if (columns) columns.disabled = !has;
     if (excel) excel.disabled = !has || !currentItems.length;
+
+    // Файл импорта собирается по артикулам лаборатории из МИС, а они есть
+    // только у лабораторного листа: в режиме клиник пункт не показываем
+    if (misImport) {
+      misImport.style.display = currentMode === 'lab' && !isMap ? '' : 'none';
+      misImport.disabled = !has || !currentItems.length;
+    }
 
     if (sub) {
       var hiddenCount = hiddenColumns.length;
@@ -2097,6 +2275,7 @@ window.priceApp = (function() {
     if (action === 'add-service') openAddServiceModal();
     else if (action === 'columns') openColumnsModal();
     else if (action === 'excel') exportToExcel();
+    else if (action === 'mis-import') openMisImportModal();
   }
 
   function openColumnsModal() {
@@ -2241,6 +2420,8 @@ window.priceApp = (function() {
     if (currentMode === 'lab') {
       misAllServicesCache = null;
       misAllServicesCacheTime = 0;
+      // Прейскурант перечитывается — тот же снимок в окне импорта устарел
+      importServices = null;
       refreshPromise = loadLabCostsFromMIS(currentItems);
     } else {
       var clinicItems = currentItems.filter(function(item) { return !!item.misServiceId; });
@@ -2627,6 +2808,25 @@ window.priceApp = (function() {
       tbody.innerHTML = '<tr><td colspan="' + totalCols + '" class="price-empty">Ничего не найдено</td></tr>';
       return;
     }
+
+    // Наверх — услуги, по которым нашлось больше всего цен: с ними и работают,
+    // а полупустые строки уходят вниз и не мешают сопоставлять
+    var visibleColumns = ordered.filter(function(col) {
+      return hiddenColumns.indexOf(col.name) < 0;
+    });
+    var matchCount = {};
+    filteredItems.forEach(function(item) {
+      var prices = viewMode === 'cost' ? (item.costPrices || {}) : (item.prices || {});
+      var found = 0;
+      visibleColumns.forEach(function(col) {
+        if (prices[col.name]) found++;
+      });
+      matchCount[item.id] = found;
+    });
+    // sort стабилен: при равном числе цен порядок строк остаётся прежним
+    filteredItems.sort(function(a, b) {
+      return matchCount[b.id] - matchCount[a.id];
+    });
 
     tbody.innerHTML = filteredItems.map(function(item) {
       var html = '<tr data-item-id="' + item.id + '">';
@@ -4492,6 +4692,7 @@ window.priceApp = (function() {
       closeModal('add-competitor-modal');
       closeModal('add-lab-services-modal');
       closeModal('columns-modal');
+      closeModal('mis-import-modal');
     });
     // Клик мимо выпадающих списков закрывает их, как у обычного select
     document.addEventListener('mousedown', function(e) {
@@ -5221,10 +5422,20 @@ window.priceApp = (function() {
     var bySubCode = {};
     var byName = {};
 
+    // Цену в колонку кладём первую попавшуюся, а вот артикулы копим все:
+    // у одного кода 804н в одной лаборатории их бывает несколько (обычная
+    // услуга и профосмотровая), и файлу импорта важно знать об этом.
+    function collect(group, lab, service) {
+      if (!(lab in group.prices)) {
+        group.prices[lab] = parseFloat(service.price) || 0;
+        group.costPrices[lab] = parseFloat(service.original_price) || 0;
+      }
+      if (!group.misRefs[lab]) group.misRefs[lab] = [];
+      group.misRefs[lab].push(misRefOf(service));
+    }
+
     services.forEach(function(s) {
       var lab = (s.lab || '').trim() || 'Без лаборатории';
-      var price = parseFloat(s.price) || 0;
-      var cost = parseFloat(s.original_price) || 0;
       var subCode = (s.sub_code || '').trim();
 
       if (subCode) {
@@ -5234,13 +5445,11 @@ window.priceApp = (function() {
             groupName: s.title,
             prices: {},
             costPrices: {},
+            misRefs: {},
             matchType: 'sub_code'
           };
         }
-        if (!(lab in bySubCode[subCode].prices)) {
-          bySubCode[subCode].prices[lab] = price;
-          bySubCode[subCode].costPrices[lab] = cost;
-        }
+        collect(bySubCode[subCode], lab, s);
       } else {
         var normalKey = normalizeName(s.title);
         if (!byName[normalKey]) {
@@ -5249,13 +5458,11 @@ window.priceApp = (function() {
             groupName: s.title,
             prices: {},
             costPrices: {},
+            misRefs: {},
             matchType: 'name'
           };
         }
-        if (!(lab in byName[normalKey].prices)) {
-          byName[normalKey].prices[lab] = price;
-          byName[normalKey].costPrices[lab] = cost;
-        }
+        collect(byName[normalKey], lab, s);
       }
     });
 
@@ -5327,6 +5534,9 @@ window.priceApp = (function() {
           serviceName: group.groupName,
           prices: group.prices,
           costPrices: group.costPrices || {},
+          // Артикул в таблице не нужен, но без него не собрать файл импорта
+          // в МИС — а второй раз перечитывать прейскурант ради него дорого
+          misRefs: group.misRefs || {},
           misServiceId: null
         })
       });
@@ -5346,6 +5556,486 @@ window.priceApp = (function() {
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить услуги';
       });
+  }
+
+  /* ── Файл импорта прайса в МИС ───────────────────────────────────────────
+   *
+   * Лист отвечает на вопрос «где мы дешевле рынка», а этот файл — способ
+   * что-то с ответом сделать: берём цены соседней колонки (обычно та же
+   * лаборатория, только её собственный прайс), добавляем наценку и отдаём
+   * МИС файл, по которому она обновит наш прейскурант целиком.
+   *
+   * Ключ обновления в МИС — артикул, и у каждой лаборатории он свой: у кода
+   * 804н A09.05.042 это ALFA03-001 у «Альфа» и 8 у «Инвитро». Артикул же
+   * отделяет то, что мы правда оказываем, от полного каталога лаборатории:
+   * у CL-LAB на сайте 912 позиций, а в нашем прейскуранте 519 — лишнее
+   * просто не находит артикула и в файл не попадает.
+   *
+   * Позиции, у которых артикулов в лаборатории несколько (обычная услуга и
+   * профосмотровая с другой ценой), выгрузка пропускает и показывает списком:
+   * какую из них человек имел в виду, машине неоткуда знать, а поднять цену
+   * профосмотра втрое дороже ошибки, чем поправить десяток строк руками.
+   */
+
+  var importServices = null;   // прейскурант МИС, прочитанный для этого окна
+  var importRows = [];         // строки, которые уйдут в файл
+  var importSkipped = null;    // что не уйдёт и почему
+  var importRefsSaved = false; // артикулы этого листа уже сохранены
+
+  var IMPORT_FIELDS = 22;      // столько колонок в файле импорта МИС
+
+  /** Услуга МИС в том виде, в каком она нужна файлу импорта. */
+  function misRefOf(service) {
+    return {
+      code: String(service.code || '').trim(),
+      serviceId: service.service_id,
+      title: service.title || '',
+      subCode: String(service.sub_code || '').trim(),
+      categoryPath: service.category_path || '',
+      price: parseFloat(service.price) || 0,
+      cost: parseFloat(service.original_price) || 0
+    };
+  }
+
+  function openMisImportModal() {
+    if (currentMode !== 'lab') {
+      showToast('Файл импорта собирается на листе лабораторий', 'error');
+      return;
+    }
+    if (!currentComparison || !currentItems.length) {
+      showToast('Сначала выберите лист с услугами', 'error');
+      return;
+    }
+
+    importRows = [];
+    importSkipped = null;
+    importRefsSaved = false;
+    fillImportTargets();
+    setImportState('');
+    ['import-summary', 'import-skipped', 'import-preview'].forEach(function(id) {
+      document.getElementById(id).innerHTML = '';
+    });
+    setImportButtons(false);
+
+    openModal('mis-import-modal');
+    loadImportServices();
+  }
+
+  function fillImportTargets() {
+    var target = document.getElementById('import-target');
+    var own = allColumns.filter(function(col) { return col.type === 'own'; });
+    // Правим прайс своей лаборатории — чужой прейскурант нам не принадлежит
+    target.innerHTML = own.length
+      ? own.map(function(col) {
+          return '<option value="' + escAttr(col.name) + '">' + esc(col.name) + '</option>';
+        }).join('')
+      : '<option value="">нет своих лабораторий на листе</option>';
+    if (own.some(function(col) { return col.name === baseColumnName; })) {
+      target.value = baseColumnName;
+    }
+    fillImportSources();
+  }
+
+  function fillImportSources() {
+    var targetName = document.getElementById('import-target').value;
+    var source = document.getElementById('import-source');
+    var previous = source.value;
+    var options = orderedColumns().filter(function(col) { return col.name !== targetName; });
+
+    source.innerHTML = options.length
+      ? options.map(function(col) {
+          return '<option value="' + escAttr(col.name) + '">' + esc(col.name) + '</option>';
+        }).join('')
+      : '<option value="">на листе одна колонка</option>';
+    if (options.some(function(col) { return col.name === previous; })) source.value = previous;
+  }
+
+  function setImportState(html) {
+    document.getElementById('import-state').innerHTML = html || '';
+  }
+
+  function loadImportServices() {
+    if (importServices) { computeImport(); return; }
+
+    setImportState('<span class="price-btn-spinner"></span><span>Читаем прейскурант МИС…</span>');
+    fetchAllMISServices().then(function(services) {
+      importServices = services;
+      setImportState('');
+      computeImport();
+    }).catch(function(e) {
+      setImportState('Не удалось прочитать прейскурант МИС: ' + esc(e.message));
+    });
+  }
+
+  /** Прейскурант одной лаборатории: код 804н → артикулы, название → артикулы. */
+  function labIndex(labName) {
+    var byCode = {};
+    var byName = {};
+
+    (importServices || []).forEach(function(service) {
+      if (service.is_deleted) return;
+      var lab = String(service.lab || '').trim() || 'Без лаборатории';
+      if (lab !== labName) return;
+
+      var subCode = String(service.sub_code || '').trim();
+      // Без кода 804н сопоставляем по названию — тем же способом, каким лист
+      // такие услуги и собирал
+      var key = subCode || normalizeName(service.title || '');
+      var bucket = subCode ? byCode : byName;
+      if (!bucket[key]) bucket[key] = [];
+      bucket[key].push(misRefOf(service));
+    });
+
+    return { byCode: byCode, byName: byName };
+  }
+
+  function refsForItem(index, item) {
+    var code = String(item.serviceCode || '').trim();
+    return (code
+      ? index.byCode[code]
+      : index.byName[normalizeName(item.serviceName || '')]) || [];
+  }
+
+  /**
+   * Сохранить найденные артикулы в услугах листа.
+   *
+   * Артикулы приходят только из МИС, и читать ради них весь прейскурант
+   * каждый раз незачем. Заполняем разом по всем своим лабораториям листа:
+   * прейскурант уже в руках, а второй лаборатории он понадобится ровно так же.
+   */
+  function saveImportRefs() {
+    if (importRefsSaved || !currentComparison) return;
+    importRefsSaved = true;
+
+    var indexes = allColumns.filter(function(col) { return col.type === 'own'; })
+      .map(function(col) { return { name: col.name, index: labIndex(col.name) }; });
+    if (!indexes.length) return;
+
+    var updates = [];
+    currentItems.forEach(function(item) {
+      var next = Object.assign({}, item.misRefs || {});
+      indexes.forEach(function(lab) {
+        var refs = refsForItem(lab.index, item);
+        if (refs.length) next[lab.name] = refs;
+        else delete next[lab.name];
+      });
+      if (JSON.stringify(next) !== JSON.stringify(item.misRefs || {})) {
+        item.misRefs = next;
+        updates.push({ id: item.id, misRefs: next });
+      }
+    });
+
+    if (!updates.length) return;
+    fetchAPI(API_URL + '/' + currentComparison.id + '/items/mis-refs', {
+      method: 'PUT',
+      body: JSON.stringify({ updates: updates })
+    }).catch(function(e) {
+      // Файл соберётся и без сохранения: артикулы для него уже посчитаны,
+      // потеряется только возможность не перечитывать прейскурант в следующий раз
+      console.warn('Артикулы не сохранились:', e.message);
+    });
+  }
+
+  /** Новая цена по правилу. Округляем вверх: вниз — это уже не то правило. */
+  function applyImportRule(base, delta, unit, rounding) {
+    var value = unit === 'pct' ? base * (1 + delta / 100) : base + delta;
+    if (!(value > 0)) value = 0;
+
+    var step = parseFloat(rounding);
+    if (step > 0) value = Math.ceil(value / step) * step;
+    return Math.round(value * 100) / 100;
+  }
+
+  function onImportSettings() {
+    fillImportSources();
+    computeImport();
+  }
+
+  function computeImport() {
+    if (!importServices) return;
+
+    var targetName = document.getElementById('import-target').value;
+    var sourceName = document.getElementById('import-source').value;
+    var delta = parseFloat(document.getElementById('import-delta').value) || 0;
+    var unit = document.getElementById('import-delta-unit').value;
+    var rounding = document.getElementById('import-round').value;
+
+    importRows = [];
+    importSkipped = { noArticle: [], ambiguous: [], noSource: [] };
+
+    if (!targetName || !sourceName) {
+      renderImport(targetName, sourceName);
+      return;
+    }
+
+    var index = labIndex(targetName);
+    saveImportRefs();
+
+    currentItems.forEach(function(item) {
+      var refs = refsForItem(index, item);
+      // Услуги, которой у нас в прейскуранте нет, в файле взяться не может:
+      // обновлять в МИС нечего, а заводить новую — не то, за чем сюда пришли
+      if (!refs.length) { importSkipped.noArticle.push({ item: item }); return; }
+      if (refs.length > 1) { importSkipped.ambiguous.push({ item: item, refs: refs }); return; }
+
+      var source = parseFloat((item.prices || {})[sourceName]);
+      if (!(source > 0)) { importSkipped.noSource.push({ item: item }); return; }
+
+      importRows.push({
+        ref: refs[0],
+        was: parseFloat((item.prices || {})[targetName]) || null,
+        source: source,
+        price: applyImportRule(source, delta, unit, rounding)
+      });
+    });
+
+    renderImport(targetName, sourceName);
+  }
+
+  function renderImport(targetName, sourceName) {
+    var skipped = importSkipped || { noArticle: [], ambiguous: [], noSource: [] };
+    var skippedTotal = skipped.noArticle.length + skipped.ambiguous.length + skipped.noSource.length;
+
+    document.getElementById('import-summary').innerHTML =
+      '<div class="pc-import-stats">' +
+        importStat(importRows.length, 'строк в файле') +
+        importStat(skipped.noArticle.length, 'нет в нашем прайсе', 'muted') +
+        importStat(skipped.ambiguous.length, 'несколько артикулов', skipped.ambiguous.length ? 'warn' : 'muted') +
+        importStat(skipped.noSource.length, 'нет цены источника', 'muted') +
+      '</div>';
+
+    var groups = '';
+    if (skipped.ambiguous.length) {
+      groups += importGroupHtml(
+        'Пропущены: несколько артикулов в «' + targetName + '» — ' + skipped.ambiguous.length,
+        'У этих кодов 804н в лаборатории заведено больше одной услуги — например обычная ' +
+        'и профосмотровая, с разными ценами. Какую из них поднимать, решать человеку: ' +
+        'поправьте их в МИС руками.',
+        skipped.ambiguous.map(function(row) {
+          return '<li>' + esc(row.item.serviceName) +
+            (row.item.serviceCode ? ' <code>' + esc(row.item.serviceCode) + '</code>' : '') +
+            '<br>' + row.refs.map(function(ref) {
+              return '<code>' + esc(ref.code) + '</code> ' +
+                (ref.price ? formatPrice(ref.price) + ' · ' : '') + esc(ref.title) +
+                (ref.categoryPath ? ' — ' + esc(ref.categoryPath) : '');
+            }).join('<br>') +
+            '</li>';
+        }).join('')
+      );
+    }
+    if (skipped.noSource.length) {
+      groups += importGroupHtml(
+        'Пропущены: нет цены в «' + sourceName + '» — ' + skipped.noSource.length,
+        'Брать новую цену неоткуда: в колонке-источнике у этих услуг пусто.',
+        skipped.noSource.map(function(row) {
+          return '<li>' + esc(row.item.serviceName) +
+            (row.item.serviceCode ? ' <code>' + esc(row.item.serviceCode) + '</code>' : '') + '</li>';
+        }).join('')
+      );
+    }
+    if (skipped.noArticle.length) {
+      groups += importGroupHtml(
+        'Пропущены: нет в прайсе «' + targetName + '» — ' + skipped.noArticle.length,
+        'Этих услуг мы не оказываем: в МИС у них нет артикула этой лаборатории. ' +
+        'Обновлять в прейскуранте нечего.',
+        skipped.noArticle.map(function(row) {
+          return '<li>' + esc(row.item.serviceName) +
+            (row.item.serviceCode ? ' <code>' + esc(row.item.serviceCode) + '</code>' : '') + '</li>';
+        }).join('')
+      );
+    }
+    document.getElementById('import-skipped').innerHTML = groups;
+
+    var preview = document.getElementById('import-preview');
+    if (!importRows.length) {
+      preview.innerHTML = '<div class="pc-import-caption">' +
+        (skippedTotal ? 'В файл не попадает ни одна услуга — смотрите списки выше.'
+                      : 'Выберите лабораторию и колонку с ценами.') + '</div>';
+      // Отчёт остаётся доступным: в нём перечень того, что править руками,
+      // и он нужен как раз тогда, когда файл пустой
+      setImportButtons(false, skippedTotal > 0);
+      return;
+    }
+
+    var shown = importRows.slice(0, 12);
+    preview.innerHTML = '<div class="pc-import-caption">Первые ' + shown.length +
+      ' из ' + importRows.length + ' строк файла:</div>' +
+      '<table class="pc-import-table"><tr>' +
+        '<th>Артикул</th><th>Услуга</th><th style="text-align:right">Сейчас</th>' +
+        '<th style="text-align:right">' + esc(sourceName) + '</th>' +
+        '<th style="text-align:right">Станет</th></tr>' +
+      shown.map(function(row) {
+        return '<tr><td><code>' + esc(row.ref.code) + '</code></td>' +
+          '<td>' + esc(row.ref.title) + '</td>' +
+          '<td class="num was">' + (row.was ? formatPrice(row.was) : '—') + '</td>' +
+          '<td class="num was">' + formatPrice(row.source) + '</td>' +
+          '<td class="num now">' + formatPrice(row.price) + '</td></tr>';
+      }).join('') + '</table>';
+
+    setImportButtons(true);
+  }
+
+  function setImportButtons(canDownload, canReport) {
+    document.getElementById('import-download-btn').disabled = !canDownload;
+    document.getElementById('import-report-btn').disabled =
+      !(canReport === undefined ? canDownload : canReport);
+  }
+
+  function importStat(value, label, tone) {
+    return '<div><div class="pc-import-stat-value' + (tone ? ' ' + tone : '') + '">' + value + '</div>' +
+      '<div class="pc-import-stat-label">' + esc(label) + '</div></div>';
+  }
+
+  function importGroupHtml(title, why, items) {
+    return '<details class="pc-import-group"><summary>' + esc(title) + '</summary>' +
+      '<div class="pc-import-group-why">' + why + '</div>' +
+      '<ul class="pc-import-list">' + items + '</ul></details>';
+  }
+
+  // ';' — разделитель полей, перевод строки — конец записи: ни того, ни
+  // другого в названии услуги оказаться не должно
+  function csvText(value) {
+    return String(value == null ? '' : value)
+      .replace(/[\r\n]+/g, ' ').replace(/;/g, ',').replace(/\s+/g, ' ').trim();
+  }
+
+  // Дробную часть МИС ждёт через точку, целые цены пишем без хвоста «.00»
+  function csvPrice(value) {
+    var number = Math.round((parseFloat(value) || 0) * 100) / 100;
+    return number % 1 === 0 ? String(number) : number.toFixed(2);
+  }
+
+  function saveBlob(blob, fileName) {
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  /** Имя файла из названия листа: в нём попадаются двоеточия и слэши. */
+  function importFileName(targetName, extension) {
+    var stamp = new Date().toISOString().slice(0, 10);
+    return (currentComparison.name + ' ' + targetName + ' ' + stamp)
+      .replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + extension;
+  }
+
+  /** Правило словами — тем же текстом оно попадает в шапку отчёта. */
+  function importRuleLabel() {
+    var delta = parseFloat(document.getElementById('import-delta').value) || 0;
+    var unit = document.getElementById('import-delta-unit').value;
+    if (!delta) return 'цены без изменения';
+    return (delta > 0 ? '+' : '−') + Math.abs(delta) + (unit === 'pct' ? ' %' : ' ₽');
+  }
+
+  function importRoundingLabel() {
+    var select = document.getElementById('import-round');
+    if (select.value === 'none') return '';
+    var text = select.options[select.selectedIndex].text;
+    return text.charAt(0).toLowerCase() + text.slice(1);
+  }
+
+  /**
+   * PDF-отчёт: что подорожает и на сколько, а внизу — что придётся править
+   * руками. Строки отдаём те же, что уходят в CSV: пересчитывать их на
+   * сервере значило бы держать правило в двух местах и однажды разойтись.
+   */
+  function downloadMisImportReport() {
+    var button = document.getElementById('import-report-btn');
+    if (!currentComparison || button.disabled) return;
+
+    var targetName = document.getElementById('import-target').value;
+    var sourceName = document.getElementById('import-source').value;
+    var skipped = importSkipped || { noArticle: [], ambiguous: [], noSource: [] };
+    var brief = function(row) {
+      return { code: row.item.serviceCode || '', title: row.item.serviceName || '' };
+    };
+
+    var payload = {
+      target: targetName,
+      source: sourceName,
+      rule: importRuleLabel(),
+      rounding: importRoundingLabel(),
+      rows: importRows.map(function(row) {
+        return {
+          code: row.ref.code,
+          subCode: row.ref.subCode,
+          title: row.ref.title,
+          was: row.was,
+          price: row.price
+        };
+      }),
+      skipped: {
+        ambiguous: skipped.ambiguous.map(function(row) {
+          return {
+            code: row.item.serviceCode || '',
+            title: row.item.serviceName || '',
+            refs: row.refs.map(function(ref) {
+              return {
+                code: ref.code, title: ref.title,
+                price: ref.price, categoryPath: ref.categoryPath
+              };
+            })
+          };
+        }),
+        noSource: skipped.noSource.map(brief),
+        noArticle: skipped.noArticle.map(brief)
+      }
+    };
+
+    button.disabled = true;
+    setImportState('<span class="price-btn-spinner"></span><span>Собираем отчёт…</span>');
+
+    // Своим fetch, а не fetchAPI: тот разбирает ответ как JSON, а здесь PDF
+    fetch(API_URL + '/' + currentComparison.id + '/mis-import/report', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: JSON.stringify(payload)
+    }).then(function(response) {
+      if (!response.ok) throw new Error('сервер ответил ' + response.status);
+      return response.blob();
+    }).then(function(blob) {
+      saveBlob(blob, importFileName(targetName, '.pdf'));
+      setImportState('');
+      showToast('Отчёт готов', 'success');
+    }).catch(function(e) {
+      setImportState('');
+      showToast('Не удалось собрать отчёт: ' + e.message, 'error');
+    }).finally(function() {
+      button.disabled = false;
+    });
+  }
+
+  function downloadMisImport() {
+    if (!importRows.length) return;
+
+    var withCost = document.getElementById('import-with-cost').checked;
+    var lines = importRows.map(function(row) {
+      var cells = [];
+      for (var i = 0; i < IMPORT_FIELDS; i++) cells.push('');
+      cells[0] = csvText(row.ref.code);       // артикул — ключ обновления
+      cells[1] = csvText(row.ref.subCode);    // код 804н
+      cells[2] = csvText(row.ref.title);      // название
+      cells[3] = csvPrice(row.price);         // стоимость
+      if (withCost && row.ref.cost) cells[4] = csvPrice(row.ref.cost);
+      return cells.join(';');
+    });
+
+    // Строк-категорий в файле нет намеренно: категория обязательна только для
+    // новых услуг, а мы обновляем существующие — им хватает артикула.
+    // Кодировка utf-8 без BOM, перевод строки CRLF — как в файлах, которые
+    // МИС уже принимала.
+    var blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' });
+    var targetName = document.getElementById('import-target').value;
+    saveBlob(blob, importFileName(targetName, '.csv'));
+
+    showToast('Файл импорта готов: ' + importRows.length + ' услуг', 'success');
   }
 
   return {
@@ -5407,6 +6097,10 @@ window.priceApp = (function() {
     onLabCategoryKeydown: onLabCategoryKeydown,
     selectLabCategory: selectLabCategory,
     saveLabGroups: saveLabGroups,
+    openMisImportModal: openMisImportModal,
+    onImportSettings: onImportSettings,
+    downloadMisImport: downloadMisImport,
+    downloadMisImportReport: downloadMisImportReport,
     setLayout: setLayout,
     setMapMode: setMapMode,
     onMapService: onMapService,
