@@ -209,65 +209,25 @@ app.use('/api/public', publicCors, publicRoutes);
 
 ### Поля
 
-| # | Поле | Ключ | Тип | Обяз. |
-|---|---|---|---|---|
-| 1 | Фамилия | `lastName` | string(100) | ✔ |
-| 2 | Имя | `firstName` | string(100) | ✔ |
-| 3 | Отчество | `middleName` | string(100) | |
-| 4 | Пол | `gender` | enum: `male` \| `female` | |
-| 5 | Дата рождения | `birthDate` | date `YYYY-MM-DD` | ✔ |
-| 6 | Семейное положение | `maritalStatus` | enum: `single` \| `married` \| `divorced` \| `widowed` | |
-| 7 | Тип документа | `documentType` | enum: `passport_rf` \| `passport_foreign_rf` \| `birth_certificate` \| `residence_permit` \| `foreign_passport` | |
-| 8 | Серия | `documentSeries` | string(20) | ✔ |
-| 9 | Номер | `documentNumber` | string(20) | ✔ |
-| 10 | Кем выдан | `documentIssuedBy` | string(255) | ✔ |
-| 11 | Дата выдачи | `documentIssuedAt` | date `YYYY-MM-DD` | ✔ |
-| 12 | Код подразделения | `documentDepartmentCode` | string(10) | ✔ |
-| 13 | Индекс | `postalCode` | string(10) | |
-| 14 | Регион | `region` | string(100) | |
-| 15 | Район/округ | `district` | string(100) | ✔ |
-| 16 | Город | `city` | string(100) | ✔ |
-| 17 | Улица | `street` | string(255) | ✔ |
-| 18 | Корпус | `building` | string(20) | |
-| 19 | Квартира | `apartment` | string(20) | |
-| 20 | Телефон | `phone` | string, нормализуется в `+7XXXXXXXXXX` | ✔ |
-| 21 | Email | `email` | email | ✔ |
-| + | Согласие на обработку ПДн | `personalDataConsent` | bool, должен быть `true` | ✔ |
+Схема выросла (41 поле и 8 файловых зон) и дублировать её здесь смысла нет —
+единственный актуальный источник это **PUBLIC_API_PATIENT_FORM.md** и живой
+`GET /api/public/v1/forms/patient-registration/schema`.
 
-Enum'ы — строгие: свободный текст в этих полях не принимаем. Даты — только ISO.
-Телефон нормализуется на входе, в `payload` кладётся и исходное, и нормализованное значение.
+Устройство схемы в двух словах:
+
+- `applicantType` (`self` / `child_parent` / `child_guardian`) — развилка всей формы.
+  При `self` основной блок это пациент, иначе — представитель, а пациент лежит в `child*`;
+- обязательность большинства полей условная (`requiredIf` в описании формы), поэтому
+  «обязательное поле» имеет смысл только в паре с режимом анкеты;
+- анкета приходит как `multipart/form-data`: к ней приложены СНИЛС, документы и,
+  для `child_guardian`, нотариальная доверенность.
+
+Enum'ы — строгие: свободный текст в этих полях не принимаем. Даты — в двух форматах,
+`ГГГГ-ММ-ДД` и `ДД.ММ.ГГГГ`. Телефон и СНИЛС нормализуются на входе.
 
 ### Пример запроса
 
-```bash
-curl -X POST https://wiki.medcentralfa.ru/api/public/v1/forms/patient-registration \
-  -H "X-Api-Key: wk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "lastName": "Иванов",
-    "firstName": "Иван",
-    "middleName": "Иванович",
-    "gender": "male",
-    "birthDate": "1985-03-12",
-    "maritalStatus": "married",
-    "documentType": "passport_rf",
-    "documentSeries": "4510",
-    "documentNumber": "123456",
-    "documentIssuedBy": "ОУФМС России по гор. Москве",
-    "documentIssuedAt": "2010-05-20",
-    "documentDepartmentCode": "770-001",
-    "postalCode": "117312",
-    "region": "Москва",
-    "district": "ЮЗАО",
-    "city": "Москва",
-    "street": "Профсоюзная",
-    "building": "12",
-    "apartment": "45",
-    "phone": "+7 (999) 123-45-67",
-    "email": "ivanov@example.com",
-    "personalDataConsent": true
-  }'
-```
+Полные примеры для обоих режимов — в PUBLIC_API_PATIENT_FORM.md.
 
 ### Ответы
 

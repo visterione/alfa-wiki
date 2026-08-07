@@ -89,7 +89,8 @@ pm2 restart alfa-wiki
 
 ## 4.1. Проверить лимит размера тела в nginx
 
-Нужно только для форм с файлами (справка для налогового вычета).
+Нужно для форм с файлами — справки для налогового вычета и, главное, анкеты пациента:
+в ней до 8 документов по 10 МБ, то есть до 100 МБ на запрос.
 
 ```bash
 sudo nginx -T | grep client_max_body_size
@@ -97,13 +98,17 @@ sudo nginx -T | grep client_max_body_size
 
 По умолчанию в nginx стоит **1 МБ** — файл на 2 МБ до бэкенда не дойдёт, сайт получит
 413 от nginx, а не наш ответ. В вики загружаются видео, поэтому лимит, скорее всего,
-уже поднят. Если команда ничего не вывела — добавить в конфиг:
+уже поднят, но под анкету пациента его нужно довести до:
 
 ```nginx
-client_max_body_size 25m;
+client_max_body_size 110m;
 ```
 
-и `sudo nginx -s reload`.
+110, а не 100: запас на служебные заголовки multipart. Смысл запаса в том, чтобы
+на превышении отвечал наш API понятным JSON (`payload_too_large`), а не nginx —
+голой HTML-страницей, которую сайту нечем разобрать.
+
+После правки — `sudo nginx -s reload`.
 
 ## 5. Выдать ключ сайту
 
@@ -149,20 +154,30 @@ curl https://wiki.medcentralfa.ru/api/public/v1/ping
 
 Тестовая заявка — подставить свой ключ:
 
+Анкета пациента приходит как `multipart/form-data` с приложенными документами,
+поэтому для проверки нужны два любых файла:
+
 ```bash
+printf 'test' > /tmp/test.pdf
+
 curl -X POST https://wiki.medcentralfa.ru/api/public/v1/forms/patient-registration \
   -H "X-Api-Key: wk_live_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "lastName":"Тестов","firstName":"Тест","birthDate":"1985-03-12",
-    "documentSeries":"4510","documentNumber":"123456",
-    "documentIssuedBy":"ОУФМС России","documentIssuedAt":"2010-05-20",
-    "documentDepartmentCode":"770-001",
-    "district":"ЮЗАО","city":"Москва","street":"Профсоюзная",
-    "phone":"+79991234567","email":"test@example.com",
-    "personalDataConsent":true
-  }'
+  -F "applicantType=self" \
+  -F "lastName=Тестов" -F "firstName=Тест" -F "birthDate=1985-03-12" \
+  -F "snils=112-233-445 95" \
+  -F "documentType=passport_rf" \
+  -F "documentSeries=4510" -F "documentNumber=123456" \
+  -F "documentIssuedBy=ОУФМС России" -F "documentIssuedAt=2010-05-20" \
+  -F "documentDepartmentCode=770-001" \
+  -F "region=Москва, ЮЗАО" -F "city=Москва" -F "street=Профсоюзная" -F "house=12" \
+  -F "phone=+79991234567" -F "email=test@example.com" \
+  -F "hasBenefits=false" \
+  -F "personalDataConsent=true" \
+  -F "snilsFile=@/tmp/test.pdf;type=application/pdf" \
+  -F "passportFile=@/tmp/test.pdf;type=application/pdf"
 ```
+
+Полное описание полей — в PUBLIC_API_PATIENT_FORM.md.
 
 Ожидаемый ответ: `{"ok":true,"id":"...","duplicate":false,"delivered":true}`
 и сообщение в групповом чате.

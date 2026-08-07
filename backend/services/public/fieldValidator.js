@@ -16,12 +16,17 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
  * @typedef {Object} FieldSpec
  * @property {string}  key       Ключ в JSON запроса
  * @property {string}  label     Человеческое название (для сообщений об ошибках и чата)
- * @property {string}  type      string | enum | date | phone | email | boolean | inn
+ * @property {string}  type      string | enum | date | phone | email | boolean | inn | snils
  * @property {boolean} [required]
  * @property {Function} [requiredIf] (value) => boolean — поле обязательно только при этом
  *   условии. Когда условие не выполнено, поле считается неприменимым и в payload не
  *   попадает, даже если его прислали. Так работает блок, скрытый галочкой на форме.
+ * @property {string} [requiredWhen] Человекочитаемое описание requiredIf: функцию в
+ *   GET /schema не отдать, а без словесного условия разработчик формы не поймёт,
+ *   когда поле обязательно.
  * @property {number}  [max]     Максимальная длина для string
+ * @property {boolean} [multiline] Для string: сохранять переводы строк (комментарий,
+ *   описание). Без него весь пробельный мусор схлопывается в один пробел.
  * @property {Object}  [values]  Для enum: { ключ: 'Человеческая подпись' }
  * @property {boolean} [mustBeTrue] Для boolean: значение обязано быть true
  * @property {boolean} [notFuture]  Для date: дата не может быть в будущем
@@ -92,7 +97,7 @@ function validate(body, spec, validateAll) {
 function normalize(raw, field) {
   switch (field.type) {
     case 'string': {
-      const str = String(raw).trim().replace(/\s+/g, ' ');
+      const str = field.multiline ? cleanMultiline(raw) : String(raw).trim().replace(/\s+/g, ' ');
       if (field.max && str.length > field.max) {
         return { error: `«${field.label}» — не длиннее ${field.max} символов` };
       }
@@ -154,6 +159,18 @@ function normalize(raw, field) {
       }
       if (!isValidInn(digits)) {
         return { error: `«${field.label}» — контрольная сумма ИНН не сходится, проверьте цифры` };
+      }
+      return { value: digits };
+    }
+
+    case 'snils': {
+      // Принимаем и «123-456-789 00», и голые цифры — в базу кладём 11 цифр
+      const digits = String(raw).replace(/\D/g, '');
+      if (digits.length !== 11) {
+        return { error: `«${field.label}» — СНИЛС состоит из 11 цифр` };
+      }
+      if (!isValidSnils(digits)) {
+        return { error: `«${field.label}» — контрольная сумма СНИЛС не сходится, проверьте цифры` };
       }
       return { value: digits };
     }
@@ -221,4 +238,38 @@ function isValidInn(digits) {
       && checksum([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === d[11];
 }
 
-module.exports = { validate, parseDate, isValidInn };
+/**
+ * Контрольная сумма СНИЛС по алгоритму ПФР: первые 9 цифр — номер, последние две —
+ * контрольное число. Номера до 001-001-998 выдавались без контроля, у них проверки нет.
+ *
+ * @param {string} digits Только цифры, 11 символов
+ */
+function isValidSnils(digits) {
+  const number = digits.slice(0, 9);
+  const control = Number(digits.slice(9));
+
+  if (Number(number) <= 1001998) return true;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(number[i]) * (9 - i);
+
+  // 100 и 101 приравниваются к 00 — так описано в самом алгоритме
+  const expected = sum % 101 === 100 ? 0 : sum % 101;
+  return expected === control;
+}
+
+/**
+ * Чистит многострочный текст: убирает \r, схлопывает пробелы внутри строки и
+ * лишние пустые строки, но сами переводы строк сохраняет.
+ */
+function cleanMultiline(raw) {
+  return String(raw)
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map(line => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+module.exports = { validate, parseDate, isValidInn, isValidSnils };

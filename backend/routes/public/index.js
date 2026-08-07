@@ -17,7 +17,10 @@ const bookingRoutes = require('./v1/booking');
 
 // Порядок важен: сначала лог и грубые лимиты, потом разбор тела, потом маршруты
 router.use(auditLog());
-router.use(limitBodySize({ json: 100 * 1024, multipart: 20 * 1024 * 1024 }));
+// Потолок multipart считается по самой тяжёлой форме: в анкете пациента 8 зон
+// загрузки по 10 МБ (документы о льготах — до трёх файлов), это до 80 МБ на запрос.
+// Лимит на каждый файл в отдельности проверяет multer по описанию формы.
+router.use(limitBodySize({ json: 100 * 1024, multipart: 100 * 1024 * 1024 }));
 router.use(rateLimitByIp(120));
 // multipart (формы с файлами) express.json пропускает — его разбирает multer в маршруте
 router.use(express.json({ limit: '100kb' }));

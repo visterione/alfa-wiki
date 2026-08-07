@@ -78,14 +78,15 @@ router.get('/:formType/schema', loadForm, authForForm, (req, res) => {
     ok: true,
     formType: form.formType,
     title: form.title,
-    // requiredIf — поле обязательно не всегда, а при условии; описываем это словами,
-    // проверить функцию на стороне сайта всё равно нельзя
+    // requiredIf — поле обязательно не всегда, а при условии; описываем это словами
+    // (requiredWhen), проверить функцию на стороне сайта всё равно нельзя
     fields: form.fields.map(f => ({
       key: f.key,
       label: f.label,
       type: f.type,
       required: Boolean(f.required),
       conditional: Boolean(f.requiredIf),
+      requiredWhen: f.requiredWhen || null,
       maxLength: f.max || null,
       values: f.values || null
     })),
@@ -94,6 +95,7 @@ router.get('/:formType/schema', loadForm, authForForm, (req, res) => {
       label: f.label,
       required: Boolean(f.required),
       conditional: Boolean(f.requiredIf),
+      requiredWhen: f.requiredWhen || null,
       maxCount: f.maxCount || 1,
       maxSizeMb: f.maxSizeMb || 5,
       mimeTypes: f.mimeTypes || []

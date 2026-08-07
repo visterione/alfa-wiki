@@ -32,12 +32,16 @@ const HANDLERS = {
   'mis-create-patient': async ({ action }) => {
     const p = await loadPayload(action.submissionId);
 
+    // Когда анкету заполнял представитель, основной блок — его, а пациент это
+    // ребёнок. Контакты в анкете одни на двоих, поэтому берём их как есть.
+    const forChild = p.applicantType && p.applicantType !== 'self';
+
     const patient = await misClient.createPatient({
-      lastName:   p.lastName,
-      firstName:  p.firstName,
-      middleName: p.middleName,
-      birthDate:  p.birthDate,
-      gender:     p.gender,
+      lastName:   forChild ? p.childLastName   : p.lastName,
+      firstName:  forChild ? p.childFirstName  : p.firstName,
+      middleName: forChild ? p.childMiddleName : p.middleName,
+      birthDate:  forChild ? p.childBirthDate  : p.birthDate,
+      gender:     forChild ? p.childGender     : p.gender,
       phone:      p.phone,
       email:      p.email
     });
