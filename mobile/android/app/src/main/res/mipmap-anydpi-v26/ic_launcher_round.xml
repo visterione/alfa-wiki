@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Адаптивная иконка для Android 8+ (API 26).
+  Система сама применяет к слоям маску нужной формы: круг, squircle, каплю —
+  зависит от лаунчера. Поэтому иконка задаётся двумя слоями, а не картинкой:
+    background — фирменный градиент;
+    foreground — белый знак, занимает ~55% канвы, чтобы не обрезался маской
+                 (гарантированно видна только центральная зона 72dp из 108dp).
+  Для Android 7 и старше рядом лежат обычные ic_launcher.png по плотностям.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

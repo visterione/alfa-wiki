@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Фон окна на время запуска — до того, как React Native отрисует первый кадр.
+
+  Раньше здесь был белый экран из стандартной темы: пользователь видел сначала
+  белое поле с иконкой, потом синий экран с колесиком, и старт выглядел как два
+  разных приложения подряд. Теперь тот же градиент и тот же знак, что на нашем
+  экране загрузки, — переход между ними незаметен.
+
+  Цвета совпадают со светлой палитрой (primaryHover → primary → secondary),
+  углом 315° градиент идёт из левого верхнего угла в правый нижний, как в JS.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="315"
+                android:startColor="#0056CC"
+                android:centerColor="#007AFF"
+                android:endColor="#5856D6" />
+        </shape>
+    </item>
+
+    <!-- Тот же белый знак, что и в иконке приложения -->
+    <item
+        android:width="128dp"
+        android:height="128dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@mipmap/ic_launcher_foreground"
+            android:gravity="center" />
+    </item>
+</layer-list>

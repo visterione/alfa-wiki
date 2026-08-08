@@ -1,0 +1,28 @@
+<resources>
+
+    <!--
+      Экран запуска для Android 12+ (API 31).
+
+      Начиная с этой версии система рисует его сама и windowBackground
+      игнорирует: цвет и значок задаются отдельными атрибутами. Без них
+      Android берёт доминирующий цвет фона на своё усмотрение — результат
+      зависит от картинки, а не от нашего решения.
+
+      windowBackground оставлен для промежутка после системного экрана и
+      до первого кадра React Native.
+    -->
+    <style name="SplashTheme" parent="AppTheme">
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <!--
+          Только белый знак, без подложки. Полная иконка приложения — это
+          тёмный круг с градиентом, и на синем фоне он читается как чужеродная
+          нашлёпка. Со знаком без фона системный экран выглядит так же, как
+          наш собственный экран загрузки, и переход между ними не заметен.
+        -->
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <!-- Убираем белую окантовку-подложку под значком -->
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+
+</resources>

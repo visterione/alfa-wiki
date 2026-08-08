@@ -62,11 +62,27 @@ backend/backups/
 *.sqlite3
 *.db
 
+# Дампы БД — NEVER commit.
+# В боевой базе персональные данные пациентов; однажды они уже уехали
+# в публичный репозиторий именно отсюда.
+*.sql
+*.backup
+*.dump
+!backend/migrations/*.sql
+
 # Temp files
 tmp/
 temp/
 *.tmp
 *.temp
+
+# Рабочие файлы, на которых отлаживают импорт в ботах и парсере:
+# прайсы, выгрузки, картинки. Никогда не часть кода.
+backend/bot/*.csv
+backend/bot/*.xlsx
+backend/bot/*.xls
+backend/bot/*.pdf
+backend/bot/*.svg
 
 # Package locks (оставь один - npm или yarn)
 # package-lock.json
@@ -78,3 +94,13 @@ temp/
 *.pid.lock
 .git/
 backend/backups/backup-2026-01-07T09-02-42-344Z.zip
+
+# SSL certificates (private key — NEVER commit)
+/certs/
+*.key
+*.crt
+
+# Firebase / FCM — приватные ключи push-уведомлений (NEVER commit)
+backend/config/fcm-service-account.json
+mobile/android/app/google-services.json
+mobile/ios/GoogleService-Info.plist

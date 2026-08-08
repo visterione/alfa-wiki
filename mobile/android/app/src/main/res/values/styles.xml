@@ -1,0 +1,20 @@
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+    </style>
+
+    <!--
+      Тема окна запуска. Отличается от AppTheme только фоном: он виден в те
+      доли секунды, пока поднимается JS и не отрисован первый кадр.
+
+      MainActivity переключается на AppTheme в onCreate — иначе этот фон
+      остался бы за всеми экранами и просвечивал бы синим в тёмной теме.
+    -->
+    <style name="SplashTheme" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+
+</resources>

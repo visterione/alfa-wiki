@@ -1,0 +1,9 @@
+<resources>
+    <!--
+      Имя под иконкой на домашнем экране. Отличается от "name" в app.json:
+      там внутренний идентификатор JS-компонента, он завязан на
+      MainActivity.getMainComponentName() и AppRegistry.registerComponent —
+      его переименование сломало бы запуск приложения.
+    -->
+    <string name="app_name">Альфа Вики</string>
+</resources>

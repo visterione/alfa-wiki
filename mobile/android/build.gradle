@@ -1,0 +1,54 @@
+buildscript {
+    ext {
+        buildToolsVersion = "36.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 36
+        targetSdkVersion = 36
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.1.20"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        // Читает google-services.json и подставляет ключи Firebase в сборку
+        classpath("com.google.gms:google-services:4.4.2")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
+
+// Remove sonatype snapshots repo added by RN plugin — it returns 503 and breaks the build
+allprojects {
+    repositories.all { repo ->
+        if (repo instanceof MavenArtifactRepository) {
+            if (repo.url.toString().contains("sonatype")) {
+                repositories.remove(repo)
+            }
+        }
+    }
+}
+
+// Единая версия NDK для всех модулей.
+//
+// Модули, которые её не задают (например, react-native-audio-recorder-player),
+// получают версию по умолчанию от Android Gradle Plugin — сейчас это
+// 27.0.12077973. В итоге сборка тянула второй NDK на несколько сотен мегабайт
+// ради разницы в патче, а при обрыве загрузки оставляла пустой каталог, из-за
+// которого падала с «did not have a source.properties file».
+// Реагируем на применение android-плагина, а не через afterEvaluate: часть
+// модулей RN успевает вычислиться раньше корневого build.gradle, и тогда
+// afterEvaluate падает с «project is already evaluated».
+subprojects { proj ->
+    ["com.android.library", "com.android.application"].each { pluginId ->
+        proj.plugins.withId(pluginId) {
+            proj.android {
+                ndkVersion rootProject.ext.ndkVersion
+            }
+        }
+    }
+}

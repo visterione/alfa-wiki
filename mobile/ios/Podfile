@@ -1,0 +1,47 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+target 'AlfaWikiMobile' do
+  config = use_native_modules!
+
+  # Firebase (пуши) написан на Swift, а тянет за собой Google-поды на
+  # Objective-C. По умолчанию CocoaPods линкует всё статическими библиотеками, и
+  # в таком виде Swift не может импортировать Objective-C-под без module map —
+  # pod install падает с «cannot yet be integrated as static libraries».
+  #
+  # Модульные заголовки включены точечно, только этим четырём. Глобальный
+  # use_modular_headers! чинил бы то же самое, но заодно менял бы сборку всем
+  # остальным подам, включая React Native, — ради чужой проблемы.
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'FirebaseCore', :modular_headers => true
+  pod 'FirebaseCoreInternal', :modular_headers => true
+  pod 'GoogleDataTransport', :modular_headers => true
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
+    )
+  end
+end
