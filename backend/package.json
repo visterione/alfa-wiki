@@ -22,6 +22,8 @@
     "migrate:chat-enhancements:check": "node scripts/migrateChatEnhancements.js --check",
     "migrate:role-badges": "node scripts/migrateRoleChatBadges.js",
     "migrate:role-badges:check": "node scripts/migrateRoleChatBadges.js --check",
+    "migrate:6.67-6.68": "node scripts/migrateMedCentersWarehouse.js",
+    "migrate:6.67-6.68:check": "node scripts/migrateMedCentersWarehouse.js --check",
     "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",
     "migrate:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js --apply",
     "migrate:safe-db": "node scripts/migrateSafeDatabase.js",
