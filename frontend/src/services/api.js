@@ -94,10 +94,29 @@ export const roles = {
   delete: (id) => api.delete(`/roles/${id}`)
 };
 
-// Медцентры: цвет клиники красит метку сотрудника в чатах
+// Справочник медцентров: названия, фирменные цвета, логотипы, адреса, графики,
+// главврачи и связь с clinic_id из МИС. Читать может любой авторизованный.
 export const medCenters = {
-  list: () => api.get('/med-centers'),
-  update: (id, data) => api.put(`/med-centers/${id}`, data)
+  // includeVirtual — со служебными группировками («Направители», «АУП»),
+  // includeInactive — с закрытыми клиниками (нужно отчётам за прошлые периоды).
+  list: ({ includeVirtual, includeInactive } = {}) => api.get('/med-centers', {
+    params: {
+      ...(includeVirtual ? { includeVirtual: '1' } : {}),
+      ...(includeInactive ? { includeInactive: '1' } : {})
+    }
+  }),
+  get: (id) => api.get(`/med-centers/${id}`),
+  create: (data) => api.post('/med-centers', data),
+  update: (id, data) => api.put(`/med-centers/${id}`, data),
+  delete: (id) => api.delete(`/med-centers/${id}`)
+};
+
+// Юрлица (ООО / ИП), которым принадлежат медцентры
+export const organizations = {
+  list: () => api.get('/organizations'),
+  create: (data) => api.post('/organizations', data),
+  update: (id, data) => api.put(`/organizations/${id}`, data),
+  delete: (id) => api.delete(`/organizations/${id}`)
 };
 
 // Pages
@@ -933,6 +952,118 @@ export const botSubscribers = {
   overlap: (params) => api.get('/bot-subscribers/overlap', { params }),
   // Охват среди реальных пациентов: сколько пациентов с визитами подписаны на боты
   penetration: (params) => api.get('/bot-subscribers/penetration', { params }),
+};
+
+// ── Складской учёт (ver. 6.68) ──────────────────────────────────────────────
+// Публичные карточки по QR живут на /api/wh-public и НЕ требуют токена, поэтому
+// вынесены в отдельный axios-клиент без интерцептора авторизации: с ним
+// неавторизованный посетитель получил бы редирект на /login вместо карточки.
+const publicApi = axios.create({
+  baseURL: `${BASE_URL}/api/wh-public`,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+export const warehouseApi = {
+  access: () => api.get('/warehouse/access'),
+
+  // Локации
+  tree:            ()             => api.get('/warehouse/locations/tree'),
+  specialties:     ()             => api.get('/warehouse/locations/specialties'),
+  createBuilding:  (data)         => api.post('/warehouse/locations/buildings', data),
+  updateBuilding:  (id, data)     => api.put(`/warehouse/locations/buildings/${id}`, data),
+  deleteBuilding:  (id)           => api.delete(`/warehouse/locations/buildings/${id}`),
+  createFloor:     (data)         => api.post('/warehouse/locations/floors', data),
+  updateFloor:     (id, data)     => api.put(`/warehouse/locations/floors/${id}`, data),
+  deleteFloor:     (id)           => api.delete(`/warehouse/locations/floors/${id}`),
+  floorPlan:       (id)           => api.get(`/warehouse/locations/floors/${id}/plan`),
+  saveFloorPlan:   (id, data)     => api.put(`/warehouse/locations/floors/${id}/plan`, data),
+  createDepartment:(data)         => api.post('/warehouse/locations/departments', data),
+  updateDepartment:(id, data)     => api.put(`/warehouse/locations/departments/${id}`, data),
+  createRoom:      (data)         => api.post('/warehouse/locations/rooms', data),
+  updateRoom:      (id, data)     => api.put(`/warehouse/locations/rooms/${id}`, data),
+  deleteRoom:      (id)           => api.delete(`/warehouse/locations/rooms/${id}`),
+  misSuggestions:  (params)       => api.get('/warehouse/locations/rooms/mis-suggestions', { params }),
+  createStorage:   (data)         => api.post('/warehouse/locations/storages', data),
+  updateStorage:   (id, data)     => api.put(`/warehouse/locations/storages/${id}`, data),
+
+  // Справочники и остатки
+  categories:      ()             => api.get('/warehouse/catalog/categories'),
+  createCategory:  (data)         => api.post('/warehouse/catalog/categories', data),
+  contractors:     (params)       => api.get('/warehouse/catalog/contractors', { params }),
+  createContractor:(data)         => api.post('/warehouse/catalog/contractors', data),
+  updateContractor:(id, data)     => api.put(`/warehouse/catalog/contractors/${id}`, data),
+  nomenclature:    (params)       => api.get('/warehouse/catalog/nomenclature', { params }),
+  createNomenclature: (data)      => api.post('/warehouse/catalog/nomenclature', data),
+  updateNomenclature: (id, data)  => api.put(`/warehouse/catalog/nomenclature/${id}`, data),
+  batches:         (params)       => api.get('/warehouse/catalog/batches', { params }),
+  createBatch:     (data)         => api.post('/warehouse/catalog/batches', data),
+  blockBatch:      (id, data)     => api.patch(`/warehouse/catalog/batches/${id}/block`, data),
+  stock:           (params)       => api.get('/warehouse/catalog/stock', { params }),
+  reconcileStock:  ()             => api.get('/warehouse/catalog/stock/reconcile'),
+  reorderRules:    ()             => api.get('/warehouse/catalog/reorder-rules'),
+  createReorderRule: (data)       => api.post('/warehouse/catalog/reorder-rules', data),
+  deleteReorderRule: (id)         => api.delete(`/warehouse/catalog/reorder-rules/${id}`),
+  norms:           ()             => api.get('/warehouse/catalog/norms'),
+  createNorm:      (data)         => api.post('/warehouse/catalog/norms', data),
+  deleteNorm:      (id)           => api.delete(`/warehouse/catalog/norms/${id}`),
+
+  // Активы
+  assets:          (params)       => api.get('/warehouse/assets', { params }),
+  asset:           (id)           => api.get(`/warehouse/assets/${id}`),
+  createAsset:     (data)         => api.post('/warehouse/assets', data),
+  updateAsset:     (id, data)     => api.put(`/warehouse/assets/${id}`, data),
+  lookup:          (code)         => api.get(`/warehouse/assets/lookup/${encodeURIComponent(code)}`),
+  assetQrUrl:      (id)           => `${BASE_URL}/api/warehouse/assets/${id}/qr.svg`,
+  labelUrl:        (id, size)     => `${BASE_URL}/api/warehouse/assets/${id}/label.svg?size=${size || '58x40'}`,
+  labelsBatch:     (data)         => api.post('/warehouse/assets/labels/batch', data),
+  zpl:             (id, copies)   => api.get(`/warehouse/assets/${id}/label.zpl`, { params: { copies } }),
+  uploadAssetFiles:(id, formData) => api.post(`/warehouse/assets/${id}/files`, formData, {
+                                      headers: { 'Content-Type': 'multipart/form-data' } }),
+  patchAssetFile:  (fileId, data) => api.patch(`/warehouse/assets/files/${fileId}`, data),
+  deleteAssetFile: (fileId)       => api.delete(`/warehouse/assets/files/${fileId}`),
+
+  // Операции
+  documents:       (params)       => api.get('/warehouse/operations/documents', { params }),
+  document:        (id)           => api.get(`/warehouse/operations/documents/${id}`),
+  createDocument:  (data)         => api.post('/warehouse/operations/documents', data),
+  movements:       (params)       => api.get('/warehouse/operations/movements', { params }),
+  maintenance:     (params)       => api.get('/warehouse/operations/maintenance', { params }),
+  createMaintenance: (data)       => api.post('/warehouse/operations/maintenance', data),
+  closeMaintenance:(id, data)     => api.patch(`/warehouse/operations/maintenance/${id}/close`, data),
+  createRepair:    (data)         => api.post('/warehouse/operations/repairs', data),
+  closeRepair:     (id, data)     => api.patch(`/warehouse/operations/repairs/${id}/close`, data),
+  inventorySessions: ()           => api.get('/warehouse/operations/inventory'),
+  createInventory: (data)         => api.post('/warehouse/operations/inventory', data),
+  inventory:       (id)           => api.get(`/warehouse/operations/inventory/${id}`),
+  countInventory:  (id, data)     => api.post(`/warehouse/operations/inventory/${id}/count`, data),
+  closeInventory:  (id, data)     => api.patch(`/warehouse/operations/inventory/${id}/close`, data),
+  rfqList:         ()             => api.get('/warehouse/operations/rfq'),
+  createRfq:       (data)         => api.post('/warehouse/operations/rfq', data),
+  addQuote:        (id, data)     => api.post(`/warehouse/operations/rfq/${id}/quotes`, data),
+  rfqComparison:   (id)           => api.get(`/warehouse/operations/rfq/${id}/comparison`),
+  decideRfq:       (id, data)     => api.patch(`/warehouse/operations/rfq/${id}/decide`, data),
+
+  // Отчёты
+  turnover:        (params)       => api.get('/warehouse/reports/turnover', { params }),
+  consumption:     (params)       => api.get('/warehouse/reports/consumption', { params }),
+  expiring:        (params)       => api.get('/warehouse/reports/expiring', { params }),
+  depreciation:    (params)       => api.get('/warehouse/reports/depreciation', { params }),
+  reliability:     ()             => api.get('/warehouse/reports/reliability'),
+  transferMatrix:  (params)       => api.get('/warehouse/reports/transfer-matrix', { params }),
+  roomDashboard:   (roomId)       => api.get(`/warehouse/reports/room/${roomId}/dashboard`),
+  inventoryReport: (id)           => api.get(`/warehouse/reports/inventory/${id}`),
+  oneCStatus:      ()             => api.get('/warehouse/reports/one-c-status'),
+  exportReport:    (data)         => api.post('/warehouse/reports/export', data, { responseType: 'blob' }),
+
+  // Аналитика
+  heatmap:         (params)       => api.get('/warehouse/analytics/heatmap', { params }),
+  recomputeUtilization: (data)    => api.post('/warehouse/analytics/utilization/recompute', data),
+  idleAssets:      (params)       => api.get('/warehouse/analytics/idle-assets', { params }),
+  overview:        ()             => api.get('/warehouse/analytics/overview'),
+
+  // Публичные карточки (без авторизации)
+  publicAsset:     (token)        => publicApi.get(`/a/${token}`),
+  publicRoom:      (token)        => publicApi.get(`/r/${token}`),
 };
 
 export default api;

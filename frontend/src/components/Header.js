@@ -4,7 +4,7 @@ import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
   Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot, Newspaper,
-  ArrowLeft, KeyRound
+  ArrowLeft, KeyRound, Building2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -451,6 +451,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   <Link to="/admin/roles" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <Lock size={16} />
                     Роли и права
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.medCenters) && (
+                  <Link to="/admin/med-centers" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Building2 size={16} />
+                    Медцентры
                   </Link>
                 )}
                 {(isAdmin || user?.adminAccess?.backup) && (

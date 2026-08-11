@@ -157,14 +157,6 @@
 .acc-date.ok { background: #dcfce7; color: #16a34a; }
 
 .acc-medcenter { padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; display: inline-block; }
-.acc-medcenter[data-center="Альфа"] { background: #fce7f3; color: #be185d; }
-.acc-medcenter[data-center="Кидс"] { background: #ffedd5; color: #c2410c; }
-.acc-medcenter[data-center="Проф"] { background: #ede9fe; color: #6d28d9; }
-.acc-medcenter[data-center="3К"] { background: #fdf4ff; color: #a21caf; }
-.acc-medcenter[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; }
-.acc-medcenter[data-center="Линия"] { background: #fef3c7; color: #92400e; }
-.acc-medcenter[data-center="Сукко"] { background: #d1fae5; color: #047857; }
-.acc-medcenter[data-center="ИП Микаелян"] { background: #e0f2fe; color: #0369a1; }
 
 .acc-loading, .acc-empty { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: 14px; }
 
@@ -515,8 +507,25 @@
 
 <script>
 window.accApp = (function() {
-  var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/accreditations';
-  var MEDCENTERS = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'];
+  var API_BASE = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api';
+  var API_URL = API_BASE + '/accreditations';
+  var MED_CENTERS_URL = API_BASE + '/med-centers';
+  // Список и порядок медцентров приезжают из справочника (ver. 6.67) вместе с
+  // остальными данными в loadAll. До этого здесь лежала копия, которую при
+  // добавлении или переименовании клиники правили руками.
+  var MEDCENTERS = [];
+  var MEDCENTER_COLORS = {};
+
+  // Красим бейдж фирменным цветом клиники. До этого цвета были правилами CSS по
+  // имени, и у филиала без своего правила (Сукко, ИП Микаелян) бейдж был серым.
+  function mcStyle(name) {
+    var m = /^#([0-9a-f]{6})$/i.exec(MEDCENTER_COLORS[name] || '');
+    if (!m) return '';
+    var n = parseInt(m[1], 16), r = n >> 16, g = (n >> 8) & 255, bl = n & 255;
+    var fg = [r, g, bl].map(function(c) { return Math.round(c * 0.55); }).join(',');
+    var bg = [r, g, bl].map(function(c) { return Math.round(255 - (255 - c) * 0.14); }).join(',');
+    return ' style="background:rgb(' + bg + ');color:rgb(' + fg + ')"';
+  }
 
   var activeRecords = [];   // isArchived = false
   var archivedRecords = []; // isArchived = true
@@ -533,6 +542,13 @@ window.accApp = (function() {
   var hiddenStaff = {};     // ФИО (trim) -> 1: скрытые сотрудники (общий список)
   var showHidden = false;   // показывать ли скрытых в реестре
   var pendingFiles = [];    // файлы, выбранные в модалке до сохранения записи
+
+  // Приложение живёт внутри React-страницы, и та может заменить его узлы, пока
+  // висят запросы. Любой отложенный рендер сначала проверяет, на месте ли DOM, —
+  // иначе getElementById возвращает null и всё падает на середине отрисовки.
+  function appAlive() {
+    return !!document.getElementById('acc-tree') && !!document.getElementById('filter-search');
+  }
 
   function getToken() { return localStorage.getItem('token'); }
 
@@ -608,10 +624,15 @@ window.accApp = (function() {
   function loadAll() {
     return Promise.all([
       fetchAPI(API_URL + '?archived=false&sortBy=expirationDate&sortOrder=ASC'),
-      fetchAPI(API_URL + '?archived=true&sortBy=expirationDate&sortOrder=DESC')
+      fetchAPI(API_URL + '?archived=true&sortBy=expirationDate&sortOrder=DESC'),
+      // Аккредитацию выдают филиалу, поэтому служебные группировки не запрашиваем.
+      fetchAPI(MED_CENTERS_URL).catch(function() { return []; })
     ]).then(function(res) {
       activeRecords = res[0];
       archivedRecords = res[1];
+      MEDCENTERS = (res[2] || []).map(function(mc) { return mc.name; });
+      MEDCENTER_COLORS = {};
+      (res[2] || []).forEach(function(mc) { MEDCENTER_COLORS[mc.name] = mc.color || ''; });
       populateSpecialtyFilter();
       renderStats();
       render();
@@ -680,6 +701,7 @@ window.accApp = (function() {
     return Object.keys(seen).length;
   }
   function renderHiddenBar() {
+    if (!appAlive()) return;
     var slot = document.getElementById('acc-hidden-slot');
     if (!slot) return;
     // Кнопка только в активном реестровом виде
@@ -696,6 +718,7 @@ window.accApp = (function() {
   }
 
   function populateSpecialtyFilter() {
+    if (!appAlive()) return;
     var set = {};
     activeRecords.concat(archivedRecords).forEach(function(r) { if (r.specialty) set[r.specialty] = 1; });
     staff.forEach(function(s) { s.specialties.forEach(function(sp) { set[sp] = 1; }); });
@@ -709,6 +732,7 @@ window.accApp = (function() {
   }
 
   function renderStats() {
+    if (!appAlive()) return;
     var total = activeRecords.length, expired = 0, soon30 = 0, soon90 = 0;
     activeRecords.forEach(function(r) {
       var d = daysLeft(r.expirationDate);
@@ -758,6 +782,7 @@ window.accApp = (function() {
 
   // ── Рендер дерева ──
   function render() {
+    if (!appAlive()) return;
     renderHiddenBar();
     // Активный вид со штатом из МИС — реестровое дерево; иначе (архив или МИС недоступен) — по записям
     if (view === 'active' && staffLoaded && !staffError) return renderActiveRoster();
@@ -814,7 +839,7 @@ window.accApp = (function() {
       return '<div class="acc-group' + (isOpen ? ' open' : '') + '" data-group="' + attr(name) + '">' +
         '<div class="acc-group-header" onclick="accApp.toggleGroup(\'' + attr(name).replace(/'/g, "\\'") + '\')">' +
           '<svg class="acc-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>' +
-          '<span class="acc-medcenter" data-center="' + attr(name) + '">' + escapeHtml(name) + '</span>' +
+          '<span class="acc-medcenter" data-center="' + attr(name) + '"' + mcStyle(name) + '>' + escapeHtml(name) + '</span>' +
           '<span class="acc-group-count">' + rows.length + ' ' + plural(rows.length, 'запись', 'записи', 'записей') + '</span>' +
           '<span class="acc-group-badges">' + badges + '</span>' +
         '</div>' +
@@ -926,7 +951,7 @@ window.accApp = (function() {
       return '<div class="acc-group' + (isOpen ? ' open' : '') + '" data-group="' + attr(g.mc) + '">' +
         '<div class="acc-group-header" onclick="accApp.toggleGroup(\'' + attr(g.mc).replace(/'/g, "\\'") + '\')">' +
           '<svg class="acc-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>' +
-          '<span class="acc-medcenter" data-center="' + attr(g.mc) + '">' + escapeHtml(g.mc) + '</span>' +
+          '<span class="acc-medcenter" data-center="' + attr(g.mc) + '"' + mcStyle(g.mc) + '>' + escapeHtml(g.mc) + '</span>' +
           '<span class="acc-group-count">' + g.cards.length + ' ' + plural(g.cards.length, 'сотрудник', 'сотрудника', 'сотрудников') + '</span>' +
           '<span class="acc-group-badges">' + badges + '</span>' +
         '</div>' +
@@ -1090,7 +1115,7 @@ window.accApp = (function() {
       return;
     }
     box.innerHTML = '<div class="acc-mc-readonly">' +
-      selectedEmpMedCenters.map(function(m) { return '<span class="acc-medcenter" data-center="' + attr(m) + '">' + escapeHtml(m) + '</span>'; }).join('') +
+      selectedEmpMedCenters.map(function(m) { return '<span class="acc-medcenter" data-center="' + attr(m) + '"' + mcStyle(m) + '>' + escapeHtml(m) + '</span>'; }).join('') +
       '</div>';
   }
 
@@ -1293,7 +1318,7 @@ window.accApp = (function() {
     document.getElementById('renew-meta').innerHTML =
       '<div class="row"><span>Сотрудник</span><strong>' + escapeHtml(r.fullName) + '</strong></div>' +
       '<div class="row"><span>Специальность</span><strong>' + escapeHtml(r.specialty) + '</strong></div>' +
-      '<div class="row"><span>Медцентры</span><span>' + recMedCenters(r).map(function(m) { return '<span class="acc-medcenter" data-center="' + attr(m) + '">' + escapeHtml(m) + '</span>'; }).join(' ') + '</span></div>' +
+      '<div class="row"><span>Медцентры</span><span>' + recMedCenters(r).map(function(m) { return '<span class="acc-medcenter" data-center="' + attr(m) + '"' + mcStyle(m) + '>' + escapeHtml(m) + '</span>'; }).join(' ') + '</span></div>' +
       '<div class="row"><span>Текущий срок</span><span class="acc-date ' + getDateClass(r.expirationDate) + '">' + formatDate(r.expirationDate) + '</span></div>';
     document.getElementById('renew-expdate').value = '';
     document.getElementById('renew-comment').value = '';

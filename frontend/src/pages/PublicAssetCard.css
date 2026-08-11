@@ -1,0 +1,142 @@
+/*
+ * Публичная карточка по QR.
+ *
+ * Стили изолированы от портала: страницу открывают с телефона один раз, и она не
+ * должна ждать шрифты и переменные темы. Отсюда системный шрифт и локальная
+ * палитра вместо var(--…) — здесь это не дублирование, а осознанная независимость.
+ */
+
+.pac {
+  min-height: 100vh;
+  background: #eef1f6;
+  padding: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1f2733;
+  -webkit-text-size-adjust: 100%;
+}
+
+.pac__card {
+  max-width: 560px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 14px rgba(20, 30, 45, .09);
+  overflow: hidden;
+}
+
+.pac__head {
+  padding: 22px 20px 18px;
+  background: linear-gradient(135deg, #1e3a5f, #2b5486);
+  color: #fff;
+}
+.pac__kicker {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  opacity: .75; margin-bottom: 6px;
+}
+/* Цвет задан явно: в index.css есть глобальное правило для h1, и по специфичности
+   оно перебивает наследование от .pac__head — заголовок выходил тёмным на тёмном. */
+.pac__title { font-size: 21px; font-weight: 700; margin: 0; line-height: 1.25; color: #fff; }
+.pac__model { font-size: 14px; opacity: .85; margin-top: 3px; }
+.pac__status {
+  display: inline-block; margin-top: 12px; padding: 4px 12px;
+  border-radius: 999px; font-size: 13px; font-weight: 600;
+  background: rgba(255, 255, 255, .18);
+}
+.pac__status--ok { background: #3f9d5c; }
+.pac__status--warn { background: #d19b2a; }
+.pac__status--bad { background: #cf5252; }
+.pac__status--muted { background: rgba(255, 255, 255, .22); }
+
+.pac__rows {
+  display: grid; grid-template-columns: minmax(120px, 40%) 1fr;
+  gap: 0; margin: 0; padding: 4px 20px 12px;
+}
+.pac__rows dt {
+  font-size: 12px; color: #6d7a8b; padding: 9px 0 9px 0;
+  border-bottom: 1px solid #f0f2f6;
+}
+.pac__rows dd {
+  font-size: 14px; margin: 0; padding: 9px 0; text-align: right;
+  border-bottom: 1px solid #f0f2f6; word-break: break-word;
+}
+.pac__mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+
+.pac__section { padding: 4px 20px 18px; }
+.pac__section h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+  color: #6d7a8b; margin: 14px 0 9px;
+}
+
+.pac__maint {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; background: #f2f6fb; border-radius: 10px;
+}
+.pac__maint--overdue { background: #fdeceb; }
+.pac__maint-label { font-size: 13px; color: #52606f; }
+.pac__maint--overdue .pac__maint-label { color: #b53f3f; font-weight: 600; }
+.pac__maint-date { font-size: 17px; font-weight: 700; }
+
+.pac__history { list-style: none; padding: 0; margin: 10px 0 0; }
+.pac__history li {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-bottom: 1px solid #f0f2f6; font-size: 13px;
+}
+.pac__history-date { color: #6d7a8b; min-width: 84px; font-size: 12px; }
+
+.pac__chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+  background: #eceff4; color: #52606f;
+}
+.pac__chip--ok { background: #e4f4e8; color: #2f7043; }
+.pac__chip--warn { background: #fdf3dc; color: #8a6410; }
+.pac__chip--bad { background: #fbe3e3; color: #a63b3b; }
+
+.pac__files { list-style: none; padding: 0; margin: 0; }
+.pac__files li { padding: 7px 0; border-bottom: 1px solid #f0f2f6; font-size: 14px; }
+.pac__files a, .pac__assets a { color: #2b5486; text-decoration: none; }
+
+.pac__assets { list-style: none; padding: 0; margin: 0; }
+.pac__assets li { border-bottom: 1px solid #f0f2f6; }
+.pac__assets a { display: block; padding: 11px 0; }
+.pac__assets-name { font-size: 14px; font-weight: 600; color: #1f2733; }
+.pac__assets-model { font-size: 12px; color: #6d7a8b; }
+.pac__assets-meta {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin-top: 5px; font-size: 12px; color: #6d7a8b;
+}
+
+.pac__note { font-size: 12px; color: #7b8798; line-height: 1.5; margin: 10px 0 0; }
+.pac__muted { color: #93a0b0; font-size: 13px; }
+
+.pac__foot {
+  padding: 13px 20px; background: #f7f9fc; border-top: 1px solid #eef1f6;
+  font-size: 11px; color: #8d99a8; text-align: center;
+}
+
+.pac__card--error { padding: 34px 22px; text-align: center; }
+.pac__error-icon {
+  width: 44px; height: 44px; margin: 0 auto 14px; border-radius: 50%;
+  background: #fbe3e3; color: #a63b3b; font-size: 24px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.pac__skeleton {
+  height: 210px; margin: 20px;
+  background: linear-gradient(90deg, #f0f2f6 25%, #e6eaf0 50%, #f0f2f6 75%);
+  background-size: 200% 100%; border-radius: 10px;
+  animation: pac-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes pac-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* На узких экранах подписи и значения в одну колонку: в две 120px + значение
+   не влезают, и текст начинает рваться по буквам. */
+@media (max-width: 420px) {
+  .pac { padding: 0; }
+  .pac__card { border-radius: 0; }
+  .pac__rows { grid-template-columns: 1fr; }
+  .pac__rows dt { border-bottom: none; padding-bottom: 0; }
+  .pac__rows dd { text-align: left; padding-top: 2px; }
+}

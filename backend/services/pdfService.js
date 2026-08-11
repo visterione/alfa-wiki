@@ -572,12 +572,41 @@ async function generatePageHistoryPdf(page, history) {
 // Отчёт по аккредитациям (реестр-срез)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Цвета медцентров (в тон чипам на странице)
-const ACC_MC_COLORS = {
-  'Альфа': '#be185d', 'Кидс': '#c2410c', 'Проф': '#6d28d9', '3К': '#a21caf',
-  'Смайл': '#4b5563', 'Линия': '#92400e', 'Сукко': '#047857', 'ИП Микаелян': '#0369a1'
+// Печатная палитра заголовков секций. Это не копия фирменных цветов из справочника,
+// а намеренно затемнённый их вариант: фирменные подобраны под экран, и светлые из
+// них (Линия #c7a878) на белом листе 12-м кеглем читаются плохо.
+// Ключ — code медцентра, а не название: переименование клиники не должно ронять
+// подбор цвета обратно на серый.
+const ACC_MC_PRINT_COLORS = {
+  'alfa': '#be185d', 'kids': '#c2410c', 'prof': '#6d28d9', '3k': '#a21caf',
+  'smile': '#4b5563', 'liniya': '#92400e', 'sukko': '#047857', 'ip-mikaelyan': '#0369a1'
 };
-const ACC_MC_ORDER = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'];
+
+// Для клиники, которой ещё нет в палитре выше, затемняем фирменный цвет сами —
+// иначе новый филиал получал бы безымянный серый заголовок до правки кода.
+function accDarkenForPrint(hex) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  const dark = [n >> 16, (n >> 8) & 255, n & 255].map(c => Math.round(c * 0.55));
+  return '#' + dark.map(c => c.toString(16).padStart(2, '0')).join('');
+}
+
+// opts.medCenters — справочник в порядке сортировки: [{ name, code, color }].
+// Пустой список не ломает отчёт: порядок станет алфавитным, цвет — серым.
+function accMedCenterMeta(medCenters) {
+  const order = new Map();
+  const colors = new Map();
+  (medCenters || []).forEach((mc, i) => {
+    if (!mc?.name) return;
+    order.set(mc.name, i);
+    colors.set(mc.name, ACC_MC_PRINT_COLORS[mc.code] || accDarkenForPrint(mc.color) || '#1f2937');
+  });
+  return {
+    rank: name => (order.has(name) ? order.get(name) : 99),
+    color: name => colors.get(name) || '#1f2937'
+  };
+}
 
 function accDaysLeft(ds) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -611,7 +640,8 @@ function accSeriesNumber(it) {
 function generateAccreditationsReportPdf(stream, opts) {
   return new Promise((resolve, reject) => {
     try {
-      const { items = [], from, to, statusLabel, groupByMedCenter = true, generatedBy } = opts;
+      const { items = [], from, to, statusLabel, groupByMedCenter = true, generatedBy, medCenters } = opts;
+      const mcMeta = accMedCenterMeta(medCenters);
       const now = new Date();
 
       const doc = new PDFDocument({
@@ -718,16 +748,13 @@ function generateAccreditationsReportPdf(stream, opts) {
         // группируем по медцентру
         const groups = {};
         items.forEach(it => { (groups[it.mc] = groups[it.mc] || []).push(it); });
-        const names = Object.keys(groups).sort((a, b) => {
-          const ia = ACC_MC_ORDER.indexOf(a), ib = ACC_MC_ORDER.indexOf(b);
-          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-        });
+        const names = Object.keys(groups).sort((a, b) => mcMeta.rank(a) - mcMeta.rank(b) || a.localeCompare(b));
         names.forEach(name => {
           const rows = groups[name].slice().sort((a, b) => new Date(a.expirationDate) - new Date(b.expirationDate));
           // заголовок секции
           if (doc.y + 40 > BOTTOM) doc.addPage();
           doc.moveDown(0.3);
-          doc.fontSize(12).font('DejaVu-Bold').fillColor(ACC_MC_COLORS[name] || '#1f2937')
+          doc.fontSize(12).font('DejaVu-Bold').fillColor(mcMeta.color(name))
             .text(name + '  (' + rows.length + ')', LEFT, doc.y);
           doc.fillColor('#000000').moveDown(0.2);
           drawTableHeader();
@@ -740,8 +767,8 @@ function generateAccreditationsReportPdf(stream, opts) {
       } else {
         // единая таблица, сортировка: медцентр → дата
         const rows = items.slice().sort((a, b) => {
-          const ia = ACC_MC_ORDER.indexOf(a.mc), ib = ACC_MC_ORDER.indexOf(b.mc);
-          if (ia !== ib) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+          const rank = mcMeta.rank(a.mc) - mcMeta.rank(b.mc);
+          if (rank !== 0) return rank;
           return new Date(a.expirationDate) - new Date(b.expirationDate);
         });
         drawTableHeader();
@@ -763,5 +790,8 @@ function generateAccreditationsReportPdf(stream, opts) {
 module.exports = {
   generateReviewPdf,
   generatePageHistoryPdf,
-  generateAccreditationsReportPdf
+  generateAccreditationsReportPdf,
+  // Экспортируется ради теста: подбор цвета заголовков — единственное место,
+  // где печатная палитра расходится с фирменной, и это должно быть намеренно.
+  accMedCenterMeta
 };

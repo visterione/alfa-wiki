@@ -10,28 +10,28 @@ const { Op } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 const { syncPartnerServicesCache } = require('../cron/partnerServicesCacheCron');
 const { classify: classify804n, getRefMap: getRefMap804n } = require('../services/nomenclature804n');
-
-const CLINICS = [
-  { id: 2, name: 'Альфа',  code: 'А',  color: '#de64a1' },
-  { id: 3, name: 'Кидс',   code: 'К',  color: '#ed9121' },
-  { id: 1, name: 'Проф',   code: 'П',  color: '#9999ff' },
-  { id: 6, name: 'Линия',  code: 'Л',  color: '#e2d1bb' },
-  { id: 4, name: '3К',     code: '3К', color: '#800080' },
-  { id: 7, name: 'Смайл',  code: 'С',  color: '#999999' },
-  { id: 11, name: 'Сукко', code: 'СК', color: '#14b8a6' }
-];
+const medCenters = require('../services/medCenters');
 
 // ─── GET /api/partner-services/clinics ───────────────────────────────────────
-router.get('/clinics', authenticate, (req, res) => {
-  res.json({ success: true, data: CLINICS });
+// Список берём из справочника (ver. 6.67). Раньше он был захардкожен здесь, и его
+// цвета успели разойтись с остальным порталом: Линия #e2d1bb, Сукко #14b8a6.
+// Однобуквенное поле code («А», «К», «СК») из ответа убрано — его никто не читал.
+router.get('/clinics', authenticate, async (req, res) => {
+  try {
+    res.json({ success: true, data: await medCenters.misClinics() });
+  } catch (err) {
+    console.error('❌ /partner-services/clinics:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка загрузки медцентров' });
+  }
 });
 
 // ─── GET /api/partner-services/sync-status ───────────────────────────────────
 // Возвращает дату последней синхронизации и кол-во записей для каждого медцентра
 router.get('/sync-status', authenticate, async (req, res) => {
   try {
+    const clinics = await medCenters.misClinics();
     const stats = await Promise.all(
-      CLINICS.map(async (clinic) => {
+      clinics.map(async (clinic) => {
         const count = await PartnerServiceCache.count({ where: { clinicId: clinic.id } });
         const latest = await PartnerServiceCache.findOne({
           where: { clinicId: clinic.id },

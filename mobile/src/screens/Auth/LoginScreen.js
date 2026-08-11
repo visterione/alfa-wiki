@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -18,27 +19,36 @@ import * as Keychain from 'react-native-keychain';
 import {auth as authApi, setCachedToken} from '../../services/api';
 import SocketService from '../../services/socket';
 import {useAuth} from '../../store/authStore';
+import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import LogoLoader from '../../components/LogoLoader';
 import {font} from '../../theme';
 
 const KEYCHAIN_OPTIONS = {service: 'alfa-wiki'};
+const CODE_LENGTH = 6;
 
 export default function LoginScreen() {
   const {loginComplete} = useAuth();
+  const c = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [step, setStep] = useState('credentials');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const isMounted = useRef(true);
+  const passwordRef = useRef(null);
   useEffect(() => () => { isMounted.current = false; }, []);
 
-  // 2FA state
-  const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '', '', '']);
+  // 2FA state.
+  //
+  // Код — строка, а не массив из шести ячеек: ячейки рисуются сами по её длине,
+  // а ввод целиком принимает одно поле. Так вставка из буфера и автозаполнение
+  // работают сами собой (см. разметку ниже).
+  const [code, setCode] = useState('');
   const [userId, setUserId] = useState(null);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
   const [codeStatus, setCodeStatus] = useState('');
-  const inputRefs = useRef([]);
+  const codeInputRef = useRef(null);
 
   // Card animation
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -59,11 +69,11 @@ export default function LoginScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [cardOpacity, cardTranslate]);
 
   // Shield float loop on 2FA step
   useEffect(() => {
-    if (step !== 'twoFactor') return;
+    if (step !== 'twoFactor') return undefined;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(shieldY, {toValue: -6, duration: 1500, useNativeDriver: true}),
@@ -72,7 +82,25 @@ export default function LoginScreen() {
     );
     loop.start();
     return () => loop.stop();
-  }, [step]);
+  }, [step, shieldY]);
+
+  // Общий хвост обоих путей входа — с 2FA и без неё. Объявлен раньше них,
+  // потому что оба его вызывают.
+  const finishLogin = useCallback(
+    async (token, userData) => {
+      await Keychain.setGenericPassword('token', token, KEYCHAIN_OPTIONS);
+      // Cache token in memory so subsequent API calls skip Keychain reads
+      setCachedToken(token);
+      // Stop native-driver animations before unmounting to prevent native view crash
+      cardOpacity.stopAnimation();
+      cardTranslate.stopAnimation();
+      shieldY.stopAnimation();
+      loginComplete(userData);
+      // Connect socket — pass token directly to avoid another Keychain read
+      SocketService.connect(userData.id, token).catch(() => {});
+    },
+    [cardOpacity, cardTranslate, shieldY, loginComplete],
+  );
 
   // ── Step 1: credentials ──────────────────────────────────────────────────
   const handleCredentialsSubmit = async () => {
@@ -101,11 +129,11 @@ export default function LoginScreen() {
 
   // ── Step 2: 2FA verification ─────────────────────────────────────────────
   const handleTwoFactorSubmit = useCallback(
-    async code => {
-      if (code.length !== 6) return;
+    async value => {
+      if (value.length !== CODE_LENGTH) return;
       setLoading(true);
       try {
-        const {data} = await authApi.verify2FA(userId, code);
+        const {data} = await authApi.verify2FA(userId, value);
         if (data.token && data.user) {
           await finishLogin(data.token, data.user);
         }
@@ -113,9 +141,9 @@ export default function LoginScreen() {
         const errorData = error.response?.data;
         setCodeStatus('error');
         setTimeout(() => {
-          setTwoFactorCode(['', '', '', '', '', '']);
+          setCode('');
           setCodeStatus('');
-          inputRefs.current[0]?.focus();
+          codeInputRef.current?.focus();
         }, 600);
         if (errorData?.attemptsLeft !== undefined) {
           setAttemptsLeft(errorData.attemptsLeft);
@@ -130,7 +158,7 @@ export default function LoginScreen() {
         ) {
           setTimeout(() => {
             setStep('credentials');
-            setTwoFactorCode(['', '', '', '', '', '']);
+            setCode('');
             setUserId(null);
             setPassword('');
           }, 800);
@@ -139,7 +167,7 @@ export default function LoginScreen() {
         if (isMounted.current) setLoading(false);
       }
     },
-    [userId],
+    [userId, finishLogin],
   );
 
   const handleResendCode = async () => {
@@ -148,10 +176,10 @@ export default function LoginScreen() {
     try {
       await authApi.resend2FA(userId);
       Alert.alert('Готово', 'Новый код отправлен на вашу почту');
-      setTwoFactorCode(['', '', '', '', '', '']);
+      setCode('');
       setCodeStatus('');
       setAttemptsLeft(5);
-      inputRefs.current[0]?.focus();
+      codeInputRef.current?.focus();
     } catch {
       Alert.alert('Ошибка', 'Не удалось отправить код');
     } finally {
@@ -161,60 +189,33 @@ export default function LoginScreen() {
 
   const handleBackToLogin = () => {
     setStep('credentials');
-    setTwoFactorCode(['', '', '', '', '', '']);
+    setCode('');
     setCodeStatus('');
     setUserId(null);
     setAttemptsLeft(5);
   };
 
-  const handleCodeChange = (index, value) => {
+  /**
+   * Единственный обработчик ввода кода — на всё сразу.
+   *
+   * Раньше ячеек было шесть, каждая со своим maxLength={1}, и вставка из буфера
+   * приносила в первую ячейку одну цифру: iOS обрезает вставку по maxLength, а
+   * остальные пять полей о ней не узнавали. Теперь поле одно, и печать, вставка,
+   * автозаполнение и стирание приходят сюда одинаково — обычной сменой строки.
+   */
+  const handleCodeChange = value => {
     if (loading || codeStatus) return;
-    const digit = value.replace(/\D/g, '').slice(-1);
-    const newCode = [...twoFactorCode];
-    newCode[index] = digit;
-    setTwoFactorCode(newCode);
-    if (digit && index < 5) inputRefs.current[index + 1]?.focus();
-    if (digit && index === 5) {
-      const full = newCode.join('');
-      if (full.length === 6) handleTwoFactorSubmit(full);
-    }
-    if (digit && index < 5) {
-      const full = newCode.join('');
-      if (full.length === 6 && !full.includes('')) handleTwoFactorSubmit(full);
-    }
-  };
-
-  const handleCodeKeyDown = (index, e) => {
-    if (loading || codeStatus) return;
-    if (e.nativeEvent.key === 'Backspace') {
-      const newCode = [...twoFactorCode];
-      if (twoFactorCode[index]) {
-        newCode[index] = '';
-        setTwoFactorCode(newCode);
-      } else if (index > 0) {
-        newCode[index - 1] = '';
-        setTwoFactorCode(newCode);
-        inputRefs.current[index - 1]?.focus();
-      }
-    }
-  };
-
-  const finishLogin = async (token, userData) => {
-    await Keychain.setGenericPassword('token', token, KEYCHAIN_OPTIONS);
-    // Cache token in memory so subsequent API calls skip Keychain reads
-    setCachedToken(token);
-    // Stop native-driver animations before unmounting to prevent native view crash
-    cardOpacity.stopAnimation();
-    cardTranslate.stopAnimation();
-    shieldY.stopAnimation();
-    loginComplete(userData);
-    // Connect socket — pass token directly to avoid another Keychain read
-    SocketService.connect(userData.id, token).catch(() => {});
+    const digits = value.replace(/\D/g, '').slice(0, CODE_LENGTH);
+    setCode(digits);
+    if (digits.length === CODE_LENGTH) handleTwoFactorSubmit(digits);
   };
 
   return (
+    // Тот же градиент, что у экрана запуска и шапок внутри приложения. Прежде
+    // здесь был свой набор из тёмно-синего, индиго и фиолетового — он не менялся
+    // вместе с выбранным акцентом и выглядел темнее и «синее» всего остального.
     <LinearGradient
-      colors={['#0a3d62', '#1e3799', '#4a148c']}
+      colors={[c.headerGradientStart, c.headerGradientEnd]}
       start={{x: 0, y: 0}}
       end={{x: 1, y: 1}}
       style={styles.bg}>
@@ -236,7 +237,7 @@ export default function LoginScreen() {
                 {/* Logo */}
                 <View style={styles.logoWrap}>
                   <LinearGradient
-                    colors={['#0a3d62', '#1e3799']}
+                    colors={[c.headerGradientStart, c.headerGradientEnd]}
                     start={{x: 0, y: 0}}
                     end={{x: 1, y: 1}}
                     style={styles.logoBg}>
@@ -253,15 +254,23 @@ export default function LoginScreen() {
 
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>Логин</Text>
+                  {/* textContentType обязателен, а не для порядка: без него iOS
+                      подставляет пароль из связки ключей мимо React, состояние
+                      остаётся пустым, и первое подтверждение по FaceID выглядит
+                      как «ничего не произошло» — заполнялось лишь со второго раза */}
                   <TextInput
                     style={styles.input}
                     placeholder="Введите логин"
-                    placeholderTextColor="#AEAEB2"
+                    placeholderTextColor={c.textTertiary}
                     value={username}
                     onChangeText={setUsername}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    textContentType="username"
+                    autoComplete="username"
                     returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                    submitBehavior="submit"
                   />
                 </View>
 
@@ -269,12 +278,17 @@ export default function LoginScreen() {
                   <Text style={styles.label}>Пароль</Text>
                   <View style={styles.passwordWrap}>
                     <TextInput
+                      ref={passwordRef}
                       style={styles.passwordInput}
                       placeholder="Введите пароль"
-                      placeholderTextColor="#AEAEB2"
+                      placeholderTextColor={c.textTertiary}
                       value={password}
                       onChangeText={setPassword}
                       secureTextEntry={!showPassword}
+                      textContentType="password"
+                      autoComplete="password"
+                      autoCapitalize="none"
+                      autoCorrect={false}
                       returnKeyType="done"
                       onSubmitEditing={handleCredentialsSubmit}
                     />
@@ -282,8 +296,8 @@ export default function LoginScreen() {
                       style={styles.eyeBtn}
                       onPress={() => setShowPassword(v => !v)}>
                       {showPassword
-                        ? <EyeOff size={20} color="#86868B" />
-                        : <Eye size={20} color="#86868B" />}
+                        ? <EyeOff size={20} color={c.textTertiary} />
+                        : <Eye size={20} color={c.textTertiary} />}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -293,10 +307,10 @@ export default function LoginScreen() {
                   disabled={loading}
                   activeOpacity={0.85}>
                   <LinearGradient
-                    colors={loading ? ['#93C5FD', '#93C5FD'] : ['#007AFF', '#5856D6']}
+                    colors={[c.primaryHover, c.primary]}
                     start={{x: 0, y: 0}}
                     end={{x: 1, y: 0}}
-                    style={styles.button}>
+                    style={[styles.button, loading && styles.buttonLoading]}>
                     {loading
                       ? <LogoLoader width={52} color="#FFFFFF" />
                       : <Text style={styles.buttonText}>Войти</Text>}
@@ -307,7 +321,7 @@ export default function LoginScreen() {
               <>
                 <Animated.View style={[styles.shieldWrap, {transform: [{translateY: shieldY}]}]}>
                   <LinearGradient
-                    colors={['#007AFF', '#5856D6']}
+                    colors={[c.primaryHover, c.primary]}
                     start={{x: 0, y: 0}}
                     end={{x: 1, y: 1}}
                     style={styles.shieldIcon}>
@@ -320,26 +334,39 @@ export default function LoginScreen() {
                   Введите 6-значный код, отправленный на вашу почту
                 </Text>
 
-                <View style={styles.codeRow}>
-                  {twoFactorCode.map((digit, index) => (
-                    <TextInput
-                      key={index}
-                      ref={el => (inputRefs.current[index] = el)}
+                {/* Ячейки — обычные View, поверх них лежит одно прозрачное поле
+                    во всю строку. Отсюда и вставка: долгое нажатие в любом месте
+                    строки вызывает «Вставить», и код приходит целиком. Оно же
+                    ловит автозаполнение кода из почты (textContentType). */}
+                <Pressable
+                  style={styles.codeRow}
+                  onPress={() => codeInputRef.current?.focus()}>
+                  {Array.from({length: CODE_LENGTH}, (_, i) => (
+                    <View
+                      key={i}
                       style={[
-                        styles.codeInput,
-                        digit ? styles.codeInputFilled : null,
-                        codeStatus === 'error' ? styles.codeInputError : null,
-                      ]}
-                      value={digit}
-                      onChangeText={v => handleCodeChange(index, v)}
-                      onKeyPress={e => handleCodeKeyDown(index, e)}
-                      keyboardType="number-pad"
-                      maxLength={1}
-                      textAlign="center"
-                      editable={!loading && !codeStatus}
-                    />
+                        styles.codeCell,
+                        i < code.length && styles.codeCellFilled,
+                        i === code.length && styles.codeCellActive,
+                        codeStatus === 'error' && styles.codeCellError,
+                      ]}>
+                      <Text style={styles.codeDigit}>{code[i] ?? ''}</Text>
+                    </View>
                   ))}
-                </View>
+                  <TextInput
+                    ref={codeInputRef}
+                    style={styles.codeInput}
+                    value={code}
+                    onChangeText={handleCodeChange}
+                    keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    autoComplete="one-time-code"
+                    maxLength={CODE_LENGTH}
+                    autoFocus
+                    caretHidden
+                    editable={!loading && !codeStatus}
+                  />
+                </Pressable>
 
                 {attemptsLeft < 5 && (
                   <Text style={styles.attemptsText}>
@@ -347,7 +374,7 @@ export default function LoginScreen() {
                   </Text>
                 )}
 
-                {loading && <LogoLoader width={64} color="#007AFF" style={styles.codeLoader} />}
+                {loading && <LogoLoader width={64} color={c.primary} style={styles.codeLoader} />}
 
                 <TouchableOpacity
                   style={styles.resendBtn}
@@ -360,7 +387,7 @@ export default function LoginScreen() {
                   style={styles.backBtn}
                   onPress={handleBackToLogin}
                   disabled={loading}>
-                  <ArrowLeft size={15} color="#86868B" style={{marginRight: 6}} />
+                  <ArrowLeft size={15} color={c.textTertiary} style={styles.backIcon} />
                   <Text style={styles.backText}>Вернуться к входу</Text>
                 </TouchableOpacity>
               </>
@@ -372,7 +399,14 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+/**
+ * Оформление берётся из палитры приложения.
+ *
+ * Раньше весь экран был набран статичными цветами: белая карточка, серые
+ * подписи, синие кнопки. В тёмной теме он оставался светлым, а при смене
+ * акцента — синим, тогда как всё остальное приложение перекрашивалось.
+ */
+const makeStyles = c => StyleSheet.create({
   // Кардиограмма — View фиксированной ширины, её надо центрировать явно
   codeLoader: {alignSelf: 'center', marginVertical: 12},
   bg: {flex: 1},
@@ -384,7 +418,7 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
   },
   card: {
-    backgroundColor: 'rgba(255,255,255,0.97)',
+    backgroundColor: c.bgPrimary,
     borderRadius: 24,
     paddingHorizontal: 32,
     paddingVertical: 40,
@@ -416,13 +450,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontFamily: font.bold,
-    color: '#1D1D1F',
+    color: c.textPrimary,
     textAlign: 'center',
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 15,
-    color: '#86868B',
+    color: c.textSecondary,
     textAlign: 'center',
     marginBottom: 28,
     fontFamily: font.medium,
@@ -433,27 +467,27 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontFamily: font.medium,
-    color: '#86868B',
+    color: c.textSecondary,
     marginBottom: 8,
   },
   input: {
     height: 52,
-    backgroundColor: '#F5F5F7',
+    backgroundColor: c.bgSecondary,
     borderWidth: 1.5,
-    borderColor: '#D2D2D7',
+    borderColor: c.border,
     borderRadius: 14,
     paddingHorizontal: 16,
     fontSize: 16,
     fontFamily: font.regular,
-    color: '#1D1D1F',
+    color: c.textPrimary,
   },
   passwordWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     height: 52,
-    backgroundColor: '#F5F5F7',
+    backgroundColor: c.bgSecondary,
     borderWidth: 1.5,
-    borderColor: '#D2D2D7',
+    borderColor: c.border,
     borderRadius: 14,
   },
   passwordInput: {
@@ -461,7 +495,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     fontFamily: font.regular,
-    color: '#1D1D1F',
+    color: c.textPrimary,
   },
   eyeBtn: {paddingHorizontal: 14},
 
@@ -473,6 +507,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 8,
   },
+  buttonLoading: {opacity: 0.7},
   buttonText: {color: '#FFFFFF', fontSize: 16, fontFamily: font.semiBold},
 
   // 2FA
@@ -487,7 +522,7 @@ const styles = StyleSheet.create({
   tfaHint: {
     fontSize: 14,
     fontFamily: font.regular,
-    color: '#86868B',
+    color: c.textSecondary,
     textAlign: 'center',
     marginBottom: 28,
     lineHeight: 20,
@@ -498,33 +533,49 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
   },
-  codeInput: {
+  codeCell: {
     width: 46,
     height: 56,
     borderWidth: 2,
-    borderColor: '#D2D2D7',
+    borderColor: c.border,
     borderRadius: 14,
+    backgroundColor: c.bgSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  codeCellFilled: {borderColor: c.primary, backgroundColor: c.primaryLight},
+  // Куда попадёт следующая цифра. Каретки в ячейках нет — поле ввода прозрачное,
+  // и подсветкой рамки заменяем ей мигающий курсор
+  codeCellActive: {borderColor: c.primary},
+  // Отдельного фона под ошибку в палитре нет, и заводить его ради одной рамки
+  // незачем: красный контур поверх обычного фона читается достаточно
+  codeCellError: {borderColor: c.error, backgroundColor: c.bgSecondary},
+  codeDigit: {
     fontSize: 24,
     fontFamily: font.bold,
-    color: '#1D1D1F',
-    backgroundColor: '#F5F5F7',
+    color: c.textPrimary,
   },
-  codeInputFilled: {borderColor: '#007AFF', backgroundColor: '#E5F2FF'},
-  codeInputError: {borderColor: '#FF3B30', backgroundColor: '#FFF2F1'},
+  // Прозрачное поле поверх всей строки ячеек: и цель для нажатия, и приёмник
+  // вставки с автозаполнением
+  codeInput: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0,
+  },
   attemptsText: {
     textAlign: 'center',
-    color: '#FF3B30',
+    color: c.error,
     fontSize: 13,
     marginBottom: 12,
     fontFamily: font.medium,
   },
   resendBtn: {alignItems: 'center', paddingVertical: 14},
-  resendText: {color: '#007AFF', fontSize: 15, fontFamily: font.medium},
+  resendText: {color: c.primary, fontSize: 15, fontFamily: font.medium},
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
   },
-  backText: {color: '#86868B', fontSize: 14, fontFamily: font.regular},
+  backIcon: {marginRight: 6},
+  backText: {color: c.textSecondary, fontSize: 14, fontFamily: font.regular},
 });

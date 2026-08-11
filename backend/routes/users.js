@@ -586,7 +586,9 @@ router.post('/:id/restore', authenticate, requireAdminAccess('users'), async (re
 // Get all medical centers
 router.get('/medcenters/list', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
+    // Служебные группировки («Направители», «АУП») к сотрудникам не привязывают.
     const medCenters = await MedCenter.findAll({
+      where: { isVirtual: false },
       order: [['name', 'ASC']]
     });
     res.json(medCenters);

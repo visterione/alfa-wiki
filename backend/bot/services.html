@@ -356,7 +356,7 @@
   to { background: transparent !important; }
 }
 
-/* Цвета медцентров */
+/* Цвет медцентра задаётся инлайном из справочника — см. centerTone() */
 .srv-medcenter {
   padding: 4px 10px;
   border-radius: 6px;
@@ -364,12 +364,6 @@
   font-weight: 500;
   display: inline-block;
 }
-.srv-medcenter[data-center="Альфа"] { background: #fce7f3; color: #be185d; }
-.srv-medcenter[data-center="Кидс"] { background: #ffedd5; color: #c2410c; }
-.srv-medcenter[data-center="Проф"] { background: #ede9fe; color: #6d28d9; }
-.srv-medcenter[data-center="3К"] { background: #fdf4ff; color: #a21caf; }
-.srv-medcenter[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; }
-.srv-medcenter[data-center="Линия"] { background: #fef3c7; color: #92400e; }
 
 /* Цена */
 .srv-price {
@@ -855,14 +849,9 @@
 
         <div class="srv-form-group">
           <label>Медцентр <span>*</span></label>
+          <!-- Заполняется из справочника медцентров в loadMedCenterRegistry() -->
           <select id="edit-medcenter" required class="srv-select" onchange="servicesApp.onModalMedcenterChange()">
             <option value="">Выберите...</option>
-            <option value="Альфа">Альфа</option>
-            <option value="Кидс">Кидс</option>
-            <option value="Проф">Проф</option>
-            <option value="Линия">Линия</option>
-            <option value="Смайл">Смайл</option>
-            <option value="3К">3К</option>
           </select>
         </div>
 
@@ -913,16 +902,25 @@ window.servicesApp = (function() {
   var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/services';
   var MIS_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/services';
 
-  // Маппинг медцентров к clinic_id из МИС
-  var MEDCENTER_CLINIC_IDS = {
-    'Альфа': 2,
-    'Кидс':  3,
-    'Проф':  1,
-    'Линия': 6,
-    '3К':    4,
-    'Смайл': 7
-  };
+  // Маппинг «название медцентра → clinic_id в МИС» приходит из справочника
+  // (ver. 6.67), см. loadMedCenterRegistry(). Раньше карта была захардкожена здесь,
+  // и Сукко в ней не было — завести услугу этому филиалу было нельзя.
+  var MEDCENTER_CLINIC_IDS = {};
+  var MEDCENTER_COLORS = {};
   var services = [];
+
+  // Бейдж медцентра красим фирменным цветом из справочника. Раньше цвета лежали
+  // в CSS правилами по имени клиники, и у филиала без своего правила (Сукко,
+  // ИП Микаелян) бейдж оставался серым, хотя цвет в настройках задан.
+  function centerTone(name) {
+    var m = /^#([0-9a-f]{6})$/i.exec(MEDCENTER_COLORS[name] || '');
+    if (!m) return { fg: '#4b5563', bg: '#f3f4f6' };
+    var n = parseInt(m[1], 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    return {
+      fg: 'rgb(' + [r, g, b].map(function(c) { return Math.round(c * 0.55); }).join(',') + ')',
+      bg: 'rgb(' + [r, g, b].map(function(c) { return Math.round(255 - (255 - c) * 0.14); }).join(',') + ')'
+    };
+  }
   var medcenters = [];
   var sortField = 'medCenter';
   var sortOrder = 'ASC';
@@ -1078,7 +1076,7 @@ window.servicesApp = (function() {
       var displayStyle = isOnCurrentPage ? '' : ' style="display:none"';
 
       return '<tr data-id="' + s.id + '"' + (isHighlighted ? ' data-highlighted="true"' : '') + displayStyle + ' class="srv-table-row">' +
-        '<td class="center"><span class="srv-medcenter" data-center="' + s.medCenter + '">' + s.medCenter + '</span></td>' +
+        '<td class="center"><span class="srv-medcenter" data-center="' + s.medCenter + '" style="background:' + centerTone(s.medCenter).bg + ';color:' + centerTone(s.medCenter).fg + '">' + s.medCenter + '</span></td>' +
         '<td class="center">' + (s.serviceCode || '-') + '</td>' +
         '<td>' + s.serviceName + '</td>' +
         '<td class="center srv-price">' + formatPrice(s.price) + '</td>' +
@@ -1403,11 +1401,43 @@ window.servicesApp = (function() {
     loadData();
   }
 
+  // Только филиалы с числовым clinic_id: по нему модуль тянет цены из МИС,
+  // и медцентр без него в этом списке бесполезен.
+  function loadMedCenterRegistry() {
+    var base = (window.location.port === '9000'
+      ? window.location.protocol + '//' + window.location.hostname + ':9001'
+      : window.location.origin);
+    return fetchAPI(base + '/api/med-centers').then(function(list) {
+      MEDCENTER_CLINIC_IDS = {};
+      var sel = document.getElementById('edit-medcenter');
+      // Через DOM, а не сборкой HTML-строки: своей функции экранирования в этом
+      // файле нет, а название медцентра теперь редактируется в админке.
+      if (sel) sel.innerHTML = '<option value="">Выберите...</option>';
+      (list || []).forEach(function(mc) {
+        var raw = (mc.misClinicIds || [])[0];
+        if (!/^\d+$/.test(String(raw))) return;
+        MEDCENTER_CLINIC_IDS[mc.name] = Number(raw);
+        MEDCENTER_COLORS[mc.name] = mc.color || '';
+        if (!sel) return;
+        var opt = document.createElement('option');
+        opt.value = mc.name;
+        opt.textContent = mc.name;
+        sel.appendChild(opt);
+      });
+      // Справочник и данные грузятся параллельно: если таблица успела
+      // отрисоваться раньше, перекрашиваем бейджи уже приехавшими цветами.
+      if (services.length) renderTable();
+    }).catch(function(err) {
+      console.error('Не удалось загрузить справочник медцентров:', err);
+    });
+  }
+
   // === INIT ===
   if (!getToken()) {
     document.getElementById('services-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
   } else {
     initPageSlug();
+    loadMedCenterRegistry();
 
     var urlParams = new URLSearchParams(window.location.search);
     var highlightParam = urlParams.get('highlight');

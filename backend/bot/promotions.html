@@ -18,29 +18,6 @@
   --pr-radius: 12px;
   --pr-primary: #2563eb;
 
-  --alfa-color: #be185d;
-  --alfa-bg: #fdf2f8;
-  --alfa-border: #f9a8d4;
-
-  --kids-color: #c2410c;
-  --kids-bg: #fff7ed;
-  --kids-border: #fed7aa;
-
-  --liniya-color: #92400e;
-  --liniya-bg: #fffbeb;
-  --liniya-border: #fcd34d;
-
-  --prof-color: #6d28d9;
-  --prof-bg: #f5f3ff;
-  --prof-border: #ddd6fe;
-
-  --3k-color: #a21caf;
-  --3k-bg: #fdf4ff;
-  --3k-border: #f0abfc;
-
-  --smile-color: #374151;
-  --smile-bg: #f9fafb;
-  --smile-border: #d1d5db;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -414,31 +391,6 @@ body {
 .pr-toast.success { background: #15803d; }
 .pr-toast.error { background: #dc2626; }
 
-/* ─── Shelf colors ─── */
-.pr-shelf[data-center="Альфа"] .pr-shelf-header { background: var(--alfa-bg); color: var(--alfa-color); border-bottom: 1px solid var(--alfa-border); }
-.pr-shelf[data-center="Альфа"] .pr-shelf-count { background: rgba(190,24,93,0.12); }
-.pr-shelf[data-center="Альфа"] .pr-card-accent { background: var(--alfa-color); }
-
-.pr-shelf[data-center="Кидс"] .pr-shelf-header { background: var(--kids-bg); color: var(--kids-color); border-bottom: 1px solid var(--kids-border); }
-.pr-shelf[data-center="Кидс"] .pr-shelf-count { background: rgba(194,65,12,0.12); }
-.pr-shelf[data-center="Кидс"] .pr-card-accent { background: var(--kids-color); }
-
-.pr-shelf[data-center="Линия"] .pr-shelf-header { background: var(--liniya-bg); color: var(--liniya-color); border-bottom: 1px solid var(--liniya-border); }
-.pr-shelf[data-center="Линия"] .pr-shelf-count { background: rgba(146,64,14,0.12); }
-.pr-shelf[data-center="Линия"] .pr-card-accent { background: var(--liniya-color); }
-
-.pr-shelf[data-center="Проф"] .pr-shelf-header { background: var(--prof-bg); color: var(--prof-color); border-bottom: 1px solid var(--prof-border); }
-.pr-shelf[data-center="Проф"] .pr-shelf-count { background: rgba(109,40,217,0.12); }
-.pr-shelf[data-center="Проф"] .pr-card-accent { background: var(--prof-color); }
-
-.pr-shelf[data-center="3К"] .pr-shelf-header { background: var(--3k-bg); color: var(--3k-color); border-bottom: 1px solid var(--3k-border); }
-.pr-shelf[data-center="3К"] .pr-shelf-count { background: rgba(162,28,175,0.12); }
-.pr-shelf[data-center="3К"] .pr-card-accent { background: var(--3k-color); }
-
-.pr-shelf[data-center="Смайл"] .pr-shelf-header { background: var(--smile-bg); color: var(--smile-color); border-bottom: 1px solid var(--smile-border); }
-.pr-shelf[data-center="Смайл"] .pr-shelf-count { background: rgba(55,65,81,0.1); }
-.pr-shelf[data-center="Смайл"] .pr-card-accent { background: var(--smile-color); }
-
 @media (max-width: 600px) {
   .pr-card { width: 200px; }
   .pr-date-range-row { grid-template-columns: 1fr; }
@@ -462,14 +414,8 @@ body {
     <div class="pr-modal-body">
       <div class="pr-form-group">
         <label class="pr-form-label">Медцентр</label>
-        <select class="pr-form-select" id="pr-form-center">
-          <option value="Альфа">Альфа</option>
-          <option value="Кидс">Кидс</option>
-          <option value="Линия">Линия</option>
-          <option value="Проф">Проф</option>
-          <option value="3К">3К</option>
-          <option value="Смайл">Смайл</option>
-        </select>
+        <!-- Заполняется из справочника медцентров в loadMedCenters() -->
+        <select class="pr-form-select" id="pr-form-center"></select>
       </div>
       <div class="pr-form-group">
         <label class="pr-form-label">Заголовок акции</label>
@@ -525,11 +471,33 @@ body {
 
 <script>
 var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/promotions';
-var MED_CENTERS = ['Альфа', 'Кидс', 'Линия', 'Проф', '3К', 'Смайл'];
-var CENTER_COLORS = {
-  'Альфа': '#be185d', 'Кидс': '#c2410c', 'Линия': '#92400e',
-  'Проф': '#6d28d9', '3К': '#a21caf', 'Смайл': '#374151'
-};
+// Медцентры приезжают из справочника (ver. 6.67). Раньше список лежал здесь
+// копией — и в нём не было ни Сукко, ни ИП Микаелян, поэтому завести им акцию
+// было нельзя, пока кто-нибудь не поправит этот файл.
+// Оформление полки выводится из фирменного цвета медцентра (см. centerTone).
+var MED_CENTERS = [];
+var CENTER_COLORS = {};
+
+// Оформление полки выводим из фирменного цвета медцентра, а не из CSS-правил по
+// имени клиники: правила были только на шесть исходных названий, и у Сукко с
+// ИП Микаелян полка оставалась бесцветной. Заодно новый филиал получает вид сам.
+function centerTone(name) {
+  var hex = CENTER_COLORS[name] || '#374151';
+  var m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return { fg: '#374151', bg: '#f9fafb', border: '#d1d5db', chip: 'rgba(0,0,0,0.1)' };
+  var n = parseInt(m[1], 16);
+  var r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  var mix = function(k) { // подмешиваем к белому: k=0 — белый, k=1 — сам цвет
+    return 'rgb(' + [r, g, b].map(function(c) { return Math.round(255 - (255 - c) * k); }).join(',') + ')';
+  };
+  return {
+    fg: 'rgb(' + [r, g, b].map(function(c) { return Math.round(c * 0.55); }).join(',') + ')',
+    bg: mix(0.10),
+    border: mix(0.45),
+    chip: 'rgba(' + r + ',' + g + ',' + b + ',0.18)'
+  };
+}
+var MED_CENTERS_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/med-centers';
 
 var state = {
   promotions: [],
@@ -556,8 +524,24 @@ function init() {
     headers: { 'Authorization': 'Bearer ' + getToken() }
   }).then(function(r) { return r.json(); }).then(function(user) {
     state.canManage = !!(user && (user.canManagePromotions || user.isAdmin));
-    loadPromotions();
-  }).catch(function() { loadPromotions(); });
+    loadMedCenters().then(loadPromotions);
+  }).catch(function() { loadMedCenters().then(loadPromotions); });
+}
+
+// Справочник нужен до первого render: по нему строятся и полки, и выпадающий
+// список в модалке. Если он не ответил — работаем с тем, что есть в акциях.
+function loadMedCenters() {
+  return fetchAPI(MED_CENTERS_URL).then(function(list) {
+    MED_CENTERS = (list || []).map(function(mc) { return mc.name; });
+    CENTER_COLORS = {};
+    (list || []).forEach(function(mc) { CENTER_COLORS[mc.name] = mc.color || '#374151'; });
+    var sel = document.getElementById('pr-form-center');
+    if (sel) {
+      sel.innerHTML = MED_CENTERS.map(function(n) {
+        return '<option value="' + escHtml(n) + '">' + escHtml(n) + '</option>';
+      }).join('');
+    }
+  }).catch(function() { /* без справочника полки построятся по самим акциям */ });
 }
 
 function loadPromotions() {
@@ -622,27 +606,53 @@ function render() {
     shelf.className = 'pr-shelf' + (collapsed ? ' collapsed' : '');
     shelf.setAttribute('data-center', center);
 
-    shelf.innerHTML =
-      '<div class="pr-shelf-header" onclick="toggleShelf(\'' + center + '\')">' +
-        '<div class="pr-shelf-left">' +
-          '<span class="pr-shelf-name">' + center + '</span>' +
-          '<span class="' + countClass + '">' + countLabel + '</span>' +
-        '</div>' +
-        '<div class="pr-shelf-right">' +
-          '<button class="pr-shelf-add-btn' + (state.canManage ? '' : ' hidden') + '" onclick="event.stopPropagation(); openModal(null, \'' + center + '\')">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-            'Добавить' +
-          '</button>' +
-          '<svg class="pr-shelf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>' +
-        '</div>' +
-      '</div>' +
-      '<div class="pr-cards-wrap" style="max-height:' + (collapsed ? '0' : '500px') + '">' +
-        '<div class="pr-cards-scroll" id="shelf-' + center + '"></div>' +
-      '</div>';
+    var tone = centerTone(center);
 
+    // Полку собираем через DOM, а не строкой: название медцентра приходит из
+    // справочника и редактируется в админке. Раньше оно подставлялось и в
+    // селектор (#shelf-<имя>), и в inline-обработчики — «ИП Микаелян» с пробелом
+    // разваливал селектор, и querySelector возвращал null.
+    var header = document.createElement('div');
+    header.className = 'pr-shelf-header';
+    header.style.background = tone.bg;
+    header.style.color = tone.fg;
+    header.style.borderBottom = '1px solid ' + tone.border;
+    header.addEventListener('click', function() { toggleShelf(center); });
+
+    var left = document.createElement('div');
+    left.className = 'pr-shelf-left';
+    var nameEl = document.createElement('span');
+    nameEl.className = 'pr-shelf-name';
+    nameEl.textContent = center;
+    var countEl = document.createElement('span');
+    countEl.className = countClass;
+    countEl.textContent = countLabel;
+    if (expiredCount === 0) countEl.style.background = tone.chip;
+    left.appendChild(nameEl);
+    left.appendChild(countEl);
+
+    var right = document.createElement('div');
+    right.className = 'pr-shelf-right';
+    var addBtn = document.createElement('button');
+    addBtn.className = 'pr-shelf-add-btn' + (state.canManage ? '' : ' hidden');
+    addBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Добавить';
+    addBtn.addEventListener('click', function(e) { e.stopPropagation(); openModal(null, center); });
+    right.appendChild(addBtn);
+    right.insertAdjacentHTML('beforeend', '<svg class="pr-shelf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>');
+
+    header.appendChild(left);
+    header.appendChild(right);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'pr-cards-wrap';
+    wrap.style.maxHeight = collapsed ? '0' : '500px';
+    var cardsEl = document.createElement('div');
+    cardsEl.className = 'pr-cards-scroll';
+    wrap.appendChild(cardsEl);
+
+    shelf.appendChild(header);
+    shelf.appendChild(wrap);
     container.appendChild(shelf);
-
-    var cardsEl = shelf.querySelector('#shelf-' + center);
 
     if (items.length === 0) {
       cardsEl.innerHTML =
@@ -717,7 +727,7 @@ function openModal(id, center) {
     }
   } else {
     titleEl.textContent = 'Новая акция';
-    centerSel.value = center || 'Альфа';
+    centerSel.value = center || MED_CENTERS[0] || '';
     titleInput.value = '';
     descInput.value = '';
     dateFromInput.value = '';

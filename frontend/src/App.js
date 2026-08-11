@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { SocketProvider } from './context/SocketContext';
+import { MedCentersProvider } from './context/MedCentersContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import './index.css';
@@ -17,6 +18,7 @@ const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminBots = lazy(() => import('./pages/admin/AdminBots'));
 const AdminIntegrations = lazy(() => import('./pages/admin/AdminIntegrations'));
 const AdminRoles = lazy(() => import('./pages/admin/AdminRoles'));
+const AdminMedCenters = lazy(() => import('./pages/admin/AdminMedCenters'));
 const AdminSidebar = lazy(() => import('./pages/admin/AdminSidebar'));
 const AdminPages = lazy(() => import('./pages/admin/AdminPages'));
 const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
@@ -43,6 +45,10 @@ const ReviewStatistics = lazy(() => import('./pages/ReviewStatistics'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const WhatsNew = lazy(() => import('./pages/WhatsNew'));
 const AdminReleaseNotes = lazy(() => import('./pages/admin/AdminReleaseNotes'));
+const Warehouse = lazy(() => import('./pages/warehouse/Warehouse'));
+// Публичные карточки по QR грузятся отдельным чанком: их открывают с телефона по
+// одной ссылке, и тянуть ради этого весь бандл портала незачем.
+const PublicAssetCard = lazy(() => import('./pages/PublicAssetCard'));
 
 function PageLoader() {
   return (
@@ -99,6 +105,13 @@ function AppRoutes() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+
+      {/* Цифровой паспорт оборудования и карточка кабинета по QR-коду.
+          Вне ProtectedRoute по замыслу: QR наклеен на прибор, и подходят к нему с
+          телефона, где портал не залогинен. Набор полей узкий — см. комментарий в
+          backend/services/warehouse/qr.js. */}
+      <Route path="/p/a/:token" element={<PublicAssetCard kind="asset" />} />
+      <Route path="/p/r/:token" element={<PublicAssetCard kind="room" />} />
       
       <Route path="/" element={
         <ProtectedRoute>
@@ -114,6 +127,12 @@ function AppRoutes() {
         <Route path="users/:id" element={<UserProfile />} />
         <Route path="favorites" element={<Favorites />} />
         <Route path="calendar" element={<Calendar />} />
+        {/* Складской учёт (ver. 6.68). Право warehouse — то же гранулярное, что у
+            «Отзывов»: уровень внутри модуля считает бэкенд. */}
+        <Route path="warehouse" element={
+          <ProtectedRoute requireAdminAccess="warehouse"><Warehouse /></ProtectedRoute>
+        } />
+
         <Route path="kanban" element={<BoardsList />} />
         <Route path="kanban/board/:id" element={<Kanban />} />
         <Route path="kanban/board/:id/settings" element={<BoardSettings />} />
@@ -146,6 +165,9 @@ function AppRoutes() {
         } />
         <Route path="admin/roles" element={
           <ProtectedRoute requireAdminAccess="roles"><AdminRoles /></ProtectedRoute>
+        } />
+        <Route path="admin/med-centers" element={
+          <ProtectedRoute requireAdminAccess="medCenters"><AdminMedCenters /></ProtectedRoute>
         } />
         <Route path="admin/sidebar" element={
           <ProtectedRoute requireAdminAccess="sidebar"><AdminSidebar /></ProtectedRoute>
@@ -219,20 +241,22 @@ function AppContent() {
     <AuthProvider>
       <SocketProvider>
         <ThemeProvider>
-          <AppRoutes />
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 3000,
-              style: {
-                borderRadius: '10px',
-                background: '#1D1D1F',
-                color: '#fff',
-                padding: '12px 20px',
-                fontSize: '14px'
-              }
-            }}
-          />
+          <MedCentersProvider>
+            <AppRoutes />
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                duration: 3000,
+                style: {
+                  borderRadius: '10px',
+                  background: '#1D1D1F',
+                  color: '#fff',
+                  padding: '12px 20px',
+                  fontSize: '14px'
+                }
+              }}
+            />
+          </MedCentersProvider>
         </ThemeProvider>
       </SocketProvider>
     </AuthProvider>

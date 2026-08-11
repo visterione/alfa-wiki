@@ -521,20 +521,23 @@
 }
 
 .quick-access-btn.map,
-.quick-access-btn.kanban {
+.quick-access-btn.kanban,
+.quick-access-btn.warehouse {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
 }
 
 .quick-access-btn.map:hover,
-.quick-access-btn.kanban:hover {
+.quick-access-btn.kanban:hover,
+.quick-access-btn.warehouse:hover {
   background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.map.active,
-.quick-access-btn.kanban.active {
+.quick-access-btn.kanban.active,
+.quick-access-btn.warehouse.active {
   background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) inset;
 }

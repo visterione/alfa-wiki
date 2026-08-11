@@ -21,16 +21,10 @@ const MIS_TIMEOUT = 30000; // 30 сек — категории могут быт
 const DELAY_BETWEEN_REQUESTS = 1500; // 1.5 сек между запросами к МИС
 const MAX_RETRIES = 2;
 
-// Все 6 медцентров
-const CLINICS = [
-  { id: 2, name: 'Альфа' },
-  { id: 3, name: 'Кидс' },
-  { id: 1, name: 'Проф' },
-  { id: 6, name: 'Линия' },
-  { id: 4, name: '3К' },
-  { id: 7, name: 'Смайл' },
-  { id: 11, name: 'Сукко' }
-];
+// Список медцентров приходит из справочника (ver. 6.67): новый филиал попадает в
+// синхронизацию сам, без правки этого файла. Раньше список был захардкожен здесь
+// и дублировал такой же в routes/partner-services.js.
+const medCenters = require('../services/medCenters');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -84,7 +78,8 @@ const flattenCategories = (categories, parentPath = '') => {
 let isSyncing = false;
 
 // opts.clinicIds — необязательный массив id медцентров для частичной синхронизации
-// (например, чтобы догрузить только новый медцентр). По умолчанию — все CLINICS.
+// (например, чтобы догрузить только новый медцентр). По умолчанию — все клиники,
+// которые есть в МИС, по справочнику медцентров.
 const syncPartnerServicesCache = async (opts = {}) => {
   if (isSyncing) {
     console.warn('⚠️  [PARTNER-SYNC] Синхронизация уже выполняется — пропуск повторного запуска.');
@@ -93,7 +88,8 @@ const syncPartnerServicesCache = async (opts = {}) => {
   isSyncing = true;
   const startTime = Date.now();
   const clinicIds = Array.isArray(opts.clinicIds) && opts.clinicIds.length ? opts.clinicIds : null;
-  const clinicsToSync = clinicIds ? CLINICS.filter(c => clinicIds.includes(c.id)) : CLINICS;
+  const allClinics = await medCenters.misClinics();
+  const clinicsToSync = clinicIds ? allClinics.filter(c => clinicIds.includes(c.id)) : allClinics;
   console.log(`🚀 [PARTNER-SYNC] Начало синхронизации кэша услуг партнёров${clinicIds ? ` (только медцентры: ${clinicIds.join(', ')})` : ''}...`);
 
   // Убеждаемся что таблица существует

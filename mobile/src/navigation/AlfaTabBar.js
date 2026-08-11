@@ -51,6 +51,22 @@ const SLIDE_DURATION = 220;
 const NOTCH_RADIUS = ORB_SIZE / 2 + 6;
 // Радиус скруглений на переходе от прямого края к вырезу
 const SHOULDER_RADIUS = 10;
+// Припуск внешнего кольца ореола непрочитанных. Вынесен в константу, потому что
+// от него зависит не только вид кнопки, но и то, на сколько уезжает панель.
+const AURA_SPREAD = 34;
+
+/**
+ * На сколько панель уезжает ниже собственной высоты, чтобы скрыться целиком.
+ *
+ * Кнопка лежит не внутри панели, а в вырезе, и выступает над её краем: центр
+ * кнопки поднят на ORB_SIZE/2, тогда как край панели начинается лишь на
+ * SHOULDER_RADIUS. Сверху к этому добавляются кольцо ореола и тень.
+ *
+ * Пока здесь стояло «высота плюс немного», из-за нижней границы экрана
+ * оставалась торчать макушка логотипа — ровно на разницу, которую этот расчёт
+ * и закрывает.
+ */
+const HIDE_OVERHANG = ORB_SIZE / 2 - SHOULDER_RADIUS + AURA_SPREAD / 2 + 10;
 
 const ICONS = {
   ProfileTab: User,
@@ -323,8 +339,9 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
 
   const translateY = enter.interpolate({
     inputRange: [0, 1],
-    // Уезжаем чуть ниже собственной высоты, чтобы не выглядывал край тени
-    outputRange: [height + 12, 0],
+    // Не просто на свою высоту: кнопка выступает над панелью, и уезжать надо
+    // вместе с её выносом — см. HIDE_OVERHANG
+    outputRange: [height + HIDE_OVERHANG, 0],
   });
 
   const path = notchPath(width, height);
@@ -513,9 +530,9 @@ const makeStyles = c => StyleSheet.create({
   },
   auraRing: {position: 'absolute', backgroundColor: c.primary},
   auraOuter: {
-    width: ORB_SIZE + 34,
-    height: ORB_SIZE + 34,
-    borderRadius: (ORB_SIZE + 34) / 2,
+    width: ORB_SIZE + AURA_SPREAD,
+    height: ORB_SIZE + AURA_SPREAD,
+    borderRadius: (ORB_SIZE + AURA_SPREAD) / 2,
     opacity: 0.07,
   },
   auraMiddle: {

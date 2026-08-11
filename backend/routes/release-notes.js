@@ -223,7 +223,9 @@ router.get('/admin/audience-options', authenticate, requireAdminAccess('releaseN
   try {
     const [roles, medCenters] = await Promise.all([
       Role.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] }),
-      MedCenter.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] })
+      // Без служебных группировок: рассылку адресуют людям, а «Направители» и
+      // «АУП» — измерение зарплатного отчёта, сотрудников за ними нет.
+      MedCenter.findAll({ attributes: ['id', 'name'], where: { isVirtual: false }, order: [['name', 'ASC']] })
     ]);
     res.json({ roles, medCenters });
   } catch (error) {

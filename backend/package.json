@@ -25,7 +25,8 @@
     "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",
     "migrate:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js --apply",
     "migrate:safe-db": "node scripts/migrateSafeDatabase.js",
-    "migrate:safe-db:check": "node scripts/migrateSafeDatabase.js --check"
+    "migrate:safe-db:check": "node scripts/migrateSafeDatabase.js --check",
+    "seed:warehouse": "node scripts/seedWarehouse.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
@@ -36,6 +37,7 @@
     "diff": "^8.0.3",
     "dotenv": "^16.3.1",
     "emoji-picker-react": "^4.16.1",
+    "exceljs": "^4.4.0",
     "express": "^4.18.2",
     "express-validator": "^7.0.1",
     "firebase-admin": "^14.2.0",
@@ -49,6 +51,7 @@
     "pdfkit": "^0.17.2",
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
+    "qrcode": "^1.5.4",
     "qs": "^6.14.1",
     "recharts": "^3.7.0",
     "redis": "^5.12.1",

@@ -25,6 +25,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const roleRoutes = require('./routes/roles');
 const medCenterRoutes = require('./routes/med-centers');
+const organizationRoutes = require('./routes/organizations');
 const pageRoutes = require('./routes/pages');
 const journalRoutes = require('./routes/journal');
 const folderRoutes = require('./routes/folders');
@@ -314,6 +315,13 @@ app.use(cors({
 // в 100 КБ, а не общий 10gb. Аутентификация здесь своя — по ключу api_clients.
 app.use('/api/public', require('./routes/public'));
 
+// Публичные карточки активов и кабинетов по QR-коду (складской модуль, ver. 6.68).
+// Без авторизации по замыслу: QR наклеен на прибор, и подходят к нему с телефона,
+// на котором портал не залогинен. Набор полей сознательно узкий — см. комментарий
+// в services/warehouse/qr.js. Смонтировано здесь, отдельно от /api/warehouse,
+// чтобы authenticate на модуле никогда не задел эти два маршрута.
+app.use('/api/wh-public', require('./routes/warehouse/public'));
+
 // Body parsing
 app.use(express.json({ limit: '10gb' }));
 app.use(express.urlencoded({ extended: true, limit: '10gb' }));
@@ -354,6 +362,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/med-centers', medCenterRoutes);
+app.use('/api/organizations', organizationRoutes);
 app.use('/api/pages', pageRoutes);
 app.use('/api/journal', journalRoutes);
 app.use('/api/folders', folderRoutes);
@@ -415,6 +424,11 @@ app.use('/api/therapy-reports',     therapyReportsRoutes);
 app.use('/api/surgery-reports',     surgeryReportsRoutes);
 app.use('/api/discount-reports',    discountReportsRoutes);
 app.use('/api/release-notes',       releaseNotesRoutes);
+
+// Складской учёт (ver. 6.68). Публичные карточки по QR смонтированы отдельно
+// выше — они работают без авторизации, и держать их внутри /api/warehouse значит
+// однажды закрыть их вместе со всем модулем.
+app.use('/api/warehouse',           require('./routes/warehouse'));
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})

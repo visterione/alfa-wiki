@@ -22,7 +22,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
-  Minus, GraduationCap, Trello, Maximize2, Minimize2
+  Minus, GraduationCap, Boxes, Maximize2, Minimize2
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -370,6 +370,10 @@ function QuickAccessButtons({ onClose }) {
   const [assignedReviewsCount, setAssignedReviewsCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
   const canAccessSalary = isAdmin || user?.canAccessSalary === true;
+  // Складской учёт закрыт тем же гранулярным флагом, что «Отзывы»: раздел
+  // видят только те, кому его выдали. Уровень внутри модуля (зав. складом,
+  // зав. отделением) решает бэкенд — здесь только «пускать или нет».
+  const canAccessWarehouse = isAdmin || user?.adminAccess?.warehouse === true;
   const canAccessStatistics = isAdmin || user?.canAccessStatistics === true;
 
   // Загружаем количество непрочитанных сообщений
@@ -409,7 +413,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/explorer' || location.pathname.startsWith('/explorer/');
   const isOnCourses = location.pathname.startsWith('/courses');
-  const isOnKanban = location.pathname.startsWith('/kanban');
+  const isOnWarehouse = location.pathname.startsWith('/warehouse');
   const isOnReviews = location.pathname.startsWith('/reviews');
   const isOnSalary = location.pathname.startsWith('/referral-bonuses');
   const isOnStatistics = location.pathname.startsWith('/statistics');
@@ -470,12 +474,16 @@ function QuickAccessButtons({ onClose }) {
         <GraduationCap size={20} />
       </button>
 
+      {/* Место Канбана занял складской учёт: доска практически не использовалась,
+          а панель быстрого доступа вмещает ровно девять кнопок. Маршруты /kanban
+          остались рабочими — доска доступна по прямой ссылке. */}
       <button
-        className={`quick-access-btn kanban ${isOnKanban ? 'active' : ''}`}
-        onClick={() => handleClick('/kanban')}
-        title="Канбан"
+        className={`quick-access-btn warehouse ${isOnWarehouse ? 'active' : ''} ${!canAccessWarehouse ? 'locked' : ''}`}
+        onClick={() => canAccessWarehouse ? handleClick('/warehouse') : toast.error('Нет доступа к разделу «Складской учёт»')}
+        title={canAccessWarehouse ? 'Складской учёт' : 'Складской учёт (нет доступа)'}
       >
-        <Trello size={20} />
+        <Boxes size={20} />
+        {!canAccessWarehouse && <Lock size={10} className="quick-access-lock" />}
       </button>
 
       <button

@@ -1,10 +1,18 @@
 const express = require('express');
 const { Promotion } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const medCenters = require('../services/medCenters');
 
 const router = express.Router();
 
-const MED_CENTERS = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'];
+// Акцию заводят филиалу, поэтому служебные группировки не подходят. Раньше здесь
+// лежала копия списка названий, которую правили руками при каждом изменении.
+async function isValidMedCenter(name) {
+  const mc = await medCenters.byName(name);
+  return !!mc && !mc.isVirtual;
+}
+
+
 
 // GET /api/promotions — получить все акции (сгруппированные по медцентру)
 router.get('/', authenticate, async (_req, res) => {
@@ -28,7 +36,7 @@ router.post('/', authenticate, async (req, res) => {
   if (!title || !title.trim()) {
     return res.status(400).json({ error: 'Заголовок обязателен' });
   }
-  if (!MED_CENTERS.includes(medCenter)) {
+  if (!(await isValidMedCenter(medCenter))) {
     return res.status(400).json({ error: 'Неверный медцентр' });
   }
   try {
@@ -56,7 +64,7 @@ router.put('/:id', authenticate, async (req, res) => {
   if (!title || !title.trim()) {
     return res.status(400).json({ error: 'Заголовок обязателен' });
   }
-  if (!MED_CENTERS.includes(medCenter)) {
+  if (!(await isValidMedCenter(medCenter))) {
     return res.status(400).json({ error: 'Неверный медцентр' });
   }
   try {

@@ -111,6 +111,10 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
   );
 }
 
+
+// Список зарплатных клиник остаётся локальным: модуль «Зарплата» на справочник
+// медцентров (ver. 6.67) пока не переведён — решено не трогать его без отдельного
+// захода, слишком велика цена ошибки в расчётах.
 const SALARY_CLINICS = [
   { id: '2',  name: 'Альфа',       color: '#de64a1' },
   { id: '3',  name: 'Кидс',        color: '#ed9121' },
@@ -227,7 +231,8 @@ export default function AdminUsers() {
       courses: false,
       journal: false,
       reviews: false,
-      parser: false
+      parser: false,
+      medCenters: false
     },
     salaryPerm: { ...SALARY_PERM_DEFAULT },
     statisticsTabs: {
@@ -504,7 +509,7 @@ export default function AdminUsers() {
         adminAccess: user.adminAccess || {
           pages: false, sidebar: false, users: false, roles: false, media: false,
           backup: false, settings: false, courses: false, journal: false, reviews: false,
-          parser: false
+          parser: false, medCenters: false
         },
         salaryPerm,
         statisticsTabs: user.statisticsTabs ? {
@@ -549,7 +554,7 @@ export default function AdminUsers() {
         adminAccess: {
           pages: false, sidebar: false, users: false, roles: false, media: false,
           backup: false, settings: false, courses: false, journal: false, reviews: false,
-          parser: false
+          parser: false, medCenters: false
         },
         salaryPerm: { ...SALARY_PERM_DEFAULT },
         statisticsTabs: {
@@ -1361,13 +1366,14 @@ export default function AdminUsers() {
                         { key: 'analyses',    label: 'Анализы',         checked: form.isAdmin || !!form.canEditAnalyses,        onChange: v => { if (!form.isAdmin) setForm({...form, canEditAnalyses: v}); } },
                         { key: 'promotions',  label: 'Акции',           checked: form.isAdmin || !!form.canManagePromotions,    onChange: v => { if (!form.isAdmin) setForm({...form, canManagePromotions: v}); } },
                         { key: 'releaseNotes', label: 'Нововведения',   checked: form.isAdmin || !!form.adminAccess.releaseNotes, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, releaseNotes: v}}); } },
+                        { key: 'medCenters',  label: 'Медцентры',       checked: form.isAdmin || !!form.adminAccess.medCenters, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, medCenters: v}}); } },
                       ],
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         setForm({...form,
                           canEditServices: newVal, canEditDoctorCards: newVal,
                           canEditAnalyses: newVal, canManagePromotions: newVal,
-                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal}
+                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal}
                         });
                       },
                     },

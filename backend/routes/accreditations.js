@@ -9,21 +9,26 @@ const qs = require('qs');
 const { Accreditation, AccreditationFile, SearchIndex, Page, PageHistory, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { generateAccreditationsReportPdf } = require('../services/pdfService');
+const medCentersService = require('../services/medCenters');
 
 const router = express.Router();
 
-const VALID_MEDCENTERS = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'];
-
 // Нормализует медцентры из тела запроса в массив валидных значений.
 // Принимает medCenters (массив) или одиночный medCenter (для совместимости).
-function normalizeMedCenters(body) {
-  var arr = Array.isArray(body.medCenters) ? body.medCenters : (body.medCenter ? [body.medCenter] : []);
-  var seen = {};
-  return arr.filter(function (m) {
-    if (!VALID_MEDCENTERS.includes(m) || seen[m]) return false;
-    seen[m] = true;
-    return true;
-  });
+// Список допустимых названий берём из справочника, а не из константы: раньше здесь
+// лежала копия, которую при добавлении клиники правили руками (и забывали).
+async function normalizeMedCenters(body) {
+  const arr = Array.isArray(body.medCenters) ? body.medCenters : (body.medCenter ? [body.medCenter] : []);
+  const seen = new Set();
+  const result = [];
+  for (const value of arr) {
+    // Служебные группировки сюда не годятся: аккредитация выдаётся филиалу.
+    const mc = await medCentersService.byName(value);
+    if (!mc || mc.isVirtual || seen.has(mc.name)) continue;
+    seen.add(mc.name);
+    result.push(mc.name);
+  }
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -31,19 +36,6 @@ function normalizeMedCenters(body) {
 // ═══════════════════════════════════════════════════════════════
 const MIS_API_KEY  = process.env.MIS_API_KEY  || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
-
-// clinic_id из МИС → медцентр (как в routes/mis-proxy.js /clinics).
-// Клиники без значения в этом маппинге (напр. «Направители») в список не попадают.
-const MIS_CLINIC_TO_MEDCENTER = {
-  1: 'Проф',
-  2: 'Альфа',
-  3: 'Кидс',
-  4: '3К',
-  6: 'Линия',
-  7: 'Смайл',
-  11: 'Сукко'
-  // 'ИП Микаелян' — id уточнить и добавить при необходимости
-};
 
 async function misRequest(endpoint, params) {
   const resp = await axios.post(
@@ -213,6 +205,13 @@ router.get('/mis-staff', authenticate, async (req, res) => {
     const usersData = await misRequest('getUsers', { show_all: true });
     const users = (Number(usersData?.error) === 0 && Array.isArray(usersData.data)) ? usersData.data : [];
 
+    // clinic_id из МИС → название медцентра. Строим один раз на запрос: справочник
+    // берётся из кэша, но резолвить его в цикле по всем сотрудникам ни к чему.
+    const misClinicToMedCenter = new Map();
+    for (const mc of await medCentersService.list()) {
+      for (const misId of mc.misClinicIds || []) misClinicToMedCenter.set(String(misId), mc.name);
+    }
+
     const roster = [];
     for (const u of users) {
       if (u.is_deleted) continue;
@@ -226,10 +225,13 @@ router.get('/mis-staff', authenticate, async (req, res) => {
       )];
       if (!specialties.length) continue; // только сотрудники с проставленной специальностью
 
-      // Клиники → медцентры (только известные)
+      // Клиники → медцентры (только известные справочнику). Служебные
+      // группировки вроде «Направителей» в аккредитации не попадают.
       const clinicIds = Array.isArray(u.clinic) ? u.clinic : [];
       const medCenters = [...new Set(
-        clinicIds.map(id => MIS_CLINIC_TO_MEDCENTER[Number(id)]).filter(Boolean)
+        clinicIds
+          .map(id => misClinicToMedCenter.get(String(id)))
+          .filter(Boolean)
       )];
       if (!medCenters.length) continue;
 
@@ -420,6 +422,8 @@ router.get('/report/pdf', authenticate, async (req, res) => {
 
     await generateAccreditationsReportPdf(res, {
       items: filtered,
+      // Порядок секций и подбор цвета заголовков — по справочнику.
+      medCenters: await medCentersService.list(),
       from: from || null,
       to: to || null,
       statusLabel: ACC_STATUS_LABELS[status] || 'Все',
@@ -458,7 +462,7 @@ router.post('/', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const medCenters = normalizeMedCenters(req.body);
+    const medCenters = await normalizeMedCenters(req.body);
     if (!medCenters.length) {
       return res.status(400).json({ error: 'Укажите хотя бы один медцентр' });
     }
@@ -511,7 +515,7 @@ router.put('/:id', authenticate, [
     // Медцентры: если переданы — нормализуем; иначе оставляем как есть
     let newMedCenters;
     if (req.body.medCenters !== undefined || req.body.medCenter !== undefined) {
-      const normalized = normalizeMedCenters(req.body);
+      const normalized = await normalizeMedCenters(req.body);
       if (!normalized.length) {
         return res.status(400).json({ error: 'Укажите хотя бы один медцентр' });
       }

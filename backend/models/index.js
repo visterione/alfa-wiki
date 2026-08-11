@@ -99,7 +99,16 @@ const User = sequelize.define('User', {
       kanban: false,     // Канбан-доска
       journal: false,    // Журнал страниц
       reviews: false,    // Отзывы
-      parser: false      // Парсер цен конкурентов
+      parser: false,     // Парсер цен конкурентов
+      // Справочник медцентров: юрлица, адреса, графики, главврачи, логотипы.
+      // Отдельно от roles намеренно — иначе, чтобы дать человеку поправить адрес
+      // филиала, пришлось бы выдать ему всю систему прав.
+      medCenters: false,
+      // Складской учёт (ver. 6.68). Внутри модуля есть свои уровни (зав. складом,
+      // зав. отделением, наблюдатель) — они выводятся из ролей и из того, где
+      // человек назначен ответственным, см. services/warehouse/access.js.
+      // Этот флаг решает только одно: видит ли он раздел вообще.
+      warehouse: false
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -416,7 +425,10 @@ const MessageReaction = require('./messageReaction')(sequelize, DataTypes);
 const Accreditation = sequelize.define('Accreditation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   medCenter: {
-    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'),
+    // Был ENUM со своим, отдельным от med_centers списком. Стал строкой: состав
+    // клиник задаёт справочник, а держать его копию в типе БД — гарантированный
+    // способ получить расхождение (см. ver. 6.67).
+    type: DataTypes.STRING(100),
     allowNull: false
   },
   fullName: { type: DataTypes.STRING(255), allowNull: false },
@@ -753,30 +765,124 @@ const ServicePageNote = sequelize.define('ServicePageNote', {
   timestamps: true
 });
 
+// === ORGANIZATION MODEL ===
+// Юрлицо, которому принадлежат медцентры. Отдельно от MedCenter, потому что ООО и
+// филиал — разные вещи: одно юрлицо держит несколько МЦ, а «ИП Микаелян» вообще
+// другая организационная форма. Реквизиты отсюда нужны справкам и договорам.
+const Organization = sequelize.define('Organization', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: { type: DataTypes.STRING(255), allowNull: false, comment: 'Полное наименование: ООО «...»' },
+  shortName: { type: DataTypes.STRING(100), comment: 'Короткое имя для интерфейса' },
+  inn: { type: DataTypes.STRING(12), comment: 'ИНН: 10 цифр у ООО, 12 у ИП' },
+  kpp: { type: DataTypes.STRING(9) },
+  ogrn: { type: DataTypes.STRING(15) },
+  legalAddress: { type: DataTypes.STRING(500) },
+  directorName: { type: DataTypes.STRING(255) },
+  directorTitle: { type: DataTypes.STRING(120), comment: 'Должность подписанта: «Генеральный директор», «Индивидуальный предприниматель»' },
+  phone: { type: DataTypes.STRING(50) },
+  email: { type: DataTypes.STRING(255) },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 }
+}, {
+  tableName: 'organizations',
+  timestamps: true
+});
+
 // === MED CENTER MODEL ===
+// Единый справочник клиник. До ver. 6.67 клиника существовала в четырёх не
+// связанных между собой видах (UUID здесь, clinic_id из МИС, название строкой в
+// услугах и акциях, ключ организации у ботов) плюс девять копий списка с цветами
+// в коде. Всё новое ссылается сюда; МИС-модули связываются через misClinicIds.
 const MedCenter = sequelize.define('MedCenter', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   name: {
-    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'),
+    // Был ENUM. Переименование клиники требовало ALTER TYPE ... RENAME VALUE, а новая
+    // клиника — ADD VALUE, который нельзя выполнить в транзакции. Для справочника
+    // на десяток строк это неоправданно дорого.
+    type: DataTypes.STRING(100),
     allowNull: false,
     unique: true,
-    comment: 'Название медицинского центра'
+    comment: 'Короткое название медицинского центра'
+  },
+  code: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    unique: true,
+    comment: 'Латинский идентификатор (alfa, kids, prof…). В отличие от name не меняется при переименовании'
   },
   displayName: {
     type: DataTypes.STRING(100),
     comment: 'Полное название для отображения'
   },
   description: { type: DataTypes.TEXT },
+  organizationId: { type: DataTypes.UUID, allowNull: true, comment: 'Юрлицо, которому принадлежит медцентр' },
+  // Мост между справочником и всем МИС-блоком (расписание, зарплата, бонусы,
+  // платежи). Массив, потому что у Сукко исторически два id (11 и 12) — раньше это
+  // лечилось картой CLINIC_ID_ALIASES в clinicUtils.js. Строки, а не числа: портал
+  // использует псевдо-id «ip» и «aup» в том же пространстве, да и большинство
+  // таблиц хранят clinicId как varchar.
+  misClinicIds: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    allowNull: false,
+    defaultValue: [],
+    comment: 'ID этой клиники в МИС'
+  },
+  botOrgKey: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: 'Ключ организации у пациентских ботов (Fromni), см. backend/bot/patient/config.js'
+  },
+  // Как клинику называют в импортируемых Excel («альфа kids», «альфа линия»).
+  // Раньше это была карта CLINIC_EXCEL_MAP в коде фронта, из-за чего переименование
+  // клиники требовало правки ещё и там. name с displayName проверяются всегда,
+  // перечислять их здесь не нужно.
+  importAliases: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    allowNull: false,
+    defaultValue: [],
+    comment: 'Текстовые варианты названия для сопоставления при импорте'
+  },
   color: {
     type: DataTypes.STRING(7),
     allowNull: true,
-    comment: 'Цвет клиники (#rrggbb) — им красится метка сотрудника в чате'
+    comment: 'Фирменный (акцентный) цвет #rrggbb — им красится метка сотрудника в чате и колонки в отчётах'
+  },
+  logoUrl: { type: DataTypes.STRING(500), allowNull: true },
+  logoSquareUrl: { type: DataTypes.STRING(500), allowNull: true, comment: 'Квадратный вариант для кружков и аватарок' },
+  address: { type: DataTypes.STRING(500) },
+  city: { type: DataTypes.STRING(120) },
+  lat: { type: DataTypes.DOUBLE },
+  lng: { type: DataTypes.DOUBLE },
+  phones: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], comment: 'Массив телефонов: [{ label, value }]' },
+  email: { type: DataTypes.STRING(255) },
+  site: { type: DataTypes.STRING(255) },
+  workingHours: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: {},
+    comment: 'График: {"mon":{"from":"08:00","to":"20:00"}, …, "sun":null}. null — выходной'
+  },
+  workingHoursNote: { type: DataTypes.STRING(255), comment: 'Приписка к графику: «приём по записи», «обед 13:00–14:00»' },
+  chiefDoctorUserId: { type: DataTypes.UUID, allowNull: true, comment: 'Главврач как сотрудник портала' },
+  chiefDoctorName: { type: DataTypes.STRING(255), comment: 'ФИО главврача, когда у него нет учётной записи' },
+  isVirtual: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Служебная группировка, а не настоящий медцентр («Направители», «АУП»)'
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    // Удалять нельзя: на медцентр ссылаются история, зарплата и аккредитации.
+    comment: 'Закрытый медцентр гасится флагом, а не удаляется'
   },
   sortOrder: {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 100,
-    comment: 'Чем меньше, тем приоритетнее клиника при выборе цвета метки'
+    comment: 'Чем меньше, тем приоритетнее клиника при выборе цвета метки и в списках'
   }
 }, {
   tableName: 'med_centers',
@@ -2040,6 +2146,14 @@ User.hasOne(RbUserPermission, { foreignKey: 'userId', as: 'rbPermission' });
 // User & MedCenter (Many-to-Many)
 User.belongsToMany(MedCenter, { through: UserMedCenter, foreignKey: 'userId', as: 'medCenters' });
 MedCenter.belongsToMany(User, { through: UserMedCenter, foreignKey: 'medCenterId', as: 'users' });
+
+// Organization & MedCenter. SET NULL при удалении: юрлицо могут закрыть или
+// переоформить, медцентр при этом остаётся и просто ждёт новой привязки.
+Organization.hasMany(MedCenter, { foreignKey: 'organizationId', as: 'medCenters', onDelete: 'SET NULL' });
+MedCenter.belongsTo(Organization, { foreignKey: 'organizationId', as: 'organization' });
+
+// Главврач медцентра.
+MedCenter.belongsTo(User, { foreignKey: 'chiefDoctorUserId', as: 'chiefDoctor' });
 
 // Folder hierarchy (self-referencing)
 Folder.belongsTo(Folder, { foreignKey: 'parentId', as: 'parent' });
@@ -3633,9 +3747,22 @@ const UserSession = sequelize.define('UserSession', {
 UserSession.belongsTo(User, { foreignKey: 'userId', as: 'user', onDelete: 'CASCADE' });
 User.hasMany(UserSession, { foreignKey: 'userId', as: 'sessions', onDelete: 'CASCADE' });
 
+// === WAREHOUSE MODULE (ver. 6.68) ===
+// Модели складского учёта живут в отдельном файле: их 29, и внутри этого файла
+// они бы просто утонули. Экземпляр sequelize передаём свой — второго подключения
+// к базе не появляется. Ассоциации объявляются здесь, потому что им нужны уже
+// определённые User, MedCenter и StructuralDivision.
+const {
+  models: warehouseModels,
+  associateWarehouse,
+} = require('./warehouse')(sequelize, DataTypes);
+
+associateWarehouse({ User, MedCenter, StructuralDivision });
+
 module.exports = {
   sequelize,
   Sequelize,
+  ...warehouseModels,
   Role,
   User,
   Folder,
@@ -3671,6 +3798,7 @@ module.exports = {
   Service,
   ServicePageNote,
   CalendarEvent,
+  Organization,
   MedCenter,
   UserMedCenter,
   UserRole,
