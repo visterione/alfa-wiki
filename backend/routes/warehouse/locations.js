@@ -17,15 +17,29 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
-const { generateToken } = require('../../services/warehouse/qr');
+const { generateToken, qrSvg, roomPublicUrl } = require('../../services/warehouse/qr');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
+
+/**
+ * Проверка кода специальности до вставки. Поле ссылается на справочник, и без
+ * этой проверки несуществующий код возвращался пользователю сырым текстом
+ * нарушения внешнего ключа — сообщением, из которого не следует ни что не так,
+ * ни какие коды бывают.
+ */
+async function badSpecialty(code) {
+  if (!code) return null;
+  const found = await WhSpecialty.findByPk(code);
+  if (found) return null;
+  const all = await WhSpecialty.findAll({ attributes: ['code'], order: [['sortOrder', 'ASC']] });
+  return `Специальности с кодом «${code}» нет в справочнике. Допустимые: ${all.map(s => s.code).join(', ')}.`;
+}
 
 // ── Дерево локаций ───────────────────────────────────────────────────────────
 // Медцентр → корпус → этаж → кабинет (+ места хранения). Отделения отдаются
 // плоским списком: они разрез, а не уровень вложенности — одно отделение
 // занимает кабинеты на разных этажах.
-router.get('/tree', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const scopedRooms = await req.warehouse.scopedRoomIds();
 
@@ -60,6 +74,7 @@ router.get('/tree', authenticate, requireWarehouse('viewer'), async (req, res) =
         id: f.id, buildingId: f.buildingId, number: f.number, name: f.name,
         planWidthM: Number(f.planWidthM), planHeightM: Number(f.planHeightM),
         planBgUrl: f.planBgUrl, planBgOpacity: Number(f.planBgOpacity),
+        outline: f.outline || {},
         rooms: rooms
           .filter(r => r.floorId === f.id)
           .filter(r => visible === null || visible.has(r.id))
@@ -133,13 +148,13 @@ async function roomCounters() {
 }
 
 // ── Справочник специальностей ────────────────────────────────────────────────
-router.get('/specialties', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/specialties', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhSpecialty.findAll({ where: { isActive: true }, order: [['sortOrder', 'ASC']] });
   res.json(rows);
 });
 
 // ── Корпуса ──────────────────────────────────────────────────────────────────
-router.post('/buildings', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.post('/buildings', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const { medCenterId, name, code, address, sortOrder } = req.body;
     if (!medCenterId || !name?.trim()) {
@@ -156,7 +171,7 @@ router.post('/buildings', authenticate, requireWarehouse('admin'), async (req, r
   }
 });
 
-router.put('/buildings/:id', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.put('/buildings/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const row = await WhBuilding.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Корпус не найден' });
   const { name, code, address, sortOrder, isActive } = req.body;
@@ -170,7 +185,7 @@ router.put('/buildings/:id', authenticate, requireWarehouse('admin'), async (req
   res.json(row);
 });
 
-router.delete('/buildings/:id', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.delete('/buildings/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const row = await WhBuilding.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Корпус не найден' });
   // Гасим флагом, а не удаляем: на кабинеты внутри ссылаются активы и вся история
@@ -180,7 +195,7 @@ router.delete('/buildings/:id', authenticate, requireWarehouse('admin'), async (
 });
 
 // ── Этажи ────────────────────────────────────────────────────────────────────
-router.post('/floors', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.post('/floors', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const { buildingId, number, name, planWidthM, planHeightM } = req.body;
     if (!buildingId || number === undefined) {
@@ -201,7 +216,7 @@ router.post('/floors', authenticate, requireWarehouse('admin'), async (req, res)
   }
 });
 
-router.put('/floors/:id', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.put('/floors/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const row = await WhFloor.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Этаж не найден' });
   const { number, name, planWidthM, planHeightM, planBgUrl, planBgOpacity } = req.body;
@@ -216,7 +231,7 @@ router.put('/floors/:id', authenticate, requireWarehouse('admin'), async (req, r
   res.json(row);
 });
 
-router.delete('/floors/:id', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.delete('/floors/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const row = await WhFloor.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Этаж не найден' });
   const rooms = await WhRoom.count({ where: { floorId: row.id, isActive: true } });
@@ -231,7 +246,7 @@ router.delete('/floors/:id', authenticate, requireWarehouse('admin'), async (req
 // Клиент присылает весь план целиком, а не отдельные фигуры: редактор работает с
 // планом как с единым документом, и частичные сохранения давали бы битые состояния
 // (стена сохранилась, кабинет — нет).
-router.get('/floors/:id/plan', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/floors/:id/plan', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const floor = await WhFloor.findByPk(req.params.id, {
       include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }],
@@ -258,6 +273,8 @@ router.get('/floors/:id/plan', authenticate, requireWarehouse('viewer'), async (
         medCenterName: floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
         planWidthM: Number(floor.planWidthM), planHeightM: Number(floor.planHeightM),
         planBgUrl: floor.planBgUrl, planBgOpacity: Number(floor.planBgOpacity),
+        // Контур произвольной формы (ver. 6.69). Пустой — этаж прямоугольный.
+        outline: floor.outline || {},
       },
       rooms: rooms.map(r => ({
         id: r.id, number: r.number, name: r.name, kind: r.kind,
@@ -275,7 +292,7 @@ router.get('/floors/:id/plan', authenticate, requireWarehouse('viewer'), async (
   }
 });
 
-router.put('/floors/:id/plan', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.put('/floors/:id/plan', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const floor = await WhFloor.findByPk(req.params.id, { transaction: t });
@@ -284,12 +301,27 @@ router.put('/floors/:id/plan', authenticate, requireWarehouse('admin'), async (r
       return res.status(404).json({ error: 'Этаж не найден' });
     }
 
-    const { planWidthM, planHeightM, planBgOpacity, rooms = [], shapes = null } = req.body;
+    const { planWidthM, planHeightM, planBgOpacity, outline, rooms = [], shapes = null } = req.body;
+
+    // Контур проверяем на вменяемость: меньше трёх точек — это не многоугольник, и
+    // сохранять такое значит получить этаж, который клиент не сможет нарисовать.
+    let outlinePatch = {};
+    if (outline !== undefined) {
+      const pts = Array.isArray(outline?.points) ? outline.points : [];
+      const valid = pts.length >= 3 && pts.every(p => Array.isArray(p) && p.length === 2
+        && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1])));
+      if (pts.length && !valid) {
+        await t.rollback();
+        return res.status(400).json({ error: 'Контур этажа должен состоять минимум из трёх точек [x, y]' });
+      }
+      outlinePatch = { outline: valid ? { points: pts.map(p => [Number(p[0]), Number(p[1])]) } : {} };
+    }
 
     await floor.update({
       ...(planWidthM !== undefined ? { planWidthM } : {}),
       ...(planHeightM !== undefined ? { planHeightM } : {}),
       ...(planBgOpacity !== undefined ? { planBgOpacity } : {}),
+      ...outlinePatch,
     }, { transaction: t });
 
     // Геометрия кабинетов: только поле plan. Номер, отделение и МОЛ правятся
@@ -311,6 +343,9 @@ router.put('/floors/:id/plan', authenticate, requireWarehouse('admin'), async (r
           label: s.label || null,
           style: s.style || {},
           z: s.z ?? i,
+          sortOrder: s.sortOrder ?? (i + 1) * 10,
+          // Техническое помещение против оформления: первое входит в площадь этажа.
+          isTechnical: s.isTechnical !== false,
         })), { transaction: t });
       }
     }
@@ -325,10 +360,12 @@ router.put('/floors/:id/plan', authenticate, requireWarehouse('admin'), async (r
 });
 
 // ── Отделения ────────────────────────────────────────────────────────────────
-router.post('/departments', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.post('/departments', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const { medCenterId, name, specialtyCode, kind, headUserId, color, divisionId } = req.body;
     if (!medCenterId || !name?.trim()) return res.status(400).json({ error: 'Нужны медцентр и название' });
+    const wrong = await badSpecialty(specialtyCode);
+    if (wrong) return res.status(400).json({ error: wrong });
     const row = await WhDepartment.create({
       medCenterId, name: name.trim(),
       specialtyCode: specialtyCode || null,
@@ -344,10 +381,12 @@ router.post('/departments', authenticate, requireWarehouse('admin'), async (req,
   }
 });
 
-router.put('/departments/:id', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.put('/departments/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const row = await WhDepartment.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Отделение не найдено' });
   const { name, specialtyCode, kind, headUserId, color, divisionId, isActive } = req.body;
+  const wrong = await badSpecialty(specialtyCode);
+  if (wrong) return res.status(400).json({ error: wrong });
   await row.update({
     ...(name !== undefined ? { name: name.trim() } : {}),
     ...(specialtyCode !== undefined ? { specialtyCode: specialtyCode || null } : {}),
@@ -361,7 +400,7 @@ router.put('/departments/:id', authenticate, requireWarehouse('admin'), async (r
 });
 
 // ── Кабинеты ─────────────────────────────────────────────────────────────────
-router.post('/rooms', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.post('/rooms', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const {
       floorId, departmentId, number, name, kind, responsibleUserId,
@@ -386,7 +425,7 @@ router.post('/rooms', authenticate, requireWarehouse('admin'), async (req, res) 
   }
 });
 
-router.put('/rooms/:id', authenticate, requireWarehouse('department'), async (req, res) => {
+router.put('/rooms/:id', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   try {
     const row = await WhRoom.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Кабинет не найден' });
@@ -420,7 +459,7 @@ router.put('/rooms/:id', authenticate, requireWarehouse('department'), async (re
   }
 });
 
-router.delete('/rooms/:id', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.delete('/rooms/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const row = await WhRoom.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Кабинет не найден' });
   const assets = await WhAsset.count({ where: { roomId: row.id, isArchived: false } });
@@ -436,7 +475,7 @@ router.delete('/rooms/:id', authenticate, requireWarehouse('admin'), async (req,
  * mis_appointments у этой клиники и какие из них ещё никуда не привязаны.
  * Без этого экрана заполнение misRoomAliases превращается в угадывание.
  */
-router.get('/rooms/mis-suggestions', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.get('/rooms/mis-suggestions', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const { medCenterId } = req.query;
     if (!medCenterId) return res.status(400).json({ error: 'Нужен medCenterId' });
@@ -475,8 +514,32 @@ function normalize(s) {
   return String(s || '').toLowerCase().replace(/каб(инет)?\.?\s*/g, '').replace(/[№\s]+/g, '').trim();
 }
 
+/**
+ * QR-код на дверь кабинета. Ведёт на публичную страницу /p/r/<token> с перечнем
+ * оборудования и его статусами — без остатков, сумм и ФИО.
+ *
+ * Токен создаётся вместе с кабинетом, но у кабинетов, заведённых до появления
+ * публичных карточек, его может не быть — тогда выдаём его здесь, а не отвечаем
+ * ошибкой: человек нажал «QR на дверь», и это единственное, чего он хочет.
+ */
+router.get('/rooms/:id/qr.svg', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const room = await WhRoom.findByPk(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
+
+    if (!room.publicToken) {
+      await room.update({ publicToken: generateToken() });
+    }
+    const svg = await qrSvg(roomPublicUrl(room.publicToken), { width: Number(req.query.size) || 300 });
+    res.type('image/svg+xml').send(svg);
+  } catch (err) {
+    console.error('GET warehouse/locations/rooms/:id/qr.svg error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Места хранения ───────────────────────────────────────────────────────────
-router.post('/storages', authenticate, requireWarehouse('department'), async (req, res) => {
+router.post('/storages', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   try {
     const { roomId, name, kind, tempMinC, tempMaxC, sortOrder } = req.body;
     if (!roomId || !name?.trim()) return res.status(400).json({ error: 'Нужны кабинет и название' });
@@ -492,7 +555,7 @@ router.post('/storages', authenticate, requireWarehouse('department'), async (re
   }
 });
 
-router.put('/storages/:id', authenticate, requireWarehouse('department'), async (req, res) => {
+router.put('/storages/:id', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   const row = await WhStorage.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Место хранения не найдено' });
   const { name, kind, tempMinC, tempMaxC, sortOrder, isActive } = req.body;

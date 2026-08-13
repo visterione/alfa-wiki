@@ -18,6 +18,7 @@ const DEFAULT_INVENTORY_PREFIX = process.env.WAREHOUSE_INVENTORY_PREFIX || 'МЦ
 // («перемещение сто сорок восемь»), и латиница здесь только мешала бы.
 const DOC_PREFIXES = {
   receipt:    'ПРХ',
+  return:     'ВЗВ',
   issue:      'ВЫД',
   transfer:   'ПЕР',
   repair_out: 'РЕМ',

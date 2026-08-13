@@ -119,8 +119,11 @@ export default function WarehouseScanner({ onOpenRoom }) {
   return (
     <div className="wh-scanner">
       <div className="wh-scanner__cols">
-        <div className="wh-scanner__cam">
-          <h3><ScanLine size={17} /> Сканирование QR</h3>
+        <div className="wh-panel wh-scanner__cam">
+          <div className="wh-panel__head">
+            <div className="wh-panel__title"><ScanLine size={15} /> Сканирование QR</div>
+          </div>
+          <div className="wh-panel__body">
 
           <div className={`wh-scanner__video ${scanning ? 'is-live' : ''}`}>
             <video ref={videoRef} muted playsInline />
@@ -140,14 +143,14 @@ export default function WarehouseScanner({ onOpenRoom }) {
           </div>
 
           {error && (
-            <div className="wh-note wh-note--warn">
+            <div className="wh-alert wh-alert--warning">
               <AlertTriangle size={15} />
               <div>{error}</div>
             </div>
           )}
 
           {!error && !scanning && (
-            <div className="wh-note wh-note--subtle">
+            <div className="wh-alert wh-alert--info">
               <Info size={15} />
               <div>
                 Камера требует HTTPS: {secureContext ? 'соединение защищённое ✓' : 'страница открыта без HTTPS ✗'}.
@@ -156,10 +159,14 @@ export default function WarehouseScanner({ onOpenRoom }) {
               </div>
             </div>
           )}
+          </div>
         </div>
 
-        <div className="wh-scanner__manual">
-          <h3><Keyboard size={17} /> Ручной ввод</h3>
+        <div className="wh-panel wh-scanner__manual">
+          <div className="wh-panel__head">
+            <div className="wh-panel__title"><Keyboard size={15} /> Ручной ввод</div>
+          </div>
+          <div className="wh-panel__body">
           <form onSubmit={e => { e.preventDefault(); lookup(manual.trim()); setManual(''); }}>
             <input autoFocus
                    value={manual}
@@ -187,11 +194,13 @@ export default function WarehouseScanner({ onOpenRoom }) {
               </ul>
             </>
           )}
+          </div>
         </div>
       </div>
 
       {result?.kind === 'asset' && (
-        <div className="wh-scanner__result">
+        <div className="wh-panel wh-scanner__result">
+          <div className="wh-panel__body">
           <div className="wh-scanner__result-head">
             <Package size={18} />
             <div>
@@ -232,11 +241,13 @@ export default function WarehouseScanner({ onOpenRoom }) {
               <span className="wh-field-ro__value wh-mono">{result.asset.serialNumber || '—'}</span>
             </div>
           </div>
+          </div>
         </div>
       )}
 
       {result?.kind === 'room' && (
-        <div className="wh-scanner__result">
+        <div className="wh-panel wh-scanner__result">
+          <div className="wh-panel__body">
           <div className="wh-scanner__result-head">
             <DoorOpen size={18} />
             <div>
@@ -247,6 +258,7 @@ export default function WarehouseScanner({ onOpenRoom }) {
           <button className="wh-btn wh-btn--primary" onClick={() => onOpenRoom?.(result.room.id)}>
             Открыть дашборд кабинета
           </button>
+          </div>
         </div>
       )}
     </div>

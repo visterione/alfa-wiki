@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Search, QrCode, Printer, X, Wrench, ArrowRightLeft, FileText,
-  Copy, Info, AlertTriangle, Plus,
+  Copy, Info, AlertTriangle, Plus, Pencil, Check,
 } from 'lucide-react';
 import { warehouseApi, BASE_URL } from '../../services/api';
+import SecureImage from '../../components/warehouse/SecureImage';
+import WarehouseAssetForm from './WarehouseAssetForm';
 
 /**
  * Оборудование: список, карточка, QR и печать этикеток.
@@ -21,13 +23,15 @@ const STATUS_LABELS = {
   storage: 'На хранении', written_off: 'Списано', reserved: 'Зарезервировано',
 };
 
-export default function WarehouseAssets({ access, tree, onOpenRoom }) {
+export default function WarehouseAssets({ access, tree, onOpenRoom, initialAssetId, onInitialAssetShown }) {
   const [filters, setFilters] = useState({ q: '', status: '', medCenterId: '', departmentId: '', maintenanceDue: false });
   const [data, setData] = useState({ total: 0, items: [] });
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(null);
   const [checked, setChecked] = useState(new Set());
   const [labelSize, setLabelSize] = useState('58x40');
+  // null — форма закрыта; { asset: null } — постановка на учёт; { asset } — правка.
+  const [form, setForm] = useState(null);
 
   const departments = useMemo(() => {
     if (!filters.medCenterId) return tree?.departments || [];
@@ -56,6 +60,24 @@ export default function WarehouseAssets({ access, tree, onOpenRoom }) {
     const t = setTimeout(load, filters.q ? 350 : 0);
     return () => clearTimeout(t);
   }, [load, filters.q]);
+
+  // Приход из отчёта по ссылке на инвентарный номер: карточка открывается сразу,
+  // не дожидаясь списка, и запрос на открытие сбрасывается — иначе она всплывала
+  // бы снова при каждом возврате на вкладку.
+  useEffect(() => {
+    if (!initialAssetId) return;
+    (async () => {
+      try {
+        const { data: res } = await warehouseApi.asset(initialAssetId);
+        setSelected(res);
+      } catch (e) {
+        toast.error(e.response?.data?.error || 'Карточка недоступна');
+      } finally {
+        onInitialAssetShown?.();
+      }
+    })();
+    /* eslint-disable-next-line */
+  }, [initialAssetId]);
 
   const openCard = async (id) => {
     try {
@@ -111,6 +133,12 @@ export default function WarehouseAssets({ access, tree, onOpenRoom }) {
                  onChange={e => setFilters(f => ({ ...f, maintenanceDue: e.target.checked }))} />
           ТО в течение 30 дней и просроченные
         </label>
+        {access?.capabilities?.canManageAssets && (
+          <button className="wh-btn wh-btn--primary" style={{ marginLeft: 'auto' }}
+                  onClick={() => setForm({ asset: null })}>
+            <Plus size={15} /> Поставить на учёт
+          </button>
+        )}
       </div>
 
       {access?.capabilities?.canPrintLabels && (
@@ -197,7 +225,22 @@ export default function WarehouseAssets({ access, tree, onOpenRoom }) {
                    labelSize={labelSize}
                    onClose={() => setSelected(null)}
                    onOpenRoom={onOpenRoom}
-                   onReload={() => openCard(selected.asset.id)} />
+                   onReload={() => openCard(selected.asset.id)}
+                   onEdit={() => setForm({ asset: selected.asset })} />
+      )}
+
+      {/* Форма идёт после карточки намеренно. Обе модалки лежат на одном z-index,
+          и при обратном порядке форма правки, открытая из карточки, оказывалась под
+          ней: её было видно снизу, но добраться до неё можно было только закрыв
+          карточку. Порядок в разметке плюс явный wh-modal--nested держат её сверху. */}
+      {form && (
+        <WarehouseAssetForm asset={form.asset} tree={tree} access={access}
+                            nested={Boolean(selected)}
+                            onClose={() => setForm(null)}
+                            onSaved={async () => {
+                              await load();
+                              if (selected?.asset?.id) await openCard(selected.asset.id);
+                            }} />
       )}
     </div>
   );
@@ -205,9 +248,10 @@ export default function WarehouseAssets({ access, tree, onOpenRoom }) {
 
 // ── Карточка актива ──────────────────────────────────────────────────────────
 
-function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
+function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onEdit }) {
   const { asset, publicUrl, depreciation, files, maintenance, repairs, movements } = data;
   const [tab, setTab] = useState('info');
+  const [serviceModal, setServiceModal] = useState(null);
 
   const copyUrl = () => {
     navigator.clipboard?.writeText(publicUrl)
@@ -238,7 +282,7 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
     }
   };
 
-  return (
+  return (<>
     <div className="wh-modal" onClick={onClose}>
       <div className="wh-modal__box wh-modal__box--wide" onClick={e => e.stopPropagation()}>
         <div className="wh-modal__head">
@@ -248,7 +292,14 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
               {asset.model} · <span className="wh-mono">{asset.inventoryNumber}</span>
             </div>
           </div>
-          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+          <div className="wh-modal__head-actions">
+            {access?.capabilities?.canManageAssets && (
+              <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={onEdit}>
+                <Pencil size={14} /> Редактировать
+              </button>
+            )}
+            <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
 
         <div className="wh-modal__tabs">
@@ -315,7 +366,8 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
           {tab === 'qr' && (
             <div className="wh-qr">
               <div className="wh-qr__col">
-                <img src={warehouseApi.assetQrUrl(asset.id)} alt="QR-код актива" className="wh-qr__img" />
+                <SecureImage url={warehouseApi.assetQrUrl(asset.id)}
+                             alt="QR-код актива" className="wh-qr__img" />
                 <div className="wh-qr__url">
                   <code>{publicUrl}</code>
                   <button className="wh-icon-btn" onClick={copyUrl} title="Скопировать"><Copy size={15} /></button>
@@ -332,7 +384,8 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
               </div>
               <div className="wh-qr__col">
                 <div className="wh-qr__label-preview">
-                  <img src={warehouseApi.labelUrl(asset.id, labelSize)} alt="Этикетка" />
+                  <SecureImage url={warehouseApi.labelUrl(asset.id, labelSize)}
+                               alt={`Этикетка ${labelSize} мм`} />
                 </div>
                 <div className="wh-qr__actions">
                   <button className="wh-btn wh-btn--primary" onClick={printOne}>
@@ -353,10 +406,18 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
 
           {tab === 'maintenance' && (
             <>
-              <h4 className="wh-subhead">График и факт ТО</h4>
+              <div className="wh-section-head">
+                <h4 className="wh-subhead">График и факт ТО</h4>
+                {access?.capabilities?.canMaintenance && (
+                  <button className="wh-btn wh-btn--secondary wh-btn--sm"
+                          onClick={() => setServiceModal({ kind: 'maintenance-create' })}>
+                    <Plus size={14} /> Запланировать ТО
+                  </button>
+                )}
+              </div>
               <table className="wh-table wh-table--compact">
                 <thead>
-                  <tr><th>Наряд</th><th>Тип</th><th>План</th><th>Факт</th><th>Статус</th><th>Результат</th><th className="wh-num">Стоимость</th><th>Подрядчик</th></tr>
+                  <tr><th>Наряд</th><th>Тип</th><th>План</th><th>Факт</th><th>Статус</th><th>Результат</th><th className="wh-num">Стоимость</th><th>Подрядчик</th>{access?.capabilities?.canMaintenance && <th />}</tr>
                 </thead>
                 <tbody>
                   {maintenance.map(o => (
@@ -369,16 +430,25 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
                       <td>{maintResult(o.result)}</td>
                       <td className="wh-num">{o.cost ? money(o.cost) : '—'}</td>
                       <td>{o.contractor?.name || '—'}</td>
+                      {access?.capabilities?.canMaintenance && <td>{!o.factDate && <button className="wh-btn wh-btn--link" onClick={() => setServiceModal({ kind: 'maintenance-close', row: o })}>Закрыть</button>}</td>}
                     </tr>
                   ))}
                   {!maintenance.length && <tr><td colSpan={8} className="wh-empty">Нарядов нет</td></tr>}
                 </tbody>
               </table>
 
-              <h4 className="wh-subhead">Журнал ремонтов</h4>
+              <div className="wh-section-head">
+                <h4 className="wh-subhead">Журнал ремонтов</h4>
+                {access?.capabilities?.canMaintenance && (
+                  <button className="wh-btn wh-btn--secondary wh-btn--sm"
+                          onClick={() => setServiceModal({ kind: 'repair-create' })}>
+                    <Plus size={14} /> Открыть ремонт
+                  </button>
+                )}
+              </div>
               <table className="wh-table wh-table--compact">
                 <thead>
-                  <tr><th>№</th><th>Начало</th><th>Окончание</th><th>Описание</th><th className="wh-num">Стоимость</th><th>Простой, ч</th><th>Результат</th></tr>
+                  <tr><th>№</th><th>Начало</th><th>Окончание</th><th>Описание</th><th className="wh-num">Стоимость</th><th>Простой, ч</th><th>Результат</th>{access?.capabilities?.canMaintenance && <th />}</tr>
                 </thead>
                 <tbody>
                   {repairs.map(r => (
@@ -390,6 +460,7 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
                       <td className="wh-num">{money(r.cost)}</td>
                       <td className="wh-num">{r.downtimeHours}</td>
                       <td>{r.result === 'written_off' ? 'Списан' : r.result === 'repaired' ? 'Отремонтирован' : '—'}</td>
+                      {access?.capabilities?.canMaintenance && <td>{!r.finishedAt && <button className="wh-btn wh-btn--link" onClick={() => setServiceModal({ kind: 'repair-close', row: r })}>Закрыть</button>}</td>}
                     </tr>
                   ))}
                   {!repairs.length && <tr><td colSpan={7} className="wh-empty">Ремонтов не было</td></tr>}
@@ -428,6 +499,136 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload }) {
           {tab === 'files' && (
             <AssetFiles assetId={asset.id} files={files} canEdit={access?.capabilities?.canManageAssets} onReload={onReload} />
           )}
+        </div>
+      </div>
+    </div>
+    {serviceModal && (
+      <ServiceModal asset={asset} action={serviceModal}
+                    onClose={() => setServiceModal(null)}
+                    onSaved={async () => { setServiceModal(null); await onReload(); }} />
+    )}
+  </>);
+}
+
+function ServiceModal({ asset, action, onClose, onSaved }) {
+  const creatingMaintenance = action.kind === 'maintenance-create';
+  const closingMaintenance = action.kind === 'maintenance-close';
+  const creatingRepair = action.kind === 'repair-create';
+  const [contractors, setContractors] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    type: 'maintenance', plannedDate: '', factDate: new Date().toISOString().slice(0, 10),
+    startedAt: new Date().toISOString().slice(0, 10), finishedAt: new Date().toISOString().slice(0, 10),
+    contractorId: '', isMandatory: false, cost: '', downtimeHours: '',
+    description: '', result: closingMaintenance ? 'normal' : 'repaired', resultNote: '',
+  });
+
+  useEffect(() => {
+    warehouseApi.contractors({ kind: 'service' })
+      .then(({ data }) => setContractors(data))
+      .catch(() => {});
+  }, []);
+
+  const set = (key, value) => setForm(f => ({ ...f, [key]: value }));
+  const submit = async () => {
+    if (creatingMaintenance && !form.plannedDate) return toast.error('Укажите плановую дату');
+    if (creatingRepair && !form.startedAt) return toast.error('Укажите дату начала ремонта');
+    setSaving(true);
+    try {
+      if (creatingMaintenance) {
+        await warehouseApi.createMaintenance({
+          assetId: asset.id, type: form.type, plannedDate: form.plannedDate,
+          contractorId: form.contractorId || null, isMandatory: form.isMandatory,
+          cost: form.cost || 0,
+        });
+        toast.success('Наряд ТО создан');
+      } else if (closingMaintenance) {
+        await warehouseApi.closeMaintenance(action.row.id, {
+          factDate: form.factDate, result: form.result, resultNote: form.resultNote,
+          cost: form.cost === '' ? action.row.cost : form.cost,
+          downtimeHours: form.downtimeHours === '' ? action.row.downtimeHours : form.downtimeHours,
+        });
+        toast.success('Наряд ТО закрыт');
+      } else if (creatingRepair) {
+        await warehouseApi.createRepair({
+          assetId: asset.id, startedAt: form.startedAt, description: form.description,
+          contractorId: form.contractorId || null, cost: form.cost || 0,
+        });
+        toast.success('Ремонт открыт');
+      } else {
+        await warehouseApi.closeRepair(action.row.id, {
+          finishedAt: form.finishedAt, result: form.result, description: form.description || undefined,
+          cost: form.cost === '' ? action.row.cost : form.cost,
+          downtimeHours: form.downtimeHours === '' ? undefined : form.downtimeHours,
+        });
+        toast.success('Ремонт закрыт');
+      }
+      await onSaved();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const title = creatingMaintenance ? 'Новый наряд ТО'
+    : closingMaintenance ? `Закрытие наряда ${action.row.number}`
+    : creatingRepair ? 'Передача оборудования в ремонт'
+    : `Закрытие ремонта ${action.row.number}`;
+
+  return (
+    <div className="wh-modal wh-modal--nested" onClick={onClose}>
+      <div className="wh-modal__box wh-modal__box--narrow" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div><div className="wh-modal__title">{title}</div><div className="wh-modal__sub">{asset.inventoryNumber} · {asset.name}</div></div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body"><div className="wh-form">
+          {creatingMaintenance && <>
+            <label>Вид обслуживания
+              <select value={form.type} onChange={e => set('type', e.target.value)}>
+                <option value="maintenance">ТО</option><option value="verification">Поверка</option>
+                <option value="calibration">Калибровка</option><option value="dosimetry">Дозиметрия</option>
+                <option value="inspection">Осмотр</option>
+              </select>
+            </label>
+            <label>Плановая дата <input type="date" value={form.plannedDate} onChange={e => set('plannedDate', e.target.value)} /></label>
+            <label className="wh-check"><input type="checkbox" checked={form.isMandatory} onChange={e => set('isMandatory', e.target.checked)} /> Обязательное по НПА</label>
+          </>}
+          {closingMaintenance && <>
+            <label>Фактическая дата <input type="date" value={form.factDate} onChange={e => set('factDate', e.target.value)} /></label>
+            <label>Результат
+              <select value={form.result} onChange={e => set('result', e.target.value)}>
+                <option value="normal">Норма</option><option value="with_remarks">С замечаниями</option><option value="failed">Не пройдено</option>
+              </select>
+            </label>
+            <label>Заключение <textarea rows={3} value={form.resultNote} onChange={e => set('resultNote', e.target.value)} /></label>
+          </>}
+          {creatingRepair && <label>Дата начала <input type="date" value={form.startedAt} onChange={e => set('startedAt', e.target.value)} /></label>}
+          {!creatingMaintenance && !closingMaintenance && !creatingRepair && <>
+            <label>Дата окончания <input type="date" value={form.finishedAt} onChange={e => set('finishedAt', e.target.value)} /></label>
+            <label>Результат
+              <select value={form.result} onChange={e => set('result', e.target.value)}>
+                <option value="repaired">Отремонтировано</option><option value="written_off">Не подлежит ремонту — списать</option>
+              </select>
+            </label>
+          </>}
+          {(creatingMaintenance || creatingRepair) && <label>Подрядчик
+            <select value={form.contractorId} onChange={e => set('contractorId', e.target.value)}>
+              <option value="">—</option>{contractors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>}
+          {(creatingRepair || (!creatingMaintenance && !closingMaintenance)) && <label>Описание
+            <textarea rows={3} value={form.description} onChange={e => set('description', e.target.value)} />
+          </label>}
+          <div className="wh-form__row2">
+            <label>Стоимость, ₽ <input type="number" min="0" step="0.01" value={form.cost} onChange={e => set('cost', e.target.value)} /></label>
+            {!creatingMaintenance && !creatingRepair && <label>Простой, ч <input type="number" min="0" step="0.5" value={form.downtimeHours} onChange={e => set('downtimeHours', e.target.value)} /></label>}
+          </div>
+        </div></div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={submit} disabled={saving}><Check size={14} /> {saving ? 'Сохраняю…' : 'Сохранить'}</button>
         </div>
       </div>
     </div>
@@ -551,6 +752,6 @@ const maintType = t => ({ maintenance: 'ТО', verification: 'Поверка', c
 const maintStatus = s => ({ planned: 'Запланирован', in_progress: 'В работе', done: 'Выполнен', overdue: 'Просрочен', cancelled: 'Отменён' }[s] || s);
 const maintResult = r => ({ normal: 'Норма', with_remarks: 'С замечаниями', failed: 'Не пройдено' }[r] || (r ? r : '—'));
 const moveType = t => ({
-  receipt: 'Приём', issue: 'Выдача', transfer: 'Перемещение', repair_out: 'В ремонт',
+  receipt: 'Приём', return: 'Возврат', issue: 'Выдача', transfer: 'Перемещение', repair_out: 'В ремонт',
   repair_in: 'Из ремонта', writeoff: 'Списание', inventory: 'Инвентаризация', surplus: 'Оприходование излишков',
 }[t] || t);

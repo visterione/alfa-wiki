@@ -20,6 +20,13 @@ const MANIFEST = [
   'ver. 6.52 create-service-consumables.sql',
   'ver. 6.53 safe-hot-path-indexes.sql',
   'ver. 6.54 referral-bonuses-doctor-clinic-index.sql',
+  // 6.69 и 6.70 продублированы в migrateMedCentersWarehouse.js, который ходит в базу
+  // через sudo -u postgres. Здесь они же доступны по .env, без sudo и с отметкой в
+  // реестре. Оба файла идемпотентны, так что повторное применение уже накатанной
+  // вручную миграции ничего не ломает — реестр просто зафиксирует факт.
+  'ver. 6.69 warehouse-floor-outline.sql',
+  'ver. 6.70 warehouse-operations.sql',
+  'ver. 6.71 rb-reset-backups.sql',
 ];
 
 // Сессионная advisory lock не даёт двум деплоям применять миграции параллельно.

@@ -261,11 +261,30 @@
 .rb-reset-change { display: grid; grid-template-columns: minmax(100px, .7fr) minmax(0, 1.3fr); gap: 8px; padding: 3px 0; font-size: 11px; line-height: 1.35; }
 .rb-reset-change span:first-child { font-weight: 600; color: var(--rb-text); }
 .rb-reset-change span:last-child { color: var(--rb-text-secondary); overflow-wrap: anywhere; }
+/* Точки возврата занимают всю ширину под обеими колонками: список копий читается
+   строками, а не втискивается в узкую колонку выбора клиник. */
+.rb-reset-backups-section { grid-column: 1 / -1; border-top: 1px solid var(--rb-border); padding-top: 14px; }
+.rb-reset-backups { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; padding-right: 3px; }
+.rb-reset-backup { border: 1px solid var(--rb-border); border-radius: 8px; padding: 8px 10px; background: #fff; }
+.rb-reset-backup.restored { background: #f8fafc; }
+.rb-reset-backup-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rb-reset-backup-title { display: flex; align-items: baseline; gap: 8px; border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--rb-text); cursor: pointer; text-align: left; }
+.rb-reset-backup-title:hover strong { text-decoration: underline; }
+.rb-reset-backup-kind { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-reset-backup-restore { flex-shrink: 0; padding: 5px 12px; font-size: 12px; }
+.rb-reset-backup-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 11px; color: var(--rb-text-secondary); }
+.rb-reset-backup-restored-at { margin-top: 4px; font-size: 11px; color: #15803d; }
+.rb-reset-backup-body { border-top: 1px solid var(--rb-border); margin-top: 8px; padding-top: 8px; display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow-y: auto; }
+.rb-reset-backup-employee { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.rb-reset-backup-flag { padding: 1px 6px; border-radius: 999px; background: #e2e8f0; color: var(--rb-text-secondary); font-size: 10px; }
+.rb-reset-backup-flag.warn { background: #fef3c7; color: #b45309; }
+
 @media (max-width: 680px) {
   .rb-reset-modal-body { grid-template-columns: 1fr; }
   .rb-reset-clinics { max-height: 180px; }
   .rb-reset-employees { max-height: 240px; }
   .rb-reset-summary { align-items: flex-start; flex-direction: column; }
+  .rb-reset-backup-head { align-items: flex-start; flex-direction: column; }
 }
 
 /* File upload */

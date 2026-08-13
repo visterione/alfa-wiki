@@ -17,6 +17,7 @@ const ACTION_LABELS = {
   update: 'Изменено',
   delete: 'Удалено',
   reset:  'Сброс',
+  restore: 'Восстановление',
   import: 'Импорт',
   save:   'Сохранено',
   grant:  'Предоставлен доступ',

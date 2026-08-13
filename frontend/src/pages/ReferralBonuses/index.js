@@ -483,6 +483,45 @@ export default function ReferralBonusesPage() {
     }
   }, [resetClinicIds]);
 
+  // ── Точки возврата: сервер снимает settings затронутых сотрудников перед сбросом ──
+  const [resetBackups, setResetBackups] = useState([]);
+  const [resetBackupsLoading, setResetBackupsLoading] = useState(false);
+  const [expandedBackupId, setExpandedBackupId] = useState(null);
+  const [backupDetail, setBackupDetail] = useState(null);
+  const [restoringBackupId, setRestoringBackupId] = useState(null);
+
+  const loadResetBackups = useCallback(async () => {
+    setResetBackupsLoading(true);
+    try {
+      const response = await execSettingsApi.getResetBackups();
+      setResetBackups(Array.isArray(response.data) ? response.data : []);
+    } catch {
+      setResetBackups([]);
+    } finally {
+      setResetBackupsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showResetConfirm) loadResetBackups();
+  }, [showResetConfirm, loadResetBackups]);
+
+  const toggleBackupDetail = useCallback(async (backupId) => {
+    if (expandedBackupId === backupId) {
+      setExpandedBackupId(null);
+      setBackupDetail(null);
+      return;
+    }
+    setExpandedBackupId(backupId);
+    setBackupDetail(null);
+    try {
+      const response = await execSettingsApi.getResetBackup(backupId);
+      setBackupDetail(response.data);
+    } catch {
+      toast.error('Не удалось открыть резервную копию');
+    }
+  }, [expandedBackupId]);
+
   const handleConfirmReset = useCallback(async () => {
     if (!resetPreview || resetting) return;
     setResetting(true);
@@ -491,13 +530,45 @@ export default function ReferralBonusesPage() {
       clearExecCache();
       setSettingsResetKey(k => k + 1);
       setShowResetConfirm(false);
-      toast.success(`Сброс выполнен: ${response.data?.count || 0} сотрудников`);
+      toast.success(`Сброс выполнен: ${response.data?.count || 0} сотрудников. Создана точка возврата`);
     } catch {
       toast.error('Ошибка выборочного сброса');
     } finally {
       setResetting(false);
     }
   }, [resetClinicIds, resetPreview, resetting]);
+
+  const handleRestoreBackup = useCallback(async (backup) => {
+    if (restoringBackupId) return;
+    const when = new Date(backup.createdAt).toLocaleString('ru-RU');
+    const confirmed = window.confirm(
+      `Восстановить данные ${backup.employeeCount} сотрудников из копии от ${when}?\n\n` +
+      'Эти сотрудники вернутся в состояние на момент копии целиком. Правки, сделанные после сброса, будут перезаписаны.'
+    );
+    if (!confirmed) return;
+
+    setRestoringBackupId(backup.id);
+    try {
+      const response = await execSettingsApi.restoreResetBackup(backup.id);
+      clearExecCache();
+      setSettingsResetKey(k => k + 1);
+      const { restored = 0, changedSince = [], missing = [] } = response.data || {};
+      toast.success(`Восстановлено сотрудников: ${restored}`);
+      if (changedSince.length) {
+        toast(`Перезаписаны правки, сделанные после сброса: ${changedSince.length} сотр.`, { icon: '⚠️' });
+      }
+      if (missing.length) {
+        toast.error(`Не найдены в базе: ${missing.join(', ')}`);
+      }
+      setExpandedBackupId(null);
+      setBackupDetail(null);
+      loadResetBackups();
+    } catch {
+      toast.error('Ошибка восстановления данных');
+    } finally {
+      setRestoringBackupId(null);
+    }
+  }, [restoringBackupId, loadResetBackups]);
 
   const matchDoctorByName = useCallback((excelName) => {
     const normalized = rbNormalizeName(excelName);
@@ -1127,6 +1198,80 @@ export default function ReferralBonusesPage() {
                     </div>
                   </>
                 )}
+              </section>
+
+              <section className="rb-reset-section rb-reset-backups-section">
+                <div className="rb-reset-section-title">3. Точки возврата</div>
+                <p className="rb-reset-hint">
+                  Перед сбросом сохраняются данные затронутых сотрудников целиком. Восстановление
+                  вернёт их в состояние на момент копии — включая правки, сделанные после сброса.
+                  Хранятся пять последних копий.
+                </p>
+
+                {resetBackupsLoading && <div className="rb-reset-empty"><span className="rb-spinner" /> Загружаем копии…</div>}
+                {!resetBackupsLoading && !resetBackups.length && (
+                  <div className="rb-reset-empty">Копий пока нет — первая появится после ближайшего сброса.</div>
+                )}
+
+                <div className="rb-reset-backups">
+                  {resetBackups.map(backup => (
+                    <div key={backup.id} className={'rb-reset-backup' + (backup.restoredAt ? ' restored' : '')}>
+                      <div className="rb-reset-backup-head">
+                        <button
+                          type="button"
+                          className="rb-reset-backup-title"
+                          onClick={() => toggleBackupDetail(backup.id)}
+                        >
+                          <strong>{new Date(backup.createdAt).toLocaleString('ru-RU')}</strong>
+                          <span className="rb-reset-backup-kind">
+                            {backup.kind === 'restore' ? 'перед восстановлением' : 'перед сбросом'}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="rb-btn rb-btn-secondary rb-reset-backup-restore"
+                          disabled={!!restoringBackupId || resetting}
+                          onClick={() => handleRestoreBackup(backup)}
+                        >
+                          {restoringBackupId === backup.id ? 'Восстанавливаем…' : 'Восстановить'}
+                        </button>
+                      </div>
+
+                      <div className="rb-reset-backup-meta">
+                        <span>{backup.createdBy || '—'}</span>
+                        <span>Сотрудников: <strong>{backup.employeeCount}</strong></span>
+                        {backup.kind === 'reset' && <span>Значений: <strong>{backup.changeCount}</strong></span>}
+                        <span>
+                          {(backup.clinicIds || [])
+                            .map(id => (String(id) === 'global' ? 'Общие настройки' : getClinicName(id)))
+                            .join(', ')}
+                        </span>
+                      </div>
+
+                      {backup.restoredAt && (
+                        <div className="rb-reset-backup-restored-at">
+                          Уже восстанавливалась {new Date(backup.restoredAt).toLocaleString('ru-RU')}
+                          {backup.restoredBy ? ` — ${backup.restoredBy}` : ''}
+                        </div>
+                      )}
+
+                      {expandedBackupId === backup.id && (
+                        <div className="rb-reset-backup-body">
+                          {backupDetail?.id !== backup.id && <span className="rb-spinner" />}
+                          {backupDetail?.id === backup.id && backupDetail.employees.map(employee => (
+                            <div key={employee.misUserId} className="rb-reset-backup-employee">
+                              <span>{employee.doctorName}</span>
+                              {employee.missing && <span className="rb-reset-backup-flag">нет в базе</span>}
+                              {employee.changedSince && (
+                                <span className="rb-reset-backup-flag warn">изменён после сброса</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </section>
             </div>
             <div className="rb-modal-footer">

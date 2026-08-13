@@ -1,0 +1,464 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
+import {
+  Plus, X, Check, Search, Package, Truck, Layers, Gauge, ShieldAlert, Info, Pencil,
+} from 'lucide-react';
+import { warehouseApi } from '../../services/api';
+
+/**
+ * Справочники материалов: номенклатура, контрагенты, партии, минимальные остатки.
+ *
+ * Здесь заводятся данные, которые в рабочей системе приезжали бы из 1С. Пока
+ * обмена нет, это единственный способ наполнить модуль — и первое, обо что
+ * спотыкается человек, открывший пустой склад.
+ *
+ * Формы описаны декларативно (FIELDS), а не написаны четыре раза: у всех четырёх
+ * справочников одна и та же механика «список → модалка → сохранить», и
+ * расхождение между ними было бы только источником ошибок.
+ */
+
+const UNITS = ['шт', 'уп', 'фл', 'мл', 'л', 'г', 'кг', 'м', 'пар', 'набор', 'кан'];
+
+const TABS = [
+  { key: 'nomenclature', label: 'Номенклатура', icon: Package },
+  { key: 'contractors',  label: 'Контрагенты',  icon: Truck },
+  { key: 'batches',      label: 'Партии',       icon: Layers },
+  { key: 'reorder',      label: 'Минимумы',     icon: Gauge },
+];
+
+export default function WarehouseCatalog({ access }) {
+  const [tab, setTab] = useState('nomenclature');
+  const [rows, setRows] = useState([]);
+  const [refs, setRefs] = useState({ nomenclature: [], contractors: [], categories: [], rooms: [] });
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
+  const [modal, setModal] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const canEdit = access?.capabilities?.canManageCatalog;
+
+  const loadRefs = useCallback(async () => {
+    try {
+      const [nom, con, cat] = await Promise.all([
+        warehouseApi.nomenclature({ limit: 500 }),
+        warehouseApi.contractors({}),
+        warehouseApi.categories(),
+      ]);
+      setRefs({ nomenclature: nom.data.items, contractors: con.data, categories: cat.data, rooms: [] });
+    } catch { /* справочники не критичны для отображения списка */ }
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (tab === 'nomenclature') {
+        const { data } = await warehouseApi.nomenclature({ q: q || undefined, limit: 300 });
+        setRows(data.items);
+      } else if (tab === 'contractors') {
+        const { data } = await warehouseApi.contractors({ q: q || undefined });
+        setRows(data);
+      } else if (tab === 'batches') {
+        const { data } = await warehouseApi.batches({});
+        setRows(data);
+      } else {
+        const { data } = await warehouseApi.reorderRules();
+        setRows(data);
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось загрузить справочник');
+    } finally {
+      setLoading(false);
+    }
+  }, [tab, q]);
+
+  useEffect(() => { loadRefs(); }, [loadRefs]);
+  useEffect(() => {
+    const t = setTimeout(load, q ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [load, q]);
+
+  const submit = async (form) => {
+    setSaving(true);
+    try {
+      const payload = Object.fromEntries(
+        Object.entries(form).map(([k, v]) => [k, v === '' ? null : v])
+      );
+      if (tab === 'nomenclature') {
+        if (modal.id) await warehouseApi.updateNomenclature(modal.id, payload);
+        else await warehouseApi.createNomenclature(payload);
+      } else if (tab === 'contractors') {
+        if (modal.id) await warehouseApi.updateContractor(modal.id, payload);
+        else await warehouseApi.createContractor(payload);
+      } else if (tab === 'batches') {
+        await warehouseApi.createBatch(payload);
+      } else {
+        await warehouseApi.createReorderRule(payload);
+      }
+      toast.success('Сохранено');
+      setModal(null);
+      await load();
+      await loadRefs();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeRule = async (id) => {
+    try {
+      await warehouseApi.deleteReorderRule(id);
+      toast.success('Правило удалено');
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось удалить');
+    }
+  };
+
+  const blockBatch = async (batch) => {
+    const next = !batch.isBlocked;
+    const reason = next ? window.prompt('Причина блокировки (отзыв производителем и т. п.):') : null;
+    if (next && !reason) return;
+    try {
+      await warehouseApi.blockBatch(batch.id, { isBlocked: next, reason });
+      toast.success(next ? 'Партия заблокирована к выдаче' : 'Блокировка снята');
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось изменить');
+    }
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="wh-catalog">
+      <div className="wh-subtabs">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.key} className={tab === t.key ? 'is-active' : ''}
+                    onClick={() => { setTab(t.key); setQ(''); }}>
+              <Icon size={14} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="wh-assets__filters">
+        {(tab === 'nomenclature' || tab === 'contractors') && (
+          <div className="wh-search">
+            <Search size={15} />
+            <input placeholder="Поиск по названию или коду" value={q} onChange={e => setQ(e.target.value)} />
+          </div>
+        )}
+        {canEdit && (
+          <button className="wh-btn wh-btn--primary" style={{ marginLeft: 'auto' }}
+                  onClick={() => setModal({ id: null, form: defaultsFor(tab) })}>
+            <Plus size={15} /> {addLabel(tab)}
+          </button>
+        )}
+        {!canEdit && (
+          <div className="wh-badge wh-badge--neutral" style={{ marginLeft: 'auto' }}>
+            Только просмотр — правка доступна зав. складом и администратору модуля
+          </div>
+        )}
+      </div>
+
+      {tab === 'batches' && (
+        <div className="wh-alert wh-alert--info">
+          <Info size={15} />
+          <div>
+            Партия — это конкретная поставка с собственным сроком годности. Просроченные
+            блокируются к выдаче автоматически по дате; блокировать вручную нужно при
+            отзыве производителем, когда срок ещё не вышел.
+          </div>
+        </div>
+      )}
+
+      <div className="wh-table-wrap">
+        <table className="wh-table wh-table--compact">
+          <thead><tr>{columnsFor(tab, canEdit).map(c => <th key={c}>{c}</th>)}</tr></thead>
+          <tbody>
+            {loading && (
+              <tr><td colSpan={9} className="wh-table__loading"><div className="loading-spinner" /></td></tr>
+            )}
+
+            {!loading && tab === 'nomenclature' && rows.map(n => (
+              <tr key={n.id}>
+                <td className="wh-mono">{n.code}</td>
+                <td>
+                  <div className="wh-cell-main">{n.name}</div>
+                  <div className="wh-cell-sub">
+                    {[n.isMedicine && 'ЛП', n.isSterile && 'стерильное',
+                      n.tracksBatch ? 'партионный учёт' : 'без партий'].filter(Boolean).join(' · ')}
+                  </div>
+                </td>
+                <td>{n.unit}{n.packUnit && n.packSize ? ` (${n.packUnit} по ${n.packSize})` : ''}</td>
+                <td className="wh-cell-sub">{n.category?.name || '—'}</td>
+                <td className="wh-num">{n.lastPrice ? Number(n.lastPrice).toLocaleString('ru-RU') : '—'}</td>
+                <td className="wh-cell-sub">{n.defaultSupplier?.name || '—'}</td>
+                <td className="wh-cell-sub">
+                  {n.storageTempMinC !== null && n.storageTempMinC !== undefined
+                    ? `${n.storageTempMinC}…${n.storageTempMaxC} °C` : '—'}
+                </td>
+                {canEdit && (
+                  <td>
+                    <button className="wh-icon-btn" title="Изменить"
+                            onClick={() => setModal({ id: n.id, form: pick(n, FIELDS.nomenclature) })}>
+                      <Pencil size={14} />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+
+            {!loading && tab === 'contractors' && rows.map(c => (
+              <tr key={c.id}>
+                <td>
+                  <div className="wh-cell-main">{c.name}</div>
+                  {c.inn && <div className="wh-cell-sub">ИНН {c.inn}</div>}
+                </td>
+                <td>{{ supplier: 'Поставщик', service: 'Сервис', both: 'Оба' }[c.kind] || c.kind}</td>
+                <td className="wh-num">{c.rating ?? '—'}</td>
+                <td className="wh-num">{c.avgDeliveryDays ?? '—'}</td>
+                <td className="wh-num">{c.deliveryFailures}</td>
+                <td className={c.accreditationUntil && c.accreditationUntil < today ? 'wh-danger' : ''}>
+                  {c.accreditationUntil ? fmt(c.accreditationUntil) : '—'}
+                </td>
+                <td className="wh-cell-sub">{c.phone || c.email || '—'}</td>
+                {canEdit && (
+                  <td>
+                    <button className="wh-icon-btn" title="Изменить"
+                            onClick={() => setModal({ id: c.id, form: pick(c, FIELDS.contractors) })}>
+                      <Pencil size={14} />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+
+            {!loading && tab === 'batches' && rows.map(b => {
+              const expired = b.expiryDate && b.expiryDate < today;
+              return (
+                <tr key={b.id} className={expired ? 'wh-row--expired' : ''}>
+                  <td className="wh-mono">{b.batchNumber}</td>
+                  <td>{b.nomenclature?.name}</td>
+                  <td className={expired ? 'wh-danger' : ''}>{fmt(b.expiryDate)}</td>
+                  <td className="wh-num">{b.unitCost ? Number(b.unitCost).toLocaleString('ru-RU') : '—'}</td>
+                  <td className="wh-cell-sub">{b.supplier?.name || '—'}</td>
+                  <td className="wh-cell-sub">{b.certificateNumber || '—'}</td>
+                  <td>
+                    {b.isBlocked
+                      ? <span className="wh-status wh-status--repair" title={b.blockReason || ''}>заблокирована</span>
+                      : expired
+                        ? <span className="wh-status wh-status--overdue">просрочена</span>
+                        : <span className="wh-status wh-status--in_use">годна</span>}
+                  </td>
+                  {canEdit && (
+                    <td>
+                      <button className="wh-icon-btn" title={b.isBlocked ? 'Снять блокировку' : 'Заблокировать к выдаче'}
+                              onClick={() => blockBatch(b)}>
+                        <ShieldAlert size={14} />
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+
+            {!loading && tab === 'reorder' && rows.map(r => (
+              <tr key={r.id}>
+                <td>{r.nomenclature?.name}</td>
+                <td className="wh-mono wh-cell-sub">{r.nomenclature?.code}</td>
+                <td className="wh-num"><b>{Number(r.minQty)}</b> {r.nomenclature?.unit}</td>
+                <td className="wh-num wh-cell-sub">{r.maxQty ? Number(r.maxQty) : '—'}</td>
+                <td className="wh-cell-sub">
+                  {r.room ? `Каб. ${r.room.number}` : r.storage ? r.storage.name : 'везде'}
+                </td>
+                <td>{r.autoRfq ? 'да' : 'нет'}</td>
+                {canEdit && (
+                  <td>
+                    <button className="wh-icon-btn wh-icon-btn--danger" title="Удалить правило"
+                            onClick={() => removeRule(r.id)}>
+                      <X size={14} />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+
+            {!loading && !rows.length && (
+              <tr><td colSpan={9} className="wh-empty">
+                Записей нет.{canEdit ? ` Нажмите «${addLabel(tab)}».` : ''}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="wh-assets__count">Записей: {rows.length}</div>
+
+      {modal && (
+        <CatalogModal tab={tab} modal={modal} refs={refs} saving={saving}
+                      onClose={() => setModal(null)} onSubmit={submit} />
+      )}
+    </div>
+  );
+}
+
+// ── Описание форм ────────────────────────────────────────────────────────────
+const FIELDS = {
+  nomenclature: [
+    { key: 'code', label: 'Код', required: true, hint: 'Уникален; в 1С это артикул' },
+    { key: 'name', label: 'Наименование', required: true, wide: true },
+    { key: 'unit', label: 'Единица измерения', type: 'select', options: UNITS, required: true },
+    { key: 'packUnit', label: 'Единица упаковки', type: 'select', options: ['', ...UNITS] },
+    { key: 'packSize', label: 'Штук в упаковке', type: 'number' },
+    { key: 'categoryId', label: 'Категория', type: 'ref', ref: 'categories' },
+    { key: 'lastPrice', label: 'Цена за единицу, ₽', type: 'number' },
+    { key: 'defaultSupplierId', label: 'Поставщик по умолчанию', type: 'ref', ref: 'contractors' },
+    { key: 'vatPercent', label: 'НДС, %', type: 'number' },
+    { key: 'storageTempMinC', label: 'Температура хранения от, °C', type: 'number' },
+    { key: 'storageTempMaxC', label: 'до, °C', type: 'number' },
+    { key: 'isMedicine', label: 'Лекарственный препарат', type: 'bool' },
+    { key: 'isSterile', label: 'Стерильное', type: 'bool' },
+    { key: 'tracksBatch', label: 'Партионный учёт (срок годности)', type: 'bool' },
+  ],
+  contractors: [
+    { key: 'name', label: 'Наименование', required: true, wide: true },
+    { key: 'kind', label: 'Тип', type: 'select',
+      options: [['supplier', 'Поставщик'], ['service', 'Сервисный подрядчик'], ['both', 'Оба']] },
+    { key: 'inn', label: 'ИНН' },
+    { key: 'phone', label: 'Телефон' },
+    { key: 'email', label: 'Электронная почта' },
+    { key: 'contactPerson', label: 'Контактное лицо' },
+    { key: 'rating', label: 'Рейтинг (0–5)', type: 'number', hint: 'Участвует в оценке котировок' },
+    { key: 'avgDeliveryDays', label: 'Срок поставки, дней', type: 'number' },
+    { key: 'deliveryFailures', label: 'Срывов поставок за год', type: 'number' },
+    { key: 'paymentTerms', label: 'Условия оплаты' },
+    { key: 'accreditationUntil', label: 'Аккредитация действует до', type: 'date' },
+    { key: 'comment', label: 'Примечание', wide: true },
+  ],
+  batches: [
+    { key: 'nomenclatureId', label: 'Номенклатура', type: 'ref', ref: 'nomenclature', required: true, wide: true },
+    { key: 'batchNumber', label: 'Номер серии или партии', required: true },
+    { key: 'expiryDate', label: 'Годен до', type: 'date',
+      hint: 'После этой даты партия не берётся в выдачу' },
+    { key: 'productionDate', label: 'Дата производства', type: 'date' },
+    { key: 'unitCost', label: 'Цена за единицу, ₽', type: 'number' },
+    { key: 'supplierId', label: 'Поставщик', type: 'ref', ref: 'contractors' },
+    { key: 'certificateNumber', label: 'Номер сертификата' },
+  ],
+  reorder: [
+    { key: 'nomenclatureId', label: 'Номенклатура', type: 'ref', ref: 'nomenclature', required: true, wide: true },
+    { key: 'minQty', label: 'Минимальный остаток', type: 'number', required: true,
+      hint: 'Ниже него позиция подсвечивается красным и попадает в дефицит' },
+    { key: 'maxQty', label: 'Максимальный остаток', type: 'number' },
+    { key: 'autoRfq', label: 'Создавать запрос котировок автоматически', type: 'bool' },
+  ],
+};
+
+function CatalogModal({ tab, modal, refs, saving, onClose, onSubmit }) {
+  const [form, setForm] = useState(modal.form);
+  const fields = FIELDS[tab];
+  const valid = fields.filter(f => f.required)
+    .every(f => String(form[f.key] ?? '').trim() !== '');
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div className="wh-modal__title">
+            {modal.id ? 'Изменение записи' : addLabel(tab)}
+          </div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-catalog__form">
+            {fields.map(f => {
+              const value = form[f.key];
+              const onChange = v => setForm(prev => ({ ...prev, [f.key]: v }));
+
+              if (f.type === 'bool') {
+                return (
+                  <label key={f.key} className="wh-check wh-catalog__check">
+                    <input type="checkbox" checked={Boolean(value)}
+                           onChange={e => onChange(e.target.checked)} />
+                    {f.label}
+                  </label>
+                );
+              }
+              return (
+                <label key={f.key} className={f.wide ? 'wh-catalog__wide' : ''}>
+                  {f.label}{f.required && <b className="wh-req"> *</b>}
+                  {f.type === 'ref' ? (
+                    <select value={value ?? ''} onChange={e => onChange(e.target.value)}>
+                      <option value="">—</option>
+                      {(refs[f.ref] || []).map(o => (
+                        <option key={o.id} value={o.id}>{o.name}{o.code ? ` (${o.code})` : ''}</option>
+                      ))}
+                    </select>
+                  ) : f.type === 'select' ? (
+                    <select value={value ?? ''} onChange={e => onChange(e.target.value)}>
+                      {f.options.map(o => {
+                        const [v, l] = Array.isArray(o) ? o : [o, o || '—'];
+                        return <option key={v} value={v}>{l}</option>;
+                      })}
+                    </select>
+                  ) : (
+                    <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                           step={f.type === 'number' ? 'any' : undefined}
+                           value={value ?? ''}
+                           onChange={e => onChange(f.type === 'number'
+                             ? (e.target.value === '' ? '' : Number(e.target.value))
+                             : e.target.value)} />
+                  )}
+                  {f.hint && <span className="wh-hint">{f.hint}</span>}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" disabled={!valid || saving}
+                  onClick={() => onSubmit(form)}>
+            <Check size={15} /> {saving ? 'Сохраняю…' : 'Сохранить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Утилиты ──────────────────────────────────────────────────────────────────
+function defaultsFor(tab) {
+  const base = Object.fromEntries(FIELDS[tab].map(f => [f.key, f.type === 'bool' ? false : '']));
+  if (tab === 'nomenclature') return { ...base, unit: 'шт', vatPercent: 20, tracksBatch: true };
+  if (tab === 'contractors') return { ...base, kind: 'supplier', deliveryFailures: 0 };
+  return base;
+}
+
+function pick(row, fields) {
+  return Object.fromEntries(fields.map(f => [f.key, row[f.key] ?? (f.type === 'bool' ? false : '')]));
+}
+
+function addLabel(tab) {
+  return {
+    nomenclature: 'Добавить позицию',
+    contractors: 'Добавить контрагента',
+    batches: 'Добавить партию',
+    reorder: 'Добавить минимум',
+  }[tab];
+}
+
+function columnsFor(tab, canEdit) {
+  const cols = {
+    nomenclature: ['Код', 'Наименование', 'Ед.', 'Категория', 'Цена, ₽', 'Поставщик', 'Хранение'],
+    contractors: ['Наименование', 'Тип', 'Рейтинг', 'Срок, дн.', 'Срывов', 'Аккредитация', 'Контакты'],
+    batches: ['Серия', 'Номенклатура', 'Годен до', 'Цена, ₽', 'Поставщик', 'Сертификат', 'Состояние'],
+    reorder: ['Номенклатура', 'Код', 'Минимум', 'Максимум', 'Где действует', 'Автозаказ'],
+  }[tab];
+  return canEdit ? [...cols, ''] : cols;
+}
+
+const fmt = d => (d ? new Date(d).toLocaleDateString('ru-RU') : '—');

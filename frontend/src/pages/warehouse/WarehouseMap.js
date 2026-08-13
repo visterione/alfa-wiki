@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Building2, Layers, ChevronRight, RefreshCw, AlertTriangle, Package,
-  Wrench, CalendarClock, Boxes, X, ExternalLink, Info,
+  Wrench, CalendarClock, Boxes, X, ExternalLink, Info, ShieldCheck,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import FloorPlanSvg from '../../components/warehouse/FloorPlanSvg';
@@ -50,10 +50,15 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   const [recomputing, setRecomputing] = useState(false);
 
   const medCenters = tree?.medCenters || [];
+  const canSeeCosts = access?.capabilities?.canSeeCosts;
   const currentMc = useMemo(
     () => medCenters.find(mc => mc.id === level.mcId) || null,
     [medCenters, level.mcId]
   );
+  // Сводка по сети даёт цифры, дерево — форму площадки: сколько корпусов, по
+  // сколько этажей в каждом и насколько они населены. Силуэт на карточке рисуется
+  // по дереву, поэтому он не выдумка, а настоящая структура медцентра.
+  const treeById = useMemo(() => new Map(medCenters.map(mc => [mc.id, mc])), [medCenters]);
   const currentBuilding = useMemo(
     () => currentMc?.buildings?.find(b => b.id === level.buildingId) || null,
     [currentMc, level.buildingId]
@@ -141,60 +146,39 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   // ── Уровень 1: сеть ────────────────────────────────────────────────────────
   if (level.kind === 'network') {
     const withData = overview.filter(o => o.buildings > 0);
-    const withoutData = overview.filter(o => o.buildings === 0);
-
     return (
       <div className="wh-map">
         <Breadcrumbs items={[{ label: 'Сеть' }]} />
         <div className="wh-map__grid">
           {withData.map(mc => (
-            <button key={mc.id} className="wh-mc-card"
-                    onClick={() => setLevel({ kind: 'medCenter', mcId: mc.id })}>
-              <div className="wh-mc-card__head">
-                {mc.logoUrl
-                  ? <img src={mc.logoUrl} alt="" className="wh-mc-card__logo" />
-                  : <span className="wh-mc-card__dot" style={{ background: mc.color || '#94a3b8' }} />}
-                <div>
-                  <div className="wh-mc-card__name">{mc.displayName || mc.name}</div>
-                  {mc.city && <div className="wh-mc-card__city">{mc.city}</div>}
-                </div>
-              </div>
-              <div className="wh-mc-card__stats">
-                <Stat icon={<Building2 size={14} />} value={mc.buildings} label="корпус" />
-                <Stat icon={<Layers size={14} />} value={mc.floors} label="этаж" />
-                <Stat icon={<Boxes size={14} />} value={mc.rooms} label="кабинет" />
-                <Stat icon={<Package size={14} />} value={mc.assets} label="ед. ОС" />
-              </div>
-              <div className="wh-mc-card__foot">
-                <span>{(Number(mc.assetValue) / 1e6).toFixed(1)} млн ₽</span>
-                {mc.overdueMaintenance > 0 && (
-                  <span className="wh-badge wh-badge--red">
-                    <AlertTriangle size={12} /> ТО просрочено: {mc.overdueMaintenance}
-                  </span>
-                )}
-              </div>
-              <ChevronRight size={18} className="wh-mc-card__arrow" />
-            </button>
+            <MedCenterCard key={mc.id}
+                           mc={mc}
+                           shape={treeById.get(mc.id)}
+                           canSeeCosts={canSeeCosts}
+                           onOpen={() => setLevel({ kind: 'medCenter', mcId: mc.id })} />
           ))}
+          {!withData.length && (
+            <div className="wh-empty">Ни в одном медцентре не заведены корпуса</div>
+          )}
         </div>
-
-        {withoutData.length > 0 && (
-          <div className="wh-note">
-            <Info size={15} />
-            <div>
-              Модуль ещё не развёрнут: {withoutData.map(m => m.displayName || m.name).join(', ')}.
-              {access?.capabilities?.canEditLocations
-                ? ' Добавьте корпус и этажи во вкладке «Локации».'
-                : ' Обратитесь к администратору модуля.'}
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
   // ── Уровень 2: медцентр, корпуса и этажи ───────────────────────────────────
   if (level.kind === 'medCenter') {
+    const buildings = currentMc?.buildings || [];
+    const totals = buildings.reduce((acc, b) => {
+      for (const f of b.floors || []) {
+        acc.floors += 1;
+        for (const r of f.rooms || []) {
+          acc.rooms += 1;
+          acc.assets += r.counters?.assets || 0;
+        }
+      }
+      return acc;
+    }, { floors: 0, rooms: 0, assets: 0 });
+
     return (
       <div className="wh-map">
         <Breadcrumbs items={[
@@ -202,49 +186,35 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
           { label: currentMc?.name || '—' },
         ]} />
 
-        {(currentMc?.buildings || []).map(building => (
-          <div key={building.id} className="wh-building">
-            <div className="wh-building__head">
-              <Building2 size={17} />
-              <div>
-                <div className="wh-building__name">{building.name}</div>
-                {building.address && <div className="wh-building__addr">{building.address}</div>}
-              </div>
-            </div>
-            <div className="wh-building__floors">
-              {building.floors.map(floor => {
-                const rooms = floor.rooms || [];
-                const assets = rooms.reduce((s, r) => s + (r.counters?.assets || 0), 0);
-                const withPlan = rooms.filter(r => r.hasPlan).length;
-                return (
-                  <button key={floor.id} className="wh-floor-card"
-                          onClick={() => setLevel({
-                            kind: 'floor', mcId: currentMc.id, buildingId: building.id, floorId: floor.id,
-                          })}>
-                    <div className="wh-floor-card__num">{floor.number}</div>
-                    <div className="wh-floor-card__body">
-                      <div className="wh-floor-card__name">{floor.name || `${floor.number} этаж`}</div>
-                      <div className="wh-floor-card__meta">
-                        {rooms.length} каб. · {assets} ед. ОС
-                      </div>
-                      {/* Кабинеты без геометрии на плане не появятся — говорим об
-                          этом здесь, а не оставляем гадать, почему план пустой. */}
-                      {withPlan < rooms.length && (
-                        <div className="wh-floor-card__warn">
-                          без плана: {rooms.length - withPlan}
-                        </div>
-                      )}
-                    </div>
-                    <MiniPlan floor={floor} rooms={rooms} />
-                  </button>
-                );
-              })}
-              {!building.floors.length && (
-                <div className="wh-empty-inline">Этажи не заведены</div>
-              )}
-            </div>
+        <header className="wh-site__head">
+          <span className="wh-site__mark" style={{ '--mc-accent': currentMc?.color || '#3b82f6' }}>
+            {currentMc?.logoUrl
+              ? <img src={currentMc.logoUrl} alt="" />
+              : <b>{initials(currentMc?.name)}</b>}
+          </span>
+          <div className="wh-site__id">
+            <h2>{currentMc?.name || '—'}</h2>
+            {currentMc?.city && <div className="wh-site__city">{currentMc.city}</div>}
           </div>
+          <dl className="wh-spec wh-spec--wide">
+            <SpecItem label="Корпуса" value={buildings.length} />
+            <SpecItem label="Этажи" value={totals.floors} />
+            <SpecItem label="Кабинеты" value={totals.rooms} />
+            <SpecItem label="Ед. ОС" value={totals.assets} />
+          </dl>
+        </header>
+
+        {buildings.map(building => (
+          <BuildingSection key={building.id}
+                           building={building}
+                           onOpenFloor={floorId => setLevel({
+                             kind: 'floor', mcId: currentMc.id, buildingId: building.id, floorId,
+                           })} />
         ))}
+
+        {!buildings.length && (
+          <div className="wh-empty">В этом медцентре не заведено ни одного корпуса</div>
+        )}
       </div>
     );
   }
@@ -395,15 +365,173 @@ function Breadcrumbs({ items }) {
   );
 }
 
-function Stat({ icon, value, label }) {
+/**
+ * Карточка медцентра на верхнем уровне.
+ *
+ * Раньше здесь была плитка с четырьмя иконками и четырьмя числами — они у всех
+ * медцентров выглядели одинаково, и различить площадки можно было только прочитав
+ * название. Теперь у карточки есть силуэт: каждый корпус — башня, каждый этаж —
+ * блок, ширина блока зависит от числа кабинетов на этаже. Пятиэтажный корпус и
+ * два двухэтажных перестают выглядеть одинаково, и карточка начинает нести то,
+ * ради чего на неё смотрят, — размер и устройство площадки.
+ */
+function MedCenterCard({ mc, shape, canSeeCosts, onOpen }) {
+  const overdue = Number(mc.overdueMaintenance) || 0;
   return (
-    <div className="wh-stat">
-      {icon}
-      <b>{value}</b>
-      <span>{label}</span>
+    <button className="wh-mc" onClick={onOpen}
+            style={{ '--mc-accent': mc.color || '#3b82f6' }}>
+      <div className="wh-mc__top">
+        <span className="wh-mc__mark">
+          {mc.logoUrl ? <img src={mc.logoUrl} alt="" /> : <b>{initials(mc.displayName || mc.name)}</b>}
+        </span>
+        <span className="wh-mc__id">
+          <span className="wh-mc__name">{mc.displayName || mc.name}</span>
+          <span className="wh-mc__city">{mc.city || 'город не указан'}</span>
+        </span>
+        <ChevronRight size={17} className="wh-mc__go" />
+      </div>
+
+      <div className="wh-mc__figure">
+        <Silhouette buildings={shape?.buildings || []} />
+        <span className="wh-mc__headline">
+          <b>{mc.assets}</b>
+          <small>единиц оборудования</small>
+          {canSeeCosts && (
+            <span className="wh-mc__money">
+              {(Number(mc.assetValue) / 1e6).toFixed(1)} млн ₽
+            </span>
+          )}
+        </span>
+      </div>
+
+      <dl className="wh-spec">
+        <SpecItem label="Корпуса" value={mc.buildings} />
+        <SpecItem label="Этажи" value={mc.floors} />
+        <SpecItem label="Кабинеты" value={mc.rooms} />
+      </dl>
+
+      <div className={`wh-mc__foot ${overdue ? 'is-alert' : ''}`}>
+        {overdue ? (
+          <><AlertTriangle size={13} /> Просрочено нарядов ТО: {overdue}</>
+        ) : (
+          <><ShieldCheck size={13} /> Просроченного ТО нет</>
+        )}
+      </div>
+    </button>
+  );
+}
+
+/**
+ * Силуэт площадки. Не иллюстрация: высота башни — число этажей, ширина блока —
+ * заселённость этажа кабинетами. Рисуется в процентах от бокса, поэтому одинаково
+ * читается и на узкой карточке, и на широком мониторе.
+ */
+function Silhouette({ buildings }) {
+  const towers = buildings
+    .map(b => (b.floors || []).slice().sort((a, z) => a.number - z.number))
+    .filter(f => f.length);
+  if (!towers.length) return <span className="wh-silo wh-silo--empty" />;
+
+  const maxRooms = Math.max(1, ...towers.flat().map(f => (f.rooms || []).length));
+  // Больше пяти башен в ряд не помещается: остаток сворачиваем в счётчик.
+  const shown = towers.slice(0, 5);
+
+  return (
+    <span className="wh-silo" aria-hidden="true">
+      {shown.map((floors, i) => (
+        <span key={i} className="wh-silo__tower">
+          {floors.slice().reverse().map((f, j) => (
+            <i key={j} className="wh-silo__floor"
+               style={{ width: `${34 + 66 * ((f.rooms || []).length / maxRooms)}%` }} />
+          ))}
+        </span>
+      ))}
+      {towers.length > shown.length && (
+        <span className="wh-silo__more">+{towers.length - shown.length}</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Корпус как разрез здания: этажи стопкой сверху вниз, верхний этаж — сверху.
+ * До этого этажи лежали сеткой карточек по возрастанию номера, то есть первый
+ * этаж оказывался слева сверху, а верхний — справа снизу; это ровно наоборот
+ * тому, как здание устроено, и найти нужный этаж глазами было неожиданно трудно.
+ */
+function BuildingSection({ building, onOpenFloor }) {
+  const floors = (building.floors || []).slice().sort((a, z) => z.number - a.number);
+  const totals = floors.reduce((acc, f) => {
+    for (const r of f.rooms || []) {
+      acc.rooms += 1;
+      acc.assets += r.counters?.assets || 0;
+    }
+    return acc;
+  }, { rooms: 0, assets: 0 });
+
+  return (
+    <section className="wh-bld">
+      <div className="wh-bld__head">
+        <Building2 size={16} />
+        <div className="wh-bld__id">
+          <div className="wh-bld__name">{building.name}</div>
+          {building.address && <div className="wh-bld__addr">{building.address}</div>}
+        </div>
+        <div className="wh-bld__sum">
+          <span><Layers size={12} /> {floors.length}</span>
+          <span><Boxes size={12} /> {totals.rooms}</span>
+          <span><Package size={12} /> {totals.assets}</span>
+        </div>
+      </div>
+
+      <div className="wh-bld__stack">
+        {floors.map(floor => {
+          const rooms = floor.rooms || [];
+          const assets = rooms.reduce((s, r) => s + (r.counters?.assets || 0), 0);
+          const noPlan = rooms.filter(r => !r.hasPlan).length;
+          return (
+            <button key={floor.id} className="wh-fl" onClick={() => onOpenFloor(floor.id)}>
+              <span className="wh-fl__level">{floor.number}</span>
+              <span className="wh-fl__main">
+                <span className="wh-fl__name">{floor.name || `${floor.number} этаж`}</span>
+                <span className="wh-fl__meta">
+                  {rooms.length} каб. · {assets} ед. ОС
+                  {/* Кабинеты без геометрии на плане не появятся — говорим об
+                      этом здесь, а не оставляем гадать, почему план полупустой. */}
+                  {noPlan > 0 && <em className="wh-fl__warn">без плана: {noPlan}</em>}
+                </span>
+              </span>
+              <MiniPlan floor={floor} rooms={rooms} />
+              <ChevronRight size={15} className="wh-fl__go" />
+            </button>
+          );
+        })}
+        {!floors.length && <div className="wh-empty-inline">Этажи не заведены</div>}
+      </div>
+
+      {/* Земля под стопкой этажей: без неё стопка висит в воздухе и не читается
+          как здание. */}
+      <div className="wh-bld__ground" />
+    </section>
+  );
+}
+
+function SpecItem({ label, value }) {
+  return (
+    <div className="wh-spec__item">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
 }
+
+const initials = (name) => (name || '?')
+  .replace(/[«»"]/g, '')
+  .split(/[\s-]+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map(w => w[0].toUpperCase())
+  .join('');
 
 function LegendItem({ color, label }) {
   return (
@@ -414,22 +542,38 @@ function LegendItem({ color, label }) {
 }
 
 /**
- * Миниатюра плана на карточке этажа. Без интерактива и без зума: её задача —
- * дать узнать этаж по форме, а не показать данные.
+ * Миниатюра плана в строке этажа. Без интерактива и без зума: её задача — дать
+ * узнать этаж по форме, а не показать данные.
+ *
+ * Кадрируется по фактическому контуру и кабинетам, а не по габаритам листа.
+ * Габариты задают с запасом (лист 40 × 25 м под корпус 18 × 9), и при кадрировании
+ * по листу все миниатюры выглядели одинаковыми марками в углу пустого поля.
  */
 function MiniPlan({ floor, rooms }) {
-  const w = Number(floor.planWidthM) || 40;
-  const h = Number(floor.planHeightM) || 25;
   const withPlan = rooms.filter(r => Array.isArray(r.plan?.points) && r.plan.points.length >= 3);
-  if (!withPlan.length) return <div className="wh-miniplan wh-miniplan--empty">нет плана</div>;
+  const outline = Array.isArray(floor.outline?.points) && floor.outline.points.length >= 3
+    ? floor.outline.points : null;
+  if (!withPlan.length && !outline) {
+    return <span className="wh-miniplan wh-miniplan--empty">нет плана</span>;
+  }
+
+  const all = [...(outline || []), ...withPlan.flatMap(r => r.plan.points)];
+  const xs = all.map(p => p[0]);
+  const ys = all.map(p => p[1]);
+  const pad = 0.6;
+  const minX = Math.min(...xs) - pad;
+  const minY = Math.min(...ys) - pad;
+  const w = Math.max(1, Math.max(...xs) - Math.min(...xs) + pad * 2);
+  const h = Math.max(1, Math.max(...ys) - Math.min(...ys) + pad * 2);
+  const path = pts => pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
 
   return (
-    <svg className="wh-miniplan" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet">
-      <rect x="0" y="0" width={w} height={h} fill="#f7f9fc" stroke="#dbe2ea" strokeWidth="0.15" />
+    <svg className="wh-miniplan" viewBox={`${minX} ${minY} ${w} ${h}`}
+         preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      {outline && <path d={path(outline)} fill="#f4f7fb" stroke="#c8d4e2" strokeWidth={w / 220} />}
       {withPlan.map(r => (
-        <path key={r.id}
-              d={r.plan.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z'}
-              fill="#cfdcef" stroke="#8ea6c8" strokeWidth="0.12" />
+        <path key={r.id} d={path(r.plan.points)}
+              fill="#cddcef" stroke="#8ea6c8" strokeWidth={w / 300} />
       ))}
     </svg>
   );
@@ -446,6 +590,15 @@ function RoomPanel({ data, onClose, onOpenFull, canSeeCosts }) {
           <div className="wh-room-panel__path">{room.path}</div>
         </div>
         <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+      </div>
+
+      {/* Кнопка стоит сразу под шапкой, а не в подвале панели: панель прокручивается,
+          и в подвале главное действие экрана оказывалось ниже сгиба — до него надо
+          было домотать, чтобы узнать, что оно вообще есть. */}
+      <div className="wh-room-panel__cta">
+        <button className="wh-btn wh-btn--primary wh-btn--wide" onClick={onOpenFull}>
+          <ExternalLink size={15} /> Открыть дашборд кабинета
+        </button>
       </div>
 
       <div className="wh-room-panel__cards">
@@ -504,9 +657,6 @@ function RoomPanel({ data, onClose, onOpenFull, canSeeCosts }) {
         </ul>
       </div>
 
-      <button className="wh-btn wh-btn--primary wh-btn--wide" onClick={onOpenFull}>
-        <ExternalLink size={15} /> Открыть дашборд кабинета
-      </button>
     </aside>
   );
 }

@@ -20,10 +20,11 @@ const {
   WhInventorySession, WhInventoryItem, WhContractor, WhDocument, User, MedCenter,
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
-const { requireWarehouse, roomPath } = require('../../services/warehouse/access');
+const { requireWarehouse, requireReport, roomPath } = require('../../services/warehouse/access');
 const { reconcileStock } = require('../../services/warehouse/stock');
 const utilization = require('../../services/warehouse/utilization');
 const exports_ = require('../../services/warehouse/exports');
+const hierarchy = require('../../services/warehouse/hierarchy');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 
@@ -31,14 +32,102 @@ const userAttrs = ['id', 'displayName', 'username', 'avatar'];
  * Единая шапка отчёта из раздела 1.0 ТЗ. Собирается на бэкенде, чтобы экран,
  * XLSX и PDF показывали одно и то же — включая имя пользователя и время.
  */
-function reportHeader({ req, code, title, from, to, filters = {} }) {
+/**
+ * Единая шапка отчёта из раздела 1.0 ТЗ.
+ *
+ * Строка отбора собирается человеческими названиями, а не тем, что пришло в
+ * query. Раньше в выгрузку уезжало «medCenterId = 6f3a…-9c21», и через месяц по
+ * такому файлу нельзя было сказать, какой срез перед тобой — а именно ради этого
+ * строка отбора в ТЗ и стоит. Поэтому идентификаторы разворачиваются в названия,
+ * технические параметры (page, limit, mode) отбрасываются, а булевы флаги
+ * переводятся в человеческие формулировки.
+ *
+ * Функция асинхронная: за названиями приходится сходить в справочники. Это один
+ * дополнительный запрос на отчёт и он того стоит.
+ */
+const FILTER_LABELS = {
+  medCenterId: 'Медцентр',
+  departmentId: 'Отделение',
+  roomId: 'Кабинет',
+  contractorId: 'Подрядчик',
+  categoryId: 'Категория',
+  nomenclatureId: 'Номенклатура',
+  assetId: 'Оборудование',
+  doctorUserId: 'Врач',
+  status: 'Статус',
+  type: 'Тип',
+  horizonDays: 'Горизонт, дней',
+  showZero: 'Нулевые остатки',
+  medicineOnly: 'Только ЛП',
+  sterileOnly: 'Только стерильные',
+  fullyDepreciatedOnly: 'Только самортизированные',
+  mandatoryOnly: 'Только обязательные по НПА',
+  overdueOnly: 'Только просроченные',
+  interDepartmentOnly: 'Только межотделенческие',
+  compare: 'Сравнение с предыдущим периодом',
+};
+// Служебные параметры в отбор не попадают: они описывают запрос, а не срез.
+const FILTER_SKIP = new Set(['from', 'to', 'page', 'limit', 'mode', 'format', 'code']);
+
+async function reportHeader({ req, code, title, from, to, filters = {} }) {
+  // Organization подтягивается здесь, а не в общем импорте сверху: юрлицо нужно
+  // только шапке, и тащить его в модуль ради одной строки незачем.
+  const { Organization } = require('../../models');
+
+  const named = [];
+  for (const [key, raw] of Object.entries(filters || {})) {
+    if (FILTER_SKIP.has(key)) continue;
+    if (raw === undefined || raw === null || raw === '' || raw === 'false') continue;
+    const label = FILTER_LABELS[key] || key;
+    let value = String(raw);
+    try {
+      if (key === 'medCenterId') value = (await MedCenter.findByPk(raw))?.name || value;
+      else if (key === 'departmentId') value = (await WhDepartment.findByPk(raw))?.name || value;
+      else if (key === 'roomId') {
+        const room = await WhRoom.findByPk(raw);
+        value = room ? `${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}` : value;
+      } else if (raw === 'true') value = 'да';
+    } catch {
+      // Справочник не ответил — оставляем как есть: шапка не повод ронять отчёт.
+    }
+    named.push({ label, value });
+  }
+
+  // Юрлицо: если отбор сужен до одного медцентра — его собственное, иначе первое
+  // активное. Отчёт подписывается организацией, а не порталом.
+  let organization = null;
+  try {
+    if (filters?.medCenterId) {
+      const mc = await MedCenter.findByPk(filters.medCenterId, {
+        include: [{ model: Organization, as: 'organization', attributes: ['name'] }],
+      });
+      organization = mc?.organization?.name || null;
+    }
+    if (!organization) {
+      const org = await Organization.findOne({
+        where: { isActive: true }, order: [['sortOrder', 'ASC']], attributes: ['name'],
+      });
+      organization = org?.name || null;
+    }
+  } catch {
+    organization = null;
+  }
+
   return {
     code,
     title,
+    organization,
     period: from && to ? { from, to } : null,
     generatedAt: new Date().toISOString(),
     generatedBy: req.user.displayName || req.user.username,
+    system: 'Alfa-Wiki, складской учёт',
     filters,
+    // Готовая строка «Отбор: …» из макета ТЗ. Собирается на сервере, чтобы экран,
+    // XLSX и PDF писали одно и то же — расхождение здесь читается как разные срезы.
+    filterText: named.length
+      ? named.map(f => `${f.label} = ${f.value}`).join('; ')
+      : 'без дополнительного отбора',
+    filterList: named,
     // Обмена с 1С нет — говорим об этом в шапке каждого отчёта, где иначе
     // ожидалась бы сверка. Иначе пустая строка «Расхождение с 1С» читается как
     // «расхождений нет».
@@ -49,7 +138,7 @@ function reportHeader({ req, code, title, from, to, filters = {} }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-TURNOVER — Оборотно-сальдовая ведомость по складам и локациям
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/turnover', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TURNOVER'), async (req, res) => {
   try {
     const { from, to, medCenterId, departmentId, roomId, showZero } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Нужен период: from и to' });
@@ -151,17 +240,50 @@ router.get('/turnover', authenticate, requireWarehouse('viewer'), async (req, re
       };
     });
 
-    const totals = items.reduce((t, r) => ({
-      openAmount: t.openAmount + r.openAmount,
-      inAmount: t.inAmount + r.inAmount,
-      outAmount: t.outAmount + r.outAmount,
-      closeAmount: t.closeAmount + r.closeAmount,
-    }), { openAmount: 0, inAmount: 0, outAmount: 0, closeAmount: 0 });
+    // ТЗ требует именно иерархию: корпус → этаж → отделение → кабинет → место
+    // хранения → номенклатура, с подытогами на каждом уровне. Собираем на сервере,
+    // чтобы экран, XLSX и PDF показывали одно и то же дерево.
+    const MEASURES = ['openQty', 'openAmount', 'inQty', 'inAmount',
+                      'outQty', 'outAmount', 'closeQty', 'closeAmount'];
+    const tree = hierarchy.buildTree(
+      items,
+      hierarchy.turnoverLevels(items),
+      MEASURES,
+      row => ({
+        label: row.nomenclatureName,
+        code: row.code,
+        unit: row.unit,
+        nomenclatureId: row.nomenclatureId,
+        roomId: row.roomId,
+        storageId: row.storageId,
+        minQty: row.minQty,
+        status: row.status,
+        ...Object.fromEntries(MEASURES.map(m => [m, row[m]])),
+      })
+    );
+
+    // Доля позиции в сумме итога локации — гр. 12 ТЗ. Считается после сборки
+    // дерева: база — конечное сальдо места хранения, к которому позиция
+    // относится, а его знает только собранный узел, но не строка из SQL.
+    const treeRows = tree.rows.map(r => roundRow(r, MEASURES));
+    const groupClose = new Map(
+      treeRows.filter(r => r.__isGroup).map(r => [r.__key, r.closeAmount])
+    );
+    for (const row of treeRows) {
+      if (row.__isGroup) continue;
+      const base = groupClose.get(row.__parentKey);
+      row.sharePct = base ? round2((row.closeAmount / base) * 100) : null;
+    }
 
     res.json({
-      header: reportHeader({ req, code: 'RPT-TURNOVER', title: 'Оборотно-сальдовая ведомость по локациям', from, to, filters: req.query }),
-      items,
-      totals: round(totals),
+      header: await reportHeader({ req, code: 'RPT-TURNOVER', title: 'Оборотно-сальдовая ведомость по локациям', from, to, filters: req.query }),
+      // Иерархия: плоский список строк с __level и __isGroup. Такой формат
+      // одинаково ложится и в отрисовку с отступами, и в группировку строк Excel.
+      hierarchical: true,
+      items: treeRows,
+      // Плоские строки оставлены для тех, кому нужен «сырой» срез без дерева.
+      flatItems: items,
+      totals: roundRow(tree.totals, MEASURES),
       // Контрольная сверка из ТЗ, но с честным источником: не «расхождение с 1С»,
       // которой нет, а расхождение остатка с журналом движений внутри портала.
       controls: { stockVsMovements: await reconcileStock() },
@@ -175,10 +297,21 @@ router.get('/turnover', authenticate, requireWarehouse('viewer'), async (req, re
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-CONSUMPTION — Расход материалов по кабинетам, отделениям и врачам
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/consumption', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/consumption', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const { from, to, mode = 'locations', medCenterId, departmentId, compare } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'Нужен период: from и to' });
+
+    // Режим «по врачам» — отдельная строка матрицы: ТЗ само предупреждает, что
+    // это не оценка качества работы, и открывать его всем, кто видит расход по
+    // кабинетам, неправильно.
+    const code = mode === 'doctors' ? 'RPT-CONSUMPTION-2' : 'RPT-CONSUMPTION';
+    const rolesSvc = require('../../services/warehouse/roles');
+    if (!rolesSvc.canRead(req.warehouse.roles, code)) {
+      const allowed = rolesSvc.ACCESS_MATRIX[code].read
+        .map(r => rolesSvc.WAREHOUSE_ROLES[r]?.label || r).join(', ');
+      return res.status(403).json({ error: `Доступно ролям: ${allowed}`, code });
+    }
 
     const scoped = await req.warehouse.scopedRoomIds();
     const span = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
@@ -220,7 +353,7 @@ router.get('/consumption', authenticate, requireWarehouse('viewer'), async (req,
       }
 
       return res.json({
-        header: reportHeader({ req, code: 'RPT-CONSUMPTION', title: 'Расход материалов по врачам', from, to, filters: req.query }),
+        header: await reportHeader({ req, code: 'RPT-CONSUMPTION', title: 'Расход материалов по врачам', from, to, filters: req.query }),
         mode: 'doctors',
         items: rows.map(r => {
           const perOp = r.operations > 0 ? Number(r.amount) / r.operations : 0;
@@ -241,6 +374,10 @@ router.get('/consumption', authenticate, requireWarehouse('viewer'), async (req,
           'основанием для управленческих решений без разбора сложности случаев. ' +
           'Строки с числом операций менее 20 статистически незначимы.',
       });
+    }
+
+    if (mode === 'abc') {
+      return res.json(await abcXyz({ req, from, to, medCenterId, departmentId, scoped }));
     }
 
     // Режим 1 — расход по локациям, с сопоставлением норме и посещениями из МИС.
@@ -327,15 +464,45 @@ router.get('/consumption', authenticate, requireWarehouse('viewer'), async (req,
       };
     });
 
+    const CONS_MEASURES = ['qty', 'amount', 'prevQty', 'prevAmount'];
+    const consTree = hierarchy.buildTree(
+      items,
+      hierarchy.consumptionLevels(items),
+      CONS_MEASURES,
+      row => ({
+        label: row.nomenclatureName,
+        code: row.code, unit: row.unit,
+        visits: row.visits, perVisit: row.perVisit,
+        normPerVisit: row.normPerVisit, normDeviationPct: row.normDeviationPct,
+        deltaQty: row.qty - row.prevQty,
+        deltaQtyPct: row.deltaQtyPct,
+        deltaAmountPct: row.deltaAmountPct, missingReason: row.missingReason,
+        ...Object.fromEntries(CONS_MEASURES.map(m => [m, row[m]])),
+      })
+    );
+
+    // Доля в расходе отделения — гр. 13 ТЗ. Отделение лежит на уровень выше
+    // кабинета, поэтому база берётся у «деда»: ключ узла — путь, и достаточно
+    // отбросить последний сегмент.
+    const consRows = consTree.rows.map(r => roundRow(r, CONS_MEASURES));
+    const groupAmount = new Map(
+      consRows.filter(r => r.__isGroup).map(r => [r.__key, r.amount])
+    );
+    for (const row of consRows) {
+      if (row.__isGroup) continue;
+      const deptKey = String(row.__parentKey).split('/').slice(0, -1).join('/');
+      const base = groupAmount.get(deptKey);
+      row.deptSharePct = base ? round2((row.amount / base) * 100) : null;
+    }
+
     res.json({
-      header: reportHeader({ req, code: 'RPT-CONSUMPTION', title: 'Расход материалов по локациям', from, to, filters: req.query }),
+      header: await reportHeader({ req, code: 'RPT-CONSUMPTION', title: 'Расход материалов по локациям', from, to, filters: req.query }),
       mode: 'locations',
       comparePeriod: { from: prevFrom, to: prevTo },
-      items,
-      totals: {
-        amount: round2(items.reduce((s, i) => s + i.amount, 0)),
-        prevAmount: round2(items.reduce((s, i) => s + i.prevAmount, 0)),
-      },
+      hierarchical: true,
+      items: consRows,
+      flatItems: items,
+      totals: roundRow(consTree.totals, CONS_MEASURES),
     });
   } catch (err) {
     console.error('GET warehouse/reports/consumption error:', err);
@@ -343,10 +510,150 @@ router.get('/consumption', authenticate, requireWarehouse('viewer'), async (req,
   }
 });
 
+/**
+ * Режим 3 отчёта № 3 — ABC/XYZ-анализ.
+ *
+ * ABC режет номенклатуру по вкладу в сумму расхода (80 / 15 / 5 % накопленным
+ * итогом), XYZ — по стабильности потребления через коэффициент вариации помесячных
+ * расходов. Пересечение даёт стратегию управления запасом: то, что дорого и
+ * ровно расходуется, можно заказывать автоматически, а то, что дорого и
+ * непредсказуемо, — только под заявку.
+ *
+ * Два решения, которые важно знать при чтении цифр:
+ *
+ *   • Месяцы без расхода входят в ряд нулями. Считать вариацию только по месяцам
+ *     с движением — значит объявить стабильной позицию, которую взяли дважды за
+ *     год: между этими двумя точками разброса нет, а спрос на неё нерегулярен
+ *     ровно в том смысле, ради которого XYZ и придуман.
+ *
+ *   • Меньше трёх месяцев в периоде — XYZ не считается вовсе, а не считается
+ *     плохо. По двум точкам коэффициент вариации формально получается, но
+ *     означает шум, и раскладывать по нему стратегию закупок нельзя.
+ */
+const ABC_STRATEGY = {
+  AX: 'Автозаказ, жёсткий min/max',
+  AY: 'Страховой запас +30 %',
+  AZ: 'Заказ под заявку, без запаса',
+  BX: 'Плановый заказ по графику',
+  BY: 'Умеренный страховой запас',
+  BZ: 'Заказ под заявку',
+  CX: 'Редкий контроль, большая партия',
+  CY: 'Редкий контроль',
+  CZ: 'Минимальный запас или под заказ',
+};
+
+async function abcXyz({ req, from, to, medCenterId, departmentId, scoped }) {
+  const [rows] = await sequelize.query(`
+    SELECT n.id AS "nomenclatureId", n.code, n.name AS "nomenclatureName", n.unit,
+           to_char(date_trunc('month', m."occurredAt"), 'YYYY-MM') AS month,
+           SUM(m.quantity) AS qty, SUM(m.amount) AS amount
+    FROM warehouse_movements m
+    JOIN warehouse_nomenclature n ON n.id = m."nomenclatureId"
+    LEFT JOIN warehouse_rooms r   ON r.id = m."fromRoomId"
+    LEFT JOIN warehouse_floors f  ON f.id = r."floorId"
+    LEFT JOIN warehouse_buildings bld ON bld.id = f."buildingId"
+    WHERE m.type IN ('issue', 'writeoff')
+      AND m."occurredAt" >= :from AND m."occurredAt" < (:to::date + 1)
+      AND (:medCenterId::uuid  IS NULL OR bld."medCenterId" = :medCenterId::uuid)
+      AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
+      AND (:scoped IS NULL OR r.id = ANY(:scoped::uuid[]))
+    GROUP BY 1, 2, 3, 4, 5
+  `, {
+    replacements: {
+      from, to,
+      medCenterId: medCenterId || null,
+      departmentId: departmentId || null,
+      scoped: toPgUuidArray(scoped),
+    },
+  });
+
+  // Полный ряд месяцев периода: пропуски заполняются нулями.
+  const months = [];
+  const cursor = new Date(`${String(from).slice(0, 7)}-01T00:00:00Z`);
+  const last = `${String(to).slice(0, 7)}`;
+  while (cursor.toISOString().slice(0, 7) <= last && months.length < 120) {
+    months.push(cursor.toISOString().slice(0, 7));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+
+  const byNomenclature = new Map();
+  for (const r of rows) {
+    if (!byNomenclature.has(r.nomenclatureId)) {
+      byNomenclature.set(r.nomenclatureId, {
+        nomenclatureId: r.nomenclatureId, code: r.code,
+        nomenclatureName: r.nomenclatureName, unit: r.unit,
+        amount: 0, qty: 0, series: new Map(),
+      });
+    }
+    const item = byNomenclature.get(r.nomenclatureId);
+    item.amount += Number(r.amount) || 0;
+    item.qty += Number(r.qty) || 0;
+    item.series.set(r.month, (item.series.get(r.month) || 0) + (Number(r.qty) || 0));
+  }
+
+  const items = [...byNomenclature.values()].sort((a, b) => b.amount - a.amount);
+  const total = items.reduce((s, i) => s + i.amount, 0);
+  const enoughMonths = months.length >= 3;
+
+  let cumulative = 0;
+  for (const item of items) {
+    cumulative += item.amount;
+    const cumShare = total > 0 ? (cumulative / total) * 100 : 0;
+    item.abc = cumShare <= 80 ? 'A' : cumShare <= 95 ? 'B' : 'C';
+    item.sharePct = total > 0 ? round2((item.amount / total) * 100) : 0;
+    item.cumulativeSharePct = round2(cumShare);
+
+    const series = months.map(m => item.series.get(m) || 0);
+    const mean = series.reduce((s, v) => s + v, 0) / series.length;
+    const variance = series.reduce((s, v) => s + (v - mean) ** 2, 0) / series.length;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : null;
+    item.cv = cv === null ? null : round2(cv * 100);
+    item.monthsWithConsumption = series.filter(v => v > 0).length;
+    item.xyz = !enoughMonths || cv === null ? null : cv <= 0.10 ? 'X' : cv <= 0.25 ? 'Y' : 'Z';
+    item.cell = item.xyz ? `${item.abc}${item.xyz}` : null;
+    item.strategy = item.cell ? ABC_STRATEGY[item.cell] : null;
+    item.amount = round2(item.amount);
+    item.qty = round(item.qty, 3);
+    delete item.series;
+  }
+
+  // Матрица 3 × 3: количество позиций и доля суммы в каждой клетке.
+  const matrix = ['A', 'B', 'C'].map(abcClass => ({
+    abc: abcClass,
+    cells: ['X', 'Y', 'Z'].map(xyzClass => {
+      const cellItems = items.filter(i => i.abc === abcClass && i.xyz === xyzClass);
+      return {
+        key: `${abcClass}${xyzClass}`,
+        count: cellItems.length,
+        amount: round2(cellItems.reduce((s, i) => s + i.amount, 0)),
+        sharePct: total > 0
+          ? round2((cellItems.reduce((s, i) => s + i.amount, 0) / total) * 100)
+          : 0,
+        strategy: ABC_STRATEGY[`${abcClass}${xyzClass}`],
+      };
+    }),
+  }));
+
+  return {
+    header: await reportHeader({ req, code: 'RPT-CONSUMPTION', title: 'ABC/XYZ-анализ номенклатуры', from, to, filters: req.query }),
+    mode: 'abc',
+    monthsInPeriod: months.length,
+    matrix,
+    items,
+    totals: { amount: round2(total), positions: items.length },
+    note: enoughMonths
+      ? 'ABC — вклад позиции в сумму расхода накопленным итогом (A до 80 %, B до 95 %, ' +
+        'остальное C). XYZ — коэффициент вариации помесячного расхода: X до 10 %, ' +
+        'Y до 25 %, дальше Z. Месяцы без расхода входят в ряд нулями.'
+      : `В периоде ${months.length} мес. XYZ не рассчитан: по двум точкам коэффициент ` +
+        'вариации означает шум, а не стабильность спроса. Возьмите период от трёх месяцев.',
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-EXPIRING — Просроченные и истекающие позиции
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/expiring', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/expiring', authenticate, requireWarehouse(), requireReport('RPT-EXPIRING'), async (req, res) => {
   try {
     const { horizonDays = 90, medCenterId, departmentId, medicineOnly, sterileOnly } = req.query;
     const scoped = await req.warehouse.scopedRoomIds();
@@ -428,7 +735,7 @@ router.get('/expiring', authenticate, requireWarehouse('viewer'), async (req, re
     });
 
     res.json({
-      header: reportHeader({ req, code: 'RPT-EXPIRING', title: 'Просроченные и истекающие позиции', filters: req.query }),
+      header: await reportHeader({ req, code: 'RPT-EXPIRING', title: 'Просроченные и истекающие позиции', filters: req.query }),
       items,
       summary: {
         expired: sumZone(items, 'red', true),
@@ -464,10 +771,15 @@ async function writeOffLosses() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Амортизация НЕ начисляется порталом: значения приходят из бухгалтерии. Отчёт
 // делает то, чего 1С не умеет — раскладывает их по кабинетам и отделениям.
-router.get('/depreciation', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/depreciation', authenticate, requireWarehouse(), requireReport('RPT-DEPRECIATION'), async (req, res) => {
   try {
-    const { medCenterId, departmentId, fullyDepreciatedOnly } = req.query;
+    const { medCenterId, departmentId, fullyDepreciatedOnly, from, to } = req.query;
     const scoped = await req.warehouse.scopedRoomIds();
+    // Период нужен колонке «Начислено за период». Без него берём текущий месяц:
+    // отчёт остаётся осмысленным, а не падает на отсутствующем параметре.
+    const periodTo = to || new Date().toISOString().slice(0, 10);
+    const periodFrom = from
+      || `${periodTo.slice(0, 7)}-01`;
 
     const [rows] = await sequelize.query(`
       SELECT a.id, a."inventoryNumber", a.name, a.model, a.okof, a."depreciationGroup",
@@ -503,28 +815,45 @@ router.get('/depreciation', authenticate, requireWarehouse('viewer'), async (req
     let items = rows.map(r => {
       const initial = Number(r.initialCost);
       const accumulated = Number(r.accumulatedDepreciation);
+      // Начислено за период портал считает сам по графику (см. periodAccrual), а
+      // накопленную сумму берёт из карточки — её ведёт бухгалтерия. Поэтому
+      // «на конец» — это внесённое значение, а «на начало» выводится вычитанием:
+      // так конец сходится с карточкой актива, а не спорит с ней.
+      const accrued = Math.min(periodAccrual(r, periodFrom, periodTo), accumulated);
       return {
         ...r,
         initialCost: initial,
         accumulatedDepreciation: accumulated,
+        accumulatedStart: round2(Math.max(0, accumulated - accrued)),
+        accruedInPeriod: round2(accrued),
+        accumulatedEnd: round2(accumulated),
         residual: Math.max(0, initial - accumulated),
         wearPercent: initial > 0 ? round2((accumulated / initial) * 100) : null,
         fullyDepreciatedInUse: initial > 0 && accumulated >= initial && r.status === 'in_use',
+        // Гр. 17 ТЗ. Признак — не статус: он говорит не в каком состоянии актив,
+        // а что с ним пора делать.
+        flag: initial > 0 && accumulated >= initial && r.status === 'in_use'
+          ? 'Самортизировано, в эксплуатации — кандидат на замену'
+          : null,
         // Прогноз замены: когда износ дойдёт до 100 % линейным темпом.
         forecastFullWearDate: forecastWear(r),
-        // Явно говорим, что данные внесены руками: без этого читатель решит, что
-        // это выгрузка из бухгалтерии.
+        // Явно говорим, что накопленная сумма внесена руками, а начисление за
+        // период — расчёт портала: без этого читатель решит, что всё пришло из
+        // бухгалтерии.
         dataSource: 'manual',
+        accrualSource: 'calculated',
       };
     });
 
     if (fullyDepreciatedOnly === 'true') items = items.filter(i => i.fullyDepreciatedInUse);
 
     res.json({
-      header: reportHeader({ req, code: 'RPT-DEPRECIATION', title: 'Ведомость амортизации основных средств', filters: req.query }),
+      header: await reportHeader({ req, code: 'RPT-DEPRECIATION', title: 'Ведомость амортизации основных средств', from: periodFrom, to: periodTo, filters: req.query }),
+      period: { from: periodFrom, to: periodTo },
       items,
       totals: {
         initialCost: round2(items.reduce((s, i) => s + i.initialCost, 0)),
+        accruedInPeriod: round2(items.reduce((s, i) => s + i.accruedInPeriod, 0)),
         accumulated: round2(items.reduce((s, i) => s + i.accumulatedDepreciation, 0)),
         residual: round2(items.reduce((s, i) => s + i.residual, 0)),
         count: items.length,
@@ -534,15 +863,51 @@ router.get('/depreciation', authenticate, requireWarehouse('viewer'), async (req
         },
       },
       note:
-        'Значения амортизации внесены в портале вручную. Начисление и сверка со счётом 02 ' +
-        'появятся только после подключения обмена с 1С — до этого отчёт показывает ' +
-        'размещение основных средств по локациям, а не бухгалтерский расчёт.',
+        'Накопленная амортизация внесена в портале вручную и считается достоверной: ' +
+        'колонка «на конец» равна значению из карточки актива. «Начислено за период» — ' +
+        'расчёт портала по первоначальной стоимости, СПИ и способу начисления; ' +
+        '«на начало» получено вычитанием. Сверка со счётом 02 появится только после ' +
+        'подключения обмена с 1С.',
     });
   } catch (err) {
     console.error('GET warehouse/reports/depreciation error:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * Начислено за период по графику амортизации.
+ *
+ * Считается как разность накопленной суммы на конец и на начало периода по
+ * формуле выбранного способа, а не «сумма за месяц × число месяцев»: у способа
+ * уменьшаемого остатка помесячные суммы разные, и умножение дало бы завышение
+ * тем большее, чем длиннее период.
+ *
+ *   линейный:              A(k) = C × min(1, k / СПИ)
+ *   уменьшаемого остатка:  A(k) = C × (1 − (1 − 2/СПИ)^k)
+ *
+ * где k — число полных месяцев с ввода в эксплуатацию. До ввода в эксплуатацию
+ * начисления нет, после исчерпания СПИ — тоже.
+ */
+function periodAccrual(r, from, to) {
+  const initial = Number(r.initialCost);
+  const months = Number(r.usefulLifeMonths);
+  if (!initial || !months || !r.commissioningDate) return 0;
+
+  const start = new Date(r.commissioningDate);
+  const monthsSince = (date) => {
+    const d = new Date(date);
+    const diff = (d.getFullYear() - start.getFullYear()) * 12 + (d.getMonth() - start.getMonth());
+    return Math.max(0, diff);
+  };
+
+  const accumulatedAt = (k) => (r.depreciationMethod === 'reducing'
+    ? initial * (1 - Math.pow(1 - 2 / months, Math.min(k, months)))
+    : initial * Math.min(1, k / months));
+
+  const accrued = accumulatedAt(monthsSince(to)) - accumulatedAt(monthsSince(from));
+  return Math.max(0, accrued);
+}
 
 function forecastWear(r) {
   const initial = Number(r.initialCost);
@@ -559,7 +924,7 @@ function forecastWear(r) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-MAINTENANCE, режим 3 — отказы и надёжность по моделям
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/reliability', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/reliability', authenticate, requireWarehouse(), requireReport('RPT-MAINTENANCE-3'), async (req, res) => {
   try {
     // Группировка по модели идёт через CTE, а не коррелированным подзапросом:
     // подзапрос ссылался бы на a.model, которого после GROUP BY уже не существует
@@ -621,7 +986,7 @@ router.get('/reliability', authenticate, requireWarehouse('viewer'), async (req,
     });
 
     res.json({
-      header: reportHeader({ req, code: 'RPT-MAINTENANCE-3', title: 'Отказы и надёжность по моделям', filters: req.query }),
+      header: await reportHeader({ req, code: 'RPT-MAINTENANCE-3', title: 'Отказы и надёжность по моделям', filters: req.query }),
       items,
       note: 'Показатели считаются за последние 12 месяцев. Модели без истории ремонтов ' +
             'показывают MTBF как «не определён», а не как максимальное значение.',
@@ -635,7 +1000,7 @@ router.get('/reliability', authenticate, requireWarehouse('viewer'), async (req,
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-MOVEMENT, режим 3 — матрица межотделенческих перемещений
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/transfer-matrix', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/transfer-matrix', authenticate, requireWarehouse(), requireReport('RPT-MOVEMENT'), async (req, res) => {
   try {
     const { from, to } = req.query;
     const [rows] = await sequelize.query(`
@@ -659,7 +1024,7 @@ router.get('/transfer-matrix', authenticate, requireWarehouse('viewer'), async (
     ).entries()].map(([id, name]) => ({ id, name }));
 
     res.json({
-      header: reportHeader({ req, code: 'RPT-MOVEMENT-3', title: 'Матрица межотделенческих перемещений', from, to }),
+      header: await reportHeader({ req, code: 'RPT-MOVEMENT-3', title: 'Матрица межотделенческих перемещений', from, to }),
       departments,
       cells: rows,
     });
@@ -671,7 +1036,7 @@ router.get('/transfer-matrix', authenticate, requireWarehouse('viewer'), async (
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-ROOM-DASH — Дашборд кабинета
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/room/:roomId/dashboard', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireReport('RPT-ROOM-DASH'), async (req, res) => {
   try {
     const room = await WhRoom.findByPk(req.params.roomId, {
       include: [
@@ -764,7 +1129,7 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse('viewer'), 
     }
 
     res.json({
-      header: reportHeader({ req, code: 'RPT-ROOM-DASH', title: `Кабинет ${room.number}`, filters: {} }),
+      header: await reportHeader({ req, code: 'RPT-ROOM-DASH', title: `Кабинет ${room.number}`, filters: {} }),
       room: {
         id: room.id, number: room.number, name: room.name, kind: room.kind,
         department: room.department, responsible: room.responsible,
@@ -824,7 +1189,7 @@ function fmt(d) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-INVENTORY — Инвентаризационная опись (ИНВ-1)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/inventory/:id', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/inventory/:id', authenticate, requireWarehouse(), requireReport('RPT-INVENTORY'), async (req, res) => {
   try {
     const session = await WhInventorySession.findByPk(req.params.id, {
       include: [
@@ -867,7 +1232,7 @@ router.get('/inventory/:id', authenticate, requireWarehouse('viewer'), async (re
 
     const counted = items.filter(i => i.actualQty !== null);
     res.json({
-      header: reportHeader({
+      header: await reportHeader({
         req, code: 'RPT-INVENTORY',
         title: 'Инвентаризационная опись основных средств (форма ИНВ-1, адаптированная)',
       }),
@@ -900,7 +1265,7 @@ router.get('/inventory/:id', authenticate, requireWarehouse('viewer'), async (re
 // ─────────────────────────────────────────────────────────────────────────────
 // Обмена нет. Отчёт существует и честно об этом сообщает — вместо того чтобы
 // рисовать зелёные галочки «расхождение 0,00 ₽» при отключённой интеграции.
-router.get('/one-c-status', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/one-c-status', authenticate, requireWarehouse(), requireReport('RPT-1C-RECON'), async (req, res) => {
   try {
     const [outbox] = await sequelize.query(`
       SELECT status, COUNT(*)::int AS cnt FROM warehouse_outbox GROUP BY status
@@ -911,7 +1276,7 @@ router.get('/one-c-status', authenticate, requireWarehouse('viewer'), async (req
     const internal = await reconcileStock();
 
     res.json({
-      header: reportHeader({ req, code: 'RPT-1C-RECON', title: 'Сверка с 1С' }),
+      header: await reportHeader({ req, code: 'RPT-1C-RECON', title: 'Сверка с 1С' }),
       integration: {
         enabled: false,
         reason: 'Обмен с 1С не настроен: не определён контракт HTTP-сервиса на стороне 1С',
@@ -939,10 +1304,17 @@ router.get('/one-c-status', authenticate, requireWarehouse('viewer'), async (req
 // ─────────────────────────────────────────────────────────────────────────────
 // Выгрузки
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/export', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.post('/export', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const { format = 'xlsx', code, header, items, totals, columns } = req.body;
     if (!code || !Array.isArray(items)) return res.status(400).json({ error: 'Нужны code и items' });
+
+    // Выгрузка — тот же доступ, что и просмотр: иначе отчёт, закрытый на экране,
+    // забирался бы файлом.
+    const rolesSvc = require('../../services/warehouse/roles');
+    if (rolesSvc.ACCESS_MATRIX[code] && !rolesSvc.canRead(req.warehouse.roles, code)) {
+      return res.status(403).json({ error: `Отчёт «${rolesSvc.ACCESS_MATRIX[code].title}» вам недоступен` });
+    }
 
     if (format === 'xlsx') {
       const buffer = await exports_.toXlsx({ code, header, items, totals, columns });
@@ -977,6 +1349,20 @@ function toPgUuidArray(ids) {
 }
 
 function round2(n) { return Math.round(Number(n) * 100) / 100; }
+
+/**
+ * Округляет суммируемые поля строки. Суммы копятся с плавающей точкой, и без
+ * этого в подытогах вылезают хвосты вида 1264929.9999999998.
+ */
+function roundRow(row, measures) {
+  const out = { ...row };
+  for (const m of measures) {
+    if (out[m] !== undefined && out[m] !== null) {
+      out[m] = /Qty$/.test(m) ? Math.round(Number(out[m]) * 1000) / 1000 : round2(out[m]);
+    }
+  }
+  return out;
+}
 function round(n, digits = 2) {
   if (typeof n === 'object' && n !== null) {
     const out = {};

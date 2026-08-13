@@ -66,7 +66,7 @@ const assetInclude = [
 ];
 
 // ── Список активов ───────────────────────────────────────────────────────────
-router.get('/', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const {
       q, roomId, departmentId, medCenterId, status, categoryId,
@@ -137,7 +137,7 @@ router.get('/', authenticate, requireWarehouse('viewer'), async (req, res) => {
 });
 
 // ── Карточка актива ──────────────────────────────────────────────────────────
-router.get('/:id', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/:id', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const asset = await WhAsset.findByPk(req.params.id, { include: assetInclude });
     if (!asset) return res.status(404).json({ error: 'Актив не найден' });
@@ -200,13 +200,22 @@ router.get('/:id', authenticate, requireWarehouse('viewer'), async (req, res) =>
 });
 
 // ── Создание актива ──────────────────────────────────────────────────────────
-router.post('/', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const b = req.body;
     if (!b.name?.trim()) {
       await t.rollback();
       return res.status(400).json({ error: 'Нужно наименование' });
+    }
+    if (!b.roomId || !b.storageId) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Оборудование нужно привязать к кабинету и месту хранения' });
+    }
+    const storage = await WhStorage.findByPk(b.storageId, { transaction: t });
+    if (!storage || storage.roomId !== b.roomId) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Место хранения не относится к выбранному кабинету' });
     }
 
     // Код специальности для маски берём из отделения кабинета: держать его
@@ -291,7 +300,7 @@ router.post('/', authenticate, requireWarehouse('warehouse'), async (req, res) =
 // Размещение и МОЛ через этот метод НЕ меняются: перемещение оформляется
 // документом (POST /warehouse/operations/documents), иначе актив переехал бы без
 // следа в журнале, и отчёт № 2 перестал бы быть аудиторским.
-router.put('/:id', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.put('/:id', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   try {
     const asset = await WhAsset.findByPk(req.params.id);
     if (!asset) return res.status(404).json({ error: 'Актив не найден' });
@@ -321,7 +330,7 @@ router.put('/:id', authenticate, requireWarehouse('warehouse'), async (req, res)
 // Отдельный эндпоинт, потому что сканер должен работать одинаково и при чтении QR
 // (токен), и при ручном вводе номера с этикетки — камера в браузере требует HTTPS
 // и доступна не всегда, ручной ввод обязан быть равноправным путём.
-router.get('/lookup/:code', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/lookup/:code', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const code = String(req.params.code || '').trim();
     if (!code) return res.status(400).json({ error: 'Пустой код' });
@@ -349,14 +358,14 @@ router.get('/lookup/:code', authenticate, requireWarehouse('viewer'), async (req
 });
 
 // ── QR и этикетки ────────────────────────────────────────────────────────────
-router.get('/:id/qr.svg', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/:id/qr.svg', authenticate, requireWarehouse(), async (req, res) => {
   const asset = await WhAsset.findByPk(req.params.id);
   if (!asset) return res.status(404).json({ error: 'Актив не найден' });
   const svg = await qr.qrSvg(qr.assetPublicUrl(asset.publicToken), { width: Number(req.query.size) || 256 });
   res.type('image/svg+xml').send(svg);
 });
 
-router.get('/:id/label.svg', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/:id/label.svg', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const asset = await WhAsset.findByPk(req.params.id, { include: assetInclude });
     if (!asset) return res.status(404).json({ error: 'Актив не найден' });
@@ -371,7 +380,7 @@ router.get('/:id/label.svg', authenticate, requireWarehouse('viewer'), async (re
   }
 });
 
-router.get('/:id/label.zpl', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.get('/:id/label.zpl', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   const asset = await WhAsset.findByPk(req.params.id, { include: assetInclude });
   if (!asset) return res.status(404).json({ error: 'Актив не найден' });
   const zpl = qr.assetLabelZpl(asset, {
@@ -386,7 +395,7 @@ router.get('/:id/label.zpl', authenticate, requireWarehouse('warehouse'), async 
  * раскладку по листу A4 делает клиент — так проще подогнать под конкретный
  * принтер и не гонять PDF ради предпросмотра.
  */
-router.post('/labels/batch', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   try {
     const { ids = [], size = '58x40', orgName } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны активы' });
@@ -414,7 +423,7 @@ router.post('/labels/batch', authenticate, requireWarehouse('warehouse'), async 
 });
 
 // ── Файлы ────────────────────────────────────────────────────────────────────
-router.post('/:id/files', authenticate, requireWarehouse('warehouse'), upload.array('files', 10), async (req, res) => {
+router.post('/:id/files', authenticate, requireWarehouse('canManageAssets'), upload.array('files', 10), async (req, res) => {
   try {
     const asset = await WhAsset.findByPk(req.params.id);
     if (!asset) return res.status(404).json({ error: 'Актив не найден' });
@@ -438,7 +447,7 @@ router.post('/:id/files', authenticate, requireWarehouse('warehouse'), upload.ar
   }
 });
 
-router.patch('/files/:fileId', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.patch('/files/:fileId', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   const file = await WhAssetFile.findByPk(req.params.fileId);
   if (!file) return res.status(404).json({ error: 'Файл не найден' });
   const { kind, isPublic } = req.body;
@@ -449,7 +458,7 @@ router.patch('/files/:fileId', authenticate, requireWarehouse('warehouse'), asyn
   res.json(file);
 });
 
-router.delete('/files/:fileId', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.delete('/files/:fileId', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   try {
     const file = await WhAssetFile.findByPk(req.params.fileId);
     if (!file) return res.status(404).json({ error: 'Файл не найден' });

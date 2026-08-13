@@ -107,6 +107,25 @@ function resetClinicData(clinicId, clinicData = {}) {
   return result;
 }
 
+/**
+ * Настройки сотрудника после сброса по выбранным клиникам. Вынесено из маршрута,
+ * чтобы сброс и его тест шли по одному и тому же коду: снимок-бекап проверяется
+ * ровно против той логики, которая данные и переписывает.
+ */
+function resetSettings(settings, clinicIds) {
+  const source = settings || {};
+  const clinicSettings = source.clinicSettings || {};
+  const updated = { ...clinicSettings };
+
+  for (const clinicId of clinicIds) {
+    if (Object.prototype.hasOwnProperty.call(clinicSettings, clinicId) && clinicSettings[clinicId]) {
+      updated[clinicId] = resetClinicData(clinicId, clinicSettings[clinicId]);
+    }
+  }
+
+  return { ...source, clinicSettings: updated };
+}
+
 function buildResetPreview(records, clinicIds) {
   const selected = new Set((clinicIds || []).map(String));
   const employees = [];
@@ -138,4 +157,4 @@ function buildResetPreview(records, clinicIds) {
   };
 }
 
-module.exports = { buildResetPreview, resetClinicData };
+module.exports = { buildResetPreview, resetClinicData, resetSettings };

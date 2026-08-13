@@ -81,10 +81,83 @@ async function qrPngDataUrl(text, { margin = 1, width = 512 } = {}) {
  *
  * Размеры из ТЗ: 58×40 мм стандартная и 100×70 мм для дорогого оборудования.
  */
+/**
+ * Раскладка этикеток.
+ *
+ * Первая версия ставила координаты руками и получила три беды сразу: текст
+ * вылезал за правый край, строки шли вплотную, а полоса под QR-кодом оставалась
+ * пустой. Теперь этикетка описана как сетка из двух областей:
+ *
+ *   ┌──────────┬────────────────────────┐
+ *   │          │ инвентарный номер      │  верх: QR слева, идентификация справа
+ *   │    QR    │ наименование (2 стр.)  │
+ *   │          │ модель                 │
+ *   ├──────────┴────────────────────────┤
+ *   │ размещение · отделение            │  низ: во всю ширину, под QR тоже
+ *   │ ТО до ……                организация│
+ *   └───────────────────────────────────┘
+ *
+ * Всё в миллиметрах, межстрочный интервал — 1,28 от кегля (полтора выглядят
+ * разреженно на 2,4 мм, а 1,0 — именно то «вплотную», которое и было).
+ */
 const LABEL_SIZES = {
-  '58x40':  { w: 58,  h: 40, qr: 20, nameSize: 2.6, numberSize: 3.2, maxNameChars: 30 },
-  '100x70': { w: 100, h: 70, qr: 35, nameSize: 4.0, numberSize: 5.0, maxNameChars: 34 },
+  '58x40': {
+    w: 58, h: 40, pad: 2.2, qr: 21, gap: 2.4,
+    numberSize: 3.4, nameSize: 2.5, metaSize: 2.2, footSize: 2.0,
+    nameLines: 3,
+  },
+  '100x70': {
+    w: 100, h: 70, pad: 4, qr: 34, gap: 4,
+    numberSize: 5.4, nameSize: 4.0, metaSize: 3.4, footSize: 3.0,
+    nameLines: 3,
+  },
 };
+
+/**
+ * Ширина строки в миллиметрах.
+ *
+ * Первая версия умножала длину строки на 0,5 кегля, вторая — на 0,58. Оба раза
+ * текст всё равно вылезал за край: средний коэффициент не работает, потому что
+ * разброс между «і» и «Щ» больше трёх раз, а в русских названиях оборудования
+ * широкие буквы встречаются гуще, чем в латинице.
+ *
+ * Поэтому ширина считается по классам символов. Значения — доли кегля из метрик
+ * Arial и DejaVu Sans (они близки, а в SVG стоит именно этот стек шрифтов).
+ * Сверху накинут запас 4 %: недооценка приводит к обрезанному тексту на
+ * принтере, переоценка — всего лишь к небольшому пустому полю справа.
+ */
+const GLYPH_SAFETY = 1.04;
+
+function glyphRatio(ch) {
+  if ('  '.includes(ch)) return 0.28;
+  if ('ijltIÍ.,:;\'`|!’[]()'.includes(ch)) return 0.30;
+  if ('fr-–—·/\\'.includes(ch)) return 0.36;
+  if ('mwMWШЩЫЮmшщыю№'.includes(ch)) return 0.86;
+  if ('0123456789'.includes(ch)) return 0.56;
+  // Прописные — латиница и кириллица.
+  if (ch >= 'A' && ch <= 'Z') return 0.68;
+  if (ch >= 'А' && ch <= 'Я') return 0.68;
+  if (ch === 'Ё') return 0.68;
+  return 0.58;
+}
+
+function textWidth(text, fontSize) {
+  let units = 0;
+  for (const ch of String(text || '')) units += glyphRatio(ch);
+  return units * fontSize * GLYPH_SAFETY;
+}
+
+/**
+ * Подбирает кегль так, чтобы строка влезла в заданную ширину, но не меньше
+ * указанного минимума. Инвентарный номер сжимать до нечитаемого нельзя — если он
+ * не влезает даже минимальным кеглем, значит маска слишком длинная, и это лучше
+ * увидеть на превью, чем получить обрезок на принтере.
+ */
+function fitFontSize(text, widthMm, preferred, min) {
+  let size = preferred;
+  while (size > min && textWidth(text, size) > widthMm) size -= 0.1;
+  return Math.round(size * 10) / 10;
+}
 
 function escapeXml(s) {
   return String(s ?? '')
@@ -93,29 +166,77 @@ function escapeXml(s) {
 }
 
 /**
- * Разбивает строку на несколько по ширине. Без этого длинное наименование
- * прибора («Аппарат ультразвуковой диагностический Mindray DC-70 Exp»)
- * уезжает за край этикетки.
+ * Переносит текст по строкам, укладываясь в ширину в миллиметрах.
+ *
+ * Раньше перенос считался по количеству символов, а количество выводилось из
+ * ширины делением на полкегля — двойная аппроксимация, из-за которой длинные
+ * названия («Аппарат ультразвуковой диагностический Mindray DC-70 Exp») уезжали
+ * за край. Теперь ширина каждой строки проверяется напрямую.
+ *
+ * Слово, которое само по себе не влезает в строку, режется по буквам: иначе
+ * «Электрокардиограф» в узкой колонке вылезал бы целиком.
  */
-function wrap(text, maxChars, maxLines) {
-  const words = String(text || '').split(/\s+/);
+function wrapToWidth(text, widthMm, fontSize, maxLines) {
+  // Дефис — законная точка переноса, поэтому дробим по нему на отдельные куски,
+  // сохраняя дефис в конце левой части. Без этого «Облучатель-рециркулятор»
+  // рубился по буквам и получалось «Облучатель-рециркуля / тор».
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean)
+    .flatMap(w => (w.includes('-') && w.length > 6
+      ? w.split(/(?<=-)/).filter(Boolean)
+      : [w]));
+  if (!words.length) return [];
+
   const lines = [];
   let cur = '';
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w;
-    if (next.length > maxChars && cur) {
-      lines.push(cur);
-      cur = w;
-      if (lines.length === maxLines) break;
-    } else {
-      cur = next;
+
+  const pushCur = () => { if (cur) { lines.push(cur); cur = ''; } };
+
+  for (const word of words) {
+    if (lines.length >= maxLines) break;
+
+    // Кусок, оставшийся после дефиса, приклеивается без пробела.
+    const glue = cur && !cur.endsWith('-') ? ' ' : '';
+    const candidate = cur ? `${cur}${glue}${word}` : word;
+    if (textWidth(candidate, fontSize) <= widthMm) {
+      cur = candidate;
+      continue;
     }
+
+    pushCur();
+    if (lines.length >= maxLines) break;
+
+    // Само слово шире строки — рубим по буквам.
+    let rest = word;
+    while (textWidth(rest, fontSize) > widthMm && lines.length < maxLines) {
+      let cut = rest.length;
+      while (cut > 1 && textWidth(rest.slice(0, cut), fontSize) > widthMm) cut--;
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    cur = rest;
   }
-  if (cur && lines.length < maxLines) lines.push(cur);
-  if (lines.length === maxLines && words.join(' ').length > lines.join(' ').length) {
-    lines[maxLines - 1] = lines[maxLines - 1].replace(/.{2}$/, '…');
+  pushCur();
+
+  const used = lines.join(' ').replace(/\s+/g, ' ');
+  const full = words.join(' ');
+  // Что-то не поместилось — ставим многоточие, срезав столько символов, сколько
+  // нужно, чтобы оно само влезло.
+  if (lines.length && used.length < full.length) {
+    let last = lines[lines.length - 1];
+    while (last.length > 1 && textWidth(`${last}…`, fontSize) > widthMm) last = last.slice(0, -1);
+    lines[lines.length - 1] = `${last}…`;
   }
-  return lines;
+  return lines.slice(0, maxLines);
+}
+
+/** Обрезает строку в одну линию по ширине. */
+function clipToWidth(text, widthMm, fontSize) {
+  const str = String(text || '');
+  if (!str) return '';
+  if (textWidth(str, fontSize) <= widthMm) return str;
+  let cut = str.length;
+  while (cut > 1 && textWidth(`${str.slice(0, cut)}…`, fontSize) > widthMm) cut--;
+  return `${str.slice(0, cut)}…`;
 }
 
 /**
@@ -124,6 +245,8 @@ function wrap(text, maxChars, maxLines) {
 async function assetLabelSvg(asset, { size = '58x40', orgName = 'ООО «Медцентр»' } = {}) {
   const cfg = LABEL_SIZES[size] || LABEL_SIZES['58x40'];
   const url = assetPublicUrl(asset.publicToken);
+  const FONT = 'Helvetica, Arial, sans-serif';
+  const LINE = 1.28; // межстрочный интервал в долях кегля
 
   // Вкладываем QR как вложенный <svg> с явными координатами: так он
   // масштабируется вместе с этикеткой и не требует растеризации.
@@ -135,43 +258,97 @@ async function assetLabelSvg(asset, { size = '58x40', orgName = 'ООО «Мед
     .trim();
   const qrViewBox = (rawQr.match(/viewBox="([^"]+)"/) || [])[1] || '0 0 100 100';
 
-  const pad = 2;
-  const textX = pad + cfg.qr + 2.5;
-  const textW = cfg.w - textX - pad;
-  const nameLines = wrap(
-    [asset.name, asset.model].filter(Boolean).join(' '),
-    Math.floor(textW / (cfg.nameSize * 0.5)),
-    2
-  );
+  const { w, h, pad, qr, gap } = cfg;
 
-  const room = asset.room
-    ? `Каб. ${asset.room.number}${asset.room.department?.name ? ` · ${asset.room.department.name}` : ''}`
+  // ── Верхняя область: QR слева, идентификация справа ───────────────────────
+  const colX = pad + qr + gap;
+  const colW = w - colX - pad;
+
+  // Кегль номера подбирается под ширину колонки: маска «МЦ-2025-ЛУЧДИАГ-00001»
+  // на 21 символ шире, чем «МЦ-2025-ЛОР-00007», и фиксированный кегль обрезал
+  // первую.
+  // Минимум — 1,9 мм: инвентарный номер обрезать нельзя ни при какой длине маски,
+  // он единственный идентификатор на этикетке. Лучше мелко, но целиком.
+  const numberSize = fitFontSize(asset.inventoryNumber, colW, cfg.numberSize, 1.9);
+  const nameLines = wrapToWidth(asset.name, colW, cfg.nameSize, cfg.nameLines);
+  const modelLine = clipToWidth(asset.model, colW, cfg.metaSize);
+
+  let y = pad + numberSize;
+  const topRows = [`<text x="${colX}" y="${y}" font-family="${FONT}" font-size="${numberSize}"
+        font-weight="700" fill="#0f172a">${escapeXml(asset.inventoryNumber)}</text>`];
+
+  y += cfg.nameSize * LINE + 0.5;
+  for (const line of nameLines) {
+    topRows.push(`<text x="${colX}" y="${y}" font-family="${FONT}" font-size="${cfg.nameSize}"
+        fill="#1f2937">${escapeXml(line)}</text>`);
+    y += cfg.nameSize * LINE;
+  }
+
+  if (modelLine) {
+    topRows.push(`<text x="${colX}" y="${y}" font-family="${FONT}" font-size="${cfg.metaSize}"
+        fill="#475569">${escapeXml(modelLine)}</text>`);
+    y += cfg.metaSize * LINE;
+  }
+
+  if (asset.serialNumber) {
+    const sn = clipToWidth(`S/N ${asset.serialNumber}`, colW, cfg.metaSize);
+    // Серийный номер помещается только если под ним ещё есть место до QR-области:
+    // иначе он налезал бы на разделительную линию.
+    if (y <= pad + qr) {
+      topRows.push(`<text x="${colX}" y="${y}" font-family="${FONT}" font-size="${cfg.metaSize}"
+        fill="#64748b">${escapeXml(sn)}</text>`);
+    }
+  }
+
+  // ── Нижняя область: во всю ширину, включая полосу под QR ───────────────────
+  // Именно она раньше пустовала: QR занимал только верхний левый угол, а всё,
+  // что ниже него, не использовалось.
+  const dividerY = Math.max(pad + qr + 1.6, y + 0.6);
+  const bottomW = w - pad * 2;
+
+  const roomText = asset.room
+    ? `${asset.room.number}${asset.room.department?.name ? ` · ${asset.room.department.name}` : ''}`
     : 'Не размещён';
-
   const nextTo = asset.nextMaintenanceDate
-    ? `ТО до: ${formatDate(asset.nextMaintenanceDate)}`
-    : 'ТО: не запланировано';
+    ? `ТО до ${formatDate(asset.nextMaintenanceDate)}`
+    : 'ТО не назначено';
 
-  const footerY = cfg.h - pad - 1;
+  const roomY = dividerY + cfg.metaSize + 0.4;
+  const footY = h - pad;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${cfg.w}mm" height="${cfg.h}mm"
-     viewBox="0 0 ${cfg.w} ${cfg.h}" role="img" aria-label="Этикетка ${escapeXml(asset.inventoryNumber)}">
-  <rect x="0" y="0" width="${cfg.w}" height="${cfg.h}" fill="#fff" stroke="#e2e8f0" stroke-width="0.2"/>
-  <svg x="${pad}" y="${pad}" width="${cfg.qr}" height="${cfg.qr}" viewBox="${qrViewBox}" preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
-  <text x="${textX}" y="${pad + cfg.numberSize}" font-family="Helvetica, Arial, sans-serif"
-        font-size="${cfg.numberSize}" font-weight="700" fill="#0f172a">${escapeXml(asset.inventoryNumber)}</text>
-  ${nameLines.map((l, i) => `<text x="${textX}" y="${pad + cfg.numberSize + 2.2 + i * (cfg.nameSize + 0.6)}"
-        font-family="Helvetica, Arial, sans-serif" font-size="${cfg.nameSize}" fill="#1f2937">${escapeXml(l)}</text>`).join('\n  ')}
-  <text x="${textX}" y="${pad + cfg.numberSize + 2.2 + nameLines.length * (cfg.nameSize + 0.6) + 1.4}"
-        font-family="Helvetica, Arial, sans-serif" font-size="${cfg.nameSize}" fill="#475569">${escapeXml(room)}</text>
-  ${asset.serialNumber && size === '100x70' ? `<text x="${textX}" y="${pad + cfg.numberSize + 2.2 + nameLines.length * (cfg.nameSize + 0.6) + 1.4 + cfg.nameSize + 1}"
-        font-family="Helvetica, Arial, sans-serif" font-size="${cfg.nameSize}" fill="#475569">S/N: ${escapeXml(asset.serialNumber)}</text>` : ''}
-  <line x1="${pad}" y1="${footerY - cfg.nameSize - 1.2}" x2="${cfg.w - pad}" y2="${footerY - cfg.nameSize - 1.2}"
-        stroke="#cbd5e1" stroke-width="0.2"/>
-  <text x="${pad}" y="${footerY}" font-family="Helvetica, Arial, sans-serif"
-        font-size="${cfg.nameSize * 0.85}" fill="#334155">${escapeXml(nextTo)}</text>
-  <text x="${cfg.w - pad}" y="${footerY}" text-anchor="end" font-family="Helvetica, Arial, sans-serif"
-        font-size="${cfg.nameSize * 0.85}" fill="#64748b">${escapeXml(orgName)}</text>
+  // Подвал делим на две части: слева срок ТО, справа организация. Ширину каждой
+  // считаем от фактической длины второй — иначе длинное название юрлица
+  // выдавливало дату.
+  // Название юрлица уменьшаем кеглем, а не режем: «ООО «Медицинский центр П…»
+  // на этикетке читается как сбой печати. На этикетку лучше отдавать shortName
+  // из справочника организаций, но и полное юридическое должно влезать.
+  const orgMaxW = bottomW * 0.58;
+  const orgSize = fitFontSize(orgName, orgMaxW, cfg.footSize, cfg.footSize * 0.72);
+  const orgText = clipToWidth(orgName, orgMaxW, orgSize);
+  const orgW = textWidth(orgText, orgSize);
+  const nextToText = clipToWidth(nextTo, bottomW - orgW - 2, cfg.footSize);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm"
+     viewBox="0 0 ${w} ${h}" role="img" aria-label="Этикетка ${escapeXml(asset.inventoryNumber)}">
+  <rect x="0" y="0" width="${w}" height="${h}" fill="#fff"/>
+  <rect x="0.15" y="0.15" width="${w - 0.3}" height="${h - 0.3}" fill="none"
+        stroke="#e2e8f0" stroke-width="0.3" rx="0.8"/>
+
+  <svg x="${pad}" y="${pad}" width="${qr}" height="${qr}" viewBox="${qrViewBox}"
+       preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
+
+  ${topRows.join('\n  ')}
+
+  <line x1="${pad}" y1="${dividerY}" x2="${w - pad}" y2="${dividerY}"
+        stroke="#cbd5e1" stroke-width="0.25"/>
+
+  <text x="${pad}" y="${roomY}" font-family="${FONT}" font-size="${cfg.metaSize}"
+        font-weight="600" fill="#1f2937">${escapeXml(clipToWidth(roomText, bottomW, cfg.metaSize))}</text>
+
+  <text x="${pad}" y="${footY}" font-family="${FONT}" font-size="${cfg.footSize}"
+        fill="#334155">${escapeXml(nextToText)}</text>
+  <text x="${w - pad}" y="${footY}" text-anchor="end" font-family="${FONT}"
+        font-size="${orgSize}" fill="#64748b">${escapeXml(orgText)}</text>
 </svg>`;
 }
 
@@ -187,11 +364,56 @@ async function assetLabelSvg(asset, { size = '58x40', orgName = 'ООО «Мед
  */
 function assetLabelZpl(asset, { copies = 1, orgName = 'ООО «Медцентр»', density = 10 } = {}) {
   const url = assetPublicUrl(asset.publicToken);
-  const nameLines = wrap([asset.name, asset.model].filter(Boolean).join(' '), 28, 2);
+  // 464 точки при 203 dpi — это 58 мм; наименование печатается кеглем 22,
+  // что при ^A0 даёт ширину глифа около 11 точек. Считаем в миллиметрах тем
+  // же расчётом, что и SVG, чтобы бумажная и термоэтикетка совпадали.
+  // Раскладка повторяет SVG-версию: верх — QR плюс идентификация, низ — полоса во
+  // всю ширину, включая место под QR. Считаем в миллиметрах и переводим в точки,
+  // чтобы бумажная и термоэтикетка не расходились: 203 dpi = 8 точек на мм.
+  const DPMM = 8;
+  const mm = v => Math.round(v * DPMM);
+
+  const padMm = 2;
+  const qrMm = 21;
+  const colXmm = padMm + qrMm + 2.4;
+  const colWmm = 58 - colXmm - padMm;
+  const bottomWmm = 58 - padMm * 2;
+
+  // Кегли ZPL заданы в точках, а расчёт ширины — в миллиметрах, отсюда деление.
+  const numberPt = 30, namePt = 22, metaPt = 20, footPt = 17;
+
+  const nameLines = wrapToWidth(asset.name, colWmm, namePt / DPMM, 2);
+  const modelLine = clipToWidth(asset.model, colWmm, metaPt / DPMM);
+  // Кегль номера подбираем под колонку и переводим обратно в точки: обрезать
+  // инвентарный номер нельзя, а при маске в 21 символ он в 30 пунктов не влезает.
+  const numberFitMm = fitFontSize(asset.inventoryNumber, colWmm, numberPt / DPMM, 1.9);
+  const numberPtFit = Math.max(12, Math.round(numberFitMm * DPMM));
+  const numberLine = asset.inventoryNumber;
+
   const room = asset.room
-    ? `Каб. ${asset.room.number}${asset.room.department?.name ? ` · ${asset.room.department.name}` : ''}`
+    ? `${asset.room.number}${asset.room.department?.name ? ` · ${asset.room.department.name}` : ''}`
     : 'Не размещён';
-  const nextTo = asset.nextMaintenanceDate ? formatDate(asset.nextMaintenanceDate) : '—';
+  const roomLine = clipToWidth(room, bottomWmm, metaPt / DPMM);
+  const nextTo = asset.nextMaintenanceDate
+    ? `ТО до ${formatDate(asset.nextMaintenanceDate)}`
+    : 'ТО не назначено';
+  const orgLine = clipToWidth(orgName, bottomWmm * 0.5, footPt / DPMM);
+
+  const lines = [];
+  let yMm = padMm + numberPtFit / DPMM;
+  lines.push(`^FO${mm(colXmm)},${mm(padMm + 0.4)}^A0N,${numberPtFit},${numberPtFit}^FD${numberLine}^FS`);
+
+  yMm += 0.6;
+  for (const line of nameLines) {
+    lines.push(`^FO${mm(colXmm)},${mm(yMm)}^A0N,${namePt},${namePt}^FD${line}^FS`);
+    yMm += (namePt / DPMM) * 1.28;
+  }
+  if (modelLine) {
+    lines.push(`^FO${mm(colXmm)},${mm(yMm)}^A0N,${metaPt},${metaPt}^FD${modelLine}^FS`);
+    yMm += (metaPt / DPMM) * 1.28;
+  }
+
+  const dividerMm = Math.max(padMm + qrMm + 1.6, yMm + 0.6);
 
   return `^XA
 ^CI28
@@ -201,19 +423,16 @@ function assetLabelZpl(asset, { copies = 1, orgName = 'ООО «Медцентр
 ^MMT
 ^MD${density}
 
-^FO16,16^BQN,2,5,Q,7
+^FO${mm(padMm)},${mm(padMm)}^BQN,2,5,Q,7
 ^FDQA,${url}^FS
 
-^FO180,20^A0N,32,32^FD${asset.inventoryNumber}^FS
+${lines.join('\n')}
 
-${nameLines.map((l, i) => `^FO180,${62 + i * 26}^A0N,22,22^FD${l}^FS`).join('\n')}
+^FO${mm(padMm)},${mm(dividerMm)}^GB${mm(bottomWmm)},2,2^FS
 
-^FO180,${62 + nameLines.length * 26 + 4}^A0N,20,20^FD${room}^FS
-
-^FO16,230^GB432,2,2^FS
-
-^FO16,244^A0N,18,18^FDТО до: ${nextTo}^FS
-^FO16,272^A0N,16,16^FD${orgName}^FS
+^FO${mm(padMm)},${mm(dividerMm + 1.2)}^A0N,${metaPt},${metaPt}^FD${roomLine}^FS
+^FO${mm(padMm)},${mm(40 - padMm - footPt / DPMM)}^A0N,${footPt},${footPt}^FD${nextTo}^FS
+^FO${mm(padMm + bottomWmm * 0.5)},${mm(40 - padMm - footPt / DPMM)}^FB${mm(bottomWmm * 0.5)},1,0,R,0^A0N,${footPt},${footPt}^FD${orgLine}^FS
 
 ^PQ${copies}
 ^XZ`;

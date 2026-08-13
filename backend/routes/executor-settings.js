@@ -1,9 +1,12 @@
 const express = require('express');
-const { ExecutorSettings, RbScheduleCategory } = require('../models');
+const { ExecutorSettings, RbScheduleCategory, RbResetBackup, RbUserPermission, sequelize } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity, diffExecSettings } = require('../services/rbLogger');
 const { AUP_CLINIC_ID, canSeeAup, settingsHasAup, stripAupSettings, mergeAupBack } = require('../services/aupFilter');
-const { buildResetPreview, resetClinicData } = require('../services/executorSettingsReset');
+const { buildResetPreview, resetSettings } = require('../services/executorSettingsReset');
+const {
+  snapshotRecords, stampWritten, createBackup, describeBackup, restoreBackup, listBackups,
+} = require('../services/executorSettingsBackup');
 
 const router = express.Router();
 
@@ -151,6 +154,30 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// Сброс и откат переписывают зарплатные данные чужих сотрудников, а раньше кнопку
+// прятал только клиент (isStepReadOnly в интерфейсе). Для необратимых операций
+// этого мало: сервер требует то же право «Сотрудники: редактирование», по которому
+// кнопка вообще показывается.
+async function requireExecutorsEdit(req, res, next) {
+  try {
+    if (req.user.isAdmin) return next();
+    const perm = await RbUserPermission.findOne({ where: { userId: req.user.id } });
+    if (perm && perm.tab1 === 'edit') return next();
+    return res.status(403).json({ error: 'Нет прав на изменение данных сотрудников' });
+  } catch (err) {
+    console.error('Executors edit permission check error:', err);
+    return res.status(500).json({ error: 'Ошибка проверки прав' });
+  }
+}
+
+// Снимок содержит settings целиком, поэтому в нём есть и блок клиники АУП. Сам
+// список наружу отдаёт только счётчики, но показывать пользователю без флага сам
+// факт сброса по АУП всё равно нельзя — из него читается состав клиники.
+function backupVisible(backup, user) {
+  if (canSeeAup(user)) return true;
+  return !(backup.clinicIds || []).map(String).includes(AUP_CLINIC_ID);
+}
+
 function selectedResetClinics(req) {
   const raw = req.method === 'GET' ? String(req.query.clinicIds || '').split(',') : req.body?.clinicIds;
   if (!Array.isArray(raw)) return [];
@@ -159,7 +186,7 @@ function selectedResetClinics(req) {
 }
 
 // GET /api/executor-settings/reset-preview?clinicIds=2,4
-router.get('/reset-preview', authenticate, async (req, res) => {
+router.get('/reset-preview', authenticate, requireExecutorsEdit, async (req, res) => {
   try {
     const clinicIds = selectedResetClinics(req);
     if (!clinicIds.length) return res.status(400).json({ error: 'Выберите хотя бы одну клинику' });
@@ -172,27 +199,41 @@ router.get('/reset-preview', authenticate, async (req, res) => {
 });
 
 // POST /api/executor-settings/reset-all — body: { clinicIds: string[] }
-router.post('/reset-all', authenticate, async (req, res) => {
+router.post('/reset-all', authenticate, requireExecutorsEdit, async (req, res) => {
   try {
     const clinicIds = selectedResetClinics(req);
     if (!clinicIds.length) return res.status(400).json({ error: 'Выберите хотя бы одну клинику' });
-    const all = await ExecutorSettings.findAll();
-    const preview = buildResetPreview(all, clinicIds);
-    const selected = new Set(clinicIds);
-    const affectedIds = new Set(preview.employees.map(employee => employee.misUserId));
 
-    await Promise.all(all.map(async record => {
-      if (!affectedIds.has(String(record.misUserId))) return;
-      const s = record.settings || {};
-      const cs = s.clinicSettings || {};
-      const newCs = { ...cs };
-      for (const clinicId of selected) {
-        if (Object.prototype.hasOwnProperty.call(cs, clinicId) && cs[clinicId]) {
-          newCs[clinicId] = resetClinicData(clinicId, cs[clinicId]);
-        }
+    // Снимок и сама запись — в одной транзакции. Раньше строки переписывались
+    // параллельным Promise.all без транзакции, и сбой на середине оставлял часть
+    // сотрудников сброшенной, часть нет. Теперь либо сброс с точкой возврата
+    // целиком, либо ничего.
+    const { preview, backupId } = await sequelize.transaction(async (transaction) => {
+      const all = await ExecutorSettings.findAll({ transaction });
+      const preview = buildResetPreview(all, clinicIds);
+      const selected = new Set(clinicIds);
+      const affectedIds = new Set(preview.employees.map(employee => employee.misUserId));
+      const affected = all.filter(record => affectedIds.has(String(record.misUserId)));
+
+      const payload = snapshotRecords(affected);
+
+      for (const record of affected) {
+        await record.update({ settings: resetSettings(record.settings, selected) }, { transaction });
       }
-      await record.update({ settings: { ...s, clinicSettings: newCs } });
-    }));
+
+      const backup = affected.length
+        ? await createBackup({
+            kind:          'reset',
+            userId:        req.user.id,
+            clinicIds,
+            employeeCount: preview.employeeCount,
+            changeCount:   preview.changeCount,
+            payload:       stampWritten(payload, affected),
+          }, transaction)
+        : null;
+
+      return { preview, backupId: backup ? backup.id : null };
+    });
 
     await logRbActivity({
       userId:  req.user.id,
@@ -200,13 +241,67 @@ router.post('/reset-all', authenticate, async (req, res) => {
       action:  'reset',
       entityType: 'executor_settings_all',
       summary: `Сброс незафиксированных данных по клиникам ${clinicIds.join(', ')} (${preview.employeeCount} сотр.)`,
-      diff: { clinicIds, employeeCount: preview.employeeCount, changeCount: preview.changeCount },
+      diff: { clinicIds, employeeCount: preview.employeeCount, changeCount: preview.changeCount, backupId },
     });
 
-    res.json({ ok: true, count: preview.employeeCount, changeCount: preview.changeCount });
+    res.json({ ok: true, count: preview.employeeCount, changeCount: preview.changeCount, backupId });
   } catch (err) {
     console.error('Reset-all executor settings error:', err);
     res.status(500).json({ error: 'Ошибка сброса настроек' });
+  }
+});
+
+// GET /api/executor-settings/reset-backups — пять последних точек возврата
+router.get('/reset-backups', authenticate, requireExecutorsEdit, async (req, res) => {
+  try {
+    const backups = await listBackups();
+    res.json(backups.filter(backup => backupVisible(backup, req.user)));
+  } catch (err) {
+    console.error('List reset backups error:', err);
+    res.status(500).json({ error: 'Ошибка получения списка резервных копий' });
+  }
+});
+
+// GET /api/executor-settings/reset-backups/:id — состав снимка без самих данных
+router.get('/reset-backups/:id', authenticate, requireExecutorsEdit, async (req, res) => {
+  try {
+    const backup = await RbResetBackup.findByPk(req.params.id);
+    if (!backup || !backupVisible(backup, req.user)) return res.status(404).json({ error: 'Резервная копия не найдена' });
+    res.json(await describeBackup(backup));
+  } catch (err) {
+    console.error('Describe reset backup error:', err);
+    res.status(500).json({ error: 'Ошибка получения резервной копии' });
+  }
+});
+
+// POST /api/executor-settings/reset-backups/:id/restore
+router.post('/reset-backups/:id/restore', authenticate, requireExecutorsEdit, async (req, res) => {
+  try {
+    const backup = await RbResetBackup.findByPk(req.params.id);
+    if (!backup || !backupVisible(backup, req.user)) return res.status(404).json({ error: 'Резервная копия не найдена' });
+
+    const result = await restoreBackup({ backup, userId: req.user.id });
+
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'executors',
+      action:     'restore',
+      entityType: 'executor_settings_all',
+      entityId:   backup.id,
+      summary:    `Восстановление данных из копии от ${new Date(backup.createdAt).toLocaleString('ru-RU')} (${result.restored} сотр.)`,
+      diff: {
+        backupId:     backup.id,
+        clinicIds:    backup.clinicIds || [],
+        restored:     result.restored,
+        missing:      result.missing,
+        changedSince: result.changedSince,
+      },
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('Restore reset backup error:', err);
+    res.status(500).json({ error: 'Ошибка восстановления данных' });
   }
 });
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Search, AlertTriangle, Info, ShieldAlert, Filter } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import WarehouseCatalog from './WarehouseCatalog';
 
 /**
  * Материалы: остатки по местам хранения и контроль сроков годности.
@@ -22,6 +23,7 @@ export default function WarehouseStock({ access, tree }) {
   const [medCenterId, setMedCenterId] = useState('');
 
   const load = useCallback(async () => {
+    if (view === 'catalog') return;
     setLoading(true);
     try {
       if (view === 'stock') {
@@ -57,7 +59,12 @@ export default function WarehouseStock({ access, tree }) {
         <button className={view === 'expiring' ? 'is-active' : ''} onClick={() => setView('expiring')}>
           Сроки годности
         </button>
+        <button className={view === 'catalog' ? 'is-active' : ''} onClick={() => setView('catalog')}>
+          Справочники
+        </button>
       </div>
+
+      {view === 'catalog' && <WarehouseCatalog access={access} />}
 
       {view === 'stock' && (
         <>

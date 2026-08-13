@@ -22,12 +22,12 @@ const { requireWarehouse } = require('../../services/warehouse/access');
 const { reconcileStock } = require('../../services/warehouse/stock');
 
 // ── Категории ────────────────────────────────────────────────────────────────
-router.get('/categories', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/categories', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhCategory.findAll({ order: [['kind', 'ASC'], ['sortOrder', 'ASC'], ['name', 'ASC']] });
   res.json(rows);
 });
 
-router.post('/categories', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.post('/categories', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
   try {
     const { name, parentId, kind, okof, depreciationGroup, defaultUsefulMonths } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Нужно название' });
@@ -43,7 +43,7 @@ router.post('/categories', authenticate, requireWarehouse('admin'), async (req, 
 });
 
 // ── Контрагенты ──────────────────────────────────────────────────────────────
-router.get('/contractors', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/contractors', authenticate, requireWarehouse(), async (req, res) => {
   const { kind, q } = req.query;
   const where = { isActive: true };
   if (kind) where.kind = { [Op.in]: [kind, 'both'] };
@@ -52,7 +52,7 @@ router.get('/contractors', authenticate, requireWarehouse('viewer'), async (req,
   res.json(rows);
 });
 
-router.post('/contractors', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/contractors', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const b = req.body;
     if (!b.name?.trim()) return res.status(400).json({ error: 'Нужно название' });
@@ -69,7 +69,7 @@ router.post('/contractors', authenticate, requireWarehouse('warehouse'), async (
   }
 });
 
-router.put('/contractors/:id', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.put('/contractors/:id', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const row = await WhContractor.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Контрагент не найден' });
   const fields = ['name', 'kind', 'inn', 'phone', 'email', 'contactPerson', 'rating',
@@ -81,7 +81,7 @@ router.put('/contractors/:id', authenticate, requireWarehouse('warehouse'), asyn
 });
 
 // ── Номенклатура ─────────────────────────────────────────────────────────────
-router.get('/nomenclature', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/nomenclature', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const { q, categoryId, isMedicine, page = 1, limit = 100 } = req.query;
     const where = { isActive: true };
@@ -109,7 +109,7 @@ router.get('/nomenclature', authenticate, requireWarehouse('viewer'), async (req
   }
 });
 
-router.post('/nomenclature', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/nomenclature', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const b = req.body;
     if (!b.name?.trim() || !b.code?.trim()) return res.status(400).json({ error: 'Нужны код и наименование' });
@@ -130,7 +130,7 @@ router.post('/nomenclature', authenticate, requireWarehouse('warehouse'), async 
   }
 });
 
-router.put('/nomenclature/:id', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.put('/nomenclature/:id', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const row = await WhNomenclature.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Позиция не найдена' });
   const fields = ['name', 'categoryId', 'unit', 'packUnit', 'packSize', 'isMedicine',
@@ -143,7 +143,7 @@ router.put('/nomenclature/:id', authenticate, requireWarehouse('warehouse'), asy
 });
 
 // ── Партии ───────────────────────────────────────────────────────────────────
-router.get('/batches', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/batches', authenticate, requireWarehouse(), async (req, res) => {
   const { nomenclatureId, expiringDays } = req.query;
   const where = {};
   if (nomenclatureId) where.nomenclatureId = nomenclatureId;
@@ -163,7 +163,7 @@ router.get('/batches', authenticate, requireWarehouse('viewer'), async (req, res
   res.json(rows);
 });
 
-router.post('/batches', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/batches', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const b = req.body;
     if (!b.nomenclatureId || !b.batchNumber?.trim()) {
@@ -188,7 +188,7 @@ router.post('/batches', authenticate, requireWarehouse('warehouse'), async (req,
  * Блокировка партии к выдаче. Нужна при отзыве производителем — просрочка
  * блокируется сама по дате, а вот отзыв руками никак иначе не оформить.
  */
-router.patch('/batches/:id/block', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.patch('/batches/:id/block', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const row = await WhBatch.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Партия не найдена' });
   await row.update({
@@ -199,7 +199,7 @@ router.patch('/batches/:id/block', authenticate, requireWarehouse('warehouse'), 
 });
 
 // ── Остатки ──────────────────────────────────────────────────────────────────
-router.get('/stock', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const { roomId, storageId, nomenclatureId, belowMinimum, includeZero } = req.query;
 
@@ -295,7 +295,7 @@ router.get('/stock', authenticate, requireWarehouse('viewer'), async (req, res) 
  * означает, что остатки правили в обход сервиса, и это надо увидеть, а не
  * прятать в ночном логе.
  */
-router.get('/stock/reconcile', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.get('/stock/reconcile', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
   try {
     const diffs = await reconcileStock();
     res.json({ ok: diffs.length === 0, discrepancies: diffs });
@@ -305,7 +305,7 @@ router.get('/stock/reconcile', authenticate, requireWarehouse('admin'), async (r
 });
 
 // ── Минимальные остатки ──────────────────────────────────────────────────────
-router.get('/reorder-rules', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/reorder-rules', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhReorderRule.findAll({
     include: [
       { model: WhNomenclature, as: 'nomenclature', attributes: ['id', 'code', 'name', 'unit'] },
@@ -317,7 +317,7 @@ router.get('/reorder-rules', authenticate, requireWarehouse('viewer'), async (re
   res.json(rows);
 });
 
-router.post('/reorder-rules', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/reorder-rules', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const { nomenclatureId, roomId, storageId, minQty, maxQty, autoRfq } = req.body;
     if (!nomenclatureId || minQty === undefined) {
@@ -333,7 +333,7 @@ router.post('/reorder-rules', authenticate, requireWarehouse('warehouse'), async
   }
 });
 
-router.delete('/reorder-rules/:id', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.delete('/reorder-rules/:id', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const row = await WhReorderRule.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Правило не найдено' });
   await row.destroy();
@@ -341,7 +341,7 @@ router.delete('/reorder-rules/:id', authenticate, requireWarehouse('warehouse'),
 });
 
 // ── Нормы расхода ────────────────────────────────────────────────────────────
-router.get('/norms', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/norms', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhConsumptionNorm.findAll({
     include: [
       { model: WhNomenclature, as: 'nomenclature', attributes: ['id', 'code', 'name', 'unit'] },
@@ -353,7 +353,7 @@ router.get('/norms', authenticate, requireWarehouse('viewer'), async (req, res) 
   res.json(rows);
 });
 
-router.post('/norms', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/norms', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const { nomenclatureId, departmentId, roomId, basis, normValue, comment } = req.body;
     if (!nomenclatureId || normValue === undefined) {
@@ -369,7 +369,7 @@ router.post('/norms', authenticate, requireWarehouse('warehouse'), async (req, r
   }
 });
 
-router.delete('/norms/:id', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.delete('/norms/:id', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const row = await WhConsumptionNorm.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Норма не найдена' });
   await row.destroy();

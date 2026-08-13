@@ -1,37 +1,49 @@
 /**
  * Права складского модуля.
  *
- * Два уровня, и их важно не путать:
+ * Три уровня, и их важно не путать:
  *
- *   1) Доступ к модулю — гранулярный флаг adminAccess.warehouse, тем же
- *      механизмом, что «Отзывы» и «Справочник медцентров». Без него человек
- *      вообще не видит раздел.
+ *   1) **Доступ к разделу** — гранулярный флаг adminAccess.warehouse, тем же
+ *      механизмом, что «Отзывы» и «Справочник медцентров». Без него человек не
+ *      видит раздел вообще.
  *
- *   2) Роль внутри модуля — что человеку можно делать и какие локации он видит.
- *      Этого в портале до сих пор не было: доступ везде решался флагом «пустил /
- *      не пустил». Здесь нужен row-level scope, потому что зав. отделением по ТЗ
- *      видит отчёты «в рамках своего отделения», а не по всей сети.
+ *   2) **Роли внутри модуля** — матрица из ТЗ (services/warehouse/roles.js):
+ *      бухгалтер, зав. складом, инженер, эпидемиолог и так далее. Часть ролей
+ *      назначается ролью портала, часть выводится из данных — зав. отделением это
+ *      тот, кто указан головой отделения, а не тот, кому выдали галочку.
  *
- * Роль внутри модуля выводится, а не хранится отдельным полем: источник —
- * warehouse_departments.headUserId (зав. отделением) и права роли
- * permissions.warehouse. Заводить третий реестр прав ради этого модуля значит
- * гарантировать, что он разъедется с двумя существующими.
+ *   3) **Область видимости** — сеть или свои локации. ТЗ прямо оговаривает, что
+ *      зав. отделением видит отчёты «в рамках своего отделения», и это не
+ *      фильтр в интерфейсе, а условие в SQL: иначе достаточно поправить адрес
+ *      запроса, чтобы увидеть чужие данные.
  */
 
-const { WhDepartment, WhRoom, WhFloor, WhBuilding } = require('../../models');
-
-// Уровни, по возрастанию полномочий.
-const LEVELS = {
-  none:       0,
-  viewer:     1,   // только чтение своих локаций
-  department: 2,   // ведёт своё отделение: выдача, приём, инвентаризация
-  warehouse:  3,   // зав. складом: вся сеть, движения и закупки
-  admin:      4,   // настройка модуля: локации, номенклатура, права
-};
+const { WhDepartment, WhRoom, WhFloor, WhBuilding, WhAsset, WhInventorySession } = require('../../models');
+const roles = require('./roles');
 
 /**
- * Есть ли у пользователя доступ к модулю вообще.
+ * Роли, выводимые из данных: их не назначают, они следуют из того, где человек
+ * записан ответственным. Отдельным запросом на пользователя — это три коротких
+ * COUNT по индексированным полям, и кэшировать их опаснее, чем выполнять: права
+ * должны меняться сразу после смены ответственного.
  */
+async function derivedRoles(user) {
+  const out = new Set();
+  if (!user?.id) return out;
+
+  const [depts, rooms, assets, sessions] = await Promise.all([
+    WhDepartment.count({ where: { headUserId: user.id, isActive: true } }),
+    WhRoom.count({ where: { responsibleUserId: user.id, isActive: true } }),
+    WhAsset.count({ where: { responsibleUserId: user.id, isArchived: false } }),
+    WhInventorySession.count({ where: { chairmanUserId: user.id } }),
+  ]);
+
+  if (depts > 0) out.add('department_head');
+  if (rooms > 0 || assets > 0) out.add('responsible');
+  if (sessions > 0) out.add('commission_chair');
+  return out;
+}
+
 function hasModuleAccess(user) {
   if (!user) return false;
   if (user.isAdmin) return true;
@@ -39,111 +51,102 @@ function hasModuleAccess(user) {
 }
 
 /**
- * Права роли по модулю: {read, write, delete, admin}. Собираются по всем ролям
- * пользователя — так же, как это делает requirePermission в middleware/auth.js.
+ * Полный расчёт прав пользователя в модуле: набор ролей, область видимости,
+ * доступные отчёты и возможности.
  */
-function rolePermissions(user) {
-  const acc = { read: false, write: false, delete: false, admin: false };
-  if (!user) return acc;
-  if (user.isAdmin) return { read: true, write: true, delete: true, admin: true };
-
-  const roles = [];
-  if (Array.isArray(user.roles)) roles.push(...user.roles);
-  if (user.role) roles.push(user.role);
-
-  for (const role of roles) {
-    const p = role?.permissions?.warehouse;
-    if (!p) continue;
-    for (const key of Object.keys(acc)) {
-      if (p[key]) acc[key] = true;
-    }
+async function resolveAccess(user) {
+  if (!hasModuleAccess(user)) {
+    return { allowed: false, roles: new Set(), scope: 'none' };
   }
-  return acc;
+  const assigned = roles.assignedRoles(user);
+  const derived = await derivedRoles(user);
+  const all = new Set([...assigned, ...derived]);
+
+  return {
+    allowed: true,
+    roles: all,
+    assigned,
+    derived,
+    scope: all.size ? roles.widestScope(all) : 'none',
+    capabilities: roles.capabilities(all),
+  };
 }
 
 /**
- * Итоговый уровень пользователя в модуле.
+ * Кабинеты, доступные пользователю. null означает «ограничений нет» — так
+ * вызывающий код отличает «вся сеть» от «ограничение с пустым списком», которые
+ * иначе выглядели бы одинаково и открыли бы наблюдателю всю сеть.
  */
-async function resolveLevel(user) {
-  if (!hasModuleAccess(user)) return 'none';
-  if (user.isAdmin) return 'admin';
+async function visibleRoomIds(user, access) {
+  if (access.scope === 'network') return null;
+  if (access.scope === 'none') return [];
 
-  const perms = rolePermissions(user);
-  if (perms.admin) return 'admin';
-  if (perms.write && perms.delete) return 'warehouse';
+  const [ownDepts, ownRooms, ownAssets] = await Promise.all([
+    WhDepartment.findAll({ where: { headUserId: user.id, isActive: true }, attributes: ['id'] }),
+    WhRoom.findAll({ where: { responsibleUserId: user.id, isActive: true }, attributes: ['id'] }),
+    WhAsset.findAll({ where: { responsibleUserId: user.id, isArchived: false }, attributes: ['roomId'] }),
+  ]);
 
-  // Зав. отделением: тот, кто указан головой хотя бы одного отделения. Право на
-  // запись при этом всё равно нужно — иначе он только смотрит.
-  const heads = await WhDepartment.count({ where: { headUserId: user.id, isActive: true } });
-  if (heads > 0) return perms.write ? 'department' : 'viewer';
+  const ids = new Set(ownRooms.map(r => r.id));
+  for (const a of ownAssets) if (a.roomId) ids.add(a.roomId);
 
-  if (perms.write) return 'warehouse';
-  return 'viewer';
+  if (ownDepts.length) {
+    const deptRooms = await WhRoom.findAll({
+      where: { departmentId: ownDepts.map(d => d.id), isActive: true },
+      attributes: ['id'],
+    });
+    for (const r of deptRooms) ids.add(r.id);
+  }
+  return [...ids];
 }
 
-function atLeast(level, required) {
-  return LEVELS[level] >= LEVELS[required];
-}
-
-/**
- * Отделения, которые человек видит. null означает «все» — так вызывающий код
- * различает «нет ограничения» и «ограничение с пустым списком», которые иначе
- * выглядели бы одинаково и открыли бы viewer'у всю сеть.
- */
-async function visibleDepartmentIds(user, level) {
-  if (atLeast(level, 'warehouse')) return null;
+async function visibleDepartmentIds(user, access) {
+  if (access.scope === 'network') return null;
+  if (access.scope === 'none') return [];
 
   const own = await WhDepartment.findAll({
-    where: { headUserId: user.id, isActive: true },
-    attributes: ['id'],
+    where: { headUserId: user.id, isActive: true }, attributes: ['id'],
   });
   if (own.length) return own.map(d => d.id);
 
-  // Не зав. отделением — тогда видит отделения тех кабинетов, где он МОЛ. Это
-  // старшая медсестра или ответственный за кабинет.
   const rooms = await WhRoom.findAll({
-    where: { responsibleUserId: user.id, isActive: true },
-    attributes: ['departmentId'],
+    where: { responsibleUserId: user.id, isActive: true }, attributes: ['departmentId'],
   });
-  const ids = [...new Set(rooms.map(r => r.departmentId).filter(Boolean))];
-  return ids;
+  return [...new Set(rooms.map(r => r.departmentId).filter(Boolean))];
 }
 
 /**
- * Кабинеты, доступные пользователю. Возвращает null, если ограничений нет.
+ * Express-middleware: пускает в модуль и кладёт в req.warehouse расчёт прав.
+ * capability — необязательное требование конкретной возможности.
  */
-async function visibleRoomIds(user, level) {
-  const deptIds = await visibleDepartmentIds(user, level);
-  if (deptIds === null) return null;
-
-  const where = { isActive: true };
-  const rooms = await WhRoom.findAll({ where, attributes: ['id', 'departmentId', 'responsibleUserId'] });
-  const set = new Set(deptIds);
-  return rooms
-    .filter(r => (r.departmentId && set.has(r.departmentId)) || r.responsibleUserId === user.id)
-    .map(r => r.id);
-}
-
-/**
- * Express-middleware: пускает в модуль и кладёт в req.warehouse уровень и права.
- */
-function requireWarehouse(required = 'viewer') {
+function requireWarehouse(capability = null) {
   return async (req, res, next) => {
     try {
-      if (!hasModuleAccess(req.user)) {
+      const access = await resolveAccess(req.user);
+      if (!access.allowed) {
         return res.status(403).json({ error: 'Нет доступа к разделу «Складской учёт»' });
       }
-      const level = await resolveLevel(req.user);
-      if (!atLeast(level, required)) {
+      if (!access.roles.size) {
         return res.status(403).json({
-          error: `Недостаточно прав: нужен уровень «${required}», у вас «${level}»`,
+          error: 'Раздел открыт, но роль в модуле не назначена. Обратитесь к администратору модуля.',
         });
       }
+      if (capability && !access.capabilities[capability]) {
+        const title = roles.CAPABILITY_MATRIX[capability]?.title || capability;
+        return res.status(403).json({ error: `Недостаточно прав: «${title}»` });
+      }
+
       req.warehouse = {
-        level,
-        perms: rolePermissions(req.user),
-        scopedRoomIds: () => visibleRoomIds(req.user, level),
-        scopedDepartmentIds: () => visibleDepartmentIds(req.user, level),
+        access,
+        roles: access.roles,
+        scope: access.scope,
+        capabilities: access.capabilities,
+        // Уровень оставлен для совместимости с экранами, написанными до матрицы.
+        level: access.capabilities.canManageAccess ? 'admin'
+          : access.capabilities.canManageCatalog ? 'warehouse'
+          : access.capabilities.canIssue ? 'department' : 'viewer',
+        scopedRoomIds: () => visibleRoomIds(req.user, access),
+        scopedDepartmentIds: () => visibleDepartmentIds(req.user, access),
       };
       next();
     } catch (err) {
@@ -154,36 +157,57 @@ function requireWarehouse(required = 'viewer') {
 }
 
 /**
- * Полный путь локации строкой: «Главный корпус / 3 этаж / Каб. 312 / Шкаф А».
+ * Middleware конкретного отчёта. Ставится после requireWarehouse и проверяет
+ * право по матрице ТЗ — именно здесь «эпидемиолог не открывает амортизацию»
+ * перестаёт быть обещанием интерфейса и становится правилом сервера.
+ */
+function requireReport(code, mode = 'read') {
+  return (req, res, next) => {
+    const set = req.warehouse?.roles;
+    if (!set) return res.status(403).json({ error: 'Нет доступа' });
+
+    const ok = mode === 'write' ? roles.canWrite(set, code) : roles.canRead(set, code);
+    if (!ok) {
+      const entry = roles.ACCESS_MATRIX[code];
+      const allowed = (mode === 'write' ? entry?.write : entry?.read) || [];
+      return res.status(403).json({
+        error: `Отчёт «${entry?.title || code}» доступен ролям: `
+          + allowed.map(r => roles.WAREHOUSE_ROLES[r]?.label || r).join(', '),
+        code,
+        requiredRoles: allowed,
+      });
+    }
+    next();
+  };
+}
+
+/**
+ * Полный путь локации строкой: «Главный корпус / 3 этаж / Каб. 312».
  * Нужен почти каждому отчёту, поэтому собран здесь один раз.
  */
 async function roomPath(roomId) {
   const room = await WhRoom.findByPk(roomId, {
-    include: [{
-      model: WhFloor, as: 'floor',
-      include: [{ model: WhBuilding, as: 'building' }],
-    }, {
-      model: WhDepartment, as: 'department',
-    }],
+    include: [
+      { model: WhFloor, as: 'floor', include: [{ model: WhBuilding, as: 'building' }] },
+      { model: WhDepartment, as: 'department' },
+    ],
   });
   if (!room) return '';
-  const parts = [
+  return [
     room.floor?.building?.name,
     room.floor ? `${room.floor.number} этаж` : null,
     room.department?.name,
-    `Каб. ${room.number}${room.name ? ` — ${room.name}` : ''}`,
-  ];
-  return parts.filter(Boolean).join(' / ');
+    `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`,
+  ].filter(Boolean).join(' / ');
 }
 
 module.exports = {
-  LEVELS,
   hasModuleAccess,
-  rolePermissions,
-  resolveLevel,
-  atLeast,
+  derivedRoles,
+  resolveAccess,
   visibleRoomIds,
   visibleDepartmentIds,
   requireWarehouse,
+  requireReport,
   roomPath,
 };

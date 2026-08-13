@@ -44,6 +44,9 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     planHeightM:   { type: DataTypes.DECIMAL(7, 2), allowNull: false, defaultValue: 25 },
     planBgUrl:     { type: DataTypes.STRING(500) },
     planBgOpacity: { type: DataTypes.DECIMAL(3, 2), allowNull: false, defaultValue: 0.35 },
+    // Контур этажа произвольной формы: {points:[[x,y],…]} в метрах (ver. 6.69).
+    // Пустой объект — этаж прямоугольный по габаритам, как было до 6.69.
+    outline:       { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
     sortOrder:     { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
   }, { ...ts, tableName: 'warehouse_floors' });
 
@@ -87,6 +90,10 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     label:    { type: DataTypes.STRING(200) },
     style:    { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
     z:        { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
+    // Техническое помещение (коридор, лестница, санузел) против оформительской
+    // фигуры (стена, подпись): первое входит в площадь этажа, второе — нет.
+    isTechnical: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   }, { ...ts, tableName: 'warehouse_floor_shapes' });
 
   const WhStorage = sequelize.define('WhStorage', {
@@ -149,6 +156,9 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     // Заполнится, когда появится обмен с 1С. Сопоставление по названию —
     // гарантированное расхождение, см. историю med_centers в ver. 6.67.
     oneCRef:           { type: DataTypes.STRING(60) },
+    // Строка ведомости, из которой позиция создана (ver. 6.73). По ней же
+    // повторная материализация узнаёт, что делать ничего не нужно.
+    osvLineKey:        { type: DataTypes.STRING(40) },
     isActive:          { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   }, { ...ts, tableName: 'warehouse_nomenclature' });
 
@@ -189,6 +199,10 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     labelPrintedAt:           { type: DataTypes.DATE },
     notes:                    { type: DataTypes.TEXT },
     oneCRef:                  { type: DataTypes.STRING(60) },
+    // Строка ведомости-источник (ver. 6.73). Карточек на строку столько, сколько
+    // единиц в 1С, поэтому ссылка неуникальна — по ней считается, сколько уже
+    // создано, и повторный разбор не плодит дубли.
+    osvLineKey:               { type: DataTypes.STRING(40) },
     isArchived:               { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     createdBy:                { type: DataTypes.UUID },
   }, { ...ts, tableName: 'warehouse_assets' });
@@ -373,6 +387,8 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     finishedAt:        { type: DataTypes.DATE },
     durationMinutes:   { type: DataTypes.INTEGER },
     createdBy:         { type: DataTypes.UUID },
+    differencesPostedAt: { type: DataTypes.DATE },
+    differencesPostedBy: { type: DataTypes.UUID },
   }, { ...ts, tableName: 'warehouse_inventory_sessions' });
 
   const WhInventoryItem = sequelize.define('WhInventoryItem', {
@@ -444,6 +460,105 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     computedAt:        { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   }, { tableName: 'warehouse_utilization_daily', timestamps: false });
 
+  // ── Оборотно-сальдовая ведомость 1С (ver. 6.72) ────────────────────────────
+  // Единственный автоматический источник данных модуля: обмена с 1С нет, раз в
+  // месяц приходит выгрузка XLSX по счёту МЦ.04.
+  //
+  // Снимок хранится отдельно от рабочих таблиц и никогда в них не вливается
+  // напрямую. Причина простая: разноска позиций по кабинетам и ответственным
+  // делается руками и занимает недели, а файл приезжает заново каждый месяц.
+  // Прямой импорт затирал бы ручную работу при каждой загрузке. Поэтому здесь
+  // три сущности: снимок (что сказала 1С), строки снимка и сопоставления —
+  // единственное, что живёт МЕЖДУ импортами.
+  const WhOsvImport = sequelize.define('WhOsvImport', {
+    id:           { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    account:      { type: DataTypes.STRING(20), allowNull: false },
+    organization: { type: DataTypes.STRING(200) },
+    periodYear:   { type: DataTypes.INTEGER, allowNull: false },
+    periodMonth:  { type: DataTypes.SMALLINT, allowNull: false },
+    periodLabel:  { type: DataTypes.STRING(60) },
+    fileName:     { type: DataTypes.STRING(300), allowNull: false },
+    fileSize:     { type: DataTypes.INTEGER },
+    // Хеш содержимого: по нему видно, что загрузили ровно тот же файл повторно.
+    fileHash:     { type: DataTypes.STRING(64) },
+    // draft — разобран и лежит на предпросмотре, applied — принят как снимок
+    // месяца. Применённый снимок в периоде ровно один.
+    status:       { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'draft' },
+    lineCount:    { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    groupCount:   { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    leafCount:    { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    openingSum:   { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    openingQty:   { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    debitSum:     { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    debitQty:     { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    creditSum:    { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    creditQty:    { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    closingSum:   { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    closingQty:   { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    warnings:     { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+    uploadedBy:   { type: DataTypes.UUID },
+    appliedAt:    { type: DataTypes.DATE },
+    appliedBy:    { type: DataTypes.UUID },
+  }, { ...ts, tableName: 'warehouse_osv_imports' });
+
+  const WhOsvLine = sequelize.define('WhOsvLine', {
+    id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    importId:   { type: DataTypes.UUID, allowNull: false },
+    // Номер строки листа: с ним расхождение можно открыть в самом файле и увидеть
+    // глазами. Без него спор с бухгалтерией сводится к «у вас неправильно».
+    rowNumber:  { type: DataTypes.INTEGER, allowNull: false },
+    sortOrder:  { type: DataTypes.INTEGER, allowNull: false },
+    level:      { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 0 },
+    name:       { type: DataTypes.STRING(500), allowNull: false },
+    pathText:   { type: DataTypes.TEXT },
+    isGroup:    { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Порядковый номер повтора в своей группе: одна номенклатура лежит в 1С
+    // несколькими строками с разной ценой (партии), и различить их больше нечем.
+    dupIndex:   { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 0 },
+    lineKey:    { type: DataTypes.STRING(40), allowNull: false },
+    openingSum: { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    openingQty: { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    debitSum:   { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    debitQty:   { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    creditSum:  { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    creditQty:  { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    closingSum: { type: DataTypes.DECIMAL(16, 2), allowNull: false, defaultValue: 0 },
+    closingQty: { type: DataTypes.DECIMAL(16, 3), allowNull: false, defaultValue: 0 },
+    // Цена за единицу в файле отсутствует, это результат деления. Балансовая, а не
+    // закупочная: в lastPrice номенклатуры её лить нельзя — там цена поставщика,
+    // и подстановка балансовой стоимости испортила бы запросы котировок.
+    unitCost:   { type: DataTypes.DECIMAL(14, 2) },
+  }, { tableName: 'warehouse_osv_lines', timestamps: false });
+
+  // Сопоставление строки 1С с объектами портала. Не привязано к импорту: ради
+  // этого весь слой снимков и заводился — сопоставили один раз, дальше каждый
+  // следующий месяц подхватывает готовое.
+  const WhOsvMapping = sequelize.define('WhOsvMapping', {
+    id:             { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    account:        { type: DataTypes.STRING(20), allowNull: false },
+    // Сопоставлять можно строку (lineKey) или целую ветку дерева (pathPrefix).
+    // Второе — не удобство, а условие выполнимости: групп третьего уровня 54, и
+    // половина из них называется по кабинету. Одно действие на группу закрывает
+    // больше полутора тысяч строк, тогда как построчно их никто не разберёт.
+    lineKey:        { type: DataTypes.STRING(40) },
+    pathPrefix:     { type: DataTypes.TEXT },
+    // Название на момент сопоставления: если в 1С группу переименуют, ключ
+    // порвётся, и по этому полю будет видно, чем строка была раньше.
+    name:           { type: DataTypes.STRING(500) },
+    // auto — делить строки ветки по цене за единицу: дороже порога отдельная
+    // карточка, дешевле остаток. Требовать решения по каждой из 2992 строк
+    // означало бы не разобрать ведомость никогда.
+    kind:           { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'auto' },
+    assetThreshold: { type: DataTypes.DECIMAL(12, 2) },
+    unit:           { type: DataTypes.STRING(20) },
+    nomenclatureId: { type: DataTypes.UUID },
+    categoryId:     { type: DataTypes.UUID },
+    roomId:         { type: DataTypes.UUID },
+    storageId:      { type: DataTypes.UUID },
+    note:           { type: DataTypes.TEXT },
+    mappedBy:       { type: DataTypes.UUID },
+  }, { ...ts, tableName: 'warehouse_osv_mappings' });
+
   // ── Outbox для 1С: пустой и выключенный ────────────────────────────────────
   // Обмена нет. Таблица заведена сразу по образцу submissions (ver. 6.06), чтобы
   // не переделывать схему задним числом, когда обмен появится.
@@ -470,6 +585,7 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhInventorySession, WhInventoryItem,
     WhRfq, WhRfqItem, WhRfqQuote,
     WhUtilizationDaily, WhOutbox,
+    WhOsvImport, WhOsvLine, WhOsvMapping,
   };
 
   /**
@@ -595,6 +711,16 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     // Загрузка
     WhUtilizationDaily.belongsTo(WhRoom, { foreignKey: 'roomId', as: 'room' });
     WhRoom.hasMany(WhUtilizationDaily, { foreignKey: 'roomId', as: 'utilization' });
+
+    // Ведомость 1С
+    WhOsvImport.hasMany(WhOsvLine, { foreignKey: 'importId', as: 'lines', onDelete: 'CASCADE' });
+    WhOsvLine.belongsTo(WhOsvImport, { foreignKey: 'importId', as: 'import' });
+    WhOsvImport.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
+    WhOsvImport.belongsTo(User, { foreignKey: 'appliedBy', as: 'applier' });
+    WhOsvMapping.belongsTo(WhNomenclature, { foreignKey: 'nomenclatureId', as: 'nomenclature' });
+    WhOsvMapping.belongsTo(WhCategory, { foreignKey: 'categoryId', as: 'category' });
+    WhOsvMapping.belongsTo(WhRoom, { foreignKey: 'roomId', as: 'room' });
+    WhOsvMapping.belongsTo(User, { foreignKey: 'mappedBy', as: 'author' });
   }
 
   return { models, associateWarehouse };

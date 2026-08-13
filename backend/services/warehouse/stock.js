@@ -19,7 +19,7 @@ const {
 const { generateDocumentNumber } = require('./numbering');
 
 // Типы, увеличивающие остаток в точке «куда», и уменьшающие в точке «откуда».
-const INCOMING = new Set(['receipt', 'surplus', 'repair_in']);
+const INCOMING = new Set(['receipt', 'return', 'surplus', 'repair_in']);
 const OUTGOING = new Set(['issue', 'writeoff', 'repair_out']);
 
 /**
@@ -69,11 +69,16 @@ async function adjustStock({ nomenclatureId, batchId, storageId, delta, unitCost
  * unitCost}. Просроченные и заблокированные партии не берутся — их выдача
  * запрещена, и молча подставлять их нельзя.
  */
-async function pickBatchesFefo({ nomenclatureId, storageId, quantity, transaction, allowExpired = false }) {
+async function pickBatchesFefo({
+  nomenclatureId, storageId, quantity, transaction, allowExpired = false, batchId = null,
+}) {
   const today = new Date().toISOString().slice(0, 10);
 
   const rows = await WhStock.findAll({
-    where: { nomenclatureId, storageId, quantity: { [Op.gt]: 0 } },
+    where: {
+      nomenclatureId, storageId, quantity: { [Op.gt]: 0 },
+      ...(batchId ? { batchId } : {}),
+    },
     include: [{ model: WhBatch, as: 'batch', required: false }],
     transaction,
   });
@@ -125,12 +130,12 @@ async function pickBatchesFefo({ nomenclatureId, storageId, quantity, transactio
 async function createDocument({
   type, lines, user, comment, reasonCode, reasonText,
   contractorId, fromRoomId, toRoomId, device, sign = true, occurredAt,
-}) {
+}, options = {}) {
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new Error('Документ без строк');
   }
 
-  return sequelize.transaction(async (transaction) => {
+  const run = async (transaction) => {
     const number = await generateDocumentNumber({ type, transaction });
 
     const doc = await WhDocument.create({
@@ -158,6 +163,17 @@ async function createDocument({
         const asset = await WhAsset.findByPk(line.assetId, { transaction, lock: transaction.LOCK.UPDATE });
         if (!asset) throw new Error('Актив не найден');
 
+        if (type === 'transfer') {
+          const targetRoomId = line.toRoomId || toRoomId;
+          if (!targetRoomId || !line.toStorageId) {
+            throw new Error('Перемещение оборудования требует кабинет и место хранения назначения');
+          }
+          const targetStorage = await WhStorage.findByPk(line.toStorageId, { transaction });
+          if (!targetStorage || targetStorage.roomId !== targetRoomId) {
+            throw new Error('Место хранения назначения не относится к выбранному кабинету');
+          }
+        }
+
         const mv = await WhMovement.create({
           documentId: doc.id, type,
           assetId: asset.id,
@@ -179,8 +195,8 @@ async function createDocument({
 
         const patch = { lastActivityAt: new Date() };
         if (type === 'transfer') {
-          patch.roomId = line.toRoomId || toRoomId || asset.roomId;
-          patch.storageId = line.toStorageId || null;
+          patch.roomId = line.toRoomId || toRoomId;
+          patch.storageId = line.toStorageId;
           if (line.toResponsibleId) patch.responsibleUserId = line.toResponsibleId;
         } else if (type === 'repair_out') {
           patch.status = 'repair';
@@ -204,9 +220,10 @@ async function createDocument({
 
       if (type === 'transfer') {
         if (!fromStorageId || !toStorageId) throw new Error('Перемещение требует и «откуда», и «куда»');
-        const picks = line.batchId
-          ? [{ batchId: line.batchId, quantity: qty, unitCost: line.unitCost || 0 }]
-          : await pickBatchesFefo({ nomenclatureId: line.nomenclatureId, storageId: fromStorageId, quantity: qty, transaction });
+        const picks = await pickBatchesFefo({
+          nomenclatureId: line.nomenclatureId, storageId: fromStorageId,
+          quantity: qty, transaction, batchId: line.batchId || null,
+        });
 
         for (const p of picks) {
           await adjustStock({ ...p, nomenclatureId: line.nomenclatureId, storageId: fromStorageId, delta: -p.quantity, transaction });
@@ -249,12 +266,10 @@ async function createDocument({
       if (OUTGOING.has(type)) {
         if (!fromStorageId) throw new Error('Расход требует места хранения «откуда»');
         // При списании просрочку разрешаем: её для этого и списывают.
-        const picks = line.batchId
-          ? [{ batchId: line.batchId, quantity: qty, unitCost: line.unitCost || 0 }]
-          : await pickBatchesFefo({
-              nomenclatureId: line.nomenclatureId, storageId: fromStorageId, quantity: qty,
-              transaction, allowExpired: type === 'writeoff',
-            });
+        const picks = await pickBatchesFefo({
+          nomenclatureId: line.nomenclatureId, storageId: fromStorageId, quantity: qty,
+          transaction, allowExpired: type === 'writeoff', batchId: line.batchId || null,
+        });
 
         for (const p of picks) {
           await adjustStock({ ...p, nomenclatureId: line.nomenclatureId, storageId: fromStorageId, delta: -p.quantity, transaction });
@@ -279,7 +294,8 @@ async function createDocument({
     }
 
     return { document: doc, movements: created };
-  });
+  };
+  return options.transaction ? run(options.transaction) : sequelize.transaction(run);
 }
 
 const storageRoomCache = new Map();

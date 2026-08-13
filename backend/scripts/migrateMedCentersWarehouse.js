@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Локальный production-runner миграций ver. 6.67 и 6.68.
+ * Локальный production-runner миграций ver. 6.67–6.70.
  *
  * PostgreSQL вызывается через системного пользователя postgres и Unix-сокет.
  * Поэтому runner не зависит от DB_PASSWORD/DB_HOST и подходит для запуска по SSH:
@@ -21,6 +21,8 @@ const database = process.env.DB_NAME || 'alfa_wiki';
 const migrations = [
   path.join(__dirname, '..', 'migrations', 'ver. 6.67 med-centers-registry.sql'),
   path.join(__dirname, '..', 'migrations', 'ver. 6.68 warehouse.sql'),
+  path.join(__dirname, '..', 'migrations', 'ver. 6.69 warehouse-floor-outline.sql'),
+  path.join(__dirname, '..', 'migrations', 'ver. 6.70 warehouse-operations.sql'),
 ];
 
 function runPsql(args) {
@@ -35,7 +37,7 @@ function runPsql(args) {
 }
 
 function check() {
-  console.log(`\n▶ Проверка миграций 6.67–6.68 в базе ${database}\n`);
+  console.log(`\n▶ Проверка миграций 6.67–6.70 в базе ${database}\n`);
   runPsql(['-c', `
     SELECT
       to_regclass('public.organizations') IS NOT NULL AS "6.67 organizations",
@@ -46,7 +48,16 @@ function check() {
           AND column_name = 'misClinicIds'
       ) AS "6.67 med_centers",
       to_regclass('public.warehouse_assets') IS NOT NULL AS "6.68 assets",
-      to_regclass('public.warehouse_outbox') IS NOT NULL AS "6.68 outbox";
+      to_regclass('public.warehouse_outbox') IS NOT NULL AS "6.68 outbox",
+      EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'warehouse_floors' AND column_name = 'outline'
+      ) AS "6.69 floor outline",
+      EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'warehouse_inventory_sessions'
+          AND column_name = 'differencesPostedAt'
+      ) AS "6.70 inventory differences";
   `]);
 }
 
@@ -60,13 +71,13 @@ function main() {
     return;
   }
 
-  console.log(`\n▶ Миграции ver. 6.67–6.68, база ${database}\n`);
+  console.log(`\n▶ Миграции ver. 6.67–6.70, база ${database}\n`);
   for (const file of migrations) {
     console.log(`\n→ ${path.basename(file)}`);
     runPsql(['-f', file]);
   }
 
-  console.log('\n✅ Миграции 6.67 и 6.68 успешно применены\n');
+  console.log('\n✅ Миграции 6.67–6.70 успешно применены\n');
   check();
 }
 

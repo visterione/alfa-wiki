@@ -3529,6 +3529,31 @@ const RbActivityLog = sequelize.define('RbActivityLog', {
 
 RbActivityLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+// === RB RESET BACKUPS ===
+// Точка возврата для выборочного сброса на вкладке «Сотрудники». В payload лежит
+// settings целиком по каждой строке executor_settings, которую сброс переписывает:
+// откат должен возвращать состояние ровно на момент снимка, а не пересобирать его
+// из тех же правил, по которым сброс данные и удалял.
+const RbResetBackup = sequelize.define('RbResetBackup', {
+  id:            { type: DataTypes.UUID,       defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  kind:          { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'reset' },
+  userId:        { type: DataTypes.UUID,       allowNull: true,  field: 'user_id' },
+  clinicIds:     { type: DataTypes.JSONB,      allowNull: false, defaultValue: [], field: 'clinic_ids' },
+  employeeCount: { type: DataTypes.INTEGER,    allowNull: false, defaultValue: 0,  field: 'employee_count' },
+  changeCount:   { type: DataTypes.INTEGER,    allowNull: false, defaultValue: 0,  field: 'change_count' },
+  payload:       { type: DataTypes.JSONB,      allowNull: false, defaultValue: {} },
+  restoredAt:    { type: DataTypes.DATE,       allowNull: true,  field: 'restored_at' },
+  restoredBy:    { type: DataTypes.UUID,       allowNull: true,  field: 'restored_by' },
+}, {
+  tableName:   'rb_reset_backups',
+  timestamps:  true,
+  updatedAt:   false,
+  underscored: true,
+});
+
+RbResetBackup.belongsTo(User, { foreignKey: 'userId',     as: 'author' });
+RbResetBackup.belongsTo(User, { foreignKey: 'restoredBy', as: 'restorer' });
+
 // ── MIS Appointments ──────────────────────────────────────────────────────────
 const MisAppointment = sequelize.define('MisAppointment', {
   id:          { type: DataTypes.INTEGER,     autoIncrement: true, primaryKey: true },
@@ -3880,6 +3905,7 @@ module.exports = {
   MisScheduleCategoryMap,
   // RB Activity Log
   RbActivityLog,
+  RbResetBackup,
   // RB Excel Sources
   RbExcelSource,
   // MIS Appointments cache

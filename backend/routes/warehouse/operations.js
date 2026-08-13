@@ -17,7 +17,7 @@ const {
   WhRfq, WhRfqItem, WhRfqQuote, User,
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
-const { requireWarehouse, roomPath } = require('../../services/warehouse/access');
+const { requireWarehouse, requireReport, roomPath } = require('../../services/warehouse/access');
 const { createDocument } = require('../../services/warehouse/stock');
 const {
   generateMaintenanceNumber, generateRepairNumber, generateRfqNumber, generateDocumentNumber,
@@ -26,7 +26,7 @@ const {
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 
 // ── Документы и движения ─────────────────────────────────────────────────────
-router.get('/documents', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const { type, from, to, status, page = 1, limit = 50 } = req.query;
     const where = {};
@@ -59,7 +59,7 @@ router.get('/documents', authenticate, requireWarehouse('viewer'), async (req, r
   }
 });
 
-router.get('/documents/:id', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/documents/:id', authenticate, requireWarehouse(), async (req, res) => {
   const doc = await WhDocument.findByPk(req.params.id, {
     include: [
       { model: User, as: 'author', attributes: userAttrs },
@@ -88,10 +88,12 @@ router.get('/documents/:id', authenticate, requireWarehouse('viewer'), async (re
  * Создание и проведение документа. Один эндпоинт на все типы: логика различий
  * живёт в сервисе, а не размазана по семи маршрутам.
  */
-router.post('/documents', authenticate, requireWarehouse('department'), async (req, res) => {
+router.post('/documents', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   try {
     const { type, lines, comment, reasonCode, reasonText, contractorId, fromRoomId, toRoomId, sign, occurredAt } = req.body;
     if (!type) return res.status(400).json({ error: 'Не указан тип документа' });
+    const supported = new Set(['receipt', 'return', 'issue', 'transfer', 'repair_out', 'repair_in', 'writeoff', 'surplus']);
+    if (!supported.has(type)) return res.status(400).json({ error: 'Неподдерживаемый тип документа' });
 
     // Зона ответственности: выдавать и перемещать можно только из своих кабинетов.
     const scoped = await req.warehouse.scopedRoomIds();
@@ -122,14 +124,14 @@ router.post('/documents', authenticate, requireWarehouse('department'), async (r
   } catch (err) {
     // Ошибки вида «недостаточно остатка» — это не сбой сервера, а бизнес-правило:
     // отдаём 400 с текстом, который можно показать человеку.
-    const businessError = /Недостаточно|требует|не найден|не поддерживает|без строк|больше нуля/i.test(err.message);
+    const businessError = /Недостаточно|требует|не найден|не поддерживает|без строк|больше нуля|место хранения|кабинет/i.test(err.message);
     if (!businessError) console.error('POST warehouse/documents error:', err);
     res.status(businessError ? 400 : 500).json({ error: err.message });
   }
 });
 
 // ── Журнал движений (отчёт № 2, режим 1) ─────────────────────────────────────
-router.get('/movements', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/movements', authenticate, requireWarehouse(), requireReport('RPT-MOVEMENT'), async (req, res) => {
   try {
     const {
       from, to, type, assetId, nomenclatureId, fromRoomId, toRoomId,
@@ -213,7 +215,7 @@ async function movementSummary(where) {
 }
 
 // ── Наряды ТО ────────────────────────────────────────────────────────────────
-router.get('/maintenance', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/maintenance', authenticate, requireWarehouse(), requireReport('RPT-MAINTENANCE'), async (req, res) => {
   try {
     const { from, to, status, type, contractorId, mandatoryOnly, overdueOnly, assetId } = req.query;
     const where = {};
@@ -281,7 +283,7 @@ router.get('/maintenance', authenticate, requireWarehouse('viewer'), async (req,
   }
 });
 
-router.post('/maintenance', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/maintenance', authenticate, requireWarehouse('canMaintenance'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const b = req.body;
@@ -317,7 +319,7 @@ router.post('/maintenance', authenticate, requireWarehouse('warehouse'), async (
  * Закрытие наряда. Здесь же пересчитывается следующая дата ТО по интервалу —
  * иначе график пришлось бы вести руками, и он немедленно отстал бы от факта.
  */
-router.patch('/maintenance/:id/close', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.patch('/maintenance/:id/close', authenticate, requireWarehouse('canMaintenance'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const order = await WhMaintenanceOrder.findByPk(req.params.id, { transaction: t });
@@ -357,7 +359,7 @@ router.patch('/maintenance/:id/close', authenticate, requireWarehouse('warehouse
 });
 
 // ── Ремонты ──────────────────────────────────────────────────────────────────
-router.post('/repairs', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/repairs', authenticate, requireWarehouse('canMaintenance'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const b = req.body;
@@ -385,7 +387,7 @@ router.post('/repairs', authenticate, requireWarehouse('warehouse'), async (req,
   }
 });
 
-router.patch('/repairs/:id/close', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.patch('/repairs/:id/close', authenticate, requireWarehouse('canMaintenance'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const row = await WhRepair.findByPk(req.params.id, { transaction: t });
@@ -422,7 +424,7 @@ router.patch('/repairs/:id/close', authenticate, requireWarehouse('warehouse'), 
 });
 
 // ── Инвентаризация ───────────────────────────────────────────────────────────
-router.get('/inventory', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/inventory', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhInventorySession.findAll({
     include: [
       { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
@@ -441,7 +443,7 @@ router.get('/inventory', authenticate, requireWarehouse('viewer'), async (req, r
  * в момент закрытия, любое движение во время пересчёта попадёт в расхождение и
  * будет выглядеть как недостача.
  */
-router.post('/inventory', authenticate, requireWarehouse('department'), async (req, res) => {
+router.post('/inventory', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { roomId, departmentId, basis, chairmanUserId, members, responsibleUserId } = req.body;
@@ -495,7 +497,7 @@ router.post('/inventory', authenticate, requireWarehouse('department'), async (r
   }
 });
 
-router.get('/inventory/:id', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/inventory/:id', authenticate, requireWarehouse(), async (req, res) => {
   const session = await WhInventorySession.findByPk(req.params.id, {
     include: [
       { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
@@ -535,7 +537,7 @@ router.get('/inventory/:id', authenticate, requireWarehouse('viewer'), async (re
  * Отметка позиции при пересчёте. Работает и от сканера (scanMethod = 'qr'), и от
  * ручного ввода — доля ручного ввода потом показывает качество маркировки.
  */
-router.post('/inventory/:id/count', authenticate, requireWarehouse('department'), async (req, res) => {
+router.post('/inventory/:id/count', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   try {
     const session = await WhInventorySession.findByPk(req.params.id);
     if (!session) return res.status(404).json({ error: 'Опись не найдена' });
@@ -591,7 +593,7 @@ router.post('/inventory/:id/count', authenticate, requireWarehouse('department')
  * Закрытие описи. Незаполненные строки трактуются как ненайденные (факт 0) —
  * иначе «не дошли до шкафа Б» и «в шкафу Б пусто» выглядели бы одинаково.
  */
-router.patch('/inventory/:id/close', authenticate, requireWarehouse('department'), async (req, res) => {
+router.patch('/inventory/:id/close', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const session = await WhInventorySession.findByPk(req.params.id, {
@@ -631,8 +633,89 @@ router.patch('/inventory/:id/close', authenticate, requireWarehouse('department'
   }
 });
 
+/**
+ * Оформление материальных расхождений после решения комиссии. Излишки и
+ * недостачи проводятся двумя документами в одной транзакции: либо проходят оба,
+ * либо опись и остатки остаются нетронутыми. Расхождения по ОС не списываются
+ * автоматически — для них нужен отдельный акт и решение ответственного лица.
+ */
+router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('canIssue'), async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const session = await WhInventorySession.findByPk(req.params.id, {
+      include: [{ model: WhInventoryItem, as: 'items' }],
+      transaction: t, lock: t.LOCK.UPDATE,
+    });
+    if (!session) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Опись не найдена' });
+    }
+    if (session.status !== 'closed') {
+      await t.rollback();
+      return res.status(409).json({ error: 'Сначала закройте инвентаризацию' });
+    }
+    if (session.differencesPostedAt) {
+      await t.rollback();
+      return res.status(409).json({ error: 'Расхождения по этой описи уже оформлены' });
+    }
+
+    const surplusLines = [];
+    const shortageLines = [];
+    const assetDifferences = [];
+    for (const item of session.items || []) {
+      const diff = Number(item.actualQty) - Number(item.expectedQty);
+      if (!diff) continue;
+      if (item.assetId) {
+        assetDifferences.push({ itemId: item.id, assetId: item.assetId, difference: diff });
+        continue;
+      }
+      if (!item.nomenclatureId || !item.storageId) continue;
+      const stock = await WhStock.findOne({
+        where: {
+          nomenclatureId: item.nomenclatureId, storageId: item.storageId,
+          batchId: item.batchId || null,
+        }, transaction: t,
+      });
+      const line = {
+        nomenclatureId: item.nomenclatureId, batchId: item.batchId || null,
+        quantity: Math.abs(diff), unitCost: Number(stock?.unitCost || 0),
+        reasonCode: 'inventory', reasonText: `По описи ${session.number}`,
+      };
+      if (diff > 0) surplusLines.push({ ...line, toStorageId: item.storageId });
+      else shortageLines.push({ ...line, fromStorageId: item.storageId });
+    }
+
+    const posted = [];
+    if (surplusLines.length) {
+      const result = await createDocument({
+        type: 'surplus', lines: surplusLines, user: req.user, sign: true,
+        reasonCode: 'inventory', reasonText: `Излишки по инвентаризации ${session.number}`,
+        comment: req.body.comment || null,
+      }, { transaction: t });
+      posted.push({ type: 'surplus', id: result.document.id, number: result.document.number });
+    }
+    if (shortageLines.length) {
+      const result = await createDocument({
+        type: 'writeoff', lines: shortageLines, user: req.user, sign: true,
+        reasonCode: 'inventory', reasonText: `Недостачи по инвентаризации ${session.number}`,
+        comment: req.body.comment || null,
+      }, { transaction: t });
+      posted.push({ type: 'writeoff', id: result.document.id, number: result.document.number });
+    }
+
+    await session.update({ differencesPostedAt: new Date(), differencesPostedBy: req.user.id }, { transaction: t });
+    await t.commit();
+    res.json({ ok: true, documents: posted, assetDifferences });
+  } catch (err) {
+    await t.rollback();
+    const businessError = /Недостаточно|просроч|заблокирован|уже оформлены/i.test(err.message);
+    if (!businessError) console.error('POST warehouse/inventory/post-differences error:', err);
+    res.status(businessError ? 400 : 500).json({ error: err.message });
+  }
+});
+
 // ── Котировки ────────────────────────────────────────────────────────────────
-router.get('/rfq', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/rfq', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhRfq.findAll({
     include: [
       { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
@@ -646,7 +729,7 @@ router.get('/rfq', authenticate, requireWarehouse('viewer'), async (req, res) =>
   res.json(rows);
 });
 
-router.post('/rfq', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/rfq', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { items, reason, roomId, dueAt } = req.body;
@@ -672,7 +755,7 @@ router.post('/rfq', authenticate, requireWarehouse('warehouse'), async (req, res
   }
 });
 
-router.post('/rfq/:id/quotes', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.post('/rfq/:id/quotes', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const { contractorId, deliveryDays, paymentTerms, prices, comment } = req.body;
     if (!contractorId) return res.status(400).json({ error: 'Нужен контрагент' });
@@ -691,7 +774,7 @@ router.post('/rfq/:id/quotes', authenticate, requireWarehouse('warehouse'), asyn
  * Сравнение котировок с оценкой. Веса формулы берутся из настроек, а не зашиты в
  * код: их будут крутить, и каждый раз править исходник для этого неправильно.
  */
-router.get('/rfq/:id/comparison', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/rfq/:id/comparison', authenticate, requireWarehouse(), requireReport('RPT-RFQ-COMPARE'), async (req, res) => {
   try {
     const { Setting } = require('../../models');
     const setting = await Setting.findByPk('warehouse.rfqScoreWeights');
@@ -770,7 +853,7 @@ router.get('/rfq/:id/comparison', authenticate, requireWarehouse('viewer'), asyn
   }
 });
 
-router.patch('/rfq/:id/decide', authenticate, requireWarehouse('warehouse'), async (req, res) => {
+router.patch('/rfq/:id/decide', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const rfq = await WhRfq.findByPk(req.params.id);
   if (!rfq) return res.status(404).json({ error: 'Запрос не найден' });
   await rfq.update({

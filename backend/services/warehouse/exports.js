@@ -18,17 +18,25 @@ const PDFDocument = require('pdfkit');
 
 const FONTS_DIR = path.join(__dirname, '..', '..', 'fonts');
 
-// Палитра. Держим здесь, чтобы XLSX и PDF красили статусы одинаково — иначе
-// «красный» в выгрузке и на экране означают разное.
+/**
+ * Оформление выгрузок — строгое, под официальный документооборот.
+ *
+ * Белый фон, чёрные линии, никаких заливок «для красоты»: такой файл кладут в
+ * приложение к акту, распечатывают и подписывают. Синяя шапка таблицы и голубая
+ * подсветка групп, которые были здесь раньше, годятся для экрана, но в документе
+ * читаются как декорация — а на чёрно-белой печати превращаются в серые полосы,
+ * сквозь которые не видно текста.
+ *
+ * Заливка осталась ровно в одном случае — красная зона: просрочка и остаток ниже
+ * минимума. Это не оформление, а само содержание строки, и в ТЗ оно названо
+ * условным форматированием отклонений. Все остальные зоны различаются словом в
+ * колонке «Статус», а не цветом.
+ */
 const COLORS = {
-  headerBg: 'FF1E3A5F',
-  headerFg: 'FFFFFFFF',
-  totalBg: 'FFE8EEF6',
-  groupBg: 'FFF4F7FB',
-  red: 'FFFFD5D5',
-  orange: 'FFFFE8CC',
-  yellow: 'FFFFF6CC',
-  green: 'FFE3F5E3',
+  line: 'FF000000',
+  // Единственная допустимая заливка: критическое отклонение. Тон светлый, чтобы
+  // чёрный текст поверх читался и в печати.
+  criticalBg: 'FFF2DCDB',
 };
 
 /**
@@ -41,53 +49,78 @@ async function toXlsx({ code, header, items, totals, columns }) {
   wb.created = new Date();
 
   const ws = wb.addWorksheet('Отчёт', {
-    views: [{ state: 'frozen', ySplit: headerRows(header) + 1 }],
-    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, paperSize: 9 },
+    pageSetup: {
+      orientation: 'landscape', fitToPage: true, fitToWidth: 1, paperSize: 9,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+    },
   });
 
   const cols = columns && columns.length ? columns : inferColumns(items);
   const lastCol = cols.length;
 
   // ── Шапка отчёта (единый блок из раздела 1.0 ТЗ) ────────────────────────────
+  // Раскладка макета: слева юрлицо, название отчёта и период; справа — кто, когда
+  // и чем сформировал. Правый блок начинается с середины таблицы, поэтому у узких
+  // отчётов он прижимается к последней колонке, а не уезжает за край листа.
+  const rightCol = Math.max(2, Math.min(lastCol, Math.ceil(lastCol / 2) + 1));
+  const put = (row, col, value, font, alignment) => {
+    const cell = ws.getCell(row, col);
+    cell.value = value;
+    if (font) cell.font = font;
+    if (alignment) cell.alignment = alignment;
+    return cell;
+  };
+  const LEFT = { horizontal: 'left', vertical: 'middle' };
+  const RIGHT = { horizontal: 'right', vertical: 'middle' };
+
   let r = 1;
-  const title = ws.getCell(r, 1);
-  title.value = header?.title || code;
-  title.font = { size: 14, bold: true };
-  ws.mergeCells(r, 1, r, lastCol);
+  put(r, 1, header?.organization || 'Организация не указана', { size: 10 }, LEFT);
+  ws.mergeCells(r, 1, r, rightCol - 1);
+  put(r, rightCol, 'Отчёт сформирован:', { size: 9 }, RIGHT);
+  ws.mergeCells(r, rightCol, r, lastCol);
   r++;
 
-  if (header?.period) {
-    ws.getCell(r, 1).value = `за период ${fmtDate(header.period.from)} — ${fmtDate(header.period.to)}`;
-    ws.mergeCells(r, 1, r, lastCol);
-    r++;
-  }
+  put(r, 1, (header?.title || code).toUpperCase(), { size: 13, bold: true }, LEFT);
+  ws.mergeCells(r, 1, r, rightCol - 1);
+  put(r, rightCol, fmtDateTime(header?.generatedAt || new Date()), { size: 9 }, RIGHT);
+  ws.mergeCells(r, rightCol, r, lastCol);
+  r++;
 
-  ws.getCell(r, 1).value =
-    `Отчёт сформирован: ${fmtDateTime(header?.generatedAt || new Date())} · ` +
-    `Пользователь: ${header?.generatedBy || '—'} · Система: Alfa-Wiki, складской учёт`;
-  ws.getCell(r, 1).font = { size: 9, color: { argb: 'FF64748B' } };
+  put(r, 1, header?.period
+    ? `за период ${fmtDate(header.period.from)} — ${fmtDate(header.period.to)}`
+    : 'на текущую дату', { size: 10 }, LEFT);
+  ws.mergeCells(r, 1, r, rightCol - 1);
+  put(r, rightCol, `Пользователь: ${header?.generatedBy || '—'}`, { size: 9 }, RIGHT);
+  ws.mergeCells(r, rightCol, r, lastCol);
+  r++;
+
+  put(r, rightCol, `Система: ${header?.system || 'Alfa-Wiki, складской учёт'}`, { size: 9 }, RIGHT);
+  ws.mergeCells(r, rightCol, r, lastCol);
+  r++;
+  r++;
+
+  put(r, 1, `Отбор: ${header?.filterText || 'без дополнительного отбора'}`, { size: 9 }, LEFT);
   ws.mergeCells(r, 1, r, lastCol);
   r++;
 
   if (header?.oneCNote) {
-    ws.getCell(r, 1).value = header.oneCNote;
-    ws.getCell(r, 1).font = { size: 9, italic: true, color: { argb: 'FF94A3B8' } };
+    put(r, 1, header.oneCNote, { size: 9, italic: true }, LEFT);
     ws.mergeCells(r, 1, r, lastCol);
     r++;
   }
   r++;
 
   // ── Заголовки колонок ──────────────────────────────────────────────────────
+  // Без заливки: строгий документ отделяет шапку начертанием и рамкой, а не цветом.
   const headerRow = ws.getRow(r);
   cols.forEach((c, i) => {
     const cell = headerRow.getCell(i + 1);
     cell.value = c.title;
-    cell.font = { bold: true, color: { argb: COLORS.headerFg } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.headerBg } };
+    cell.font = { bold: true };
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    cell.border = thinBorder();
+    cell.border = boxBorder({ bottom: 'medium', top: 'medium' });
   });
-  headerRow.height = 28;
+  headerRow.height = 30;
   const headerRowIndex = r;
   r++;
 
@@ -98,25 +131,25 @@ async function toXlsx({ code, header, items, totals, columns }) {
       const cell = row.getCell(i + 1);
       cell.value = formatValue(item[c.key], c.type);
       cell.numFmt = numberFormat(c.type);
-      cell.alignment = { horizontal: alignOf(c.type), vertical: 'middle' };
-      cell.border = thinBorder();
+      cell.alignment = { horizontal: alignOf(c.type), vertical: 'middle', wrapText: false };
+      cell.border = boxBorder();
     });
 
     // Группировка: уровень приходит в самой строке. Excel рисует «плюсики» слева.
     if (item.__level) row.outlineLevel = Math.min(7, item.__level);
+    // Уровни иерархии различаются начертанием, а не фоном: верхние — жирным,
+    // нижние — обычным. На печати это работает, заливка — нет.
     if (item.__isGroup) {
-      row.eachCell(c => {
-        c.font = { bold: true };
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.groupBg } };
-      });
+      row.eachCell(c => { c.font = { bold: true }; });
     }
 
-    // Условное форматирование статусов — заливкой строки, а не отдельным
-    // значком: значок в XLSX не отфильтруешь и не отсортируешь.
+    // Единственное условное форматирование: критическое отклонение. Просрочка и
+    // остаток ниже минимума — то, ради чего отчёт открывают, и их видно до чтения.
     const zone = item.zone || item.status || item.stockStatus;
-    const fill = zoneFill(zone);
-    if (fill && !item.__isGroup) {
-      row.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }; });
+    if (!item.__isGroup && (zone === 'red' || zone === 'below')) {
+      row.eachCell(c => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.criticalBg } };
+      });
     }
     r++;
   }
@@ -132,12 +165,32 @@ async function toXlsx({ code, header, items, totals, columns }) {
         cell.numFmt = numberFormat(c.type);
       }
       cell.font = { bold: true };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.totalBg } };
-      cell.border = thinBorder();
+      // Итог отделяется двойной линией сверху — так его набирают в бухгалтерских
+      // формах, и это читается на любой печати.
+      cell.border = boxBorder({ top: 'double', bottom: 'medium' });
       cell.alignment = { horizontal: alignOf(c.type) };
     });
     r++;
   }
+
+  // Рамка вокруг всей таблицы: левый и правый край — жирной линией.
+  for (let row = headerRowIndex; row < r; row++) {
+    for (const col of [1, lastCol]) {
+      const cell = ws.getCell(row, col);
+      const border = { ...(cell.border || boxBorder()) };
+      border[col === 1 ? 'left' : 'right'] = { style: 'medium', color: { argb: COLORS.line } };
+      cell.border = border;
+    }
+  }
+
+  // Заморозка ставится по фактическому номеру строки заголовков, а не по формуле
+  // от состава шапки: формула жила отдельно от кода, который эти строки пишет, и
+  // при добавлении строки «Отбор» заголовки таблицы уехали из закреплённой области.
+  ws.views = [{ state: 'frozen', ySplit: headerRowIndex }];
+
+  // Заголовки повторяются на каждой печатной странице — иначе со второго листа
+  // непонятно, что в колонках.
+  ws.pageSetup.printTitlesRow = `${headerRowIndex}:${headerRowIndex}`;
 
   // Автофильтр по строке заголовков и ширина колонок по содержимому.
   ws.autoFilter = {
@@ -159,46 +212,41 @@ async function toXlsx({ code, header, items, totals, columns }) {
   const params = wb.addWorksheet('Параметры отбора');
   params.columns = [{ width: 32 }, { width: 60 }];
   const paramRows = [
+    ['Организация', header?.organization || '—'],
     ['Отчёт', header?.title || code],
     ['Код отчёта', code],
     ['Период', header?.period ? `${fmtDate(header.period.from)} — ${fmtDate(header.period.to)}` : 'не задан'],
     ['Сформирован', fmtDateTime(header?.generatedAt || new Date())],
     ['Пользователь', header?.generatedBy || '—'],
+    ['Система', header?.system || 'Alfa-Wiki, складской учёт'],
     ['Строк в отчёте', items.length],
     ['Интеграция с 1С', 'не подключена'],
-    ...Object.entries(header?.filters || {})
-      .filter(([, v]) => v !== undefined && v !== null && v !== '')
-      .map(([k, v]) => [`Фильтр: ${k}`, String(v)]),
+    // Разобранный отбор, а не сырой query: идентификаторы здесь уже развёрнуты в
+    // названия — по ним через месяц видно, какой именно срез был выгружен.
+    ...(header?.filterList?.length
+      ? header.filterList.map(f => [`Отбор: ${f.label}`, f.value])
+      : [['Отбор', 'без дополнительного отбора']]),
   ];
   paramRows.forEach(([k, v], i) => {
     params.getCell(i + 1, 1).value = k;
     params.getCell(i + 1, 1).font = { bold: true };
+    params.getCell(i + 1, 1).border = boxBorder();
     params.getCell(i + 1, 2).value = v;
+    params.getCell(i + 1, 2).border = boxBorder();
   });
 
   return wb.xlsx.writeBuffer();
 }
 
-function headerRows(header) {
-  let n = 3; // заголовок + сформирован + пустая
-  if (header?.period) n++;
-  if (header?.oneCNote) n++;
-  return n;
-}
-
-function thinBorder() {
-  const s = { style: 'thin', color: { argb: 'FFCBD5E1' } };
-  return { top: s, left: s, bottom: s, right: s };
-}
-
-function zoneFill(zone) {
-  switch (zone) {
-    case 'red': case 'below': return COLORS.red;
-    case 'orange': return COLORS.orange;
-    case 'yellow': case 'near': return COLORS.yellow;
-    case 'green': case 'ok': return COLORS.green;
-    default: return null;
-  }
+/** Чёрная рамка ячейки. Толщина краёв задаётся точечно: шапка, итог, края листа. */
+function boxBorder(overrides = {}) {
+  const line = style => ({ style, color: { argb: COLORS.line } });
+  return {
+    top: line(overrides.top || 'thin'),
+    left: line(overrides.left || 'thin'),
+    bottom: line(overrides.bottom || 'thin'),
+    right: line(overrides.right || 'thin'),
+  };
 }
 
 function numberFormat(type) {
@@ -207,21 +255,24 @@ function numberFormat(type) {
     case 'qty': return '# ##0.000';
     case 'number': return '# ##0';
     case 'percent': return '+0.0%;-0.0%;0.0%';
+    // Доля — не изменение: знак «+» перед ней читался бы как рост.
+    case 'share': return '0.0%';
     case 'date': return 'dd.mm.yyyy';
+    case 'datetime': return 'dd.mm.yyyy hh:mm';
     default: return undefined;
   }
 }
 
 function alignOf(type) {
-  return ['money', 'qty', 'number', 'percent'].includes(type) ? 'right'
-    : type === 'date' ? 'center' : 'left';
+  return ['money', 'qty', 'number', 'percent', 'share', 'deviation'].includes(type) ? 'right'
+    : ['date', 'datetime'].includes(type) ? 'center' : 'left';
 }
 
 function formatValue(v, type) {
   if (v === null || v === undefined) return null;
-  if (type === 'percent') return Number(v) / 100;
-  if (['money', 'qty', 'number'].includes(type)) return Number(v);
-  if (type === 'date') return v ? new Date(v) : null;
+  if (type === 'percent' || type === 'share') return Number(v) / 100;
+  if (['money', 'qty', 'number', 'deviation'].includes(type)) return Number(v);
+  if (type === 'date' || type === 'datetime') return v ? new Date(v) : null;
   if (typeof v === 'object') return JSON.stringify(v);
   return v;
 }
@@ -261,28 +312,60 @@ async function toPdf({ code, header, items, totals, columns }) {
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
       const colWidth = pageWidth / cols.length;
 
-      // Шапка
-      doc.font('DejaVu-Bold').fontSize(13).text(header?.title || code, { align: 'center' });
-      if (header?.period) {
-        doc.font('DejaVu').fontSize(9)
-          .text(`за период ${fmtDate(header.period.from)} — ${fmtDate(header.period.to)}`, { align: 'center' });
-      }
-      doc.font('DejaVu').fontSize(7).fillColor('#64748b')
-        .text(`Сформирован: ${fmtDateTime(header?.generatedAt || new Date())} · Пользователь: ${header?.generatedBy || '—'}`, { align: 'center' });
-      if (header?.oneCNote) doc.fontSize(7).text(header.oneCNote, { align: 'center' });
-      doc.fillColor('#000').moveDown(0.8);
+      // ── Шапка по макету раздела 1.0 ТЗ ─────────────────────────────────────
+      // Слева юрлицо, название и период; справа — кем, когда и чем сформирован.
+      // Обе колонки рисуются от одной базовой ординаты, чтобы строки совпали.
+      const left = doc.page.margins.left;
+      const half = pageWidth / 2;
+      const top = doc.y;
 
+      doc.font('DejaVu').fontSize(8).text(header?.organization || 'Организация не указана', left, top, { width: half });
+      doc.font('DejaVu-Bold').fontSize(12)
+        .text((header?.title || code).toUpperCase(), left, top + 12, { width: half });
+      doc.font('DejaVu').fontSize(8).text(
+        header?.period
+          ? `за период ${fmtDate(header.period.from)} — ${fmtDate(header.period.to)}`
+          : 'на текущую дату',
+        left, top + 28, { width: half }
+      );
+
+      const rightX = left + half;
+      doc.fontSize(8);
+      doc.text('Отчёт сформирован:', rightX, top, { width: half, align: 'right' });
+      doc.text(fmtDateTime(header?.generatedAt || new Date()), rightX, top + 10, { width: half, align: 'right' });
+      doc.text(`Пользователь: ${header?.generatedBy || '—'}`, rightX, top + 20, { width: half, align: 'right' });
+      doc.text(`Система: ${header?.system || 'Alfa-Wiki, складской учёт'}`, rightX, top + 30, { width: half, align: 'right' });
+
+      doc.y = top + 46;
+      doc.fontSize(8).text(`Отбор: ${header?.filterText || 'без дополнительного отбора'}`, left, doc.y, { width: pageWidth });
+      if (header?.oneCNote) doc.fontSize(7).text(header.oneCNote, left, doc.y, { width: pageWidth });
+      doc.moveDown(0.8);
+
+      // Заголовок таблицы: без заливки, отбит линиями сверху и снизу.
       const drawHeader = () => {
         const y = doc.y;
-        doc.rect(doc.page.margins.left, y, pageWidth, 18).fill('#1e3a5f');
-        doc.fillColor('#fff').font('DejaVu-Bold').fontSize(6.5);
+        doc.lineWidth(1).strokeColor('#000')
+          .moveTo(left, y).lineTo(left + pageWidth, y).stroke();
+        doc.font('DejaVu-Bold').fontSize(6.5).fillColor('#000');
         cols.forEach((c, i) => {
-          doc.text(String(c.title), doc.page.margins.left + i * colWidth + 2, y + 5, {
+          doc.text(String(c.title), left + i * colWidth + 2, y + 4, {
             width: colWidth - 4, height: 12, ellipsis: true,
           });
         });
-        doc.fillColor('#000').font('DejaVu').fontSize(6.5);
+        doc.lineWidth(1).moveTo(left, y + 17).lineTo(left + pageWidth, y + 17).stroke();
+        doc.font('DejaVu').fontSize(6.5);
         doc.y = y + 20;
+      };
+
+      // Разлиновка ячеек — тонкими чёрными линиями: строгий документ держится на
+      // сетке, а не на чередующихся фонах.
+      const drawRowGrid = (y, height) => {
+        doc.lineWidth(0.3).strokeColor('#000');
+        doc.moveTo(left, y + height).lineTo(left + pageWidth, y + height).stroke();
+        for (let i = 0; i <= cols.length; i++) {
+          const x = left + i * colWidth;
+          doc.moveTo(x, y).lineTo(x, y + height).stroke();
+        }
       };
 
       drawHeader();
@@ -293,34 +376,43 @@ async function toPdf({ code, header, items, totals, columns }) {
           drawHeader();
         }
         const y = doc.y;
+        // Единственная заливка — критическое отклонение: просрочка и остаток ниже
+        // минимума. Остальные зоны различаются словом в колонке «Статус».
         const zone = item.zone || item.status || item.stockStatus;
-        const bg = pdfZoneColor(zone);
-        if (bg) doc.rect(doc.page.margins.left, y - 1, pageWidth, 12).fill(bg).fillColor('#000');
+        if (!item.__isGroup && (zone === 'red' || zone === 'below')) {
+          doc.rect(left, y - 1, pageWidth, 12).fill('#f2dcdb');
+        }
+        doc.fillColor('#000');
         if (item.__isGroup) doc.font('DejaVu-Bold');
 
         cols.forEach((c, i) => {
           const raw = item[c.key];
           const text = pdfCell(raw, c.type);
-          doc.text(text, doc.page.margins.left + i * colWidth + 2, y + 1, {
+          doc.text(text, left + i * colWidth + 2, y + 1, {
             width: colWidth - 4, height: 10, ellipsis: true,
             align: alignOf(c.type) === 'right' ? 'right' : 'left',
           });
         });
         if (item.__isGroup) doc.font('DejaVu');
+        drawRowGrid(y - 1, 12);
         doc.y = y + 12;
       }
 
       if (totals && Object.keys(totals).length) {
         const y = doc.y + 2;
-        doc.rect(doc.page.margins.left, y, pageWidth, 14).fill('#e8eef6').fillColor('#000');
-        doc.font('DejaVu-Bold').fontSize(7);
-        doc.text('ИТОГО', doc.page.margins.left + 2, y + 3, { width: colWidth - 4 });
+        // Двойная линия над итогом — как в бухгалтерских формах.
+        doc.lineWidth(0.8).strokeColor('#000')
+          .moveTo(left, y).lineTo(left + pageWidth, y).stroke()
+          .moveTo(left, y + 2).lineTo(left + pageWidth, y + 2).stroke();
+        doc.fillColor('#000').font('DejaVu-Bold').fontSize(7);
+        doc.text('ИТОГО', left + 2, y + 5, { width: colWidth - 4 });
         cols.forEach((c, i) => {
           if (totals[c.key] === undefined || i === 0) return;
-          doc.text(pdfCell(totals[c.key], c.type), doc.page.margins.left + i * colWidth + 2, y + 3, {
+          doc.text(pdfCell(totals[c.key], c.type), left + i * colWidth + 2, y + 5, {
             width: colWidth - 4, align: 'right', ellipsis: true,
           });
         });
+        doc.lineWidth(1).moveTo(left, y + 16).lineTo(left + pageWidth, y + 16).stroke();
         doc.font('DejaVu');
       }
 
@@ -337,22 +429,15 @@ async function toPdf({ code, header, items, totals, columns }) {
   });
 }
 
-function pdfZoneColor(zone) {
-  switch (zone) {
-    case 'red': case 'below': return '#ffd5d5';
-    case 'orange': return '#ffe8cc';
-    case 'yellow': case 'near': return '#fff6cc';
-    default: return null;
-  }
-}
-
 function pdfCell(v, type) {
   if (v === null || v === undefined) return '—';
   if (type === 'money') return Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (type === 'qty') return Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 3 });
-  if (type === 'number') return Number(v).toLocaleString('ru-RU');
+  if (type === 'number' || type === 'deviation') return Number(v).toLocaleString('ru-RU');
   if (type === 'percent') return `${Number(v) > 0 ? '+' : ''}${Number(v).toFixed(1)} %`;
+  if (type === 'share') return `${Number(v).toFixed(1)} %`;
   if (type === 'date') return fmtDate(v);
+  if (type === 'datetime') return v ? new Date(v).toLocaleString('ru-RU') : '—';
   if (typeof v === 'object') return '';
   return String(v);
 }

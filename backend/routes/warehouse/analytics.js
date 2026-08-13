@@ -13,7 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { WhFloor, WhBuilding, MedCenter, WhRoom, WhFloorShape, WhDepartment } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
-const { requireWarehouse } = require('../../services/warehouse/access');
+const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
 const utilization = require('../../services/warehouse/utilization');
 
 /**
@@ -21,7 +21,7 @@ const utilization = require('../../services/warehouse/utilization');
  * Отдаётся одним ответом — карта бесполезна без обоих кусков, а два запроса
  * давали бы мигание при переключении этажей.
  */
-router.get('/heatmap', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/heatmap', authenticate, requireWarehouse(), requireReport('RPT-HEATMAP'), async (req, res) => {
   try {
     const { floorId, from, to, metric = 'utilization' } = req.query;
     if (!floorId) return res.status(400).json({ error: 'Нужен floorId' });
@@ -58,6 +58,7 @@ router.get('/heatmap', authenticate, requireWarehouse('viewer'), async (req, res
         id: floor.id, number: floor.number, name: floor.name,
         planWidthM: Number(floor.planWidthM), planHeightM: Number(floor.planHeightM),
         planBgUrl: floor.planBgUrl, planBgOpacity: Number(floor.planBgOpacity),
+        outline: floor.outline || {},
         building: floor.building?.name,
         medCenter: floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
       },
@@ -126,7 +127,7 @@ function metricZone(r, metric) {
  * Пересчёт загрузки. Ручной запуск нужен и для демонстрации, и после правки
  * сопоставления кабинетов с МИС — иначе изменения не видны до следующей ночи.
  */
-router.post('/utilization/recompute', authenticate, requireWarehouse('admin'), async (req, res) => {
+router.post('/utilization/recompute', authenticate, requireWarehouse('canEditPlans'), async (req, res) => {
   try {
     const { from, to } = req.body;
     const start = from ? new Date(from) : new Date(Date.now() - 30 * 86400000);
@@ -162,7 +163,7 @@ router.post('/utilization/recompute', authenticate, requireWarehouse('admin'), a
  * Простаивающее оборудование. Честная замена «рекомендациям по перераспределению»:
  * говорим, что не двигалось и сколько дней, а решение о переносе оставляем людям.
  */
-router.get('/idle-assets', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/idle-assets', authenticate, requireWarehouse(), requireReport('RPT-IDLE'), async (req, res) => {
   try {
     const { medCenterId, days } = req.query;
     const rows = await utilization.idleAssets({
@@ -186,7 +187,7 @@ router.get('/idle-assets', authenticate, requireWarehouse('viewer'), async (req,
  * кабинетов и активов в каждом медцентре. Нужна экрану выбора медцентра, чтобы
  * карточки не были пустыми плитками.
  */
-router.get('/overview', authenticate, requireWarehouse('viewer'), async (req, res) => {
+router.get('/overview', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const { sequelize } = require('../../models');
     const [rows] = await sequelize.query(`

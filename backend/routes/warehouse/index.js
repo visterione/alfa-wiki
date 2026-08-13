@@ -15,7 +15,8 @@ const express = require('express');
 const router = express.Router();
 
 const { authenticate } = require('../../middleware/auth');
-const { resolveLevel, rolePermissions, hasModuleAccess } = require('../../services/warehouse/access');
+const { resolveAccess, hasModuleAccess } = require('../../services/warehouse/access');
+const roles = require('../../services/warehouse/roles');
 
 /**
  * Что этому пользователю доступно в модуле. Клиент дёргает первым делом и по
@@ -24,22 +25,28 @@ const { resolveLevel, rolePermissions, hasModuleAccess } = require('../../servic
 router.get('/access', authenticate, async (req, res) => {
   try {
     if (!hasModuleAccess(req.user)) {
-      return res.json({ allowed: false, level: 'none' });
+      return res.json({ allowed: false, level: 'none', roles: [] });
     }
-    const level = await resolveLevel(req.user);
+    const access = await resolveAccess(req.user);
+    const roleList = [...access.roles];
+
     res.json({
       allowed: true,
-      level,
-      perms: rolePermissions(req.user),
-      capabilities: {
-        canEditLocations: level === 'admin',
-        canEditPlans:     level === 'admin',
-        canManageAssets:  ['admin', 'warehouse'].includes(level),
-        canIssue:         ['admin', 'warehouse', 'department'].includes(level),
-        canInventory:     ['admin', 'warehouse', 'department'].includes(level),
-        canPrintLabels:   ['admin', 'warehouse'].includes(level),
-        canSeeCosts:      ['admin', 'warehouse'].includes(level),
-      },
+      // Роли из матрицы ТЗ: назначенные ролью портала и выведенные из данных.
+      roles: roleList.map(k => ({
+        key: k,
+        label: roles.WAREHOUSE_ROLES[k]?.label || k,
+        kind: roles.WAREHOUSE_ROLES[k]?.kind,
+      })),
+      scope: access.scope,
+      capabilities: access.capabilities,
+      // Какие отчёты человек вправе открыть: экран отчётов строит по этому списку,
+      // а не показывает всё подряд с ошибкой при клике.
+      reports: roles.readableReports(access.roles),
+      // Уровень оставлен для экранов, написанных до матрицы.
+      level: access.capabilities.canManageAccess ? 'admin'
+        : access.capabilities.canManageCatalog ? 'warehouse'
+        : access.capabilities.canIssue ? 'department' : 'viewer',
       // Обмена с 1С нет — сообщаем это один раз здесь, чтобы каждый экран не
       // выяснял отдельно и не рисовал пустые блоки сверки.
       integrations: { oneC: { enabled: false, reason: 'Контракт со стороны 1С не определён' } },
@@ -56,5 +63,7 @@ router.use('/assets',     require('./assets'));
 router.use('/operations', require('./operations'));
 router.use('/reports',    require('./reports'));
 router.use('/analytics',  require('./analytics'));
+router.use('/permissions', require('./permissions'));
+router.use('/osv',        require('./osv'));
 
 module.exports = router;
