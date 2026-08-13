@@ -856,6 +856,28 @@
 .wh-tool:hover:not(:disabled):not(.is-active) { background: var(--wh-bg); color: var(--wh-text); }
 .wh-tool.is-active { background: var(--wh-primary); border-color: var(--wh-primary); color: #fff; }
 .wh-tool:disabled { opacity: .35; cursor: not-allowed; }
+/* Кнопка размеров переключает три состояния, и по одной подсветке «выкл / у
+   выбранного / у всех» не различить. Метка говорит, какое из двух включённых. */
+.wh-tool { position: relative; }
+.wh-tool__badge {
+  position: absolute; right: -3px; bottom: -4px;
+  padding: 0 3px; border-radius: 4px;
+  background: var(--wh-text); color: #fff;
+  font-size: 8px; font-weight: 700; line-height: 11px; letter-spacing: .2px;
+}
+
+/* Обмер выбранного помещения в боковой панели редактора */
+.wh-metrics {
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--wh-bg); border: 1px solid var(--wh-border);
+}
+.wh-metrics__row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font-size: 12px; color: var(--wh-text-secondary);
+}
+.wh-metrics__row + .wh-metrics__row { margin-top: 3px; }
+.wh-metrics__row b { font-size: 13px; color: var(--wh-text); }
+.wh-metrics .wh-hint { margin-top: 6px; }
 
 .wh-shape-palette { display: flex; flex-direction: column; gap: 6px; }
 .wh-shape-palette__group { display: flex; flex-wrap: wrap; gap: 4px; }

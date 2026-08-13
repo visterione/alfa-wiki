@@ -3,10 +3,12 @@ import toast from 'react-hot-toast';
 import {
   Save, Square, MousePointer2, Grid3x3, Trash2, Plus, Undo2, PenLine,
   Link2, AlertTriangle, Info, Building2, Layers, DoorOpen, Boxes,
-  Type, Pencil, X, Check, ChevronRight,
+  Type, Pencil, X, Check, ChevronRight, Ruler,
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
-import FloorPlanSvg, { polygonArea, GRID_STEP, SHAPE_KINDS } from '../../components/warehouse/FloorPlanSvg';
+import FloorPlanSvg, {
+  polygonArea, polygonBounds, GRID_STEP, SHAPE_KINDS,
+} from '../../components/warehouse/FloorPlanSvg';
 
 /**
  * Редактор поэтажного плана и справочник локаций.
@@ -67,6 +69,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   const [snapshot, setSnapshot] = useState(null);
   const [tool, setTool] = useState({ mode: 'select' });
   const [showGrid, setShowGrid] = useState(true);
+  const [dimensions, setDimensions] = useState('selected');
   const [selected, setSelected] = useState({ kind: null, id: null });
   const [saving, setSaving] = useState(false);
   const [misRooms, setMisRooms] = useState(null);
@@ -598,6 +601,21 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                       onClick={() => setShowGrid(g => !g)} title={`Сетка ${GRID_STEP} м`}>
                 <Grid3x3 size={16} />
               </button>
+              {/* Три состояния, а не галочка: размеры всех помещений сразу нужны
+                  при обмере этажа, размеры одного — при правке, и ни то ни другое
+                  не годится постоянно. */}
+              <button className={`wh-tool ${dimensions !== 'none' ? 'is-active' : ''}`}
+                      onClick={() => setDimensions(d => (
+                        d === 'selected' ? 'all' : d === 'all' ? 'none' : 'selected'
+                      ))}
+                      title={{
+                        none: 'Размеры выключены — включить у выбранного',
+                        selected: 'Размеры выбранного — показать у всех',
+                        all: 'Размеры всех помещений — выключить',
+                      }[dimensions]}>
+                <Ruler size={16} />
+                {dimensions === 'all' && <span className="wh-tool__badge">все</span>}
+              </button>
             </div>
 
             <div className="wh-toolgroup">
@@ -711,6 +729,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                 )}
                 editOutline={editOutline}
                 showGrid={showGrid}
+                dimensions={dimensions}
                 selectedRoomId={selected.kind === 'room' ? selected.id : null}
                 selectedShapeId={selected.kind === 'shape' ? selected.id : null}
                 colorOf={room => room.department?.color
@@ -1019,6 +1038,8 @@ function RoomForm({ room, departments, onSave, onClearGeometry, hasGeometry: geo
           </select>
         </label>
       </div>
+      {geo && <Metrics points={room.plan.points} />}
+
       <p className="wh-hint">
         Ёмкость — знаменатель загрузки. Если кабинет показывает больше 100 %, значит
         он работает дольше заявленного, и это поле занижено.
@@ -1050,6 +1071,43 @@ function RoomForm({ room, departments, onSave, onClearGeometry, hasGeometry: geo
     </div>
   );
 }
+
+/**
+ * Обмер помещения в боковой панели.
+ *
+ * Габарит и площадь — разные величины, и у Г-образной комнаты они расходятся:
+ * прямоугольник 6 × 4 даёт 24 м² габарита при, скажем, 19 м² настоящей площади.
+ * Поэтому подписаны они словами, а не «6 × 4 = 24»: последнее было бы неправдой,
+ * а на плане по этим цифрам заказывают мебель.
+ */
+function Metrics({ points }) {
+  const { width, depth } = polygonBounds(points);
+  const area = polygonArea(points);
+  const box = width * depth;
+  // Отклонение больше пары процентов — это уже не погрешность обвода, а форма.
+  const isRect = points.length === 4 && box > 0 && Math.abs(area - box) / box < 0.02;
+
+  return (
+    <div className="wh-metrics">
+      <div className="wh-metrics__row">
+        <span>{isRect ? 'Размер' : 'Габарит'}</span>
+        <b>{fmt1(width)} × {fmt1(depth)} м</b>
+      </div>
+      <div className="wh-metrics__row">
+        <span>Площадь</span>
+        <b>{fmt1(area)} м²</b>
+      </div>
+      {!isRect && (
+        <div className="wh-hint">
+          Помещение непрямоугольное: габарит — это описанный прямоугольник, площадь
+          меньше него. Длины стен подписаны на самом плане.
+        </div>
+      )}
+    </div>
+  );
+}
+
+const fmt1 = n => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
 
 function pickRoomForm(room) {
   return {

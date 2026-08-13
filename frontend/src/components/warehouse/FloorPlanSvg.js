@@ -87,6 +87,17 @@ const round2 = n => Math.round(n * 100) / 100;
 /** Метры для подписи: без хвостовых нулей — «19,8», а не «19,80». */
 const fmtM = n => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
 
+/** Габарит многоугольника — прямоугольник, в который он вписан. */
+export function polygonBounds(points) {
+  if (!Array.isArray(points) || !points.length) return { width: 0, depth: 0 };
+  const xs = points.map(p => p[0]);
+  const ys = points.map(p => p[1]);
+  return {
+    width: Math.max(...xs) - Math.min(...xs),
+    depth: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
 /**
  * Лежит ли точка внутри многоугольника. Алгоритм трассировки луча: считаем, сколько
  * раз горизонтальный луч из точки пересекает стороны. Чётное — снаружи, нечётное —
@@ -154,6 +165,94 @@ export function polygonArea(points) {
   return Math.abs(a / 2);
 }
 
+/**
+ * Размеры сторон помещения — как на строительном чертеже.
+ *
+ * Подписывается КАЖДАЯ сторона, а не «ширина и длина». Для прямоугольного
+ * кабинета это одно и то же, но у Г-образного ширины и длины не существует:
+ * таких величин там просто нет, а размеры сторон есть всегда и однозначны.
+ * Габарит (прямоугольник, в который помещение вписано) показывается отдельно, в
+ * боковой панели, и назван габаритом — путать его с размером комнаты нельзя.
+ *
+ * Размерная линия идёт ВНУТРЬ помещения, а не наружу, как принято в чертеже.
+ * Причина в плотности плана: кабинеты стоят стена к стене, и вынесенные наружу
+ * размеры каждого накладывались бы на соседние. Внутри места всегда ровно
+ * столько, сколько нужно самой комнате.
+ *
+ * Направление «внутрь» вычисляется проверкой точки, а не ориентацией обхода:
+ * порядок вершин у нарисованных мышью помещений произвольный, а у невыпуклых
+ * (те самые «Г») нормаль по обходу для части сторон смотрит наружу.
+ */
+function Dimensions({ points, k, color = '#41506380' }) {
+  if (!Array.isArray(points) || points.length < 3) return null;
+
+  // Отступ размерной линии от стены. Ограничен долей меньшей стороны помещения:
+  // в узком коридоре 1,4 м постоянный отступ 0,42 м увёл бы линию за
+  // противоположную стену, проверка «внутрь» не нашла бы ни одной подходящей
+  // нормали, и размер нарисовался бы снаружи, поверх соседнего кабинета.
+  const { width: bw, depth: bd } = polygonBounds(points);
+  const offset = Math.min(0.42 * k, Math.min(bw, bd) * 0.22);
+  const tick = 0.16 * k;        // засечки на концах
+  const fontSize = 0.5 * k;
+  const items = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+
+    // Стороны короче полутора экранных единиц не подписываем: при отдалении
+    // подписи налезли бы друг на друга и превратили план в кашу из цифр. Порог
+    // задан в метрах через k, поэтому зависит от масштаба, а не от размера
+    // комнаты — на приближении подписывается и ниша в 40 см.
+    if (len < 1.5 * k) continue;
+
+    const ux = dx / len;
+    const uy = dy / len;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+
+    // Нормаль, направленная внутрь: пробуем обе и берём ту, что попала в контур.
+    let nx = -uy;
+    let ny = ux;
+    if (!pointInPolygon([mx + nx * offset, my + ny * offset], points)) {
+      nx = -nx; ny = -ny;
+    }
+
+    const ax = x1 + nx * offset;
+    const ay = y1 + ny * offset;
+    const bx = x2 + nx * offset;
+    const by = y2 + ny * offset;
+
+    // Текст всегда читается слева направо: подпись, перевёрнутую вверх ногами,
+    // на чертеже не оставляют. Угол приводится к (−90°, 90°] — вертикальные
+    // стены подписываются снизу вверх, как в чертеже.
+    let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (angle > 90) angle -= 180;
+    else if (angle <= -90) angle += 180;
+
+    items.push(
+      <g key={i} style={{ pointerEvents: 'none' }}>
+        <line x1={ax} y1={ay} x2={bx} y2={by} stroke={color} strokeWidth={0.03 * k} />
+        <line x1={ax - nx * tick} y1={ay - ny * tick} x2={ax + nx * tick} y2={ay + ny * tick}
+              stroke={color} strokeWidth={0.03 * k} />
+        <line x1={bx - nx * tick} y1={by - ny * tick} x2={bx + nx * tick} y2={by + ny * tick}
+              stroke={color} strokeWidth={0.03 * k} />
+        <text x={mx + nx * (offset + 0.28 * k)} y={my + ny * (offset + 0.28 * k)}
+              transform={`rotate(${angle} ${mx + nx * (offset + 0.28 * k)} ${my + ny * (offset + 0.28 * k)})`}
+              textAnchor="middle" dominantBaseline="middle"
+              fontSize={fontSize} fill="#415063" fontWeight="500">
+          {fmtM(len)}
+        </text>
+      </g>
+    );
+  }
+
+  return <g>{items}</g>;
+}
+
 export default function FloorPlanSvg({
   floor,
   rooms = [],
@@ -182,6 +281,10 @@ export default function FloorPlanSvg({
   onOutOfBounds = null,          // попытка нарисовать за пределами этажа
   editOutline = false,           // показывать ручки контура этажа
   showGrid = false,
+  // Размеры сторон: 'none' | 'selected' | 'all'. По умолчанию только у
+  // выбранного помещения — размеры всех сразу читаемы лишь на небольшом этаже,
+  // а на плане в полсотни кабинетов превращаются в шум.
+  dimensions = 'none',
   height = 560,
 }) {
   const svgRef = useRef(null);
@@ -616,6 +719,12 @@ export default function FloorPlanSvg({
                     {labelText}
                   </text>
                 )}
+                {/* Подписи-надписи и линии размеров не имеют: у первых нет площади,
+                    у вторых сторона одна, и её длина уже есть на самой линии. */}
+                {pts.length >= 3 && shape.kind !== 'text'
+                  && (dimensions === 'all' || (dimensions === 'selected' && isSel)) && (
+                  <Dimensions points={pts} k={k} />
+                )}
                 {editable && isSel && pts.map((p, i) => (
                   <circle key={i} cx={p[0]} cy={p[1]} r={0.2 * k}
                           fill="#fff" stroke="#1e3a5f" strokeWidth={0.05 * k}
@@ -684,6 +793,10 @@ export default function FloorPlanSvg({
                         fontSize={subSize} fill="#5a6779" style={{ pointerEvents: 'none' }}>
                     {subText}
                   </text>
+                )}
+
+                {(dimensions === 'all' || (dimensions === 'selected' && isSelected)) && (
+                  <Dimensions points={pts} k={k} />
                 )}
 
                 {/* Ручки вершин — только в редакторе и только у выбранного кабинета */}
