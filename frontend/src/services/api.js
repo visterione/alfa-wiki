@@ -681,6 +681,9 @@ export const executorSettings = {
   save: (data) => api.post('/executor-settings', data),
   getResetPreview: (clinicIds) => api.get('/executor-settings/reset-preview', { params: { clinicIds: clinicIds.join(',') } }),
   resetAll: (clinicIds) => api.post('/executor-settings/reset-all', { clinicIds }),
+  getResetBackups: () => api.get('/executor-settings/reset-backups'),
+  getResetBackup: (id) => api.get(`/executor-settings/reset-backups/${encodeURIComponent(id)}`),
+  restoreResetBackup: (id) => api.post(`/executor-settings/reset-backups/${encodeURIComponent(id)}/restore`),
   getAllDisabledClinics: () => api.get('/executor-settings/disabled-clinics'),
   getScheduleFill: () => api.get('/executor-settings/schedule-fill'),
   setScheduleFill: (misUserId, doctorName, status) => api.post('/executor-settings/schedule-fill', { misUserId, doctorName, status }),
@@ -1037,11 +1040,26 @@ export const warehouseApi = {
   inventory:       (id)           => api.get(`/warehouse/operations/inventory/${id}`),
   countInventory:  (id, data)     => api.post(`/warehouse/operations/inventory/${id}/count`, data),
   closeInventory:  (id, data)     => api.patch(`/warehouse/operations/inventory/${id}/close`, data),
+  postInventoryDifferences: (id, data) => api.post(`/warehouse/operations/inventory/${id}/post-differences`, data),
   rfqList:         ()             => api.get('/warehouse/operations/rfq'),
   createRfq:       (data)         => api.post('/warehouse/operations/rfq', data),
   addQuote:        (id, data)     => api.post(`/warehouse/operations/rfq/${id}/quotes`, data),
   rfqComparison:   (id)           => api.get(`/warehouse/operations/rfq/${id}/comparison`),
   decideRfq:       (id, data)     => api.patch(`/warehouse/operations/rfq/${id}/decide`, data),
+
+  // Ведомость 1С
+  osvImports:      ()             => api.get('/warehouse/osv/imports'),
+  osvImport:       (id, params)   => api.get(`/warehouse/osv/imports/${id}`, { params }),
+  osvDiff:         (id)           => api.get(`/warehouse/osv/imports/${id}/diff`),
+  uploadOsv:       (formData)     => api.post('/warehouse/osv/imports', formData, {
+                                      headers: { 'Content-Type': 'multipart/form-data' } }),
+  applyOsv:        (id)           => api.post(`/warehouse/osv/imports/${id}/apply`),
+  deleteOsv:       (id)           => api.delete(`/warehouse/osv/imports/${id}`),
+  osvMapping:      (params)       => api.get('/warehouse/osv/mapping', { params }),
+  osvMappingLines: (params)       => api.get('/warehouse/osv/mapping/lines', { params }),
+  saveOsvMapping:  (data)         => api.put('/warehouse/osv/mapping', data),
+  deleteOsvMapping:(id)           => api.delete(`/warehouse/osv/mapping/${id}`),
+  materializeOsv:  (id, data)     => api.post(`/warehouse/osv/imports/${id}/materialize`, data),
 
   // Отчёты
   turnover:        (params)       => api.get('/warehouse/reports/turnover', { params }),
@@ -1051,9 +1069,17 @@ export const warehouseApi = {
   reliability:     ()             => api.get('/warehouse/reports/reliability'),
   transferMatrix:  (params)       => api.get('/warehouse/reports/transfer-matrix', { params }),
   roomDashboard:   (roomId)       => api.get(`/warehouse/reports/room/${roomId}/dashboard`),
+  roomQrUrl:       (roomId)       => `${BASE_URL}/api/warehouse/locations/rooms/${roomId}/qr.svg`,
   inventoryReport: (id)           => api.get(`/warehouse/reports/inventory/${id}`),
   oneCStatus:      ()             => api.get('/warehouse/reports/one-c-status'),
   exportReport:    (data)         => api.post('/warehouse/reports/export', data, { responseType: 'blob' }),
+
+  // Права доступа
+  accessMatrix:    ()             => api.get('/warehouse/permissions/matrix'),
+  roleGrants:      ()             => api.get('/warehouse/permissions/role-grants'),
+  setRoleGrants:   (roleId, data) => api.put(`/warehouse/permissions/role-grants/${roleId}`, data),
+  effectiveAccess: (userId)       => api.get(`/warehouse/permissions/effective/${userId}`),
+  accessUsers:     ()             => api.get('/warehouse/permissions/users'),
 
   // Аналитика
   heatmap:         (params)       => api.get('/warehouse/analytics/heatmap', { params }),
