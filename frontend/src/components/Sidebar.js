@@ -22,7 +22,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
-  Minus, GraduationCap, Boxes, Maximize2, Minimize2
+  Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -375,6 +375,10 @@ function QuickAccessButtons({ onClose }) {
   // зав. отделением) решает бэкенд — здесь только «пускать или нет».
   const canAccessWarehouse = isAdmin || user?.adminAccess?.warehouse === true;
   const canAccessStatistics = isAdmin || user?.canAccessStatistics === true;
+  // Модуль «Задачи» (ver. 6.75) закрыт тем же гранулярным флагом, что склад и
+  // отзывы. Кто чью загрузку видит внутри модуля — решают команды, а не этот
+  // переключатель: он отвечает только за то, виден ли раздел вообще.
+  const canAccessTasks = isAdmin || user?.adminAccess?.tasks === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -417,6 +421,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnReviews = location.pathname.startsWith('/reviews');
   const isOnSalary = location.pathname.startsWith('/referral-bonuses');
   const isOnStatistics = location.pathname.startsWith('/statistics');
+  const isOnTasks = location.pathname.startsWith('/tasks');
 
   const handleClick = (path) => {
     navigate(path);
@@ -465,8 +470,7 @@ function QuickAccessButtons({ onClose }) {
         <Folder size={20} />
       </button>
 
-      {/* Второй ряд */}
-      <button 
+      <button
         className={`quick-access-btn courses ${isOnCourses ? 'active' : ''}`}
         onClick={() => handleClick('/courses')}
         title="Курсы и обучение"
@@ -474,9 +478,9 @@ function QuickAccessButtons({ onClose }) {
         <GraduationCap size={20} />
       </button>
 
-      {/* Место Канбана занял складской учёт: доска практически не использовалась,
-          а панель быстрого доступа вмещает ровно девять кнопок. Маршруты /kanban
-          остались рабочими — доска доступна по прямой ссылке. */}
+      {/* Разметки по рядам здесь нет: сетка в Layout.css задаёт пять колонок и
+          раскладывает кнопки сама. Прежние пометки «второй ряд» и «третий ряд»
+          остались от версии с тремя колонками и врали. */}
       <button
         className={`quick-access-btn warehouse ${isOnWarehouse ? 'active' : ''} ${!canAccessWarehouse ? 'locked' : ''}`}
         onClick={() => canAccessWarehouse ? handleClick('/warehouse') : toast.error('Нет доступа к разделу «Складской учёт»')}
@@ -500,7 +504,6 @@ function QuickAccessButtons({ onClose }) {
         )}
       </button>
 
-      {/* Третий ряд */}
       <button
         className={`quick-access-btn salary ${isOnSalary ? 'active' : ''} ${!canAccessSalary ? 'locked' : ''}`}
         onClick={() => canAccessSalary ? handleClick('/referral-bonuses') : toast.error('Нет доступа к разделу «Зарплата»')}
@@ -517,6 +520,18 @@ function QuickAccessButtons({ onClose }) {
       >
         <BarChart2 size={20} />
         {!canAccessStatistics && <Lock size={10} className="quick-access-lock" />}
+      </button>
+
+      {/* Девятая кнопка. Под неё панель и расширена до пяти колонок: канбан
+          отсюда убрали ещё в ver. 6.68, а модуль «Задачи», пришедший ему на
+          смену, снова нужен под рукой — это ежедневный раздел, а не админский. */}
+      <button
+        className={`quick-access-btn tasks ${isOnTasks ? 'active' : ''} ${!canAccessTasks ? 'locked' : ''}`}
+        onClick={() => canAccessTasks ? handleClick('/tasks') : toast.error('Нет доступа к разделу «Задачи»')}
+        title={canAccessTasks ? 'Задачи' : 'Задачи (нет доступа)'}
+      >
+        <ListTodo size={20} />
+        {!canAccessTasks && <Lock size={10} className="quick-access-lock" />}
       </button>
     </div>
   );

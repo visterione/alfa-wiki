@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Smartphone,
   Trash2,
+  Timer,
 } from 'lucide-react-native';
 import {version as appVersion} from '../../../package.json';
 import CONFIG from '../../config';
@@ -160,7 +161,7 @@ function Section({title, children}) {
   );
 }
 
-export default function SettingsScreen() {
+export default function SettingsScreen({navigation}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   const settings = useSettings();
@@ -249,6 +250,19 @@ export default function SettingsScreen() {
           title="Перерегистрировать устройство"
           subtitle="Если уведомления перестали приходить"
           onPress={reRegisterPush}
+        />
+      </Section>
+
+      {/* Норма рабочего дня живёт здесь, а не в самом модуле «Задачи»: её
+          задают один раз и почти не трогают, и держать под неё постоянную
+          кнопку в календаре значило бы каждый день показывать то, на что
+          нажимают дважды в год. */}
+      <Section title="Работа">
+        <Row
+          icon={Timer}
+          title="Норма рабочего дня"
+          subtitle="Сколько часов в день уходит на задачи"
+          onPress={() => navigation.navigate('TasksNorm')}
         />
       </Section>
 

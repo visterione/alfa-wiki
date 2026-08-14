@@ -21,9 +21,13 @@ import NewChatScreen from '../screens/Chat/NewChatScreen';
 import ChatInfoScreen from '../screens/Chat/ChatInfoScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import SettingsScreen from '../screens/Settings/SettingsScreen';
-import CalendarScreen from '../screens/Calendar/CalendarScreen';
 import EventScreen from '../screens/Calendar/EventScreen';
 import EventEditScreen from '../screens/Calendar/EventEditScreen';
+import TasksScreen from '../screens/Tasks/TasksScreen';
+import TasksInboxScreen from '../screens/Tasks/InboxScreen';
+import TaskListScreen from '../screens/Tasks/TaskListScreen';
+import TaskCardScreen from '../screens/Tasks/TaskCardScreen';
+import NormScreen from '../screens/Tasks/NormScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
 import LessonScreen from '../screens/Courses/LessonScreen';
@@ -198,7 +202,22 @@ function ProfileStack() {
   );
 }
 
-function CalendarStack() {
+/**
+ * Вкладка «Задачи» (ver. 6.75) — она же бывший «Календарь».
+ *
+ * Модуль занял место календаря, а не встал рядом с ним, потому что его главный
+ * экран и есть календарь: та же месячная сетка и тот же список дня, только с
+ * полосой загрузки сверху. Две вкладки с календарём означали бы два места, где
+ * лежит день сотрудника, и необходимость смотреть в оба.
+ *
+ * Экраны события (CalendarEvent, CalendarEventEdit) никуда не делись и живут
+ * здесь же: события общие, и открывают их отсюда.
+ *
+ * Своей нижней панели, как в прототипе, у модуля нет: панель приложения уже
+ * занята пятью разделами портала. «Входящие» и «Задачи» открываются значками в
+ * шапке главного экрана, а норма рабочего дня — из настроек.
+ */
+function TasksStack() {
   return (
     <Stack.Navigator
       screenOptions={{
@@ -210,9 +229,25 @@ function CalendarStack() {
         ...STACK_ANIMATION,
       }}>
       <Stack.Screen
-        name="CalendarMonth"
-        component={CalendarScreen}
-        options={{title: 'Календарь'}}
+        name="TasksHome"
+        component={TasksScreen}
+        options={{title: 'Задачи'}}
+      />
+      <Stack.Screen
+        name="TasksInbox"
+        component={TasksInboxScreen}
+        options={{title: 'Входящие'}}
+      />
+      <Stack.Screen
+        name="TasksList"
+        component={TaskListScreen}
+        options={{title: 'Мои задачи'}}
+      />
+      {/* Заголовок карточки — название задачи, его ставит сам экран */}
+      <Stack.Screen
+        name="TaskCard"
+        component={TaskCardScreen}
+        options={{title: 'Задача'}}
       />
       <Stack.Screen
         name="CalendarEvent"
@@ -280,6 +315,13 @@ function SettingsStack() {
         component={SettingsScreen}
         options={{title: 'Настройки'}}
       />
+      {/* Норма рабочего дня (ver. 6.75): личная настройка, поэтому лежит в
+          настройках, а не в самом модуле «Задачи» */}
+      <Stack.Screen
+        name="TasksNorm"
+        component={NormScreen}
+        options={{title: 'Норма рабочего дня'}}
+      />
     </Stack.Navigator>
   );
 }
@@ -302,9 +344,9 @@ function MainTabs() {
         options={{title: 'Профиль'}}
       />
       <Tab.Screen
-        name="CalendarTab"
-        component={CalendarStack}
-        options={{title: 'Календарь'}}
+        name="TasksTab"
+        component={TasksStack}
+        options={{title: 'Задачи'}}
       />
       <Tab.Screen
         name="ChatsTab"

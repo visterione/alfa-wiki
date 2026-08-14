@@ -31,10 +31,7 @@ const AdminJournal = lazy(() => import('./pages/admin/AdminJournal'));
 const AdminRbAccess = lazy(() => import('./pages/admin/AdminRbAccess'));
 const AdminParser = lazy(() => import('./pages/admin/AdminParser'));
 const Calendar = lazy(() => import('./pages/Calendar'));
-const Kanban = lazy(() => import('./pages/Kanban'));
-const KanbanArchive = lazy(() => import('./pages/KanbanArchive'));
-const BoardsList = lazy(() => import('./pages/BoardsList'));
-const BoardSettings = lazy(() => import('./pages/BoardSettings'));
+const Tasks = lazy(() => import('./pages/Tasks'));
 const ReferralBonusesPage = lazy(() => import('./pages/ReferralBonuses'));
 const StatisticsPage = lazy(() => import('./pages/Statistics'));
 const ReviewBoardsList = lazy(() => import('./pages/ReviewBoardsList'));
@@ -133,10 +130,14 @@ function AppRoutes() {
           <ProtectedRoute requireAdminAccess="warehouse"><Warehouse /></ProtectedRoute>
         } />
 
-        <Route path="kanban" element={<BoardsList />} />
-        <Route path="kanban/board/:id" element={<Kanban />} />
-        <Route path="kanban/board/:id/settings" element={<BoardSettings />} />
-        <Route path="kanban/board/:id/archive" element={<KanbanArchive />} />
+
+        {/* Модуль «Задачи» (ver. 6.75), пришёл на смену канбану. Один
+            маршрут: разделы переключаются параметром ?screen=, чтобы ссылка на
+            конкретный экран оставалась рабочей, а состояние периода не
+            терялось при переходе между ними. */}
+        <Route path="tasks" element={
+          <ProtectedRoute requireAdminAccess="tasks"><Tasks /></ProtectedRoute>
+        } />
 
         {/* Reviews module */}
         <Route path="reviews" element={

@@ -197,6 +197,41 @@ export const calendar = {
   getUpcoming: (days = 7) => api.get('/calendar/upcoming', {params: {days}}),
 };
 
+// ── Задачи (ver. 6.75) ───────────────────────────────────────────────────────
+// Модуль пришёл на смену канбану и занял в мобилке место вкладки «Календарь»:
+// его главный экран и есть календарь, только с загрузкой в часах.
+//
+// Набор ручек урезан относительно веба сознательно. Настройка команд, правка
+// чужих норм и отчёты остались в вебе — это работа за столом, а не с телефона.
+// Здесь только то, что делают на ходу: разобрать входящие, посмотреть свой
+// день и отметить сделанное.
+export const tasks = {
+  getAccess: () => api.get('/tasks/access'),
+
+  // Мне на решение и те, кого жду я
+  getInbox: () => api.get('/tasks/inbox'),
+
+  getTasks: params => api.get('/tasks', {params}),
+  getTask: id => api.get(`/tasks/${id}`),
+  createTask: data => api.post('/tasks', data),
+
+  // Загрузка человека за период: часы и цвет, без содержания дел
+  getPersonLoad: (id, start, end) =>
+    api.get(`/tasks/people/${id}/load`, {params: {start, end}}),
+  setNorm: (id, dailyNormHours) =>
+    api.put(`/tasks/people/${id}/norm`, {dailyNormHours}),
+
+  // Действия над своей частью. Здесь и только здесь часть превращается в блок
+  // времени и начинает занимать часы.
+  planPart: (id, date, force) => api.post(`/tasks/parts/${id}/plan`, {date, force}),
+  proposeDate: (id, date) => api.post(`/tasks/parts/${id}/propose`, {date}),
+  declinePart: (id, reason) => api.post(`/tasks/parts/${id}/decline`, {reason}),
+  movePart: (id, date) => api.post(`/tasks/parts/${id}/move`, {date}),
+  splitPart: (id, data) => api.post(`/tasks/parts/${id}/split`, data),
+  setPartStatus: (id, status) => api.put(`/tasks/parts/${id}/status`, {status}),
+  getNextFit: (id, params) => api.get(`/tasks/parts/${id}/next-fit`, {params}),
+};
+
 // ── Курсы ────────────────────────────────────────────────────────────────────
 // Только пользовательские ручки: создание и правка курсов остаются в вебе.
 // Набор совпадает с frontend/src/services/api.js, поэтому прогресс у человека

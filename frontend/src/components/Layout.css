@@ -432,10 +432,14 @@
 }
 
 /* Кнопки быстрого доступа */
+/* Пять колонок на два ряда — десять мест под девять разделов.
+   Ширина колонки задана долей, а не числом: при 280px сайдбара под панель
+   остаётся 240px, и пять кнопок по фиксированным 44px туда не влезают (252px).
+   Доля делит доступное место сама и переживёт следующее изменение ширины
+   сайдбара, тогда как жёсткое число пришлось бы пересчитывать заново. */
 .sidebar-quick-access {
   display: grid;
-  grid-template-columns: repeat(4, 44px);
-  justify-content: space-between;
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
@@ -588,6 +592,24 @@
 .quick-access-btn.statistics.active {
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
   box-shadow: 0 2px 8px rgba(74, 222, 128, 0.4) inset;
+}
+
+/* Модуль «Задачи» (ver. 6.75). Индиго — единственный незанятый в панели
+   оттенок: синий у сообщений, зелёный у статистики, оранжевый у курсов. */
+.quick-access-btn.tasks {
+  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+}
+
+.quick-access-btn.tasks:hover {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  transform: translateY(-1px);
+}
+
+.quick-access-btn.tasks.active {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4) inset;
 }
 
 /* Кнопка без доступа */

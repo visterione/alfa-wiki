@@ -1,0 +1,640 @@
+/**
+ * Модуль «Задачи» (ver. 6.75).
+ *
+ * Прототип заказчика был тёмным, со своей палитрой и своими радиусами. Здесь
+ * от него остались только смыслы: цвета, отступы и скругления взяты из
+ * index.css, чтобы модуль не читался вставкой из другого приложения.
+ *
+ * Единственное, что живёт своей жизнью, — три цвета загрузки. Зелёный, жёлтый
+ * и красный здесь не украшение, а сама суть экрана, поэтому они привязаны к
+ * семантическим переменным темы, а не к произвольным значениям.
+ */
+
+.tsk {
+  padding: 20px 24px 40px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* ── Шапка и навигация по разделам ─────────────────────────────────────── */
+
+.tsk-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.tsk-title { font-size: 24px; font-weight: 600; letter-spacing: -0.3px; }
+.tsk-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+.tsk-nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 20px;
+  padding-bottom: 0;
+}
+
+.tsk-nav button {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  cursor: pointer;
+  margin-bottom: -1px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: color var(--transition-fast);
+}
+
+.tsk-nav button:hover { color: var(--text-primary); }
+.tsk-nav button.is-on { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+
+.tsk-nav-group {
+  align-self: center;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 0 10px 0 16px;
+}
+
+.tsk-nav-count {
+  background: var(--error);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+}
+
+/* ── Панель управления периодом ────────────────────────────────────────── */
+
+.tsk-ctl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.tsk-ctl-period { font-size: 14px; font-weight: 500; min-width: 168px; text-align: center; }
+
+.tsk-seg {
+  display: flex;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.tsk-seg button {
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tsk-seg button.is-on { background: var(--bg-primary); color: var(--text-primary); font-weight: 500; box-shadow: var(--shadow-sm); }
+
+.tsk-btn {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 13px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tsk-btn:hover { background: var(--bg-secondary); }
+.tsk-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.tsk-btn.is-primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 500; }
+.tsk-btn.is-primary:hover { background: var(--primary-hover); }
+.tsk-btn.is-danger { color: var(--error); border-color: var(--border); }
+.tsk-btn.is-sm { padding: 5px 10px; font-size: 12px; }
+.tsk-btn.is-wide { width: 100%; justify-content: center; }
+
+.tsk-arrow {
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  line-height: 1;
+}
+.tsk-arrow:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+.tsk-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+/* ── Карточки и общие блоки ────────────────────────────────────────────── */
+
+.tsk-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+.tsk-sect {
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  margin: 22px 0 10px;
+}
+.tsk-sect:first-child { margin-top: 0; }
+
+.tsk-empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-align: center;
+  padding: 28px 16px;
+  background: var(--bg-primary);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  line-height: 1.6;
+}
+.tsk-empty.is-compact { padding: 14px; font-size: 13px; border-style: solid; border-color: var(--border-light); }
+
+.tsk-note {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-top: 16px;
+}
+
+.tsk-grid-2 { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; align-items: start; }
+
+/* ── Бейджи ────────────────────────────────────────────────────────────── */
+
+.tsk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.tsk-badge-muted { background: var(--bg-tertiary); color: var(--text-secondary); }
+.tsk-badge-ok { background: rgba(52, 199, 89, 0.14); color: #1f8f3f; }
+.tsk-badge-warn { background: rgba(255, 149, 0, 0.16); color: #a35f00; }
+.tsk-badge-bad { background: rgba(255, 59, 48, 0.13); color: #c1271d; }
+.tsk-badge-info { background: var(--primary-light); color: var(--primary-hover); }
+.tsk-badge-violet { background: rgba(88, 86, 214, 0.13); color: #4442ad; }
+
+/* ── Аватарки ──────────────────────────────────────────────────────────── */
+
+.tsk-av {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  overflow: hidden;
+  flex: none;
+  line-height: 1;
+}
+.tsk-av img { width: 100%; height: 100%; object-fit: cover; }
+.tsk-av-rest { background: var(--bg-tertiary); color: var(--text-secondary); font-size: 10px; }
+
+.tsk-avs { display: inline-flex; align-items: center; }
+.tsk-avs .tsk-av { margin-right: -6px; border: 2px solid var(--bg-primary); }
+.tsk-avs .tsk-av:last-child { margin-right: 0; }
+
+/* ── Полоса загрузки ───────────────────────────────────────────────────── */
+
+.tsk-bar {
+  position: relative;
+  height: 22px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.tsk-bar.is-compact { height: 8px; border-radius: 4px; }
+
+.tsk-bar-fill { height: 100%; border-radius: var(--radius-sm); transition: width var(--transition-normal); }
+.tsk-bar-ok { background: var(--success); }
+.tsk-bar-warn { background: var(--warning); }
+.tsk-bar-bad { background: var(--error); }
+.tsk-bar-muted { background: var(--text-tertiary); }
+
+/* Пунктир нормы: у каждого она своя, и без метки одинаковая заливка в двух
+   строках означала бы совершенно разное. */
+.tsk-bar-norm {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 0;
+  border-left: 1px dashed var(--text-secondary);
+  opacity: 0.75;
+}
+
+.tsk-bar-vac { background: repeating-linear-gradient(45deg, var(--bg-tertiary), var(--bg-tertiary) 5px, var(--bg-secondary) 5px, var(--bg-secondary) 10px); }
+.tsk-bar-vac-label { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; color: var(--text-secondary); }
+
+.tsk-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 14px;
+  align-items: center;
+}
+.tsk-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.tsk-legend .dash { display: inline-block; width: 12px; border-top: 1px dashed var(--text-secondary); margin-right: 6px; vertical-align: middle; }
+
+/* ── Таблица загрузки ──────────────────────────────────────────────────── */
+
+.tsk-scroll { overflow-x: auto; }
+
+.tsk-load { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tsk-load th { font-weight: 500; color: var(--text-tertiary); font-size: 11px; padding: 0 4px 10px; text-align: center; }
+.tsk-load th:first-child { text-align: left; width: 190px; }
+.tsk-load td { padding: 8px 4px; border-top: 1px solid var(--border-light); vertical-align: middle; }
+.tsk-load td:first-child { text-align: left; }
+.tsk-load tr.is-sel td { background: var(--primary-light); }
+.tsk-load .tsk-cell { cursor: pointer; border-radius: var(--radius-sm); padding: 2px; }
+.tsk-load .tsk-cell:hover { background: var(--bg-secondary); }
+.tsk-load .tsk-hours { font-size: 11px; color: var(--text-secondary); text-align: center; margin-top: 3px; }
+.tsk-load .tsk-total td { border-top: 2px solid var(--border); font-weight: 600; font-size: 12px; color: var(--text-secondary); text-align: center; }
+
+.tsk-person { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+.tsk-person-name { font-size: 13.5px; }
+.tsk-person-sub { font-size: 11px; color: var(--text-tertiary); }
+
+/* ── Сетки недели и месяца ─────────────────────────────────────────────── */
+
+.tsk-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+
+.tsk-day {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 11px;
+  min-height: 190px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.tsk-day:hover { border-color: var(--primary); }
+.tsk-day.is-weekend { background: var(--bg-secondary); }
+.tsk-day.is-today { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.tsk-day-name { font-size: 12px; color: var(--text-tertiary); }
+.tsk-day-hours { font-size: 17px; font-weight: 600; margin: 2px 0 9px; }
+
+.tsk-chip-ev {
+  font-size: 11px;
+  padding: 4px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border-left: 2px solid var(--primary);
+  margin-bottom: 4px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tsk-chip-ev.is-opaque { border-left-color: var(--text-tertiary); color: var(--text-secondary); font-style: italic; }
+.tsk-chip-ev.is-meeting { border-left-color: var(--secondary); }
+
+.tsk-month { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.tsk-month-head { font-size: 11px; color: var(--text-tertiary); text-align: center; padding-bottom: 4px; }
+
+.tsk-mcell {
+  min-height: 96px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 7px;
+  cursor: pointer;
+}
+.tsk-mcell.is-empty { background: none; border: 0; cursor: default; }
+.tsk-mcell.is-weekend { background: var(--bg-secondary); }
+.tsk-mcell.is-today { border-color: var(--primary); }
+.tsk-mcell:hover:not(.is-empty) { border-color: var(--primary); }
+.tsk-mcell-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; }
+.tsk-mcell-hours { font-size: 10px; color: var(--text-tertiary); font-weight: 400; }
+
+/* ── Доска ─────────────────────────────────────────────────────────────── */
+
+.tsk-board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 10px; }
+
+.tsk-col {
+  flex: 0 0 250px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+}
+.tsk-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.tsk-tcard {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 11px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.tsk-tcard:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); }
+.tsk-tcard-title { font-size: 13.5px; font-weight: 500; line-height: 1.35; margin-bottom: 8px; }
+.tsk-tcard-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); }
+
+/* ── Карточки команд ───────────────────────────────────────────────────── */
+
+.tsk-teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+
+.tsk-team {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.tsk-team:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); }
+.tsk-team.is-hidden { border-style: dashed; }
+.tsk-team-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.tsk-team-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tsk-team-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+.tsk-team-foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+
+/* ── Входящие ──────────────────────────────────────────────────────────── */
+
+.tsk-inbox-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.tsk-inbox-title { font-size: 15px; font-weight: 500; }
+.tsk-inbox-from { font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; }
+
+.tsk-fit {
+  margin: 12px 0;
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.tsk-fit.is-ok { background: rgba(52, 199, 89, 0.1); color: #1f6f38; }
+.tsk-fit.is-bad { background: rgba(255, 59, 48, 0.09); color: #a8241b; }
+
+.tsk-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Модальные окна ────────────────────────────────────────────────────── */
+
+.tsk-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 200;
+}
+
+.tsk-modal {
+  background: var(--bg-primary);
+  border-radius: var(--radius-xl);
+  width: 720px;
+  max-width: 100%;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-xl);
+}
+
+.tsk-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-light);
+}
+.tsk-modal-title { font-size: 17px; font-weight: 600; }
+.tsk-modal-body { padding: 20px 22px; overflow-y: auto; flex: 1; }
+.tsk-modal-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border-light);
+}
+.tsk-modal-hint { font-size: 12px; color: var(--text-secondary); flex: 1; line-height: 1.45; }
+.tsk-modal-btns { display: flex; gap: 9px; }
+
+.tsk-x { background: none; border: 0; color: var(--text-tertiary); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.tsk-x:hover { color: var(--text-primary); }
+
+.tsk-tabs { display: flex; gap: 2px; padding: 0 22px; border-bottom: 1px solid var(--border-light); }
+.tsk-tabs button {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  padding: 11px 13px;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.tsk-tabs button.is-on { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* ── Поля формы ────────────────────────────────────────────────────────── */
+
+.tsk-field { margin-bottom: 16px; }
+.tsk-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+
+.tsk-input, .tsk-textarea {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.tsk-input:focus, .tsk-textarea:focus { border-color: var(--primary); }
+.tsk-textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+
+.tsk-input-title { font-size: 18px; font-weight: 500; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 6px 0 10px; }
+.tsk-input-title:focus { border-bottom-color: var(--primary); }
+
+.tsk-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.tsk-row > * { flex: 1; min-width: 140px; }
+
+.tsk-num { width: 74px; text-align: center; }
+
+.tsk-chips { display: flex; gap: 7px; flex-wrap: wrap; }
+
+.tsk-chip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 11px;
+  border-radius: 20px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tsk-chip:hover { border-color: var(--border); color: var(--text-primary); }
+.tsk-chip.is-on { background: var(--primary-light); border-color: var(--primary); color: var(--primary-hover); font-weight: 500; }
+
+/* Разбор компромисса при постановке: не помещается — выберите, что изменится */
+.tsk-trade { margin-top: 18px; border-radius: var(--radius-lg); padding: 15px; border: 1px solid; }
+.tsk-trade.is-ok { background: rgba(52, 199, 89, 0.08); border-color: rgba(52, 199, 89, 0.3); }
+.tsk-trade.is-bad { background: rgba(255, 59, 48, 0.07); border-color: rgba(255, 59, 48, 0.28); }
+.tsk-trade.is-neutral { background: var(--bg-secondary); border-color: var(--border-light); }
+.tsk-trade-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.tsk-trade-text { font-size: 13px; color: var(--text-secondary); margin: 9px 0 4px; line-height: 1.55; }
+
+.tsk-opt {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.tsk-opt.is-sel { border-color: var(--primary); background: var(--primary-light); }
+.tsk-opt-radio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--border); flex: none; margin-top: 2px; position: relative; }
+.tsk-opt.is-sel .tsk-opt-radio { border-color: var(--primary); }
+.tsk-opt.is-sel .tsk-opt-radio::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--primary); }
+.tsk-opt-title { font-size: 13.5px; }
+.tsk-opt-note { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.45; }
+
+/* ── Части задачи в форме ──────────────────────────────────────────────── */
+
+.tsk-part {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 13px;
+  margin-bottom: 10px;
+}
+.tsk-part-top { display: flex; gap: 9px; align-items: center; margin-bottom: 10px; }
+.tsk-part-top .tsk-input { background: var(--bg-primary); }
+
+/* ── Строки списков ────────────────────────────────────────────────────── */
+
+.tsk-list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+}
+.tsk-list-row:hover { background: var(--bg-secondary); }
+.tsk-list-row-title { font-size: 14px; }
+.tsk-list-row-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+
+.tsk-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tsk-table th { text-align: left; font-weight: 500; color: var(--text-tertiary); font-size: 11.5px; padding: 0 10px 10px; }
+.tsk-table td { padding: 11px 10px; border-top: 1px solid var(--border-light); vertical-align: middle; }
+.tsk-table tr.is-clickable { cursor: pointer; }
+.tsk-table tr.is-clickable:hover td { background: var(--bg-secondary); }
+
+/* ── История ───────────────────────────────────────────────────────────── */
+
+.tsk-hist { border-top: 1px solid var(--border-light); margin-top: 16px; padding-top: 14px; }
+.tsk-hist-row { display: flex; gap: 10px; align-items: baseline; font-size: 12.5px; color: var(--text-secondary); padding: 5px 0; }
+.tsk-hist-row b { color: var(--text-primary); font-weight: 500; }
+.tsk-hist-when { margin-left: auto; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; }
+
+/* ── Статистика отчётов ────────────────────────────────────────────────── */
+
+.tsk-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 22px; }
+.tsk-stat { background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 16px; }
+.tsk-stat-value { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
+.tsk-stat-label { font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; }
+
+.tsk-bars { display: flex; flex-direction: column; gap: 10px; }
+.tsk-brow { display: grid; grid-template-columns: 170px 1fr 70px; gap: 12px; align-items: center; font-size: 13px; }
+.tsk-btrack { height: 9px; background: var(--bg-tertiary); border-radius: 5px; overflow: hidden; }
+.tsk-bfill { height: 100%; border-radius: 5px; }
+.tsk-bvalue { text-align: right; color: var(--text-secondary); font-size: 12.5px; }
+
+/* ── Мобильная раскладка ───────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .tsk { padding: 14px 14px 32px; }
+  .tsk-grid-2 { grid-template-columns: 1fr; }
+  .tsk-nav { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .tsk-nav::-webkit-scrollbar { display: none; }
+  .tsk-nav button { white-space: nowrap; }
+  .tsk-nav-group { display: none; }
+  .tsk-week { grid-template-columns: 1fr; }
+  .tsk-day { min-height: auto; }
+  .tsk-load th:first-child { width: 140px; }
+  .tsk-brow { grid-template-columns: 110px 1fr 58px; }
+  .tsk-modal { max-height: 96vh; border-radius: var(--radius-lg); }
+  .tsk-mcell { min-height: 62px; padding: 5px; }
+  .tsk-mcell-hours { display: none; }
+}

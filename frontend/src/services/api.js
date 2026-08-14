@@ -461,83 +461,71 @@ export const calendar = {
   updateSettings: (settings) => api.put('/calendar/settings', settings)
 };
 
-// Kanban
-export const kanban = {
-  // === BOARDS ===
-  // Получить все доски пользователя
-  getBoards: () => api.get('/kanban/boards'),
 
-  // Получить конкретную доску
-  getBoard: (id) => api.get(`/kanban/boards/${id}`),
+// === ЗАДАЧИ (ver. 6.75) ===
+// Пришли на смену канбану. Ключевое отличие видно прямо здесь: у задачи нет
+// метода «назначить исполнителя» — есть постановка с частями и отдельные
+// действия исполнителя над своей частью. Срок это согласование, а не поле.
+export const tasks = {
+  // Что доступно текущему пользователю и заведён ли он в модуле (есть ли норма)
+  getAccess: () => api.get('/tasks/access'),
 
-  // Создать новую доску
-  createBoard: (data) => api.post('/kanban/boards', data),
+  // === ПРОЕКТЫ ===
+  getProjects: (includeArchived) =>
+    api.get('/tasks/projects', { params: { includeArchived } }),
+  createProject: (data) => api.post('/tasks/projects', data),
+  updateProject: (id, data) => api.put(`/tasks/projects/${id}`, data),
+  deleteProject: (id) => api.delete(`/tasks/projects/${id}`),
 
-  // Обновить доску
-  updateBoard: (id, data) => api.put(`/kanban/boards/${id}`, data),
+  // === КОМАНДЫ ===
+  // closedCount в ответе — сколько команд закрыто. Скрытые в него не входят:
+  // счётчик выдал бы ровно то, что они прячут.
+  getTeams: () => api.get('/tasks/teams'),
+  getTeam: (id) => api.get(`/tasks/teams/${id}`),
+  createTeam: (data) => api.post('/tasks/teams', data),
+  updateTeam: (id, data) => api.put(`/tasks/teams/${id}`, data),
+  deleteTeam: (id) => api.delete(`/tasks/teams/${id}`),
+  addTeamMember: (id, data) => api.post(`/tasks/teams/${id}/members`, data),
+  removeTeamMember: (id, userId) => api.delete(`/tasks/teams/${id}/members/${userId}`),
+  getTeamLoad: (id, start, end) =>
+    api.get(`/tasks/teams/${id}/load`, { params: { start, end } }),
 
-  // Удалить доску
-  deleteBoard: (id) => api.delete(`/kanban/boards/${id}`),
+  // === ЛЮДИ И НОРМЫ ===
+  getPeople: (params) => api.get('/tasks/people', { params }),
+  getPersonLoad: (id, start, end) =>
+    api.get(`/tasks/people/${id}/load`, { params: { start, end } }),
+  setNorm: (id, dailyNormHours) =>
+    api.put(`/tasks/people/${id}/norm`, { dailyNormHours }),
+  getNormHistory: (id) => api.get(`/tasks/people/${id}/norm/history`),
 
-  // === BOARD PERMISSIONS ===
-  // Получить разрешения доски
-  getBoardPermissions: (boardId) => api.get(`/kanban/boards/${boardId}/permissions`),
+  // === ЗАДАЧИ ===
+  getTasks: (params) => api.get('/tasks', { params }),
+  getTask: (id) => api.get(`/tasks/${id}`),
+  // Ответ 409 с requiresExplanation означает, что кто-то не помещается:
+  // повторить с полем explanation. Обойти можно всегда, но не молча.
+  createTask: (data) => api.post('/tasks', data),
+  cancelTask: (id) => api.delete(`/tasks/${id}`),
 
-  // Добавить пользователя к доске
-  addBoardPermission: (boardId, data) => api.post(`/kanban/boards/${boardId}/permissions`, data),
+  // Мне на решение и те, кого жду я
+  getInbox: () => api.get('/tasks/inbox'),
 
-  // Изменить роль пользователя
-  updateBoardPermission: (boardId, permId, data) => api.put(`/kanban/boards/${boardId}/permissions/${permId}`, data),
+  // === ДЕЙСТВИЯ НАД ЧАСТЬЮ ===
+  // Здесь и только здесь часть превращается в блок времени и занимает часы
+  planPart: (id, date, force) => api.post(`/tasks/parts/${id}/plan`, { date, force }),
+  // Календарь исполнителя не меняется: задача в него не попала
+  proposeDate: (id, date) => api.post(`/tasks/parts/${id}/propose`, { date }),
+  acceptDate: (id) => api.post(`/tasks/parts/${id}/accept`),
+  declinePart: (id, reason) => api.post(`/tasks/parts/${id}/decline`, { reason }),
+  // 409 после третьего переноса: дальше нужно решение, а не перенос
+  movePart: (id, date) => api.post(`/tasks/parts/${id}/move`, { date }),
+  splitPart: (id, data) => api.post(`/tasks/parts/${id}/split`, data),
+  setPartStatus: (id, status) => api.put(`/tasks/parts/${id}/status`, { status }),
+  getNextFit: (id, params) => api.get(`/tasks/parts/${id}/next-fit`, { params }),
 
-  // Удалить доступ пользователя
-  deleteBoardPermission: (boardId, permId) => api.delete(`/kanban/boards/${boardId}/permissions/${permId}`),
-
-  // === TASKS ===
-  // Получить все задачи конкретной доски
-  getTasks: (boardId) => api.get(`/kanban/tasks?boardId=${boardId}`),
-
-  // Получить одну задачу
-  getTask: (id) => api.get(`/kanban/tasks/${id}`),
-
-  // Создать задачу
-  createTask: (data) => api.post('/kanban/tasks', data),
-
-  // Обновить задачу
-  updateTask: (id, data) => api.put(`/kanban/tasks/${id}`, data),
-
-  // Удалить задачу
-  deleteTask: (id) => api.delete(`/kanban/tasks/${id}`),
-
-  // Переместить задачу
-  moveTask: (id, status, sortOrder) => api.post(`/kanban/tasks/${id}/move`, { status, sortOrder }),
-
-  // Архивировать задачу вручную
-  archiveTask: (id) => api.post(`/kanban/tasks/${id}/archive`),
-
-  // === FILES ===
-  // Загрузить файл
-  uploadFile: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post('/kanban/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-  },
-
-  // Удалить файл
-  deleteFile: (fileId, taskId) => api.delete(`/kanban/files/${fileId}?taskId=${taskId}`),
-
-  // === ARCHIVE ===
-  // Получить архивные задачи конкретной доски
-  getArchive: (boardId) => api.get(`/kanban/archive?boardId=${boardId}`),
-
-  // Восстановить задачу из архива
-  restoreTask: (id) => api.post(`/kanban/tasks/${id}/restore`),
-
-  // === LEGACY ===
-  // Проверить доступ текущего пользователя (устарело)
-  checkAccess: () => api.get('/kanban/check-access')
+  // === ОТЧЁТЫ ===
+  getReports: (params) => api.get('/tasks/reports', { params })
 };
+
 
 // === REVIEWS API ===
 export const reviews = {

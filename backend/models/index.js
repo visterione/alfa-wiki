@@ -96,7 +96,10 @@ const User = sequelize.define('User', {
       backup: false,     // Резервные копии
       settings: false,   // Настройки
       courses: false,    // Курсы
-      kanban: false,     // Канбан-доска
+      // Модуль «Задачи» (ver. 6.75), пришёл на смену канбану. Флаг решает
+      // только одно: видит ли человек раздел. Кто чью загрузку видит —
+      // определяют команды (TaskTeam), а не этот переключатель.
+      tasks: false,
       journal: false,    // Журнал страниц
       reviews: false,    // Отзывы
       parser: false,     // Парсер цен конкурентов
@@ -188,6 +191,27 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     comment: 'Разрешение на создание, редактирование и удаление акций медцентров'
+  },
+
+  // Личная норма рабочего дня для модуля «Задачи» (ver. 6.75).
+  //
+  // Не длина смены, а честное время на задачи: рабочий день минус встречи,
+  // переключения и перерывы. Своя у каждого — у подрядчика на part-time и у
+  // поддержки со сменным графиком она не может совпадать, а одна цифра на
+  // компанию делает отчёт по загрузке отчётом о том, насколько неверно эта
+  // цифра выбрана.
+  //
+  // NULL означает «в модуле не заведён» и отличается от нормы 0: во втором
+  // случае человеку нельзя ставить задачи, в первом он просто не участвует в
+  // планировании.
+  //
+  // Имя намеренно не перекликается с HourNorm: та модель принадлежит
+  // зарплатному модулю и хранит норму часов на специальность за месяц.
+  dailyNormHours: {
+    type: DataTypes.DECIMAL(4, 2),
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Личная норма рабочего дня в часах. NULL — не заведён в модуле «Задачи»'
   },
 
   // Мягкое удаление (корзина)
@@ -1338,10 +1362,18 @@ const CalendarEvent = sequelize.define('CalendarEvent', {
     type: DataTypes.UUID,
     comment: 'ID пользователя-создателя'
   },
-  visibility: { 
-    type: DataTypes.STRING(20), 
+  // Уровни видимости расширены модулем «Задачи» (ver. 6.75). Существующие
+  // значения не переименовывались: у shared свой механизм — явный список
+  // sharedWith, и ломать его ради стройности перечисления нельзя.
+  //
+  // Содержимое событий с уровнями private и busy не отдаётся ни одному запросу
+  // от имени другого пользователя — включая владельца пространства и
+  // администратора филиала. Обещание держится не в интерфейсе, а в одной
+  // функции-фильтре, через которую проходит любая отдача события наружу.
+  visibility: {
+    type: DataTypes.STRING(20),
     defaultValue: 'private',
-    comment: 'Видимость: private, shared, public'
+    comment: 'private (только я), busy (занято, без названия), team (участникам команд), shared (список sharedWith), public (вся компания)'
   },
   sharedWith: { 
     type: DataTypes.JSONB, 
@@ -1356,9 +1388,38 @@ const CalendarEvent = sequelize.define('CalendarEvent', {
     type: DataTypes.JSONB,
     defaultValue: [],
     comment: 'Отправленные напоминания: [{minutesBefore, recipientId, sentAt}]'
+  },
+
+  // --- Модуль «Задачи» (ver. 6.75) ---
+  // Загрузка дня — это сумма часов по событиям календаря. Отдельной таблицы
+  // рабочих блоков нет намеренно: иначе у сотрудника два календаря, и ни один
+  // из них не отвечает на вопрос «чем я занят в четверг».
+  taskPartId: {
+    type: DataTypes.UUID,
+    comment: 'Часть задачи, из которой порождён блок. Снимается вместе с ней'
+  },
+  // У плавающего блока есть день и длительность, но нет времени начала:
+  // «2,4 часа в четверг» — честная формулировка для работы, тогда как встреча
+  // стоит в 14:00 и двигается только по согласованию. Делать вид, что человек
+  // знает, во сколько сядет за отчёт, значит заполнять календарь выдуманными
+  // интервалами.
+  //
+  // День-вью обязан рисовать такие события отдельной дорожкой «план дня»,
+  // иначе блок с началом в 00:00 уедет в ночь.
+  isFloating: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Плавающий рабочий блок: есть день и длительность, времени начала нет'
+  },
+  dayOrder: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Порядок плавающих блоков внутри дня — времени у них нет, а последовательность есть'
   }
 }, {
-  tableName: 'calendar_events', 
+  tableName: 'calendar_events',
   timestamps: true,
   indexes: [
     { fields: ['startTime'] },
@@ -1368,7 +1429,9 @@ const CalendarEvent = sequelize.define('CalendarEvent', {
     { fields: ['status'] },
     { fields: ['isRecurring'] },
     { fields: ['linkedEntityType', 'linkedEntityId'] },
-    { fields: ['parentEventId'] }
+    { fields: ['parentEventId'] },
+    { fields: ['taskPartId'] },
+    { fields: ['isFloating', 'startTime'] }
   ]
 });
 
@@ -2242,174 +2305,295 @@ CalendarEvent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 CalendarEvent.belongsTo(CalendarEvent, { foreignKey: 'parentEventId', as: 'parentEvent' });
 CalendarEvent.hasMany(CalendarEvent, { foreignKey: 'parentEventId', as: 'instances' });
 
-// === KANBAN TASK MODEL ===
-// KanbanBoard model - represents a Kanban board
-const KanbanBoard = sequelize.define('KanbanBoard', {
+// === МОДУЛЬ «ЗАДАЧИ» (ver. 6.75) ===
+// Пришёл на смену канбан-доске. Отличий от неё три, и схема следует из них:
+// задача состоит из частей (исполнитель, оценка, срок — у части, не у задачи);
+// срок согласовывается, а не назначается; загрузка считается в часах от личной
+// нормы. Рабочие блоки времени лежат в CalendarEvent, своей таблицы у них нет.
+
+// Справочник проектов — сквозной, без привязки к медцентру: проект чаще всего и
+// есть то общее, что связывает филиалы.
+const TaskProject = sequelize.define('TaskProject', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   name: {
-    type: DataTypes.STRING(255),
+    type: DataTypes.STRING(160),
     allowNull: false,
-    comment: 'Название доски'
+    comment: 'Название проекта'
   },
-  description: {
-    type: DataTypes.TEXT,
-    comment: 'Описание доски'
+  color: {
+    type: DataTypes.STRING(20),
+    comment: 'Цвет метки проекта'
   },
-  ownerId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    comment: 'ID владельца доски'
-  },
-  archived: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    comment: 'Доска в архиве'
-  }
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
+  isArchived: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  createdBy: { type: DataTypes.UUID }
 }, {
-  tableName: 'kanban_boards',
+  tableName: 'task_projects',
   timestamps: true,
   indexes: [
-    { fields: ['ownerId'] },
-    { fields: ['archived'] }
+    { fields: ['isArchived'] },
+    { fields: ['sortOrder'] }
   ]
 });
 
-// BoardPermission model - represents access permissions to boards
-const BoardPermission = sequelize.define('BoardPermission', {
+// Команда — не папка, а граница видимости. Досок как сущности в модуле нет:
+// доска это представление поверх всех задач, а кто чью загрузку видит, решает
+// команда. Поэтому BoardPermission не переделан, а заменён этой парой моделей.
+const TaskTeam = sequelize.define('TaskTeam', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  boardId: {
-    type: DataTypes.UUID,
+  name: {
+    type: DataTypes.STRING(160),
     allowNull: false,
-    comment: 'ID доски'
+    comment: 'Название команды'
   },
-  userId: {
+  medCenterId: {
     type: DataTypes.UUID,
-    allowNull: false,
-    comment: 'ID пользователя'
+    comment: 'Филиал из справочника медцентров (ver. 6.67)'
   },
+  access: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'all',
+    validate: { isIn: [['all', 'members', 'invite']] },
+    comment: 'Кто видит загрузку команды: all, members, invite'
+  },
+  // Скрытая команда не показывается как «нет доступа» — для того, кому она не
+  // открыта, её не существует вовсе. Разница принципиальная: сама строка «нет
+  // доступа» сообщает, что команда есть, а этого хватает, чтобы понять, что в
+  // компании идёт найм или реорганизация.
+  isHidden: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Не показывается в списках, поиске и фильтрах у посторонних'
+  },
+  ownerId: { type: DataTypes.UUID }
+}, {
+  tableName: 'task_teams',
+  timestamps: true,
+  indexes: [
+    { fields: ['medCenterId'] },
+    { fields: ['isHidden'] }
+  ]
+});
+
+// Участники и смотрящие одной таблицей: «может смотреть, не будучи участником»
+// отличается от участия ровно одним полем, и разводить это по двум таблицам
+// значит дублировать все выборки прав.
+const TaskTeamMember = sequelize.define('TaskTeamMember', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  teamId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
   role: {
     type: DataTypes.STRING(20),
     allowNull: false,
-    validate: {
-      isIn: [['owner', 'editor', 'viewer']]
-    },
-    comment: 'Роль пользователя: owner, editor, viewer'
+    defaultValue: 'member',
+    validate: { isIn: [['member', 'viewer', 'lead']] },
+    comment: 'member — участник, viewer — смотрит загрузку, lead — ставит задачи и меняет нормы'
   }
 }, {
-  tableName: 'board_permissions',
+  tableName: 'task_team_members',
   timestamps: true,
   indexes: [
-    { fields: ['boardId'] },
     { fields: ['userId'] },
-    { fields: ['role'] },
-    { unique: true, fields: ['boardId', 'userId'] }
+    { unique: true, fields: ['teamId', 'userId'] }
   ]
 });
 
-const KanbanTask = sequelize.define('KanbanTask', {
+// Задача-контейнер: ни исполнителя, ни срока, ни оценки здесь нет — всё это
+// принадлежит частям.
+//
+// Статуса тоже нет, и это не упущение. Статус задачи выводится из статусов её
+// частей (все done → готово; есть stuck → анализируется; есть work → в работе).
+// Хранить его рядом с частями значит завести два источника правды, которые
+// разойдутся на первом же переносе.
+const Task = sequelize.define('Task', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  title: {
-    type: DataTypes.STRING(500),
-    allowNull: false,
-    comment: 'Название задачи'
-  },
-  description: {
-    type: DataTypes.TEXT,
-    comment: 'Подробное описание задачи'
-  },
-  status: {
-    type: DataTypes.STRING(50),
-    allowNull: false,
-    defaultValue: 'backlog',
-    comment: 'Статус задачи: backlog, todo, in_progress, review, done'
-  },
-  priority: {
-    type: DataTypes.STRING(20),
-    defaultValue: 'medium',
-    comment: 'Приоритет: low, medium, high, urgent'
-  },
-  assigneeIds: {
-    type: DataTypes.JSONB,
-    defaultValue: [],
-    comment: 'Массив ID исполнителей задачи'
-  },
-  createdBy: {
-    type: DataTypes.UUID,
-    comment: 'ID пользователя-создателя задачи'
-  },
-  boardId: {
-    type: DataTypes.UUID,
-    comment: 'ID доски Kanban'
-  },
-  tags: {
-    type: DataTypes.JSONB,
-    defaultValue: [],
-    comment: 'Теги задачи: ["тег1", "тег2"]'
-  },
+  title: { type: DataTypes.STRING(500), allowNull: false },
+  description: { type: DataTypes.TEXT },
+  projectId: { type: DataTypes.UUID },
+  authorId: { type: DataTypes.UUID, allowNull: false },
   attachments: {
     type: DataTypes.JSONB,
+    allowNull: false,
     defaultValue: [],
-    comment: 'Прикрепленные файлы: [{id, filename, path, size, uploadedAt, uploadedBy}]'
+    comment: 'Файлы задачи: [{id, filename, path, size, uploadedAt, uploadedBy}]'
   },
-  subtasks: {
-    type: DataTypes.JSONB,
-    defaultValue: [],
-    comment: 'Подзадачи: [{id, text, completed}]'
-  },
-  dueDate: {
-    type: DataTypes.DATE,
-    comment: 'Срок выполнения задачи'
-  },
-  sortOrder: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    comment: 'Порядок сортировки внутри колонки'
-  },
-  metadata: {
-    type: DataTypes.JSONB,
-    defaultValue: {},
-    comment: 'Дополнительные данные задачи'
-  },
-  archived: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    comment: 'Задача в архиве'
-  },
-  archivedAt: {
-    type: DataTypes.DATE,
-    comment: 'Дата архивации задачи'
-  },
-  completedAt: {
-    type: DataTypes.DATE,
-    comment: 'Дата завершения задачи (переход в статус done)'
-  }
+  isArchived: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  archivedAt: { type: DataTypes.DATE }
 }, {
-  tableName: 'kanban_tasks',
+  tableName: 'tasks',
   timestamps: true,
   indexes: [
-    { fields: ['status'] },
-    { fields: ['createdBy'] },
-    { fields: ['boardId'] },
-    { fields: ['priority'] },
-    { fields: ['sortOrder'] },
-    { fields: ['dueDate'] },
-    { fields: ['archived'] },
-    { fields: ['completedAt'] }
+    { fields: ['authorId'] },
+    { fields: ['projectId'] },
+    { fields: ['isArchived'] }
   ]
 });
 
-// KanbanBoard relationships
-KanbanBoard.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
-KanbanBoard.hasMany(KanbanTask, { foreignKey: 'boardId', as: 'tasks', onDelete: 'CASCADE' });
-KanbanBoard.hasMany(BoardPermission, { foreignKey: 'boardId', as: 'permissions', onDelete: 'CASCADE' });
+// Часть — то, у чего есть исполнитель, оценка и срок. Один исполнитель это одна
+// часть, а не особый случай в схеме. Формат задачи (одна на всех / разделена /
+// смешанная) не хранится: он выводится из того, сколько у частей исполнителей.
+const TaskPart = sequelize.define('TaskPart', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  taskId: { type: DataTypes.UUID, allowNull: false },
+  title: { type: DataTypes.STRING(500), allowNull: false },
+  // «Одна на всех» означает, что эти часы тратит каждый участник: 2 ч на троих
+  // — это 2 ч в календаре у каждого и 6 ч трудозатрат.
+  estimateHours: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: false,
+    comment: 'Оценка в часах на одного исполнителя'
+  },
+  dueDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: false,
+    comment: 'Срок, предложенный автором. Меняется при согласовании — след в TaskHistory'
+  },
+  status: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'new',
+    validate: { isIn: [['new', 'plan', 'work', 'review', 'done', 'stuck']] },
+    comment: 'new — не разобрана исполнителем, stuck — переносится третий раз и требует решения'
+  },
+  // На этом счётчике держится правило, ради которого модуль и затевался: после
+  // третьего переноса кнопки «перенести ещё раз» больше нет — система просит
+  // решение: разбить, передоговориться или отменить.
+  moveCount: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Сколько раз часть переносили'
+  },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }
+}, {
+  tableName: 'task_parts',
+  timestamps: true,
+  indexes: [
+    { fields: ['taskId'] },
+    { fields: ['status'] },
+    { fields: ['dueDate'] }
+  ]
+});
 
-// BoardPermission relationships
-BoardPermission.belongsTo(KanbanBoard, { foreignKey: 'boardId', as: 'board' });
-BoardPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+// Связи «после»: часть не предлагается исполнителю в календарь, пока предыдущая
+// не готова. Отдельной таблицей, а не массивом в JSONB, потому что по этим
+// рёбрам строится схема и проверяется отсутствие циклов.
+const TaskPartDep = sequelize.define('TaskPartDep', {
+  partId: { type: DataTypes.UUID, allowNull: false, primaryKey: true },
+  afterPartId: { type: DataTypes.UUID, allowNull: false, primaryKey: true }
+}, {
+  tableName: 'task_part_deps',
+  timestamps: false
+});
 
-// KanbanTask relationships
-KanbanTask.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
-KanbanTask.belongsTo(KanbanBoard, { foreignKey: 'boardId', as: 'board' });
+// Исполнители части. Своя строка на человека, а не массив id, потому что
+// состояние у каждого своё: в общей задаче один участник уже поставил её в план
+// на четверг, второй ещё не разобрал. Массив этого выразить не может.
+const TaskPartAssignee = sequelize.define('TaskPartAssignee', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  partId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  // NULL — человек ещё не поставил часть в план, она висит у него во входящих.
+  // Именно это отличает «не обработана» от «работа идёт».
+  plannedDate: {
+    type: DataTypes.DATEONLY,
+    comment: 'День, на который исполнитель поставил часть. NULL — лежит во входящих'
+  },
+  declinedAt: {
+    type: DataTypes.DATE,
+    comment: 'Когда исполнитель вернул часть автору с пометкой «не моя зона»'
+  }
+}, {
+  tableName: 'task_part_assignees',
+  timestamps: true,
+  indexes: [
+    { fields: ['userId', 'plannedDate'] },
+    { unique: true, fields: ['partId', 'userId'] }
+  ]
+});
+
+// «Срок — согласование, а не поле, поэтому у него есть история». Сюда же
+// ложится обязательное объяснение, когда автор продавливает задачу в день, где
+// она не помещается: обойти проверку можно всегда, но не молча.
+const TaskHistory = sequelize.define('TaskHistory', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  taskId: { type: DataTypes.UUID, allowNull: false },
+  partId: { type: DataTypes.UUID },
+  userId: { type: DataTypes.UUID },
+  action: {
+    type: DataTypes.STRING(40),
+    allowNull: false,
+    comment: 'created, planned, proposed_date, accepted_date, declined, moved, split, forced, status_changed, cancelled'
+  },
+  payload: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: {},
+    comment: 'Старый и новый срок, текст объяснения при forced, занятость на момент предложения'
+  }
+}, {
+  tableName: 'task_history',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [
+    { fields: ['taskId', 'createdAt'] }
+  ]
+});
+
+// Норму меняет руководитель, и это разговор с человеком, а не тихая настройка:
+// в интерфейсе должно быть видно, кому и когда её правили.
+const TaskNormChange = sequelize.define('TaskNormChange', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  oldValue: { type: DataTypes.DECIMAL(4, 2) },
+  newValue: { type: DataTypes.DECIMAL(4, 2) },
+  changedBy: { type: DataTypes.UUID }
+}, {
+  tableName: 'task_norm_changes',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [
+    { fields: ['userId', 'createdAt'] }
+  ]
+});
+
+// Связи модуля «Задачи»
+TaskProject.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+TaskTeam.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+TaskTeam.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
+TaskTeam.hasMany(TaskTeamMember, { foreignKey: 'teamId', as: 'members', onDelete: 'CASCADE' });
+TaskTeamMember.belongsTo(TaskTeam, { foreignKey: 'teamId', as: 'team' });
+TaskTeamMember.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Task.belongsTo(User, { foreignKey: 'authorId', as: 'author' });
+Task.belongsTo(TaskProject, { foreignKey: 'projectId', as: 'project' });
+Task.hasMany(TaskPart, { foreignKey: 'taskId', as: 'parts', onDelete: 'CASCADE' });
+Task.hasMany(TaskHistory, { foreignKey: 'taskId', as: 'history', onDelete: 'CASCADE' });
+
+TaskPart.belongsTo(Task, { foreignKey: 'taskId', as: 'task' });
+TaskPart.hasMany(TaskPartAssignee, { foreignKey: 'partId', as: 'assignees', onDelete: 'CASCADE' });
+TaskPartAssignee.belongsTo(TaskPart, { foreignKey: 'partId', as: 'part' });
+TaskPartAssignee.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Обе стороны связи «после» смотрят на части, поэтому псевдонимы обязательны:
+// без них Sequelize свяжет TaskPartDep с TaskPart дважды под одним именем.
+TaskPartDep.belongsTo(TaskPart, { foreignKey: 'partId', as: 'part' });
+TaskPartDep.belongsTo(TaskPart, { foreignKey: 'afterPartId', as: 'afterPart' });
+
+TaskHistory.belongsTo(Task, { foreignKey: 'taskId', as: 'task' });
+TaskHistory.belongsTo(TaskPart, { foreignKey: 'partId', as: 'part' });
+TaskHistory.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+TaskNormChange.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+TaskNormChange.belongsTo(User, { foreignKey: 'changedBy', as: 'changedByUser' });
+
+// Рабочий блок в календаре снимается вместе с частью: если задачу отменили,
+// время обязано вернуться в свободное, а не остаться висеть в дне.
+CalendarEvent.belongsTo(TaskPart, { foreignKey: 'taskPartId', as: 'taskPart' });
+TaskPart.hasMany(CalendarEvent, { foreignKey: 'taskPartId', as: 'blocks', onDelete: 'CASCADE' });
 
 // === REVIEW MODULE MODELS ===
 
@@ -3827,9 +4011,16 @@ module.exports = {
   MedCenter,
   UserMedCenter,
   UserRole,
-  KanbanBoard,
-  BoardPermission,
-  KanbanTask,
+  // Модуль «Задачи» (ver. 6.75)
+  TaskProject,
+  TaskTeam,
+  TaskTeamMember,
+  Task,
+  TaskPart,
+  TaskPartDep,
+  TaskPartAssignee,
+  TaskHistory,
+  TaskNormChange,
   PriceComparison,
   PriceComparisonItem,
   CompetitorSource,

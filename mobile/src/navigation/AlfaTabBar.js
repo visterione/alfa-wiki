@@ -13,11 +13,12 @@ import Svg, {Path} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
-import {Settings, User, CalendarDays, GraduationCap} from 'lucide-react-native';
+import {Settings, User, ListTodo, GraduationCap} from 'lucide-react-native';
 
 import {font} from '../theme';
 import {useTheme, useThemedStyles} from '../store/settingsStore';
 import {useUnreadTotal} from '../store/unreadStore';
+import {useInboxCount} from '../store/tasksStore';
 import {TAB_BAR_HEIGHT} from './tabBarLayout';
 
 /**
@@ -38,6 +39,9 @@ import {TAB_BAR_HEIGHT} from './tabBarLayout';
 const HIDDEN_ROUTES = [
   'Chat', 'NewChat', 'ChatInfo', 'CalendarEvent', 'CalendarEventEdit',
   'Lesson', 'CourseTest',
+  // Внутренние экраны модуля «Задачи» (ver. 6.75): у каждого своя кнопка
+  // «назад» в шапке, и панель под ними только отнимала бы высоту у списка.
+  'TaskCard', 'TasksNorm',
 ];
 
 const BAR_HEIGHT = TAB_BAR_HEIGHT;
@@ -70,7 +74,7 @@ const HIDE_OVERHANG = ORB_SIZE / 2 - SHOULDER_RADIUS + AURA_SPREAD / 2 + 10;
 
 const ICONS = {
   ProfileTab: User,
-  CalendarTab: CalendarDays,
+  TasksTab: ListTodo,
   CoursesTab: GraduationCap,
   SettingsTab: Settings,
 };
@@ -294,6 +298,8 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const {width} = useWindowDimensions();
+  // Значок «вам поставили задачу» на вкладке «Задачи»
+  const inboxCount = useInboxCount();
 
   const current = state.routes[state.index];
   const nested = getFocusedRouteNameFromRoute(current) ?? '';
@@ -391,7 +397,15 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
         accessibilityRole="button"
         accessibilityState={{selected: focused}}
         accessibilityLabel={label}>
-        <Icon size={24} color={focused ? c.primary : c.textTertiary} />
+        <View>
+          <Icon size={24} color={focused ? c.primary : c.textTertiary} />
+          {/* Значок входящих задач. Цифру не показываем, только точку: в
+              ячейке шириной под подпись «Задачи» число налезает на значок, а
+              смысл у него один — «вас кто-то ждёт», и он передаётся точкой. */}
+          {route.name === 'TasksTab' && inboxCount > 0 && (
+            <View style={[styles.badgeDot, {backgroundColor: c.error, borderColor: c.bgPrimary}]} />
+          )}
+        </View>
         {/* Строго одна строка: с четырьмя вкладками ячейка узкая, и перенос
             подписи сдвинул бы значок соседней вверх */}
         <Text
@@ -483,6 +497,17 @@ const makeStyles = c => StyleSheet.create({
     gap: 3,
   },
   label: {fontFamily: font.medium, fontSize: 11},
+  // Точка над значком вкладки. Обводка цветом панели, чтобы на светлом фоне
+  // она не сливалась с самим значком.
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -3,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+  },
 
   // Кнопка позиционируется от центра панели: так она держится в выемке
   // независимо от ширины экрана

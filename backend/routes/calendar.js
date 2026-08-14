@@ -3,6 +3,11 @@ const { body, validationResult } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
+// Фильтр видимости модуля «Задачи» (ver. 6.75). Через него обязана проходить
+// любая отдача события наружу — см. services/tasks/visibility.js.
+const visibility = require('../services/tasks/visibility');
+const taskContext = require('../services/tasks/context');
+
 // Импортируем модели безопасно
 let CalendarEvent, User, Accreditation, Vehicle, Page;
 try {
@@ -28,13 +33,22 @@ function isValidUUID(id) {
   return id && UUID_REGEX.test(id);
 }
 
-// Проверка прав доступа к событию
-function canAccessEvent(event, userId, isAdmin) {
-  if (isAdmin) return true;
+/**
+ * Может ли человек править чужое событие.
+ *
+ * Администратор — да, но не личное: правка подразумевает чтение, и разрешить
+ * её значило бы вернуть через PUT тот обход, который закрыт в чтении.
+ *
+ * Отдельной функции «может ли прочитать» здесь больше нет намеренно. Раньше
+ * она была, и первой строкой в ней стояло `if (isAdmin) return true` — из-за
+ * этого администратор получал по прямой ссылке чужое личное дело целиком.
+ * Решение о том, что уходит наружу, принимает services/tasks/visibility, и
+ * принимается оно один раз, при формировании ответа.
+ */
+function canEditEvent(event, userId, isAdmin) {
   if (event.createdBy === userId) return true;
-  if (event.visibility === 'public') return true;
-  if (event.visibility === 'shared' && event.sharedWith.includes(userId)) return true;
-  return false;
+  if (!isAdmin) return false;
+  return !visibility.PERSONAL_LEVELS.has(event.visibility);
 }
 
 // Проверка доступа пользователя к странице по slug
@@ -499,11 +513,16 @@ router.get('/events/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
 
-    if (!canAccessEvent(event, req.user.id, req.user.isAdmin)) {
+    // Личное чужое событие отдаётся как «занято» либо не отдаётся вовсе —
+    // независимо от прав запрашивающего.
+    const mates = await taskContext.teammateIdsOf(req.user.id);
+    const safe = visibility.redact(event, { id: req.user.id, isAdmin: req.user.isAdmin }, mates);
+
+    if (!safe) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    res.json(event);
+    res.json(safe);
   } catch (error) {
     console.error('Get event error:', error);
     res.status(500).json({ error: 'Failed to fetch event', details: error.message });
@@ -605,9 +624,11 @@ router.put('/events/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
 
-    // Только создатель или админ может редактировать
-    // (участники и sharedWith пользователи могут только просматривать и удалять)
-    if (event.createdBy !== req.user.id && !req.user.isAdmin) {
+    // Только создатель или админ может редактировать (участники и sharedWith
+    // могут просматривать и удалять). Личное чужое закрыто и от админа: правка
+    // подразумевает чтение, и разрешить её значило бы вернуть через PUT тот
+    // обход, который закрыт в чтении.
+    if (!canEditEvent(event, req.user.id, req.user.isAdmin)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

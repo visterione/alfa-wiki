@@ -413,6 +413,36 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     }
   };
 
+  const removeRoom = async () => {
+    if (!selectedRoom) return;
+    const label = selectedRoom.name && selectedRoom.name !== selectedRoom.number
+      ? `${selectedRoom.number} — ${selectedRoom.name}`
+      : selectedRoom.number;
+    if (!window.confirm(
+      `Удалить кабинет «${label}» из складского учёта?\n\n`
+      + 'Он исчезнет с плана и из списка кабинетов. Если к нему привязаны активы, сервер не даст его удалить.'
+    )) return;
+
+    try {
+      await warehouseApi.deleteRoom(selectedRoom.id);
+      setPlan(prev => ({
+        ...prev,
+        rooms: prev.rooms.filter(r => r.id !== selectedRoom.id),
+      }));
+      // Снимок может содержать уже удалённый кабинет. Иначе обычная отмена
+      // геометрии визуально вернула бы запись, которой на сервере больше нет.
+      setSnapshot(prev => prev ? {
+        ...prev,
+        rooms: prev.rooms.filter(r => r.id !== selectedRoom.id),
+      } : prev);
+      setSelected({ kind: null, id: null });
+      toast.success(`Кабинет ${selectedRoom.number} удалён`);
+      await onReloadTree?.();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось удалить кабинет');
+    }
+  };
+
   const saveRoomProps = async (patch) => {
     if (!selectedRoom) return;
     try {
@@ -989,6 +1019,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                               departments={departments}
                               onSave={saveRoomProps}
                               onClearGeometry={deleteSelected}
+                              onDelete={removeRoom}
                               onResize={(w, d) => resizeRoom(selectedRoom.id, w, d)}
                               hasGeometry={hasGeometry(selectedRoom)} />
                   </div>
@@ -1117,7 +1148,7 @@ function ShapeForm({ shape, onChange, onDelete }) {
 }
 
 // ── Форма кабинета ───────────────────────────────────────────────────────────
-function RoomForm({ room, departments, onSave, onClearGeometry, onResize, hasGeometry: geo }) {
+function RoomForm({ room, departments, onSave, onClearGeometry, onDelete, onResize, hasGeometry: geo }) {
   const [form, setForm] = useState(() => pickRoomForm(room));
   useEffect(() => { setForm(pickRoomForm(room)); }, [room.id, room.number, room.name, room.kind, room.departmentId, room.capacityHours]);
 
@@ -1177,6 +1208,10 @@ function RoomForm({ room, departments, onSave, onClearGeometry, onResize, hasGeo
             <Trash2 size={14} /> Убрать с плана
           </button>
         )}
+        <button className="wh-btn wh-btn--danger-ghost" onClick={onDelete}
+                title="Удалить ошибочно созданный кабинет из складского учёта">
+          <X size={14} /> Удалить кабинет
+        </button>
       </div>
     </div>
   );
