@@ -22,6 +22,17 @@ const { generateToken, qrSvg, roomPublicUrl } = require('../../services/warehous
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 
 /**
+ * Порядок кабинетов по номеру — человеческий, а не побайтовый.
+ *
+ * Номер кабинета в базе строка, и обязан ею быть: в сети есть «312а», «1/2» и
+ * «Ординаторская». Но сортировка строк даёт 1, 10, 11, 2, 3 — список, в котором
+ * невозможно найти кабинет глазами. Intl.Collator с numeric сравнивает числовые
+ * куски как числа: 1, 2, 3, 10, 11, и при этом не ломается на «312а».
+ */
+const roomCollator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' });
+const byRoomNumber = (a, b) => roomCollator.compare(String(a.number ?? ''), String(b.number ?? ''));
+
+/**
  * Проверка кода специальности до вставки. Поле ссылается на справочник, и без
  * этой проверки несуществующий код возвращался пользователю сырым текстом
  * нарушения внешнего ключа — сообщением, из которого не следует ни что не так,
@@ -78,6 +89,7 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
         rooms: rooms
           .filter(r => r.floorId === f.id)
           .filter(r => visible === null || visible.has(r.id))
+          .sort(byRoomNumber)
           .map(r => ({
             id: r.id, number: r.number, name: r.name, kind: r.kind,
             departmentId: r.departmentId,
@@ -326,8 +338,11 @@ router.put('/floors/:id/plan', authenticate, requireWarehouse('canEditLocations'
 
     // Геометрия кабинетов: только поле plan. Номер, отделение и МОЛ правятся
     // отдельной формой — иначе редактор плана мог бы затереть их пустыми значениями.
+    // Пустой plan — это не «нет данных», а «убрать с плана»: кабинет остаётся в
+    // базе со всем имуществом, но с этажа исчезает. Различать их обязательно,
+    // иначе убранный кабинет вернулся бы при следующей загрузке.
     for (const r of rooms) {
-      if (!r.id || !r.plan) continue;
+      if (!r.id || r.plan === undefined || r.plan === null) continue;
       await WhRoom.update({ plan: r.plan }, { where: { id: r.id, floorId: floor.id }, transaction: t });
     }
 

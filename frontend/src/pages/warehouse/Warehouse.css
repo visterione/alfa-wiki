@@ -668,6 +668,11 @@
 
 .wh-rooms__table td { vertical-align: middle; }
 
+/* Кнопки свёртки — плотной группой, чтобы читались как один переключатель вида,
+   а не как четыре разные команды вперемешку с фильтрами. */
+.wh-rooms__collapse { display: inline-flex; gap: 3px; }
+.wh-rooms__collapse .wh-icon-btn { border-radius: 6px; }
+
 /* Уровни различаются насыщенностью фона: медцентр плотнее корпуса, корпус —
    этажа. Так вложенность читается без линий-направляющих, которые в широкой
    таблице превращаются в частокол. */
@@ -677,13 +682,21 @@
 .wh-rooms .wh-tree__group.wh-rooms__lvl0 .wh-tree__label { font-size: 13px; }
 .wh-rooms .wh-table tbody tr.wh-tree__group:hover > td { background: #e2ebf7; }
 
-.wh-rooms__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.wh-rooms__gsub { font-size: 11px; color: var(--wh-text-secondary); font-weight: 400; }
+/* Метка медцентра и подпись группы стоят в строчном потоке ячейки, поэтому им
+   нужны и inline-block (иначе у пустого span нет размеров), и свои отступы —
+   раньше расстояние давал gap флекс-контейнера. */
+.wh-rooms__dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  display: inline-block; vertical-align: middle; margin-right: 6px;
+}
+.wh-rooms__gsub {
+  font-size: 11px; color: var(--wh-text-secondary); font-weight: 400; margin-left: 6px;
+}
 
-/* Строка кабинета: заголовок и уточнения столбиком в одной ячейке. Номер вроде
-   «Кабинет Ординаторская (Терапия) 3 этаж» здесь переносится, а не режется — в
-   таблице для него есть вся ширина колонки. */
-.wh-rooms .wh-tree__leaf .wh-tree__cell > span:last-child { display: flex; flex-direction: column; }
+/* Строка кабинета в одну строку. Столбик из названия и уточнений здесь был, но
+   у кабинета, которому уточнять нечего, он оставлял пустую вторую строку —
+   а таких кабинетов большинство. Номер вроде «Кабинет Ординаторская (Терапия)
+   3 этаж» переносится, а не режется: в таблице для него есть вся ширина колонки. */
 .wh-rooms .wh-tree__leaf .wh-cell-main { line-height: 1.35; }
 /* Маркер листа остаётся распоркой, но чёрточку не рисует: строка кабинета и так
    отбита отступом уровня, а штрих перед каждым названием читался посторонним
@@ -916,6 +929,12 @@
 .wh-chip:hover:not(.is-active) { background: var(--wh-bg); }
 .wh-chip.is-active { background: var(--wh-primary); color: #fff; border-color: var(--wh-primary); }
 .wh-chip--removable { background: var(--wh-primary-soft); color: var(--wh-primary-hover); border-color: #bfdbfe; }
+/* Отметка-предупреждение в строке таблицы: не кнопка, кликать её незачем. */
+.wh-chip--warn {
+  background: #fef3c7; color: #92400e; border-color: #fcd34d;
+  cursor: default; flex-shrink: 0;
+}
+.wh-chip--warn:hover { background: #fef3c7; }
 
 .wh-objlist { list-style: none; padding: 0; margin: 0; max-height: 280px; overflow-y: auto; }
 .wh-objlist--muted { border-top: 1px solid var(--wh-border); opacity: .75; max-height: 140px; }
@@ -1349,14 +1368,23 @@
 }
 .wh-tree__bar-count { margin-left: auto; font-size: 12px; color: var(--wh-text-secondary); }
 
-.wh-tree__cell { display: flex; align-items: center; gap: 6px; }
+/* Ячейка дерева выравнивает содержимое строчным потоком, а НЕ флексом.
+   display:flex на <td> отбирает у ячейки роль ячейки таблицы: браузер обязан
+   обернуть её в анонимную строку, и колонка с названием уезжает на отдельную
+   линию, а остальные колонки остаются под ней — ровно та «пустая строчка под
+   кабинетом», из-за которой это и переписано. Вертикальное выравнивание и
+   отступы делают то же самое, но не ломают таблицу. */
+.wh-tree__cell > * { vertical-align: middle; }
+.wh-tree__cell .wh-tree__toggle,
+.wh-tree__cell .wh-tree__bullet { margin-right: 6px; }
+.wh-tree__cell .wh-chip { margin-left: 6px; }
 /* Стрелка сворачивания — знак состояния, а не кнопка: и в списке кабинетов, и в
    иерархических отчётах раскрывает строка целиком. Рамка и фон обещали бы
    отдельную мишень 18 × 18, в которую ещё надо попасть, поэтому от них остался
    только сам шеврон. Ширину сохраняем — по ней выравниваются маркеры листьев. */
 .wh-tree__toggle {
   width: 18px; height: 18px; flex-shrink: 0; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
   border: none; background: none;
   color: var(--wh-text-tertiary); transition: color .15s;
   /* Клик ловит строка целиком: попадать в мишень 18 × 18 ради сворачивания ветки
@@ -1369,13 +1397,14 @@
    влево относительно групп того же уровня. */
 .wh-tree__bullet {
   width: 18px; height: 18px; flex-shrink: 0; position: relative;
+  display: inline-block; vertical-align: middle;
 }
 .wh-tree__bullet::before {
   content: ''; position: absolute; left: 7px; top: 8px;
   width: 4px; height: 1px; background: var(--wh-border-dark);
 }
 .wh-tree__label { font-weight: 600; }
-.wh-tree__hint { font-size: 10px; color: var(--wh-text-tertiary); }
+.wh-tree__hint { font-size: 10px; color: var(--wh-text-tertiary); margin-left: 6px; }
 
 /* Уровни различаются насыщенностью фона: чем выше уровень, тем плотнее. Так
    структура читается без линий-направляющих, которые в широкой таблице

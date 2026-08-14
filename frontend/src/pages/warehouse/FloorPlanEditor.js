@@ -303,7 +303,12 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
         planWidthM: plan.floor.planWidthM,
         planHeightM: plan.floor.planHeightM,
         outline: plan.floor.outline || {},
-        rooms: plan.rooms.filter(hasGeometry).map(r => ({ id: r.id, plan: r.plan })),
+        // Кабинеты уходят все, включая те, у которых геометрию только что убрали:
+        // у них plan уже пустой, и сервер должен об этом узнать. Пока сюда шли
+        // только кабинеты с геометрией, убранный с плана просто не попадал в
+        // запрос — сервер оставлял старые точки, и после сохранения кабинет
+        // возвращался на место.
+        rooms: plan.rooms.map(r => ({ id: r.id, plan: r.plan || {} })),
         // Фигуры уходят целиком: их немного, а diff на клиенте потребовал бы
         // отслеживать удаления — лишняя сложность на ровном месте.
         shapes: (plan.shapes || []).map((s, i) => ({

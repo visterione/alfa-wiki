@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Search, X, ChevronRight, ChevronDown, Maximize2, Minimize2, Settings2,
+  Layers, Building2,
 } from 'lucide-react';
 import RoomSettings from '../../components/warehouse/RoomSettings';
 
@@ -105,11 +106,6 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
     return out;
   }, [nodes, collapsed, q]);
 
-  const totalRooms = useMemo(
-    () => nodes.reduce((s, n) => s + n.rooms, 0),
-    [nodes]
-  );
-
   const toggle = (key) => setCollapsed(prev => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -154,23 +150,30 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
             <X size={14} /> Сбросить
           </button>
         )}
-      </div>
 
-      <div className="wh-tree__bar">
-        <span className="wh-tree__bar-title">Иерархия</span>
-        <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => setCollapsed(new Set())}>
-          <Maximize2 size={14} /> Раскрыть всё
-        </button>
-        <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => collapseTo(2)}>
-          До этажей
-        </button>
-        <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => collapseTo(1)}>
-          До корпусов
-        </button>
-        <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => collapseTo(0)}>
-          <Minimize2 size={14} /> Свернуть всё
-        </button>
-        <span className="wh-tree__bar-count">кабинетов: {totalRooms}</span>
+        {/* Свёртка дерева стоит рядом с фильтрами: это такая же настройка вида
+            списка, как медцентр или отделение. Отдельная полоса «Иерархия» под
+            фильтрами занимала строку ради четырёх кнопок и разрывала блок
+            управления надвое. Подписи сняты — команды короткие, а всплывающая
+            подсказка называет каждую полностью. */}
+        <div className="wh-rooms__collapse">
+          <button className="wh-icon-btn" title="Раскрыть всё"
+                  onClick={() => setCollapsed(new Set())}>
+            <Maximize2 size={15} />
+          </button>
+          <button className="wh-icon-btn" title="Свернуть до этажей"
+                  onClick={() => collapseTo(2)}>
+            <Layers size={15} />
+          </button>
+          <button className="wh-icon-btn" title="Свернуть до корпусов"
+                  onClick={() => collapseTo(1)}>
+            <Building2 size={15} />
+          </button>
+          <button className="wh-icon-btn" title="Свернуть всё"
+                  onClick={() => collapseTo(0)}>
+            <Minimize2 size={15} />
+          </button>
+        </div>
       </div>
 
       <div className="wh-table-wrap wh-table-wrap--tall">
@@ -214,15 +217,18 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
                     onClick={() => onOpenRoom(n.room.id)}>
                   <td className="wh-tree__cell" style={{ paddingLeft: 10 + n.level * 20 }}>
                     <span className="wh-tree__bullet" />
-                    <span>
-                      <span className="wh-cell-main">{roomTitle(n.room)}</span>
-                      {n.room.name && n.room.name !== n.room.number && (
-                        <span className="wh-cell-sub">№ {n.room.number}</span>
-                      )}
-                      {!n.room.hasPlan && (
-                        <span className="wh-cell-sub wh-warn">нет на плане этажа</span>
-                      )}
-                    </span>
+                    {/* Одна строка, без вложенного столбика. Раньше здесь под
+                        названием шли уточнения — номер и отметка об отсутствии на
+                        плане, — и у кабинета, которому уточнять нечего, оставалась
+                        пустая вторая строка: столбик из одного элемента всё равно
+                        занимал высоту двух. Номер и так виден в названии, а отметка
+                        о плане стала значком в конце строки. */}
+                    <span className="wh-cell-main">{roomTitle(n.room)}</span>
+                    {!n.room.hasPlan && (
+                      <span className="wh-chip wh-chip--warn" title="Кабинет не нарисован на плане этажа">
+                        нет на плане
+                      </span>
+                    )}
                   </td>
                   <td>{n.department?.name || ''}</td>
                   <td>{n.room.responsible?.displayName || <span className="wh-muted">не назначен</span>}</td>
