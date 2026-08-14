@@ -70,6 +70,10 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   const [tool, setTool] = useState({ mode: 'select' });
   const [showGrid, setShowGrid] = useState(true);
   const [dimensions, setDimensions] = useState('selected');
+  // Шаг привязки. Раньше был жёстко 0,25 м, и стена на 3,1 м не выставлялась
+  // в принципе — такого значения нет в сетке.
+  const [step, setStep] = useState(GRID_STEP);
+  const [shapeShape, setShapeShape] = useState('rect');
   const [selected, setSelected] = useState({ kind: null, id: null });
   const [saving, setSaving] = useState(false);
   const [misRooms, setMisRooms] = useState(null);
@@ -209,6 +213,67 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
       return { ...prev, floor: { ...prev.floor, outline: { points } } };
     });
     setDirty(true);
+  };
+
+  /**
+   * Добавление и удаление вершины у уже нарисованного объекта.
+   *
+   * Один обработчик на кабинеты, технические помещения и контур этажа: правка
+   * формы у них одна и та же, а три почти одинаковые функции разошлись бы при
+   * первой же доработке. Точка вставляется по индексу стороны, поэтому порядок
+   * обхода не ломается и многоугольник не выворачивается.
+   */
+  const editVertex = ({ kind, id, index, point }, remove) => {
+    pushSnapshot();
+    const change = (points) => {
+      const next = points.slice();
+      if (remove) {
+        if (next.length <= 3) return null;
+        next.splice(index, 1);
+      } else next.splice(index, 0, point);
+      return next;
+    };
+
+    if (kind === 'room') {
+      mutateRoom(id, room => {
+        const points = change(room.plan?.points || []);
+        return points ? { ...room, plan: { ...room.plan, points, label: centroid(points) } } : room;
+      });
+    } else if (kind === 'shape') {
+      mutateShape(id, shape => {
+        const points = change(shape.geometry?.points || []);
+        return points ? { ...shape, geometry: { ...shape.geometry, points, label: centroid(points) } } : shape;
+      });
+    } else {
+      setPlan(prev => {
+        const points = change(prev.floor.outline?.points || []);
+        return points ? { ...prev, floor: { ...prev.floor, outline: { points } } } : prev;
+      });
+      setDirty(true);
+    }
+    if (remove) toast.success('Вершина удалена');
+  };
+
+  /**
+   * Точный размер прямоугольного помещения числом. Перетаскиванием ровно 3,1 м
+   * не выставить даже при мелком шаге: попасть мышью в сантиметр нельзя. Угол
+   * слева сверху остаётся на месте — иначе помещение уезжало бы от соседей.
+   */
+  const resizeRoom = (roomId, widthM, depthM) => {
+    if (!(widthM > 0) || !(depthM > 0)) return;
+    pushSnapshot();
+    mutateRoom(roomId, room => {
+      const pts = room.plan?.points || [];
+      const x0 = Math.min(...pts.map(p => p[0]));
+      const y0 = Math.min(...pts.map(p => p[1]));
+      const points = [
+        [round2(x0), round2(y0)],
+        [round2(x0 + widthM), round2(y0)],
+        [round2(x0 + widthM), round2(y0 + depthM)],
+        [round2(x0), round2(y0 + depthM)],
+      ];
+      return { ...room, plan: { ...room.plan, points, label: centroid(points) } };
+    });
   };
 
   /** Прямоугольник: кабинет или фигура — зависит от активного инструмента. */
@@ -603,9 +668,19 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                 <Trash2 size={16} />
               </button>
               <button className={`wh-tool ${showGrid ? 'is-active' : ''}`}
-                      onClick={() => setShowGrid(g => !g)} title={`Сетка ${GRID_STEP} м`}>
+                      onClick={() => setShowGrid(g => !g)} title="Показать сетку">
                 <Grid3x3 size={16} />
               </button>
+              {/* Шаг привязки виден и переключается на месте: это не настройка
+                  «один раз и забыть», а инструмент — контур этажа ведут крупным
+                  шагом, нишу под колонну ловят сантиметром. */}
+              <select className="wh-tool-select" value={step} title="Шаг привязки"
+                      onChange={e => setStep(Number(e.target.value))}>
+                {[0.05, 0.1, 0.25, 0.5, 1].map(s => (
+                  <option key={s} value={s}>{String(s).replace('.', ',')} м</option>
+                ))}
+                <option value={0}>без привязки</option>
+              </select>
               {/* Три состояния, а не галочка: размеры всех помещений сразу нужны
                   при обмере этажа, размеры одного — при правке, и ни то ни другое
                   не годится постоянно. */}
@@ -657,7 +732,25 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
             </div>
 
             <div className="wh-toolgroup wh-toolgroup--wide">
-              <span className="wh-toolgroup__label">Технические помещения и оформление</span>
+              <span className="wh-toolgroup__label">
+                Технические помещения и оформление
+                {/* Коридор почти никогда не прямоугольный. Раньше фигуры
+                    рисовались только рамкой, и Г-образный коридор нарисовать
+                    было нечем — приходилось класть рядом два прямоугольника. */}
+                <span className="wh-toolgroup__mode">
+                  {[['rect', 'рамкой', Square], ['polygon', 'по точкам', PenLine]].map(([mode, label, Icon]) => (
+                    <button key={mode}
+                            className={`wh-tool wh-tool--tiny ${shapeShape === mode ? 'is-active' : ''}`}
+                            title={`Рисовать ${label}`}
+                            onClick={() => {
+                              setShapeShape(mode);
+                              if (tool.mode === 'shape') setTool(t => ({ ...t, shape: mode }));
+                            }}>
+                      <Icon size={13} />
+                    </button>
+                  ))}
+                </span>
+              </span>
               <div className="wh-shape-palette">
                 {SHAPE_GROUPS.map(group => (
                   <div key={group.title} className="wh-shape-palette__group" title={group.hint}>
@@ -668,7 +761,12 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                         <button key={kind}
                                 className={`wh-shape-btn ${active ? 'is-active' : ''}`}
                                 title={`${info.label} — протяните рамку по плану`}
-                                onClick={() => setTool({ mode: 'shape', kind, shape: kind === 'text' ? 'rect' : 'rect' })}>
+                                onClick={() => setTool({
+                                  mode: 'shape', kind,
+                                  // Подпись всегда ставится рамкой: многоугольная
+                                  // надпись — это не фигура, а недоразумение.
+                                  shape: kind === 'text' ? 'rect' : shapeShape,
+                                })}>
                           <span className="wh-shape-btn__swatch"
                                 style={{ background: info.fill === 'transparent' ? '#fff' : info.fill, borderColor: info.stroke === 'transparent' ? '#cbd5e1' : info.stroke }}>
                             {kind === 'text' ? <Type size={11} /> : null}
@@ -735,6 +833,9 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                 editOutline={editOutline}
                 showGrid={showGrid}
                 dimensions={dimensions}
+                gridStep={step}
+                onVertexAdd={info => editVertex(info, false)}
+                onVertexRemove={info => editVertex(info, true)}
                 selectedRoomId={selected.kind === 'room' ? selected.id : null}
                 selectedShapeId={selected.kind === 'shape' ? selected.id : null}
                 colorOf={room => room.department?.color
@@ -888,6 +989,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                               departments={departments}
                               onSave={saveRoomProps}
                               onClearGeometry={deleteSelected}
+                              onResize={(w, d) => resizeRoom(selectedRoom.id, w, d)}
                               hasGeometry={hasGeometry(selectedRoom)} />
                   </div>
                 </div>
@@ -958,7 +1060,10 @@ function toolHint(tool, selectedRoom) {
     const inside = info?.technical !== false
       ? ' Размещается только внутри контура этажа.'
       : ' Оформление можно ставить и по границе этажа.';
-    return `Протяните рамку — появится «${info?.label}». Это помещение не участвует в учёте: `
+    const how = tool.shape === 'polygon'
+      ? `Кликайте по углам, двойной клик замыкает — так рисуется Г-образный коридор. Появится «${info?.label}».`
+      : `Протяните рамку — появится «${info?.label}».`;
+    return `${how} Это помещение не участвует в учёте: `
       + `активы и остатки к нему не привязываются.${inside}`;
   }
   if (tool.mode === 'room') {
@@ -1012,7 +1117,7 @@ function ShapeForm({ shape, onChange, onDelete }) {
 }
 
 // ── Форма кабинета ───────────────────────────────────────────────────────────
-function RoomForm({ room, departments, onSave, onClearGeometry, hasGeometry: geo }) {
+function RoomForm({ room, departments, onSave, onClearGeometry, onResize, hasGeometry: geo }) {
   const [form, setForm] = useState(() => pickRoomForm(room));
   useEffect(() => { setForm(pickRoomForm(room)); }, [room.id, room.number, room.name, room.kind, room.departmentId, room.capacityHours]);
 
@@ -1043,7 +1148,7 @@ function RoomForm({ room, departments, onSave, onClearGeometry, hasGeometry: geo
           </select>
         </label>
       </div>
-      {geo && <Metrics points={room.plan.points} />}
+      {geo && <Metrics points={room.plan.points} onResize={onResize} />}
 
       <p className="wh-hint">
         Ёмкость — знаменатель загрузки. Если кабинет показывает больше 100 %, значит
@@ -1085,7 +1190,7 @@ function RoomForm({ room, departments, onSave, onClearGeometry, hasGeometry: geo
  * Поэтому подписаны они словами, а не «6 × 4 = 24»: последнее было бы неправдой,
  * а на плане по этим цифрам заказывают мебель.
  */
-function Metrics({ points }) {
+function Metrics({ points, onResize }) {
   const { width, depth } = polygonBounds(points);
   const area = polygonArea(points);
   const box = width * depth;
@@ -1094,18 +1199,35 @@ function Metrics({ points }) {
 
   return (
     <div className="wh-metrics">
-      <div className="wh-metrics__row">
-        <span>{isRect ? 'Размер' : 'Габарит'}</span>
-        <b>{fmt1(width)} × {fmt1(depth)} м</b>
-      </div>
+      {isRect && onResize ? (
+        // Прямоугольник задаётся числами: попасть мышью ровно в 3,1 м нельзя ни
+        // при каком шаге привязки, а размер помещения обычно известен точно.
+        <div className="wh-metrics__row">
+          <span>Размер</span>
+          <span className="wh-metrics__size">
+            <input type="number" step="0.1" min="0.5" value={width}
+                   onChange={e => onResize(Number(e.target.value), depth)} />
+            <em>×</em>
+            <input type="number" step="0.1" min="0.5" value={depth}
+                   onChange={e => onResize(width, Number(e.target.value))} />
+            <span>м</span>
+          </span>
+        </div>
+      ) : (
+        <div className="wh-metrics__row">
+          <span>Габарит</span>
+          <b>{fmt1(width)} × {fmt1(depth)} м</b>
+        </div>
+      )}
       <div className="wh-metrics__row">
         <span>Площадь</span>
         <b>{fmt1(area)} м²</b>
       </div>
       {!isRect && (
         <div className="wh-hint">
-          Помещение непрямоугольное: габарит — это описанный прямоугольник, площадь
-          меньше него. Длины стен подписаны на самом плане.
+          Помещение непрямоугольное, поэтому размер числом не задаётся: габарит —
+          это описанный прямоугольник, площадь меньше него. Длины стен подписаны на
+          плане, форма правится вершинами.
         </div>
       )}
     </div>

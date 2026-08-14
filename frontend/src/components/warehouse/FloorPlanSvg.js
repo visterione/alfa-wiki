@@ -253,6 +253,64 @@ function Dimensions({ points, k, color = '#41506380' }) {
   return <g>{items}</g>;
 }
 
+/**
+ * Ручки правки формы: перетаскивание вершин, добавление новых и удаление лишних.
+ *
+ * Помещение рисуется один раз — прямоугольником или по точкам, — а дальше форму
+ * приходится менять: коридор оказывается Г-образным, у кабинета вырезан угол под
+ * колонну. Раньше вершины можно было только двигать, поэтому прямоугольник
+ * оставался прямоугольником навсегда, и единственным выходом было стереть
+ * помещение и обвести заново, потеряв привязку к кабинету.
+ *
+ * Точка добавляется на середине стороны — там, где её и ждут. Полупрозрачные
+ * плюсы висят на каждой стороне выбранного объекта: без них правило «кликни в
+ * стену» пришлось бы объяснять текстом, а угадать его нельзя.
+ *
+ * Удаление — двойной клик по вершине. Не по одиночному: одиночный начинает
+ * перетаскивание, и случайно снесённый угол при обводке этажа стоит дорого.
+ * Меньше трёх вершин не остаётся — это уже не многоугольник.
+ */
+function VertexHandles({ points, kind, id, k, color, onDrag, onAdd, onRemove }) {
+  if (!Array.isArray(points) || points.length < 3) return null;
+
+  const mids = [];
+  if (onAdd) {
+    for (let i = 0; i < points.length; i++) {
+      const [x1, y1] = points[i];
+      const [x2, y2] = points[(i + 1) % points.length];
+      // На короткой стороне плюс перекрыл бы обе её вершины и мешал бы тянуть их.
+      if (Math.hypot(x2 - x1, y2 - y1) < 1.1 * k) continue;
+      mids.push({ index: i + 1, x: (x1 + x2) / 2, y: (y1 + y2) / 2 });
+    }
+  }
+
+  return (
+    <g>
+      {mids.map(m => (
+        <g key={`add-${m.index}`} style={{ cursor: 'copy' }}
+           onMouseDown={(e) => { e.stopPropagation(); onAdd({ kind, id, index: m.index, point: [round2(m.x), round2(m.y)] }); }}>
+          <circle cx={m.x} cy={m.y} r={0.2 * k} fill="#fff" stroke={color} strokeWidth={0.05 * k} opacity="0.85" />
+          <path d={`M ${m.x - 0.09 * k} ${m.y} H ${m.x + 0.09 * k} M ${m.x} ${m.y - 0.09 * k} V ${m.y + 0.09 * k}`}
+                stroke={color} strokeWidth={0.045 * k} strokeLinecap="round" />
+          <title>Добавить вершину</title>
+        </g>
+      ))}
+      {points.map((p, i) => (
+        <circle key={i} cx={p[0]} cy={p[1]} r={0.22 * k}
+                fill="#fff" stroke={color} strokeWidth={0.06 * k}
+                style={{ cursor: 'nwse-resize' }}
+                onMouseDown={(e) => { e.stopPropagation(); onDrag(i); }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  if (onRemove && points.length > 3) onRemove({ kind, id, index: i });
+                }}>
+          <title>{points.length > 3 ? 'Тянуть; двойной клик — удалить вершину' : 'Тянуть'}</title>
+        </circle>
+      ))}
+    </g>
+  );
+}
+
 export default function FloorPlanSvg({
   floor,
   rooms = [],
@@ -285,6 +343,12 @@ export default function FloorPlanSvg({
   // выбранного помещения — размеры всех сразу читаемы лишь на небольшом этаже,
   // а на плане в полсотни кабинетов превращаются в шум.
   dimensions = 'none',
+  // Шаг привязки в метрах; 0 — свободное перемещение. Раньше он был константой
+  // 0,25 м, и выставить стену на 3,1 м было невозможно в принципе: значение
+  // просто не попадало в сетку.
+  gridStep = GRID_STEP,
+  onVertexAdd = null,             // ({ kind:'room'|'shape'|'outline', id, index, point })
+  onVertexRemove = null,          // ({ kind, id, index })
   height = 560,
 }) {
   const svgRef = useRef(null);
@@ -367,7 +431,11 @@ export default function FloorPlanSvg({
     return { x: local.x, y: local.y };
   }, []);
 
-  const snap = v => Math.round(v / GRID_STEP) * GRID_STEP;
+  // Шаг 0 — привязки нет вовсе. Округление до сантиметра остаётся: миллиметры
+  // на плане этажа не значат ничего, а в JSON превращаются в 3.100000000000001.
+  const snap = v => (gridStep > 0
+    ? +(Math.round(v / gridStep) * gridStep).toFixed(3)
+    : Math.round(v * 100) / 100);
 
   /**
    * Границы этажа: контур, если он задан, иначе прямоугольник холста.
@@ -725,15 +793,11 @@ export default function FloorPlanSvg({
                   && (dimensions === 'all' || (dimensions === 'selected' && isSel)) && (
                   <Dimensions points={pts} k={k} />
                 )}
-                {editable && isSel && pts.map((p, i) => (
-                  <circle key={i} cx={p[0]} cy={p[1]} r={0.2 * k}
-                          fill="#fff" stroke="#1e3a5f" strokeWidth={0.05 * k}
-                          style={{ cursor: 'nwse-resize' }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            setDrag({ kind: 'shapeVertex', shapeId: id, index: i });
-                          }} />
-                ))}
+                {editable && isSel && !drawing && (
+                  <VertexHandles points={pts} kind="shape" id={id} k={k} color="#1e3a5f"
+                                 onDrag={i => setDrag({ kind: 'shapeVertex', shapeId: id, index: i })}
+                                 onAdd={pts.length >= 3 ? onVertexAdd : null} onRemove={onVertexRemove} />
+                )}
               </g>
             );
           })}
@@ -799,16 +863,14 @@ export default function FloorPlanSvg({
                   <Dimensions points={pts} k={k} />
                 )}
 
-                {/* Ручки вершин — только в редакторе и только у выбранного кабинета */}
-                {mode === 'edit' && isSelected && pts.map((p, idx) => (
-                  <circle key={idx} cx={p[0]} cy={p[1]} r={0.22 * k}
-                          fill="#fff" stroke="#1e3a5f" strokeWidth={0.06 * k}
-                          style={{ cursor: 'nwse-resize' }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            setDrag({ kind: 'vertex', roomId: id, index: idx });
-                          }} />
-                ))}
+                {/* Ручки вершин — только в редакторе и только у выбранного кабинета.
+                    Во время рисования они прячутся: плюс на стене перехватил бы
+                    клик, которым ставят точку нового помещения. */}
+                {mode === 'edit' && isSelected && !drawing && (
+                  <VertexHandles points={pts} kind="room" id={id} k={k} color="#1e3a5f"
+                                 onDrag={idx => setDrag({ kind: 'vertex', roomId: id, index: idx })}
+                                 onAdd={onVertexAdd} onRemove={onVertexRemove} />
+                )}
               </g>
             );
           })}
@@ -816,19 +878,13 @@ export default function FloorPlanSvg({
 
         {/* Ручки контура этажа — только когда его правят, чтобы они не мешали
             обводить кабинеты. */}
-        {mode === 'edit' && editOutline && outlinePoints && (
+        {mode === 'edit' && editOutline && outlinePoints && !drawing && (
           <g>
             <path d={pointsToPath(outlinePoints)} fill="none" stroke="#1e3a5f"
                   strokeWidth={0.16 * k} strokeDasharray={`${0.4 * k} ${0.25 * k}`} />
-            {outlinePoints.map((p, i) => (
-              <circle key={i} cx={p[0]} cy={p[1]} r={0.26 * k}
-                      fill="#1e3a5f" stroke="#fff" strokeWidth={0.07 * k}
-                      style={{ cursor: 'move' }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        setDrag({ kind: 'outlineVertex', index: i });
-                      }} />
-            ))}
+            <VertexHandles points={outlinePoints} kind="outline" id={null} k={k} color="#1e3a5f"
+                           onDrag={i => setDrag({ kind: 'outlineVertex', index: i })}
+                           onAdd={onVertexAdd} onRemove={onVertexRemove} />
           </g>
         )}
 
