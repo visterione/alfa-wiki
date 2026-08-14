@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { tasks as api } from '../../../services/api';
+import { tasks as api, BASE_URL } from '../../../services/api';
 import { STATUS_LABEL, STATUS_TONE, MODE_LABEL, userName } from '../utils/labels';
 import { hoursText, dshort, dfull, estimateText } from '../utils/dates';
 import { Badge, Avatar, AvatarStack, Empty } from './Bits';
@@ -35,6 +35,7 @@ function historyText(row) {
       return p.becameStuck
         ? `перенёс на ${dshort(p.to)} — третий перенос, задача требует решения`
         : `перенёс на ${dshort(p.to)}`;
+    case 'extended': return `продлил: ${hoursText(p.from)} → ${hoursText(p.to)}`;
     case 'split': return `разбил часть: ${hoursText(p.head)} + ${hoursText(p.tail)}`;
     case 'forced': return `продавил проверку загрузки: «${p.explanation}»`;
     case 'status_changed': return `${STATUS_LABEL[p.from] || p.from} → ${STATUS_LABEL[p.to] || p.to}`;
@@ -45,6 +46,8 @@ function historyText(row) {
 export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
   const [task, setTask] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [movingPart, setMovingPart] = useState(null);
+  const [moveDate, setMoveDate] = useState('');
 
   const reload = useCallback(async () => {
     try {
@@ -140,10 +143,35 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
             </>
           )}
 
+          {!!task.attachments?.length && (
+            <>
+              <div className="tsk-sect">Файлы · {task.attachments.length}</div>
+              <div className="tsk-files">
+                {task.attachments.map((file, index) => (
+                  <a
+                    className="tsk-file"
+                    key={file.id || file.path || index}
+                    href={`${BASE_URL}/${String(file.path || '').replace(/^\//, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span className="tsk-file-icon">{String(file.filename || 'file').split('.').pop()?.slice(0, 4)}</span>
+                    <span className="tsk-file-name">{file.filename || file.originalName || 'Вложение'}</span>
+                    <span className="tsk-file-open">Открыть</span>
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="tsk-sect">Части · {task.parts?.length || 0}</div>
           {(task.parts || []).map(part => {
             const notPlanned = (part.assignees || []).filter(a => !a.plannedDate);
             const mine = (part.assignees || []).find(a => a.userId === ctx.me?.id);
+            const partHistory = (task.history || []).filter(row => row.partId === part.id);
+            const lastProposal = partHistory.map(row => row.action).lastIndexOf('proposed_date');
+            const lastAccept = partHistory.map(row => row.action).lastIndexOf('accepted_date');
+            const hasPendingProposal = lastProposal > lastAccept;
             return (
               <div className="tsk-part" key={part.id}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
@@ -209,6 +237,24 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                             Завершить
                           </button>
                         )}
+                        {part.status !== 'done' && (
+                          <button className="tsk-btn is-sm" disabled={busy}
+                            onClick={() => act(
+                              () => api.extendPart(part.id, 0.5),
+                              'Задача продлена на 30 минут — загрузка пересчитана'
+                            )}>
+                            + 30 мин
+                          </button>
+                        )}
+                        {part.status !== 'done' && (
+                          <button className="tsk-btn is-sm" disabled={busy}
+                            onClick={() => {
+                              setMovingPart(part.id);
+                              setMoveDate(String(mine.plannedDate || part.dueDate));
+                            }}>
+                            Перенести
+                          </button>
+                        )}
                         {part.status !== 'review' && part.status !== 'done' && (
                           <button className="tsk-btn is-sm" disabled={busy}
                             onClick={() => act(() => api.setPartStatus(part.id, 'review'), 'Отправлено на проверку')}>
@@ -226,7 +272,7 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                   </div>
                 )}
 
-                {isAuthor && !mine && part.status === 'new' && (
+                {isAuthor && !mine && part.status === 'new' && hasPendingProposal && (
                   <div className="tsk-acts" style={{ marginTop: 10 }}>
                     <button className="tsk-btn is-sm" disabled={busy}
                       onClick={() => act(() => api.acceptDate(part.id),
@@ -235,9 +281,31 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                     </button>
                   </div>
                 )}
+
+                {movingPart === part.id && (
+                  <div className="tsk-move">
+                    <input className="tsk-input" type="date" value={moveDate}
+                      onChange={e => setMoveDate(e.target.value)} />
+                    <button className="tsk-btn is-primary" disabled={busy || !moveDate}
+                      onClick={() => act(
+                        () => api.movePart(part.id, moveDate),
+                        `Перенесено на ${dfull(moveDate)}`
+                      ).then(() => setMovingPart(null))}>
+                      Перенести
+                    </button>
+                    <button className="tsk-btn" onClick={() => setMovingPart(null)}>Отмена</button>
+                  </div>
+                )}
               </div>
             );
           })}
+
+          {task.parts?.length > 1 && (
+            <>
+              <div className="tsk-sect">Схема</div>
+              <TaskScheme task={task} />
+            </>
+          )}
 
           <div className="tsk-sect">История</div>
           <div className="tsk-hist" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
@@ -267,6 +335,33 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TaskScheme({ task }) {
+  const deps = task.deps || [];
+  return (
+    <div className="tsk-scheme is-card">
+      {(task.parts || []).map((part, index) => {
+        const after = deps
+          .filter(dep => dep.partId === part.id)
+          .map(dep => task.parts.find(p => p.id === dep.afterPartId)?.title)
+          .filter(Boolean);
+        return (
+          <React.Fragment key={part.id}>
+            {index > 0 && <div className="tsk-scheme-arrow">→</div>}
+            <div className={`tsk-scheme-node ${part.assignees?.length > 1 ? 'is-shared' : ''}`}>
+              <div className="tsk-scheme-title">{part.title}</div>
+              <div className="tsk-scheme-meta">
+                {(part.assignees || []).map(a => userName(a.user)).join(', ')}
+                {' · '}{estimateText(part.estimateHours)}
+              </div>
+              {!!after.length && <div className="tsk-scheme-deps">после: {after.join(', ')}</div>}
+            </div>
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }

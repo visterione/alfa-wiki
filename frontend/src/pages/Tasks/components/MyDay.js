@@ -11,6 +11,8 @@
  */
 
 import React from 'react';
+import toast from 'react-hot-toast';
+import { tasks as api } from '../../../services/api';
 import { hoursText, dfull, addDays, today, estimateText } from '../utils/dates';
 import { useDayLoad, useEvents, dayEvents, eventHours } from '../utils/useLoad';
 import { LoadBar, Empty, Badge, Note } from './Bits';
@@ -22,6 +24,16 @@ export default function MyDay({ ctx }) {
   const list = dayEvents(events, cursor);
 
   const isToday = cursor === today();
+
+  const openEvent = async event => {
+    if (!event.taskPartId) return;
+    try {
+      const { data } = await api.getPartTask(event.taskPartId);
+      ctx.openTask(data.taskId);
+    } catch {
+      toast.error('Не удалось открыть задачу');
+    }
+  };
 
   return (
     <>
@@ -80,7 +92,9 @@ export default function MyDay({ ctx }) {
               {load?.free > 0 && <><br />Свободно {hoursText(load.free)}.</>}
             </Empty>
           ) : list.map(event => (
-            <div className="tsk-inbox-card" key={event.id} style={{ padding: '12px 14px', marginBottom: 8 }}>
+            <div className={`tsk-inbox-card ${event.taskPartId ? 'is-clickable' : ''}`}
+              key={event.id} style={{ padding: '12px 14px', marginBottom: 8 }}
+              onClick={() => openEvent(event)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1 }}>
                   <div className="tsk-inbox-title" style={{ fontSize: 14 }}>

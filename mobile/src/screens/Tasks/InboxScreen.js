@@ -31,7 +31,7 @@ import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {setInboxCount} from '../../store/tasksStore';
 import {addDays, dfull, dshort, estimateText, hoursText, userName} from './taskMeta';
 
-export default function InboxScreen({navigation}) {
+export default function InboxScreen({navigation, route}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   const tabInset = useTabBarInset();
@@ -40,6 +40,8 @@ export default function InboxScreen({navigation}) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(null);
+  const planDate = route.params?.planDate;
+  const freeHours = Number(route.params?.freeHours || 0);
 
   const load = useCallback(async ({silent} = {}) => {
     if (!silent) setLoading(true);
@@ -123,6 +125,10 @@ export default function InboxScreen({navigation}) {
 
   if (loading) return <LogoLoader />;
 
+  const visibleMine = planDate
+    ? data.mine.filter(part => Number(part.estimateHours) <= freeHours)
+    : data.mine;
+
   return (
     <ScrollView
       style={styles.root}
@@ -138,16 +144,20 @@ export default function InboxScreen({navigation}) {
           tintColor={c.primary}
         />
       }>
-      <Text style={styles.section}>Требует решения · {data.mine.length}</Text>
+      <Text style={styles.section}>
+        {planDate ? `Помещается в свободное окно · ${visibleMine.length}` : `Требует решения · ${data.mine.length}`}
+      </Text>
 
-      {!data.mine.length ? (
+      {!visibleMine.length ? (
         <Text style={styles.empty}>
-          Входящие разобраны.{'\n'}Ни одна задача не ждёт вашего решения.
+          {planDate
+            ? 'Во входящих нет задачи подходящей длительности.'
+            : `Входящие разобраны.\nНи одна задача не ждёт вашего решения.`}
         </Text>
       ) : (
-        data.mine.map(part => {
+        visibleMine.map(part => {
           const a = part.assessment || {};
-          const date = String(part.dueDate);
+          const date = String(planDate || part.dueDate);
           const disabled = busy === part.id;
 
           return (
@@ -162,20 +172,24 @@ export default function InboxScreen({navigation}) {
                 {dshort(date)}
               </Text>
 
-              <View style={[styles.fit, a.fits ? styles.fitOk : styles.fitBad]}>
-                <Text style={[styles.fitText, {color: a.fits ? c.success : c.error}]}>
-                  {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
-                  {a.reason === 'no_norm' &&
-                    'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
-                  {a.reason === 'ok' &&
-                    `${dshort(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)}. Помещается.`}
-                  {a.reason === 'overload' &&
-                    `${dshort(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — переработка ${hoursText(a.over)}.`}
+              <View style={[styles.fit, (planDate || a.fits) ? styles.fitOk : styles.fitBad]}>
+                <Text style={[styles.fitText, {color: (planDate || a.fits) ? c.success : c.error}]}>
+                  {planDate
+                    ? `Выбрано свободное окно ${dshort(date)} · ${hoursText(freeHours)}. Сервер ещё раз проверит пересечения перед постановкой.`
+                    : <>
+                      {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
+                      {a.reason === 'no_norm' &&
+                        'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
+                      {a.reason === 'ok' &&
+                        `${dshort(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)}. Помещается.`}
+                      {a.reason === 'overload' &&
+                        `${dshort(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — переработка ${hoursText(a.over)}.`}
+                    </>}
                 </Text>
               </View>
 
               <View style={styles.acts}>
-                {a.fits ? (
+                {planDate || a.fits ? (
                   <Pressable
                     style={[styles.btn, styles.btnPrimary, disabled && styles.btnOff]}
                     disabled={disabled}
@@ -197,22 +211,24 @@ export default function InboxScreen({navigation}) {
                   </Pressable>
                 )}
 
-                <Pressable
-                  style={[styles.btn, disabled && styles.btnOff]}
-                  disabled={disabled}
-                  onPress={() =>
-                    a.fits
-                      ? propose(part)
-                      : run(
-                          part.id,
-                          () => tasksApi.planPart(part.id, date, true),
-                          'Взято сверх нормы — автор увидит, что вы в переработке.',
-                        )
-                  }>
-                  <Text style={styles.btnText}>
-                    {a.fits ? 'Другой день' : 'Всё равно взять'}
-                  </Text>
-                </Pressable>
+                {!planDate && (
+                  <Pressable
+                    style={[styles.btn, disabled && styles.btnOff]}
+                    disabled={disabled}
+                    onPress={() =>
+                      a.fits
+                        ? propose(part)
+                        : run(
+                            part.id,
+                            () => tasksApi.planPart(part.id, date, true),
+                            'Взято сверх нормы — автор увидит, что вы в переработке.',
+                          )
+                    }>
+                    <Text style={styles.btnText}>
+                      {a.fits ? 'Другой день' : 'Всё равно взять'}
+                    </Text>
+                  </Pressable>
+                )}
 
                 <Pressable
                   style={[styles.btn, disabled && styles.btnOff]}

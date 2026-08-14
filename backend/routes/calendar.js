@@ -632,6 +632,16 @@ router.put('/events/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Блок задачи нельзя править как обычное событие: перенос обязан обновить
+    // срок части, plannedDate, историю и счётчик трёх переносов. Клиент должен
+    // использовать /tasks/parts/:id/move.
+    if (event.taskPartId) {
+      return res.status(409).json({
+        error: 'Блок задачи изменяется из карточки задачи',
+        taskPartId: event.taskPartId,
+      });
+    }
+
     const {
       title, description, startTime, endTime, allDay,
       eventType, priority, status, color, location,
@@ -724,6 +734,13 @@ router.delete('/events/:id', authenticate, async (req, res) => {
 
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.taskPartId) {
+      return res.status(409).json({
+        error: 'Блок задачи удаляется только вместе с задачей или через её карточку',
+        taskPartId: event.taskPartId,
+      });
     }
 
     // Проверка прав на удаление:

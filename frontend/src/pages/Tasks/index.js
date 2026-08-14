@@ -6,8 +6,8 @@
  * есть длительность, у человека — норма рабочего дня, а у срока — согласование
  * вместо назначения.
  *
- * Навигация горизонтальной лентой, а не вторым сайдбаром: слева уже есть
- * сайдбар портала, и второй вертикальный список превратил бы экран в коридор.
+ * Внутренняя навигация повторяет трёхколоночную геометрию прототипа, а цвета,
+ * шрифт и состояния берёт из общей дизайн-системы Alfa Wiki.
  *
  * Порядок разделов повторяет прототип и он не случайный. «Мой день» стоит выше
  * блока «Команды» даже у руководителя: он тоже человек с перегруженным днём, и
@@ -55,6 +55,18 @@ const SCREENS = [
   { key: 'reports', label: 'Отчёты', icon: PieChart, Component: Reports },
 ];
 
+const SCREEN_CONTEXT = {
+  myday: ['Личный фокус', 'Откройте день утром: здесь только ваша загрузка и план, без командной аналитики.'],
+  inbox: ['Сначала договориться', 'Пока исполнитель не выбрал день, задача не занимает его время. Автор видит это как ожидание ответа.'],
+  chart: ['Период и окна', 'Неделя показывает состав дней, месяц — где завал и где остаётся свободное время.'],
+  load: ['Команда → человек → день', 'Сначала выберите команду, затем сотрудника. Содержание личных дел не раскрывается.'],
+  board: ['Статус — следствие', 'Колонки показывают состояние частей задачи, а не заменяют планирование по времени.'],
+  people: ['Норма у каждого своя', 'Подрядчик, руководитель и поддержка не должны сравниваться с одной общей нормой.'],
+  teams: ['Граница видимости', 'Команда определяет, кто видит загрузку, и не является владельцем задач.'],
+  tasks: ['Вся работа в срезе', 'Фильтры помогают отделить поставленное вами, совместные задачи и то, что требует решения.'],
+  reports: ['Загрузка, не слежка', 'Здесь нет онлайна и времени в приложении — только запланированные часы и личные нормы.'],
+};
+
 export default function Tasks() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
@@ -73,6 +85,8 @@ export default function Tasks() {
   // получить пять слегка разошедшихся карточек.
   const [openTaskId, setOpenTaskId] = useState(null);
   const [formState, setFormState] = useState(null);
+  const [joinInvite, setJoinInvite] = useState(null);
+  const [joinBusy, setJoinBusy] = useState(false);
 
   const loadAccess = useCallback(async () => {
     try {
@@ -97,6 +111,56 @@ export default function Tasks() {
 
   useEffect(() => { loadAccess(); refreshInbox(); }, [loadAccess, refreshInbox]);
 
+  // Ссылки из уведомлений открывают карточку поверх нужного экрана.
+  useEffect(() => {
+    const taskId = params.get('task');
+    if (taskId) setOpenTaskId(taskId);
+  }, [params]);
+
+  useEffect(() => {
+    const token = params.get('join');
+    if (!token) return;
+    let alive = true;
+    api.getTeamInvite(token)
+      .then(({ data }) => {
+        if (!alive) return;
+        setJoinInvite({ ...data, token });
+      })
+      .catch(error => {
+        if (!alive) return;
+        toast.error(error?.response?.data?.error || 'Не удалось открыть приглашение');
+        clearJoin();
+      });
+    return () => { alive = false; };
+    // URL меняется только после явного решения пользователя; повторно один и
+    // тот же токен на обычных рендерах не запрашиваем.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.get('join')]);
+
+  const clearJoin = useCallback(() => {
+    setJoinInvite(null);
+    if (params.has('join')) {
+      const next = new URLSearchParams(params);
+      next.delete('join');
+      setParams(next, { replace: true });
+    }
+  }, [params, setParams]);
+
+  const acceptJoin = useCallback(async () => {
+    if (!joinInvite?.token) return;
+    setJoinBusy(true);
+    try {
+      const { data } = await api.acceptTeamInvite(joinInvite.token);
+      toast.success(`Вы присоединились к команде «${data.team.name}»`);
+      await loadAccess();
+      clearJoin();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Не удалось принять приглашение');
+    } finally {
+      setJoinBusy(false);
+    }
+  }, [joinInvite, loadAccess, clearJoin]);
+
   /**
    * Обработчики модалок мемоизированы, и это не микрооптимизация.
    *
@@ -105,7 +169,14 @@ export default function Tasks() {
    * идентичность на каждый рендер: карточка грузилась, вызывала setTask,
    * получала новый onClose и грузилась снова — бесконечный цикл запросов.
    */
-  const closeTask = useCallback(() => setOpenTaskId(null), []);
+  const closeTask = useCallback(() => {
+    setOpenTaskId(null);
+    if (params.has('task')) {
+      const next = new URLSearchParams(params);
+      next.delete('task');
+      setParams(next, { replace: true });
+    }
+  }, [params, setParams]);
   const closeForm = useCallback(() => setFormState(null), []);
   const taskCreated = useCallback(() => {
     setFormState(null);
@@ -135,56 +206,72 @@ export default function Tasks() {
 
   const current = SCREENS.find(s => s.key === screen) || SCREENS[0];
   const Screen = current.Component;
+  const detail = SCREEN_CONTEXT[current.key] || SCREEN_CONTEXT.myday;
 
   return (
     <div className="tsk">
-      <div className="tsk-top">
-        <div>
-          <div className="tsk-title">Задачи</div>
-          <div className="tsk-sub">
-            Работа со сроком, длительностью и загрузкой — вместо доски со стикерами
+      <div className="tsk-shell">
+        <aside className="tsk-side">
+          <div className="tsk-side-brand">
+            <span>Задачи</span>
+            <small>Alfa Wiki</small>
           </div>
-        </div>
-        <button className="tsk-btn is-primary" onClick={() => setFormState({})}>
-          Новая задача
-        </button>
-      </div>
+          <nav className="tsk-nav">
+            {SCREENS.map((item, i) => item.group
+              ? <span className="tsk-nav-group" key={`g${i}`}>{item.group}</span>
+              : (
+                <button
+                  key={item.key}
+                  className={screen === item.key ? 'is-on' : ''}
+                  onClick={() => go(item.key)}
+                >
+                  <item.icon size={16} />
+                  {item.label}
+                  {item.key === 'inbox' && inboxCount > 0 && (
+                    <span className="tsk-nav-count">{inboxCount}</span>
+                  )}
+                </button>
+              ))}
+          </nav>
+        </aside>
 
-      <nav className="tsk-nav">
-        {SCREENS.map((item, i) => item.group
-          ? <span className="tsk-nav-group" key={`g${i}`}>{item.group}</span>
-          : (
-            <button
-              key={item.key}
-              className={screen === item.key ? 'is-on' : ''}
-              onClick={() => go(item.key)}
-            >
-              <item.icon size={15} />
-              {item.label}
-              {item.key === 'inbox' && inboxCount > 0 && (
-                <span className="tsk-nav-count">{inboxCount}</span>
-              )}
+        <main className="tsk-main">
+          <div className="tsk-top">
+            <div>
+              <div className="tsk-title">{current.label}</div>
+              <div className="tsk-sub">Работа со сроком, длительностью и загрузкой</div>
+            </div>
+            <button className="tsk-btn is-primary" onClick={() => setFormState({})}>
+              Новая задача
             </button>
-          ))}
-      </nav>
+          </div>
 
-      {/* Без нормы человек не участвует в планировании: ему нельзя ставить
-          задачи и незачем показывать пустой календарь. Честнее сказать это
-          прямо, чем оставить его гадать, почему все цифры нулевые. */}
-      {access && !access.enrolled && screen !== 'people' && (
-        <Empty>
-          Вам ещё не задана норма рабочего дня, поэтому загрузка не считается.
-          <br />
-          Норма — это не длина смены, а честное время на задачи: рабочий день
-          минус встречи, переключения и перерывы.
-          <br /><br />
-          <button className="tsk-btn" onClick={() => go('people')}>
-            Задать норму
-          </button>
-        </Empty>
-      )}
+          <div className="tsk-content">
+            {/* Без нормы человек не участвует в планировании: ему нельзя ставить
+                задачи и незачем показывать пустой календарь. */}
+            {access && !access.enrolled && screen !== 'people' && (
+              <Empty>
+                Вам ещё не задана норма рабочего дня, поэтому загрузка не считается.
+                <br />
+                Норма — это честное время на задачи: рабочий день минус встречи,
+                переключения и перерывы.
+                <br /><br />
+                <button className="tsk-btn" onClick={() => go('people')}>Задать норму</button>
+              </Empty>
+            )}
+            <Screen ctx={ctx} />
+          </div>
+        </main>
 
-      <Screen ctx={ctx} />
+        <aside className="tsk-detail">
+          <div className="tsk-detail-title">{detail[0]}</div>
+          <div className="tsk-detail-text">{detail[1]}</div>
+          <div className="tsk-detail-rule" />
+          <div className="tsk-detail-label">Текущий раздел</div>
+          <div className="tsk-detail-value">{current.label}</div>
+          <button className="tsk-btn is-wide" onClick={() => setFormState({})}>+ Новая задача</button>
+        </aside>
+      </div>
 
       {openTaskId && (
         <TaskCard
@@ -202,6 +289,33 @@ export default function Tasks() {
           onClose={closeForm}
           onCreated={taskCreated}
         />
+      )}
+
+      {joinInvite && (
+        <div className="tsk-mask" onClick={e => e.target === e.currentTarget && clearJoin()}>
+          <div className="tsk-modal" style={{ width: 480 }}>
+            <div className="tsk-modal-head">
+              <div className="tsk-modal-title">Приглашение в команду</div>
+              <button className="tsk-x" onClick={clearJoin}>×</button>
+            </div>
+            <div className="tsk-modal-body">
+              <div className="tsk-join-name">{joinInvite.team.name}</div>
+              <div className="tsk-trade is-neutral">
+                <div className="tsk-trade-title">Ваша роль</div>
+                <div className="tsk-trade-text">
+                  {joinInvite.role === 'lead' ? 'Руководитель' : joinInvite.role === 'viewer' ? 'Наблюдатель' : 'Участник'}.
+                  {' '}Содержание личных дел других сотрудников останется скрытым.
+                </div>
+              </div>
+            </div>
+            <div className="tsk-modal-foot">
+              <button className="tsk-btn" onClick={clearJoin}>Отмена</button>
+              <button className="tsk-btn is-primary" disabled={joinBusy} onClick={acceptJoin}>
+                {joinBusy ? 'Вступаем…' : 'Вступить в команду'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

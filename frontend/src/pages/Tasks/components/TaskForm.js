@@ -11,9 +11,9 @@
  * исполнителю и остаётся в истории задачи.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { tasks as api, users as usersApi } from '../../../services/api';
+import { tasks as api, users as usersApi, media } from '../../../services/api';
 import { today, addDays, dfull, hoursText, estimateText } from '../utils/dates';
 import { userName, MODE_LABEL } from '../utils/labels';
 import { Avatar, Badge } from './Bits';
@@ -22,6 +22,7 @@ const MODES = [
   ['single', 'Один исполнитель', 'Обычная задача: один ответственный, один срок.'],
   ['shared', 'Одна задача на всех', 'Все делают её вместе. Время тратит каждый — трудозатраты умножаются на число участников.'],
   ['split', 'Разделить на части', 'У каждого свой кусок, своя оценка и свой срок.'],
+  ['mixed', 'Смешанная', 'Часть работы делают по отдельности, а общую часть — вместе.'],
 ];
 
 const ESTIMATES = [0.5, 1, 1.5, 2, 3, 4, 6, 8];
@@ -47,7 +48,14 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
   const [loads, setLoads] = useState({});
   const [choice, setChoice] = useState(null);
   const [explanation, setExplanation] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [slotStep, setSlotStep] = useState(30);
+  const [slotRange, setSlotRange] = useState(null);
+  const [busySlots, setBusySlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     usersApi.listBasic().then(r => setPeople(r.data?.users || r.data || [])).catch(() => {});
@@ -79,6 +87,22 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
     });
     return () => { alive = false; };
   }, [parts, loads]);
+
+  const primaryAssignee = parts[0].assignees.length === 1 ? parts[0].assignees[0] : null;
+  useEffect(() => {
+    setSlotRange(null);
+    if (!primaryAssignee || !parts[0].dueDate) {
+      setBusySlots([]);
+      return;
+    }
+    let alive = true;
+    setSlotsLoading(true);
+    api.getPersonSlots(primaryAssignee, parts[0].dueDate)
+      .then(({ data }) => { if (alive) setBusySlots(data.slots || []); })
+      .catch(() => { if (alive) setBusySlots([]); })
+      .finally(() => { if (alive) setSlotsLoading(false); });
+    return () => { alive = false; };
+  }, [primaryAssignee, parts[0].dueDate]);
 
   /** Разбор: кто и насколько не помещается. */
   const overloads = useMemo(() => {
@@ -121,11 +145,13 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
     setMode(next);
     if (next === 'single') {
       setParts(list => [{ ...list[0], assignees: list[0].assignees.slice(0, 1), after: [] }]);
-    } else if (next === 'split' && parts.length < 2) {
+    } else if ((next === 'split' || next === 'mixed') && parts.length < 2) {
       setParts(list => [...list, {
         key: `p${Date.now()}`,
-        title: '',
-        assignees: [],
+        title: next === 'mixed' ? 'Сборка и приёмка' : '',
+        assignees: next === 'mixed'
+          ? [...new Set([list[0].assignees[0], ctx.me?.id].filter(Boolean))]
+          : [],
         estimateHours: 2,
         dueDate: addDays(list[0].dueDate, 2),
         after: [list[0].key],
@@ -149,6 +175,7 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
         title: title.trim(),
         description: description.trim() || null,
         projectId: projectId || null,
+        attachments,
         explanation: needsExplanation ? explanation.trim() : undefined,
         parts: parts.map(p => ({
           id: p.key,
@@ -159,8 +186,13 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
           after: p.after,
         })),
       });
-      toast.success(parts.length === 1 && parts[0].assignees.length === 1
-        ? 'Отправлено во входящие. В календарь исполнителя задача попадёт после того, как он её обработает'
+      const selfTask = parts.length === 1
+        && parts[0].assignees.length === 1
+        && parts[0].assignees[0] === ctx.me?.id;
+      toast.success(selfTask
+        ? 'Ваша задача сразу добавлена в календарь'
+        : parts.length === 1 && parts[0].assignees.length === 1
+          ? 'Отправлено во входящие. В календарь исполнителя задача попадёт после обработки'
         : `Задача создана: ${MODE_LABEL[mode].toLowerCase()}, ${hoursText(totalEffort)} трудозатрат. Каждый получил свою часть`);
       onCreated();
     } catch (error) {
@@ -174,6 +206,88 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
   const found = people.filter(u => !query || userName(u).toLowerCase().includes(query.toLowerCase()));
   const byId = Object.fromEntries(people.map(u => [u.id, u]));
 
+  const uploadFiles = async event => {
+    const files = [...(event.target.files || [])];
+    if (!files.length) return;
+    if (attachments.length + files.length > 10) {
+      toast.error('К задаче можно прикрепить не больше 10 файлов');
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploaded = [];
+      for (const file of files) {
+        const { data } = await media.upload(file);
+        uploaded.push({
+          id: data.id,
+          filename: data.originalName || file.name,
+          path: data.path,
+          size: data.size || file.size,
+          mimeType: data.mimeType || file.type,
+        });
+      }
+      setAttachments(list => [...list, ...uploaded]);
+    } catch {
+      toast.error('Не удалось прикрепить файл');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const shiftToNextFit = async () => {
+    const first = parts[0];
+    const userId = first.assignees[0];
+    if (!userId) return;
+    try {
+      const start = addDays(first.dueDate, 1);
+      const end = addDays(first.dueDate, 30);
+      const { data } = await api.getPersonLoad(userId, start, end);
+      const fit = (data.days || []).find(day =>
+        !day.onVacation
+        && day.norm !== null
+        && Number(day.hours) + Number(first.estimateHours) <= Number(day.norm)
+      );
+      if (!fit) {
+        toast.error('В ближайшие 30 дней подходящего окна нет');
+        return;
+      }
+      setChoice('shift');
+      setParts(list => list.map(p => ({ ...p, dueDate: fit.date })));
+      toast.success(`Срок перенесён на ${dfull(fit.date)} — там задача помещается`);
+    } catch {
+      toast.error('Не удалось найти свободный день');
+    }
+  };
+
+  const giveToFreePerson = async () => {
+    const first = parts[0];
+    const current = new Set(first.assignees);
+    try {
+      const checks = await Promise.all(people
+        .filter(person => !current.has(person.id))
+        .map(async person => {
+          const { data } = await api.getPersonLoad(person.id, first.dueDate, first.dueDate);
+          return { person, day: data.days?.[0] };
+        }));
+      const fit = checks.find(({ day }) =>
+        day && !day.onVacation && day.norm !== null
+        && Number(day.hours) + Number(first.estimateHours) <= Number(day.norm)
+      );
+      if (!fit) {
+        toast.error('На этот день свободного исполнителя не найдено');
+        return;
+      }
+      setChoice('give');
+      setParts(list => list.map((p, index) => index === 0
+        ? { ...p, assignees: [fit.person.id] }
+        : p));
+      toast.success(`Передано: ${userName(fit.person)}`);
+    } catch {
+      toast.error('Не удалось проверить загрузку коллег');
+    }
+  };
+
   return (
     <div className="tsk-mask" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="tsk-modal">
@@ -186,6 +300,9 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
           <button className={tab === 'main' ? 'is-on' : ''} onClick={() => setTab('main')}>Задача</button>
           <button className={tab === 'who' ? 'is-on' : ''} onClick={() => setTab('who')}>
             Исполнители и части{parts.length > 1 && ` · ${parts.length}`}
+          </button>
+          <button className={tab === 'scheme' ? 'is-on' : ''} onClick={() => setTab('scheme')}>
+            Схема{parts.length > 1 && ` · ${parts.length}`}
           </button>
         </div>
 
@@ -255,6 +372,21 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                 ))}
               </div>
 
+              <div className="tsk-sect">Время в дне</div>
+              <TimeSlots
+                assignee={primaryAssignee}
+                date={parts[0].dueDate}
+                busy={busySlots}
+                loading={slotsLoading}
+                step={slotStep}
+                range={slotRange}
+                onStep={value => { setSlotStep(value); setSlotRange(null); }}
+                onRange={next => {
+                  setSlotRange(next);
+                  setPart(0, { estimateHours: ((next.end - next.start + 1) * slotStep) / 60 });
+                }}
+              />
+
               <div className="tsk-sect">Описание</div>
               <textarea
                 className="tsk-textarea"
@@ -262,6 +394,23 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
+
+              <div className="tsk-sect">Файлы</div>
+              <input ref={fileRef} type="file" multiple hidden onChange={uploadFiles} />
+              <button className="tsk-btn" disabled={uploading} onClick={() => fileRef.current?.click()}>
+                {uploading ? 'Загружаем…' : '+ Прикрепить файлы'}
+              </button>
+              {!!attachments.length && (
+                <div className="tsk-files">
+                  {attachments.map((file, index) => (
+                    <div className="tsk-file" key={`${file.id}-${index}`}>
+                      <span className="tsk-file-icon">{String(file.filename).split('.').pop()?.slice(0, 4)}</span>
+                      <span className="tsk-file-name">{file.filename}</span>
+                      <button className="tsk-x" onClick={() => setAttachments(list => list.filter((_, i) => i !== index))}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <Assessment
                 overloads={overloads}
@@ -273,10 +422,11 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                 setChoice={setChoice}
                 explanation={explanation}
                 setExplanation={setExplanation}
-                onShiftDate={date => setParts(list => list.map(p => ({ ...p, dueDate: date })))}
+                onShift={shiftToNextFit}
+                onGive={giveToFreePerson}
               />
             </>
-          ) : (
+          ) : tab === 'who' ? (
             <>
               <div className="tsk-sect" style={{ marginTop: 0 }}>Формат</div>
               {MODES.map(([key, label, note]) => (
@@ -397,7 +547,7 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                 </div>
               </div>
             </>
-          )}
+          ) : <TaskScheme parts={parts} byId={byId} />}
         </div>
 
         <div className="tsk-modal-foot">
@@ -419,9 +569,121 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
   );
 }
 
+function TimeSlots({ assignee, date, busy, loading, step, range, onStep, onRange }) {
+  const from = 8;
+  const to = 21;
+  const count = ((to - from) * 60) / step;
+  const cells = Array.from({ length: count }, (_, index) => {
+    const startMinutes = from * 60 + index * step;
+    const endMinutes = startMinutes + step;
+    const occupied = busy.some(slot => {
+      const start = new Date(slot.startTime);
+      const end = new Date(slot.endTime);
+      const slotStart = start.getHours() * 60 + start.getMinutes();
+      const slotEnd = end.getHours() * 60 + end.getMinutes();
+      return slotStart < endMinutes && slotEnd > startMinutes;
+    });
+    return { index, startMinutes, occupied };
+  });
+
+  const pick = cell => {
+    if (cell.occupied) return;
+    if (!range || range.done) {
+      onRange({ start: cell.index, end: cell.index, done: false });
+      return;
+    }
+    const start = Math.min(range.start, cell.index);
+    const end = Math.max(range.start, cell.index);
+    if (cells.slice(start, end + 1).some(item => item.occupied)) return;
+    onRange({ start, end, done: true });
+  };
+
+  const time = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  const selectedText = range
+    ? `${time(cells[range.start].startMinutes)}–${time(cells[range.end].startMinutes + step)}`
+    : 'Первый клик — начало, второй — конец';
+
+  if (!assignee) return <div className="tsk-empty is-compact">Выберите одного исполнителя, чтобы увидеть свободные интервалы.</div>;
+  if (loading) return <div className="tsk-empty is-compact">Проверяем занятые интервалы…</div>;
+
+  return (
+    <div className="tsk-slots-wrap">
+      <div className="tsk-slots-tools">
+        <span>Шаг сетки</span>
+        {[15, 30, 60].map(value => (
+          <button key={value} className={`tsk-chip ${step === value ? 'is-on' : ''}`} onClick={() => onStep(value)}>
+            {value} мин
+          </button>
+        ))}
+        <b>{selectedText}</b>
+      </div>
+      <div className="tsk-slots">
+        {cells.map(cell => {
+          const selected = range && cell.index >= range.start && cell.index <= range.end;
+          return (
+            <button
+              key={cell.index}
+              title={`${time(cell.startMinutes)}–${time(cell.startMinutes + step)}`}
+              className={`${cell.occupied ? 'is-busy' : ''} ${selected ? 'is-selected' : ''}`}
+              onClick={() => pick(cell)}
+            >
+              {cell.startMinutes % 60 === 0 ? time(cell.startMinutes) : ''}
+            </button>
+          );
+        })}
+      </div>
+      <div className="tsk-slot-legend">
+        <span><i className="is-free" />свободно</span>
+        <span><i className="is-busy" />занято</span>
+        <span><i className="is-selected" />выбрано</span>
+        <span>Содержимое чужих событий не загружается.</span>
+      </div>
+    </div>
+  );
+}
+
+function TaskScheme({ parts, byId }) {
+  if (parts.length < 2) {
+    return (
+      <div className="tsk-empty">
+        Схема появится, когда у задачи будет больше одной части.
+      </div>
+    );
+  }
+
+  return (
+    <div className="tsk-scheme">
+      {parts.map((part, index) => (
+        <React.Fragment key={part.key}>
+          {index > 0 && <div className="tsk-scheme-arrow">→</div>}
+          <div className={`tsk-scheme-node ${part.assignees.length > 1 ? 'is-shared' : ''}`}>
+            <div className="tsk-scheme-title">{part.title || `Часть ${index + 1}`}</div>
+            <div className="tsk-scheme-meta">
+              {part.assignees.map(id => userName(byId[id])).join(', ') || 'без исполнителя'}
+              {' · '}{estimateText(part.estimateHours)}
+            </div>
+            {!!part.after.length && (
+              <div className="tsk-scheme-deps">
+                после: {part.after.map(id => parts.find(p => p.key === id)?.title || 'предыдущей части').join(', ')}
+              </div>
+            )}
+          </div>
+        </React.Fragment>
+      ))}
+      <div className="tsk-trade is-neutral" style={{ flexBasis: '100%' }}>
+        <div className="tsk-trade-title">Порядок работ влияет на входящие</div>
+        <div className="tsk-trade-text">
+          Зависимая часть появится у исполнителя только после завершения предыдущей.
+          Фиолетовая рамка означает общую часть — её часы учитываются у каждого участника.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────── разбор загрузки и выбор компромисса ─────────────────── */
 
-function Assessment({ overloads, parts, loads, byId, me, choice, setChoice, explanation, setExplanation, onShiftDate }) {
+function Assessment({ overloads, parts, loads, byId, me, choice, setChoice, explanation, setExplanation, onShift, onGive }) {
   const first = parts[0];
   if (!first.assignees.length) {
     return (
@@ -446,7 +708,7 @@ function Assessment({ overloads, parts, loads, byId, me, choice, setChoice, expl
               Свободного останется {hoursText(Math.max(0, day.norm - day.hours - Number(first.estimateHours)))}.</>
           ) : 'Загрузка проверяется по личной норме каждого исполнителя.'}
           {first.assignees[0] === me?.id
-            ? ' Задача сразу попадёт к вам во входящие.'
+            ? ' Задача сразу попадёт в ваш календарь.'
             : ' В календарь исполнителя она попадёт после того, как он её обработает.'}
         </div>
       </div>
@@ -484,16 +746,28 @@ function Assessment({ overloads, parts, loads, byId, me, choice, setChoice, expl
           <div className="tsk-trade-text">Выберите, что изменится:</div>
           <div
             className={`tsk-opt ${choice === 'shift' ? 'is-sel' : ''}`}
-            onClick={() => { setChoice('shift'); onShiftDate(addDays(first.dueDate, 1)); }}
+            onClick={onShift}
           >
             <span className="tsk-opt-radio" />
             <span>
-              <span className="tsk-opt-title">Сдвинуть срок на день вперёд</span>
+              <span className="tsk-opt-title">Найти ближайший свободный день</span>
               <span className="tsk-opt-note">
-                {dfull(addDays(first.dueDate, 1))} — загрузка пересчитается сразу
+                Проверим следующие 30 дней и выберем первый, куда задача помещается
               </span>
             </span>
           </div>
+          {parts.length === 1 && first.assignees.length === 1 && (
+            <div
+              className={`tsk-opt ${choice === 'give' ? 'is-sel' : ''}`}
+              onClick={onGive}
+            >
+              <span className="tsk-opt-radio" />
+              <span>
+                <span className="tsk-opt-title">Передать свободному коллеге</span>
+                <span className="tsk-opt-note">Срок сохранится, загрузку проверим до передачи</span>
+              </span>
+            </div>
+          )}
           <div
             className={`tsk-opt ${choice === 'force' ? 'is-sel' : ''}`}
             onClick={() => setChoice('force')}

@@ -213,6 +213,9 @@ export const tasks = {
 
   getTasks: params => api.get('/tasks', {params}),
   getTask: id => api.get(`/tasks/${id}`),
+  getPartTask: id => api.get(`/tasks/parts/${id}/task`),
+  getTeams: () => api.get('/tasks/teams'),
+  getTeamLoad: (id, start, end) => api.get(`/tasks/teams/${id}/load`, {params: {start, end}}),
   createTask: data => api.post('/tasks', data),
 
   // Загрузка человека за период: часы и цвет, без содержания дел
@@ -225,11 +228,14 @@ export const tasks = {
   // времени и начинает занимать часы.
   planPart: (id, date, force) => api.post(`/tasks/parts/${id}/plan`, {date, force}),
   proposeDate: (id, date) => api.post(`/tasks/parts/${id}/propose`, {date}),
+  acceptDate: id => api.post(`/tasks/parts/${id}/accept`),
   declinePart: (id, reason) => api.post(`/tasks/parts/${id}/decline`, {reason}),
   movePart: (id, date) => api.post(`/tasks/parts/${id}/move`, {date}),
+  extendPart: (id, hours = 0.5) => api.post(`/tasks/parts/${id}/extend`, {hours}),
   splitPart: (id, data) => api.post(`/tasks/parts/${id}/split`, data),
   setPartStatus: (id, status) => api.put(`/tasks/parts/${id}/status`, {status}),
   getNextFit: (id, params) => api.get(`/tasks/parts/${id}/next-fit`, {params}),
+  cancelTask: id => api.delete(`/tasks/${id}`),
 };
 
 // ── Курсы ────────────────────────────────────────────────────────────────────

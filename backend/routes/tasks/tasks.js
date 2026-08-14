@@ -26,6 +26,7 @@ const partsService = require('../../services/tasks/parts');
 const planning = require('../../services/tasks/planning');
 const loadQuery = require('../../services/tasks/loadQuery');
 const workload = require('../../services/tasks/workload');
+const notificationService = require('../../services/notificationService');
 
 const USER_FIELDS = ['id', 'displayName', 'username', 'avatar'];
 
@@ -71,6 +72,25 @@ async function depsOf(taskIds) {
 /** Запись в историю. Отдельной функцией, чтобы её нельзя было забыть. */
 function log(taskId, partId, userId, action, payload = {}, transaction) {
   return TaskHistory.create({ taskId, partId, userId, action, payload }, { transaction });
+}
+
+/**
+ * Уведомления о задачах идут через уже существующего Альфа-Ассистента.
+ * Ошибка чата не должна откатывать выполненное действие с задачей: история и
+ * календарь уже являются источником правды, а уведомление можно дочитать при
+ * следующем открытии входящих.
+ */
+async function notifyUsers(userIds, text, taskId) {
+  const unique = [...new Set((userIds || []).filter(Boolean))];
+  await Promise.allSettled(unique.map(userId => notificationService.sendMessageToUser(
+    userId,
+    taskId ? `${text}\n\n[Открыть задачу →](/tasks?task=${taskId})` : text,
+    { type: 'task', ...(taskId ? { taskId } : {}) }
+  )));
+}
+
+function actorName(user) {
+  return user?.displayName || user?.username || 'Сотрудник';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,6 +246,23 @@ router.get('/:id', authenticate, async (req, res) => {
     });
     if (!task) return res.status(404).json({ error: 'Задача не найдена' });
 
+    // UUID не является правом доступа. Карточка должна соблюдать ту же
+    // область видимости, что список задач, иначе скрытую работу можно открыть
+    // прямой ссылкой, хотя в интерфейсе её нет.
+    const allTeams = await context.loadTeams();
+    const scope = new Set(teamsService.peopleInScope(
+      allTeams,
+      req.user.id,
+      req.user.isAdmin
+    ));
+    const assigneeIds = (task.parts || []).flatMap(part =>
+      (part.assignees || []).map(a => a.userId)
+    );
+    const canSee = task.authorId === req.user.id
+      || assigneeIds.includes(req.user.id)
+      || assigneeIds.some(id => scope.has(id));
+    if (!canSee) return res.status(404).json({ error: 'Задача не найдена' });
+
     const deps = await depsOf([task.id]);
     res.json(shape(task, deps));
   } catch (error) {
@@ -341,10 +378,58 @@ router.post('/', authenticate, async (req, res) => {
       if (forced) {
         await log(task.id, null, req.user.id, 'forced', { explanation: forced, overloads }, transaction);
       }
+
+      // Собственная одиночная задача не требует переговоров с самим собой и
+      // по макету сразу появляется в календаре автора.
+      if (incoming.length === 1
+          && incoming[0].assignees.length === 1
+          && incoming[0].assignees[0] === req.user.id) {
+        const partId = idMap.get(localParts[0].id);
+        const part = await TaskPart.findByPk(partId, { transaction });
+        const date = String(part.dueDate);
+        const existing = await CalendarEvent.findAll({
+          attributes: loadQuery.LOAD_FIELDS,
+          where: {
+            createdBy: req.user.id,
+            startTime: { [Op.gte]: new Date(`${date}T00:00:00`) },
+            endTime: { [Op.lte]: new Date(`${date}T23:59:59`) },
+          },
+          raw: true,
+          transaction,
+        });
+        const slot = planning.nextFloatingSlot(existing, date, Number(part.estimateHours));
+        await CalendarEvent.create({
+          title: part.title,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          eventType: 'task',
+          status: 'planned',
+          visibility: 'team',
+          createdBy: req.user.id,
+          taskPartId: part.id,
+          isFloating: true,
+          dayOrder: slot.dayOrder,
+        }, { transaction });
+        await TaskPartAssignee.update(
+          { plannedDate: date },
+          { where: { partId: part.id, userId: req.user.id }, transaction }
+        );
+        await part.update({ status: partsService.STATUS.PLAN }, { transaction });
+        await log(task.id, part.id, req.user.id, 'planned', {
+          date,
+          selfAssigned: true,
+        }, transaction);
+      }
       return task;
     });
 
     const task = await Task.findByPk(created.id, { include: TASK_INCLUDE() });
+    const recipients = incoming.flatMap(p => p.assignees).filter(id => id !== req.user.id);
+    await notifyUsers(
+      recipients,
+      `📌 ${actorName(req.user)} поставил вам задачу «${title}»`,
+      created.id
+    );
     res.status(201).json(shape(task, await depsOf([created.id])));
   } catch (error) {
     console.error('Создание задачи:', error);
@@ -355,12 +440,21 @@ router.post('/', authenticate, async (req, res) => {
 /** Отмена задачи. Блоки времени снимаются каскадом — часы возвращаются людям. */
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const task = await Task.findByPk(req.params.id);
+    const task = await Task.findByPk(req.params.id, { include: TASK_INCLUDE() });
     if (!task) return res.status(404).json({ error: 'Задача не найдена' });
     if (task.authorId !== req.user.id && !req.user.isAdmin) {
       return res.status(403).json({ error: 'Отменить задачу может автор' });
     }
+    const recipients = (task.parts || [])
+      .flatMap(part => (part.assignees || []).map(a => a.userId))
+      .filter(id => id !== req.user.id);
+    const taskTitle = task.title;
     await task.destroy();
+    await notifyUsers(
+      recipients,
+      `🗑 ${actorName(req.user)} отменил задачу «${taskTitle}»`,
+      null
+    );
     res.json({ deleted: true });
   } catch (error) {
     console.error('Отмена задачи:', error);
@@ -454,6 +548,14 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
       }, transaction);
     });
 
+    if (part.task.authorId !== req.user.id) {
+      await notifyUsers(
+        [part.task.authorId],
+        `✅ ${actorName(req.user)} поставил в план «${part.title}» на ${date}`,
+        part.taskId
+      );
+    }
+
     res.json({ planned: true, date, assessment });
   } catch (error) {
     console.error('Постановка в план:', error);
@@ -491,6 +593,12 @@ router.post('/parts/:id/propose', authenticate, async (req, res) => {
       }, transaction);
     });
 
+    await notifyUsers(
+      [part.task.authorId],
+      `📅 ${actorName(req.user)} предложил новый срок для «${part.title}»: ${date}`,
+      part.taskId
+    );
+
     res.json({ proposed: true, date });
   } catch (error) {
     console.error('Предложение срока:', error);
@@ -507,6 +615,11 @@ router.post('/parts/:id/accept', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Согласовать срок может автор' });
     }
     await log(part.taskId, part.id, req.user.id, 'accepted_date', { date: String(part.dueDate) });
+    await notifyUsers(
+      (part.assignees || []).map(a => a.userId).filter(id => id !== req.user.id),
+      `✅ ${actorName(req.user)} согласовал срок для «${part.title}»: ${String(part.dueDate)}`,
+      part.taskId
+    );
     res.json({ accepted: true, date: String(part.dueDate) });
   } catch (error) {
     console.error('Согласование срока:', error);
@@ -541,6 +654,12 @@ router.post('/parts/:id/decline', authenticate, async (req, res) => {
         if (parts === 0) await Task.destroy({ where: { id: part.taskId }, transaction });
       }
     });
+
+    await notifyUsers(
+      [part.task.authorId],
+      `↩️ ${actorName(req.user)} вернул задачу «${part.title}» с пометкой «не моя зона»`,
+      part.taskId
+    );
 
     res.json({ declined: true });
   } catch (error) {
@@ -603,10 +722,65 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
       }, transaction);
     });
 
+    if (part.task.authorId !== req.user.id) {
+      await notifyUsers(
+        [part.task.authorId],
+        `📅 ${actorName(req.user)} перенёс «${part.title}» на ${date}${next.requiresDecision ? ' — задача требует решения' : ''}`,
+        part.taskId
+      );
+    }
+
     res.json({ moved: true, date, ...next });
   } catch (error) {
     console.error('Перенос части:', error);
     res.status(500).json({ error: 'Не удалось перенести' });
+  }
+});
+
+/** Продлить запланированный блок и честно пересчитать трудозатраты. */
+router.post('/parts/:id/extend', authenticate, async (req, res) => {
+  try {
+    const part = await findPart(req.params.id);
+    if (!part) return res.status(404).json({ error: 'Часть не найдена' });
+    if (!assigneeOf(part, req.user.id)) {
+      return res.status(403).json({ error: 'Продлить может исполнитель этой части' });
+    }
+
+    const hours = Number(req.body.hours ?? 0.5);
+    if (!Number.isFinite(hours) || hours < 0.25 || hours > 8) {
+      return res.status(400).json({ error: 'Продление должно быть от 15 минут до 8 часов' });
+    }
+    const before = Number(part.estimateHours);
+    const estimateHours = Math.round((before + hours) * 100) / 100;
+
+    await sequelize.transaction(async transaction => {
+      await part.update({ estimateHours }, { transaction });
+      const blocks = await CalendarEvent.findAll({
+        where: { taskPartId: part.id },
+        transaction,
+      });
+      for (const block of blocks) {
+        const endTime = new Date(new Date(block.startTime).getTime() + estimateHours * 60 * 60 * 1000);
+        await block.update({ endTime }, { transaction });
+      }
+      await log(part.taskId, part.id, req.user.id, 'extended', {
+        from: before,
+        to: estimateHours,
+        added: hours,
+      }, transaction);
+    });
+
+    if (part.task.authorId !== req.user.id) {
+      await notifyUsers(
+        [part.task.authorId],
+        `⏱ ${actorName(req.user)} продлил «${part.title}» на ${hours} ч`,
+        part.taskId
+      );
+    }
+    res.json({ extended: true, estimateHours, added: hours });
+  } catch (error) {
+    console.error('Продление части:', error);
+    res.status(500).json({ error: 'Не удалось продлить задачу' });
   }
 });
 
@@ -709,10 +883,45 @@ router.put('/parts/:id/status', authenticate, async (req, res) => {
       await log(part.taskId, part.id, req.user.id, 'status_changed', { from: was, to: status }, transaction);
     });
 
+    const recipients = [
+      part.task.authorId,
+      ...(part.assignees || []).map(a => a.userId),
+    ].filter(id => id !== req.user.id);
+    await notifyUsers(
+      recipients,
+      `🔄 ${actorName(req.user)} изменил статус «${part.title}»: ${status}`,
+      part.taskId
+    );
+
     res.json({ status });
   } catch (error) {
     console.error('Смена статуса:', error);
     res.status(500).json({ error: 'Не удалось изменить статус' });
+  }
+});
+
+/** Карточка по календарному блоку: клиент знает partId, но открывает задачу. */
+router.get('/parts/:id/task', authenticate, async (req, res) => {
+  try {
+    const part = await findPart(req.params.id);
+    if (!part) return res.status(404).json({ error: 'Часть не найдена' });
+
+    const allTeams = await context.loadTeams();
+    const scope = new Set(teamsService.peopleInScope(
+      allTeams,
+      req.user.id,
+      req.user.isAdmin
+    ));
+    const assigneeIds = (part.assignees || []).map(a => a.userId);
+    const canSee = part.task.authorId === req.user.id
+      || assigneeIds.includes(req.user.id)
+      || assigneeIds.some(id => scope.has(id));
+    if (!canSee) return res.status(404).json({ error: 'Часть не найдена' });
+
+    res.json({ taskId: part.taskId, partId: part.id });
+  } catch (error) {
+    console.error('Задача календарного блока:', error);
+    res.status(500).json({ error: 'Не удалось открыть задачу' });
   }
 });
 

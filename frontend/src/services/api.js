@@ -487,6 +487,9 @@ export const tasks = {
   deleteTeam: (id) => api.delete(`/tasks/teams/${id}`),
   addTeamMember: (id, data) => api.post(`/tasks/teams/${id}/members`, data),
   removeTeamMember: (id, userId) => api.delete(`/tasks/teams/${id}/members/${userId}`),
+  createTeamInvite: (id, data) => api.post(`/tasks/teams/${id}/invites`, data),
+  getTeamInvite: (token) => api.get(`/tasks/teams/invites/${token}`),
+  acceptTeamInvite: (token) => api.post(`/tasks/teams/invites/${token}/accept`),
   getTeamLoad: (id, start, end) =>
     api.get(`/tasks/teams/${id}/load`, { params: { start, end } }),
 
@@ -494,6 +497,7 @@ export const tasks = {
   getPeople: (params) => api.get('/tasks/people', { params }),
   getPersonLoad: (id, start, end) =>
     api.get(`/tasks/people/${id}/load`, { params: { start, end } }),
+  getPersonSlots: (id, date) => api.get(`/tasks/people/${id}/slots`, { params: { date } }),
   setNorm: (id, dailyNormHours) =>
     api.put(`/tasks/people/${id}/norm`, { dailyNormHours }),
   getNormHistory: (id) => api.get(`/tasks/people/${id}/norm/history`),
@@ -501,6 +505,7 @@ export const tasks = {
   // === ЗАДАЧИ ===
   getTasks: (params) => api.get('/tasks', { params }),
   getTask: (id) => api.get(`/tasks/${id}`),
+  getPartTask: (id) => api.get(`/tasks/parts/${id}/task`),
   // Ответ 409 с requiresExplanation означает, что кто-то не помещается:
   // повторить с полем explanation. Обойти можно всегда, но не молча.
   createTask: (data) => api.post('/tasks', data),
@@ -518,6 +523,7 @@ export const tasks = {
   declinePart: (id, reason) => api.post(`/tasks/parts/${id}/decline`, { reason }),
   // 409 после третьего переноса: дальше нужно решение, а не перенос
   movePart: (id, date) => api.post(`/tasks/parts/${id}/move`, { date }),
+  extendPart: (id, hours = 0.5) => api.post(`/tasks/parts/${id}/extend`, { hours }),
   splitPart: (id, data) => api.post(`/tasks/parts/${id}/split`, data),
   setPartStatus: (id, status) => api.put(`/tasks/parts/${id}/status`, { status }),
   getNextFit: (id, params) => api.get(`/tasks/parts/${id}/next-fit`, { params }),

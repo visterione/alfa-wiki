@@ -9,13 +9,15 @@
 
 const express = require('express');
 const router = express.Router();
+const { Op } = require('sequelize');
 
 const { authenticate } = require('../../middleware/auth');
-const { User, TaskNormChange } = require('../../models');
+const { User, TaskNormChange, CalendarEvent } = require('../../models');
 const context = require('../../services/tasks/context');
 const teams = require('../../services/tasks/teams');
 const loadQuery = require('../../services/tasks/loadQuery');
 const workload = require('../../services/tasks/workload');
+const eventVisibility = require('../../services/tasks/visibility');
 
 /**
  * Люди в области видимости запрашивающего.
@@ -93,6 +95,48 @@ router.get('/:id/load', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Загрузка человека:', error);
     res.status(500).json({ error: 'Не удалось посчитать загрузку' });
+  }
+});
+
+/**
+ * Занятые интервалы одного дня без содержания событий.
+ *
+ * Форма постановки видит только геометрию времени. private чужого человека не
+ * существует даже здесь; остальные уровни возвращаются одинаковыми серыми
+ * интервалами, поэтому по ответу нельзя восстановить название или тип дела.
+ */
+router.get('/:id/slots', authenticate, async (req, res) => {
+  try {
+    const date = String(req.query.date || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Нужна дата YYYY-MM-DD' });
+    }
+
+    const all = await context.loadTeams();
+    const scope = teams.peopleInScope(all, req.user.id, req.user.isAdmin);
+    if (!scope.includes(req.params.id)) {
+      return res.status(403).json({ error: 'Расписание этого человека вам закрыто' });
+    }
+
+    const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
+    const events = await CalendarEvent.findAll({
+      attributes: loadQuery.LOAD_FIELDS,
+      where: {
+        createdBy: req.params.id,
+        status: { [Op.ne]: 'cancelled' },
+        startTime: { [Op.lt]: new Date(`${date}T23:59:59`) },
+        endTime: { [Op.gt]: new Date(`${date}T00:00:00`) },
+      },
+      raw: true,
+    });
+
+    const slots = events
+      .filter(event => eventVisibility.countsAsBusyFor(event, viewer))
+      .map(event => ({ startTime: event.startTime, endTime: event.endTime }));
+    res.json({ userId: req.params.id, date, slots });
+  } catch (error) {
+    console.error('Занятые интервалы человека:', error);
+    res.status(500).json({ error: 'Не удалось получить занятые интервалы' });
   }
 });
 

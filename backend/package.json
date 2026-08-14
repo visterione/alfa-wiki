@@ -24,6 +24,8 @@
     "migrate:role-badges:check": "node scripts/migrateRoleChatBadges.js --check",
     "migrate:tasks": "node scripts/migrateTasksModule.js",
     "migrate:tasks:check": "node scripts/migrateTasksModule.js --check",
+    "migrate:task-invites": "node scripts/migrateTaskTeamInvites.js",
+    "migrate:task-invites:check": "node scripts/migrateTaskTeamInvites.js --check",
     "migrate:6.67-6.70": "node scripts/migrateMedCentersWarehouse.js",
     "migrate:6.67-6.70:check": "node scripts/migrateMedCentersWarehouse.js --check",
     "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",

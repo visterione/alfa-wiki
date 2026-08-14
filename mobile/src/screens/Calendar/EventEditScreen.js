@@ -21,7 +21,7 @@ import {syncCalendarReminders} from '../../services/calendarReminders';
 import Avatar from '../../components/Avatar';
 import BottomSheet from '../../components/BottomSheet';
 import {radius, font} from '../../theme';
-import {useTheme, useThemedStyles} from '../../store/settingsStore';
+import {useSettings, useTheme, useThemedStyles} from '../../store/settingsStore';
 import LogoLoader from '../../components/LogoLoader';
 import {
   EDITABLE_TYPES,
@@ -67,6 +67,7 @@ function shortDate(date) {
 
 export default function EventEditScreen({route, navigation}) {
   const c = useTheme();
+  const settings = useSettings();
   const styles = useThemedStyles(makeStyles);
 
   const existing = route.params?.event || null;
@@ -87,7 +88,9 @@ export default function EventEditScreen({route, navigation}) {
   const [eventType, setEventType] = useState(existing?.eventType || 'personal');
   const [priority, setPriority] = useState(existing?.priority || 'medium');
   const [status, setStatus] = useState(existing?.status || 'planned');
-  const [visibility, setVisibility] = useState(existing?.visibility || 'private');
+  const [visibility, setVisibility] = useState(
+    existing?.visibility || settings.taskDefaultVisibility || 'private',
+  );
   const [sharedWith, setSharedWith] = useState(existing?.sharedWith || []);
   const [participants, setParticipants] = useState(
     (existing?.participants || []).map(p => (typeof p === 'string' ? p : p.userId)).filter(Boolean),

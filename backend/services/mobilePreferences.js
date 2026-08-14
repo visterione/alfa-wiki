@@ -8,7 +8,8 @@ const ALLOWED_VALUES = {
     'plain', 'dots', 'hex', 'waves', 'confetti', 'pulse', 'care',
     'crosses', 'pills'
   ]),
-  notificationSound: new Set(['default', 'sol', 'luna', 'terra'])
+  notificationSound: new Set(['default', 'sol', 'luna', 'terra']),
+  taskDefaultVisibility: new Set(['private', 'busy', 'team', 'public'])
 };
 
 function normalizeMobilePreferences(value) {

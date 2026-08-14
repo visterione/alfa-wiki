@@ -17,6 +17,7 @@ export default function TeamsAdmin({ ctx }) {
   const [teams, setTeams] = useState([]);
   const [closed, setClosed] = useState(0);
   const [editing, setEditing] = useState(null);
+  const [inviteTeam, setInviteTeam] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -64,7 +65,10 @@ export default function TeamsAdmin({ ctx }) {
             <div style={{ display: 'flex', gap: 7 }}>
               <button className="tsk-btn is-sm" onClick={() => ctx.go('load')}>Загрузка</button>
               {(team.isLead || ctx.access?.isAdmin) && (
-                <button className="tsk-btn is-sm" onClick={() => setEditing({ id: team.id })}>Настроить</button>
+                <>
+                  <button className="tsk-btn is-sm" onClick={() => setInviteTeam(team)}>Пригласить</button>
+                  <button className="tsk-btn is-sm" onClick={() => setEditing({ id: team.id })}>Настроить</button>
+                </>
               )}
             </div>
           </div>
@@ -98,7 +102,94 @@ export default function TeamsAdmin({ ctx }) {
           onSaved={() => { setEditing(null); reload(); }}
         />
       )}
+      {inviteTeam && (
+        <InviteModal team={inviteTeam} onClose={() => setInviteTeam(null)} />
+      )}
     </>
+  );
+}
+
+function InviteModal({ team, onClose }) {
+  const [role, setRole] = useState('member');
+  const [expiresInDays, setExpiresInDays] = useState(7);
+  const [link, setLink] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const generate = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.createTeamInvite(team.id, { role, expiresInDays });
+      setLink(`${window.location.origin}/tasks?join=${encodeURIComponent(data.token)}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Не удалось создать ссылку');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Ссылка скопирована');
+    } catch {
+      window.prompt('Скопируйте ссылку', link);
+    }
+  };
+
+  return (
+    <div className="tsk-mask" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="tsk-modal" style={{ width: 560 }}>
+        <div className="tsk-modal-head">
+          <div className="tsk-modal-title">Пригласить в «{team.name}»</div>
+          <button className="tsk-x" onClick={onClose}>×</button>
+        </div>
+        <div className="tsk-modal-body">
+          <div className="tsk-row">
+            <div>
+              <label className="tsk-label">Права приглашённого</label>
+              <select className="tsk-select" style={{ width: '100%' }} value={role} onChange={e => setRole(e.target.value)}>
+                <option value="member">Участник</option>
+                <option value="viewer">Наблюдатель</option>
+                <option value="lead">Руководитель команды</option>
+              </select>
+            </div>
+            <div>
+              <label className="tsk-label">Срок действия</label>
+              <select className="tsk-select" style={{ width: '100%' }} value={expiresInDays === null ? 'never' : String(expiresInDays)}
+                onChange={e => setExpiresInDays(e.target.value === 'never' ? null : Number(e.target.value))}>
+                <option value="1">1 день</option>
+                <option value="7">7 дней</option>
+                <option value="30">30 дней</option>
+                <option value="never">Бессрочно</option>
+              </select>
+            </div>
+          </div>
+
+          {link ? (
+            <div className="tsk-invite-link">
+              <span>{link}</span>
+              <button className="tsk-btn" onClick={copy}>Копировать</button>
+            </div>
+          ) : (
+            <button className="tsk-invite-create" disabled={busy} onClick={generate}>
+              {busy ? 'Создаём…' : 'Сгенерировать ссылку-приглашение'}
+            </button>
+          )}
+
+          <div className="tsk-trade is-neutral">
+            <div className="tsk-trade-title">Что произойдёт по ссылке</div>
+            <div className="tsk-trade-text">
+              Авторизованный сотрудник сразу попадёт в команду с выбранной ролью.
+              Содержание личных дел приглашение не открывает.
+            </div>
+          </div>
+        </div>
+        <div className="tsk-modal-foot">
+          <div className="tsk-modal-hint">Ссылку можно отправить в чат Alfa Wiki.</div>
+          <button className="tsk-btn is-primary" onClick={onClose}>Готово</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

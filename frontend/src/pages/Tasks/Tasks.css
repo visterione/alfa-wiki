@@ -1,9 +1,10 @@
 /**
  * Модуль «Задачи» (ver. 6.75).
  *
- * Прототип заказчика был тёмным, со своей палитрой и своими радиусами. Здесь
- * от него остались только смыслы: цвета, отступы и скругления взяты из
- * index.css, чтобы модуль не читался вставкой из другого приложения.
+ * Геометрия и информационная архитектура следуют интерактивному макету:
+ * собственная навигация слева, рабочая область и контекст справа. Цвета,
+ * шрифт, элементы управления и состояния остаются из дизайн-системы Alfa Wiki,
+ * чтобы модуль не выглядел чужим приложением внутри портала.
  *
  * Единственное, что живёт своей жизнью, — три цвета загрузки. Зелёный, жёлтый
  * и красный здесь не украшение, а сама суть экрана, поэтому они привязаны к
@@ -11,10 +12,51 @@
  */
 
 .tsk {
-  padding: 20px 24px 40px;
-  max-width: 1440px;
+  padding: 14px 18px 28px;
+  max-width: 1600px;
   margin: 0 auto;
 }
+
+.tsk-shell {
+  min-height: calc(100vh - 118px);
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr) 272px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.tsk-side {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-light);
+  padding: 17px 10px;
+}
+
+.tsk-side-brand {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 10px 15px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tsk-side-brand small { color: var(--text-tertiary); font-size: 10px; font-weight: 400; }
+
+.tsk-main { min-width: 0; display: flex; flex-direction: column; }
+.tsk-content { padding: 18px 20px 34px; overflow: auto; }
+
+.tsk-detail {
+  border-left: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  padding: 20px 17px;
+}
+.tsk-detail-title { font-size: 14px; font-weight: 600; }
+.tsk-detail-text { color: var(--text-secondary); font-size: 12.5px; line-height: 1.6; margin-top: 8px; }
+.tsk-detail-rule { border-top: 1px solid var(--border-light); margin: 18px 0; }
+.tsk-detail-label { color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; }
+.tsk-detail-value { font-size: 13.5px; margin: 5px 0 16px; }
 
 /* ── Шапка и навигация по разделам ─────────────────────────────────────── */
 
@@ -24,47 +66,46 @@
   justify-content: space-between;
   gap: 20px;
   flex-wrap: wrap;
-  margin-bottom: 18px;
+  margin-bottom: 0;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border-light);
 }
 
-.tsk-title { font-size: 24px; font-weight: 600; letter-spacing: -0.3px; }
+.tsk-title { font-size: 19px; font-weight: 600; letter-spacing: -0.2px; }
 .tsk-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
 
 .tsk-nav {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--border-light);
-  margin-bottom: 20px;
-  padding-bottom: 0;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .tsk-nav button {
   background: none;
   border: 0;
-  border-bottom: 2px solid transparent;
   color: var(--text-secondary);
   font: inherit;
   font-size: 14px;
-  padding: 9px 12px;
+  padding: 8px 10px;
   cursor: pointer;
-  margin-bottom: -1px;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 7px;
   transition: color var(--transition-fast);
+  border-radius: var(--radius-md);
 }
 
-.tsk-nav button:hover { color: var(--text-primary); }
-.tsk-nav button.is-on { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+.tsk-nav button:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.tsk-nav button.is-on { color: var(--primary); background: var(--primary-light); font-weight: 500; }
 
 .tsk-nav-group {
-  align-self: center;
+  align-self: stretch;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-tertiary);
-  padding: 0 10px 0 16px;
+  padding: 13px 10px 5px;
 }
 
 .tsk-nav-count {
@@ -78,6 +119,7 @@
   display: grid;
   place-items: center;
   padding: 0 5px;
+  margin-left: auto;
 }
 
 /* ── Панель управления периодом ────────────────────────────────────────── */
@@ -418,6 +460,8 @@
   padding: 16px;
   margin-bottom: 12px;
 }
+
+.tsk-inbox-card.is-clickable { cursor: pointer; }
 .tsk-inbox-title { font-size: 15px; font-weight: 500; }
 .tsk-inbox-from { font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; }
 
@@ -580,6 +624,155 @@
 .tsk-part-top { display: flex; gap: 9px; align-items: center; margin-bottom: 10px; }
 .tsk-part-top .tsk-input { background: var(--bg-primary); }
 
+.tsk-files { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+.tsk-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  text-decoration: none;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+.tsk-file:hover { border-color: var(--primary); }
+.tsk-file-icon {
+  width: 34px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.tsk-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.tsk-file-open { color: var(--primary); font-size: 12px; }
+
+.tsk-scheme {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+}
+.tsk-scheme-node {
+  flex: 1 1 150px;
+  max-width: 230px;
+  min-height: 86px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+}
+.tsk-scheme-node.is-shared { border-color: #5856d6; box-shadow: inset 0 0 0 1px rgba(88, 86, 214, .12); }
+.tsk-scheme-title { font-size: 13.5px; font-weight: 600; }
+.tsk-scheme-meta, .tsk-scheme-deps { margin-top: 5px; color: var(--text-secondary); font-size: 11.5px; line-height: 1.45; }
+.tsk-scheme-deps { color: var(--primary); }
+.tsk-scheme-arrow { align-self: center; color: var(--text-tertiary); font-size: 18px; }
+.tsk-move { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-light); }
+.tsk-move .tsk-input { width: auto; }
+.tsk-invite-create {
+  width: 100%;
+  margin-top: 18px;
+  padding: 22px 14px;
+  border: 1px dashed var(--primary);
+  border-radius: var(--radius-lg);
+  background: var(--primary-light);
+  color: var(--primary);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.tsk-invite-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.tsk-join-name {
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+}
+
+.tsk-slots-wrap {
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.tsk-slots-tools,
+.tsk-slot-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.tsk-slots-tools b { margin-left: auto; color: var(--text-primary); }
+
+.tsk-slots {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(24px, 1fr));
+  gap: 3px;
+  margin: 12px 0 9px;
+}
+
+.tsk-slots button {
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-tertiary);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.tsk-slots button.is-busy {
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+.tsk-slots button.is-selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.tsk-slot-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-primary);
+}
+
+.tsk-slot-legend i.is-busy { background: var(--bg-tertiary); }
+.tsk-slot-legend i.is-selected { background: var(--primary); border-color: var(--primary); }
+.tsk-slot-legend span:last-child { margin-left: auto; }
+.tsk-invite-link span { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); font-size: 12px; }
+
 /* ── Строки списков ────────────────────────────────────────────────────── */
 
 .tsk-list-row {
@@ -623,12 +816,20 @@
 
 /* ── Мобильная раскладка ───────────────────────────────────────────────── */
 
+@media (max-width: 1180px) {
+  .tsk-shell { grid-template-columns: 180px minmax(0, 1fr); }
+  .tsk-detail { display: none; }
+}
+
 @media (max-width: 900px) {
   .tsk { padding: 14px 14px 32px; }
+  .tsk-shell { display: block; min-height: 0; overflow: visible; }
+  .tsk-side { border-right: 0; border-bottom: 1px solid var(--border-light); padding: 10px; }
+  .tsk-side-brand { display: none; }
+  .tsk-nav { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
   .tsk-grid-2 { grid-template-columns: 1fr; }
-  .tsk-nav { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
   .tsk-nav::-webkit-scrollbar { display: none; }
-  .tsk-nav button { white-space: nowrap; }
+  .tsk-nav button { white-space: nowrap; width: auto; }
   .tsk-nav-group { display: none; }
   .tsk-week { grid-template-columns: 1fr; }
   .tsk-day { min-height: auto; }
@@ -637,4 +838,8 @@
   .tsk-modal { max-height: 96vh; border-radius: var(--radius-lg); }
   .tsk-mcell { min-height: 62px; padding: 5px; }
   .tsk-mcell-hours { display: none; }
+  .tsk-content { padding: 14px; }
+  .tsk-top { padding: 14px; }
+  .tsk-scheme-arrow { display: none; }
+  .tsk-scheme-node { max-width: none; flex-basis: 100%; }
 }

@@ -71,6 +71,7 @@ const DEFAULTS = {
   fontScale: 'normal',
   chatBackground: 'plain',
   notificationSound: 'default',
+  taskDefaultVisibility: 'private',
 };
 
 const PREFERENCE_KEYS = Object.keys(DEFAULTS);

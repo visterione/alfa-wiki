@@ -660,8 +660,10 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
                   onChange={e => handleChange('visibility', e.target.value)}
                 >
                   <option value="private">Только я</option>
+                  <option value="busy">Занято, без названия</option>
+                  <option value="team">Название видно команде</option>
                   <option value="shared">Выбранные пользователи</option>
-                  <option value="public">Все пользователи</option>
+                  <option value="public">Видно всей компании</option>
                 </select>
               </div>
 

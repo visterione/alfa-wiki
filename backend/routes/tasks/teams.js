@@ -8,10 +8,12 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
+const { Op } = require('sequelize');
 const router = express.Router();
 
 const { authenticate } = require('../../middleware/auth');
-const { TaskTeam, TaskTeamMember, User, sequelize } = require('../../models');
+const { TaskTeam, TaskTeamMember, TaskTeamInvite, User, sequelize } = require('../../models');
 const context = require('../../services/tasks/context');
 const teams = require('../../services/tasks/teams');
 const workload = require('../../services/tasks/workload');
@@ -90,6 +92,54 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+/** Что откроет ссылка — без состава и других деталей скрытой команды. */
+router.get('/invites/:token', authenticate, async (req, res) => {
+  try {
+    const invite = await TaskTeamInvite.findOne({
+      where: { token: req.params.token },
+      include: [{ model: TaskTeam, as: 'team', attributes: ['id', 'name'] }],
+    });
+    if (!invite || (invite.expiresAt && invite.expiresAt < new Date())) {
+      return res.status(404).json({ error: 'Ссылка недействительна или срок истёк' });
+    }
+    res.json({
+      team: invite.team,
+      role: invite.role,
+      expiresAt: invite.expiresAt,
+    });
+  } catch (error) {
+    console.error('Просмотр приглашения:', error);
+    res.status(500).json({ error: 'Не удалось открыть приглашение' });
+  }
+});
+
+/** Принять приглашение может любой авторизованный сотрудник с действующим токеном. */
+router.post('/invites/:token/accept', authenticate, async (req, res) => {
+  try {
+    const invite = await TaskTeamInvite.findOne({
+      where: {
+        token: req.params.token,
+        [Op.or]: [{ expiresAt: null }, { expiresAt: { [Op.gt]: new Date() } }],
+      },
+      include: [{ model: TaskTeam, as: 'team', attributes: ['id', 'name'] }],
+    });
+    if (!invite) return res.status(404).json({ error: 'Ссылка недействительна или срок истёк' });
+
+    await sequelize.transaction(async transaction => {
+      await TaskTeamMember.upsert({
+        teamId: invite.teamId,
+        userId: req.user.id,
+        role: invite.role,
+      }, { transaction });
+      await invite.increment('useCount', { by: 1, transaction });
+    });
+    res.json({ joined: true, team: invite.team, role: invite.role });
+  } catch (error) {
+    console.error('Принятие приглашения:', error);
+    res.status(500).json({ error: 'Не удалось вступить в команду' });
+  }
+});
+
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const team = await loadTeam(req.params.id);
@@ -101,6 +151,39 @@ router.get('/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Команда:', error);
     res.status(500).json({ error: 'Не удалось получить команду' });
+  }
+});
+
+/** Создать ссылку с ролью и сроком действия. */
+router.post('/:id/invites', authenticate, async (req, res) => {
+  try {
+    const team = await loadTeam(req.params.id);
+    if (!team || !teams.canSeeTeam(team.plain, req.user.id, req.user.isAdmin)) {
+      return res.status(404).json({ error: 'Команда не найдена' });
+    }
+    if (!teams.isLead(team.plain, req.user.id) && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Приглашать может руководитель команды' });
+    }
+
+    const role = Object.values(teams.ROLES).includes(req.body.role)
+      ? req.body.role
+      : teams.ROLES.MEMBER;
+    const days = req.body.expiresInDays === null ? null : Number(req.body.expiresInDays || 7);
+    if (days !== null && (!Number.isFinite(days) || days < 1 || days > 365)) {
+      return res.status(400).json({ error: 'Срок ссылки должен быть от 1 до 365 дней' });
+    }
+    const expiresAt = days === null ? null : new Date(Date.now() + days * 86400000);
+    const invite = await TaskTeamInvite.create({
+      teamId: team.plain.id,
+      token: crypto.randomBytes(32).toString('base64url'),
+      role,
+      expiresAt,
+      createdBy: req.user.id,
+    });
+    res.status(201).json({ token: invite.token, role, expiresAt, team: { id: team.plain.id, name: team.plain.name } });
+  } catch (error) {
+    console.error('Создание приглашения:', error);
+    res.status(500).json({ error: 'Не удалось создать приглашение' });
   }
 });
 

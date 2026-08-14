@@ -6,16 +6,16 @@
  * автор, продавивший задачу в переполненный день. Без этой ленты «срок
  * сдвинулся» выглядит как факт природы.
  *
- * Действия над своей частью урезаны до тех, что делают на ходу: взять в план,
- * отметить сделанным, разбить застрявшую. Перенос на произвольный день и
- * согласование чужого срока остались в вебе — там виден календарь целиком.
+ * Перенос ищет ближайшее подходящее окно на сервере: так мобильный сценарий
+ * остаётся коротким, но не обходит историю и правило трёх переносов.
  */
 
 import React, {useCallback, useState} from 'react';
-import {View, Text, ScrollView, Pressable, StyleSheet, Alert} from 'react-native';
+import {View, Text, ScrollView, Pressable, StyleSheet, Alert, Linking} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 
 import {tasks as tasksApi} from '../../services/api';
+import CONFIG from '../../config';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
@@ -23,7 +23,7 @@ import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {useAuth} from '../../store/authStore';
 import {
   MODE_LABEL, STATUS_LABEL, STATUS_TONE, dfull, dshort, estimateText,
-  hoursText, toneColor, userName,
+  hoursText, toneColor, userName, addDays,
 } from './taskMeta';
 
 /** Человеческие формулировки событий истории — те же, что в вебе. */
@@ -48,6 +48,8 @@ function historyText(row) {
       return p.becameStuck
         ? `перенёс на ${dshort(p.to)} — третий перенос, задача требует решения`
         : `перенёс на ${dshort(p.to)}`;
+    case 'extended':
+      return `продлил: ${hoursText(p.from)} → ${hoursText(p.to)}`;
     case 'split':
       return `разбил часть: ${hoursText(p.head)} + ${hoursText(p.tail)}`;
     case 'forced':
@@ -99,6 +101,26 @@ export default function TaskCardScreen({route, navigation}) {
     }
   };
 
+  const moveNext = async part => {
+    setBusy(true);
+    try {
+      const {data: fit} = await tasksApi.getNextFit(part.id, {
+        start: addDays(String(part.dueDate), 1),
+      });
+      if (!fit.date) {
+        Alert.alert('Нет свободного дня', 'В ближайшие 30 дней задача не помещается.');
+        return;
+      }
+      await tasksApi.movePart(part.id, fit.date);
+      Alert.alert('Перенесено', `Новый день: ${dfull(fit.date)}.`);
+      await load();
+    } catch (e) {
+      Alert.alert('Не получилось', e?.response?.data?.error || 'Попробуйте ещё раз');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!task) return <LogoLoader />;
 
   return (
@@ -129,10 +151,63 @@ export default function TaskCardScreen({route, navigation}) {
         </>
       )}
 
+      {!!task.attachments?.length && (
+        <>
+          <Text style={styles.section}>Файлы · {task.attachments.length}</Text>
+          {task.attachments.map((file, index) => (
+            <Pressable
+              key={file.id || file.path || index}
+              style={styles.file}
+              onPress={() => {
+                const url = CONFIG.fileUrl(file.path || file.url);
+                if (url) Linking.openURL(url).catch(() => Alert.alert('Не получилось', 'Файл не открылся'));
+              }}>
+              <View style={styles.fileExt}>
+                <Text style={styles.fileExtText}>
+                  {String(file.filename || file.originalName || 'file').split('.').pop()?.slice(0, 4).toUpperCase()}
+                </Text>
+              </View>
+              <Text style={styles.fileName} numberOfLines={1}>
+                {file.filename || file.originalName || 'Вложение'}
+              </Text>
+              <Text style={styles.fileOpen}>Открыть</Text>
+            </Pressable>
+          ))}
+        </>
+      )}
+
+      {(task.parts?.length || 0) > 1 && (
+        <>
+          <Text style={styles.section}>Схема выполнения</Text>
+          <View style={styles.scheme}>
+            {task.parts.map((part, index) => {
+              const prerequisites = (task.deps || [])
+                .filter(dep => dep.partId === part.id)
+                .map(dep => task.parts.find(item => item.id === dep.afterPartId)?.title)
+                .filter(Boolean);
+              return (
+                <View style={styles.schemeRow} key={part.id}>
+                  <View style={styles.schemeIndex}><Text style={styles.schemeIndexText}>{index + 1}</Text></View>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.schemeTitle}>{part.title}</Text>
+                    {!!prerequisites.length && (
+                      <Text style={styles.schemeAfter}>после: {prerequisites.join(', ')}</Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      )}
+
       <Text style={styles.section}>Части · {task.parts?.length || 0}</Text>
       {(task.parts || []).map(part => {
         const mine = (part.assignees || []).find(a => a.userId === user?.id);
         const notPlanned = (part.assignees || []).filter(a => !a.plannedDate);
+        const partHistory = (task.history || []).filter(row => row.partId === part.id);
+        const actions = partHistory.map(row => row.action);
+        const hasPendingProposal = actions.lastIndexOf('proposed_date') > actions.lastIndexOf('accepted_date');
 
         return (
           <View key={part.id} style={styles.part}>
@@ -232,8 +307,42 @@ export default function TaskCardScreen({route, navigation}) {
                         <Text style={styles.btnText}>На проверку</Text>
                       </Pressable>
                     )}
+                    <Pressable
+                      style={[styles.btn, busy && styles.btnOff]}
+                      disabled={busy}
+                      onPress={() => moveNext(part)}>
+                      <Text style={styles.btnText}>Перенести</Text>
+                    </Pressable>
+                    {[15, 30, 60].map(minutes => (
+                      <Pressable
+                        key={minutes}
+                        style={[styles.btn, busy && styles.btnOff]}
+                        disabled={busy}
+                        onPress={() =>
+                          run(
+                            () => tasksApi.extendPart(part.id, minutes / 60),
+                            `Продлено на ${minutes} минут — загрузка пересчитана.`,
+                          )
+                        }>
+                        <Text style={styles.btnText}>+ {minutes} мин</Text>
+                      </Pressable>
+                    ))}
                   </>
                 )}
+              </View>
+            )}
+
+            {task.authorId === user?.id && !mine && part.status === 'new' && hasPendingProposal && (
+              <View style={styles.acts}>
+                <Pressable
+                  style={[styles.btn, styles.btnPrimary, busy && styles.btnOff]}
+                  disabled={busy}
+                  onPress={() => run(
+                    () => tasksApi.acceptDate(part.id),
+                    `Срок согласован: ${dfull(String(part.dueDate))}.`,
+                  )}>
+                  <Text style={styles.btnPrimaryText}>Согласовать срок</Text>
+                </Pressable>
               </View>
             )}
           </View>
@@ -265,6 +374,35 @@ export default function TaskCardScreen({route, navigation}) {
       <Text style={styles.hint}>
         Срок — согласование, а не поле. Поэтому у него есть история.
       </Text>
+
+      {task.authorId === user?.id && (
+        <Pressable
+          style={[styles.cancelBtn, busy && styles.btnOff]}
+          disabled={busy}
+          onPress={() => Alert.alert(
+            'Отменить задачу?',
+            'Запланированное время вернётся исполнителям.',
+            [
+              {text: 'Не отменять', style: 'cancel'},
+              {
+                text: 'Отменить задачу',
+                style: 'destructive',
+                onPress: async () => {
+                  setBusy(true);
+                  try {
+                    await tasksApi.cancelTask(task.id);
+                    navigation.goBack();
+                  } catch (e) {
+                    Alert.alert('Не получилось', e?.response?.data?.error || 'Попробуйте ещё раз');
+                    setBusy(false);
+                  }
+                },
+              },
+            ],
+          )}>
+          <Text style={styles.cancelText}>Отменить задачу</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }
@@ -302,6 +440,17 @@ const makeStyles = c =>
       color: c.textPrimary,
       lineHeight: 22,
     },
+    file: {flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11, marginBottom: 7, borderRadius: radius.md, backgroundColor: c.bgPrimary},
+    fileExt: {width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm, backgroundColor: c.primaryLight},
+    fileExtText: {fontFamily: font.semiBold, fontSize: 9.5, color: c.primary},
+    fileName: {flex: 1, fontFamily: font.medium, fontSize: 13.5, color: c.textPrimary},
+    fileOpen: {fontFamily: font.regular, fontSize: 12, color: c.primary},
+    scheme: {padding: 12, borderRadius: radius.lg, backgroundColor: c.bgPrimary},
+    schemeRow: {flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7},
+    schemeIndex: {width: 25, height: 25, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: c.primaryLight},
+    schemeIndexText: {fontFamily: font.semiBold, fontSize: 11, color: c.primary},
+    schemeTitle: {fontFamily: font.medium, fontSize: 13.5, color: c.textPrimary},
+    schemeAfter: {fontFamily: font.regular, fontSize: 11.5, color: c.textTertiary, marginTop: 2},
 
     part: {
       backgroundColor: c.bgPrimary,
@@ -361,4 +510,6 @@ const makeStyles = c =>
       lineHeight: 19,
       marginTop: 22,
     },
+    cancelBtn: {alignItems: 'center', padding: 12, marginTop: 18, borderRadius: radius.md, backgroundColor: c.errorLight || `${c.error}15`},
+    cancelText: {fontFamily: font.medium, fontSize: 13.5, color: c.error},
   });

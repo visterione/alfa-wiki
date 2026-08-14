@@ -11,17 +11,20 @@ test('mobile preferences accept supported values', () => {
   assert.deepEqual(normalizeMobilePreferences({
     theme: 'dark',
     accent: 'green',
-    notificationSound: 'luna'
+    notificationSound: 'luna',
+    taskDefaultVisibility: 'busy'
   }), {
     theme: 'dark',
     accent: 'green',
-    notificationSound: 'luna'
+    notificationSound: 'luna',
+    taskDefaultVisibility: 'busy'
   });
 });
 
 test('mobile preferences reject unknown keys and values', () => {
   assert.throws(() => normalizeMobilePreferences({ accent: 'rainbow' }), /accent/);
   assert.throws(() => normalizeMobilePreferences({ chatBackground: 'grid' }), /chatBackground/);
+  assert.throws(() => normalizeMobilePreferences({ taskDefaultVisibility: 'shared' }), /taskDefaultVisibility/);
   assert.throws(() => normalizeMobilePreferences({ admin: true }), /Неизвестные/);
 });
 

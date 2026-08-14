@@ -2400,6 +2400,31 @@ const TaskTeamMember = sequelize.define('TaskTeamMember', {
   ]
 });
 
+// Ссылка-приглашение не раскрывает состав скрытой команды: до принятия по
+// токену отдаётся только название, роль и срок действия.
+const TaskTeamInvite = sequelize.define('TaskTeamInvite', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  teamId: { type: DataTypes.UUID, allowNull: false },
+  token: { type: DataTypes.STRING(96), allowNull: false, unique: true },
+  role: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'member',
+    validate: { isIn: [['member', 'viewer', 'lead']] }
+  },
+  expiresAt: { type: DataTypes.DATE },
+  createdBy: { type: DataTypes.UUID, allowNull: false },
+  useCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }
+}, {
+  tableName: 'task_team_invites',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['token'] },
+    { fields: ['teamId'] },
+    { fields: ['expiresAt'] }
+  ]
+});
+
 // Задача-контейнер: ни исполнителя, ни срока, ни оценки здесь нет — всё это
 // принадлежит частям.
 //
@@ -2567,6 +2592,9 @@ TaskTeam.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
 TaskTeam.hasMany(TaskTeamMember, { foreignKey: 'teamId', as: 'members', onDelete: 'CASCADE' });
 TaskTeamMember.belongsTo(TaskTeam, { foreignKey: 'teamId', as: 'team' });
 TaskTeamMember.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+TaskTeam.hasMany(TaskTeamInvite, { foreignKey: 'teamId', as: 'invites', onDelete: 'CASCADE' });
+TaskTeamInvite.belongsTo(TaskTeam, { foreignKey: 'teamId', as: 'team' });
+TaskTeamInvite.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
 Task.belongsTo(User, { foreignKey: 'authorId', as: 'author' });
 Task.belongsTo(TaskProject, { foreignKey: 'projectId', as: 'project' });
@@ -4015,6 +4043,7 @@ module.exports = {
   TaskProject,
   TaskTeam,
   TaskTeamMember,
+  TaskTeamInvite,
   Task,
   TaskPart,
   TaskPartDep,
