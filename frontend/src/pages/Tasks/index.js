@@ -117,14 +117,24 @@ export default function Tasks() {
     if (taskId) setOpenTaskId(taskId);
   }, [params]);
 
+  const joinToken = params.get('join');
+  const clearJoin = useCallback(() => {
+    setJoinInvite(null);
+    setParams(previous => {
+      if (!previous.has('join')) return previous;
+      const next = new URLSearchParams(previous);
+      next.delete('join');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
+
   useEffect(() => {
-    const token = params.get('join');
-    if (!token) return;
+    if (!joinToken) return;
     let alive = true;
-    api.getTeamInvite(token)
+    api.getTeamInvite(joinToken)
       .then(({ data }) => {
         if (!alive) return;
-        setJoinInvite({ ...data, token });
+        setJoinInvite({ ...data, token: joinToken });
       })
       .catch(error => {
         if (!alive) return;
@@ -132,19 +142,7 @@ export default function Tasks() {
         clearJoin();
       });
     return () => { alive = false; };
-    // URL меняется только после явного решения пользователя; повторно один и
-    // тот же токен на обычных рендерах не запрашиваем.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.get('join')]);
-
-  const clearJoin = useCallback(() => {
-    setJoinInvite(null);
-    if (params.has('join')) {
-      const next = new URLSearchParams(params);
-      next.delete('join');
-      setParams(next, { replace: true });
-    }
-  }, [params, setParams]);
+  }, [joinToken, clearJoin]);
 
   const acceptJoin = useCallback(async () => {
     if (!joinInvite?.token) return;
