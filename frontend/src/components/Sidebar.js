@@ -115,12 +115,7 @@ function SidebarCalendar() {
     return `${year}-${month}-${day}`;
   };
 
-  // Загрузка индикаторов событий для текущего месяца
-  useEffect(() => {
-    loadEventIndicators();
-  }, [currentDate]);
-
-  const loadEventIndicators = async () => {
+  const loadEventIndicators = useCallback(async () => {
     try {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
@@ -136,7 +131,15 @@ function SidebarCalendar() {
     } catch (error) {
       console.error('Failed to load event indicators:', error);
     }
-  };
+  }, [currentDate]);
+
+  // Сайдбар не размонтируется при работе с задачами, поэтому смена статуса
+  // сама по себе раньше не перезапрашивала точки до следующей навигации.
+  useEffect(() => {
+    loadEventIndicators();
+    window.addEventListener('calendar-events-changed', loadEventIndicators);
+    return () => window.removeEventListener('calendar-events-changed', loadEventIndicators);
+  }, [loadEventIndicators]);
 
   const toggleCalendarView = () => {
     const newView = calendarView === 'month' ? 'week' : 'month';

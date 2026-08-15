@@ -253,6 +253,7 @@ export default function Calendar() {
         await calendarApi.createEvent(eventData);
         toast.success('Событие создано');
       }
+      window.dispatchEvent(new Event('calendar-events-changed'));
       closeEventModal();
       loadEvents();
       loadUpcoming();

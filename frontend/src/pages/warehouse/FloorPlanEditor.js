@@ -87,8 +87,15 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 
   // Первый медцентр с корпусами — сразу, иначе редактор открывается пустым и
   // выглядит неработающим.
+  //
+  // Признак «ещё ничего не выбрано» — пустой МЕДЦЕНТР, а не пустой этаж. Пока
+  // здесь сторожился floorId, переключатель медцентров не работал ровно там, где
+  // он нужнее всего: у клиники без корпусов этажа нет по определению, выбор
+  // сбрасывался обратно на первый медцентр с корпусами, и завести план новой
+  // клинике было нельзя вовсе. Ветка «в этом медцентре ещё нет корпусов» ниже
+  // существовала, но до неё не доходило.
   useEffect(() => {
-    if (selection.floorId || !medCenters.length) return;
+    if (selection.mcId || !medCenters.length) return;
     const firstMc = medCenters.find(m => m.buildings?.length) || medCenters[0];
     const firstBuilding = firstMc?.buildings?.[0];
     setSelection({
@@ -96,7 +103,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
       buildingId: firstBuilding?.id || null,
       floorId: firstBuilding?.floors?.[0]?.id || null,
     });
-  }, [medCenters, selection.floorId]);
+  }, [medCenters, selection.mcId]);
 
   const loadPlan = useCallback(async (floorId) => {
     if (!floorId) { setPlan(null); return; }

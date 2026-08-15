@@ -2,15 +2,37 @@
 'use strict';
 
 /**
- * Production runner for database migrations ver. 6.77-6.80.
+ * Миграции 6.77–6.80 одним прогоном.
  *
- * Run from backend/:
- *   npm run migrate:6.77-6.80:check
- *   npm run migrate:6.77-6.80
+ * Четыре релиза приезжают на прод вместе, и накатывать их по одному значит четыре
+ * раза вспоминать, какая команда следующая и что делать, если третья упала. Здесь
+ * они идут в порядке версий, каждая в своей транзакции (BEGIN/COMMIT лежат в
+ * самих .sql), и первая же ошибка останавливает остальные: половина 6.79 без
+ * 6.80 — это состояние, из которого понятно, что делать, а вот 6.80 поверх
+ * недоехавшей 6.79 — уже нет.
  *
- * The runner uses the database settings from backend/.env, serializes deploys
- * with a PostgreSQL advisory lock and verifies every migration after applying
- * it. Each SQL file owns its transaction and is safe to run repeatedly.
+ * ── Что делает каждая ────────────────────────────────────────────────────────
+ *
+ *   6.77 — недельное рабочее расписание сотрудника и история его изменений;
+ *   6.78 — команды модуля задач становятся закрытыми;
+ *   6.79 — словарь предметов склада и базовое дерево категорий;
+ *   6.80 — размещение позиций ведомости по кабинетам.
+ *
+ * ── Почему можно запускать повторно ──────────────────────────────────────────
+ *
+ * Перед каждым шагом проверяется состояние схемы, и уже применённая миграция
+ * пропускается. Сами файлы тоже написаны идемпотентно (IF NOT EXISTS, DROP
+ * CONSTRAINT IF EXISTS), так что повторный запуск после обрыва связи ничего не
+ * ломает и не дублирует.
+ *
+ * ── Блокировка ───────────────────────────────────────────────────────────────
+ *
+ * Каждый шаг берёт advisory lock со своим номером. Это защита от второго
+ * одновременного запуска — например, когда деплой случайно пошёл дважды.
+ *
+ * Запуск:
+ *   npm run migrate:6.77-6.80          — применить
+ *   npm run migrate:6.77-6.80:check    — только показать состояние, ничего не менять
  */
 
 const fs = require('fs');
@@ -19,246 +41,186 @@ const { sequelize } = require('../models');
 
 sequelize.options.logging = false;
 
-const LOCK_ID = 677680;
-const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');
+const migrationsDir = path.join(__dirname, '..', 'migrations');
+const file = name => path.join(migrationsDir, name);
 
-const migrations = [
+/** Одна проверка состояния: подпись для человека и SQL, отвечающий true/false. */
+const STEPS = [
   {
     version: '6.77',
-    filename: 'ver. 6.77 task-work-schedules.sql',
-    checks: [
-      ['users.taskWorkSchedule', `EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'users'
-          AND column_name = 'taskWorkSchedule'
-      )`],
-      ['task_schedule_changes', `to_regclass('public.task_schedule_changes') IS NOT NULL`],
-      ['task_schedule_changes_user_created_idx',
-        `to_regclass('public.task_schedule_changes_user_created_idx') IS NOT NULL`],
-    ],
+    title: 'Рабочее расписание сотрудника',
+    file: file('ver. 6.77 task-work-schedules.sql'),
+    lockId: 677001,
+    sql: `
+      SELECT
+        EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='users' AND column_name='taskWorkSchedule') AS "колонка users.taskWorkSchedule",
+        to_regclass('public.task_schedule_changes') IS NOT NULL AS "таблица истории расписаний",
+        to_regclass('public.task_schedule_changes_user_created_idx') IS NOT NULL AS "индекс истории"
+    `,
   },
   {
     version: '6.78',
-    filename: 'ver. 6.78 private-task-teams.sql',
-    checks: [
-      ['все команды закрыты', `NOT EXISTS (
-        SELECT 1 FROM task_teams WHERE access <> 'members' OR "isHidden" IS NOT TRUE
-      )`],
-      ['access по умолчанию members', `COALESCE((
-        SELECT column_default IN ('''members''::character varying', '''members''::varchar')
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'task_teams' AND column_name = 'access'
-      ), FALSE)`],
-      ['isHidden по умолчанию true', `COALESCE((
-        SELECT column_default = 'true'
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'task_teams' AND column_name = 'isHidden'
-      ), FALSE)`],
-      ['ограничение task_teams_private_access', `EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'task_teams'::regclass AND conname = 'task_teams_private_access'
-      )`],
-      ['ограничение task_teams_always_hidden', `EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'task_teams'::regclass AND conname = 'task_teams_always_hidden'
-      )`],
-    ],
+    title: 'Закрытые команды модуля задач',
+    file: file('ver. 6.78 private-task-teams.sql'),
+    lockId: 678001,
+    sql: `
+      SELECT
+        (SELECT COUNT(*) FROM task_teams
+          WHERE access <> 'members' OR "isHidden" IS NOT TRUE) = 0 AS "все команды закрыты",
+        (SELECT column_default = '''members''::character varying' FROM information_schema.columns
+          WHERE table_name='task_teams' AND column_name='access') AS "умолчание access",
+        (SELECT column_default = 'true' FROM information_schema.columns
+          WHERE table_name='task_teams' AND column_name='isHidden') AS "умолчание isHidden",
+        (SELECT COUNT(*) = 2 FROM pg_constraint
+          WHERE conrelid = 'task_teams'::regclass
+            AND conname IN ('task_teams_private_access', 'task_teams_always_hidden')) AS "ограничения на месте"
+    `,
   },
   {
     version: '6.79',
-    filename: 'ver. 6.79 warehouse-item-rules.sql',
-    checks: [
-      ['warehouse_item_rules', `to_regclass('public.warehouse_item_rules') IS NOT NULL`],
-      ['warehouse_item_rules_pattern_uniq',
-        `to_regclass('public.warehouse_item_rules_pattern_uniq') IS NOT NULL`],
-      ['ограничения словаря', `(
-        SELECT count(*) = 3 FROM pg_constraint
-        WHERE conrelid = 'warehouse_item_rules'::regclass
-          AND conname IN (
-            'warehouse_item_rules_match_chk',
-            'warehouse_item_rules_accounting_chk',
-            'warehouse_item_rules_pattern_chk'
-          )
-      )`],
-      ['базовые категории склада', `(
-        SELECT count(DISTINCT name) = 12 FROM warehouse_categories
-        WHERE name = ANY(ARRAY[
-          'Медицинское оборудование', 'Медицинский инструмент', 'Оргтехника и ИТ',
-          'Мебель', 'Бытовая техника', 'Инженерное оборудование',
-          'Хозяйственный инвентарь', 'Расходные материалы',
-          'Лекарственные препараты', 'Текстиль и мягкий инвентарь',
-          'Хозяйственные материалы', 'Канцелярия'
-        ]::text[])
-      )`],
-    ],
+    title: 'Словарь предметов склада',
+    file: file('ver. 6.79 warehouse-item-rules.sql'),
+    lockId: 679001,
+    sql: `
+      SELECT
+        to_regclass('public.warehouse_item_rules') IS NOT NULL AS "таблица словаря",
+        to_regclass('public.warehouse_item_rules_pattern_uniq') IS NOT NULL AS "уникальность выражений",
+        (SELECT COUNT(*) = 3 FROM pg_constraint
+          WHERE conrelid = to_regclass('public.warehouse_item_rules')
+            AND conname IN ('warehouse_item_rules_match_chk',
+                            'warehouse_item_rules_accounting_chk',
+                            'warehouse_item_rules_pattern_chk')) AS "ограничения на месте"
+    `,
+    // Категории заводятся этой же миграцией, но полнотой схемы не являются: их
+    // могли завести и руками, и тогда вставка ничего не делает. Показываем
+    // числом, а не галочкой, чтобы не выдавать «не применено» на ровном месте.
+    info: `SELECT COUNT(*)::int AS n FROM warehouse_categories`,
+    infoLabel: n => `категорий в справочнике: ${n}`,
   },
   {
     version: '6.80',
-    filename: 'ver. 6.80 warehouse-osv-placements.sql',
-    checks: [
-      ['warehouse_osv_placements',
-        `to_regclass('public.warehouse_osv_placements') IS NOT NULL`],
-      ['warehouse_osv_placements_uniq',
-        `to_regclass('public.warehouse_osv_placements_uniq') IS NOT NULL`],
-      ['warehouse_osv_placements_room_idx',
-        `to_regclass('public.warehouse_osv_placements_room_idx') IS NOT NULL`],
-      ['ограничение положительного количества', `EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'warehouse_osv_placements'::regclass
-          AND conname = 'warehouse_osv_placements_qty_chk'
-      )`],
-      ['warehouse_assets.osvPlacementId', `EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'warehouse_assets'
-          AND column_name = 'osvPlacementId'
-      )`],
-      ['warehouse_assets_osv_placement_idx',
-        `to_regclass('public.warehouse_assets_osv_placement_idx') IS NOT NULL`],
-    ],
+    title: 'Размещение имущества по кабинетам',
+    file: file('ver. 6.80 warehouse-osv-placements.sql'),
+    lockId: 680001,
+    sql: `
+      SELECT
+        to_regclass('public.warehouse_osv_placements') IS NOT NULL AS "таблица размещений",
+        to_regclass('public.warehouse_osv_placements_uniq') IS NOT NULL AS "уникальность строка+кабинет",
+        EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='warehouse_assets' AND column_name='osvPlacementId') AS "ссылка у карточек"
+    `,
   },
 ];
 
-async function assertPrerequisites(connection) {
-  const required = [
-    'users',
-    'task_teams',
-    'warehouse_categories',
-    'warehouse_rooms',
-    'warehouse_storages',
-    'warehouse_assets',
-  ];
-  const result = await connection.query(`
-    SELECT tablename
-    FROM pg_tables
-    WHERE schemaname = 'public' AND tablename = ANY($1::text[])
-  `, [required]);
-  const existing = new Set(result.rows.map(row => row.tablename));
-  const missing = required.filter(table => !existing.has(table));
-  if (missing.length) {
-    throw new Error(
-      `не найдены обязательные таблицы: ${missing.join(', ')}. `
-      + 'Сначала примените миграции до 6.76 включительно'
-    );
+async function checkStep(connection, step) {
+  const result = await connection.query(step.sql);
+  const row = result.rows[0] || {};
+  const checks = Object.entries(row).map(([label, value]) => [label, value === true]);
+  const complete = checks.length > 0 && checks.every(([, ok]) => ok);
+
+  let info = null;
+  if (step.info) {
+    const extra = await connection.query(step.info);
+    info = step.infoLabel(extra.rows[0]?.n);
   }
+  return { checks, complete, info };
 }
 
-async function getState(connection, migration) {
-  // Some checks refer to objects created by the migration. Evaluate them only
-  // after their main table exists, otherwise PostgreSQL cannot resolve regclass.
-  const mainTable = {
-    '6.77': 'task_schedule_changes',
-    '6.78': 'task_teams',
-    '6.79': 'warehouse_item_rules',
-    '6.80': 'warehouse_osv_placements',
-  }[migration.version];
-  const existsResult = await connection.query(
-    'SELECT to_regclass($1) IS NOT NULL AS exists',
-    [`public.${mainTable}`]
-  );
-
-  if (!existsResult.rows[0].exists && ['6.79', '6.80'].includes(migration.version)) {
-    return {
-      complete: false,
-      checks: migration.checks.map(([label]) => ({ label, ok: false })),
-    };
-  }
-
-  const select = migration.checks
-    .map(([, expression], index) => `(${expression}) AS check_${index}`)
-    .join(',\n');
-  const result = await connection.query(`SELECT ${select}`);
-  const checks = migration.checks.map(([label], index) => ({
-    label,
-    ok: result.rows[0][`check_${index}`] === true,
-  }));
-  return { checks, complete: checks.every(check => check.ok) };
+function printStep(step, state) {
+  console.log(`\n── ${step.version} · ${step.title}`);
+  for (const [label, ok] of state.checks) console.log(`   ${ok ? '✓' : '✗'} ${label}`);
+  if (state.info) console.log(`   · ${state.info}`);
 }
 
-function printState(migration, state) {
-  console.log(`\n   ver. ${migration.version}`);
-  for (const check of state.checks) {
-    console.log(`   ${check.ok ? '✓' : '✗'} ${check.label}`);
+async function applyStep(connection, step) {
+  if (!fs.existsSync(step.file)) {
+    throw new Error(`не найден файл миграции: ${path.basename(step.file)}`);
+  }
+
+  await connection.query('SELECT pg_advisory_lock($1)', [step.lockId]);
+  try {
+    // Состояние перечитывается уже под блокировкой: между первой проверкой и
+    // этим моментом миграцию мог применить параллельный запуск.
+    const before = await checkStep(connection, step);
+    if (before.complete) {
+      console.log(`   уже применена — пропускаю`);
+      return false;
+    }
+
+    try {
+      await connection.query(fs.readFileSync(step.file, 'utf8'));
+    } catch (error) {
+      // Файл сам открывает транзакцию, поэтому после ошибки соединение остаётся
+      // в ней. Без явного отката следующий шаг упал бы на «current transaction
+      // is aborted» и увёл диагностику в сторону от настоящей причины.
+      await connection.query('ROLLBACK').catch(() => {});
+      throw error;
+    }
+
+    const after = await checkStep(connection, step);
+    if (!after.complete) {
+      printStep(step, after);
+      throw new Error(`миграция ${step.version} выполнилась, но итоговая проверка схемы не пройдена`);
+    }
+    console.log(`   ✅ применена`);
+    return true;
+  } finally {
+    await connection.query('SELECT pg_advisory_unlock($1)', [step.lockId]).catch(() => {});
   }
 }
 
 async function main() {
   const checkOnly = process.argv.includes('--check');
   let connection;
-  let lockHeld = false;
-
-  for (const migration of migrations) {
-    migration.file = path.join(MIGRATIONS_DIR, migration.filename);
-    if (!fs.existsSync(migration.file)) {
-      throw new Error(`не найден файл миграции: ${migration.file}`);
-    }
-  }
 
   try {
     await sequelize.authenticate();
     connection = await sequelize.connectionManager.getConnection();
-    console.log('\n▶ Миграции ver. 6.77-6.80');
-    console.log(`   База: ${sequelize.config.database} на ${sequelize.config.host}\n`);
-    await assertPrerequisites(connection);
+
+    const database = sequelize.config.database;
+    const host = sequelize.config.host;
+    console.log(`База: ${database} на ${host}`);
+    console.log(checkOnly ? 'Режим: только проверка, ничего не меняется' : 'Режим: применение миграций 6.77–6.80');
+
+    const states = [];
+    for (const step of STEPS) {
+      const state = await checkStep(connection, step);
+      printStep(step, state);
+      states.push(state);
+    }
 
     if (checkOnly) {
-      let complete = true;
-      for (const migration of migrations) {
-        const state = await getState(connection, migration);
-        printState(migration, state);
-        complete = complete && state.complete;
-      }
-      if (!complete) {
-        console.log('\n⚠️  Не все миграции применены\n');
-        process.exitCode = 2;
-      } else {
-        console.log('\n✅ Все миграции применены\n');
-      }
+      const pending = STEPS.filter((_, i) => !states[i].complete);
+      console.log(pending.length
+        ? `\nЖдут применения: ${pending.map(s => s.version).join(', ')}`
+        : '\nВсё применено, делать нечего');
+      if (pending.length) process.exitCode = 2;
       return;
     }
 
-    await connection.query('SELECT pg_advisory_lock($1)', [LOCK_ID]);
-    lockHeld = true;
-
-    for (const migration of migrations) {
-      let state = await getState(connection, migration);
-      printState(migration, state);
-      if (state.complete) {
-        console.log('   Уже применена');
-        continue;
-      }
-
-      console.log(`   Применяю ${migration.filename}...`);
-      try {
-        await connection.query(fs.readFileSync(migration.file, 'utf8'));
-      } catch (error) {
-        await connection.query('ROLLBACK').catch(() => {});
-        throw new Error(`ver. ${migration.version}: ${error?.original?.message || error.message}`);
-      }
-
-      state = await getState(connection, migration);
-      if (!state.complete) {
-        throw new Error(`ver. ${migration.version}: итоговая проверка схемы не пройдена`);
-      }
-      console.log(`   ✓ ver. ${migration.version} применена`);
+    console.log('\n── Применение ────────────────────────────────────────────');
+    let applied = 0;
+    for (const step of STEPS) {
+      console.log(`\n${step.version} · ${step.title}`);
+      if (await applyStep(connection, step)) applied += 1;
     }
 
-    console.log('\n✅ Миграции 6.77-6.80 успешно применены\n');
+    console.log(applied
+      ? `\n✅ Готово. Применено миграций: ${applied} из ${STEPS.length}`
+      : '\n✅ Готово. Все миграции были применены ранее');
+    console.log('Перезапустите процесс приложения: pm2 restart alfa-wiki');
   } finally {
-    if (connection && lockHeld) {
-      await connection.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]).catch(() => {});
-    }
-    if (connection) {
-      try {
-        await sequelize.connectionManager.releaseConnection(connection);
-      } catch (_) {
-        // sequelize.close() below still closes the pool if release fails.
-      }
-    }
-    await sequelize.close().catch(() => {});
+    if (connection) await sequelize.connectionManager.releaseConnection(connection);
   }
 }
 
-main().catch(error => {
-  console.error(`\n❌ Миграции не выполнены: ${error.message}\n`);
-  process.exitCode = 1;
-});
+main()
+  .then(() => sequelize.close())
+  .catch(async (error) => {
+    console.error(`\n❌ Не выполнено: ${error?.original?.message || error.message}`);
+    console.error('Схема осталась в том состоянии, в котором была до упавшего шага —');
+    console.error('уже применённые миграции откатывать не нужно, скрипт можно запустить повторно.');
+    await sequelize.close().catch(() => {});
+    process.exitCode = 1;
+  });

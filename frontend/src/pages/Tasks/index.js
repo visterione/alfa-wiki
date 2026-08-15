@@ -183,6 +183,9 @@ export default function Tasks() {
   const taskChanged = useCallback(() => {
     refreshInbox();
     setTasksRevision(value => value + 1);
+    // Рабочие блоки задач являются событиями календаря. Сайдбар живёт вне
+    // страницы задач и без явного сигнала продолжает показывать старые точки.
+    window.dispatchEvent(new Event('calendar-events-changed'));
   }, [refreshInbox]);
 
   const go = useCallback((key, options = {}) => {
