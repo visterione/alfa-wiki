@@ -65,7 +65,10 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
 
   const WhRoom = sequelize.define('WhRoom', {
     id:                { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    floorId:           { type: DataTypes.UUID, allowNull: false },
+    // Медцентр хранится на кабинете напрямую: у небольших площадок может не
+    // быть ни корпуса, ни этажа. floorId нужен только когда используется план.
+    medCenterId:       { type: DataTypes.UUID, allowNull: false },
+    floorId:           { type: DataTypes.UUID },
     departmentId:      { type: DataTypes.UUID },
     number:            { type: DataTypes.STRING(30), allowNull: false },
     name:              { type: DataTypes.STRING(200) },
@@ -649,8 +652,10 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhBuilding.hasMany(WhFloor, { foreignKey: 'buildingId', as: 'floors', onDelete: 'CASCADE' });
     WhFloor.belongsTo(WhBuilding, { foreignKey: 'buildingId', as: 'building' });
 
-    WhFloor.hasMany(WhRoom, { foreignKey: 'floorId', as: 'rooms', onDelete: 'CASCADE' });
+    WhFloor.hasMany(WhRoom, { foreignKey: 'floorId', as: 'rooms', onDelete: 'SET NULL' });
     WhRoom.belongsTo(WhFloor, { foreignKey: 'floorId', as: 'floor' });
+    MedCenter.hasMany(WhRoom, { foreignKey: 'medCenterId', as: 'whRooms' });
+    WhRoom.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 
     WhFloor.hasMany(WhFloorShape, { foreignKey: 'floorId', as: 'shapes', onDelete: 'CASCADE' });
     WhFloorShape.belongsTo(WhFloor, { foreignKey: 'floorId', as: 'floor' });

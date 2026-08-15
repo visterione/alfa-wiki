@@ -236,4 +236,13 @@ const itemName = i => i.asset ? `${i.asset.inventoryNumber} · ${i.asset.name}` 
 const inventoryStatus = s => ({ open: 'Открыта', counting: 'Идёт пересчёт', closed: 'Закрыта', cancelled: 'Отменена' }[s] || s);
 const fmtDateTime = d => d ? new Date(d).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 function Stat({ title, value, tone }) { return <div className={`wh-summary__card ${tone ? `wh-summary__card--${tone}` : ''}`}><span>{title}</span><b>{value}</b></div>; }
-function flattenRooms(tree) { const out = []; for (const mc of tree?.medCenters || []) for (const b of mc.buildings || []) for (const f of b.floors || []) for (const r of f.rooms || []) out.push({ ...r, label: `${mc.name} · ${b.name} · ${f.number} эт. · Каб. ${r.number}` }); return out; }
+function flattenRooms(tree) {
+  const out = [];
+  for (const mc of tree?.medCenters || []) {
+    for (const r of mc.rooms || []) out.push({ ...r, label: `${mc.name} · Каб. ${r.number}` });
+    for (const b of mc.buildings || []) for (const f of b.floors || []) for (const r of f.rooms || []) {
+      out.push({ ...r, label: `${mc.name} · ${b.name} · ${f.number} эт. · Каб. ${r.number}` });
+    }
+  }
+  return out;
+}

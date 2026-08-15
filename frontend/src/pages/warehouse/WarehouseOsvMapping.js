@@ -35,6 +35,12 @@ const money = value => Number(value || 0).toLocaleString('ru-RU', { maximumFract
 function flattenRooms(tree) {
   const out = [];
   for (const mc of tree?.medCenters || []) {
+    for (const r of mc.rooms || []) {
+      out.push({
+        id: r.id, storages: r.storages || [],
+        label: `${mc.name} · Каб. ${r.number}${r.name && r.name !== r.number ? ` — ${r.name}` : ''}`,
+      });
+    }
     for (const b of mc.buildings || []) {
       for (const f of b.floors || []) {
         for (const r of f.rooms || []) {

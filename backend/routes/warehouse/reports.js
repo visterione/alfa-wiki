@@ -202,14 +202,14 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
       JOIN warehouse_nomenclature n ON n.id = k."nomenclatureId"
       JOIN warehouse_storages st    ON st.id = k.storage
       JOIN warehouse_rooms r        ON r.id = st."roomId"
-      JOIN warehouse_floors f       ON f.id = r."floorId"
-      JOIN warehouse_buildings bld  ON bld.id = f."buildingId"
-      JOIN med_centers mc           ON mc.id = bld."medCenterId"
+      LEFT JOIN warehouse_floors f       ON f.id = r."floorId"
+      LEFT JOIN warehouse_buildings bld  ON bld.id = f."buildingId"
+      JOIN med_centers mc                ON mc.id = r."medCenterId"
       LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
       LEFT JOIN opening o  ON o."nomenclatureId" = k."nomenclatureId" AND o.storage = k.storage
       LEFT JOIN incoming i ON i."nomenclatureId" = k."nomenclatureId" AND i.storage = k.storage
       LEFT JOIN outgoing ou ON ou."nomenclatureId" = k."nomenclatureId" AND ou.storage = k.storage
-      WHERE (:medCenterId::uuid  IS NULL OR bld."medCenterId" = :medCenterId::uuid)
+      WHERE (:medCenterId::uuid  IS NULL OR r."medCenterId" = :medCenterId::uuid)
         AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
         AND (:roomId::uuid       IS NULL OR r.id = :roomId::uuid)
         AND (:scoped IS NULL OR r.id = ANY(:scoped::uuid[]))
@@ -421,13 +421,13 @@ router.get('/consumption', authenticate, requireWarehouse(), async (req, res) =>
       FROM cons c
       JOIN warehouse_nomenclature n ON n.id = c."nomenclatureId"
       JOIN warehouse_rooms r        ON r.id = c."roomId"
-      JOIN warehouse_floors f       ON f.id = r."floorId"
-      JOIN warehouse_buildings bld  ON bld.id = f."buildingId"
-      JOIN med_centers mc           ON mc.id = bld."medCenterId"
+      LEFT JOIN warehouse_floors f       ON f.id = r."floorId"
+      LEFT JOIN warehouse_buildings bld  ON bld.id = f."buildingId"
+      JOIN med_centers mc                ON mc.id = r."medCenterId"
       LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
       LEFT JOIN prev p   ON p."roomId" = c."roomId" AND p."nomenclatureId" = c."nomenclatureId"
       LEFT JOIN visits v ON v."roomId" = c."roomId"
-      WHERE (:medCenterId::uuid  IS NULL OR bld."medCenterId" = :medCenterId::uuid)
+      WHERE (:medCenterId::uuid  IS NULL OR r."medCenterId" = :medCenterId::uuid)
         AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
         AND (:scoped IS NULL OR r.id = ANY(:scoped::uuid[]))
       ORDER BY mc.name, d.name NULLS LAST, r.number, c.amount DESC
@@ -554,7 +554,7 @@ async function abcXyz({ req, from, to, medCenterId, departmentId, scoped }) {
     LEFT JOIN warehouse_buildings bld ON bld.id = f."buildingId"
     WHERE m.type IN ('issue', 'writeoff')
       AND m."occurredAt" >= :from AND m."occurredAt" < (:to::date + 1)
-      AND (:medCenterId::uuid  IS NULL OR bld."medCenterId" = :medCenterId::uuid)
+      AND (:medCenterId::uuid  IS NULL OR r."medCenterId" = :medCenterId::uuid)
       AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
       AND (:scoped IS NULL OR r.id = ANY(:scoped::uuid[]))
     GROUP BY 1, 2, 3, 4, 5
@@ -680,15 +680,15 @@ router.get('/expiring', authenticate, requireWarehouse(), requireReport('RPT-EXP
       JOIN warehouse_nomenclature n  ON n.id = s."nomenclatureId"
       JOIN warehouse_storages st     ON st.id = s."storageId"
       JOIN warehouse_rooms r         ON r.id = st."roomId"
-      JOIN warehouse_floors f        ON f.id = r."floorId"
-      JOIN warehouse_buildings bld   ON bld.id = f."buildingId"
-      JOIN med_centers mc            ON mc.id = bld."medCenterId"
+      LEFT JOIN warehouse_floors f        ON f.id = r."floorId"
+      LEFT JOIN warehouse_buildings bld   ON bld.id = f."buildingId"
+      JOIN med_centers mc                 ON mc.id = r."medCenterId"
       LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
       LEFT JOIN users u              ON u.id = r."responsibleUserId"
       LEFT JOIN warehouse_contractors sup ON sup.id = b."supplierId"
       WHERE s.quantity > 0 AND b."expiryDate" IS NOT NULL
         AND b."expiryDate" <= CURRENT_DATE + (:horizon || ' days')::interval
-        AND (:medCenterId::uuid  IS NULL OR bld."medCenterId" = :medCenterId::uuid)
+        AND (:medCenterId::uuid  IS NULL OR r."medCenterId" = :medCenterId::uuid)
         AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
         AND (:medicineOnly::bool IS NOT TRUE OR n."isMedicine" = TRUE)
         AND (:sterileOnly::bool  IS NOT TRUE OR n."isSterile" = TRUE)
@@ -796,11 +796,11 @@ router.get('/depreciation', authenticate, requireWarehouse(), requireReport('RPT
       LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
       LEFT JOIN warehouse_floors f     ON f.id = r."floorId"
       LEFT JOIN warehouse_buildings bld ON bld.id = f."buildingId"
-      LEFT JOIN med_centers mc         ON mc.id = bld."medCenterId"
+      LEFT JOIN med_centers mc         ON mc.id = r."medCenterId"
       LEFT JOIN users u                ON u.id = a."responsibleUserId"
       LEFT JOIN warehouse_categories c  ON c.id = a."categoryId"
       WHERE a."isArchived" = FALSE
-        AND (:medCenterId::uuid  IS NULL OR bld."medCenterId" = :medCenterId::uuid)
+        AND (:medCenterId::uuid  IS NULL OR r."medCenterId" = :medCenterId::uuid)
         AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
         AND (:scoped IS NULL OR r.id = ANY(:scoped::uuid[]) OR r.id IS NULL)
       ORDER BY mc.name, d.name NULLS LAST, r.number NULLS LAST, a."inventoryNumber"
@@ -1042,6 +1042,7 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
       include: [
         { model: WhDepartment, as: 'department' },
         { model: User, as: 'responsible', attributes: userAttrs },
+        { model: MedCenter, as: 'medCenter' },
         { model: WhFloor, as: 'floor', include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }] },
       ],
     });
@@ -1134,7 +1135,8 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         id: room.id, number: room.number, name: room.name, kind: room.kind,
         department: room.department, responsible: room.responsible,
         floor: room.floor?.number, building: room.floor?.building?.name,
-        medCenter: room.floor?.building?.medCenter?.displayName || room.floor?.building?.medCenter?.name,
+        medCenter: room.medCenter?.displayName || room.medCenter?.name
+          || room.floor?.building?.medCenter?.displayName || room.floor?.building?.medCenter?.name,
         path: await roomPath(room.id),
         publicToken: room.publicToken,
       },

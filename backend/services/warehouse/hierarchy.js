@@ -102,10 +102,16 @@ function turnoverLevels(rows) {
   if (manyMedCenters) {
     levels.push({ key: 'medCenter', id: r => r.medCenterName, label: r => r.medCenterName });
   }
+  if (rows.some(r => r.buildingName)) {
+    levels.push({ key: 'building', id: r => r.buildingName || 'Без корпуса',
+      label: r => r.buildingName || 'Без корпуса' });
+  }
+  if (rows.some(r => r.floorNumber !== null && r.floorNumber !== undefined)) {
+    levels.push({ key: 'floor', id: r => `${r.buildingName || 'none'}#${r.floorNumber ?? 'none'}`,
+      label: r => r.floorNumber === null || r.floorNumber === undefined
+        ? 'Без этажа' : `${r.floorNumber} этаж` });
+  }
   levels.push(
-    { key: 'building',   id: r => r.buildingName, label: r => r.buildingName },
-    { key: 'floor',      id: r => `${r.buildingName}#${r.floorNumber}`,
-      label: r => `${r.floorNumber} этаж` },
     { key: 'department', id: r => r.departmentId || `nodept:${r.roomId}`,
       label: r => r.departmentName || 'Без отделения' },
     { key: 'room',       id: r => r.roomId,

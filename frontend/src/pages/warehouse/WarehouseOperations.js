@@ -575,13 +575,17 @@ function Field({ label, value }) {
 
 function flattenLocations(tree) {
   const rows = [];
-  for (const mc of tree?.medCenters || []) for (const b of mc.buildings || []) for (const f of b.floors || []) {
-    for (const r of f.rooms || []) {
-      const label = `${mc.name} · ${b.name} · ${f.number} эт. · Каб. ${r.number}${r.name && r.name !== r.number ? ` — ${r.name}` : ''}`;
+  const addRoom = (mc, r, place = '') => {
+      const label = `${mc.name}${place} · Каб. ${r.number}${r.name && r.name !== r.number ? ` — ${r.name}` : ''}`;
       rows.push({
         ...r, label,
         storages: (r.storages || []).map(s => ({ ...s, roomId: r.id, label: `${label} · ${s.name}` })),
       });
+  };
+  for (const mc of tree?.medCenters || []) {
+    for (const r of mc.rooms || []) addRoom(mc, r);
+    for (const b of mc.buildings || []) for (const f of b.floors || []) {
+      for (const r of f.rooms || []) addRoom(mc, r, ` · ${b.name} · ${f.number} эт.`);
     }
   }
   return rows;

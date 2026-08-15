@@ -63,10 +63,13 @@ async function computeForDate(date) {
 
   const rooms = await WhRoom.findAll({
     where: { isActive: true },
-    include: [{
-      model: WhFloor, as: 'floor',
-      include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }],
-    }],
+    include: [
+      { model: MedCenter, as: 'medCenter' },
+      {
+        model: WhFloor, as: 'floor',
+        include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }],
+      },
+    ],
   });
 
   // Приёмы за сутки одним запросом: по кабинету их десятки, а кабинетов сотни —
@@ -151,7 +154,8 @@ async function computeForDate(date) {
   const unmatched = [];
 
   for (const room of rooms) {
-    const clinicIds = room.floor?.building?.medCenter?.misClinicIds || [];
+    const clinicIds = room.medCenter?.misClinicIds
+      || room.floor?.building?.medCenter?.misClinicIds || [];
 
     // Ключи кабинета: из его номера и из всех заданных алиасов.
     const keys = new Set();
@@ -339,11 +343,11 @@ async function idleAssets({ medCenterId = null, days = IDLE_DAYS } = {}) {
     LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
     LEFT JOIN warehouse_floors f      ON f.id = r."floorId"
     LEFT JOIN warehouse_buildings b   ON b.id = f."buildingId"
-    LEFT JOIN med_centers mc          ON mc.id = b."medCenterId"
+    LEFT JOIN med_centers mc          ON mc.id = r."medCenterId"
     WHERE a."isArchived" = FALSE
       AND a.status = 'in_use'
       AND COALESCE(a."lastActivityAt", a."createdAt") < now() - (:days || ' days')::interval
-      AND (:medCenterId IS NULL OR b."medCenterId" = :medCenterId::uuid)
+      AND (:medCenterId IS NULL OR r."medCenterId" = :medCenterId::uuid)
     ORDER BY "idleDays" DESC, a."initialCost" DESC
   `, { replacements: { days, medCenterId: medCenterId || null } });
   return rows;

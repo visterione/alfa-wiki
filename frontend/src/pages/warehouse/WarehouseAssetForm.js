@@ -64,6 +64,15 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
   const rooms = useMemo(() => {
     const out = [];
     for (const mc of tree?.medCenters || []) {
+      for (const r of mc.rooms || []) {
+        out.push({
+          id: r.id,
+          label: `${mc.name} · Каб. ${r.number}`
+            + (r.name && r.name !== r.number ? ` — ${r.name}` : ''),
+          storages: r.storages || [],
+          responsibleUserId: r.responsible?.id || null,
+        });
+      }
       for (const b of mc.buildings || []) {
         for (const f of b.floors || []) {
           for (const r of f.rooms || []) {

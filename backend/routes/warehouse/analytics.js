@@ -199,20 +199,16 @@ router.get('/overview', authenticate, requireWarehouse(), async (req, res) => {
              COALESCE(SUM(DISTINCT 0), 0) AS zero,
              (SELECT COALESCE(SUM(a2."initialCost"), 0) FROM warehouse_assets a2
                 JOIN warehouse_rooms r2 ON r2.id = a2."roomId"
-                JOIN warehouse_floors f2 ON f2.id = r2."floorId"
-                JOIN warehouse_buildings b2 ON b2.id = f2."buildingId"
-               WHERE b2."medCenterId" = mc.id AND a2."isArchived" = FALSE) AS "assetValue",
+               WHERE r2."medCenterId" = mc.id AND a2."isArchived" = FALSE) AS "assetValue",
              (SELECT COUNT(*)::int FROM warehouse_maintenance_orders m
                 JOIN warehouse_assets a3 ON a3.id = m."assetId"
                 JOIN warehouse_rooms r3 ON r3.id = a3."roomId"
-                JOIN warehouse_floors f3 ON f3.id = r3."floorId"
-                JOIN warehouse_buildings b3 ON b3.id = f3."buildingId"
-               WHERE b3."medCenterId" = mc.id AND m.status <> 'done'
+               WHERE r3."medCenterId" = mc.id AND m.status <> 'done'
                  AND m."plannedDate" < CURRENT_DATE) AS "overdueMaintenance"
       FROM med_centers mc
       LEFT JOIN warehouse_buildings bld ON bld."medCenterId" = mc.id AND bld."isActive" = TRUE
       LEFT JOIN warehouse_floors f      ON f."buildingId" = bld.id
-      LEFT JOIN warehouse_rooms r       ON r."floorId" = f.id AND r."isActive" = TRUE
+      LEFT JOIN warehouse_rooms r       ON r."medCenterId" = mc.id AND r."isActive" = TRUE
       LEFT JOIN warehouse_assets a      ON a."roomId" = r.id AND a."isArchived" = FALSE
       WHERE mc."isActive" = TRUE AND mc."isVirtual" = FALSE
       GROUP BY mc.id, mc.name, mc."displayName", mc.code, mc.color, mc."logoUrl", mc.city, mc."sortOrder"

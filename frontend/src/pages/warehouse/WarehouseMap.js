@@ -145,7 +145,7 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
 
   // ── Уровень 1: сеть ────────────────────────────────────────────────────────
   if (level.kind === 'network') {
-    const withData = overview.filter(o => o.buildings > 0);
+    const withData = overview.filter(o => o.buildings > 0 || o.rooms > 0);
     return (
       <div className="wh-map">
         <Breadcrumbs items={[{ label: 'Сеть' }]} />
@@ -158,7 +158,7 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
                            onOpen={() => setLevel({ kind: 'medCenter', mcId: mc.id })} />
           ))}
           {!withData.length && (
-            <div className="wh-empty">Ни в одном медцентре не заведены корпуса</div>
+            <div className="wh-empty">Ни в одном медцентре не заведены кабинеты</div>
           )}
         </div>
       </div>
@@ -168,6 +168,7 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   // ── Уровень 2: медцентр, корпуса и этажи ───────────────────────────────────
   if (level.kind === 'medCenter') {
     const buildings = currentMc?.buildings || [];
+    const directRooms = currentMc?.rooms || [];
     const totals = buildings.reduce((acc, b) => {
       for (const f of b.floors || []) {
         acc.floors += 1;
@@ -177,7 +178,11 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
         }
       }
       return acc;
-    }, { floors: 0, rooms: 0, assets: 0 });
+    }, {
+      floors: 0,
+      rooms: directRooms.length,
+      assets: directRooms.reduce((sum, r) => sum + (r.counters?.assets || 0), 0),
+    });
 
     return (
       <div className="wh-map">
@@ -212,8 +217,23 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
                            })} />
         ))}
 
-        {!buildings.length && (
-          <div className="wh-empty">В этом медцентре не заведено ни одного корпуса</div>
+        {directRooms.length > 0 && (
+          <section className="wh-card">
+            <h3>Кабинеты без корпуса и этажа</h3>
+            <div className="wh-map__grid">
+              {directRooms.map(room => (
+                <button key={room.id} className="wh-btn wh-btn--secondary"
+                        onClick={() => onOpenRoom?.(room.id)}>
+                  {room.name && room.name !== room.number
+                    ? `${room.number} — ${room.name}` : room.number}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!buildings.length && !directRooms.length && (
+          <div className="wh-empty">В этом медцентре не заведено ни одного кабинета</div>
         )}
       </div>
     );

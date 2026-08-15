@@ -329,6 +329,7 @@ async function main() {
         const responsible = users[(i + floorNumber + mcIndex) % users.length];
 
         const room = await WhRoom.create({
+          medCenterId: mc.id,
           floorId: floor.id,
           departmentId: dept.id,
           number: mr.number,

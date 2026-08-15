@@ -58,6 +58,24 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
       if (mcId && mc.id !== mcId) continue;
       const mcNode = group(`mc:${mc.id}`, 0, mc.name, mc.color);
 
+      const addRoom = (parent, r, level, locationNames = []) => {
+        if (depId && r.departmentId !== depId) return;
+        const dep = r.departmentId ? depById.get(r.departmentId) : null;
+        if (needle) {
+          const hay = [r.number, r.name, dep?.name, mc.name, ...locationNames,
+            r.responsible?.displayName].filter(Boolean).join(' ').toLowerCase();
+          if (!hay.includes(needle)) return;
+        }
+        parent.children.push({
+          key: `r:${r.id}`, level, room: r, department: dep,
+          assets: r.counters?.assets || 0,
+          positions: r.counters?.positions || 0,
+        });
+      };
+
+      // Небольшой медцентр может не иметь ни корпусов, ни этажей.
+      for (const r of mc.rooms || []) addRoom(mcNode, r, 1);
+
       for (const b of mc.buildings || []) {
         const bNode = group(`b:${b.id}`, 1, b.name, mc.color, b.address);
 
@@ -65,18 +83,7 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
           const fNode = group(`f:${f.id}`, 2, f.name || `${f.number} этаж`, mc.color);
 
           for (const r of f.rooms || []) {
-            if (depId && r.departmentId !== depId) continue;
-            const dep = r.departmentId ? depById.get(r.departmentId) : null;
-            if (needle) {
-              const hay = [r.number, r.name, dep?.name, mc.name, b.name, f.name,
-                r.responsible?.displayName].filter(Boolean).join(' ').toLowerCase();
-              if (!hay.includes(needle)) continue;
-            }
-            fNode.children.push({
-              key: `r:${r.id}`, level: 3, room: r, department: dep,
-              assets: r.counters?.assets || 0,
-              positions: r.counters?.positions || 0,
-            });
+            addRoom(fNode, r, 3, [b.name, f.name]);
           }
 
           if (fNode.children.length) { rollup(fNode); bNode.children.push(fNode); }
@@ -237,7 +244,7 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
                         занимал высоту двух. Номер и так виден в названии, а отметка
                         о плане стала значком в конце строки. */}
                     <span className="wh-cell-main">{roomTitle(n.room)}</span>
-                    {!n.room.hasPlan && (
+                    {n.room.floorId && !n.room.hasPlan && (
                       <span className="wh-chip wh-chip--warn" title="Кабинет не нарисован на плане этажа">
                         нет на плане
                       </span>
@@ -301,12 +308,12 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
  * кабинет — это разные задачи, и привязку имущества человек делает сам на экране
  * размещения. Здесь просто не набирают сотню названий с клавиатуры.
  *
- * ── Почему нужно выбрать этаж ────────────────────────────────────────────────
+ * ── Выбор этажа ─────────────────────────────────────────────────────────────
  *
  * В МИС у кабинета нет ни корпуса, ни этажа — только строка названия. Угадать их
- * неоткуда, поэтому человек указывает, куда складывать пачку, и при
- * необходимости повторяет для другого этажа. Уже заведённые кабинеты
- * пропускаются, так что повторный запуск безопасен.
+ * неоткуда. Для многоэтажной площадки человек может указать этаж, а для
+ * небольшого медцентра оставляет поле пустым. Уже заведённые кабинеты
+ * пропускаются, поэтому повторный запуск безопасен.
  */
 function RoomsFromMis({ tree, departments, onClose, onCreated }) {
   const [mcId, setMcId] = useState(tree?.medCenters?.[0]?.id || '');
@@ -352,12 +359,13 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
   });
 
   const submit = async () => {
-    if (!floorId) return toast.error('Выберите этаж, на котором завести кабинеты');
+    if (!mcId) return toast.error('Выберите медцентр');
     if (!picked.size) return toast.error('Не выбрано ни одного кабинета');
     setSaving(true);
     try {
       const { data } = await warehouseApi.createRoomsFromMis({
-        floorId, departmentId: depId || null, rooms: [...picked],
+        medCenterId: mcId, floorId: floorId || null,
+        departmentId: depId || null, rooms: [...picked],
       });
       toast.success(
         `Заведено кабинетов: ${data.created}`
@@ -394,16 +402,18 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
           <div className="wh-form">
             <div className="wh-form__row2">
               <label>Медцентр
-                <select value={mcId} onChange={e => { setMcId(e.target.value); setFloorId(''); }}>
+                <select value={mcId} onChange={e => {
+                  setMcId(e.target.value); setFloorId(''); setDepId('');
+                }}>
                   <option value="">Выберите…</option>
                   {(tree?.medCenters || []).map(mc => (
                     <option key={mc.id} value={mc.id}>{mc.name}</option>
                   ))}
                 </select>
               </label>
-              <label>Этаж <b className="wh-req">*</b>
+              <label>Корпус и этаж (необязательно)
                 <select value={floorId} onChange={e => setFloorId(e.target.value)}>
-                  <option value="">Выберите…</option>
+                  <option value="">— без корпуса и этажа —</option>
                   {floors.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
                 </select>
               </label>
@@ -468,7 +478,7 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
         <div className="wh-modal__foot">
           <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
           <button className="wh-btn wh-btn--primary" onClick={submit}
-                  disabled={saving || !picked.size || !floorId}>
+                  disabled={saving || !picked.size || !mcId}>
             <Check size={15} /> {saving ? 'Завожу…' : `Завести ${picked.size}`}
           </button>
         </div>

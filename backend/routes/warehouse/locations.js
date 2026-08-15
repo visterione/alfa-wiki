@@ -80,6 +80,22 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
     const storagesByRoom = groupBy(storages, s => s.roomId);
     const countsByRoom = new Map(counts.map(c => [c.roomId, c]));
 
+    const roomJson = r => ({
+      id: r.id, medCenterId: r.medCenterId, floorId: r.floorId,
+      number: r.number, name: r.name, kind: r.kind,
+      departmentId: r.departmentId,
+      responsible: r.responsible,
+      misRoomAliases: r.misRoomAliases,
+      capacityHours: Number(r.capacityHours),
+      plan: r.plan,
+      hasPlan: Array.isArray(r.plan?.points) && r.plan.points.length >= 3,
+      publicToken: r.publicToken,
+      storages: (storagesByRoom.get(r.id) || []).map(s => ({
+        id: s.id, name: s.name, kind: s.kind, tempMinC: s.tempMinC, tempMaxC: s.tempMaxC,
+      })),
+      counters: countsByRoom.get(r.id) || { assets: 0, positions: 0, stockValue: 0 },
+    });
+
     const floorsByBuilding = groupBy(
       floors.map(f => ({
         id: f.id, buildingId: f.buildingId, number: f.number, name: f.name,
@@ -90,20 +106,7 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
           .filter(r => r.floorId === f.id)
           .filter(r => visible === null || visible.has(r.id))
           .sort(byRoomNumber)
-          .map(r => ({
-            id: r.id, number: r.number, name: r.name, kind: r.kind,
-            departmentId: r.departmentId,
-            responsible: r.responsible,
-            misRoomAliases: r.misRoomAliases,
-            capacityHours: Number(r.capacityHours),
-            plan: r.plan,
-            hasPlan: Array.isArray(r.plan?.points) && r.plan.points.length >= 3,
-            publicToken: r.publicToken,
-            storages: (storagesByRoom.get(r.id) || []).map(s => ({
-              id: s.id, name: s.name, kind: s.kind, tempMinC: s.tempMinC, tempMaxC: s.tempMaxC,
-            })),
-            counters: countsByRoom.get(r.id) || { assets: 0, positions: 0, stockValue: 0 },
-          })),
+          .map(roomJson),
       })),
       f => f.buildingId
     );
@@ -125,9 +128,14 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
         logoUrl: mc.logoUrl,
         city: mc.city,
         buildings: buildingsByMc.get(mc.id) || [],
+        // Кабинеты без этажа показываются прямо под медцентром.
+        rooms: rooms
+          .filter(r => !r.floorId && r.medCenterId === mc.id)
+          .filter(r => visible === null || visible.has(r.id))
+          .sort(byRoomNumber)
+          .map(roomJson),
       }))
-      // Медцентры без корпусов в дереве не нужны: модуль там ещё не разворачивали.
-      .filter(mc => mc.buildings.length > 0 || req.warehouse.level === 'admin');
+      .filter(mc => mc.buildings.length > 0 || mc.rooms.length > 0 || req.warehouse.level === 'admin');
 
     res.json({
       medCenters: tree,
@@ -418,13 +426,17 @@ router.put('/departments/:id', authenticate, requireWarehouse('canEditLocations'
 router.post('/rooms', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const {
-      floorId, departmentId, number, name, kind, responsibleUserId,
+      medCenterId, floorId, departmentId, number, name, kind, responsibleUserId,
       misRoomAliases, capacityHours, plan,
     } = req.body;
-    if (!floorId || !number?.trim()) return res.status(400).json({ error: 'Нужны этаж и номер кабинета' });
+    if (!number?.trim()) return res.status(400).json({ error: 'Нужен номер или название кабинета' });
+
+    const location = await resolveRoomLocation({ medCenterId, floorId });
+    if (location.error) return res.status(location.status).json({ error: location.error });
 
     const row = await WhRoom.create({
-      floorId, departmentId: departmentId || null,
+      medCenterId: location.medCenterId, floorId: location.floorId,
+      departmentId: departmentId || null,
       number: number.trim(), name: name?.trim() || null,
       kind: kind || 'office',
       responsibleUserId: responsibleUserId || null,
@@ -464,14 +476,13 @@ router.post('/rooms', authenticate, requireWarehouse('canEditLocations'), async 
  */
 router.post('/rooms/from-mis', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
-    const { floorId, departmentId = null, rooms = [], storageName = 'Кабинет' } = req.body || {};
-    if (!floorId) return res.status(400).json({ error: 'Нужен этаж, на котором заводить кабинеты' });
+    const { medCenterId, floorId, departmentId = null, rooms = [], storageName = 'Кабинет' } = req.body || {};
     if (!Array.isArray(rooms) || !rooms.length) {
       return res.status(400).json({ error: 'Не выбрано ни одного кабинета' });
     }
 
-    const floor = await WhFloor.findByPk(floorId);
-    if (!floor) return res.status(404).json({ error: 'Этаж не найден' });
+    const location = await resolveRoomLocation({ medCenterId, floorId });
+    if (location.error) return res.status(location.status).json({ error: location.error });
 
     // Уже заведённые пропускаем: повторный запуск после того, как список из МИС
     // пополнился, не должен плодить дубли кабинетов.
@@ -493,7 +504,8 @@ router.post('/rooms/from-mis', authenticate, requireWarehouse('canEditLocations'
         taken.add(normalize(title));
 
         const room = await WhRoom.create({
-          floorId,
+          medCenterId: location.medCenterId,
+          floorId: location.floorId,
           departmentId: departmentId || null,
           number: title.slice(0, 30),
           name: title.length > 30 ? title : null,
@@ -609,6 +621,23 @@ router.get('/rooms/mis-suggestions', authenticate, requireWarehouse('canEditLoca
 
 function normalize(s) {
   return String(s || '').toLowerCase().replace(/каб(инет)?\.?\s*/g, '').replace(/[№\s]+/g, '').trim();
+}
+
+async function resolveRoomLocation({ medCenterId, floorId }) {
+  if (floorId) {
+    const floor = await WhFloor.findByPk(floorId, {
+      include: [{ model: WhBuilding, as: 'building', attributes: ['medCenterId'] }],
+    });
+    if (!floor) return { status: 404, error: 'Этаж не найден' };
+    if (medCenterId && floor.building.medCenterId !== medCenterId) {
+      return { status: 400, error: 'Этаж относится к другому медцентру' };
+    }
+    return { medCenterId: floor.building.medCenterId, floorId: floor.id };
+  }
+  if (!medCenterId) return { status: 400, error: 'Нужен медцентр' };
+  const medCenter = await MedCenter.findByPk(medCenterId);
+  if (!medCenter) return { status: 404, error: 'Медцентр не найден' };
+  return { medCenterId: medCenter.id, floorId: null };
 }
 
 /**

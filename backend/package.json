@@ -32,6 +32,8 @@
     "migrate:private-task-teams:check": "node scripts/migratePrivateTaskTeams.js --check",
     "migrate:6.77-6.80": "node scripts/migrate677To680.js",
     "migrate:6.77-6.80:check": "node scripts/migrate677To680.js --check",
+    "migrate:6.81": "node scripts/migrateWarehouseRoomsOptionalFloor.js",
+    "migrate:6.81:check": "node scripts/migrateWarehouseRoomsOptionalFloor.js --check",
     "migrate:6.67-6.70": "node scripts/migrateMedCentersWarehouse.js",
     "migrate:6.67-6.70:check": "node scripts/migrateMedCentersWarehouse.js --check",
     "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",
