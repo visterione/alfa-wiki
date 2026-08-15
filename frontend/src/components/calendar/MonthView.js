@@ -102,7 +102,7 @@ export default function MonthView({ currentDate, events, onEventClick, onCellCli
                 {dayEvents.slice(0, 3).map(event => (
                   <div
                     key={event.id}
-                    className="day-event-item"
+                    className={`day-event-item ${event.status === 'completed' ? 'is-done' : ''}`}
                     style={{ borderLeftColor: event.color }}
                     onClick={(e) => {
                       e.stopPropagation();

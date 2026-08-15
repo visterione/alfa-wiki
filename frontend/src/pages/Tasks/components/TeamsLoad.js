@@ -12,17 +12,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, dshort, hoursText, isWeekend, fromKey } from '../utils/dates';
+import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, dshort, hoursText, fromKey, today, scheduleWeeklyHours } from '../utils/dates';
 import { userName } from '../utils/labels';
 import { LoadBar, Avatar, Badge, Empty, Note } from './Bits';
+import PeriodControl from './PeriodControl';
 
 export default function TeamsLoad({ ctx }) {
   const { cursor, setCursor } = ctx;
   const [view, setView] = useState('week');
-  const [openTeam, setOpenTeam] = useState(null);
+  const [openTeam, setOpenTeam] = useState(ctx.selectedTeamId || null);
 
-  const days = (view === 'week' ? weekOf(cursor) : monthGrid(cursor).filter(Boolean))
-    .filter(d => view === 'month' ? !isWeekend(d) : true);
+  useEffect(() => {
+    setOpenTeam(ctx.selectedTeamId || null);
+  }, [ctx.selectedTeamId]);
+
+  const days = view === 'week' ? weekOf(cursor) : monthGrid(cursor).filter(Boolean);
   const start = days[0];
   const end = days[days.length - 1];
 
@@ -31,23 +35,22 @@ export default function TeamsLoad({ ctx }) {
     : addMonths(cursor, back ? -1 : 1));
 
   const controls = (
-    <div className="tsk-ctl">
-      <div className="tsk-seg">
-        <button className={view === 'week' ? 'is-on' : ''} onClick={() => setView('week')}>Неделя</button>
-        <button className={view === 'month' ? 'is-on' : ''} onClick={() => setView('month')}>Месяц</button>
-      </div>
-      <button className="tsk-arrow" onClick={() => shift(true)}>←</button>
-      <span className="tsk-ctl-period">
-        {view === 'week' ? `${dstr(days[0])} — ${dstr(days[days.length - 1])}` : monthTitle(cursor)}
-      </span>
-      <button className="tsk-arrow" onClick={() => shift(false)}>→</button>
-    </div>
+    <PeriodControl
+      views={[["week", "Неделя"], ["month", "Месяц"]]}
+      view={view}
+      onView={setView}
+      label={view === 'week' ? `${dstr(days[0])} — ${dstr(days[days.length - 1])}` : monthTitle(cursor)}
+      onPrevious={() => shift(true)}
+      onNext={() => shift(false)}
+      onToday={() => setCursor(today())}
+    />
   );
 
   return openTeam
     ? <TeamDetail teamId={openTeam} start={start} end={end} days={days} view={view}
-        controls={controls} onBack={() => setOpenTeam(null)} ctx={ctx} />
-    : <TeamCards start={start} end={end} controls={controls} onOpen={setOpenTeam} ctx={ctx} />;
+        controls={controls} onBack={() => { setOpenTeam(null); ctx.go('load'); }} ctx={ctx} />
+    : <TeamCards start={start} end={end} controls={controls}
+        onOpen={teamId => { setOpenTeam(teamId); ctx.go('load', { teamId }); }} ctx={ctx} />;
 }
 
 /* ─────────────────────────── список команд ─────────────────────────── */
@@ -205,7 +208,9 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
                     <div>
                       <div className="tsk-person-name">{userName(row.user)}</div>
                       <div className="tsk-person-sub">
-                        норма {row.user?.dailyNormHours ? hoursText(row.user.dailyNormHours) : 'не задана'}
+                        неделя {row.user?.taskWorkSchedule
+                          ? hoursText(scheduleWeeklyHours(row.user.taskWorkSchedule))
+                          : 'не настроена'}
                       </div>
                     </div>
                   </div>
@@ -217,7 +222,7 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
                       <div className="tsk-cell">
                         <LoadBar {...(day || {})} />
                         <div className="tsk-hours">
-                          {day?.onVacation ? 'отпуск' : day?.hours ? day.hours.toFixed(1).replace('.', ',') : '—'}
+                          {day?.onVacation ? 'отпуск' : day?.onDayOff ? 'вых.' : day?.hours ? day.hours.toFixed(1).replace('.', ',') : '—'}
                         </div>
                       </div>
                     </td>

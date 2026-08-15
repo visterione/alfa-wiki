@@ -13,7 +13,7 @@ import Svg, {Path} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
-import {Settings, User, ListTodo, GraduationCap} from 'lucide-react-native';
+import {Settings, User, ListTodo, GraduationCap, Package} from 'lucide-react-native';
 
 import {font} from '../theme';
 import {useTheme, useThemedStyles} from '../store/settingsStore';
@@ -42,6 +42,12 @@ const HIDDEN_ROUTES = [
   // Внутренние экраны модуля «Задачи» (ver. 6.75): у каждого своя кнопка
   // «назад» в шапке, и панель под ними только отнимала бы высоту у списка.
   'TaskCard', 'TasksNorm',
+  // Склад (ver. 6.81). Сканер — потому что кадр камеры занимает экран целиком и
+  // панель поверх него читалась бы как часть видоискателя. Пересчёт и
+  // размещение — потому что у них своя кнопка внизу, а два ряда органов
+  // управления над жестовой полосой не помещаются.
+  'WarehouseScanner', 'WarehouseAsset', 'WarehouseRoom',
+  'WarehouseInventoryCount', 'WarehousePlacement',
 ];
 
 const BAR_HEIGHT = TAB_BAR_HEIGHT;
@@ -75,6 +81,7 @@ const HIDE_OVERHANG = ORB_SIZE / 2 - SHOULDER_RADIUS + AURA_SPREAD / 2 + 10;
 const ICONS = {
   ProfileTab: User,
   TasksTab: ListTodo,
+  WarehouseTab: Package,
   CoursesTab: GraduationCap,
   SettingsTab: Settings,
 };
@@ -406,7 +413,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
             <View style={[styles.badgeDot, {backgroundColor: c.error, borderColor: c.bgPrimary}]} />
           )}
         </View>
-        {/* Строго одна строка: с четырьмя вкладками ячейка узкая, и перенос
+        {/* Строго одна строка: с пятью вкладками ячейка узкая, и перенос
             подписи сдвинул бы значок соседней вверх */}
         <Text
           style={[styles.label, {color: focused ? c.primary : c.textTertiary}]}
@@ -443,7 +450,15 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
         {/* Вкладки разложены двумя группами по бокам от выемки, а не сплошным
             рядом ячеек. Раньше вкладок было три и центральная приходилась ровно
             на вырез, но с добавлением календаря их стало чётное число, и
-            ячейка соседа полезла бы под кнопку «Альфа». */}
+            ячейка соседа полезла бы под кнопку «Альфа».
+
+            С появлением склада (ver. 6.81) группы стали разными: слева две
+            вкладки, справа три. Половины панели при этом остаются одинаковыми —
+            и это сознательно. Кнопка «Альфа» позиционируется от центра панели и
+            лежит в вырезе, центр которого тоже посчитан от середины; сделать
+            ячейки равными по ширине можно только сдвинув вырез, то есть уведя
+            логотип из центра экрана. Неодинаковые интервалы между значками —
+            меньшая цена, чем несимметричная марка. */}
         <View style={styles.side}>{leftRoutes.map(renderCell)}</View>
         <View style={styles.notchGap} />
         <View style={styles.side}>{rightRoutes.map(renderCell)}</View>

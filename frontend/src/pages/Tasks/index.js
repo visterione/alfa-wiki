@@ -6,20 +6,21 @@
  * есть длительность, у человека — норма рабочего дня, а у срока — согласование
  * вместо назначения.
  *
- * Внутренняя навигация повторяет трёхколоночную геометрию прототипа, а цвета,
- * шрифт и состояния берёт из общей дизайн-системы Alfa Wiki.
+ * Продуктовая часть прототипа состоит из навигации и рабочего полотна.
+ * Правая колонка в исходном HTML была авторским комментарием к макету и в
+ * интерфейс не переносится. Цвета и шрифт берутся из Alfa Wiki.
  *
  * Порядок разделов повторяет прототип и он не случайный. «Мой день» стоит выше
  * блока «Команды» даже у руководителя: он тоже человек с перегруженным днём, и
  * открывать утром ему нужно свой день, а не чужую загрузку.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   CalendarDays, Inbox, BarChart3, Users, Columns3,
-  UserCog, Shield, ListTodo, PieChart,
+  UserCog, Shield, ListTodo, PieChart, FolderKanban,
 } from 'lucide-react';
 
 import { tasks as api } from '../../services/api';
@@ -33,7 +34,8 @@ import Chart from './components/Chart';
 import TeamsLoad from './components/TeamsLoad';
 import Board from './components/Board';
 import People from './components/People';
-import TeamsAdmin from './components/TeamsAdmin';
+import TeamsAdmin, { TeamModal } from './components/TeamsAdmin';
+import ProjectsAdmin, { ProjectModal } from './components/ProjectsAdmin';
 import TaskList from './components/TaskList';
 import Reports from './components/Reports';
 import TaskForm from './components/TaskForm';
@@ -50,31 +52,26 @@ const SCREENS = [
   { key: 'board', label: 'Доска', icon: Columns3, Component: Board },
   { key: 'people', label: 'Люди', icon: UserCog, Component: People },
   { key: 'teams', label: 'Команды', icon: Shield, Component: TeamsAdmin },
+  { key: 'projects', label: 'Проекты', icon: FolderKanban, Component: ProjectsAdmin, managerOnly: true },
   { group: 'Моё' },
   { key: 'tasks', label: 'Задачи', icon: ListTodo, Component: TaskList },
   { key: 'reports', label: 'Отчёты', icon: PieChart, Component: Reports },
 ];
 
-const SCREEN_CONTEXT = {
-  myday: ['Личный фокус', 'Откройте день утром: здесь только ваша загрузка и план, без командной аналитики.'],
-  inbox: ['Сначала договориться', 'Пока исполнитель не выбрал день, задача не занимает его время. Автор видит это как ожидание ответа.'],
-  chart: ['Период и окна', 'Неделя показывает состав дней, месяц — где завал и где остаётся свободное время.'],
-  load: ['Команда → человек → день', 'Сначала выберите команду, затем сотрудника. Содержание личных дел не раскрывается.'],
-  board: ['Статус — следствие', 'Колонки показывают состояние частей задачи, а не заменяют планирование по времени.'],
-  people: ['Норма у каждого своя', 'Подрядчик, руководитель и поддержка не должны сравниваться с одной общей нормой.'],
-  teams: ['Граница видимости', 'Команда определяет, кто видит загрузку, и не является владельцем задач.'],
-  tasks: ['Вся работа в срезе', 'Фильтры помогают отделить поставленное вами, совместные задачи и то, что требует решения.'],
-  reports: ['Загрузка, не слежка', 'Здесь нет онлайна и времени в приложении — только запланированные часы и личные нормы.'],
-};
-
 export default function Tasks() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
-  const screen = params.get('screen') || 'myday';
+  const requestedScreen = params.get('screen');
+  const screen = SCREENS.some(item => item.key === requestedScreen) ? requestedScreen : 'myday';
 
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(true);
   const [inboxCount, setInboxCount] = useState(0);
+  const [teamFormOpen, setTeamFormOpen] = useState(false);
+  const [teamsRevision, setTeamsRevision] = useState(0);
+  const [projectsRevision, setProjectsRevision] = useState(0);
+  const [tasksRevision, setTasksRevision] = useState(0);
+  const [projectFormOpen, setProjectFormOpen] = useState(false);
 
   // Общий курсор даты: переключаясь между «Моим днём» и «Графиком», человек
   // должен оставаться в том же дне, а не прыгать на сегодня каждый раз.
@@ -87,6 +84,8 @@ export default function Tasks() {
   const [formState, setFormState] = useState(null);
   const [joinInvite, setJoinInvite] = useState(null);
   const [joinBusy, setJoinBusy] = useState(false);
+  const navRef = useRef(null);
+  const [navIndicator, setNavIndicator] = useState({ top: 0, height: 0, ready: false });
 
   const loadAccess = useCallback(async () => {
     try {
@@ -179,13 +178,40 @@ export default function Tasks() {
   const taskCreated = useCallback(() => {
     setFormState(null);
     refreshInbox();
+    setTasksRevision(value => value + 1);
+  }, [refreshInbox]);
+  const taskChanged = useCallback(() => {
+    refreshInbox();
+    setTasksRevision(value => value + 1);
   }, [refreshInbox]);
 
-  const go = useCallback(key => {
+  const go = useCallback((key, options = {}) => {
     const next = new URLSearchParams(params);
     next.set('screen', key);
+    if (options.teamId) next.set('team', options.teamId);
+    else next.delete('team');
     setParams(next, { replace: true });
   }, [params, setParams]);
+
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return undefined;
+    const update = () => {
+      const active = nav.querySelector('button.is-on');
+      if (!active) return;
+      setNavIndicator({ top: active.offsetTop, height: active.offsetHeight, ready: true });
+    };
+    update();
+    const observer = typeof window.ResizeObserver === 'undefined'
+      ? null
+      : new window.ResizeObserver(update);
+    observer?.observe(nav);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [screen]);
 
   /** Общий контекст экранов — чтобы не протаскивать десяток пропсов по одному. */
   const ctx = useMemo(() => ({
@@ -194,28 +220,38 @@ export default function Tasks() {
     cursor,
     setCursor,
     go,
+    selectedTeamId: params.get('team'),
     openTask: setOpenTaskId,
     newTask: (preset = {}) => setFormState(preset),
     refreshInbox,
     reloadAccess: loadAccess,
-  }), [user, access, cursor, go, refreshInbox, loadAccess]);
+    teamsRevision,
+    projectsRevision,
+    tasksRevision,
+  }), [user, access, cursor, go, refreshInbox, loadAccess, teamsRevision, projectsRevision, tasksRevision, params]);
 
   if (loading) return <div className="tsk"><Spinner /></div>;
 
   const current = SCREENS.find(s => s.key === screen) || SCREENS[0];
   const Screen = current.Component;
-  const detail = SCREEN_CONTEXT[current.key] || SCREEN_CONTEXT.myday;
-
+  const headerAction = screen === 'projects' && !access?.canManageProjects
+    ? null
+    : ['inbox', 'people', 'reports'].includes(screen)
+    ? null
+    : ['load', 'teams'].includes(screen) ? 'team' : screen === 'projects' ? 'project' : 'task';
   return (
     <div className="tsk">
       <div className="tsk-shell">
         <aside className="tsk-side">
           <div className="tsk-side-brand">
             <span>Задачи</span>
-            <small>Alfa Wiki</small>
           </div>
-          <nav className="tsk-nav">
-            {SCREENS.map((item, i) => item.group
+          <nav
+            className={`tsk-nav ${navIndicator.ready ? 'is-ready' : ''}`}
+            ref={navRef}
+            style={{ '--tsk-nav-top': `${navIndicator.top}px`, '--tsk-nav-height': `${navIndicator.height}px` }}
+          >
+            {SCREENS.filter(item => !item.managerOnly || access?.canManageProjects).map((item, i) => item.group
               ? <span className="tsk-nav-group" key={`g${i}`}>{item.group}</span>
               : (
                 <button
@@ -237,38 +273,30 @@ export default function Tasks() {
           <div className="tsk-top">
             <div>
               <div className="tsk-title">{current.label}</div>
-              <div className="tsk-sub">Работа со сроком, длительностью и загрузкой</div>
             </div>
-            <button className="tsk-btn is-primary" onClick={() => setFormState({})}>
-              Новая задача
-            </button>
+            {headerAction && <button className="tsk-btn is-primary"
+              onClick={() => headerAction === 'team' ? setTeamFormOpen(true)
+                : headerAction === 'project' ? setProjectFormOpen(true) : setFormState({})}>
+              {headerAction === 'team' ? 'Создать команду' : headerAction === 'project' ? 'Создать проект' : 'Новая задача'}
+            </button>}
           </div>
 
           <div className="tsk-content">
-            {/* Без нормы человек не участвует в планировании: ему нельзя ставить
+            {/* Без расписания человек не участвует в планировании: ему нельзя ставить
                 задачи и незачем показывать пустой календарь. */}
-            {access && !access.enrolled && screen !== 'people' && (
+            {access && !access.enrolled && !['people', 'projects'].includes(screen) && (
               <Empty>
-                Вам ещё не задана норма рабочего дня, поэтому загрузка не считается.
+                Рабочее расписание ещё не настроено, поэтому загрузка не считается.
                 <br />
-                Норма — это честное время на задачи: рабочий день минус встречи,
-                переключения и перерывы.
+                В расписании отмечаются рабочие дни и фактические границы смен.
                 <br /><br />
-                <button className="tsk-btn" onClick={() => go('people')}>Задать норму</button>
+                <button className="tsk-btn" onClick={() => go('people')}>Настроить расписание</button>
               </Empty>
             )}
             <Screen ctx={ctx} />
           </div>
         </main>
 
-        <aside className="tsk-detail">
-          <div className="tsk-detail-title">{detail[0]}</div>
-          <div className="tsk-detail-text">{detail[1]}</div>
-          <div className="tsk-detail-rule" />
-          <div className="tsk-detail-label">Текущий раздел</div>
-          <div className="tsk-detail-value">{current.label}</div>
-          <button className="tsk-btn is-wide" onClick={() => setFormState({})}>+ Новая задача</button>
-        </aside>
       </div>
 
       {openTaskId && (
@@ -276,7 +304,7 @@ export default function Tasks() {
           taskId={openTaskId}
           ctx={ctx}
           onClose={closeTask}
-          onChanged={refreshInbox}
+          onChanged={taskChanged}
         />
       )}
 
@@ -286,6 +314,26 @@ export default function Tasks() {
           ctx={ctx}
           onClose={closeForm}
           onCreated={taskCreated}
+        />
+      )}
+
+      {teamFormOpen && (
+        <TeamModal
+          onClose={() => setTeamFormOpen(false)}
+          onSaved={() => {
+            setTeamFormOpen(false);
+            setTeamsRevision(value => value + 1);
+          }}
+        />
+      )}
+
+      {projectFormOpen && (
+        <ProjectModal
+          onClose={() => setProjectFormOpen(false)}
+          onSaved={() => {
+            setProjectFormOpen(false);
+            setProjectsRevision(value => value + 1);
+          }}
         />
       )}
 

@@ -1699,3 +1699,21 @@
     max-height: 240px;
   }
 }
+/* ── Завершённое событие ───────────────────────────────────────────────────
+   Блок остаётся на своём месте: время на него потрачено, и убирать его из дня
+   значит переписывать историю. Но выглядеть он должен сделанным — иначе
+   закрытая задача до конца недели читается как невыполненная. */
+.day-event-item.is-done,
+.week-event.is-done,
+.day-event.is-done,
+.agenda-event.is-done {
+  opacity: 0.62;
+}
+
+.day-event-item.is-done .event-title,
+.week-event.is-done .week-event-title,
+.day-event.is-done .day-event-title,
+.agenda-event.is-done .agenda-event-title {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}

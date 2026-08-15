@@ -14,9 +14,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { weekOf, monthDays, addDays, addMonths, dstr, monthTitle, hoursText } from '../utils/dates';
+import { weekOf, monthDays, addDays, addMonths, dstr, monthTitle, hoursText, today } from '../utils/dates';
 import { userName } from '../utils/labels';
 import { Avatar, Empty, Note } from './Bits';
+import PeriodControl from './PeriodControl';
 
 export default function Reports({ ctx }) {
   const { cursor, setCursor } = ctx;
@@ -48,17 +49,15 @@ export default function Reports({ ctx }) {
 
   return (
     <>
-      <div className="tsk-ctl">
-        <div className="tsk-seg">
-          <button className={view === 'week' ? 'is-on' : ''} onClick={() => setView('week')}>Неделя</button>
-          <button className={view === 'month' ? 'is-on' : ''} onClick={() => setView('month')}>Месяц</button>
-        </div>
-        <button className="tsk-arrow" onClick={() => shift(true)}>←</button>
-        <span className="tsk-ctl-period">
-          {view === 'week' ? `${dstr(start)} — ${dstr(end)}` : monthTitle(cursor)}
-        </span>
-        <button className="tsk-arrow" onClick={() => shift(false)}>→</button>
-      </div>
+      <PeriodControl
+        views={[["week", "Неделя"], ["month", "Месяц"]]}
+        view={view}
+        onView={setView}
+        label={view === 'week' ? `${dstr(start)} — ${dstr(end)}` : monthTitle(cursor)}
+        onPrevious={() => shift(true)}
+        onNext={() => shift(false)}
+        onToday={() => setCursor(today())}
+      />
 
       <div className="tsk-stats">
         <div className="tsk-stat">

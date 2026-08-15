@@ -1461,6 +1461,98 @@
 .wh-osv-map .wh-tree__group > td { background: transparent; }
 .wh-osv-map .wh-table tbody tr:hover > td { background: var(--wh-primary-soft); }
 
+/* ── Словарь предметов (ver. 6.79) ─────────────────────────────────────────── */
+/* Селекты те же, что в разборе: работа одна и та же — полсотни мелких решений
+   подряд в столбец, и заводить для неё второй набор размеров незачем. */
+.wh-dict .wh-osv-map__select { min-width: 170px; max-width: 240px; }
+/* Неразмеченное слово подсвечено, а не помечено значком: в таблице на шестьсот
+   строк значок надо искать, а фон виден боковым зрением при прокрутке. */
+.wh-dict .wh-row--open > td { background: var(--wh-zone-yellow-bg); }
+.wh-dict .wh-table tbody tr:hover > td { background: var(--wh-primary-soft); }
+.wh-dict .wh-subhead { display: flex; align-items: center; gap: 6px; margin-top: 18px; }
+
+/* ── Массовая правка карточек (ver. 6.82) ──────────────────────────────────── */
+/* Галочка слева, поле справа: без явной отметки поле выключено, и это видно до
+   того, как человек начнёт в него что-то вводить. */
+.wh-bulk__row {
+  display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, 1.2fr);
+  align-items: center; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--wh-border);
+}
+.wh-bulk__row:last-child { border-bottom: 0; }
+.wh-bulk__field select, .wh-bulk__field input { width: 100%; }
+.wh-bulk__field select:disabled, .wh-bulk__field input:disabled { opacity: .45; }
+
+/* ── Автодополнение (ver. 6.82) ────────────────────────────────────────────── */
+/* Выпадающий список положен absolute поверх формы, а не втиснут в поток: иначе
+   при открытии он раздвигал бы соседние поля и строка ввода прыгала под курсором. */
+.wh-combo { position: relative; }
+.wh-combo__value {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: var(--wh-control-h); padding: var(--wh-control-pad);
+  border: 1px solid var(--wh-border); border-radius: 8px;
+  background: var(--wh-card-bg); color: var(--wh-text);
+  font: inherit; font-size: var(--wh-fs-base); text-align: left; cursor: pointer;
+}
+.wh-combo.is-disabled .wh-combo__value { opacity: .55; cursor: not-allowed; }
+.wh-combo__placeholder { color: var(--wh-text-secondary); }
+.wh-combo__clear { display: inline-flex; padding: 2px; border-radius: 4px; }
+.wh-combo__clear:hover { background: var(--wh-border); }
+.wh-combo__drop {
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+  min-width: 260px;
+  background: var(--wh-card-bg); border: 1px solid var(--wh-border);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .12); overflow: hidden;
+}
+.wh-combo__search {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 10px; border-bottom: 1px solid var(--wh-border);
+}
+.wh-combo__search input {
+  flex: 1; border: 0; outline: none; background: transparent;
+  font-size: var(--wh-fs-base); color: var(--wh-text);
+}
+.wh-combo__list { max-height: 280px; overflow-y: auto; }
+.wh-combo__option {
+  display: block; width: 100%; padding: 8px 11px;
+  border: 0; background: transparent; font: inherit; font-size: var(--wh-fs-base);
+  text-align: left; cursor: pointer; color: var(--wh-text);
+}
+/* Подсветка идёт за клавишами и за мышью одновременно: список одинаково удобно
+   листать стрелками и тыкать курсором, и два разных выделения путали бы. */
+.wh-combo__option.is-cursor { background: var(--wh-primary-soft); }
+.wh-combo__option.is-picked { font-weight: 600; }
+.wh-combo__empty, .wh-combo__more {
+  padding: 10px 11px; font-size: var(--wh-fs-small); color: var(--wh-text-secondary);
+}
+.wh-combo__more { border-top: 1px solid var(--wh-border); }
+
+/* ── Размещение по кабинетам (ver. 6.80) ───────────────────────────────────── */
+/* Кабинет и полка вынесены в отдельную полосу над таблицами и не уезжают вместе
+   с прокруткой очереди: их выбирают один раз на пачку, и потерять из виду то,
+   куда сейчас кладёшь, значит разложить сотню позиций не в тот кабинет. */
+.wh-place__room {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+  padding: 12px 14px; margin: 12px 0;
+  background: var(--wh-primary-soft); border-radius: 10px;
+}
+.wh-place__room label {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; color: var(--wh-text-secondary);
+}
+.wh-place__room label select { min-width: 260px; }
+.wh-place__room > button { margin-left: auto; }
+
+/* Две колонки: слева очередь, справа содержимое выбранного кабинета. Рядом, а не
+   переключателем, — иначе после каждой пачки надо было бы ходить проверять себя
+   на другой экран. */
+.wh-place__cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 1200px) { .wh-place__cols { grid-template-columns: 1fr; } }
+.wh-place .wh-row--picked > td { background: var(--wh-primary-soft); }
+.wh-place__queue tbody td:nth-child(2) { cursor: pointer; }
+.wh-place .wh-subhead { display: flex; align-items: center; gap: 6px; }
+.wh-place .wh-hint { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+
 /* ── Ведомость 1С (ver. 6.72) ──────────────────────────────────────────────── */
 /* Список снимков вынесен в колонку слева и не сворачивается в выпадающий список:
    выбор месяца здесь — не настройка отчёта, а навигация. Рядом с каждым месяцем

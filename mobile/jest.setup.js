@@ -112,3 +112,18 @@ jest.mock('socket.io-client', () => ({
     connected: false,
   })),
 }));
+
+// Камера сканера склада (ver. 6.81). Модуль обращается к нативной части прямо на
+// импорте — без заглушки падает уже require экрана, а с ним и весь App.test,
+// который рендерит навигатор целиком.
+//
+// Заглушка намеренно минимальная: тестировать здесь нечего, распознавание живёт
+// в нативном коде. Задача — чтобы дерево навигации собиралось.
+jest.mock('react-native-vision-camera', () => {
+  const Camera = () => null;
+  // Статические методы нужны отдельно: экран сканера спрашивает разрешение до
+  // первого кадра, и без них падает не импорт, а рендер — что искать дольше.
+  Camera.getCameraPermissionStatus = () => 'granted';
+  Camera.requestCameraPermission = () => Promise.resolve('granted');
+  return {Camera, useCameraDevice: () => null, useCodeScanner: config => config};
+});

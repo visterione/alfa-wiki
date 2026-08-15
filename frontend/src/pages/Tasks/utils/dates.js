@@ -108,6 +108,18 @@ export function hoursText(value) {
   return `${Number(value).toFixed(1).replace('.', ',')} ч`;
 }
 
+/** Длительность смены в часах. Норма дня всегда равна этому значению. */
+export function shiftHours(day) {
+  if (!day?.enabled || !/^\d{2}:\d{2}$/.test(day.start || '') || !/^\d{2}:\d{2}$/.test(day.end || '')) return 0;
+  const [startHour, startMinute] = day.start.split(':').map(Number);
+  const [endHour, endMinute] = day.end.split(':').map(Number);
+  return Math.max(0, ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60);
+}
+
+export function scheduleWeeklyHours(schedule) {
+  return Object.values(schedule?.days || {}).reduce((sum, day) => sum + shiftHours(day), 0);
+}
+
 /** «2 ч», «40 мин» — для оценок, где дробные часы читаются плохо. */
 export function estimateText(hours) {
   const h = Number(hours);

@@ -37,7 +37,7 @@ import {setInboxCount, useInboxCount} from '../../store/tasksStore';
 import LoadBar from './LoadBar';
 import {
   DOW, addDays, addMonths, dayEvents, dfull, dstr, estimateText,
-  eventHours, fromKey, hoursText, isWeekend, monthGrid, monthTitle, today,
+  eventHours, fromKey, hoursText, monthGrid, monthTitle, today,
   weekOf, LOAD_COLOR,
 } from './taskMeta';
 
@@ -220,9 +220,11 @@ export default function TasksScreen({navigation}) {
             <Text style={styles.subtitle}>
               {dayLoad?.onVacation
                 ? 'Отпуск — задачи на этот день не ставятся'
+                : dayLoad?.onDayOff
+                  ? 'Выходной по рабочему расписанию'
                 : dayLoad?.norm
                   ? `${hoursText(dayLoad.hours)} из ${hoursText(dayLoad.norm)}`
-                  : 'Норма рабочего дня не задана'}
+                  : 'Рабочее расписание не настроено'}
             </Text>
           </View>
 
@@ -497,8 +499,8 @@ export default function TasksScreen({navigation}) {
             setMoreOpen(false);
             navigation.getParent()?.navigate('SettingsTab', {screen: 'TasksNorm'});
           }}>
-            <Text style={styles.moreTitle}>Норма рабочего дня</Text>
-            <Text style={styles.moreValue}>{dayLoad?.norm ? hoursText(dayLoad.norm) : 'не задана'} ›</Text>
+            <Text style={styles.moreTitle}>Рабочее расписание</Text>
+            <Text style={styles.moreValue}>{dayLoad?.onDayOff ? 'сегодня выходной' : dayLoad?.norm ? `${hoursText(dayLoad.norm)} сегодня` : 'настроить'} ›</Text>
           </Pressable>
           <View style={styles.moreSection}>
             <Text style={styles.moreSectionText}>Видимость личных дел</Text>
@@ -888,7 +890,7 @@ function MonthView({cursor, byDate, events, styles, c, onPick}) {
   // приходят из других разделов и часов не занимают — без точки такой день
   // выглядел бы в сетке пустым, а именно его и ищут глазами.
   const busyDays = new Set((events || []).map(e => String(e.startTime).slice(0, 10)));
-  const workdays = cells.filter(d => d && !isWeekend(d));
+  const workdays = cells.filter(d => d && !byDate.get(d)?.onDayOff);
   const overloaded = workdays.filter(d => byDate.get(d)?.color === 'r').length;
   const free = workdays.reduce((sum, d) => sum + (byDate.get(d)?.free || 0), 0);
 
@@ -912,7 +914,7 @@ function MonthView({cursor, byDate, events, styles, c, onPick}) {
               key={date}
               style={[
                 styles.monthCell,
-                isWeekend(date) && styles.monthCellWeekend,
+                day.onDayOff && styles.monthCellWeekend,
                 isToday && {borderColor: c.primary, borderWidth: 1},
                 date === cursor && {backgroundColor: c.primaryLight},
               ]}

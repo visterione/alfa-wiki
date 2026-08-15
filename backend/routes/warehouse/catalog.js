@@ -333,6 +333,92 @@ router.post('/reorder-rules', authenticate, requireWarehouse('canManageCatalog')
   }
 });
 
+/**
+ * Минимумы пачкой: одно значение сразу на набор позиций.
+ *
+ * Позиций номенклатуры 1785, и заводить правило на каждую через модалку — работа
+ * на неделю, которую никто не сделает. Между тем минимум по своей природе
+ * задаётся не позиции, а классу вещей: «перчаток всегда держим коробку»,
+ * «шприцев — две». Поэтому здесь принимается либо явный список позиций, либо
+ * категория целиком.
+ *
+ * Повторное правило на ту же пару «позиция + место» не создаётся вторым, а
+ * обновляется: два минимума на одну позицию означали бы, что дефицит считается
+ * по тому из них, который нашёлся первым.
+ */
+router.post('/reorder-rules/bulk', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
+  try {
+    const {
+      nomenclatureIds = null, categoryId = null,
+      roomId = null, storageId = null,
+      minQty, maxQty = null, autoRfq = false,
+      skipExisting = false,
+    } = req.body || {};
+
+    if (minQty === undefined || minQty === null || Number(minQty) < 0) {
+      return res.status(400).json({ error: 'Нужен минимальный остаток' });
+    }
+    if (!categoryId && (!Array.isArray(nomenclatureIds) || !nomenclatureIds.length)) {
+      return res.status(400).json({ error: 'Выберите позиции или категорию' });
+    }
+
+    const where = { isActive: true };
+    if (Array.isArray(nomenclatureIds) && nomenclatureIds.length) {
+      where.id = { [Op.in]: nomenclatureIds };
+    } else {
+      where.categoryId = categoryId;
+    }
+    const positions = await WhNomenclature.findAll({ where, attributes: ['id'] });
+    if (!positions.length) {
+      return res.status(400).json({ error: 'По этому условию не нашлось ни одной позиции' });
+    }
+
+    const ids = positions.map(p => p.id);
+    const existing = await WhReorderRule.findAll({
+      where: {
+        nomenclatureId: { [Op.in]: ids },
+        roomId: roomId || null,
+        storageId: storageId || null,
+      },
+    });
+    const byNomenclature = new Map(existing.map(r => [r.nomenclatureId, r]));
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    await sequelize.transaction(async (t) => {
+      for (const id of ids) {
+        const current = byNomenclature.get(id);
+        if (current) {
+          // «Не трогать уже настроенные» — для случая, когда пачкой закрывают
+          // хвост, а точечно выставленные минимумы должны остаться как есть.
+          if (skipExisting) { skipped += 1; continue; }
+          await current.update({
+            minQty, maxQty: maxQty ?? null, autoRfq: Boolean(autoRfq),
+          }, { transaction: t });
+          updated += 1;
+        } else {
+          await WhReorderRule.create({
+            nomenclatureId: id,
+            roomId: roomId || null,
+            storageId: storageId || null,
+            minQty,
+            maxQty: maxQty ?? null,
+            autoRfq: Boolean(autoRfq),
+          }, { transaction: t });
+          created += 1;
+        }
+      }
+    });
+
+    res.json({ created, updated, skipped, total: ids.length });
+  } catch (err) {
+    console.error('POST warehouse/catalog/reorder-rules/bulk error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/reorder-rules/:id', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   const row = await WhReorderRule.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Правило не найдено' });

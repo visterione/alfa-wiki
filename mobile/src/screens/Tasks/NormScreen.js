@@ -1,188 +1,97 @@
-/**
- * Норма рабочего дня.
- *
- * Живёт в настройках, а не в модуле: это личная настройка вроде темы, её
- * задают один раз и почти не трогают. Держать под неё отдельный экран в
- * календаре значило бы каждый день показывать кнопку, на которую нажимают
- * дважды в год.
- *
- * Формулировка на экране важнее самого поля. Люди по привычке ставят 8 —
- * длину смены, — после чего загрузка показывает переработку у всех сразу и
- * модулю перестают верить. Поэтому здесь прямо сказано, что это не смена, и
- * приведены примеры.
- */
-
+/** Личное недельное рабочее расписание для планирования задач. */
 import React, {useCallback, useState} from 'react';
-import {View, Text, ScrollView, Pressable, StyleSheet, Alert} from 'react-native';
+import {View, Text, ScrollView, Pressable, StyleSheet, Alert, TextInput} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-
 import {tasks as tasksApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
-import {useTheme, useThemedStyles} from '../../store/settingsStore';
+import {useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {useAuth} from '../../store/authStore';
 import {hoursText} from './taskMeta';
 
-/** Шаг 0,2 ч — как в вебе: норма 6,4 у аналитика это реальная цифра. */
-const STEPS = [4, 4.5, 5, 5.5, 6, 6.4, 6.8, 7, 7.5, 8];
+const DAYS = [['mon', 'Пн'], ['tue', 'Вт'], ['wed', 'Ср'], ['thu', 'Чт'], ['fri', 'Пт'], ['sat', 'Сб'], ['sun', 'Вс']];
+const makeDefault = () => ({days: Object.fromEntries(DAYS.map(([key], i) => [key,
+  i < 5 ? {enabled: true, start: '09:00', end: '18:00'} : {enabled: false},
+]))});
+
+const shiftHours = day => {
+  if (!day?.enabled || !/^\d{2}:\d{2}$/.test(day.start || '') || !/^\d{2}:\d{2}$/.test(day.end || '')) return 0;
+  const [startHour, startMinute] = day.start.split(':').map(Number);
+  const [endHour, endMinute] = day.end.split(':').map(Number);
+  return Math.max(0, ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60);
+};
 
 export default function NormScreen() {
-  const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   const tabInset = useTabBarInset();
+  const contentStyle = {padding: 16, paddingBottom: tabInset + 24};
   const {user, refreshUser} = useAuth();
-
-  const [norm, setNorm] = useState(null);
+  const [schedule, setSchedule] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-      tasksApi
-        .getAccess()
-        .then(({data}) => {
-          if (alive) {
-            setNorm(data.norm);
-            setLoading(false);
-          }
-        })
-        .catch(() => alive && setLoading(false));
-      return () => {
-        alive = false;
-      };
-    }, []),
-  );
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    tasksApi.getAccess().then(({data}) => {
+      if (alive) { setSchedule(data.workSchedule || makeDefault()); setLoading(false); }
+    }).catch(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, []));
 
+  const update = (key, patch) => setSchedule(current => ({...current, days: {...current.days,
+    [key]: {...(current.days[key] || {}), ...patch},
+  }}));
+  const weekly = DAYS.reduce((sum, [key]) => sum + shiftHours(schedule?.days[key]), 0);
   const save = async value => {
     if (!user?.id) return;
     setSaving(true);
     try {
-      await tasksApi.setNorm(user.id, value);
-      setNorm(value);
+      await tasksApi.setSchedule(user.id, value);
+      setSchedule(value || makeDefault());
       refreshUser?.();
-      Alert.alert(
-        'Норма сохранена',
-        value === null
-          ? 'Вы больше не участвуете в планировании: задачи вам ставить нельзя.'
-          : `${hoursText(value)} в день. Пересчитаны все дни, цвета и проверка при постановке задач.`,
-      );
-    } catch (e) {
-      Alert.alert('Не получилось', e?.response?.data?.error || 'Попробуйте ещё раз');
-    } finally {
-      setSaving(false);
-    }
+      Alert.alert(value ? 'Расписание сохранено' : 'Планирование отключено', value
+        ? `Рабочая неделя — ${hoursText(weekly)}. Выходные исключены из расчёта.`
+        : 'Вам нельзя назначать задачи, пока расписание не настроено.');
+    } catch (e) { Alert.alert('Не получилось', e?.response?.data?.error || 'Проверьте границы смен'); }
+    finally { setSaving(false); }
   };
 
-  if (loading) return <LogoLoader />;
-
-  return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={{padding: 16, paddingBottom: tabInset + 24}}>
-      <View style={styles.card}>
-        <Text style={styles.value}>{norm === null ? 'не задана' : hoursText(norm)}</Text>
-        <Text style={styles.caption}>
-          Сколько часов в день вы реально тратите на задачи
-        </Text>
-      </View>
-
-      <Text style={styles.section}>Выберите значение</Text>
-      <View style={styles.steps}>
-        {STEPS.map(value => (
-          <Pressable
-            key={value}
-            style={[styles.step, norm === value && styles.stepOn, saving && styles.off]}
-            disabled={saving}
-            onPress={() => save(value)}>
-            <Text style={[styles.stepText, norm === value && styles.stepTextOn]}>
-              {hoursText(value)}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Text style={styles.explain}>
-        Это не длина смены, а честное время на задачи: рабочий день минус
-        встречи, переключения и перерывы.{'\n\n'}
-        Норма у каждого своя, и это не формальность: у подрядчика на part-time
-        она может быть 4 часа, у поддержки со сменным графиком — 7. Пока норма
-        задаётся одной цифрой на всех, отчёт по загрузке показывает лишь то,
-        насколько неверно эта цифра выбрана.{'\n\n'}
-        От неё зависит всё остальное: цвет дня, предупреждение «не помещается»
-        при постановке задачи и то, что увидит руководитель в загрузке команды.
-      </Text>
-
-      {norm !== null && (
-        <Pressable
-          style={[styles.leave, saving && styles.off]}
-          disabled={saving}
-          onPress={() =>
-            Alert.alert(
-              'Выйти из планирования?',
-              'Загрузка перестанет считаться, а ставить вам задачи будет нельзя.',
-              [
-                {text: 'Отмена', style: 'cancel'},
-                {text: 'Выйти', style: 'destructive', onPress: () => save(null)},
-              ],
-            )
-          }>
-          <Text style={[styles.leaveText, {color: c.error}]}>Не участвовать в планировании</Text>
-        </Pressable>
-      )}
-    </ScrollView>
-  );
+  if (loading || !schedule) return <LogoLoader />;
+  return <ScrollView style={styles.root} contentContainerStyle={contentStyle}>
+    <View style={styles.card}><Text style={styles.value}>{hoursText(weekly)}</Text><Text style={styles.caption}>продолжительность рабочей недели</Text></View>
+    <Text style={styles.explain}>Для каждого рабочего дня задайте начало и конец смены. Норма дня автоматически равна её фактической длительности.</Text>
+    <View style={styles.days}>{DAYS.map(([key, label]) => { const day = schedule.days[key] || {enabled: false}; return <View key={key} style={[styles.day, !day.enabled && styles.dayOff]}>
+      <Pressable style={styles.dayToggle} onPress={() => update(key, day.enabled ? {enabled: false} : {enabled: true, start: day.start || '09:00', end: day.end || '18:00'})}>
+        <View style={[styles.check, day.enabled && styles.checkOn]}><Text style={styles.checkText}>{day.enabled ? '✓' : ''}</Text></View><Text style={styles.dayName}>{label}</Text>
+      </Pressable>
+      {day.enabled ? <View style={styles.fields}>
+        <TextInput style={styles.input} value={day.start} placeholder="09:00" onChangeText={start => update(key, {start})} maxLength={5} />
+        <Text style={styles.dash}>—</Text><TextInput style={styles.input} value={day.end} placeholder="18:00" onChangeText={end => update(key, {end})} maxLength={5} />
+      </View> : <Text style={styles.offText}>выходной</Text>}
+    </View>; })}</View>
+    <Pressable style={[styles.save, saving && styles.disabled]} disabled={saving} onPress={() => save(schedule)}><Text style={styles.saveText}>{saving ? 'Сохраняем…' : 'Сохранить расписание'}</Text></Pressable>
+    <Pressable style={styles.leave} disabled={saving} onPress={() => Alert.alert('Не участвовать в планировании?', 'Вам нельзя будет назначать задачи.', [{text: 'Отмена', style: 'cancel'}, {text: 'Отключить', style: 'destructive', onPress: () => save(null)}])}><Text style={styles.leaveText}>Не участвовать в планировании</Text></Pressable>
+  </ScrollView>;
 }
 
-const makeStyles = c =>
-  StyleSheet.create({
-    root: {flex: 1, backgroundColor: c.bgSecondary},
-
-    card: {
-      backgroundColor: c.bgPrimary,
-      borderRadius: radius.lg,
-      padding: 20,
-      alignItems: 'center',
-    },
-    value: {fontFamily: font.semiBold, fontSize: 32, color: c.textPrimary},
-    caption: {
-      fontFamily: font.regular,
-      fontSize: 13,
-      color: c.textSecondary,
-      marginTop: 6,
-      textAlign: 'center',
-    },
-
-    section: {
-      fontFamily: font.semiBold,
-      fontSize: 12,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase',
-      color: c.textTertiary,
-      marginTop: 24,
-      marginBottom: 10,
-    },
-    steps: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
-    step: {
-      paddingHorizontal: 15,
-      paddingVertical: 10,
-      borderRadius: radius.md,
-      backgroundColor: c.bgPrimary,
-    },
-    stepOn: {backgroundColor: c.primary},
-    stepText: {fontFamily: font.regular, fontSize: 14, color: c.textPrimary},
-    stepTextOn: {fontFamily: font.semiBold, color: '#FFFFFF'},
-    off: {opacity: 0.5},
-
-    explain: {
-      fontFamily: font.regular,
-      fontSize: 13,
-      color: c.textSecondary,
-      lineHeight: 20,
-      marginTop: 22,
-    },
-
-    leave: {alignItems: 'center', paddingVertical: 16, marginTop: 10},
-    leaveText: {fontFamily: font.regular, fontSize: 14},
-  });
+const makeStyles = c => StyleSheet.create({
+  root: {flex: 1, backgroundColor: c.bgSecondary},
+  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, padding: 20, alignItems: 'center'},
+  value: {fontFamily: font.semiBold, fontSize: 32, color: c.textPrimary},
+  caption: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary, marginTop: 5},
+  explain: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary, lineHeight: 19, marginVertical: 18},
+  days: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, overflow: 'hidden'},
+  day: {minHeight: 68, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border},
+  dayOff: {opacity: 0.65}, dayToggle: {flexDirection: 'row', alignItems: 'center', gap: 9},
+  check: {width: 20, height: 20, borderRadius: 7, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center'},
+  checkOn: {backgroundColor: c.primary, borderColor: c.primary}, checkText: {color: '#fff', fontSize: 12},
+  dayName: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
+  fields: {flexDirection: 'row', alignItems: 'center', marginTop: 9, marginLeft: 29, gap: 6},
+  input: {width: 58, height: 34, borderRadius: radius.sm, backgroundColor: c.bgSecondary, color: c.textPrimary, fontFamily: font.regular, fontSize: 13, textAlign: 'center', padding: 0},
+  dash: {color: c.textTertiary},
+  offText: {fontFamily: font.regular, color: c.textTertiary, fontSize: 12, marginLeft: 29, marginTop: 4},
+  save: {height: 48, borderRadius: radius.md, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginTop: 18},
+  saveText: {fontFamily: font.semiBold, color: '#fff', fontSize: 15}, disabled: {opacity: 0.5},
+  leave: {alignItems: 'center', paddingVertical: 17}, leaveText: {fontFamily: font.regular, color: c.error, fontSize: 14},
+});

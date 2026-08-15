@@ -22,6 +22,7 @@ const {
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
 const { generateInventoryNumber } = require('../../services/warehouse/numbering');
+const { splitName } = require('../../services/warehouse/nameParts');
 const qr = require('../../services/warehouse/qr');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
@@ -326,6 +327,64 @@ router.put('/:id', authenticate, requireWarehouse('canManageAssets'), async (req
   }
 });
 
+// ── Массовая правка карточек ─────────────────────────────────────────────────
+/**
+ * Одно и то же поле сразу у пачки активов.
+ *
+ * ── Зачем ────────────────────────────────────────────────────────────────────
+ *
+ * После разбора ведомости в портале три тысячи карточек, у которых пустые
+ * категория, интервал ТО и срок службы. Проставлять их по одной — это три тысячи
+ * открытий формы, и такой работы никто не делает: поля так и остаются пустыми, а
+ * вместе с ними бесполезны отчёты, которые на них опираются.
+ *
+ * ── Чего здесь намеренно нет ─────────────────────────────────────────────────
+ *
+ * Кабинета, места хранения и МОЛ. Это размещение, и меняется оно документом
+ * перемещения — иначе актив сменил бы место без следа в журнале, и отчёт
+ * «Движение активов» перестал бы быть аудиторским. Ровно то же ограничение
+ * действует в форме правки одной карточки, и разойтись им нельзя: массовая
+ * операция не может быть лазейкой в обход правила.
+ *
+ * Наименования тут тоже нет: одинаковое имя у пачки активов — это не правка, а
+ * потеря данных.
+ */
+router.post('/bulk', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
+  try {
+    const { ids = [], patch = {} } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ error: 'Не выбраны активы' });
+    }
+    if (ids.length > 1000) {
+      return res.status(400).json({ error: 'За раз не больше 1000 карточек' });
+    }
+
+    const allowed = [
+      'categoryId', 'status', 'maintenanceIntervalMonths', 'nextMaintenanceDate',
+      'usefulLifeMonths', 'depreciationGroup', 'okof', 'supplierId',
+      'fundingSource', 'dailyCapacityHours', 'warrantyUntil',
+    ];
+    const update = {};
+    for (const key of allowed) {
+      if (patch[key] !== undefined) update[key] = patch[key] === '' ? null : patch[key];
+    }
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ error: 'Нечего менять' });
+    }
+
+    // Архивные не трогаем: они выведены из оборота, и массовая правка по фильтру
+    // легко зацепила бы их незаметно.
+    const [updated] = await WhAsset.update(update, {
+      where: { id: { [Op.in]: ids }, isArchived: false },
+    });
+
+    res.json({ updated, fields: Object.keys(update) });
+  } catch (err) {
+    console.error('POST warehouse/assets/bulk error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Поиск по инвентарному номеру или токену: то, что дёргает сканер ──────────
 // Отдельный эндпоинт, потому что сканер должен работать одинаково и при чтении QR
 // (токен), и при ручном вводе номера с этикетки — камера в браузере требует HTTPS
@@ -418,6 +477,90 @@ router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), 
     res.json({ size, labels, sizeMm: qr.LABEL_SIZES[size] || qr.LABEL_SIZES['58x40'] });
   } catch (err) {
     console.error('POST warehouse/assets/labels/batch error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Разбор названий: модель и производитель ──────────────────────────────────
+/**
+ * Вытащить модель и производителя из наименования у карточек, где эти поля
+ * пустые.
+ *
+ * ── Почему обязательно с предпросмотром ──────────────────────────────────────
+ *
+ * Разбор эвристический: правил, которые верно разберут любое название из 1С, не
+ * существует. На августовской выгрузке модель находится примерно у трети
+ * позиций, и часть находок спорна — «Кабель USB2.0 НАМА Н-34694» даёт моделью
+ * USB2.0. Поэтому запуск без dryRun человек делает, уже увидев список «было →
+ * стало», а не вслепую по трём тысячам карточек.
+ *
+ * ── Почему наименование не меняется ──────────────────────────────────────────
+ *
+ * По названию сходится сверка с бухгалтерией: оно должно остаться ровно тем, что
+ * в ведомости. Заполняются только пустые поля модели и производителя — то, что
+ * человек уже ввёл руками, не перезаписывается никогда.
+ */
+router.post('/parse-names', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
+  try {
+    const { dryRun = true, ids = null, limit = 500 } = req.body || {};
+
+    const where = {
+      isArchived: false,
+      [Op.or]: [{ model: null }, { manufacturer: null }],
+    };
+    if (Array.isArray(ids) && ids.length) where.id = { [Op.in]: ids };
+
+    const assets = await WhAsset.findAll({
+      where,
+      attributes: ['id', 'inventoryNumber', 'name', 'model', 'manufacturer'],
+      limit: Math.min(Number(limit) || 500, 2000),
+      order: [['createdAt', 'ASC']],
+    });
+
+    const changes = [];
+    for (const asset of assets) {
+      const parts = splitName(asset.name);
+      const patch = {};
+      if (!asset.model && parts.model) patch.model = parts.model.slice(0, 200);
+      if (!asset.manufacturer && parts.manufacturer) {
+        patch.manufacturer = parts.manufacturer.slice(0, 200);
+      }
+      if (!Object.keys(patch).length) continue;
+      changes.push({
+        id: asset.id,
+        inventoryNumber: asset.inventoryNumber,
+        name: asset.name,
+        ...patch,
+      });
+    }
+
+    if (!dryRun) {
+      // По одному апдейту на карточку: полей два, значения у всех разные, и
+      // собирать из этого один CASE-запрос ради трёх тысяч строк, которые
+      // разбирают один раз в жизни, — оптимизация без адресата.
+      await sequelize.transaction(async (t) => {
+        for (const change of changes) {
+          await WhAsset.update(
+            {
+              ...(change.model ? { model: change.model } : {}),
+              ...(change.manufacturer ? { manufacturer: change.manufacturer } : {}),
+            },
+            { where: { id: change.id }, transaction: t },
+          );
+        }
+      });
+    }
+
+    res.json({
+      dryRun,
+      scanned: assets.length,
+      changed: changes.length,
+      // Обрезаем список для показа: разбирают тысячи, а глазами проверяют первые
+      // десятки — и по ним видно, годится разбор или нет.
+      samples: changes.slice(0, 60),
+    });
+  } catch (err) {
+    console.error('POST warehouse/assets/parse-names error:', err);
     res.status(500).json({ error: err.message });
   }
 });

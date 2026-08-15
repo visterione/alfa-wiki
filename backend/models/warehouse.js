@@ -203,6 +203,10 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     // единиц в 1С, поэтому ссылка неуникальна — по ней считается, сколько уже
     // создано, и повторный разбор не плодит дубли.
     osvLineKey:               { type: DataTypes.STRING(40) },
+    // Размещение, из которого создана карточка (ver. 6.80). Считать созданное по
+    // кабинету нельзя: актив могли переместить документом, и счёт по месту дал бы
+    // «не хватает» и создал дубли. Ссылка на размещение от переездов не зависит.
+    osvPlacementId:           { type: DataTypes.UUID },
     isArchived:               { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     createdBy:                { type: DataTypes.UUID },
   }, { ...ts, tableName: 'warehouse_assets' });
@@ -559,6 +563,51 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     mappedBy:       { type: DataTypes.UUID },
   }, { ...ts, tableName: 'warehouse_osv_mappings' });
 
+  // ── Размещение позиций ведомости по кабинетам (ver. 6.80) ──────────────────
+  //
+  // Ветка 1С не отвечает на вопрос «где вещь стоит»: под «Кабинетом Хирурга»
+  // лежит имущество пяти-шести физических кабинетов, а строка «Стул СТ 6, 3 шт»
+  // раскладывается на три разных места. Поэтому размещение — отдельная запись со
+  // своим количеством, а не поле у сопоставления ветки.
+  const WhOsvPlacement = sequelize.define('WhOsvPlacement', {
+    id:        { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    account:   { type: DataTypes.STRING(20), allowNull: false },
+    // Ключ строки, а не ссылка на строку снимка: снимки сменяются каждый месяц,
+    // размещение переживает их все.
+    lineKey:   { type: DataTypes.STRING(40), allowNull: false },
+    roomId:    { type: DataTypes.UUID, allowNull: false },
+    storageId: { type: DataTypes.UUID },
+    quantity:  { type: DataTypes.DECIMAL(14, 3), allowNull: false },
+    note:      { type: DataTypes.TEXT },
+    placedBy:  { type: DataTypes.UUID },
+  }, { ...ts, tableName: 'warehouse_osv_placements' });
+
+  // ── Словарь предметов (ver. 6.79) ──────────────────────────────────────────
+  //
+  // Отвечает на вопрос «что это за предмет» по названию, тогда как цена отвечает
+  // только на «как его учитывать». До 6.79 оба вопроса решал порог стоимости, и
+  // на первый он отвечать не мог: ножницы за 522 ₽ и одеяло за 1350 ₽ по цене
+  // неразличимы.
+  //
+  // Размечается не строка, а ведущее слово названия: разных слов 625 на 2992
+  // строки, и топ-200 покрывает 81 % ведомости. Словарь переживает следующий
+  // месяц, тогда как разметка строк рвётся при переименовании группы в 1С.
+  const WhItemRule = sequelize.define('WhItemRule', {
+    id:             { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    pattern:        { type: DataTypes.TEXT, allowNull: false },
+    // head — ведущее слово; contains — подстрока; regex — выражение.
+    matchType:      { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'head' },
+    // Отдельного вида «инструмент» нет намеренно: инструмент — это категория
+    // (что это), а учитывается он количеством, то есть accounting='material'.
+    accounting:     { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'auto' },
+    categoryId:     { type: DataTypes.UUID },
+    unit:           { type: DataTypes.STRING(20) },
+    assetThreshold: { type: DataTypes.DECIMAL(12, 2) },
+    note:           { type: DataTypes.TEXT },
+    isActive:       { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    createdBy:      { type: DataTypes.UUID },
+  }, { ...ts, tableName: 'warehouse_item_rules' });
+
   // ── Outbox для 1С: пустой и выключенный ────────────────────────────────────
   // Обмена нет. Таблица заведена сразу по образцу submissions (ver. 6.06), чтобы
   // не переделывать схему задним числом, когда обмен появится.
@@ -585,7 +634,7 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhInventorySession, WhInventoryItem,
     WhRfq, WhRfqItem, WhRfqQuote,
     WhUtilizationDaily, WhOutbox,
-    WhOsvImport, WhOsvLine, WhOsvMapping,
+    WhOsvImport, WhOsvLine, WhOsvMapping, WhItemRule, WhOsvPlacement,
   };
 
   /**
@@ -721,6 +770,14 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhOsvMapping.belongsTo(WhCategory, { foreignKey: 'categoryId', as: 'category' });
     WhOsvMapping.belongsTo(WhRoom, { foreignKey: 'roomId', as: 'room' });
     WhOsvMapping.belongsTo(User, { foreignKey: 'mappedBy', as: 'author' });
+
+    WhItemRule.belongsTo(WhCategory, { foreignKey: 'categoryId', as: 'category' });
+    WhItemRule.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
+
+    WhOsvPlacement.belongsTo(WhRoom, { foreignKey: 'roomId', as: 'room' });
+    WhOsvPlacement.belongsTo(WhStorage, { foreignKey: 'storageId', as: 'storage' });
+    WhOsvPlacement.belongsTo(User, { foreignKey: 'placedBy', as: 'author' });
+    WhAsset.belongsTo(WhOsvPlacement, { foreignKey: 'osvPlacementId', as: 'osvPlacement' });
   }
 
   return { models, associateWarehouse };

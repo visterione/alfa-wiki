@@ -32,11 +32,13 @@ const { hoursOf } = require('./workload');
  * Жёсткие встречи в расчёт не идут — они стоят в своё время, и обтекать их
  * рабочими блоками бессмысленно: время у блока всё равно условное.
  */
-function nextFloatingSlot(existingEvents, date, durationHours) {
+function nextFloatingSlot(existingEvents, date, durationHours, workStart = '09:00') {
   const floating = (existingEvents || []).filter(e => e.isFloating);
   const used = floating.reduce((sum, e) => sum + hoursOf(e), 0);
   const start = new Date(`${date}T00:00:00`);
-  start.setHours(WORK_DAY_START, 0, 0, 0);
+  const [startHour, startMinute] = /^\d{2}:\d{2}$/.test(workStart)
+    ? workStart.split(':').map(Number) : [WORK_DAY_START, 0];
+  start.setHours(startHour, startMinute, 0, 0);
   start.setTime(start.getTime() + used * 3600000);
   const end = new Date(start.getTime() + durationHours * 3600000);
   return { startTime: start, endTime: end, dayOrder: floating.length };
@@ -80,9 +82,12 @@ function splitEstimate(part, firstHours) {
  * сделать. Автор обязан выбрать до того, как задача уйдёт человеку — в этом
  * вся идея: решение принимается здесь, а не всплывает потом переносом.
  */
-function assessAssignment({ currentHours, norm, estimateHours, onVacation = false }) {
+function assessAssignment({ currentHours, norm, estimateHours, onVacation = false, onDayOff = false }) {
   if (onVacation) {
     return { fits: false, reason: 'vacation', after: null, norm, free: 0 };
+  }
+  if (onDayOff) {
+    return { fits: false, reason: 'day_off', after: null, norm: 0, free: 0 };
   }
   if (!norm || norm <= 0) {
     return { fits: false, reason: 'no_norm', after: null, norm: null, free: 0 };

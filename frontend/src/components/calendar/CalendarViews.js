@@ -73,7 +73,7 @@ export function WeekView({ currentDate, events, onEventClick }) {
               {dayEvents.map(event => (
                 <div
                   key={event.id}
-                  className="week-event"
+                  className={`week-event ${event.status === 'completed' ? 'is-done' : ''}`}
                   style={{
                     backgroundColor: event.color + '20',
                     borderLeftColor: event.color
@@ -145,7 +145,7 @@ export function DayView({ currentDate, events, onEventClick }) {
                 {hourEvents.map(event => (
                   <div
                     key={event.id}
-                    className="day-event"
+                    className={`day-event ${event.status === 'completed' ? 'is-done' : ''}`}
                     style={{
                       backgroundColor: event.color + '20',
                       borderLeftColor: event.color
@@ -242,7 +242,7 @@ export function AgendaView({ events, onEventClick }) {
               {dayEvents.map(event => (
                 <div
                   key={event.id}
-                  className="agenda-event"
+                  className={`agenda-event ${event.status === 'completed' ? 'is-done' : ''}`}
                   onClick={() => onEventClick(event)}
                   style={{ borderLeftColor: event.color }}
                 >

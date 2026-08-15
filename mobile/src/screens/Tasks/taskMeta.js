@@ -36,12 +36,13 @@ export const MODE_LABEL = {
   mixed: 'Смешанная',
 };
 
-/** Цвета загрузки. Ключи приходят с сервера: g/y/r/v. */
+/** Цвета загрузки. Ключи приходят с сервера: g/y/r/v/o (выходной). */
 export const LOAD_COLOR = {
   g: 'success',
   y: 'warning',
   r: 'error',
   v: 'textTertiary',
+  o: 'textTertiary',
 };
 
 export const LOAD_TITLE = {

@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import WarehouseOsvMapping from './WarehouseOsvMapping';
+import WarehouseItemRules from './WarehouseItemRules';
+import WarehousePlacement from './WarehousePlacement';
 
 /**
  * Оборотно-сальдовая ведомость 1С: снимки по месяцам и дерево позиций.
@@ -205,19 +207,40 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
 
       {/* Снимок и разбор — два разных занятия: первое делают раз в месяц за пять
           минут, второе один раз за несколько часов. В одном экране они мешали бы
-          друг другу. */}
+          друг другу.
+
+          Словарь стоит третьим и отдельно, потому что это работа не над снимком, а
+          над справочником: разметка слов переживает следующий месяц и следующую
+          выгрузку, тогда как сопоставление веток с кабинетами привязано к
+          конкретному дереву 1С. */}
       <div className="wh-subtabs">
         <button className={sub === 'snapshot' ? 'is-active' : ''} onClick={() => setSub('snapshot')}>
           Снимок
         </button>
+        <button className={sub === 'placement' ? 'is-active' : ''} onClick={() => setSub('placement')}>
+          Размещение
+        </button>
         <button className={sub === 'mapping' ? 'is-active' : ''} onClick={() => setSub('mapping')}>
           Разбор
         </button>
+        <button className={sub === 'dictionary' ? 'is-active' : ''} onClick={() => setSub('dictionary')}>
+          Словарь предметов
+        </button>
       </div>
+
+      {/* Размещение стоит перед разбором, потому что в этом порядке и идёт
+          работа: пока вещь не разложена по кабинетам, карточку ей создавать
+          нельзя — инвентарный номер содержит код специальности отделения и после
+          выдачи не меняется. */}
+      {sub === 'placement' && (
+        <WarehousePlacement access={access} tree={tree} onDone={onReloadTree} />
+      )}
 
       {sub === 'mapping' && (
         <WarehouseOsvMapping access={access} tree={tree} onDone={onReloadTree} />
       )}
+
+      {sub === 'dictionary' && <WarehouseItemRules access={access} />}
 
       <div className="wh-osv__layout" hidden={sub !== 'snapshot'}>
         <aside className="wh-osv__side">

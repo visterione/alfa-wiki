@@ -9,8 +9,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { CalendarClock, CheckCircle2, ClipboardCheck, Clock3, RotateCcw } from 'lucide-react';
 import { tasks as api, BASE_URL } from '../../../services/api';
-import { STATUS_LABEL, STATUS_TONE, MODE_LABEL, userName } from '../utils/labels';
+import { STATUS_LABEL, STATUS_TONE, userName } from '../utils/labels';
 import { hoursText, dshort, dfull, estimateText } from '../utils/dates';
 import { Badge, Avatar, AvatarStack, Empty } from './Bits';
 
@@ -41,6 +42,19 @@ function historyText(row) {
     case 'status_changed': return `${STATUS_LABEL[p.from] || p.from} → ${STATUS_LABEL[p.to] || p.to}`;
     default: return row.action;
   }
+}
+
+function historyTone(row) {
+  if (row.action === 'declined' || row.action === 'forced') return 'bad';
+  if (row.action === 'moved' || row.action === 'extended' || row.action === 'proposed_date') return 'warn';
+  if (row.action === 'planned' || row.action === 'accepted_date') return 'ok';
+  if (row.action === 'status_changed') {
+    if (row.payload?.to === 'done') return 'ok';
+    if (row.payload?.to === 'review') return 'violet';
+    return 'info';
+  }
+  if (row.action === 'split') return 'violet';
+  return 'info';
 }
 
 export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
@@ -103,21 +117,14 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
   const isAuthor = task.authorId === ctx.me?.id;
 
   return (
-    <div className="tsk-mask" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="tsk-modal">
+    <div className="tsk-mask tsk-task-card-mask" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="tsk-modal tsk-task-card-modal">
         <div className="tsk-modal-head">
           <div className="tsk-modal-title">{task.title}</div>
           <button className="tsk-x" onClick={onClose}>×</button>
         </div>
 
-        <div className="tsk-modal-body">
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
-            {task.project && <Badge tone="info">{task.project.name}</Badge>}
-            <Badge tone={task.mode === 'single' ? 'muted' : 'violet'}>{MODE_LABEL[task.mode]}</Badge>
-            <Badge tone="muted">{hoursText(task.totalEffortHours)} трудозатрат</Badge>
-            <Badge tone={STATUS_TONE[task.status]}>{STATUS_LABEL[task.status]}</Badge>
-          </div>
-
+        <div className="tsk-modal-body tsk-task-card-body">
           <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text-secondary)' }}>
             <div>
               Автор
@@ -137,7 +144,7 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
           {task.description && (
             <>
               <div className="tsk-sect">Описание</div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
+              <div className="tsk-task-card-description">
                 {task.description}
               </div>
             </>
@@ -219,52 +226,52 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                 )}
 
                 {mine && part.status !== 'stuck' && (
-                  <div className="tsk-acts" style={{ marginTop: 10 }}>
+                  <div className="tsk-part-actions">
                     {!mine.plannedDate ? (
-                      <button className="tsk-btn is-sm is-primary" disabled={busy}
+                      <button className="tsk-part-action is-plan" disabled={busy}
                         onClick={() => act(
                           () => api.planPart(part.id, String(part.dueDate)),
                           `В плане на ${dfull(String(part.dueDate))}`
                         )}>
-                        Взять в план
+                        <CalendarClock size={15} />Взять в план
                       </button>
                     ) : (
                       <>
                         {part.status !== 'done' && (
-                          <button className="tsk-btn is-sm" disabled={busy}
+                          <button className="tsk-part-action is-complete" disabled={busy}
                             onClick={() => act(() => api.setPartStatus(part.id, 'done'),
                               'Завершено. Время освободилось — день пересчитан')}>
-                            Завершить
+                            <CheckCircle2 size={15} />Завершить
                           </button>
                         )}
                         {part.status !== 'done' && (
-                          <button className="tsk-btn is-sm" disabled={busy}
+                          <button className="tsk-part-action" disabled={busy}
                             onClick={() => act(
                               () => api.extendPart(part.id, 0.5),
                               'Задача продлена на 30 минут — загрузка пересчитана'
                             )}>
-                            + 30 мин
+                            <Clock3 size={15} />Продлить
                           </button>
                         )}
                         {part.status !== 'done' && (
-                          <button className="tsk-btn is-sm" disabled={busy}
+                          <button className="tsk-part-action" disabled={busy}
                             onClick={() => {
                               setMovingPart(part.id);
                               setMoveDate(String(mine.plannedDate || part.dueDate));
                             }}>
-                            Перенести
+                            <CalendarClock size={15} />Перенести
                           </button>
                         )}
                         {part.status !== 'review' && part.status !== 'done' && (
-                          <button className="tsk-btn is-sm" disabled={busy}
+                          <button className="tsk-part-action is-review" disabled={busy}
                             onClick={() => act(() => api.setPartStatus(part.id, 'review'), 'Отправлено на проверку')}>
-                            На проверку
+                            <ClipboardCheck size={15} />На проверку
                           </button>
                         )}
                         {part.status === 'done' && (
-                          <button className="tsk-btn is-sm" disabled={busy}
+                          <button className="tsk-part-action" disabled={busy}
                             onClick={() => act(() => api.setPartStatus(part.id, 'work'), 'Возвращено в работу')}>
-                            Вернуть в работу
+                            <RotateCcw size={15} />Вернуть в работу
                           </button>
                         )}
                       </>
@@ -308,27 +315,27 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
           )}
 
           <div className="tsk-sect">История</div>
-          <div className="tsk-hist" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+          <div className="tsk-card-history">
             {!task.history?.length ? (
-              <div className="tsk-hist-row">Срок назначен односторонне и не пересматривался.</div>
+              <div className="tsk-card-history-empty">История пока пуста.</div>
             ) : task.history.map(row => (
-              <div className="tsk-hist-row" key={row.id}>
-                <b>{userName(row.user)}</b>
-                <span>{historyText(row)}</span>
-                <span className="tsk-hist-when">
-                  {new Date(row.createdAt).toLocaleString('ru-RU', {
-                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                  })}
-                </span>
+              <div className={`tsk-card-history-row is-${historyTone(row)}`} key={row.id}>
+                <div className="tsk-card-history-rail"><i /></div>
+                <div className="tsk-card-history-content">
+                  <div className="tsk-card-history-head">
+                    <b>{userName(row.user)}</b>
+                    <time>{new Date(row.createdAt).toLocaleString('ru-RU', {
+                      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })}</time>
+                  </div>
+                  <div>{historyText(row)}</div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="tsk-modal-foot">
-          <div className="tsk-modal-hint">
-            Срок — согласование, а не поле. Поэтому у него есть история.
-          </div>
+        <div className="tsk-modal-foot tsk-task-card-foot">
           <div className="tsk-modal-btns">
             {isAuthor && <button className="tsk-btn is-danger" onClick={cancel}>Отменить</button>}
             <button className="tsk-btn" onClick={onClose}>Закрыть</button>
@@ -341,25 +348,35 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
 
 function TaskScheme({ task }) {
   const deps = task.deps || [];
+  const parts = [...(task.parts || [])].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
   return (
-    <div className="tsk-scheme is-card">
-      {(task.parts || []).map((part, index) => {
+    <div className="tsk-card-scheme">
+      {parts.map((part, index) => {
         const after = deps
           .filter(dep => dep.partId === part.id)
-          .map(dep => task.parts.find(p => p.id === dep.afterPartId)?.title)
+          .map(dep => parts.find(p => p.id === dep.afterPartId)?.title)
           .filter(Boolean);
         return (
-          <React.Fragment key={part.id}>
-            {index > 0 && <div className="tsk-scheme-arrow">→</div>}
-            <div className={`tsk-scheme-node ${part.assignees?.length > 1 ? 'is-shared' : ''}`}>
-              <div className="tsk-scheme-title">{part.title}</div>
-              <div className="tsk-scheme-meta">
-                {(part.assignees || []).map(a => userName(a.user)).join(', ')}
-                {' · '}{estimateText(part.estimateHours)}
-              </div>
-              {!!after.length && <div className="tsk-scheme-deps">после: {after.join(', ')}</div>}
+          <div className="tsk-card-scheme-row" key={part.id}>
+            <div className="tsk-card-scheme-rail">
+              <span>{index + 1}</span>
+              {index < parts.length - 1 && <i />}
             </div>
-          </React.Fragment>
+            <div className={`tsk-card-scheme-node is-${part.status}`}>
+              <div className="tsk-card-scheme-head">
+                <b>{part.title}</b>
+                <span>{STATUS_LABEL[part.status]}</span>
+              </div>
+              <div className="tsk-card-scheme-meta">
+                <AvatarStack users={(part.assignees || []).map(a => a.user).filter(Boolean)} size={18} />
+                <span>{(part.assignees || []).map(a => userName(a.user)).join(', ')}</span>
+                <em>{estimateText(part.estimateHours)}</em>
+              </div>
+              {!!after.length && <div className="tsk-card-scheme-deps">
+                <span>После</span>{after.map(title => <b key={title}>{title}</b>)}
+              </div>}
+            </div>
+          </div>
         );
       })}
     </div>

@@ -65,5 +65,7 @@ router.use('/reports',    require('./reports'));
 router.use('/analytics',  require('./analytics'));
 router.use('/permissions', require('./permissions'));
 router.use('/osv',        require('./osv'));
+router.use('/item-rules', require('./itemRules'));
+router.use('/placements', require('./placements'));
 
 module.exports = router;

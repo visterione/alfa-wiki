@@ -1,10 +1,8 @@
 /**
- * Люди и нормы.
+ * Люди и рабочие расписания.
  *
- * Норма рабочего дня правится здесь и действует сразу: пересчитываются все дни,
- * цвета и проверка при постановке задач. Каждое изменение пишется в
- * TaskNormChange — это разговор между руководителем и человеком, а не тихая
- * настройка, и в интерфейсе должно быть видно, кому норму меняли.
+ * Расписание действует сразу: пересчитываются дни, цвета и проверка при
+ * постановке задач. Изменения сохраняются в истории.
  */
 
 const express = require('express');
@@ -12,12 +10,13 @@ const router = express.Router();
 const { Op } = require('sequelize');
 
 const { authenticate } = require('../../middleware/auth');
-const { User, TaskNormChange, CalendarEvent } = require('../../models');
+const { User, TaskScheduleChange, CalendarEvent } = require('../../models');
 const context = require('../../services/tasks/context');
 const teams = require('../../services/tasks/teams');
 const loadQuery = require('../../services/tasks/loadQuery');
 const workload = require('../../services/tasks/workload');
 const eventVisibility = require('../../services/tasks/visibility');
+const schedule = require('../../services/tasks/schedule');
 
 /**
  * Люди в области видимости запрашивающего.
@@ -33,7 +32,7 @@ router.get('/', authenticate, async (req, res) => {
     const scope = teams.peopleInScope(all, req.user.id, req.user.isAdmin, { medCenterId, teamId });
 
     const users = await User.findAll({
-      attributes: ['id', 'displayName', 'username', 'avatar', 'dailyNormHours'],
+      attributes: ['id', 'displayName', 'username', 'avatar', 'taskWorkSchedule'],
       where: { id: scope },
       raw: true,
     });
@@ -55,7 +54,8 @@ router.get('/', authenticate, async (req, res) => {
 
     res.json(users.map(u => ({
       ...u,
-      dailyNormHours: u.dailyNormHours === null ? null : Number(u.dailyNormHours),
+      workSchedule: u.taskWorkSchedule,
+      weeklyHours: schedule.weeklyHours(u.taskWorkSchedule),
       teams: all
         .filter(t => teams.isMember(t, u.id) && teams.canSeeTeam(t, req.user.id, req.user.isAdmin))
         .map(t => ({ id: t.id, name: t.name })),
@@ -130,10 +130,12 @@ router.get('/:id/slots', authenticate, async (req, res) => {
       raw: true,
     });
 
+    const user = await User.findByPk(req.params.id, { attributes: ['taskWorkSchedule'], raw: true });
+    const workDay = schedule.forDate(user?.taskWorkSchedule, date);
     const slots = events
       .filter(event => eventVisibility.countsAsBusyFor(event, viewer))
       .map(event => ({ startTime: event.startTime, endTime: event.endTime }));
-    res.json({ userId: req.params.id, date, slots });
+    res.json({ userId: req.params.id, date, slots, workDay });
   } catch (error) {
     console.error('Занятые интервалы человека:', error);
     res.status(500).json({ error: 'Не удалось получить занятые интервалы' });
@@ -141,50 +143,51 @@ router.get('/:id/slots', authenticate, async (req, res) => {
 });
 
 /**
- * Изменение нормы.
+ * Изменение недельного расписания.
  *
- * Себе — можно всегда: это своя оценка того, сколько часов в день реально
- * уходит на задачи. Чужую меняет только руководитель общей команды или
+ * Себе — можно всегда. Норма дня вычисляется из границ смены; чужое расписание
+ * меняет только руководитель общей команды или
  * администратор.
  */
-router.put('/:id/norm', authenticate, async (req, res) => {
+router.put('/:id/schedule', authenticate, async (req, res) => {
   try {
-    const value = req.body.dailyNormHours;
-    const norm = value === null || value === '' ? null : Number(value);
-    if (norm !== null && (!Number.isFinite(norm) || norm <= 0 || norm > 24)) {
-      return res.status(400).json({ error: 'Норма должна быть от 0 до 24 часов' });
+    if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'workSchedule')) {
+      return res.status(400).json({ error: 'Передайте workSchedule или null' });
     }
+    let value;
+    try { value = schedule.normalizeSchedule(req.body.workSchedule); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
 
     if (req.params.id !== req.user.id) {
       const all = await context.loadTeams();
       if (!teams.canEditNorm(all, req.user.id, req.params.id, req.user.isAdmin)) {
-        return res.status(403).json({ error: 'Менять чужую норму может руководитель команды' });
+        return res.status(403).json({ error: 'Менять чужое расписание может руководитель команды' });
       }
     }
 
-    const user = await User.findByPk(req.params.id, { attributes: ['id', 'dailyNormHours'] });
+    const user = await User.findByPk(req.params.id, { attributes: ['id', 'taskWorkSchedule'] });
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    const oldValue = user.dailyNormHours === null ? null : Number(user.dailyNormHours);
-    await user.update({ dailyNormHours: norm });
-    await TaskNormChange.create({
+    const oldValue = user.taskWorkSchedule;
+    await user.update({ taskWorkSchedule: value });
+    await TaskScheduleChange.create({
       userId: user.id,
-      oldValue,
-      newValue: norm,
+      oldSchedule: oldValue,
+      newSchedule: value,
       changedBy: req.user.id,
     });
 
-    res.json({ userId: user.id, dailyNormHours: norm, previous: oldValue });
+    res.json({ userId: user.id, workSchedule: value, weeklyHours: schedule.weeklyHours(value), previous: oldValue });
   } catch (error) {
-    console.error('Изменение нормы:', error);
-    res.status(500).json({ error: 'Не удалось изменить норму' });
+    console.error('Изменение расписания:', error);
+    res.status(500).json({ error: 'Не удалось изменить расписание' });
   }
 });
 
-/** История изменений нормы — чтобы правка не выглядела появившейся сама собой. */
-router.get('/:id/norm/history', authenticate, async (req, res) => {
+/** История изменений расписания. */
+router.get('/:id/schedule/history', authenticate, async (req, res) => {
   try {
-    const rows = await TaskNormChange.findAll({
+    const rows = await TaskScheduleChange.findAll({
       where: { userId: req.params.id },
       include: [{ model: User, as: 'changedByUser', attributes: ['id', 'displayName', 'username'], required: false }],
       order: [['createdAt', 'DESC']],
@@ -192,7 +195,7 @@ router.get('/:id/norm/history', authenticate, async (req, res) => {
     });
     res.json(rows);
   } catch (error) {
-    console.error('История нормы:', error);
+    console.error('История расписания:', error);
     res.status(500).json({ error: 'Не удалось получить историю' });
   }
 });

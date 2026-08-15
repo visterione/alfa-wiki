@@ -26,6 +26,7 @@ const partsService = require('../../services/tasks/parts');
 const planning = require('../../services/tasks/planning');
 const loadQuery = require('../../services/tasks/loadQuery');
 const workload = require('../../services/tasks/workload');
+const scheduleService = require('../../services/tasks/schedule');
 const notificationService = require('../../services/notificationService');
 
 const USER_FIELDS = ['id', 'displayName', 'username', 'avatar'];
@@ -143,7 +144,6 @@ router.get('/inbox', authenticate, async (req, res) => {
 
     // Оценка помещаемости на предложенный срок — то, ради чего экран и нужен.
     const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
-    const norm = req.user.dailyNormHours === null ? null : Number(req.user.dailyNormHours);
     const withFit = [];
     for (const part of ready) {
       const date = String(part.dueDate);
@@ -153,9 +153,10 @@ router.get('/inbox', authenticate, async (req, res) => {
         ...part.get({ plain: true }),
         assessment: planning.assessAssignment({
           currentHours: today.hours || 0,
-          norm,
+          norm: today.norm ?? null,
           estimateHours: Number(part.estimateHours),
           onVacation: today.onVacation,
+          onDayOff: today.onDayOff,
         }),
       });
     }
@@ -323,9 +324,21 @@ router.post('/', authenticate, async (req, res) => {
           norm: dayInfo?.norm ?? null,
           estimateHours: Number(part.estimateHours || 0),
           onVacation: dayInfo?.onVacation,
+          onDayOff: dayInfo?.onDayOff,
         });
         if (!assessment.fits) overloads.push({ userId, dueDate: date, ...assessment });
       }
+    }
+
+    const unavailable = overloads.filter(item => ['vacation', 'day_off', 'no_norm'].includes(item.reason));
+    if (unavailable.length) {
+      return res.status(409).json({
+        error: unavailable.some(item => item.reason === 'no_norm')
+          ? 'У одного из исполнителей не настроено рабочее расписание'
+          : 'Срок попадает на отпуск или выходной исполнителя',
+        overloads: unavailable,
+        requiresDateChange: true,
+      });
     }
 
     let forced = null;
@@ -397,7 +410,8 @@ router.post('/', authenticate, async (req, res) => {
           raw: true,
           transaction,
         });
-        const slot = planning.nextFloatingSlot(existing, date, Number(part.estimateHours));
+        const workDay = scheduleService.forDate(req.user.taskWorkSchedule, date);
+        const slot = planning.nextFloatingSlot(existing, date, Number(part.estimateHours), workDay.start);
         await CalendarEvent.create({
           title: part.title,
           startTime: slot.startTime,
@@ -500,7 +514,15 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
       norm: dayInfo?.norm ?? null,
       estimateHours: Number(part.estimateHours),
       onVacation: dayInfo?.onVacation,
+      onDayOff: dayInfo?.onDayOff,
     });
+
+    if (['vacation', 'day_off', 'no_norm'].includes(assessment.reason)) {
+      const error = assessment.reason === 'vacation' ? 'На этот день запланирован отпуск'
+        : assessment.reason === 'day_off' ? 'Этот день не входит в рабочее расписание'
+          : 'Сначала настройте рабочее расписание';
+      return res.status(409).json({ error, assessment });
+    }
 
     // Взять сверх нормы можно — это своё решение исполнителя, а не обход
     // чужого. Но автор увидит, что человек ушёл в переработку.
@@ -520,7 +542,7 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
         transaction,
       });
 
-      const slot = planning.nextFloatingSlot(existing, date, Number(part.estimateHours));
+      const slot = planning.nextFloatingSlot(existing, date, Number(part.estimateHours), dayInfo?.workStart);
       await CalendarEvent.create({
         title: part.title,
         startTime: slot.startTime,
@@ -693,6 +715,9 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
 
     const date = String(req.body.date || '');
     if (!date) return res.status(400).json({ error: 'Нужен новый день' });
+    const [dayInfo] = await loadQuery.daysOf(req.user.id, date, date, { id: req.user.id, isAdmin: req.user.isAdmin });
+    if (dayInfo?.onVacation) return res.status(409).json({ error: 'На этот день запланирован отпуск' });
+    if (dayInfo?.onDayOff || dayInfo?.norm === null) return res.status(409).json({ error: 'Этот день не входит в рабочее расписание' });
 
     const next = planning.afterMove(part);
     await sequelize.transaction(async transaction => {
@@ -707,7 +732,7 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
         raw: true,
         transaction,
       });
-      const slot = planning.nextFloatingSlot(existing, date, Number(part.estimateHours));
+      const slot = planning.nextFloatingSlot(existing, date, Number(part.estimateHours), dayInfo?.workStart);
 
       await CalendarEvent.update(
         { startTime: slot.startTime, endTime: slot.endTime, dayOrder: slot.dayOrder },
@@ -866,8 +891,10 @@ router.put('/parts/:id/status', authenticate, async (req, res) => {
       const was = part.status;
       await part.update({ status }, { transaction });
 
-      // Готовая работа освобождает время сразу: блок помечается завершённым, и
-      // часы возвращаются в свободные в тот же момент, а не в конце дня.
+      // Блок в календаре помечается завершённым, чтобы дело читалось как
+      // сделанное, а не висело наравне с невыполненным. Часы при этом остаются
+      // потраченными: время на работу ушло, и возвращать его в свободные —
+      // значит показывать закрытый день пустым и снова ставить на него задачи.
       if (status === partsService.STATUS.DONE) {
         await CalendarEvent.update(
           { status: 'completed' },

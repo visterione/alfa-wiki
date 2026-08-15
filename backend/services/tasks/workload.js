@@ -17,7 +17,7 @@ const { countsAsBusyFor } = require('./visibility');
 const TIGHT_RATIO = 0.85;
 
 /** Цвета: g — есть запас, y — плотно, r — переработка, v — отпуск. */
-const COLORS = { FREE: 'g', TIGHT: 'y', OVER: 'r', VACATION: 'v' };
+const COLORS = { FREE: 'g', TIGHT: 'y', OVER: 'r', VACATION: 'v', OFF: 'o' };
 
 /** Длительность события в часах. */
 function hoursOf(event) {
@@ -39,14 +39,34 @@ function hoursOf(event) {
  * Для самого владельца считаются все события: он планирует свой настоящий день,
  * а не тот, который видят коллеги.
  *
- * Завершённые события из загрузки выпадают: освободившееся время возвращается
- * в свободное сразу, а не в конце дня.
+ * Завершённое дело из часов не выпадает: работа сделана, значит время на неё
+ * потрачено. Раньше оно освобождало день сразу — и человек, закрывший все свои
+ * восемь часов, видел день снова пустым, а руководитель считал его свободным.
+ * Отменённое, наоборот, не считается никогда: его не делали.
  */
 function busyHours(events, viewer) {
   if (!Array.isArray(events)) return 0;
   let sum = 0;
   for (const event of events) {
-    if (event.status === 'completed' || event.status === 'cancelled') continue;
+    if (event.status === 'cancelled') continue;
+    if (!countsAsBusyFor(event, viewer)) continue;
+    sum += hoursOf(event);
+  }
+  return round(sum);
+}
+
+/**
+ * Из них уже отработано.
+ *
+ * Отдельным числом, потому что «8 из 8 и всё сделано» и «8 из 8 и ничего не
+ * начато» — это разные дни при одинаковых часах. Наружу уходит одна цифра, а не
+ * состав дел: содержание по-прежнему остаётся в календаре.
+ */
+function doneHours(events, viewer) {
+  if (!Array.isArray(events)) return 0;
+  let sum = 0;
+  for (const event of events) {
+    if (event.status !== 'completed') continue;
     if (!countsAsBusyFor(event, viewer)) continue;
     sum += hoursOf(event);
   }
@@ -56,9 +76,9 @@ function busyHours(events, viewer) {
 /**
  * Загрузка дня целиком.
  *
- * norm === null означает, что человек в модуле не заведён; отпуск передаётся
- * отдельным признаком, потому что это не «ноль часов», а «в этот день задачи
- * не ставятся вовсе».
+ * norm === null означает, что человек в модуле не заведён. Отпуск и выходной
+ * передаются отдельными признаками: в оба дня задачи не ставятся, но причины
+ * и отображение у них разные.
  */
 /**
  * Часы дня: либо считаются из событий, либо берутся готовыми.
@@ -73,22 +93,33 @@ function resolveHours(day, viewer) {
   return busyHours(day.events, viewer);
 }
 
-function dayLoad({ events, hours: given, norm, onVacation = false, viewer = null }) {
+/** То же для отработанных часов: посчитанный день несёт их готовым числом. */
+function resolveDone(day, viewer) {
+  if (typeof day.done === 'number') return day.done;
+  return doneHours(day.events, viewer);
+}
+
+function dayLoad({ events, hours: given, done: doneGiven, norm, onVacation = false, onDayOff = false, viewer = null }) {
   if (onVacation) {
-    return { hours: null, norm, free: 0, ratio: null, color: COLORS.VACATION, onVacation: true };
+    return { hours: null, done: 0, norm, free: 0, ratio: null, color: COLORS.VACATION, onVacation: true, onDayOff: false };
   }
   const hours = resolveHours({ events, hours: given }, viewer);
+  const done = resolveDone({ events, done: doneGiven }, viewer);
+  if (onDayOff) {
+    return { hours, done, norm: 0, free: 0, ratio: null, color: COLORS.OFF, onVacation: false, onDayOff: true };
+  }
   if (!norm || norm <= 0) {
-    return { hours, norm: null, free: 0, ratio: null, color: COLORS.FREE, onVacation: false };
+    return { hours, done, norm: null, free: 0, ratio: null, color: COLORS.FREE, onVacation: false, onDayOff: false };
   }
   const ratio = hours / norm;
   return {
     hours,
+    done,
     norm: round(norm),
     free: round(Math.max(0, norm - hours)),
     ratio: round(ratio),
     color: colorOf(ratio),
-    onVacation: false,
+    onVacation: false, onDayOff: false,
   };
 }
 
@@ -110,8 +141,8 @@ function colorOf(ratio) {
  * помещается — задача уходит исполнителю обычным порядком, не помещается —
  * автор обязан выбрать, что изменится.
  */
-function fits({ events, hours, norm, estimateHours, onVacation = false, viewer = null }) {
-  if (onVacation) return false;
+function fits({ events, hours, norm, estimateHours, onVacation = false, onDayOff = false, viewer = null }) {
+  if (onVacation || onDayOff) return false;
   if (!norm || norm <= 0) return false;
   return resolveHours({ events, hours }, viewer) + estimateHours <= norm + 1e-9;
 }
@@ -171,7 +202,7 @@ function teamLoad(memberDays, viewer = null) {
   let over = 0;
   for (const day of memberDays || []) {
     const result = dayLoad({ ...day, viewer });
-    if (result.onVacation || !result.norm) continue;
+    if (result.onVacation || result.onDayOff || !result.norm) continue;
     load += result.hours;
     capacity += result.norm;
     if (result.color === COLORS.OVER) over += 1;
@@ -194,7 +225,9 @@ module.exports = {
   COLORS,
   hoursOf,
   busyHours,
+  doneHours,
   resolveHours,
+  resolveDone,
   dayLoad,
   colorOf,
   fits,

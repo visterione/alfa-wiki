@@ -9,10 +9,19 @@
 import React, { useState } from 'react';
 import {
   weekOf, monthGrid, addDays, addMonths, dstr, monthTitle,
-  hoursText, DOW, dow, isWeekend, today, fromKey,
+  hoursText, DOW, dow, today, fromKey,
 } from '../utils/dates';
 import { usePersonLoad, useEvents, dayEvents } from '../utils/useLoad';
 import { LoadBar, Note, Empty } from './Bits';
+import PeriodControl from './PeriodControl';
+
+/**
+ * Выполненное дело остаётся в дне и в часах, но помечается сделанным.
+ *
+ * Иначе закрытая задача висит в клетке ровно так же, как невыполненная, и
+ * человек утром гадает, доделал он её или нет.
+ */
+const isDone = event => event.status === 'completed';
 
 export default function Chart({ ctx }) {
   const { me, cursor, setCursor, go } = ctx;
@@ -32,23 +41,20 @@ export default function Chart({ ctx }) {
 
   const openDay = date => { setCursor(date); go('myday'); };
 
-  const overloaded = load.filter(d => d.color === 'r' && !isWeekend(d.date)).length;
-  const free = load.filter(d => !isWeekend(d.date)).reduce((s, d) => s + (d.free || 0), 0);
+  const overloaded = load.filter(d => d.color === 'r' && !d.onDayOff).length;
+  const free = load.filter(d => !d.onDayOff).reduce((s, d) => s + (d.free || 0), 0);
 
   return (
     <>
-      <div className="tsk-ctl">
-        <div className="tsk-seg">
-          <button className={view === 'week' ? 'is-on' : ''} onClick={() => setView('week')}>Неделя</button>
-          <button className={view === 'month' ? 'is-on' : ''} onClick={() => setView('month')}>Месяц</button>
-        </div>
-        <button className="tsk-arrow" onClick={() => shift(true)}>←</button>
-        <span className="tsk-ctl-period">
-          {view === 'week' ? `${dstr(days[0])} — ${dstr(days[6])}` : monthTitle(cursor)}
-        </span>
-        <button className="tsk-arrow" onClick={() => shift(false)}>→</button>
-        <button className="tsk-btn is-sm" onClick={() => setCursor(today())}>Сегодня</button>
-      </div>
+      <PeriodControl
+        views={[["week", "Неделя"], ["month", "Месяц"]]}
+        view={view}
+        onView={setView}
+        label={view === 'week' ? `${dstr(days[0])} — ${dstr(days[6])}` : monthTitle(cursor)}
+        onPrevious={() => shift(true)}
+        onNext={() => shift(false)}
+        onToday={() => setCursor(today())}
+      />
 
       {view === 'week' ? (
         <div className="tsk-week">
@@ -58,17 +64,21 @@ export default function Chart({ ctx }) {
             return (
               <div
                 key={date}
-                className={`tsk-day ${isWeekend(date) ? 'is-weekend' : ''} ${date === today() ? 'is-today' : ''}`}
+                className={`tsk-day ${d.onDayOff ? 'is-weekend' : ''} ${date === today() ? 'is-today' : ''}`}
                 onClick={() => openDay(date)}
               >
                 <div className="tsk-day-name">{DOW[dow(date)]}, {fromKey(date).getDate()}</div>
                 <div className="tsk-day-hours" style={{ color: d.color === 'r' ? 'var(--error)' : d.color === 'y' ? 'var(--warning)' : undefined }}>
-                  {d.onVacation ? '—' : hoursText(d.hours)}
+                  {d.onVacation ? 'отпуск' : d.onDayOff ? 'выходной' : hoursText(d.hours)}
                 </div>
                 <LoadBar {...d} compact />
                 <div style={{ marginTop: 9 }}>
                   {list.slice(0, 4).map(e => (
-                    <div key={e.id} className={`tsk-chip-ev ${e.isOpaque ? 'is-opaque' : ''} ${e.eventType === 'meeting' ? 'is-meeting' : ''}`}>
+                    <div
+                      key={e.id}
+                      className={`tsk-chip-ev ${e.isOpaque ? 'is-opaque' : ''} ${e.eventType === 'meeting' ? 'is-meeting' : ''} ${isDone(e) ? 'is-done' : ''}`}
+                      title={e.isOpaque ? 'Занято' : e.title}
+                    >
                       {e.isOpaque ? 'Занято' : e.title}
                     </div>
                   ))}
@@ -91,7 +101,7 @@ export default function Chart({ ctx }) {
               return (
                 <div
                   key={date}
-                  className={`tsk-mcell ${isWeekend(date) ? 'is-weekend' : ''} ${date === today() ? 'is-today' : ''}`}
+                  className={`tsk-mcell ${d.onDayOff ? 'is-weekend' : ''} ${date === today() ? 'is-today' : ''}`}
                   onClick={() => openDay(date)}
                 >
                   <div className="tsk-mcell-top">
@@ -102,7 +112,12 @@ export default function Chart({ ctx }) {
                   </div>
                   <div style={{ margin: '5px 0' }}><LoadBar {...d} compact /></div>
                   {list.slice(0, 2).map(e => (
-                    <div key={e.id} className={`tsk-chip-ev ${e.isOpaque ? 'is-opaque' : ''}`} style={{ fontSize: 10, padding: '2px 5px' }}>
+                    <div
+                      key={e.id}
+                      className={`tsk-chip-ev ${e.isOpaque ? 'is-opaque' : ''} ${isDone(e) ? 'is-done' : ''}`}
+                      style={{ fontSize: 10, padding: '2px 5px' }}
+                      title={e.isOpaque ? 'Занято' : e.title}
+                    >
                       {e.isOpaque ? 'Занято' : e.title}
                     </div>
                   ))}
@@ -113,13 +128,6 @@ export default function Chart({ ctx }) {
           {!load.length && <Empty compact>Загружаем загрузку месяца…</Empty>}
         </>
       )}
-
-      <div className="tsk-legend">
-        <span><i style={{ background: 'var(--success)' }} />есть запас</span>
-        <span><i style={{ background: 'var(--warning)' }} />плотно, от 85% нормы</span>
-        <span><i style={{ background: 'var(--error)' }} />переработка</span>
-        <span><span className="dash" />ваша норма дня</span>
-      </div>
 
       <Note>
         {overloaded > 0

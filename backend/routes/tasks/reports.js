@@ -63,7 +63,7 @@ router.get('/', authenticate, async (req, res) => {
     const stuckParts = parts.filter(p => p.status === partsService.STATUS.STUCK).length;
 
     const users = await User.findAll({
-      attributes: ['id', 'displayName', 'username', 'avatar', 'dailyNormHours'],
+      attributes: ['id', 'displayName', 'username', 'avatar', 'taskWorkSchedule'],
       where: { id: scope },
       raw: true,
     });
@@ -75,7 +75,7 @@ router.get('/', authenticate, async (req, res) => {
       let free = 0;
       let over = 0;
       for (const [, load] of perDay) {
-        if (load.onVacation || load.norm === null) continue;
+        if (load.onVacation || load.onDayOff || load.norm === null) continue;
         free += load.free;
         if (load.color === workload.COLORS.OVER) over += 1;
       }
@@ -99,7 +99,7 @@ router.get('/', authenticate, async (req, res) => {
         const perDay = matrix.get(userId);
         if (!perDay) continue;
         for (const [, load] of perDay) {
-          if (load.onVacation || load.norm === null) continue;
+          if (load.onVacation || load.onDayOff || load.norm === null) continue;
           hours += load.hours;
           capacity += load.norm;
         }

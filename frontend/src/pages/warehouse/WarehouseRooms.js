@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import {
   Search, X, ChevronRight, ChevronDown, Maximize2, Minimize2, Settings2,
-  Layers, Building2,
+  Layers, Building2, Import, Info, Check,
 } from 'lucide-react';
+import { warehouseApi } from '../../services/api';
 import RoomSettings from '../../components/warehouse/RoomSettings';
 
 /**
@@ -32,10 +34,13 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
   const [depId, setDepId] = useState('');
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [settingsRoom, setSettingsRoom] = useState(null);
+  const [fromMis, setFromMis] = useState(null);
 
   // Настройка кабинета требует того же права, что и выдача материалов: МОЛ и
   // места хранения — это операционные данные, а не структура сети.
   const canSetup = Boolean(access?.capabilities?.canIssue);
+  // А заведение самих кабинетов — это уже структура, и право на неё отдельное.
+  const canEditLocations = Boolean(access?.capabilities?.canEditLocations);
 
   const departments = tree?.departments || [];
   const depById = useMemo(() => new Map(departments.map(d => [d.id, d])), [departments]);
@@ -148,6 +153,14 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
           <button className="wh-btn wh-btn--secondary"
                   onClick={() => { setQ(''); setMcId(''); setDepId(''); }}>
             <X size={14} /> Сбросить
+          </button>
+        )}
+
+        {/* Кабинетов в сети около сотни, и набирать их с клавиатуры незачем:
+            в МИС уже есть перечень тех, в которых реально ведётся приём. */}
+        {canEditLocations && (
+          <button className="wh-btn wh-btn--secondary" onClick={() => setFromMis({})}>
+            <Import size={14} /> Завести из МИС
           </button>
         )}
 
@@ -266,6 +279,200 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
                       onClose={() => setSettingsRoom(null)}
                       onSaved={onReloadTree} />
       )}
+
+      {fromMis && (
+        <RoomsFromMis
+          tree={tree} departments={departments}
+          onClose={() => setFromMis(null)}
+          onCreated={async () => { setFromMis(null); await onReloadTree?.(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Завести кабинеты по списку из МИС.
+ *
+ * ── Что здесь происходит и чего не происходит ────────────────────────────────
+ *
+ * Из МИС берётся ровно одно: перечень названий кабинетов, в которых реально
+ * ведётся приём. Портал НЕ решает, какой строке ведомости соответствует какой
+ * кабинет — это разные задачи, и привязку имущества человек делает сам на экране
+ * размещения. Здесь просто не набирают сотню названий с клавиатуры.
+ *
+ * ── Почему нужно выбрать этаж ────────────────────────────────────────────────
+ *
+ * В МИС у кабинета нет ни корпуса, ни этажа — только строка названия. Угадать их
+ * неоткуда, поэтому человек указывает, куда складывать пачку, и при
+ * необходимости повторяет для другого этажа. Уже заведённые кабинеты
+ * пропускаются, так что повторный запуск безопасен.
+ */
+function RoomsFromMis({ tree, departments, onClose, onCreated }) {
+  const [mcId, setMcId] = useState(tree?.medCenters?.[0]?.id || '');
+  const [floorId, setFloorId] = useState('');
+  const [depId, setDepId] = useState('');
+  const [rows, setRows] = useState(null);
+  const [picked, setPicked] = useState(() => new Set());
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const floors = useMemo(() => {
+    const mc = (tree?.medCenters || []).find(m => m.id === mcId);
+    const out = [];
+    for (const b of mc?.buildings || []) {
+      for (const f of b.floors || []) {
+        out.push({ id: f.id, label: `${b.name} · ${f.name || `${f.number} этаж`}` });
+      }
+    }
+    return out;
+  }, [tree, mcId]);
+
+  useEffect(() => {
+    if (!mcId) { setRows(null); return; }
+    setLoading(true);
+    warehouseApi.misRoomSuggestions({ medCenterId: mcId })
+      .then(({ data }) => {
+        setRows(data.rooms || []);
+        // Сразу отмечаем те, которых в портале ещё нет: это и есть работа,
+        // остальное человек снимает вручную, если что-то заводить не надо.
+        setPicked(new Set((data.rooms || []).filter(r => !r.matched).map(r => r.room)));
+      })
+      .catch(e => {
+        toast.error(e.response?.data?.error || 'МИС не отдал список кабинетов');
+        setRows([]);
+      })
+      .finally(() => setLoading(false));
+  }, [mcId]);
+
+  const toggle = (name) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+
+  const submit = async () => {
+    if (!floorId) return toast.error('Выберите этаж, на котором завести кабинеты');
+    if (!picked.size) return toast.error('Не выбрано ни одного кабинета');
+    setSaving(true);
+    try {
+      const { data } = await warehouseApi.createRoomsFromMis({
+        floorId, departmentId: depId || null, rooms: [...picked],
+      });
+      toast.success(
+        `Заведено кабинетов: ${data.created}`
+        + (data.skipped ? `, пропущено уже существующих: ${data.skipped}` : ''),
+      );
+      await onCreated();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось завести кабинеты');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fresh = (rows || []).filter(r => !r.matched);
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box wh-modal__box--wide" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div className="wh-modal__title">Завести кабинеты из МИС</div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-note wh-note--subtle">
+            <Info size={15} />
+            <div>
+              Список — кабинеты, в которых за последние полгода был приём. Вместе
+              с кабинетом создаётся место хранения: без него в кабинет нельзя ни
+              разместить имущество, ни выдать материалы. Название попадает и в
+              номер, и в сопоставление с МИС.
+            </div>
+          </div>
+
+          <div className="wh-form">
+            <div className="wh-form__row2">
+              <label>Медцентр
+                <select value={mcId} onChange={e => { setMcId(e.target.value); setFloorId(''); }}>
+                  <option value="">Выберите…</option>
+                  {(tree?.medCenters || []).map(mc => (
+                    <option key={mc.id} value={mc.id}>{mc.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>Этаж <b className="wh-req">*</b>
+                <select value={floorId} onChange={e => setFloorId(e.target.value)}>
+                  <option value="">Выберите…</option>
+                  {floors.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <label>Отделение (необязательно)
+              <select value={depId} onChange={e => setDepId(e.target.value)}>
+                <option value="">— не задавать —</option>
+                {departments.filter(d => !mcId || d.medCenterId === mcId)
+                  .map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <span className="wh-hint">
+                Код специальности отделения попадёт в инвентарные номера активов
+                этого кабинета
+              </span>
+            </label>
+          </div>
+
+          {loading && <div className="wh-table__loading"><div className="loading-spinner" /></div>}
+
+          {rows && !loading && (
+            <>
+              <div className="wh-subhead">
+                Новых: {fresh.length} из {rows.length} · отмечено: {picked.size}
+              </div>
+              <div className="wh-table-wrap wh-table-wrap--tall">
+                <table className="wh-table wh-table--compact">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 30 }} />
+                      <th>Кабинет в МИС</th>
+                      <th className="wh-num">Приёмов</th>
+                      <th>Состояние</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(row => (
+                      <tr key={row.room} className="wh-table__row"
+                          onClick={() => !row.matched && toggle(row.room)}>
+                        <td>
+                          <input type="checkbox" checked={picked.has(row.room)}
+                                 disabled={row.matched} onChange={() => {}} />
+                        </td>
+                        <td>{row.room}</td>
+                        <td className="wh-num">{row.appointments}</td>
+                        <td className={row.matched ? 'wh-muted' : 'wh-ok'}>
+                          {row.matched ? 'уже есть в портале' : 'новый'}
+                        </td>
+                      </tr>
+                    ))}
+                    {!rows.length && (
+                      <tr><td colSpan={4} className="wh-empty">
+                        МИС не вернул ни одного кабинета. Проверьте, что у медцентра
+                        заданы идентификаторы клиник.
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={submit}
+                  disabled={saving || !picked.size || !floorId}>
+            <Check size={15} /> {saving ? 'Завожу…' : `Завести ${picked.size}`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -33,6 +33,7 @@ export default function WarehouseCatalog({ access }) {
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null);
+  const [bulkMin, setBulkMin] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const canEdit = access?.capabilities?.canManageCatalog;
@@ -151,8 +152,18 @@ export default function WarehouseCatalog({ access }) {
             <input placeholder="Поиск по названию или коду" value={q} onChange={e => setQ(e.target.value)} />
           </div>
         )}
+        {/* Минимумы — единственный справочник, который заводят не по одной
+            записи: позиций 1785, и модалка на каждую означает, что минимумов не
+            будет вовсе. Поэтому рядом с обычным добавлением стоит пакетное. */}
+        {canEdit && tab === 'reorder' && (
+          <button className="wh-btn wh-btn--secondary" style={{ marginLeft: 'auto' }}
+                  onClick={() => setBulkMin({})}>
+            <Layers size={15} /> Задать пачкой
+          </button>
+        )}
         {canEdit && (
-          <button className="wh-btn wh-btn--primary" style={{ marginLeft: 'auto' }}
+          <button className="wh-btn wh-btn--primary"
+                  style={tab === 'reorder' ? undefined : { marginLeft: 'auto' }}
                   onClick={() => setModal({ id: null, form: defaultsFor(tab) })}>
             <Plus size={15} /> {addLabel(tab)}
           </button>
@@ -301,6 +312,151 @@ export default function WarehouseCatalog({ access }) {
         <CatalogModal tab={tab} modal={modal} refs={refs} saving={saving}
                       onClose={() => setModal(null)} onSubmit={submit} />
       )}
+
+      {bulkMin && (
+        <BulkMinimumsModal
+          refs={refs}
+          onClose={() => setBulkMin(null)}
+          onApplied={async () => { setBulkMin(null); await load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Минимумы пачкой.
+ *
+ * ── Почему по категории, а не только списком ─────────────────────────────────
+ *
+ * Минимум по своей природе задаётся не позиции, а классу вещей: «перчаток всегда
+ * держим коробку», «шприцев — две». Позиций же 1785, и перечислять их руками —
+ * та же работа по одной, только в другом окне. Категория закрывает класс целиком
+ * и остаётся верной, когда в него добавят новую позицию.
+ *
+ * ── Почему есть «не трогать уже настроенные» ─────────────────────────────────
+ *
+ * Пачкой обычно закрывают хвост, а не переписывают всё: часть минимумов уже
+ * выставлена точечно и осмысленно, и затирать их общим значением — потеря
+ * работы, которую делали вдумчиво.
+ */
+function BulkMinimumsModal({ refs, onClose, onApplied }) {
+  const [form, setForm] = useState({
+    mode: 'category', categoryId: '', nomenclatureIds: [],
+    minQty: '', maxQty: '', autoRfq: false, skipExisting: true,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const set = (key, value) => setForm(f => ({ ...f, [key]: value }));
+
+  const target = form.mode === 'category'
+    ? refs.nomenclature.filter(n => n.categoryId === form.categoryId)
+    : refs.nomenclature.filter(n => form.nomenclatureIds.includes(n.id));
+
+  const submit = async () => {
+    if (!(Number(form.minQty) >= 0) || form.minQty === '') {
+      return toast.error('Укажите минимальный остаток');
+    }
+    setSaving(true);
+    try {
+      const { data } = await warehouseApi.bulkReorderRules({
+        categoryId: form.mode === 'category' ? form.categoryId : null,
+        nomenclatureIds: form.mode === 'list' ? form.nomenclatureIds : null,
+        minQty: Number(form.minQty),
+        maxQty: form.maxQty === '' ? null : Number(form.maxQty),
+        autoRfq: form.autoRfq,
+        skipExisting: form.skipExisting,
+      });
+      toast.success(
+        `Создано ${data.created}, обновлено ${data.updated}`
+        + (data.skipped ? `, пропущено ${data.skipped}` : ''),
+      );
+      await onApplied();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось задать минимумы');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div className="wh-modal__title">Минимумы пачкой</div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-form">
+            <label>На что распространить
+              <select value={form.mode} onChange={e => set('mode', e.target.value)}>
+                <option value="category">На всю категорию</option>
+                <option value="list">На выбранные позиции</option>
+              </select>
+            </label>
+
+            {form.mode === 'category' ? (
+              <label>Категория
+                <select value={form.categoryId} onChange={e => set('categoryId', e.target.value)}>
+                  <option value="">Выберите…</option>
+                  {refs.categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label>Позиции
+                <select multiple size={8} value={form.nomenclatureIds}
+                        onChange={(e) => set('nomenclatureIds',
+                          [...e.target.selectedOptions].map(o => o.value))}>
+                  {refs.nomenclature.map(n => (
+                    <option key={n.id} value={n.id}>{n.code} · {n.name}</option>
+                  ))}
+                </select>
+                <span className="wh-hint">Ctrl или ⌘ — отметить несколько</span>
+              </label>
+            )}
+
+            <div className="wh-form__row2">
+              <label>Минимальный остаток <b className="wh-req">*</b>
+                <input type="number" min="0" step="any" value={form.minQty}
+                       onChange={e => set('minQty', e.target.value)} />
+              </label>
+              <label>Максимальный
+                <input type="number" min="0" step="any" value={form.maxQty}
+                       onChange={e => set('maxQty', e.target.value)} />
+              </label>
+            </div>
+
+            <label className="wh-check">
+              <input type="checkbox" checked={form.skipExisting}
+                     onChange={e => set('skipExisting', e.target.checked)} />
+              Не трогать позиции, у которых минимум уже задан
+            </label>
+            <label className="wh-check">
+              <input type="checkbox" checked={form.autoRfq}
+                     onChange={e => set('autoRfq', e.target.checked)} />
+              Создавать запрос котировок автоматически
+            </label>
+
+            <div className="wh-note wh-note--subtle">
+              <Info size={15} />
+              <div>
+                Правило подействует на {target.length} позиций
+                {form.mode === 'category' && !form.categoryId ? ' — выберите категорию' : ''}.
+                Ниже минимума позиция подсвечивается красным и попадает в дефицит.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={submit}
+                  disabled={saving || !target.length || form.minQty === ''}>
+            <Check size={15} /> {saving ? 'Применяю…' : `Задать для ${target.length} позиций`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

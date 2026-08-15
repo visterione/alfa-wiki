@@ -29,9 +29,17 @@ test('часы считаются по длительности события',
   assert.equal(wl.hoursOf(block(2.5)), 2.5);
 });
 
-test('завершённое событие освобождает время сразу', () => {
-  const events = [block(2), block(1, { status: 'completed' })];
-  assert.equal(wl.busyHours(events, viewer(OWNER)), 2);
+test('выполненное дело остаётся потраченным временем, отменённое — нет', () => {
+  // Закрытая задача не освобождает день: работа сделана, часы ушли. Иначе
+  // человек, закрывший всё, видит день пустым и получает на него новые задачи.
+  const events = [block(2), block(1, { status: 'completed' }), block(4, { status: 'cancelled' })];
+  assert.equal(wl.busyHours(events, viewer(OWNER)), 3);
+  assert.equal(wl.doneHours(events, viewer(OWNER)), 1);
+
+  const load = wl.dayLoad({ events, norm: 8, viewer: viewer(OWNER) });
+  assert.equal(load.hours, 3);
+  assert.equal(load.done, 1);
+  assert.equal(load.free, 5);
 });
 
 test('переработка наступает у каждого в своей точке', () => {
@@ -66,6 +74,16 @@ test('отпуск — это не ноль часов, а «задачи не �
   assert.equal(load.hours, null);
   assert.equal(load.color, wl.COLORS.VACATION);
   assert.equal(wl.fits({ events: [], norm: 6, estimateHours: 1, onVacation: true }), false);
+});
+
+test('выходной не даёт свободных часов и пропускается при подборе окна', () => {
+  const load = wl.dayLoad({ events: [], norm: 0, onDayOff: true });
+  assert.equal(load.color, wl.COLORS.OFF);
+  assert.equal(load.free, 0);
+  assert.equal(wl.nextFit([
+    { date: '2026-08-16', hours: 0, norm: 0, onDayOff: true },
+    { date: '2026-08-17', hours: 2, norm: 6 },
+  ], 3), '2026-08-17');
 });
 
 test('человек без нормы не заведён в модуле — задачи ему не помещаются', () => {

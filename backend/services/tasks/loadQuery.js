@@ -15,6 +15,7 @@
 const { Op } = require('sequelize');
 const { CalendarEvent, User } = require('../../models');
 const workload = require('./workload');
+const schedule = require('./schedule');
 
 const VACATION_TYPE = 'vacation';
 
@@ -64,10 +65,10 @@ async function loadMatrix(userIds, start, end, viewer) {
       },
       raw: true,
     }),
-    User.findAll({ attributes: ['id', 'dailyNormHours'], where: { id: { [Op.in]: ids } }, raw: true }),
+    User.findAll({ attributes: ['id', 'taskWorkSchedule'], where: { id: { [Op.in]: ids } }, raw: true }),
   ]);
 
-  const norms = new Map(users.map(u => [u.id, u.dailyNormHours === null ? null : Number(u.dailyNormHours)]));
+  const schedules = new Map(users.map(u => [u.id, u.taskWorkSchedule]));
   const days = daysBetween(start, end);
 
   // Раскладываем события по владельцу и дню один раз: иначе на каждую клетку
@@ -88,12 +89,14 @@ async function loadMatrix(userIds, start, end, viewer) {
     const perDay = new Map();
     for (const date of days) {
       const key = `${userId}|${date}`;
-      perDay.set(date, workload.dayLoad({
+      const workDay = schedule.forDate(schedules.get(userId), date);
+      perDay.set(date, { ...workload.dayLoad({
         events: byUserDay.get(key) || [],
-        norm: norms.get(userId) ?? null,
+        norm: workDay.norm,
+        onDayOff: schedules.get(userId) ? !workDay.isWorking : false,
         onVacation: vacations.has(key),
         viewer,
-      }));
+      }), workStart: workDay.start, workEnd: workDay.end });
     }
     result.set(userId, perDay);
   }
@@ -109,10 +112,14 @@ function toRows(matrix) {
       days: [...perDay].map(([date, load]) => ({
         date,
         hours: load.hours,
+        done: load.done,
         norm: load.norm,
         free: load.free,
         color: load.color,
         onVacation: load.onVacation,
+        onDayOff: load.onDayOff,
+        workStart: load.workStart,
+        workEnd: load.workEnd,
       })),
     });
   }
@@ -126,10 +133,14 @@ async function daysOf(userId, start, end, viewer) {
   return [...perDay].map(([date, load]) => ({
     date,
     hours: load.hours,
+    done: load.done,
     norm: load.norm,
     free: load.free,
     color: load.color,
     onVacation: load.onVacation,
+    onDayOff: load.onDayOff,
+    workStart: load.workStart,
+    workEnd: load.workEnd,
   }));
 }
 

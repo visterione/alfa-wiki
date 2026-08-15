@@ -38,6 +38,12 @@ test('жёсткие встречи не сдвигают плавающие б�
   assert.equal(new Date(slot.startTime).getHours(), planning.WORK_DAY_START);
 });
 
+test('плавающий блок начинается с начала индивидуальной смены', () => {
+  const slot = planning.nextFloatingSlot([], '2026-08-15', 2, '10:30');
+  assert.equal(new Date(slot.startTime).getHours(), 10);
+  assert.equal(new Date(slot.startTime).getMinutes(), 30);
+});
+
 test('третий перенос закрывает молчаливый перенос', () => {
   assert.equal(planning.afterMove(part({ moveCount: 0 })).status, STATUS.PLAN);
   assert.equal(planning.afterMove(part({ moveCount: 1 })).requiresDecision, false);
@@ -73,6 +79,12 @@ test('разбор загрузки различает переработку, �
   assert.equal(planning.assessAssignment({ currentHours: 0, norm: 6, estimateHours: 1, onVacation: true }).reason, 'vacation');
   // Человек без нормы в модуле не заведён — «помещается» про него сказать нельзя.
   assert.equal(planning.assessAssignment({ currentHours: 0, norm: null, estimateHours: 1 }).reason, 'no_norm');
+});
+
+test('назначение в выходной отличается от отсутствия расписания', () => {
+  const result = planning.assessAssignment({ currentHours: 0, norm: 0, estimateHours: 1, onDayOff: true });
+  assert.equal(result.fits, false);
+  assert.equal(result.reason, 'day_off');
 });
 
 test('ровно норма считается помещающимся', () => {

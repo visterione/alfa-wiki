@@ -7,23 +7,41 @@
  * разных точках.
  */
 
-import React from 'react';
-import { avatarColor, initials, userName, LOAD_TONE, LOAD_TITLE } from '../utils/labels';
+import React, { useEffect, useState } from 'react';
+import { User } from 'lucide-react';
+import { userName, LOAD_TONE, LOAD_TITLE } from '../utils/labels';
 import { hoursText } from '../utils/dates';
+import { BASE_URL } from '../../../services/api';
+
+function avatarUrl(value) {
+  if (!value) return null;
+  if (/^data:|^blob:/.test(value)) return value;
+  if (/^https?:\/\/localhost(?::\d+)?\//.test(value)) {
+    return `${BASE_URL}/${value.replace(/^https?:\/\/localhost(?::\d+)?\//, '')}`;
+  }
+  if (/^https?:\/\//.test(value)) return value;
+  return `${BASE_URL}/${String(value).replace(/^\//, '')}`;
+}
 
 export function Avatar({ user, size = 26, title }) {
+  const [failed, setFailed] = useState(false);
+  const src = failed ? null : avatarUrl(user?.avatar);
+  useEffect(() => setFailed(false), [user?.avatar]);
   if (!user) return null;
   const style = {
     width: size,
     height: size,
-    background: user.avatar ? undefined : avatarColor(user.id),
-    fontSize: Math.round(size * 0.4),
+    minWidth: size,
+    minHeight: size,
+    maxWidth: size,
+    maxHeight: size,
+    flexBasis: size,
   };
   return (
-    <span className="tsk-av" style={style} title={title || userName(user)}>
-      {user.avatar
-        ? <img src={user.avatar} alt="" />
-        : initials(user)}
+    <span className={`tsk-av ${src ? 'has-image' : 'is-placeholder'}`} style={style} title={title || userName(user)}>
+      {src
+        ? <img src={src} alt="" onError={() => setFailed(true)} />
+        : <User size={Math.max(12, Math.round(size * 0.52))} strokeWidth={1.8} />}
     </span>
   );
 }
@@ -34,7 +52,7 @@ export function AvatarStack({ users = [], size = 22, max = 4 }) {
   const rest = users.length - shown.length;
   return (
     <span className="tsk-avs">
-      {shown.map(u => <Avatar key={u?.id || Math.random()} user={u} size={size} />)}
+      {shown.map((u, index) => <Avatar key={u?.id || index} user={u} size={size} />)}
       {rest > 0 && <span className="tsk-av tsk-av-rest" style={{ width: size, height: size }}>+{rest}</span>}
     </span>
   );
@@ -51,8 +69,12 @@ export function Badge({ tone = 'muted', children, title }) {
  * две строки таблицы с одинаковой длиной заливки означали бы совершенно разное.
  * Переработка рисуется отдельным сегментом за пунктиром — иначе она упёрлась бы
  * в край и перестала расти визуально ровно там, где становится важной.
+ *
+ * Выполненная часть заштрихована внутри заливки, а не вычтена из неё: сделанная
+ * работа время потратила, и день от неё пустым не становится. Разница между
+ * «восемь часов ещё предстоят» и «восемь часов уже отработаны» видна штриховкой.
  */
-export function LoadBar({ hours, norm, color, onVacation, compact }) {
+export function LoadBar({ hours, done, norm, color, onVacation, compact }) {
   if (onVacation) {
     return (
       <div className={`tsk-bar tsk-bar-vac ${compact ? 'is-compact' : ''}`} title="Отпуск">
@@ -68,14 +90,17 @@ export function LoadBar({ hours, norm, color, onVacation, compact }) {
   // спокойные дни в тонкую полоску.
   const scale = Math.max(norm * 1.4, 1);
   const fill = Math.min((hours || 0) / scale, 1) * 100;
+  const doneFill = Math.min((done || 0) / scale, 1) * 100;
   const normAt = (norm / scale) * 100;
 
   return (
     <div
       className={`tsk-bar ${compact ? 'is-compact' : ''}`}
-      title={`${hoursText(hours)} из ${hoursText(norm)} — ${LOAD_TITLE[color] || ''}`}
+      title={`${hoursText(hours)} из ${hoursText(norm)} — ${LOAD_TITLE[color] || ''}${
+        done > 0 ? `, выполнено ${hoursText(done)}` : ''}`}
     >
       <div className={`tsk-bar-fill tsk-bar-${LOAD_TONE[color] || 'ok'}`} style={{ width: `${fill}%` }} />
+      {doneFill > 0 && <div className="tsk-bar-done" style={{ width: `${doneFill}%` }} />}
       <div className="tsk-bar-norm" style={{ left: `${normAt}%` }} />
     </div>
   );

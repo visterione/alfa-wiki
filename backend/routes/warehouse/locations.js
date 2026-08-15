@@ -440,6 +440,88 @@ router.post('/rooms', authenticate, requireWarehouse('canEditLocations'), async 
   }
 });
 
+/**
+ * Завести кабинеты по списку из МИС.
+ *
+ * ── Что это и чем не является ────────────────────────────────────────────────
+ *
+ * Это НЕ угадывание привязки: портал не решает, какой строке 1С соответствует
+ * какой кабинет, — эту привязку человек делает сам на экране размещения. Здесь
+ * из МИС берётся ровно одно: готовый перечень названий кабинетов, чтобы не
+ * набирать сотню строк с клавиатуры.
+ *
+ * Названия попадают и в номер кабинета, и в misRoomAliases сразу: алиас нужен,
+ * чтобы тепловая карта и расход на посещение сошлись с расписанием, а
+ * заполнять его вторым заходом по каждому кабинету — та же ручная работа,
+ * которую этот маршрут и убирает.
+ *
+ * ── Почему место хранения создаётся сразу ────────────────────────────────────
+ *
+ * Кабинет без места хранения бесполезен: в него нельзя ни разместить имущество
+ * из ведомости, ни выдать материалы, а разбор молча пропускает такие строки с
+ * «нет мест хранения». Пустой кабинет выглядит заведённым, но не работает —
+ * поэтому вместе с ним появляется место хранения по умолчанию.
+ */
+router.post('/rooms/from-mis', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
+  try {
+    const { floorId, departmentId = null, rooms = [], storageName = 'Кабинет' } = req.body || {};
+    if (!floorId) return res.status(400).json({ error: 'Нужен этаж, на котором заводить кабинеты' });
+    if (!Array.isArray(rooms) || !rooms.length) {
+      return res.status(400).json({ error: 'Не выбрано ни одного кабинета' });
+    }
+
+    const floor = await WhFloor.findByPk(floorId);
+    if (!floor) return res.status(404).json({ error: 'Этаж не найден' });
+
+    // Уже заведённые пропускаем: повторный запуск после того, как список из МИС
+    // пополнился, не должен плодить дубли кабинетов.
+    const existing = await WhRoom.findAll({ attributes: ['id', 'number', 'misRoomAliases'] });
+    const taken = new Set();
+    for (const room of existing) {
+      taken.add(normalize(room.number));
+      for (const alias of room.misRoomAliases || []) taken.add(normalize(alias));
+    }
+
+    const created = [];
+    const skipped = [];
+
+    await sequelize.transaction(async (t) => {
+      for (const raw of rooms) {
+        const title = String(raw?.room ?? raw ?? '').trim();
+        if (!title) continue;
+        if (taken.has(normalize(title))) { skipped.push(title); continue; }
+        taken.add(normalize(title));
+
+        const room = await WhRoom.create({
+          floorId,
+          departmentId: departmentId || null,
+          number: title.slice(0, 30),
+          name: title.length > 30 ? title : null,
+          kind: 'office',
+          // Название из МИС кладём алиасом даже когда оно же стало номером:
+          // сопоставление ищется именно по алиасам, и пустой список означал бы,
+          // что кабинет из расписания не находится.
+          misRoomAliases: [title],
+          publicToken: generateToken(),
+        }, { transaction: t });
+
+        await WhStorage.create({
+          roomId: room.id,
+          name: storageName || 'Кабинет',
+          kind: 'cabinet',
+        }, { transaction: t });
+
+        created.push({ id: room.id, number: room.number });
+      }
+    });
+
+    res.status(201).json({ created: created.length, skipped: skipped.length, rooms: created, skippedNames: skipped });
+  } catch (err) {
+    console.error('POST warehouse/rooms/from-mis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.put('/rooms/:id', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   try {
     const row = await WhRoom.findByPk(req.params.id);

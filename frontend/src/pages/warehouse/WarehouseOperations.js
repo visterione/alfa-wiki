@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  ArrowRightLeft, Check, ChevronRight, FilePlus2, Plus, RefreshCw,
+  ArrowRightLeft, Check, ChevronRight, Copy, FilePlus2, Plus, RefreshCw,
   Search, Trash2, X,
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
+import Combobox from './components/Combobox';
 
 const TYPES = [
   ['receipt', 'Приём'],
@@ -41,6 +42,10 @@ export default function WarehouseOperations({ access, tree }) {
     nomenclature: [], batches: [], stock: [], assets: [], contractors: [], users: [],
   });
   const [filters, setFilters] = useState({ q: '', type: '' });
+  // Документ, который повторяем. Ежедневная выдача в один и тот же кабинет —
+  // самая частая операция модуля, и каждый раз собирать её заново значит
+  // повторять руками то, что уже сделано вчера.
+  const [repeat, setRepeat] = useState(null);
 
   const loadDocuments = useCallback(async () => {
     setLoading(true);
@@ -102,7 +107,8 @@ export default function WarehouseOperations({ access, tree }) {
           <ArrowRightLeft size={14} /> Журнал документов
         </button>
         {access?.capabilities?.canIssue && (
-          <button className={view === 'new' ? 'is-active' : ''} onClick={() => setView('new')}>
+          <button className={view === 'new' ? 'is-active' : ''}
+                  onClick={() => { setRepeat(null); setView('new'); }}>
             <FilePlus2 size={14} /> Новый документ
           </button>
         )}
@@ -110,9 +116,13 @@ export default function WarehouseOperations({ access, tree }) {
 
       {view === 'new' ? (
         <DocumentEditor
-          refs={refs} tree={tree}
+          // key заставляет редактор пересобраться, когда меняется источник
+          // повтора: без него состояние формы осталось бы от прошлого документа.
+          key={repeat?.id || 'blank'}
+          refs={refs} tree={tree} initial={repeat}
           onCreated={async id => {
             setView('journal');
+            setRepeat(null);
             await Promise.all([loadDocuments(), loadRefs()]);
             if (id) await openDocument(id);
           }}
@@ -161,13 +171,25 @@ export default function WarehouseOperations({ access, tree }) {
         </>
       )}
 
-      {selected && <DocumentCard document={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <DocumentCard
+          document={selected}
+          canRepeat={Boolean(access?.capabilities?.canIssue)}
+          onRepeat={() => { setRepeat(selected); setSelected(null); setView('new'); }}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
 
-function DocumentEditor({ refs, tree, onCreated }) {
-  const [type, setType] = useState('receipt');
+/**
+ * @param {object|null} initial документ, который повторяем: тип и строки берутся
+ *   из него, а дата, причина и подпись заполняются заново — повтор это новое
+ *   событие, а не копия старого.
+ */
+function DocumentEditor({ refs, tree, onCreated, initial }) {
+  const [type, setType] = useState(initial?.type || 'receipt');
   const [kind, setKind] = useState('material');
   const [line, setLine] = useState(EMPTY_LINE);
   const [lines, setLines] = useState([]);
@@ -182,12 +204,52 @@ function DocumentEditor({ refs, tree, onCreated }) {
   const canMaterial = MATERIAL_TYPES.has(type);
   const canAsset = ASSET_TYPES.has(type);
 
+  // Смена типа документа сбрасывает набранные строки: у приёма и списания разные
+  // обязательные реквизиты, и строка, собранная для одного, для другого неверна.
+  //
+  // Сравнение с предыдущим типом через ref, а не просто зависимость эффекта, по
+  // двум причинам. Во-первых, на первом рендере сбрасывать нечего — а именно так
+  // терялись строки повторяемого документа. Во-вторых, раньше в зависимостях
+  // стоял ещё и kind, и переключение «материал ↔ оборудование» стирало уже
+  // добавленные строки, хотя документ законно содержит и те, и другие.
+  const previousType = useRef(type);
   useEffect(() => {
     if (!canMaterial && kind === 'material') setKind('asset');
     if (!canAsset && kind === 'asset') setKind('material');
-    setLine(EMPTY_LINE);
-    setLines([]);
+    if (previousType.current !== type) {
+      previousType.current = type;
+      setLine(EMPTY_LINE);
+      setLines([]);
+    }
   }, [type, canMaterial, canAsset, kind]);
+
+  // Повтор документа: строки восстанавливаются из его движений. Заново
+  // указываются только дата, причина и подпись — повтор это новое событие,
+  // и подписывать его надо отдельно.
+  useEffect(() => {
+    if (!initial?.movements?.length) return;
+    setLines(initial.movements.map((movement) => {
+      const isAsset = Boolean(movement.asset);
+      return {
+        kind: isAsset ? 'asset' : 'material',
+        assetId: movement.asset?.id || '',
+        nomenclatureId: movement.nomenclature?.id || '',
+        batchId: movement.batch?.id || '',
+        quantity: Number(movement.quantity) || 1,
+        unitCost: Number(movement.unitCost) || '',
+        fromStorageId: movement.fromStorage?.id || '',
+        toStorageId: movement.toStorage?.id || '',
+        toRoomId: movement.toRoom?.id || '',
+        toResponsibleId: movement.toResponsible?.id || '',
+        doctorUserId: movement.doctor?.id || '',
+        serviceCode: movement.serviceCode || '',
+        reasonText: '',
+        label: isAsset
+          ? `${movement.asset.inventoryNumber} · ${movement.asset.name}`
+          : `${movement.nomenclature?.code || ''} · ${movement.nomenclature?.name || ''}`,
+      };
+    }));
+  }, [initial]);
 
   const batches = refs.batches.filter(b => !line.nomenclatureId || b.nomenclatureId === line.nomenclatureId);
   const selectedStock = refs.stock.find(s =>
@@ -350,15 +412,33 @@ function MaterialLineEditor({
     ? storages.filter(s => availableStocks.some(x => x.storage?.id === s.id))
     : storages;
   const showDoctor = type === 'issue';
+  // Позиции для автодополнения: код нужен отдельным полем, чтобы поиск по нему
+  // поднимался выше поиска по названию.
+  const nomenclatureOptions = nomenclature.map(n => ({
+    id: n.id, code: n.code, label: `${n.name} (${n.unit})`, name: n.name, unit: n.unit,
+  }));
+  const storageOptions = storages.map(s => ({ id: s.id, label: s.label }));
+
   return (
     <div className="wh-form wh-operation-line__fields">
       <label className="wh-operation-line__wide">Материал
-        <select value={line.nomenclatureId} onChange={e => {
-          setValue('nomenclatureId', e.target.value); setValue('batchId', ''); setValue('fromStorageId', '');
-        }}>
-          <option value="">Выберите позицию…</option>
-          {nomenclature.map(n => <option key={n.id} value={n.id}>{n.code} · {n.name} ({n.unit})</option>)}
-        </select>
+        {/* Выпадающий список на пятьсот позиций заменён автодополнением: выдача
+            делается по нескольку раз в день, и поиск прокруткой был самым
+            медленным местом модуля. */}
+        <Combobox
+          value={line.nomenclatureId}
+          options={nomenclatureOptions}
+          placeholder="Начните вводить название или код"
+          onChange={(id) => {
+            setValue('nomenclatureId', id); setValue('batchId', ''); setValue('fromStorageId', '');
+          }}
+          renderOption={option => (
+            <>
+              <span className="wh-mono wh-cell-sub">{option.code}</span>{' '}
+              {option.label}
+            </>
+          )}
+        />
       </label>
       <label>Партия
         <select value={line.batchId} onChange={e => setValue('batchId', e.target.value)}>
@@ -370,17 +450,21 @@ function MaterialLineEditor({
         <input type="number" min="0.001" step="0.001" value={line.quantity} onChange={e => setValue('quantity', e.target.value)} />
       </label>
       {needFrom && <label>Откуда
-        <select value={line.fromStorageId} onChange={e => { setValue('fromStorageId', e.target.value); setValue('batchId', ''); }}>
-          <option value="">Выберите место…</option>
-          {selectableFrom.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
+        <Combobox
+          value={line.fromStorageId}
+          options={selectableFrom.map(s => ({ id: s.id, label: s.label }))}
+          placeholder="Место хранения"
+          onChange={(id) => { setValue('fromStorageId', id); setValue('batchId', ''); }}
+        />
         {selectedStock && <span className="wh-hint">Доступно: {selectedStock.quantity}</span>}
       </label>}
       {needTo && <label>Куда
-        <select value={line.toStorageId} onChange={e => setValue('toStorageId', e.target.value)}>
-          <option value="">Выберите место…</option>
-          {storages.filter(s => s.id !== line.fromStorageId).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
+        <Combobox
+          value={line.toStorageId}
+          options={storageOptions.filter(s => s.id !== line.fromStorageId)}
+          placeholder="Место хранения"
+          onChange={id => setValue('toStorageId', id)}
+        />
       </label>}
       {['receipt', 'return', 'surplus'].includes(type) && <label>Цена за единицу, ₽
         <input type="number" min="0" step="0.01" value={line.unitCost} onChange={e => setValue('unitCost', e.target.value)} />
@@ -405,10 +489,20 @@ function AssetLineEditor({ line, setValue, assets, locations, users, needDestina
   return (
     <div className="wh-form wh-operation-line__fields">
       <label className="wh-operation-line__wide">Оборудование
-        <select value={line.assetId} onChange={e => setValue('assetId', e.target.value)}>
-          <option value="">Выберите актив…</option>
-          {assets.map(a => <option key={a.id} value={a.id}>{a.inventoryNumber} · {a.name} · {roomLabel(a.room)}</option>)}
-        </select>
+        <Combobox
+          value={line.assetId}
+          options={assets.map(a => ({
+            id: a.id, code: a.inventoryNumber,
+            label: `${a.name} · ${roomLabel(a.room)}`,
+          }))}
+          placeholder="Инвентарный номер или название"
+          onChange={id => setValue('assetId', id)}
+          renderOption={option => (
+            <>
+              <span className="wh-mono wh-cell-sub">{option.code}</span> {option.label}
+            </>
+          )}
+        />
       </label>
       {needDestination && <>
         <label>Кабинет назначения
@@ -434,14 +528,23 @@ function AssetLineEditor({ line, setValue, assets, locations, users, needDestina
   );
 }
 
-function DocumentCard({ document: d, onClose }) {
+function DocumentCard({ document: d, onClose, onRepeat, canRepeat }) {
   return (
     <div className="wh-modal" onClick={onClose}>
       <div className="wh-modal__box wh-modal__box--wide" onClick={e => e.stopPropagation()}>
         <div className="wh-modal__head">
           <div><div className="wh-modal__title">{d.number} · {TYPE_LABELS[d.type] || d.type}</div>
             <div className="wh-modal__sub">{fmtDateTime(d.date)} · {d.status === 'signed' ? 'подписан' : d.status}</div></div>
-          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+          <div className="wh-panel__actions">
+            {/* Повтор собирает новый документ с теми же строками. Причина и
+                подпись заполняются заново — это новое событие, а не копия. */}
+            {canRepeat && Boolean(d.movements?.length) && (
+              <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={onRepeat}>
+                <Copy size={13} /> Повторить
+              </button>
+            )}
+            <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
         <div className="wh-modal__body">
           <div className="wh-grid2">

@@ -15,28 +15,28 @@ const router = express.Router();
 const { authenticate } = require('../../middleware/auth');
 const context = require('../../services/tasks/context');
 const teamsService = require('../../services/tasks/teams');
+const schedule = require('../../services/tasks/schedule');
 
 /**
  * Что этому пользователю доступно в модуле. Клиент дёргает первым делом.
  *
- * Отдельно отдаётся признак «заведён ли человек в модуле» — норма рабочего дня.
- * Без неё интерфейс не может ни посчитать загрузку, ни принять задачу, и
+ * Отдельно отдаётся признак «заведён ли человек в модуле» — рабочее расписание.
+ * Без него интерфейс не может ни посчитать загрузку, ни принять задачу, и
  * честнее сказать об этом сразу, чем показывать пустой календарь.
  */
 router.get('/access', authenticate, async (req, res) => {
   try {
     const teams = await context.loadTeams();
     const visible = teamsService.visibleTeams(teams, req.user.id, req.user.isAdmin);
-    const norm = req.user.dailyNormHours === null || req.user.dailyNormHours === undefined
-      ? null
-      : Number(req.user.dailyNormHours);
+    const workSchedule = req.user.taskWorkSchedule || null;
 
     res.json({
       allowed: true,
-      norm,
-      // Пока норма не задана, человек в планировании не участвует: ему нельзя
+      workSchedule,
+      weeklyHours: schedule.weeklyHours(workSchedule),
+      // Пока расписание не задано, человек в планировании не участвует: ему нельзя
       // ставить задачи, и он не видит собственной загрузки.
-      enrolled: norm !== null,
+      enrolled: workSchedule !== null,
       isAdmin: !!req.user.isAdmin,
       canManageProjects: !!(req.user.isAdmin || req.user.adminAccess?.tasks),
       teams: visible.map(t => ({

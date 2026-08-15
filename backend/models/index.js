@@ -193,25 +193,11 @@ const User = sequelize.define('User', {
     comment: 'Разрешение на создание, редактирование и удаление акций медцентров'
   },
 
-  // Личная норма рабочего дня для модуля «Задачи» (ver. 6.75).
-  //
-  // Не длина смены, а честное время на задачи: рабочий день минус встречи,
-  // переключения и перерывы. Своя у каждого — у подрядчика на part-time и у
-  // поддержки со сменным графиком она не может совпадать, а одна цифра на
-  // компанию делает отчёт по загрузке отчётом о том, насколько неверно эта
-  // цифра выбрана.
-  //
-  // NULL означает «в модуле не заведён» и отличается от нормы 0: во втором
-  // случае человеку нельзя ставить задачи, в первом он просто не участвует в
-  // планировании.
-  //
-  // Имя намеренно не перекликается с HourNorm: та модель принадлежит
-  // зарплатному модулю и хранит норму часов на специальность за месяц.
-  dailyNormHours: {
-    type: DataTypes.DECIMAL(4, 2),
+  taskWorkSchedule: {
+    type: DataTypes.JSONB,
     allowNull: true,
     defaultValue: null,
-    comment: 'Личная норма рабочего дня в часах. NULL — не заведён в модуле «Задачи»'
+    comment: 'Недельное рабочее расписание по дням и границы смен'
   },
 
   // Мягкое удаление (корзина)
@@ -2353,9 +2339,9 @@ const TaskTeam = sequelize.define('TaskTeam', {
   access: {
     type: DataTypes.STRING(20),
     allowNull: false,
-    defaultValue: 'all',
-    validate: { isIn: [['all', 'members', 'invite']] },
-    comment: 'Кто видит загрузку команды: all, members, invite'
+    defaultValue: 'members',
+    validate: { isIn: [['members']] },
+    comment: 'Фиксированная закрытая область: участники и наблюдатели'
   },
   // Скрытая команда не показывается как «нет доступа» — для того, кому она не
   // открыта, её не существует вовсе. Разница принципиальная: сама строка «нет
@@ -2364,7 +2350,7 @@ const TaskTeam = sequelize.define('TaskTeam', {
   isHidden: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
-    defaultValue: false,
+    defaultValue: true,
     comment: 'Не показывается в списках, поиске и фильтрах у посторонних'
   },
   ownerId: { type: DataTypes.UUID }
@@ -2584,6 +2570,17 @@ const TaskNormChange = sequelize.define('TaskNormChange', {
   ]
 });
 
+const TaskScheduleChange = sequelize.define('TaskScheduleChange', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  oldSchedule: { type: DataTypes.JSONB },
+  newSchedule: { type: DataTypes.JSONB },
+  changedBy: { type: DataTypes.UUID }
+}, {
+  tableName: 'task_schedule_changes', timestamps: true, updatedAt: false,
+  indexes: [{ fields: ['userId', 'createdAt'] }]
+});
+
 // Связи модуля «Задачи»
 TaskProject.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
@@ -2617,6 +2614,8 @@ TaskHistory.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 TaskNormChange.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 TaskNormChange.belongsTo(User, { foreignKey: 'changedBy', as: 'changedByUser' });
+TaskScheduleChange.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+TaskScheduleChange.belongsTo(User, { foreignKey: 'changedBy', as: 'changedByUser' });
 
 // Рабочий блок в календаре снимается вместе с частью: если задачу отменили,
 // время обязано вернуться в свободное, а не остаться висеть в дне.
@@ -4050,6 +4049,7 @@ module.exports = {
   TaskPartAssignee,
   TaskHistory,
   TaskNormChange,
+  TaskScheduleChange,
   PriceComparison,
   PriceComparisonItem,
   CompetitorSource,

@@ -11,18 +11,18 @@
  * исполнителю и остаётся в истории задачи.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { tasks as api, users as usersApi, media } from '../../../services/api';
 import { today, addDays, dfull, hoursText, estimateText } from '../utils/dates';
 import { userName, MODE_LABEL } from '../utils/labels';
 import { Avatar, Badge } from './Bits';
+import CustomSelect from './CustomSelect';
+import { ProjectModal } from './ProjectsAdmin';
 
 const MODES = [
-  ['single', 'Один исполнитель', 'Обычная задача: один ответственный, один срок.'],
-  ['shared', 'Одна задача на всех', 'Все делают её вместе. Время тратит каждый — трудозатраты умножаются на число участников.'],
-  ['split', 'Разделить на части', 'У каждого свой кусок, своя оценка и свой срок.'],
-  ['mixed', 'Смешанная', 'Часть работы делают по отдельности, а общую часть — вместе.'],
+  ['single', 'Один'], ['shared', 'На всех'], ['split', 'По частям'], ['mixed', 'Смешанная'],
 ];
 
 const ESTIMATES = [0.5, 1, 1.5, 2, 3, 4, 6, 8];
@@ -41,10 +41,11 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
     dueDate: preset.date || addDays(today(), 1),
     after: [],
   }]);
+  const [assigneePool, setAssigneePool] = useState(preset.assignee ? [preset.assignee] : []);
 
   const [people, setPeople] = useState([]);
   const [projects, setProjects] = useState([]);
-  const [query, setQuery] = useState('');
+  const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [loads, setLoads] = useState({});
   const [choice, setChoice] = useState(null);
   const [explanation, setExplanation] = useState('');
@@ -55,6 +56,7 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
   const [slotRange, setSlotRange] = useState(null);
   const [busySlots, setBusySlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsOpen, setSlotsOpen] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -115,6 +117,10 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
           out.push({ userId, date: part.dueDate, reason: 'vacation' });
           continue;
         }
+        if (day.onDayOff) {
+          out.push({ userId, date: part.dueDate, reason: 'day_off' });
+          continue;
+        }
         if (day.norm === null || day.norm === undefined) {
           out.push({ userId, date: part.dueDate, reason: 'no_norm' });
           continue;
@@ -135,27 +141,40 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
   const setPart = (i, patch) => setParts(list =>
     list.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
 
-  const toggleAssignee = (i, userId) => setPart(i, {
-    assignees: parts[i].assignees.includes(userId)
-      ? parts[i].assignees.filter(x => x !== userId)
-      : [...parts[i].assignees, userId],
-  });
+  const updateAssigneePool = next => {
+    const unique = [...new Set(next)];
+    const nextMode = unique.length > 1 && mode === 'single'
+      ? 'shared'
+      : unique.length < 2 && mode === 'shared' ? 'single' : mode;
+    setAssigneePool(unique);
+    if (nextMode !== mode) setMode(nextMode);
+    setParts(list => list.map((part, index) => ({
+      ...part,
+      assignees: nextMode === 'single' && index === 0
+        ? unique.slice(0, 1)
+        : nextMode === 'shared' && index === 0
+          ? unique
+          : part.assignees.filter(id => unique.includes(id)),
+    })));
+  };
 
   const applyMode = next => {
     setMode(next);
     if (next === 'single') {
-      setParts(list => [{ ...list[0], assignees: list[0].assignees.slice(0, 1), after: [] }]);
+      const only = assigneePool.slice(0, 1);
+      setAssigneePool(only);
+      setParts(list => [{ ...list[0], assignees: only, after: [] }]);
+    } else if (next === 'shared') {
+      setParts(list => [{ ...list[0], assignees: assigneePool, after: [] }]);
     } else if ((next === 'split' || next === 'mixed') && parts.length < 2) {
-      setParts(list => [...list, {
-        key: `p${Date.now()}`,
-        title: next === 'mixed' ? 'Сборка и приёмка' : '',
-        assignees: next === 'mixed'
-          ? [...new Set([list[0].assignees[0], ctx.me?.id].filter(Boolean))]
-          : [],
-        estimateHours: 2,
-        dueDate: addDays(list[0].dueDate, 2),
-        after: [list[0].key],
-      }]);
+      setParts(list => [{ ...list[0], assignees: assigneePool[0] ? [assigneePool[0]] : [] }, {
+          key: `p${Date.now()}`,
+          title: next === 'mixed' ? 'Сборка и приёмка' : '',
+          assignees: next === 'mixed' ? assigneePool : assigneePool[1] ? [assigneePool[1]] : [],
+          estimateHours: 2,
+          dueDate: addDays(list[0].dueDate, 2),
+          after: [list[0].key],
+        }]);
     }
   };
 
@@ -203,8 +222,13 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
     }
   };
 
-  const found = people.filter(u => !query || userName(u).toLowerCase().includes(query.toLowerCase()));
   const byId = Object.fromEntries(people.map(u => [u.id, u]));
+  const projectOptions = [
+    { value: '', label: 'Без проекта' },
+    ...projects.map(project => ({ value: project.id, label: project.name, color: project.color })),
+    ...(ctx.access?.canManageProjects ? [{ value: '__new_project__', label: '+ Создать проект' }] : []),
+  ];
+  const estimateOptions = ESTIMATES.map(value => ({ value, label: estimateText(value) }));
 
   const uploadFiles = async event => {
     const files = [...(event.target.files || [])];
@@ -279,6 +303,7 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
         return;
       }
       setChoice('give');
+      setAssigneePool([fit.person.id]);
       setParts(list => list.map((p, index) => index === 0
         ? { ...p, assignees: [fit.person.id] }
         : p));
@@ -290,43 +315,39 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
 
   return (
     <div className="tsk-mask" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="tsk-modal">
+      <div className="tsk-modal tsk-task-modal">
         <div className="tsk-modal-head">
           <div className="tsk-modal-title">Новая задача</div>
           <button className="tsk-x" onClick={onClose}>×</button>
         </div>
 
         <div className="tsk-tabs">
-          <button className={tab === 'main' ? 'is-on' : ''} onClick={() => setTab('main')}>Задача</button>
+          <button className={tab === 'main' ? 'is-on' : ''} onClick={() => setTab('main')}>Основное</button>
           <button className={tab === 'who' ? 'is-on' : ''} onClick={() => setTab('who')}>
-            Исполнители и части{parts.length > 1 && ` · ${parts.length}`}
+            Части{parts.length > 1 && ` · ${parts.length}`}
           </button>
           <button className={tab === 'scheme' ? 'is-on' : ''} onClick={() => setTab('scheme')}>
             Схема{parts.length > 1 && ` · ${parts.length}`}
           </button>
         </div>
 
-        <div className="tsk-modal-body">
+        <div className="tsk-modal-body tsk-task-modal-body">
           {tab === 'main' ? (
             <>
               <input
-                className="tsk-input tsk-input-title"
-                placeholder="Название задачи — впишите своими словами"
+                className="tsk-input tsk-task-title-input"
+                placeholder="Название задачи"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 autoFocus
               />
 
-              <div className="tsk-row" style={{ marginTop: 16 }}>
-                <div style={{ maxWidth: 260 }}>
-                  <label className="tsk-label">Проект</label>
-                  <select className="tsk-select" style={{ width: '100%' }}
-                    value={projectId} onChange={e => setProjectId(e.target.value)}>
-                    <option value="">Без проекта</option>
-                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-                <div style={{ maxWidth: 200 }}>
+              <div className="tsk-task-fields">
+                <CustomSelect label="Проект" value={projectId} options={projectOptions} onChange={value => {
+                  if (value === '__new_project__') setProjectFormOpen(true);
+                  else setProjectId(value);
+                }} />
+                <div>
                   <label className="tsk-label">Срок</label>
                   <input
                     className="tsk-input"
@@ -335,71 +356,37 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                     onChange={e => setParts(list => list.map(p => ({ ...p, dueDate: e.target.value })))}
                   />
                 </div>
-                <div style={{ maxWidth: 160 }}>
-                  <label className="tsk-label">Оценка</label>
-                  <select className="tsk-select" style={{ width: '100%' }}
-                    value={parts[0].estimateHours}
-                    onChange={e => setPart(0, { estimateHours: Number(e.target.value) })}>
-                    {ESTIMATES.map(h => <option key={h} value={h}>{estimateText(h)}</option>)}
-                  </select>
-                </div>
+                <CustomSelect label="Оценка" value={parts[0].estimateHours} options={estimateOptions}
+                  onChange={estimateHours => setPart(0, { estimateHours })} />
               </div>
 
-              <div className="tsk-sect">Кому</div>
-              <input
-                className="tsk-input"
-                placeholder="Поиск по имени"
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                style={{ marginBottom: 10 }}
-              />
-              <div className="tsk-chips">
-                <button
-                  className={`tsk-chip ${parts[0].assignees.includes(ctx.me?.id) ? 'is-on' : ''}`}
-                  onClick={() => toggleAssignee(0, ctx.me?.id)}
-                >
-                  Моя задача
-                </button>
-                {found.slice(0, 30).map(u => (
-                  <button
-                    key={u.id}
-                    className={`tsk-chip ${parts[0].assignees.includes(u.id) ? 'is-on' : ''}`}
-                    onClick={() => toggleAssignee(0, u.id)}
-                  >
-                    <Avatar user={u} size={18} />
-                    {userName(u)}
-                  </button>
-                ))}
-              </div>
+              <div className="tsk-task-section-head">Исполнитель</div>
+              <PeoplePicker people={people} selected={assigneePool} byId={byId}
+                onChange={updateAssigneePool} />
 
-              <div className="tsk-sect">Время в дне</div>
-              <TimeSlots
-                assignee={primaryAssignee}
-                date={parts[0].dueDate}
-                busy={busySlots}
-                loading={slotsLoading}
-                step={slotStep}
-                range={slotRange}
+              <button type="button" className="tsk-task-disclosure" onClick={() => setSlotsOpen(value => !value)}>
+                <span>Время в дне</span><b>{slotRange ? `${estimateText(parts[0].estimateHours)}` : slotsOpen ? 'Скрыть' : 'Выбрать'}</b>
+              </button>
+              {slotsOpen && <TimeSlots assignee={primaryAssignee} date={parts[0].dueDate} busy={busySlots}
+                loading={slotsLoading} step={slotStep} range={slotRange}
                 onStep={value => { setSlotStep(value); setSlotRange(null); }}
-                onRange={next => {
-                  setSlotRange(next);
-                  setPart(0, { estimateHours: ((next.end - next.start + 1) * slotStep) / 60 });
-                }}
-              />
+                onRange={next => { setSlotRange(next); setPart(0, { estimateHours: ((next.end - next.start + 1) * slotStep) / 60 }); }} />}
 
-              <div className="tsk-sect">Описание</div>
+              <div className="tsk-task-section-head">Описание</div>
               <textarea
-                className="tsk-textarea"
-                placeholder="Опишите задачу так, чтобы исполнителю не пришлось уточнять в чате: что нужно сделать, где данные, что считается результатом."
+                className="tsk-textarea tsk-task-description"
+                placeholder="Описание"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
 
-              <div className="tsk-sect">Файлы</div>
-              <input ref={fileRef} type="file" multiple hidden onChange={uploadFiles} />
-              <button className="tsk-btn" disabled={uploading} onClick={() => fileRef.current?.click()}>
-                {uploading ? 'Загружаем…' : '+ Прикрепить файлы'}
-              </button>
+              <div className="tsk-task-files-head">
+                <span>Файлы{attachments.length ? ` · ${attachments.length}` : ''}</span>
+                <input ref={fileRef} type="file" multiple hidden onChange={uploadFiles} />
+                <button className="tsk-btn is-sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
+                  {uploading ? 'Загружаем…' : 'Прикрепить'}
+                </button>
+              </div>
               {!!attachments.length && (
                 <div className="tsk-files">
                   {attachments.map((file, index) => (
@@ -428,22 +415,12 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
             </>
           ) : tab === 'who' ? (
             <>
-              <div className="tsk-sect" style={{ marginTop: 0 }}>Формат</div>
-              {MODES.map(([key, label, note]) => (
-                <div
-                  key={key}
-                  className={`tsk-opt ${mode === key ? 'is-sel' : ''}`}
-                  onClick={() => applyMode(key)}
-                >
-                  <span className="tsk-opt-radio" />
-                  <span>
-                    <span className="tsk-opt-title">{label}</span>
-                    <span className="tsk-opt-note">{note}</span>
-                  </span>
-                </div>
-              ))}
+              <div className="tsk-mode-segment">
+                {MODES.map(([key, label]) => <button type="button" key={key}
+                  className={mode === key ? 'is-on' : ''} onClick={() => applyMode(key)}>{label}</button>)}
+              </div>
 
-              <div className="tsk-sect">
+              <div className="tsk-task-section-head">
                 {mode === 'single' ? 'Исполнитель' : `Части задачи · ${parts.length}`}
               </div>
 
@@ -456,10 +433,8 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                       value={part.title}
                       onChange={e => setPart(i, { title: e.target.value })}
                     />
-                    <select className="tsk-select" value={part.estimateHours}
-                      onChange={e => setPart(i, { estimateHours: Number(e.target.value) })}>
-                      {ESTIMATES.map(h => <option key={h} value={h}>{estimateText(h)}</option>)}
-                    </select>
+                    <CustomSelect value={part.estimateHours} options={estimateOptions} className="is-compact"
+                      onChange={estimateHours => setPart(i, { estimateHours })} />
                     <input className="tsk-input" type="date" style={{ maxWidth: 150 }}
                       value={part.dueDate}
                       onChange={e => setPart(i, { dueDate: e.target.value })} />
@@ -469,17 +444,8 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                     )}
                   </div>
 
-                  <div className="tsk-chips">
-                    {found.slice(0, 24).map(u => (
-                      <button
-                        key={u.id}
-                        className={`tsk-chip ${part.assignees.includes(u.id) ? 'is-on' : ''}`}
-                        onClick={() => toggleAssignee(i, u.id)}
-                      >
-                        {userName(u)}
-                      </button>
-                    ))}
-                  </div>
+                  <PeoplePicker people={people.filter(person => assigneePool.includes(person.id))} selected={part.assignees} byId={byId}
+                    single={mode === 'single'} onChange={assignees => setPart(i, { assignees })} />
 
                   {part.assignees.length > 1 && (
                     <div style={{ marginTop: 8 }}>
@@ -536,27 +502,13 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
                 </button>
               )}
 
-              <div className="tsk-trade is-neutral">
-                <div className="tsk-trade-title">
-                  Итого: {hoursText(totalEffort)} трудозатрат
-                </div>
-                <div className="tsk-trade-text">
-                  Общая часть занимает время у каждого участника: 2 ч на троих —
-                  это 6 ч трудозатрат и 2 ч в календаре у каждого. Проверка
-                  загрузки идёт по личной норме каждого, а не по общей цифре.
-                </div>
-              </div>
+              <div className="tsk-task-total">Итого · {hoursText(totalEffort)}</div>
             </>
           ) : <TaskScheme parts={parts} byId={byId} />}
         </div>
 
-        <div className="tsk-modal-foot">
-          <div className="tsk-modal-hint">
-            {!title.trim() ? 'Впишите название задачи.'
-              : !parts.every(p => p.assignees.length) ? 'У одной из частей нет исполнителя.'
-              : needsExplanation ? 'Обойти проверку можно всегда — но не молча. Текст останется в истории задачи.'
-              : 'Задача уйдёт во входящие. В календарь исполнителя попадёт после того, как он её обработает.'}
-          </div>
+        <div className="tsk-modal-foot tsk-task-modal-foot">
+          <div />
           <div className="tsk-modal-btns">
             <button className="tsk-btn" onClick={onClose}>Отмена</button>
             <button className="tsk-btn is-primary" onClick={submit} disabled={!canSend || saving}>
@@ -565,8 +517,86 @@ export default function TaskForm({ preset, ctx, onClose, onCreated }) {
           </div>
         </div>
       </div>
+      {projectFormOpen && <ProjectModal onClose={() => setProjectFormOpen(false)} onSaved={project => {
+        setProjects(list => [...list, project].sort((a, b) => a.name.localeCompare(b.name, 'ru')));
+        setProjectId(project.id);
+        setProjectFormOpen(false);
+      }} />}
     </div>
   );
+}
+
+function PeoplePicker({ people, selected, byId, single, onChange }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const rootRef = useRef(null);
+  const menuRef = useRef(null);
+  const matches = people.filter(person => !selected.includes(person.id)
+    && (!query.trim() || userName(person).toLowerCase().includes(query.trim().toLowerCase()))).slice(0, 12);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = event => {
+      if (!rootRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
+    };
+    const escape = event => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const position = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(window.innerWidth - 16, Math.max(rect.width, 280));
+      const below = window.innerHeight - rect.bottom - 12;
+      const above = rect.top - 12;
+      const up = below < 210 && above > below;
+      const maxHeight = Math.max(120, Math.min(260, (up ? above : below) - 8));
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+      setMenuStyle(up
+        ? { position: 'fixed', left, bottom: window.innerHeight - rect.top + 6, width, maxHeight }
+        : { position: 'fixed', left, top: rect.bottom + 6, width, maxHeight });
+    };
+    position();
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', position, true);
+    return () => {
+      window.removeEventListener('resize', position);
+      window.removeEventListener('scroll', position, true);
+    };
+  }, [open]);
+
+  const add = userId => {
+    onChange(single ? [userId] : [...selected, userId]);
+    setQuery('');
+    setOpen(false);
+  };
+
+  return <div className="tsk-people-picker" ref={rootRef}>
+    {!!selected.length && <div className="tsk-picker-selected">
+      {selected.map(userId => { const user = byId[userId]; return <div key={userId}>
+        <Avatar user={user} size={24} /><span>{userName(user)}</span>
+        <button type="button" aria-label={`Убрать ${userName(user)}`}
+          onClick={() => onChange(selected.filter(id => id !== userId))}>×</button>
+      </div>; })}
+    </div>}
+    <input className="tsk-input" value={query}
+      placeholder={single && selected.length ? 'Заменить исполнителя' : selected.length ? 'Добавить ещё' : 'Найти сотрудника'}
+      onFocus={() => { setMenuStyle(null); setOpen(true); }}
+      onChange={event => { setQuery(event.target.value); setOpen(true); }} />
+    {open && menuStyle && createPortal(<div className="tsk-people-menu" ref={menuRef} style={menuStyle}>
+      {matches.length ? matches.map(person => <button type="button" key={person.id}
+        onClick={() => add(person.id)}><Avatar user={person} size={26} /><span>{userName(person)}</span></button>)
+        : <div className="tsk-people-menu-empty">Никого не найдено</div>}
+    </div>, document.body)}
+  </div>;
 }
 
 function TimeSlots({ assignee, date, busy, loading, step, range, onStep, onRange }) {
@@ -601,7 +631,7 @@ function TimeSlots({ assignee, date, busy, loading, step, range, onStep, onRange
   const time = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   const selectedText = range
     ? `${time(cells[range.start].startMinutes)}–${time(cells[range.end].startMinutes + step)}`
-    : 'Первый клик — начало, второй — конец';
+    : 'Выберите интервал';
 
   if (!assignee) return <div className="tsk-empty is-compact">Выберите одного исполнителя, чтобы увидеть свободные интервалы.</div>;
   if (loading) return <div className="tsk-empty is-compact">Проверяем занятые интервалы…</div>;
@@ -636,7 +666,6 @@ function TimeSlots({ assignee, date, busy, loading, step, range, onStep, onRange
         <span><i className="is-free" />свободно</span>
         <span><i className="is-busy" />занято</span>
         <span><i className="is-selected" />выбрано</span>
-        <span>Содержимое чужих событий не загружается.</span>
       </div>
     </div>
   );
@@ -670,13 +699,6 @@ function TaskScheme({ parts, byId }) {
           </div>
         </React.Fragment>
       ))}
-      <div className="tsk-trade is-neutral" style={{ flexBasis: '100%' }}>
-        <div className="tsk-trade-title">Порядок работ влияет на входящие</div>
-        <div className="tsk-trade-text">
-          Зависимая часть появится у исполнителя только после завершения предыдущей.
-          Фиолетовая рамка означает общую часть — её часы учитываются у каждого участника.
-        </div>
-      </div>
     </div>
   );
 }
@@ -685,52 +707,33 @@ function TaskScheme({ parts, byId }) {
 
 function Assessment({ overloads, parts, loads, byId, me, choice, setChoice, explanation, setExplanation, onShift, onGive }) {
   const first = parts[0];
-  if (!first.assignees.length) {
-    return (
-      <div className="tsk-trade is-neutral">
-        <div className="tsk-trade-title">Исполнитель не выбран</div>
-        <div className="tsk-trade-text">
-          Выберите «Моя задача», найдите человека в поиске выше или откройте
-          вкладку «Исполнители и части», чтобы назначить нескольких.
-        </div>
-      </div>
-    );
-  }
+  if (!first.assignees.length) return null;
 
   if (!overloads.length) {
     const day = loads[`${first.assignees[0]}|${first.dueDate}`];
-    return (
-      <div className="tsk-trade is-ok">
-        <div className="tsk-trade-title">Помещается</div>
-        <div className="tsk-trade-text">
-          {day && day.norm ? (
-            <>У исполнителя станет {hoursText(day.hours + Number(first.estimateHours))} из {hoursText(day.norm)}.
-              Свободного останется {hoursText(Math.max(0, day.norm - day.hours - Number(first.estimateHours)))}.</>
-          ) : 'Загрузка проверяется по личной норме каждого исполнителя.'}
-          {first.assignees[0] === me?.id
-            ? ' Задача сразу попадёт в ваш календарь.'
-            : ' В календарь исполнителя она попадёт после того, как он её обработает.'}
-        </div>
-      </div>
-    );
+    return <div className="tsk-assessment is-ok"><b>Помещается</b><span>{day?.norm
+      ? `${hoursText(day.hours + Number(first.estimateHours))} из ${hoursText(day.norm)}`
+      : 'проверяем загрузку'}</span>{first.assignees[0] === me?.id && <small>сразу в календарь</small>}</div>;
   }
 
   const vacation = overloads.filter(o => o.reason === 'vacation');
+  const dayOff = overloads.filter(o => o.reason === 'day_off');
   const noNorm = overloads.filter(o => o.reason === 'no_norm');
   const over = overloads.filter(o => o.reason === 'overload');
 
   return (
-    <div className="tsk-trade is-bad">
-      <div className="tsk-trade-title">Не помещается</div>
-      <div className="tsk-trade-text">
+    <div className="tsk-assessment-panel">
+      <div className="tsk-assessment-title">Не помещается</div>
+      <div className="tsk-assessment-details">
         {vacation.map(o => (
           <div key={`v${o.userId}`}>
-            {userName(byId[o.userId])}: в этот день отпуск — выберите другой день или другого человека.
+            {userName(byId[o.userId])}: отпуск
           </div>
         ))}
+        {dayOff.map(o => <div key={`d${o.userId}`}>{userName(byId[o.userId])}: выходной</div>)}
         {noNorm.map(o => (
           <div key={`n${o.userId}`}>
-            {userName(byId[o.userId])}: не задана норма рабочего дня, посчитать загрузку нельзя.
+            {userName(byId[o.userId])}: рабочее расписание не настроено.
           </div>
         ))}
         {over.map(o => (
@@ -743,49 +746,19 @@ function Assessment({ overloads, parts, loads, byId, me, choice, setChoice, expl
 
       {!!over.length && (
         <>
-          <div className="tsk-trade-text">Выберите, что изменится:</div>
-          <div
-            className={`tsk-opt ${choice === 'shift' ? 'is-sel' : ''}`}
-            onClick={onShift}
-          >
-            <span className="tsk-opt-radio" />
-            <span>
-              <span className="tsk-opt-title">Найти ближайший свободный день</span>
-              <span className="tsk-opt-note">
-                Проверим следующие 30 дней и выберем первый, куда задача помещается
-              </span>
-            </span>
-          </div>
+          <div className="tsk-assessment-actions">
+            <button type="button" className={choice === 'shift' ? 'is-on' : ''} onClick={onShift}>Другой день</button>
           {parts.length === 1 && first.assignees.length === 1 && (
-            <div
-              className={`tsk-opt ${choice === 'give' ? 'is-sel' : ''}`}
-              onClick={onGive}
-            >
-              <span className="tsk-opt-radio" />
-              <span>
-                <span className="tsk-opt-title">Передать свободному коллеге</span>
-                <span className="tsk-opt-note">Срок сохранится, загрузку проверим до передачи</span>
-              </span>
-            </div>
+            <button type="button" className={choice === 'give' ? 'is-on' : ''} onClick={onGive}>Другой сотрудник</button>
           )}
-          <div
-            className={`tsk-opt ${choice === 'force' ? 'is-sel' : ''}`}
-            onClick={() => setChoice('force')}
-          >
-            <span className="tsk-opt-radio" />
-            <span>
-              <span className="tsk-opt-title">Поставить всё равно</span>
-              <span className="tsk-opt-note">
-                Объяснение обязательно — оно уйдёт исполнителю и останется в истории задачи
-              </span>
-            </span>
+            <button type="button" className={choice === 'force' ? 'is-on' : ''}
+              onClick={() => setChoice('force')}>Всё равно</button>
           </div>
 
           {choice === 'force' && (
             <textarea
-              className="tsk-textarea"
-              style={{ marginTop: 10, minHeight: 70 }}
-              placeholder={`Почему это всё равно должно быть сделано ${dfull(first.dueDate)}?`}
+              className="tsk-textarea tsk-force-reason"
+              placeholder={`Причина срока ${dfull(first.dueDate)}`}
               value={explanation}
               onChange={e => setExplanation(e.target.value)}
             />

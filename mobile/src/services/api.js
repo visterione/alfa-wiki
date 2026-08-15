@@ -221,8 +221,8 @@ export const tasks = {
   // Загрузка человека за период: часы и цвет, без содержания дел
   getPersonLoad: (id, start, end) =>
     api.get(`/tasks/people/${id}/load`, {params: {start, end}}),
-  setNorm: (id, dailyNormHours) =>
-    api.put(`/tasks/people/${id}/norm`, {dailyNormHours}),
+  setSchedule: (id, workSchedule) =>
+    api.put(`/tasks/people/${id}/schedule`, {workSchedule}),
 
   // Действия над своей частью. Здесь и только здесь часть превращается в блок
   // времени и начинает занимать часы.
@@ -257,6 +257,40 @@ export const courses = {
   submitTest: (courseId, answers) =>
     api.post(`/courses/${courseId}/test/submit`, {answers}),
   resetProgress: courseId => api.post(`/courses/${courseId}/reset`),
+};
+
+// ── Склад (ver. 6.81) ────────────────────────────────────────────────────────
+// Набор ручек урезан относительно веба сознательно, и урезан по одному признаку:
+// здесь только то, что делают НА НОГАХ, стоя в кабинете с телефоном в руке.
+//
+// Сканирование, пересчёт по описи, размещение имущества по кабинетам — работа
+// глазами и руками в помещении. Настройка локаций, планы этажей, словарь
+// предметов, отчёты и закупки остаются в вебе: это работа за столом, и телефон
+// в ней не помогает, а мешает.
+export const warehouse = {
+  access: () => api.get('/warehouse/access'),
+  tree: () => api.get('/warehouse/locations/tree'),
+
+  // Сканер: принимает и инвентарный номер с этикетки, и полную ссылку из QR —
+  // разбирает сервер, чтобы телефон не знал про формат публичных ссылок.
+  lookup: code => api.get(`/warehouse/assets/lookup/${encodeURIComponent(code)}`),
+  asset: id => api.get(`/warehouse/assets/${id}`),
+  assets: params => api.get('/warehouse/assets', {params}),
+  roomDashboard: roomId => api.get(`/warehouse/reports/room/${roomId}/dashboard`),
+
+  // Инвентаризация
+  inventorySessions: () => api.get('/warehouse/operations/inventory'),
+  inventory: id => api.get(`/warehouse/operations/inventory/${id}`),
+  countInventory: (id, data) =>
+    api.post(`/warehouse/operations/inventory/${id}/count`, data),
+  closeInventory: (id, data) =>
+    api.patch(`/warehouse/operations/inventory/${id}/close`, data),
+
+  // Размещение позиций ведомости по кабинетам (ver. 6.80)
+  placementQueue: params => api.get('/warehouse/placements/queue', {params}),
+  placementsInRoom: roomId => api.get(`/warehouse/placements/room/${roomId}`),
+  placeItems: data => api.post('/warehouse/placements', data),
+  deletePlacement: id => api.delete(`/warehouse/placements/${id}`),
 };
 
 export default api;

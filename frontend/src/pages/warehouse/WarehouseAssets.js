@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Search, QrCode, Printer, X, Wrench, ArrowRightLeft, FileText,
-  Copy, Info, AlertTriangle, Plus, Pencil, Check,
+  Copy, Info, AlertTriangle, Plus, Pencil, Check, Wand2,
 } from 'lucide-react';
 import { warehouseApi, BASE_URL } from '../../services/api';
 import SecureImage from '../../components/warehouse/SecureImage';
@@ -32,6 +32,8 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
   const [labelSize, setLabelSize] = useState('58x40');
   // null — форма закрыта; { asset: null } — постановка на учёт; { asset } — правка.
   const [form, setForm] = useState(null);
+  const [parsing, setParsing] = useState(null);
+  const [bulk, setBulk] = useState(null);
 
   const departments = useMemo(() => {
     if (!filters.medCenterId) return tree?.departments || [];
@@ -141,19 +143,54 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
         )}
       </div>
 
-      {access?.capabilities?.canPrintLabels && (
+      {(access?.capabilities?.canPrintLabels || access?.capabilities?.canManageAssets) && (
         <div className="wh-assets__bulk">
-          <span>{checked.size ? `Отмечено: ${checked.size}` : 'Отметьте активы для печати этикеток'}</span>
-          <select value={labelSize} onChange={e => setLabelSize(e.target.value)}>
-            <option value="58x40">Этикетка 58 × 40 мм</option>
-            <option value="100x70">Этикетка 100 × 70 мм</option>
-          </select>
-          <button className="wh-btn wh-btn--ghost" onClick={printLabels} disabled={!checked.size}>
-            <Printer size={15} /> Печать этикеток
-          </button>
+          <span>
+            {checked.size
+              ? `Отмечено: ${checked.size}`
+              : 'Отметьте активы — этикетки и правку полей можно сделать пачкой'}
+          </span>
+          {access?.capabilities?.canPrintLabels && (
+            <>
+              <select value={labelSize} onChange={e => setLabelSize(e.target.value)}>
+                <option value="58x40">Этикетка 58 × 40 мм</option>
+                <option value="100x70">Этикетка 100 × 70 мм</option>
+              </select>
+              <button className="wh-btn wh-btn--ghost" onClick={printLabels} disabled={!checked.size}>
+                <Printer size={15} /> Печать этикеток
+              </button>
+            </>
+          )}
+          {/* Отметить всё найденное — то, ради чего массовая правка и нужна:
+              человек сужает список фильтрами до нужного класса вещей и правит
+              их одним действием, а не отмечает три сотни строк по одной. */}
+          {access?.capabilities?.canManageAssets && (
+            <>
+              <button className="wh-btn wh-btn--ghost" disabled={!data.items.length}
+                      onClick={() => setChecked(new Set(data.items.map(a => a.id)))}>
+                Отметить все {data.items.length}
+              </button>
+              <button className="wh-btn wh-btn--secondary" disabled={!checked.size}
+                      onClick={() => setBulk({})}>
+                <Pencil size={15} /> Изменить поля
+              </button>
+            </>
+          )}
           {checked.size > 0 && (
             <button className="wh-btn wh-btn--link" onClick={() => setChecked(new Set())}>Снять отметки</button>
           )}
+        </div>
+      )}
+
+      {/* Разбор названий стоит здесь, а не на вкладке ведомости: правит он
+          карточки, и смотреть на результат надо в том же списке, где они лежат. */}
+      {access?.capabilities?.canManageAssets && (
+        <div className="wh-assets__bulk">
+          <span>Модель и производитель написаны прямо в наименовании — их можно вытащить в поля</span>
+          <button className="wh-btn wh-btn--ghost" style={{ marginLeft: 'auto' }}
+                  onClick={() => setParsing({})}>
+            <Wand2 size={15} /> Разобрать наименования
+          </button>
         </div>
       )}
 
@@ -242,6 +279,257 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
                               if (selected?.asset?.id) await openCard(selected.asset.id);
                             }} />
       )}
+
+      {parsing && (
+        <ParseNamesModal onClose={() => setParsing(null)} onApplied={load} />
+      )}
+
+      {bulk && (
+        <BulkEditModal
+          ids={[...checked]}
+          onClose={() => setBulk(null)}
+          onApplied={async () => { setBulk(null); setChecked(new Set()); await load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Массовая правка полей у отмеченных карточек.
+ *
+ * ── Почему меняется только отмеченное поле ───────────────────────────────────
+ *
+ * Форма отправляет на сервер лишь те поля, которые человек включил галочкой.
+ * Иначе массовая правка категории заодно обнуляла бы интервал ТО у трёхсот
+ * карточек — просто потому, что поле в форме осталось пустым. Такую потерю
+ * замечают через месяцы, когда не приходит ни одно напоминание о ТО.
+ *
+ * ── Чего здесь нет ───────────────────────────────────────────────────────────
+ *
+ * Кабинета, места хранения и МОЛ: это размещение, и меняется оно документом
+ * перемещения. Форма правки одной карточки устроена так же, и массовая операция
+ * не может быть лазейкой в обход правила — иначе отчёт «Движение активов»
+ * перестал бы отвечать на вопрос, как вещь оказалась там, где она есть.
+ */
+function BulkEditModal({ ids, onClose, onApplied }) {
+  const [refs, setRefs] = useState({ categories: [], contractors: [] });
+  const [enabled, setEnabled] = useState({});
+  const [form, setForm] = useState({
+    categoryId: '', status: '', maintenanceIntervalMonths: '',
+    usefulLifeMonths: '', fundingSource: '', warrantyUntil: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [cats, contractors] = await Promise.all([
+          warehouseApi.categories(), warehouseApi.contractors({}),
+        ]);
+        setRefs({ categories: cats.data, contractors: contractors.data });
+      } catch { /* без справочников остаются остальные поля */ }
+    })();
+  }, []);
+
+  const FIELDS = [
+    { key: 'categoryId', label: 'Категория', type: 'category' },
+    { key: 'status', label: 'Статус', type: 'status' },
+    { key: 'maintenanceIntervalMonths', label: 'Интервал ТО, мес.', type: 'number' },
+    { key: 'usefulLifeMonths', label: 'Срок использования, мес.', type: 'number' },
+    { key: 'warrantyUntil', label: 'Гарантия до', type: 'date' },
+    { key: 'fundingSource', label: 'Источник финансирования', type: 'text' },
+  ];
+
+  const active = FIELDS.filter(f => enabled[f.key]);
+
+  const submit = async () => {
+    if (!active.length) return toast.error('Отметьте, какие поля менять');
+    setSaving(true);
+    try {
+      const patch = {};
+      for (const field of active) patch[field.key] = form[field.key];
+      const { data } = await warehouseApi.bulkUpdateAssets({ ids, patch });
+      toast.success(`Изменено карточек: ${data.updated}`);
+      await onApplied();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось изменить');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div>
+            <div className="wh-modal__title">Изменить поля</div>
+            <div className="wh-modal__sub">Отмечено карточек: {ids.length}</div>
+          </div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-note wh-note--subtle">
+            <Info size={15} />
+            <div>
+              Меняются только отмеченные галочкой поля — остальные останутся как
+              есть. Кабинет и МОЛ здесь не меняются: переезд оформляется
+              документом перемещения.
+            </div>
+          </div>
+          <div className="wh-form">
+            {FIELDS.map(field => (
+              <div key={field.key} className="wh-bulk__row">
+                <label className="wh-check">
+                  <input type="checkbox" checked={Boolean(enabled[field.key])}
+                         onChange={e => setEnabled(prev => ({ ...prev, [field.key]: e.target.checked }))} />
+                  {field.label}
+                </label>
+                <div className="wh-bulk__field">
+                  {field.type === 'category' && (
+                    <select disabled={!enabled[field.key]} value={form.categoryId}
+                            onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}>
+                      <option value="">— очистить —</option>
+                      {refs.categories.filter(c => c.kind === 'fixed').map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {field.type === 'status' && (
+                    <select disabled={!enabled[field.key]} value={form.status}
+                            onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                      <option value="">—</option>
+                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  )}
+                  {['number', 'text', 'date'].includes(field.type) && (
+                    <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                           disabled={!enabled[field.key]}
+                           value={form[field.key]}
+                           placeholder={field.type === 'number' ? 'пусто — очистить' : ''}
+                           onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={submit}
+                  disabled={saving || !active.length}>
+            <Check size={15} /> {saving ? 'Меняю…' : `Изменить ${active.length} пол. у ${ids.length} карточек`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Разбор наименований: вытащить модель и производителя в отдельные поля.
+ *
+ * ── Почему сначала предпросмотр и только потом применение ────────────────────
+ *
+ * Разбор эвристический, и правил, которые верно разберут любое название из 1С,
+ * не существует. На реальной выгрузке модель находится примерно у трети позиций,
+ * и часть находок спорна: «Кабель USB2.0 НАМА Н-34694» даёт моделью USB2.0.
+ * Применять такое к трём тысячам карточек вслепую нельзя — человек должен
+ * увидеть список «было → стало» и решить сам.
+ *
+ * Наименование при этом не меняется вовсе: по нему сходится сверка с
+ * бухгалтерией. Заполняются только пустые поля — введённое руками не
+ * перезаписывается никогда.
+ */
+function ParseNamesModal({ onClose, onApplied }) {
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await warehouseApi.parseAssetNames({ dryRun: true });
+        setPreview(data);
+      } catch (e) {
+        toast.error(e.response?.data?.error || 'Не удалось разобрать наименования');
+        setPreview({ scanned: 0, changed: 0, samples: [] });
+      }
+    })();
+  }, []);
+
+  const apply = async () => {
+    setBusy(true);
+    try {
+      const { data } = await warehouseApi.parseAssetNames({ dryRun: false });
+      toast.success(`Заполнено карточек: ${data.changed}`);
+      await onApplied?.();
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось применить');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box wh-modal__box--wide" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div className="wh-modal__title">Разбор наименований</div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          {!preview && <div className="wh-table__loading"><div className="loading-spinner" /></div>}
+          {preview && (
+            <>
+              <div className="wh-note wh-note--subtle">
+                <Info size={15} />
+                <div>
+                  Просмотрено карточек: {preview.scanned}, найдено что заполнить
+                  у {preview.changed}. Наименование не меняется — заполняются
+                  только пустые «модель» и «производитель». Разбор угадывает не
+                  всегда: посмотрите список ниже, и если он выглядит неверно,
+                  просто закройте окно.
+                </div>
+              </div>
+              {Boolean(preview.samples?.length) && (
+                <div className="wh-table-wrap wh-table-wrap--tall">
+                  <table className="wh-table wh-table--compact">
+                    <thead>
+                      <tr><th>Инв. №</th><th>Наименование</th><th>Модель</th><th>Производитель</th></tr>
+                    </thead>
+                    <tbody>
+                      {preview.samples.map(s => (
+                        <tr key={s.id}>
+                          <td className="wh-mono wh-cell-sub">{s.inventoryNumber}</td>
+                          <td>{s.name}</td>
+                          <td>{s.model ? <b>{s.model}</b> : '—'}</td>
+                          <td>{s.manufacturer || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {preview.changed > preview.samples.length && (
+                <div className="wh-hint">
+                  Показаны первые {preview.samples.length} из {preview.changed}.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={apply}
+                  disabled={busy || !preview?.changed}>
+            <Check size={15} /> {busy ? 'Заполняю…' : `Заполнить у ${preview?.changed || 0} карточек`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

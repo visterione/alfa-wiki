@@ -498,9 +498,8 @@ export const tasks = {
   getPersonLoad: (id, start, end) =>
     api.get(`/tasks/people/${id}/load`, { params: { start, end } }),
   getPersonSlots: (id, date) => api.get(`/tasks/people/${id}/slots`, { params: { date } }),
-  setNorm: (id, dailyNormHours) =>
-    api.put(`/tasks/people/${id}/norm`, { dailyNormHours }),
-  getNormHistory: (id) => api.get(`/tasks/people/${id}/norm/history`),
+  setSchedule: (id, workSchedule) => api.put(`/tasks/people/${id}/schedule`, { workSchedule }),
+  getScheduleHistory: (id) => api.get(`/tasks/people/${id}/schedule/history`),
 
   // === ЗАДАЧИ ===
   getTasks: (params) => api.get('/tasks', { params }),
@@ -1054,6 +1053,25 @@ export const warehouseApi = {
   saveOsvMapping:  (data)         => api.put('/warehouse/osv/mapping', data),
   deleteOsvMapping:(id)           => api.delete(`/warehouse/osv/mapping/${id}`),
   materializeOsv:  (id, data)     => api.post(`/warehouse/osv/imports/${id}/materialize`, data),
+
+  // Словарь предметов (ver. 6.79)
+  itemRules:       ()             => api.get('/warehouse/item-rules'),
+  saveItemRule:    (data)         => api.put('/warehouse/item-rules', data),
+  deleteItemRule:  (id)           => api.delete(`/warehouse/item-rules/${id}`),
+  itemRuleHeads:   (params)       => api.get('/warehouse/item-rules/heads', { params }),
+  probeItemRule:   (params)       => api.get('/warehouse/item-rules/probe', { params }),
+
+  // Размещение по кабинетам (ver. 6.80)
+  placementQueue:  (params)       => api.get('/warehouse/placements/queue', { params }),
+  placementsInRoom:(roomId)       => api.get(`/warehouse/placements/room/${roomId}`),
+  placeItems:      (data)         => api.post('/warehouse/placements', data),
+  parseAssetNames: (data)         => api.post('/warehouse/assets/parse-names', data),
+  bulkUpdateAssets:(data)         => api.post('/warehouse/assets/bulk', data),
+  bulkReorderRules:(data)         => api.post('/warehouse/catalog/reorder-rules/bulk', data),
+  createRoomsFromMis: (data)      => api.post('/warehouse/locations/rooms/from-mis', data),
+  misRoomSuggestions: (params)    => api.get('/warehouse/locations/rooms/mis-suggestions', { params }),
+  updatePlacement: (id, data)     => api.patch(`/warehouse/placements/${id}`, data),
+  deletePlacement: (id)           => api.delete(`/warehouse/placements/${id}`),
 
   // Отчёты
   turnover:        (params)       => api.get('/warehouse/reports/turnover', { params }),

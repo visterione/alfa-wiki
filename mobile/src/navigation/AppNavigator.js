@@ -28,6 +28,13 @@ import TasksInboxScreen from '../screens/Tasks/InboxScreen';
 import TaskListScreen from '../screens/Tasks/TaskListScreen';
 import TaskCardScreen from '../screens/Tasks/TaskCardScreen';
 import NormScreen from '../screens/Tasks/NormScreen';
+import WarehouseScreen from '../screens/Warehouse/WarehouseScreen';
+import WarehouseScannerScreen from '../screens/Warehouse/ScannerScreen';
+import WarehouseAssetScreen from '../screens/Warehouse/AssetScreen';
+import WarehouseRoomScreen from '../screens/Warehouse/RoomScreen';
+import WarehouseInventoryListScreen from '../screens/Warehouse/InventoryListScreen';
+import WarehouseInventoryCountScreen from '../screens/Warehouse/InventoryCountScreen';
+import WarehousePlacementScreen from '../screens/Warehouse/PlacementScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
 import LessonScreen from '../screens/Courses/LessonScreen';
@@ -261,6 +268,74 @@ function TasksStack() {
   );
 }
 
+/**
+ * Вкладка «Склад» (ver. 6.81).
+ *
+ * Отдельной вкладкой, а не пунктом внутри чего-то: складом занимаются не за
+ * столом. Инвентаризация — это обход помещений с телефоном, размещение
+ * имущества — тоже, и оба занятия начинаются с того, что человек достаёт
+ * телефон в кабинете. Прятать такое на третьем уровне значит не пользоваться
+ * этим вовсе.
+ *
+ * В мобилке живёт только то, что делают на ногах. Настройка локаций, планы
+ * этажей, словарь предметов, отчёты и закупки остались в вебе — там нужна
+ * клавиатура и большой экран, и телефон в этой работе мешает.
+ */
+function WarehouseStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerBackground: () => <HeaderBackground />,
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
+        headerTitleAlign: 'center',
+        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
+        ...STACK_ANIMATION,
+      }}>
+      <Stack.Screen
+        name="WarehouseHome"
+        component={WarehouseScreen}
+        options={{title: 'Склад'}}
+      />
+      {/* Сканер без шапки: кадр камеры занимает экран целиком, а закрывается он
+          своей кнопкой поверх кадра — системная шапка над видоискателем
+          выглядела бы как чужая полоса на объективе. */}
+      <Stack.Screen
+        name="WarehouseScanner"
+        component={WarehouseScannerScreen}
+        options={{headerShown: false}}
+      />
+      {/* Заголовок карточки — инвентарный номер, его ставит сам экран */}
+      <Stack.Screen
+        name="WarehouseAsset"
+        component={WarehouseAssetScreen}
+        options={{title: 'Оборудование'}}
+      />
+      <Stack.Screen
+        name="WarehouseRoom"
+        component={WarehouseRoomScreen}
+        options={{title: 'Кабинет'}}
+      />
+      <Stack.Screen
+        name="WarehouseInventoryList"
+        component={WarehouseInventoryListScreen}
+        options={{title: 'Инвентаризация'}}
+      />
+      <Stack.Screen
+        name="WarehouseInventoryCount"
+        component={WarehouseInventoryCountScreen}
+        options={{title: 'Пересчёт'}}
+      />
+      <Stack.Screen
+        name="WarehousePlacement"
+        component={WarehousePlacementScreen}
+        options={{title: 'Размещение'}}
+      />
+    </Stack.Navigator>
+  );
+}
+
 function CoursesStack() {
   return (
     <Stack.Navigator
@@ -315,12 +390,12 @@ function SettingsStack() {
         component={SettingsScreen}
         options={{title: 'Настройки'}}
       />
-      {/* Норма рабочего дня (ver. 6.75): личная настройка, поэтому лежит в
+      {/* Рабочее расписание: личная настройка, поэтому лежит в
           настройках, а не в самом модуле «Задачи» */}
       <Stack.Screen
         name="TasksNorm"
         component={NormScreen}
-        options={{title: 'Норма рабочего дня'}}
+        options={{title: 'Рабочее расписание'}}
       />
     </Stack.Navigator>
   );
@@ -354,6 +429,14 @@ function MainTabs() {
         // Подпись под логотипом не нужна — кнопка узнаётся по знаку.
         // title остаётся для скринридера.
         options={{title: 'Альфа'}}
+      />
+      {/* Склад справа от кнопки «Альфа»: слева теперь две вкладки, справа три.
+          Симметрию групп пришлось разменять на то, чтобы марка осталась ровно
+          посередине экрана — см. комментарий в AlfaTabBar. */}
+      <Tab.Screen
+        name="WarehouseTab"
+        component={WarehouseStack}
+        options={{title: 'Склад'}}
       />
       <Tab.Screen
         name="CoursesTab"

@@ -192,6 +192,12 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
             <span className="wh-muted">не учитывать: {t.ignore}</span>
             <span className={t.unmapped ? 'wh-warn' : 'wh-ok'}>не разобрано: {t.unmapped}</span>
             <span className="wh-muted">на сумму {money(t.sumMapped)} ₽</span>
+            {/* Сколько решил словарь, а сколько досталось порогу цены. Без этой
+                цифры непонятно, стоит ли идти размечать слова: разбор выглядит
+                одинаково и при пустом словаре, и при заполненном. */}
+            <span className="wh-muted">
+              по словарю: {t.byDictionary}, по цене: {t.byThreshold}
+            </span>
           </div>
         </div>
       </div>
@@ -462,6 +468,19 @@ function ReportModal({ report, onClose }) {
                 )}
               </tbody>
             </table>
+          )}
+
+          {/* Сломанное выражение словаря не роняет разбор, но и молчать о нём
+              нельзя: правило просто не сработало, и без этой строки человек
+              считал бы, что оно применилось. */}
+          {Boolean(report.brokenRules?.length) && (
+            <div className="wh-alert wh-alert--warning">
+              <AlertTriangle size={15} />
+              <div>
+                Правила словаря не сработали, потому что не разбираются:{' '}
+                {report.brokenRules.map(b => `«${b.pattern}»`).join(', ')}.
+              </div>
+            </div>
           )}
 
           {Boolean(report.problems?.length) && (

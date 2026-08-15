@@ -13,6 +13,7 @@ import { tasks as api } from '../../../services/api';
 import { STATUS_LABEL, STATUS_TONE, MODE_LABEL, userName } from '../utils/labels';
 import { hoursText, dshort } from '../utils/dates';
 import { Badge, AvatarStack, Empty } from './Bits';
+import CustomSelect from './CustomSelect';
 
 const FILTERS = [
   ['all', 'Все'],
@@ -48,21 +49,20 @@ export default function TaskList({ ctx }) {
 
   return (
     <>
-      <div className="tsk-chips" style={{ marginBottom: 16 }}>
-        {FILTERS.map(([key, label]) => (
-          <button
-            key={key}
-            className={`tsk-chip ${filter === key ? 'is-on' : ''}`}
-            onClick={() => setFilter(key)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="tsk-list-toolbar">
+        <CustomSelect
+          label="Показывать"
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map(([value, label]) => ({ value, label }))}
+          className="is-wide"
+        />
+        <span className="tsk-result-count">{loading ? 'Обновляем…' : `${list.length} задач`}</span>
       </div>
 
       {loading ? <Empty compact>Загружаем…</Empty>
         : !list.length ? <Empty>В этом фильтре пусто.</Empty> : (
-        <div className="tsk-scroll">
+        <div className="tsk-task-table-wrap">
           <table className="tsk-table">
             <thead>
               <tr>

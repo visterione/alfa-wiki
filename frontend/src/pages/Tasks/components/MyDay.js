@@ -16,6 +16,7 @@ import { tasks as api } from '../../../services/api';
 import { hoursText, dfull, addDays, today, estimateText } from '../utils/dates';
 import { useDayLoad, useEvents, dayEvents, eventHours } from '../utils/useLoad';
 import { LoadBar, Empty, Badge, Note } from './Bits';
+import PeriodControl from './PeriodControl';
 
 export default function MyDay({ ctx }) {
   const { me, cursor, setCursor, go } = ctx;
@@ -37,17 +38,13 @@ export default function MyDay({ ctx }) {
 
   return (
     <>
-      <div className="tsk-ctl">
-        <button className="tsk-arrow" onClick={() => setCursor(addDays(cursor, -1))}>←</button>
-        <span className="tsk-ctl-period">{dfull(cursor)}{isToday ? ' · сегодня' : ''}</span>
-        <button className="tsk-arrow" onClick={() => setCursor(addDays(cursor, 1))}>→</button>
-        {!isToday && (
-          <button className="tsk-btn is-sm" onClick={() => setCursor(today())}>Сегодня</button>
-        )}
-        <span style={{ marginLeft: 'auto' }}>
-          <button className="tsk-btn is-sm" onClick={() => go('chart')}>Открыть график</button>
-        </span>
-      </div>
+      <PeriodControl
+        label={`${dfull(cursor)}${isToday ? ' · сегодня' : ''}`}
+        onPrevious={() => setCursor(addDays(cursor, -1))}
+        onNext={() => setCursor(addDays(cursor, 1))}
+        onToday={!isToday ? () => setCursor(today()) : null}
+        trailing={<button onClick={() => go('chart')}>График</button>}
+      />
 
       <div className="tsk-grid-2">
         <div>
@@ -55,8 +52,10 @@ export default function MyDay({ ctx }) {
             <div className="tsk-sect">Загрузка дня</div>
             {load?.onVacation ? (
               <Empty compact>Отпуск. Задачи на этот день не ставятся.</Empty>
+            ) : load?.onDayOff ? (
+              <Empty compact>Выходной по рабочему расписанию.</Empty>
             ) : load?.norm === null || load?.norm === undefined ? (
-              <Empty compact>Норма не задана — загрузка не считается.</Empty>
+              <Empty compact>Рабочее расписание не настроено — загрузка не считается.</Empty>
             ) : (
               <>
                 <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.5px' }}>
@@ -72,6 +71,7 @@ export default function MyDay({ ctx }) {
                   {load.color === 'r'
                     ? `Переработка ${hoursText(load.hours - load.norm)}`
                     : `Свободно ${hoursText(load.free)}`}
+                  {load.done > 0 && ` · выполнено ${hoursText(load.done)}`}
                 </div>
               </>
             )}
@@ -91,29 +91,34 @@ export default function MyDay({ ctx }) {
               На этот день ничего не запланировано.
               {load?.free > 0 && <><br />Свободно {hoursText(load.free)}.</>}
             </Empty>
-          ) : list.map(event => (
-            <div className={`tsk-inbox-card ${event.taskPartId ? 'is-clickable' : ''}`}
+          ) : list.map(event => {
+            const done = event.status === 'completed';
+            return (
+            <div className={`tsk-inbox-card ${event.taskPartId ? 'is-clickable' : ''} ${done ? 'is-done' : ''}`}
               key={event.id} style={{ padding: '12px 14px', marginBottom: 8 }}
               onClick={() => openEvent(event)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="tsk-inbox-title" style={{ fontSize: 14 }}>
                     {event.isOpaque ? 'Занято' : event.title}
                   </div>
                   <div className="tsk-inbox-from">
-                    {event.isOpaque
-                      ? 'содержание скрыто'
-                      : event.isFloating
-                        ? 'рабочий блок — время в дне выбираете вы'
-                        : new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    {done
+                      ? 'выполнено'
+                      : event.isOpaque
+                        ? 'содержание скрыто'
+                        : event.isFloating
+                          ? 'рабочий блок — время в дне выбираете вы'
+                          : new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
-                <Badge tone={event.isOpaque ? 'muted' : 'info'}>
+                <Badge tone={done ? 'ok' : event.isOpaque ? 'muted' : 'info'}>
                   {estimateText(eventHours(event))}
                 </Badge>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </>

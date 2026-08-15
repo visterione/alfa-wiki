@@ -68,8 +68,8 @@ router.post('/', authenticate, async (req, res) => {
       const team = await TaskTeam.create({
         name,
         medCenterId: req.body.medCenterId || null,
-        access: teams.ACCESS[String(req.body.access || 'all').toUpperCase()] || teams.ACCESS.ALL,
-        isHidden: !!req.body.isHidden,
+        access: teams.ACCESS.MEMBERS,
+        isHidden: true,
         ownerId: req.user.id,
       }, { transaction });
 
@@ -200,8 +200,10 @@ router.put('/:id', authenticate, async (req, res) => {
     const patch = {};
     if (req.body.name !== undefined) patch.name = String(req.body.name).trim();
     if (req.body.medCenterId !== undefined) patch.medCenterId = req.body.medCenterId || null;
-    if (req.body.access !== undefined) patch.access = req.body.access;
-    if (req.body.isHidden !== undefined) patch.isHidden = !!req.body.isHidden;
+    // Команды всегда закрыты. Публичных режимов в модуле больше нет: доступ
+    // определяется только ролью member / lead / viewer в составе команды.
+    patch.access = teams.ACCESS.MEMBERS;
+    patch.isHidden = true;
     await team.row.update(patch);
 
     const fresh = await loadTeam(req.params.id);
@@ -301,7 +303,7 @@ router.get('/:id/load', authenticate, async (req, res) => {
     const matrix = await loadQuery.loadMatrix(memberIds, start, end, viewer);
 
     const users = await User.findAll({
-      attributes: ['id', 'displayName', 'username', 'avatar', 'dailyNormHours'],
+      attributes: ['id', 'displayName', 'username', 'avatar', 'taskWorkSchedule'],
       where: { id: memberIds },
       raw: true,
     });
@@ -340,7 +342,7 @@ function summarize(matrix) {
     let free = 0;
     let over = 0;
     for (const [, load] of perDay) {
-      if (load.onVacation || load.norm === null) continue;
+      if (load.onVacation || load.onDayOff || load.norm === null) continue;
       hours += load.hours;
       capacity += load.norm;
       free += load.free;
