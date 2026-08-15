@@ -154,7 +154,12 @@ async function main() {
       await connection.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]).catch(() => {});
     }
     if (connection) {
-      await sequelize.connectionManager.releaseConnection(connection).catch(() => {});
+      try {
+        await sequelize.connectionManager.releaseConnection(connection);
+      } catch (_) {
+        // sequelize.close() ниже всё равно закроет пул, если возврат соединения
+        // в конкретной версии Sequelize завершился ошибкой.
+      }
     }
     await sequelize.close().catch(() => {});
   }
