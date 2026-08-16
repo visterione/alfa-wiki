@@ -945,6 +945,21 @@
 }
 .wh-editor__stats-warn:hover { text-decoration: underline; }
 
+/* Вырезы: внутренний двор в контуре этажа, дырка кольцевого коридора. Список
+   короткий и почти всегда пустой, поэтому без заголовка — кнопка и строки. */
+.wh-holes { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.wh-holes__start { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wh-holes__start > span:first-child {
+  flex: 1 0 100%; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .3px; color: var(--wh-text-secondary);
+}
+.wh-holes__item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 9px; border: 1px solid var(--wh-border); border-radius: 7px;
+  background: var(--wh-card-bg); font-size: 12px;
+}
+.wh-holes__item > span:first-child { flex: 1; }
+
 /* Контур схемы в списке объектов: та же карточка, что у кабинетов, но с рамкой
    выделения — он такой же выбираемый объект плана. */
 .wh-panel--outline .wh-panel__head:hover { background: var(--wh-primary-soft2, #eef4fc); }

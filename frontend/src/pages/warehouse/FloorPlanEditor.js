@@ -3,11 +3,12 @@ import toast from 'react-hot-toast';
 import {
   Save, Square, MousePointer2, Grid3x3, Trash2, Plus, Undo2, PenLine,
   Link2, AlertTriangle, Info, Building2, Layers, DoorOpen, Boxes,
-  Type, Pencil, X, Check, ChevronRight, Ruler,
+  Type, Pencil, X, Check, ChevronRight, Ruler, Scissors,
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
 import FloorPlanSvg, {
-  polygonArea, polygonBounds, pointInPolygon, GRID_STEP, SHAPE_KINDS,
+  polygonArea, polygonBounds, pointInPolygon, pointInShape, shapesOverlap, ringsOf,
+  GRID_STEP, SHAPE_KINDS,
 } from '../../components/warehouse/FloorPlanSvg';
 
 /**
@@ -131,6 +132,30 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   );
 
   const outlinePoints = plan?.floor?.outline?.points || [];
+  const outlineHoles = ringsOf(plan?.floor?.outline).holes;
+
+  /**
+   * Объект, форму которого сейчас правят: в нём и вырезается двор. Отдельного
+   * выбора «во что резать» нет специально — вырез всегда принадлежит чему-то
+   * конкретному, и спрашивать об этом второй раз после того, как объект уже
+   * выбран, было бы лишним шагом.
+   */
+  const holeTarget = useMemo(() => {
+    if (selected.kind === 'outline') {
+      return { kind: 'outline', id: null, title: 'контуре схемы', geometry: plan?.floor?.outline };
+    }
+    if (selected.kind === 'shape') {
+      const shape = plan?.shapes?.find(s => s.id === selected.id);
+      return shape ? { kind: 'shape', id: shape.id, title: 'фигуре', geometry: shape.geometry } : null;
+    }
+    if (selected.kind === 'room') {
+      const room = plan?.rooms?.find(r => r.id === selected.id);
+      return room && hasGeometry(room)
+        ? { kind: 'room', id: room.id, title: 'кабинете', geometry: room.plan }
+        : null;
+    }
+    return null;
+  }, [selected, plan]);
 
   /** Прямоугольный ли контур: только тогда его размер имеет смысл задавать числом. */
   const outlineIsRect = useMemo(() => {
@@ -148,9 +173,10 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
    */
   const roomsOutside = useMemo(() => {
     if (outlinePoints.length < 3) return [];
+    // Кабинет, попавший во внутренний двор, тоже «вне контура»: двор — это улица.
     return (plan?.rooms || []).filter(r => hasGeometry(r)
-      && !r.plan.points.every(p => pointInPolygon(p, outlinePoints)));
-  }, [plan, outlinePoints]);
+      && !r.plan.points.every(p => pointInShape(p, outlinePoints, outlineHoles)));
+  }, [plan, outlinePoints, outlineHoles]);
 
   /**
    * Точный размер прямоугольного контура числом. Угол слева сверху остаётся на
@@ -205,46 +231,66 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     setDirty(true);
   };
 
-  const handleVertexDrag = (roomId, index, point) => {
+  /**
+   * Правка геометрии по кольцам.
+   *
+   * Кольцо −1 — внешний контур, 0 и дальше — вырезы (внутренние дворы, дырка
+   * кольцевого коридора). Все обработчики ходят через одну функцию: правка
+   * наружной стены и стены двора для человека одинакова, и расписывать её дважды
+   * значило бы дать им разойтись на первой же доработке.
+   *
+   * Подпись (label) считается только по внешнему кольцу: у «бублика» центр масс
+   * попадает в дырку, а название коридора надо писать по самому коридору.
+   */
+  const applyToRing = (geometry, ring, change) => {
+    const { points, holes } = ringsOf(geometry);
+    if (ring < 0) {
+      const next = change(points);
+      if (!next) return null;
+      return { ...geometry, points: next, label: centroid(next) };
+    }
+    const next = change(holes[ring] || []);
+    if (!next) return null;
+    // Вырез из двух стен не бывает: сокращение ниже трёх вершин убирает его целиком.
+    const nextHoles = next.length >= 3
+      ? holes.map((h, i) => (i === ring ? next : h))
+      : holes.filter((h, i) => i !== ring);
+    return { ...geometry, holes: nextHoles };
+  };
+
+  const setRingPoint = (geometry, at, point) => applyToRing(geometry, at.ring, (pts) => {
+    const next = pts.slice();
+    next[at.index] = point;
+    return next;
+  });
+
+  const handleVertexDrag = (roomId, at, point) => {
     pushSnapshot();
-    mutateRoom(roomId, room => {
-      const points = (room.plan?.points || []).slice();
-      points[index] = point;
-      return { ...room, plan: { ...room.plan, points, label: centroid(points) } };
-    });
+    mutateRoom(roomId, room => ({ ...room, plan: setRingPoint(room.plan, at, point) || room.plan }));
   };
 
   const handleRoomMove = (roomId, dx, dy) => {
     pushSnapshot();
-    mutateRoom(roomId, room => {
-      const points = (room.plan?.points || []).map(([x, y]) => [round2(x + dx), round2(y + dy)]);
-      return { ...room, plan: { ...room.plan, points, label: centroid(points) } };
-    });
+    mutateRoom(roomId, room => ({ ...room, plan: moveGeometry(room.plan, dx, dy) }));
   };
 
-  const handleShapeVertexDrag = (shapeId, index, point) => {
+  const handleShapeVertexDrag = (shapeId, at, point) => {
     pushSnapshot();
-    mutateShape(shapeId, shape => {
-      const points = (shape.geometry?.points || []).slice();
-      points[index] = point;
-      return { ...shape, geometry: { ...shape.geometry, points, label: centroid(points) } };
-    });
+    mutateShape(shapeId, shape => ({
+      ...shape, geometry: setRingPoint(shape.geometry, at, point) || shape.geometry,
+    }));
   };
 
   const handleShapeMove = (shapeId, dx, dy) => {
     pushSnapshot();
-    mutateShape(shapeId, shape => {
-      const points = (shape.geometry?.points || []).map(([x, y]) => [round2(x + dx), round2(y + dy)]);
-      return { ...shape, geometry: { ...shape.geometry, points, label: centroid(points) } };
-    });
+    mutateShape(shapeId, shape => ({ ...shape, geometry: moveGeometry(shape.geometry, dx, dy) }));
   };
 
-  const handleOutlineVertexDrag = (index, point) => {
+  const handleOutlineVertexDrag = (at, point) => {
     pushSnapshot();
     setPlan(prev => {
-      const points = (prev.floor.outline?.points || []).slice();
-      points[index] = point;
-      return { ...prev, floor: { ...prev.floor, outline: { points } } };
+      const outline = setRingPoint(prev.floor.outline, at, point);
+      return outline ? { ...prev, floor: { ...prev.floor, outline } } : prev;
     });
     setDirty(true);
   };
@@ -257,35 +303,94 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
    * первой же доработке. Точка вставляется по индексу стороны, поэтому порядок
    * обхода не ломается и многоугольник не выворачивается.
    */
-  const editVertex = ({ kind, id, index, point }, remove) => {
+  const editVertex = ({ kind, id, ring = -1, index, point }, remove) => {
     pushSnapshot();
     const change = (points) => {
       const next = points.slice();
       if (remove) {
-        if (next.length <= 3) return null;
+        // Треугольник — минимум для кольца. Внешний контур на этом останавливается,
+        // вырез вместо этого исчезает целиком (решает applyToRing).
+        if (next.length <= 3 && ring < 0) return null;
         next.splice(index, 1);
       } else next.splice(index, 0, point);
       return next;
     };
 
+    let removedHole = false;
+    const apply = (geometry) => {
+      const next = applyToRing(geometry, ring, change);
+      if (next && ring >= 0 && ringsOf(next).holes.length < ringsOf(geometry).holes.length) {
+        removedHole = true;
+      }
+      return next;
+    };
+
     if (kind === 'room') {
-      mutateRoom(id, room => {
-        const points = change(room.plan?.points || []);
-        return points ? { ...room, plan: { ...room.plan, points, label: centroid(points) } } : room;
-      });
+      mutateRoom(id, room => ({ ...room, plan: apply(room.plan) || room.plan }));
     } else if (kind === 'shape') {
-      mutateShape(id, shape => {
-        const points = change(shape.geometry?.points || []);
-        return points ? { ...shape, geometry: { ...shape.geometry, points, label: centroid(points) } } : shape;
-      });
+      mutateShape(id, shape => ({ ...shape, geometry: apply(shape.geometry) || shape.geometry }));
     } else {
       setPlan(prev => {
-        const points = change(prev.floor.outline?.points || []);
-        return points ? { ...prev, floor: { ...prev.floor, outline: { points } } } : prev;
+        const outline = apply(prev.floor.outline);
+        return outline ? { ...prev, floor: { ...prev.floor, outline } } : prev;
       });
       setDirty(true);
     }
-    if (remove) toast.success('Вершина удалена');
+    if (remove) toast.success(removedHole ? 'Вырез убран' : 'Вершина удалена');
+  };
+
+  /**
+   * Вырез внутри уже нарисованного объекта: внутренний двор в контуре этажа или
+   * дырка кольцевого коридора.
+   *
+   * Проверяется на попадание внутрь цели, а не просто внутрь этажа: двор, у
+   * которого угол торчит наружу здания, — это не двор, а ошибка обвода, и молча
+   * сохранять её значило бы получить неверную площадь.
+   */
+  const addHole = (points) => {
+    const target = holeTarget;
+    if (!target) return;
+    const geometry = target.geometry;
+    const outer = ringsOf(geometry).points;
+    if (!points.every(p => pointInPolygon(p, outer))) {
+      toast.error('Вырез должен целиком лежать внутри выбранного объекта.', { id: 'wh-hole-outside' });
+      setTool({ mode: 'select' });
+      return;
+    }
+
+    const withHole = { ...geometry, holes: [...ringsOf(geometry).holes, points] };
+    if (target.kind === 'room') mutateRoom(target.id, room => ({ ...room, plan: withHole }));
+    else if (target.kind === 'shape') mutateShape(target.id, shape => ({ ...shape, geometry: withHole }));
+    else {
+      setPlan(prev => ({ ...prev, floor: { ...prev.floor, outline: withHole } }));
+      setDirty(true);
+    }
+    setTool({ mode: 'select' });
+    toast.success('Вырез добавлен');
+  };
+
+  /** Включить обвод выреза тем же способом (рамкой или по точкам), что и фигуры. */
+  const startHole = (shape) => {
+    if (!shape) { setTool({ mode: 'select' }); return; }
+    if (!holeTarget) {
+      toast.error('Сначала выберите, в чём вырезать: контур схемы, коридор или кабинет.');
+      return;
+    }
+    setTool({ mode: 'hole', shape });
+  };
+
+  const removeHole = (index) => {
+    const target = holeTarget;
+    if (!target) return;
+    pushSnapshot();
+    const geometry = target.geometry;
+    const without = { ...geometry, holes: ringsOf(geometry).holes.filter((h, i) => i !== index) };
+    if (target.kind === 'room') mutateRoom(target.id, room => ({ ...room, plan: without }));
+    else if (target.kind === 'shape') mutateShape(target.id, shape => ({ ...shape, geometry: without }));
+    else {
+      setPlan(prev => ({ ...prev, floor: { ...prev.floor, outline: without } }));
+      setDirty(true);
+    }
   };
 
   /**
@@ -295,20 +400,35 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
    */
   const resizeRoom = (roomId, widthM, depthM) => {
     if (!(widthM > 0) || !(depthM > 0)) return;
+    const room = plan?.rooms?.find(r => r.id === roomId);
+    const pts = room?.plan?.points || [];
+    if (!pts.length) return;
+    const x0 = Math.min(...pts.map(p => p[0]));
+    const y0 = Math.min(...pts.map(p => p[1]));
+    const points = [
+      [round2(x0), round2(y0)],
+      [round2(x0 + widthM), round2(y0)],
+      [round2(x0 + widthM), round2(y0 + depthM)],
+      [round2(x0), round2(y0 + depthM)],
+    ];
+
+    // Числовой размер — обход мыши, а значит и обход всех проверок, которые
+    // держат перетаскивание. Без этой ветки правило «кабинеты не накладываются»
+    // отменялось бы вводом ширины с клавиатуры.
+    const hit = overlappingRoom({ points }, roomId);
+    if (hit) {
+      toast.error(`Такой размер накладывается на кабинет ${hit.number}.`, { id: 'wh-overlap' });
+      return;
+    }
+
     pushSnapshot();
-    mutateRoom(roomId, room => {
-      const pts = room.plan?.points || [];
-      const x0 = Math.min(...pts.map(p => p[0]));
-      const y0 = Math.min(...pts.map(p => p[1]));
-      const points = [
-        [round2(x0), round2(y0)],
-        [round2(x0 + widthM), round2(y0)],
-        [round2(x0 + widthM), round2(y0 + depthM)],
-        [round2(x0), round2(y0 + depthM)],
-      ];
-      return { ...room, plan: { ...room.plan, points, label: centroid(points) } };
-    });
+    mutateRoom(roomId, r => ({ ...r, plan: { ...r.plan, points, label: centroid(points) } }));
   };
+
+  /** Первый кабинет, на который наложилась бы геометрия. null — место свободно. */
+  const overlappingRoom = (geometry, exceptId = null) => (plan?.rooms || []).find(r => (
+    r.id !== exceptId && hasGeometry(r) && shapesOverlap(geometry, r.plan)
+  )) || null;
 
   /** Прямоугольник: кабинет или фигура — зависит от активного инструмента. */
   const handleDraw = async ({ x, y, w, h }) => {
@@ -326,6 +446,10 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     }
     if (tool.mode === 'outline') {
       replaceOutline(points);
+      return;
+    }
+    if (tool.mode === 'hole') {
+      addHole(points);
       return;
     }
     await createRoomWithGeometry(points);
@@ -360,6 +484,10 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
       addShape(tool.kind, points);
       return;
     }
+    if (tool.mode === 'hole') {
+      addHole(points);
+      return;
+    }
     await createRoomWithGeometry(points);
   };
 
@@ -387,6 +515,18 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   };
 
   const createRoomWithGeometry = async (points) => {
+    // Наложение ловится до диалога с номером и отделением: спрашивать реквизиты, а
+    // потом отказать — худший из возможных порядков.
+    const hit = overlappingRoom({ points }, selectedRoom?.id);
+    if (hit) {
+      toast.error(
+        `Здесь уже стоит кабинет ${hit.number}. Кабинеты не накладываются друг на друга — `
+        + 'обведите свободное место или сначала подвиньте соседа.',
+        { id: 'wh-overlap' }
+      );
+      setTool({ mode: 'select' });
+      return;
+    }
     // Если выбран кабинет без геометрии — обводим его, иначе создаём новый.
     if (selectedRoom && !hasGeometry(selectedRoom)) {
       mutateRoom(selectedRoom.id, room => ({ ...room, plan: { points, label: centroid(points) } }));
@@ -618,13 +758,19 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   const technicalShapes = (plan?.shapes || []).filter(s => s.isTechnical !== false);
   const decorShapes = (plan?.shapes || []).filter(s => s.isTechnical === false);
 
+  // Площади везде считаются с вычетом вырезов: внутренний двор в площадь этажа не
+  // входит, и дырка кольцевого коридора — тоже не коридор.
+  const areaOf = (geometry) => {
+    const { points, holes } = ringsOf(geometry);
+    return polygonArea(points, holes);
+  };
   const usableArea = (plan?.rooms || []).filter(hasGeometry)
-    .reduce((s, r) => s + polygonArea(r.plan.points), 0);
-  const technicalArea = technicalShapes
-    .reduce((s, x) => s + polygonArea(x.geometry?.points || []), 0);
-  const outlineArea = plan?.floor?.outline?.points?.length >= 3
-    ? polygonArea(plan.floor.outline.points)
+    .reduce((s, r) => s + areaOf(r.plan), 0);
+  const technicalArea = technicalShapes.reduce((s, x) => s + areaOf(x.geometry), 0);
+  const outlineArea = outlinePoints.length >= 3
+    ? polygonArea(outlinePoints, outlineHoles)
     : (Number(plan?.floor?.planWidthM) || 0) * (Number(plan?.floor?.planHeightM) || 0);
+  const holesArea = outlineHoles.reduce((s, h) => s + polygonArea(h), 0);
 
   return (
     <div className="wh-editor">
@@ -946,10 +1092,23 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                 constrainDrawing={
                   tool.mode === 'room'
                   || (tool.mode === 'shape' && SHAPE_KINDS[tool.kind]?.technical !== false)
+                  // Вырез обязан лежать внутри этажа; попадание внутрь конкретной
+                  // фигуры проверяется отдельно, когда обвод замкнут.
+                  || tool.mode === 'hole'
                 }
                 onOutOfBounds={() => toast.error(
                   'За пределами схемы. Помещения можно размещать только внутри контура.',
                   { id: 'wh-out-of-bounds' }
+                )}
+                // Кабинеты не накладываются друг на друга. Правило намеренно не
+                // трогает коридоры и холлы: на живых планах они лежат общим
+                // прямоугольником под всем этажом, и запрет пересечения с ними
+                // обездвижил бы все кабинеты разом.
+                preventOverlap
+                avoidRooms={tool.mode === 'room'}
+                onOverlap={() => toast.error(
+                  'Кабинеты не могут накладываться друг на друга.',
+                  { id: 'wh-overlap' }
                 )}
                 editOutline={editOutline}
                 showGrid={showGrid}
@@ -1030,6 +1189,11 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                       <div className="wh-metrics__row">
                         <span>Площадь</span><b>{outlineArea.toFixed(1)} м²</b>
                       </div>
+                      {holesArea > 0 && (
+                        <div className="wh-metrics__row">
+                          <span>Из них дворы</span><b className="wh-muted">−{holesArea.toFixed(1)} м²</b>
+                        </div>
+                      )}
                       <div className="wh-metrics__row">
                         <span>Вершин</span><b>{outlinePoints.length}</b>
                       </div>
@@ -1040,6 +1204,8 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                       срезанный угол. Двойной клик по вершине убирает её; меньше трёх
                       не останется.
                     </p>
+                    <HoleControls holes={outlineHoles} what="внутренний двор" tool={tool}
+                                  onStart={startHole} onRemove={removeHole} />
                     {!outlineIsRect && (
                       <button className="wh-btn wh-btn--secondary wh-btn--wide" onClick={rectifyOutline}>
                         Вернуть прямоугольник
@@ -1145,7 +1311,10 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                   <div className="wh-panel__body">
                     <ShapeForm shape={selectedShape}
                                onChange={patch => { pushSnapshot(); mutateShape(selectedShape.id, s => ({ ...s, ...patch })); }}
-                               onDelete={deleteSelected} />
+                               onDelete={deleteSelected}
+                               holes={ringsOf(selectedShape.geometry).holes}
+                               tool={tool}
+                               onStartHole={startHole} onRemoveHole={removeHole} />
                   </div>
                 </div>
               )}
@@ -1157,6 +1326,9 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                   </div>
                   <div className="wh-panel__body">
                     <RoomForm room={selectedRoom}
+                              holes={ringsOf(selectedRoom.plan).holes}
+                              tool={tool}
+                              onStartHole={startHole} onRemoveHole={removeHole}
                               departments={departments}
                               onSave={saveRoomProps}
                               onClearGeometry={deleteSelected}
@@ -1220,6 +1392,44 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   );
 }
 
+/**
+ * Вырезы у выбранного объекта: кнопка «вырезать» и список уже вырезанного.
+ *
+ * Одна панель на контур этажа, кольцевой коридор и кабинет — вырез везде значит
+ * одно и то же: место внутри фигуры, которое ей не принадлежит. Меняется только
+ * слово, которым это называют на плане.
+ */
+function HoleControls({ holes, what, tool, onStart, onRemove }) {
+  const drawing = tool.mode === 'hole';
+  return (
+    <div className="wh-holes">
+      {/* Способ обвода выбирается здесь же, а не общим переключателем сверху:
+          прямоугольный двор рисуют рамкой, кольцевой коридор — по точкам, и
+          отправлять человека за этим на другой конец панели незачем. */}
+      <div className="wh-holes__start">
+        <span>Вырезать {what}</span>
+        {[['rect', 'рамкой'], ['polygon', 'по точкам']].map(([shape, label]) => (
+          <button key={shape}
+                  className={`wh-btn wh-btn--sm ${drawing && tool.shape === shape ? 'wh-btn--primary' : 'wh-btn--secondary'}`}
+                  onClick={() => onStart(drawing && tool.shape === shape ? null : shape)}>
+            <Scissors size={13} /> {drawing && tool.shape === shape ? 'отмена' : label}
+          </button>
+        ))}
+      </div>
+      {holes.map((hole, i) => (
+        <div key={i} className="wh-holes__item">
+          <span>Вырез {i + 1}</span>
+          <span className="wh-objlist__meta">{polygonArea(hole).toFixed(1)} м²</span>
+          <button className="wh-icon-btn wh-icon-btn--danger" title="Убрать вырез"
+                  onClick={() => onRemove(i)}>
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Подсказки по инструментам ────────────────────────────────────────────────
 function toolHint(tool, selectedRoom) {
   if (tool.mode === 'outline') {
@@ -1229,6 +1439,13 @@ function toolHint(tool, selectedRoom) {
       ? 'Кликайте по углам схемы. Двойной клик или клик по первой точке замыкает контур, '
         + `Backspace убирает последнюю точку, Escape отменяет. Так обводят Г-образные крылья и срезанные углы. ${common}`
       : `Протяните прямоугольник — он станет формой схемы. ${common}`;
+  }
+  if (tool.mode === 'hole') {
+    return tool.shape === 'polygon'
+      ? 'Кликайте по углам выреза, двойной клик замыкает. Вырез должен целиком лежать '
+        + 'внутри выбранного объекта. Площадь выреза вычитается: внутренний двор в площадь этажа не идёт.'
+      : 'Протяните рамку внутри выбранного объекта — получится вырез. Его площадь вычитается '
+        + 'из площади объекта: внутренний двор не считается этажом, дырка «бублика» — не коридором.';
   }
   if (tool.mode === 'shape') {
     const info = SHAPE_KINDS[tool.kind];
@@ -1255,7 +1472,7 @@ function toolHint(tool, selectedRoom) {
 }
 
 // ── Форма фигуры ─────────────────────────────────────────────────────────────
-function ShapeForm({ shape, onChange, onDelete }) {
+function ShapeForm({ shape, onChange, onDelete, holes, tool, onStartHole, onRemoveHole }) {
   const [label, setLabel] = useState(shape.label || '');
   useEffect(() => { setLabel(shape.label || ''); }, [shape.id, shape.label]);
 
@@ -1280,10 +1497,15 @@ function ShapeForm({ shape, onChange, onDelete }) {
                onBlur={() => onChange({ label })} />
       </label>
       <p className="wh-hint">
-        Площадь: {polygonArea(shape.geometry?.points || []).toFixed(1)} м², вершин:{' '}
+        Площадь: {polygonArea(shape.geometry?.points || [], holes).toFixed(1)} м², вершин:{' '}
         {shape.geometry?.points?.length || 0}. Перетаскивайте фигуру целиком или её
         вершины прямо на плане.
       </p>
+      {/* Кольцевой коридор вокруг двора — это вырез в обычной фигуре, а не особый
+          вид фигуры: «бублик» одним контуром не описывается, а два полукольца
+          рядом были бы двумя разными коридорами. */}
+      <HoleControls holes={holes} what="отверстие" tool={tool}
+                    onStart={onStartHole} onRemove={onRemoveHole} />
       <button className="wh-btn wh-btn--danger-ghost" onClick={onDelete}>
         <Trash2 size={14} /> Удалить фигуру
       </button>
@@ -1292,7 +1514,8 @@ function ShapeForm({ shape, onChange, onDelete }) {
 }
 
 // ── Форма кабинета ───────────────────────────────────────────────────────────
-function RoomForm({ room, departments, onSave, onClearGeometry, onDelete, onResize, hasGeometry: geo }) {
+function RoomForm({ room, departments, onSave, onClearGeometry, onDelete, onResize, hasGeometry: geo,
+  holes, tool, onStartHole, onRemoveHole }) {
   const [form, setForm] = useState(() => pickRoomForm(room));
   useEffect(() => { setForm(pickRoomForm(room)); }, [room.id, room.number, room.name, room.kind, room.departmentId, room.capacityHours]);
 
@@ -1323,7 +1546,14 @@ function RoomForm({ room, departments, onSave, onClearGeometry, onDelete, onResi
           </select>
         </label>
       </div>
-      {geo && <Metrics points={room.plan.points} onResize={onResize} />}
+      {geo && <Metrics points={room.plan.points} holes={holes} onResize={onResize} />}
+      {geo && (
+        // Колонна или вентшахта посреди большого кабинета — такой же вырез, как
+        // внутренний двор у этажа: место внутри контура, которое помещению не
+        // принадлежит и в его площадь не входит.
+        <HoleControls holes={holes} what="колонну или шахту" tool={tool}
+                      onStart={onStartHole} onRemove={onRemoveHole} />
+      )}
 
       <p className="wh-hint">
         Ёмкость — знаменатель загрузки. Если кабинет показывает больше 100 %, значит
@@ -1369,12 +1599,15 @@ function RoomForm({ room, departments, onSave, onClearGeometry, onDelete, onResi
  * Поэтому подписаны они словами, а не «6 × 4 = 24»: последнее было бы неправдой,
  * а на плане по этим цифрам заказывают мебель.
  */
-function Metrics({ points, onResize }) {
+function Metrics({ points, holes, onResize }) {
   const { width, depth } = polygonBounds(points);
-  const area = polygonArea(points);
+  const area = polygonArea(points, holes);
   const box = width * depth;
   // Отклонение больше пары процентов — это уже не погрешность обвода, а форма.
-  const isRect = points.length === 4 && box > 0 && Math.abs(area - box) / box < 0.02;
+  // Помещение с вырезом прямоугольным не считается, даже если контур у него
+  // прямоугольный: размер числом перерисовал бы контур и снёс вырез.
+  const isRect = points.length === 4 && !(holes || []).length
+    && box > 0 && Math.abs(area - box) / box < 0.02;
 
   return (
     <div className="wh-metrics">
@@ -1607,6 +1840,8 @@ function materializeOutline(data) {
  */
 function normalizeSheet(plan) {
   const outline = plan.floor.outline?.points || [];
+  // Вырезы лежат внутри своих контуров и на габарит не влияют, но сдвигать их
+  // надо вместе со всем остальным — иначе внутренний двор уехал бы из здания.
   const all = [
     ...outline,
     ...(plan.rooms || []).filter(hasGeometry).flatMap(r => r.plan.points),
@@ -1627,23 +1862,24 @@ function normalizeSheet(plan) {
   const dx = Math.min(...xs) < 0 ? round2(-Math.min(...xs)) : 0;
   const dy = Math.min(...ys) < 0 ? round2(-Math.min(...ys)) : 0;
   const move = pts => (dx || dy ? pts.map(([x, y]) => [round2(x + dx), round2(y + dy)]) : pts);
+  const moveGeom = (geometry) => {
+    const { points, holes } = ringsOf(geometry);
+    const next = move(points);
+    return {
+      ...geometry,
+      points: next,
+      label: centroid(next),
+      ...(holes.length ? { holes: holes.map(move) } : {}),
+    };
+  };
 
   return {
     planWidthM: Math.max(4, round2(Math.max(...xs) + dx)),
     planHeightM: Math.max(4, round2(Math.max(...ys) + dy)),
-    outline: outline.length >= 3 ? { points: move(outline) } : {},
-    rooms: (plan.rooms || []).map(r => (hasGeometry(r)
-      ? { ...r, plan: { ...r.plan, points: move(r.plan.points), label: centroid(move(r.plan.points)) } }
-      : r)),
+    outline: outline.length >= 3 ? moveGeom(plan.floor.outline) : {},
+    rooms: (plan.rooms || []).map(r => (hasGeometry(r) ? { ...r, plan: moveGeom(r.plan) } : r)),
     shapes: (plan.shapes || []).map(s => (s.geometry?.points?.length
-      ? {
-          ...s,
-          geometry: {
-            ...s.geometry,
-            points: move(s.geometry.points),
-            label: centroid(move(s.geometry.points)),
-          },
-        }
+      ? { ...s, geometry: moveGeom(s.geometry) }
       : s)),
   };
 }
@@ -1652,6 +1888,19 @@ function centroid(points) {
   const sx = points.reduce((s, p) => s + p[0], 0);
   const sy = points.reduce((s, p) => s + p[1], 0);
   return { x: round2(sx / points.length), y: round2(sy / points.length) };
+}
+
+/** Сдвиг всей геометрии, включая вырезы: двор едет вместе со зданием. */
+function moveGeometry(geometry, dx, dy) {
+  const { points, holes } = ringsOf(geometry);
+  const move = pts => pts.map(([x, y]) => [round2(x + dx), round2(y + dy)]);
+  const next = move(points);
+  return {
+    ...geometry,
+    points: next,
+    label: centroid(next),
+    ...(holes.length ? { holes: holes.map(move) } : {}),
+  };
 }
 
 /** Цвет отделения в мягкую заливку: на плане нужен фон, а не насыщенная метка. */

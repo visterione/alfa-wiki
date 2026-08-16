@@ -414,14 +414,30 @@ function roomPlanJson(room) {
   };
 }
 
+const isRing = ring => Array.isArray(ring) && ring.length >= 3
+  && ring.every(point => Array.isArray(point) && point.length === 2
+    && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])));
+
+const toRing = ring => ring.map(point => [Number(point[0]), Number(point[1])]);
+
+/**
+ * Контур схемы: внешнее кольцо плюс вырезы.
+ *
+ * Вырезы (ver. 6.85) — это внутренние дворы: они внутри здания, но это улица, и в
+ * площадь этажа их считать нельзя. Битые кольца молча отбрасываются, а не роняют
+ * запрос: контур с двором сохраняется хотя бы как контур, а не теряется целиком
+ * из-за одного кривого выреза.
+ */
 function normalizeOutline(outline) {
   const points = Array.isArray(outline?.points) ? outline.points : [];
-  const valid = points.length >= 3 && points.every(point => Array.isArray(point) && point.length === 2
-    && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])));
+  const valid = isRing(points);
   if (points.length && !valid) {
     return { error: 'Контур схемы должен состоять минимум из трёх точек [x, y]' };
   }
-  return { value: valid ? { points: points.map(point => [Number(point[0]), Number(point[1])]) } : {} };
+  if (!valid) return { value: {} };
+
+  const holes = (Array.isArray(outline?.holes) ? outline.holes : []).filter(isRing).map(toRing);
+  return { value: holes.length ? { points: toRing(points), holes } : { points: toRing(points) } };
 }
 
 router.put('/floors/:id/plan', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
@@ -437,16 +453,16 @@ router.put('/floors/:id/plan', authenticate, requireWarehouse('canEditLocations'
 
     // Контур проверяем на вменяемость: меньше трёх точек — это не многоугольник, и
     // сохранять такое значит получить этаж, который клиент не сможет нарисовать.
+    // Проверка общая с общей схемой медцентра — раньше здесь лежала её копия, и
+    // вырезы пришлось бы добавлять в оба места.
     let outlinePatch = {};
     if (outline !== undefined) {
-      const pts = Array.isArray(outline?.points) ? outline.points : [];
-      const valid = pts.length >= 3 && pts.every(p => Array.isArray(p) && p.length === 2
-        && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1])));
-      if (pts.length && !valid) {
+      const normalized = normalizeOutline(outline);
+      if (normalized.error) {
         await t.rollback();
-        return res.status(400).json({ error: 'Контур этажа должен состоять минимум из трёх точек [x, y]' });
+        return res.status(400).json({ error: normalized.error });
       }
-      outlinePatch = { outline: valid ? { points: pts.map(p => [Number(p[0]), Number(p[1])]) } : {} };
+      outlinePatch = { outline: normalized.value };
     }
 
     await floor.update({

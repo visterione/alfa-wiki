@@ -590,7 +590,12 @@ function MiniPlan({ floor, rooms }) {
   return (
     <svg className="wh-miniplan" viewBox={`${minX} ${minY} ${w} ${h}`}
          preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-      {outline && <path d={path(outline)} fill="#f4f7fb" stroke="#c8d4e2" strokeWidth={w / 220} />}
+      {/* Внутренние дворы вырезаются и в миниатюре: без evenodd этаж-«бублик»
+          выглядел бы сплошным пятном и не отличался бы от обычного. */}
+      {outline && (
+        <path d={[outline, ...(floor.outline?.holes || [])].map(path).join(' ')} fillRule="evenodd"
+              fill="#f4f7fb" stroke="#c8d4e2" strokeWidth={w / 220} />
+      )}
       {withPlan.map(r => (
         <path key={r.id} d={path(r.plan.points)}
               fill="#cddcef" stroke="#8ea6c8" strokeWidth={w / 300} />

@@ -60,6 +60,55 @@ function pointsToPath(points) {
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
 }
 
+/**
+ * Фигура с вырезами: внешний контур плюс любое число дырок.
+ *
+ * Понадобилось из-за двух совершенно реальных случаев. Первый — внутренний двор:
+ * он внутри здания, но это улица, и в площадь этажа его считать нельзя. Второй —
+ * кольцевой коридор вокруг такого двора: «бублик» одним контуром не описывается
+ * в принципе, а два полукольца рядом — это уже не один коридор, а придуманная
+ * специально для редактора конструкция.
+ *
+ * Хранится в той же геометрии, что и раньше: `{ points, holes }`, где holes —
+ * массив колец. Планы без holes работают ровно как прежде, поэтому миграции нет.
+ *
+ * Рисуется одним путём с fill-rule evenodd: вложенное кольцо само становится
+ * дыркой, и не нужно ни маски, ни выреза через clipPath.
+ */
+export function ringsOf(geometry) {
+  const points = Array.isArray(geometry?.points) ? geometry.points : [];
+  const holes = Array.isArray(geometry?.holes)
+    ? geometry.holes.filter(h => Array.isArray(h) && h.length >= 3)
+    : [];
+  return { points, holes };
+}
+
+function shapeToPath(points, holes) {
+  return [points, ...(holes || [])].map(pointsToPath).filter(Boolean).join(' ');
+}
+
+/**
+ * Заменить точку в нужном кольце. Кольцо −1 — внешний контур, 0 и дальше — вырезы.
+ * Одна функция на редактор и на полотно: обе стороны правят одну и ту же
+ * геометрию, и разъехавшиеся правила «какой индекс к какому кольцу» дали бы
+ * вершину, которая тянется не там, где её взяли.
+ */
+export function withRingPoint(geometry, ring, index, point) {
+  const { points, holes } = ringsOf(geometry);
+  if (ring < 0) {
+    const next = points.slice();
+    next[index] = point;
+    return { ...geometry, points: next };
+  }
+  const nextHoles = holes.map((h, i) => {
+    if (i !== ring) return h;
+    const copy = h.slice();
+    copy[index] = point;
+    return copy;
+  });
+  return { ...geometry, holes: nextHoles };
+}
+
 function polygonCenter(points) {
   if (!Array.isArray(points) || !points.length) return { x: 0, y: 0 };
   const sx = points.reduce((s, p) => s + p[0], 0);
@@ -163,7 +212,7 @@ export function nearestPointOnPolygon(point, polygon) {
   return best;
 }
 
-export function polygonArea(points) {
+function ringArea(points) {
   if (!Array.isArray(points) || points.length < 3) return 0;
   let a = 0;
   for (let i = 0; i < points.length; i++) {
@@ -172,6 +221,152 @@ export function polygonArea(points) {
     a += x1 * y2 - x2 * y1;
   }
   return Math.abs(a / 2);
+}
+
+/** Площадь за вычетом вырезов: внутренний двор — не площадь этажа. */
+export function polygonArea(points, holes) {
+  const outer = ringArea(points);
+  if (!Array.isArray(holes) || !holes.length) return outer;
+  return Math.max(0, outer - holes.reduce((s, h) => s + ringArea(h), 0));
+}
+
+/** Лежит ли точка ровно на границе кольца. Отделяет «на стене» от «внутри». */
+export function pointOnRing(point, ring, eps = 1e-9) {
+  if (!Array.isArray(ring) || ring.length < 2) return false;
+  const [px, py] = point;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const cross = (xj - xi) * (py - yi) - (yj - yi) * (px - xi);
+    if (Math.abs(cross) < 1e-6
+        && px >= Math.min(xi, xj) - eps && px <= Math.max(xi, xj) + eps
+        && py >= Math.min(yi, yj) - eps && py <= Math.max(yi, yj) + eps) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Точка внутри фигуры с вырезами. Внутри внешнего контура и не в дырке.
+ *
+ * Стена двора считается своей: кабинет ставят вплотную к внутреннему двору так же,
+ * как к наружной стене, и не пускать его туда было бы неверно.
+ */
+export function pointInShape(point, points, holes) {
+  if (!pointInPolygon(point, points)) return false;
+  for (const hole of holes || []) {
+    if (pointInPolygon(point, hole) && !pointOnRing(point, hole)) return false;
+  }
+  return true;
+}
+
+/** Ближайшая точка на любой стене фигуры — наружной или стене выреза. */
+export function nearestPointOnShape(point, points, holes) {
+  let best = nearestPointOnPolygon(point, points);
+  let bestDist = (point[0] - best[0]) ** 2 + (point[1] - best[1]) ** 2;
+  for (const hole of holes || []) {
+    const candidate = nearestPointOnPolygon(point, hole);
+    const dist = (point[0] - candidate[0]) ** 2 + (point[1] - candidate[1]) ** 2;
+    if (dist < bestDist) { bestDist = dist; best = candidate; }
+  }
+  return best;
+}
+
+/**
+ * Точки, в которых отрезок a1→a2 встречается с отрезком b1→b2, — в параметрах t
+ * вдоль первого отрезка. Совпадающие по прямой отрезки режутся своими концами:
+ * именно так выглядит общая стена двух соседних кабинетов.
+ */
+function cutParams(a1, a2, b1, b2, eps = 1e-9) {
+  const rx = a2[0] - a1[0];
+  const ry = a2[1] - a1[1];
+  const sx = b2[0] - b1[0];
+  const sy = b2[1] - b1[1];
+  const denom = rx * sy - ry * sx;
+  const qx = b1[0] - a1[0];
+  const qy = b1[1] - a1[1];
+
+  if (Math.abs(denom) < eps) {
+    if (Math.abs(qx * ry - qy * rx) > 1e-7) return [];   // параллельны, но не на одной прямой
+    const len2 = rx * rx + ry * ry;
+    if (len2 < eps) return [];
+    const t0 = (qx * rx + qy * ry) / len2;
+    const t1 = t0 + (sx * rx + sy * ry) / len2;
+    return [t0, t1].filter(t => t > eps && t < 1 - eps);
+  }
+
+  const t = (qx * sy - qy * sx) / denom;
+  const u = (qx * ry - qy * rx) / denom;
+  if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) return [];
+  return [Math.min(1, Math.max(0, t))];
+}
+
+/** Есть ли у границы a кусок, лежащий строго внутри b. */
+function boundaryEntersInterior(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i];
+    const q = a[(i + 1) % a.length];
+    const cuts = [0, 1];
+    for (let j = 0; j < b.length; j++) {
+      cuts.push(...cutParams(p, q, b[j], b[(j + 1) % b.length]));
+    }
+    cuts.sort((m, n) => m - n);
+    for (let s = 1; s < cuts.length; s++) {
+      if (cuts[s] - cuts[s - 1] < 1e-9) continue;
+      const t = (cuts[s - 1] + cuts[s]) / 2;
+      const mid = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+      if (pointInPolygon(mid, b) && !pointOnRing(mid, b)) return true;
+    }
+  }
+  return false;
+}
+
+const bboxOf = (points) => {
+  const xs = points.map(p => p[0]);
+  const ys = points.map(p => p[1]);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+};
+
+/**
+ * Накладываются ли два многоугольника по площади.
+ *
+ * Общая стена — норма, а не наложение: кабинеты стоят вплотную друг к другу, и
+ * проверка, считающая касание пересечением, запретила бы нормальный этаж целиком.
+ * Поэтому всё строгое: касание концами сторон и совпадающие по прямой участки не
+ * в счёт, «внутри» — только без границы.
+ *
+ * Способ — классификация кусков границы: стороны режутся точками встречи с чужими
+ * сторонами, и середина каждого куска проверяется на «строго внутри соседа».
+ * Проверять одни вершины было бы недостаточно — у квадратов 0…4 и 2…6 все вершины
+ * лежат на границе друг друга и ни одна сторона не пересекает чужую по-настоящему,
+ * а перекрываются они половиной площади.
+ */
+export function polygonsOverlap(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length < 3 || b.length < 3) return false;
+
+  // Отсев по габаритам. На плане в полсотни кабинетов почти все пары отсекаются
+  // здесь, и до полного разбора границ дело не доходит.
+  const ba = bboxOf(a);
+  const bb = bboxOf(b);
+  if (ba.maxX <= bb.minX + 1e-9 || bb.maxX <= ba.minX + 1e-9
+      || ba.maxY <= bb.minY + 1e-9 || bb.maxY <= ba.minY + 1e-9) return false;
+
+  if (boundaryEntersInterior(a, b) || boundaryEntersInterior(b, a)) return true;
+
+  // Ни одна граница не заходит внутрь чужой площади — это либо соседи через стену,
+  // либо два одинаковых многоугольника. Второе тоже наложение, и ловится только так.
+  return a.every(p => pointOnRing(p, b)) && b.every(p => pointOnRing(p, a));
+}
+
+/** То же для фигур с вырезами: помещение во внутреннем дворе двору не мешает. */
+export function shapesOverlap(a, b) {
+  const ra = ringsOf(a);
+  const rb = ringsOf(b);
+  if (!polygonsOverlap(ra.points, rb.points)) return false;
+  if (rb.holes.some(h => ra.points.every(p => pointInPolygon(p, h)))) return false;
+  if (ra.holes.some(h => rb.points.every(p => pointInPolygon(p, h)))) return false;
+  return true;
 }
 
 /**
@@ -279,9 +474,31 @@ function Dimensions({ points, k, color = '#41506380' }) {
  * перетаскивание, и случайно снесённый угол при обводке этажа стоит дорого.
  * Меньше трёх вершин не остаётся — это уже не многоугольник.
  */
-function VertexHandles({ points, kind, id, k, color, onDrag, onAdd, onRemove }) {
+function VertexHandles({ geometry, kind, id, k, color, onDrag, onAdd, onRemove }) {
+  const { points, holes } = ringsOf(geometry);
+  if (points.length < 3) return null;
+
+  // Вырезы правятся теми же ручками, что и наружные стены: для человека стена
+  // внутреннего двора ничем не отличается от стены фасада, и заводить под неё
+  // отдельный режим значило бы объяснять разницу, которой нет.
+  return (
+    <g>
+      <RingHandles points={points} ring={-1} kind={kind} id={id} k={k} color={color}
+                   onDrag={onDrag} onAdd={onAdd} onRemove={onRemove} />
+      {holes.map((hole, i) => (
+        <RingHandles key={`hole-${i}`} points={hole} ring={i} kind={kind} id={id} k={k} color={color}
+                     onDrag={onDrag} onAdd={onAdd} onRemove={onRemove} />
+      ))}
+    </g>
+  );
+}
+
+function RingHandles({ points, ring, kind, id, k, color, onDrag, onAdd, onRemove }) {
   if (!Array.isArray(points) || points.length < 3) return null;
 
+  // У выреза три вершины — законный минимум, и убрать одну из них значит убрать
+  // весь вырез: двор из двух стен не бывает. Внешний контур так не исчезает.
+  const removable = ring >= 0 || points.length > 3;
   const mids = [];
   if (onAdd) {
     for (let i = 0; i < points.length; i++) {
@@ -299,12 +516,12 @@ function VertexHandles({ points, kind, id, k, color, onDrag, onAdd, onRemove }) 
         <g key={`add-${m.index}`} style={{ cursor: 'copy' }}
            onMouseDown={(e) => {
              e.stopPropagation();
-             onAdd({ kind, id, index: m.index, point: [round2(m.x), round2(m.y)] });
+             onAdd({ kind, id, ring, index: m.index, point: [round2(m.x), round2(m.y)] });
              // Новая вершина сразу берётся в перетаскивание. Иначе после плюса её
              // надо было отпустить, найти среди остальных ручек и поймать заново —
              // а поскольку вершина появляется ровно посреди стороны, то есть на
              // самой линии, выглядело это так, будто ничего не произошло.
-             onDrag(m.index);
+             onDrag(ring, m.index);
            }}>
           <circle cx={m.x} cy={m.y} r={0.45 * k} fill="transparent" />
           <circle cx={m.x} cy={m.y} r={0.2 * k} fill="#fff" stroke={color} strokeWidth={0.05 * k} opacity="0.85" />
@@ -319,15 +536,19 @@ function VertexHandles({ points, kind, id, k, color, onDrag, onAdd, onRemove }) 
         // нельзя. Прозрачный круг вдвое больше решает это, не превращая вершины в
         // кляксы поверх чертежа.
         <g key={i} style={{ cursor: 'nwse-resize' }}
-           onMouseDown={(e) => { e.stopPropagation(); onDrag(i); }}
+           onMouseDown={(e) => { e.stopPropagation(); onDrag(ring, i); }}
            onDoubleClick={(e) => {
              e.stopPropagation();
-             if (onRemove && points.length > 3) onRemove({ kind, id, index: i });
+             if (onRemove && removable) onRemove({ kind, id, ring, index: i });
            }}>
           <circle cx={p[0]} cy={p[1]} r={0.5 * k} fill="transparent" />
           <circle cx={p[0]} cy={p[1]} r={0.22 * k}
                   fill="#fff" stroke={color} strokeWidth={0.06 * k} style={{ pointerEvents: 'none' }} />
-          <title>{points.length > 3 ? 'Тянуть; двойной клик — удалить вершину' : 'Тянуть'}</title>
+          <title>
+            {!removable ? 'Тянуть'
+              : ring >= 0 && points.length <= 3 ? 'Тянуть; двойной клик — убрать вырез целиком'
+              : 'Тянуть; двойной клик — удалить вершину'}
+          </title>
         </g>
       ))}
     </g>
@@ -360,6 +581,12 @@ export default function FloorPlanSvg({
   // самого этажа и оформления — выключается.
   constrainDrawing = false,
   onOutOfBounds = null,          // попытка нарисовать за пределами этажа
+  // Кабинеты не накладываются друг на друга. Правило включается редактором и
+  // касается только кабинетов: коридоры и холлы на живых планах намеренно лежат
+  // общим прямоугольником под всем этажом.
+  preventOverlap = false,
+  avoidRooms = false,            // рисуемая фигура тоже не должна наезжать на кабинеты
+  onOverlap = null,              // движение отменено из-за наложения
   editOutline = false,           // показывать ручки контура этажа
   showGrid = false,
   // Размеры сторон: 'none' | 'selected' | 'all'. По умолчанию только у
@@ -504,9 +731,11 @@ export default function FloorPlanSvg({
    * лежать внутри: кабинет за стеной здания не существует, а на тепловой карте
    * такой полигон выглядел бы как отдельно стоящий сарай.
    */
-  const floorPolygon = useMemo(() => (
-    outlinePoints || [[0, 0], [width, 0], [width, depth], [0, depth]]
-  ), [outlinePoints, width, depth]);
+  const floorShape = useMemo(() => (
+    outlinePoints
+      ? { points: outlinePoints, holes: ringsOf(floor?.outline).holes }
+      : { points: [[0, 0], [width, 0], [width, depth], [0, depth]], holes: [] }
+  ), [outlinePoints, floor, width, depth]);
 
   /**
    * Точка, загнанная внутрь этажа и привязанная к сетке.
@@ -517,8 +746,8 @@ export default function FloorPlanSvg({
    */
   const snapInside = (pos) => {
     const p = [snap(pos.x), snap(pos.y)];
-    if (pointInPolygon(p, floorPolygon)) return p;
-    const near = nearestPointOnPolygon(p, floorPolygon);
+    if (pointInShape(p, floorShape.points, floorShape.holes)) return p;
+    const near = nearestPointOnShape(p, floorShape.points, floorShape.holes);
     // Привязку к сетке после проекции не делаем: она снова вытолкнула бы точку
     // за стену, и вершина задрожала бы между двумя положениями.
     return [round2(near[0]), round2(near[1])];
@@ -526,7 +755,7 @@ export default function FloorPlanSvg({
 
   /** Уместится ли фигура целиком внутри этажа после смещения. */
   const fitsInside = (points, dx, dy) =>
-    points.every(([x, y]) => pointInPolygon([x + dx, y + dy], floorPolygon));
+    points.every(([x, y]) => pointInShape([x + dx, y + dy], floorShape.points, floorShape.holes));
 
   /**
    * Правило «только внутри этажа» действует, пока помещение внутри и есть.
@@ -538,7 +767,23 @@ export default function FloorPlanSvg({
    * двигаться вовсе — без единого объяснения на экране. Поэтому вышедшее наружу
    * тянется свободно, а вернувшись внутрь, снова подчиняется контуру.
    */
-  const isInside = points => Array.isArray(points) && points.every(p => pointInPolygon(p, floorPolygon));
+  const isInside = points => Array.isArray(points) && points.every(p => pointInShape(p, floorShape.points, floorShape.holes));
+
+  /**
+   * Наложился ли кабинет на другие кабинеты. Свой из проверки исключён — иначе
+   * помещение всегда пересекалось бы само с собой.
+   *
+   * Проверяются только кабинеты между собой. Коридоры и прочие технические
+   * помещения намеренно не участвуют: на живых планах под кабинетами лежит общий
+   * прямоугольник коридора или холла, и запрет на пересечение с ним сделал бы
+   * неперемещаемым весь этаж разом.
+   */
+  const hitsOtherRooms = (roomId, geometry) => rooms.some(other => {
+    const id = other.roomId || other.id;
+    if (id === roomId) return false;
+    const pts = other.plan?.points;
+    return Array.isArray(pts) && pts.length >= 3 && shapesOverlap(geometry, other.plan);
+  });
 
   const handleWheel = useCallback((evt) => {
     evt.preventDefault();
@@ -586,7 +831,7 @@ export default function FloorPlanSvg({
       if (polyPoints.length >= 3) {
         const [fx, fy] = polyPoints[0];
         if (Math.hypot(p[0] - fx, p[1] - fy) < 0.6) {
-          if (constrainDrawing && !polyPoints.every(pt => pointInPolygon(pt, floorPolygon))) {
+          if (constrainDrawing && !polyPoints.every(pt => pointInShape(pt, floorShape.points, floorShape.holes))) {
             onOutOfBounds?.();
             return;
           }
@@ -597,7 +842,7 @@ export default function FloorPlanSvg({
       }
       // Точку за пределами этажа не принимаем вовсе: иначе о нарушении узнаёшь
       // только при замыкании, когда обведено уже полдесятка вершин.
-      if (constrainDrawing && !pointInPolygon(p, floorPolygon)) {
+      if (constrainDrawing && !pointInShape(p, floorShape.points, floorShape.holes)) {
         onOutOfBounds?.();
         return;
       }
@@ -613,7 +858,7 @@ export default function FloorPlanSvg({
 
   const onDoubleClick = () => {
     if (drawing === 'polygon' && polyPoints.length >= 3) {
-      if (constrainDrawing && !polyPoints.every(pt => pointInPolygon(pt, floorPolygon))) {
+      if (constrainDrawing && !polyPoints.every(pt => pointInShape(pt, floorShape.points, floorShape.holes))) {
         onOutOfBounds?.();
         return;
       }
@@ -656,7 +901,18 @@ export default function FloorPlanSvg({
       const room = rooms.find(r => (r.roomId || r.id) === drag.roomId);
       const pos = toPlan(evt);
       const p = isInside(room?.plan?.points) ? snapInside(pos) : [snap(pos.x), snap(pos.y)];
-      onVertexDrag(drag.roomId, drag.index, p);
+
+      // Вершина, которая завела бы кабинет на соседний, просто не принимается:
+      // она остаётся на месте, а как только курсор вернётся в допустимое
+      // положение, потянется дальше. Скользить вдоль чужой стены, как при
+      // упоре в контур этажа, здесь нечем — направления «вдоль» у произвольной
+      // границы соседа нет.
+      if (preventOverlap && room && !hitsOtherRooms(drag.roomId, room.plan)
+          && hitsOtherRooms(drag.roomId, withRingPoint(room.plan, drag.ring, drag.index, p))) {
+        onOverlap?.();
+        return;
+      }
+      onVertexDrag(drag.roomId, { ring: drag.ring, index: drag.index }, p);
       return;
     }
     if (drag.kind === 'shapeVertex' && onShapeVertexDrag) {
@@ -666,7 +922,7 @@ export default function FloorPlanSvg({
       // границе этажа, и загонять её внутрь было бы неверно.
       const free = (shape && shape.isTechnical === false) || !isInside(shape?.geometry?.points);
       const p = free ? [snap(pos.x), snap(pos.y)] : snapInside(pos);
-      onShapeVertexDrag(drag.shapeId, drag.index, p);
+      onShapeVertexDrag(drag.shapeId, { ring: drag.ring, index: drag.index }, p);
       return;
     }
     if (drag.kind === 'outlineVertex' && onOutlineVertexDrag) {
@@ -677,7 +933,7 @@ export default function FloorPlanSvg({
       // какой-то другой, главный этаж. Границы у здания задаёт сам контур, а
       // холст под него подгоняется при сохранении.
       const pos = toPlan(evt);
-      onOutlineVertexDrag(drag.index, [snap(pos.x), snap(pos.y)]);
+      onOutlineVertexDrag({ ring: drag.ring, index: drag.index }, [snap(pos.x), snap(pos.y)]);
       return;
     }
     if ((drag.kind === 'room' || drag.kind === 'shape')) {
@@ -694,23 +950,38 @@ export default function FloorPlanSvg({
       const target = drag.kind === 'room'
         ? rooms.find(r => (r.roomId || r.id) === drag.roomId)
         : shapes.find(s => (s.id || '') === drag.shapeId);
-      const pts = drag.kind === 'room' ? target?.plan?.points : target?.geometry?.points;
+      const geometry = drag.kind === 'room' ? target?.plan : target?.geometry;
+      const pts = geometry?.points;
       const constrained = (drag.kind === 'room' || (target && target.isTechnical !== false))
         && isInside(pts);
+
+      // Кабинет, который уже с кем-то пересекается, правилу не подчиняется — иначе
+      // растащить такую пару было бы нечем: любое смещение из наложенного положения
+      // тоже наложенное, ни один вариант не проходит, кабинет замирает намертво.
+      // Разъехались — правило снова в силе.
+      const noOverlap = preventOverlap && drag.kind === 'room' && pts
+        && !hitsOtherRooms(drag.roomId, geometry);
 
       // Пробуем полное смещение, потом только по X, потом только по Y. Так фигура
       // скользит вдоль стены, а не замирает целиком, когда упёрлась одним углом.
       const variants = [[dx, dy], [dx, 0], [0, dy]];
+      let blockedByRoom = false;
       for (const [vx, vy] of variants) {
         if (vx === 0 && vy === 0) continue;
         if (constrained && pts && !fitsInside(pts, vx, vy)) continue;
+        if (noOverlap) {
+          const moved = { ...geometry, points: pts.map(([x, y]) => [x + vx, y + vy]) };
+          if (hitsOtherRooms(drag.roomId, moved)) { blockedByRoom = true; continue; }
+        }
         if (drag.kind === 'room') onRoomMove?.(drag.roomId, vx, vy);
         else onShapeMove?.(drag.shapeId, vx, vy);
         setDrag({ ...drag, startPlan: { x: drag.startPlan.x + vx, y: drag.startPlan.y + vy } });
         return;
       }
-      // Ни один вариант не поместился — курсор ушёл за стену. Точку отсчёта не
-      // двигаем: когда курсор вернётся, накопленное смещение отработает верно.
+      // Ни один вариант не поместился — курсор ушёл за стену или упёрся в соседа.
+      // Точку отсчёта не двигаем: когда курсор вернётся, накопленное смещение
+      // отработает верно.
+      if (blockedByRoom) onOverlap?.();
     }
   };
 
@@ -725,26 +996,35 @@ export default function FloorPlanSvg({
     return { x, y, w, h, points: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]] };
   };
 
+  // Красная рамка при рисовании — единственная обратная связь до того, как
+  // помещение создано. Раньше она загоралась только на выходе за контур этажа;
+  // теперь и на наезде на соседний кабинет, потому что промах виден сразу, а не
+  // после диалога с номером и отделением.
   const drawValid = useMemo(() => {
-    if (!constrainDrawing) return true;
+    const legal = (points) => {
+      if (constrainDrawing && !points.every(p => pointInShape(p, floorShape.points, floorShape.holes))) {
+        return false;
+      }
+      return !(avoidRooms && points.length >= 3 && hitsOtherRooms(null, { points }));
+    };
     if (drawRect) {
       const { w, h, points } = rectPoints(drawRect);
       if (w < 0.5 || h < 0.5) return true;   // ещё не рамка, а движение мышью
-      return points.every(p => pointInPolygon(p, floorPolygon));
+      return legal(points);
     }
     if (drawing === 'polygon' && polyPoints.length) {
-      const all = cursor ? [...polyPoints, cursor] : polyPoints;
-      return all.every(p => pointInPolygon(p, floorPolygon));
+      return legal(cursor ? [...polyPoints, cursor] : polyPoints);
     }
     return true;
-  }, [drawRect, polyPoints, cursor, drawing, floorPolygon, constrainDrawing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawRect, polyPoints, cursor, drawing, floorShape, constrainDrawing, avoidRooms, rooms]);
 
   const onMouseUp = () => {
     if (drawRect && onCanvasDraw) {
       const { x, y, w, h, points } = rectPoints(drawRect);
       // Меньше половины метра по стороне — это промах мышью, а не кабинет.
       if (w >= 0.5 && h >= 0.5) {
-        const inside = !constrainDrawing || points.every(p => pointInPolygon(p, floorPolygon));
+        const inside = !constrainDrawing || points.every(p => pointInShape(p, floorShape.points, floorShape.holes));
         if (inside) onCanvasDraw({ x, y, w, h });
         else onOutOfBounds?.();
       }
@@ -809,7 +1089,10 @@ export default function FloorPlanSvg({
         {/* Контур этажа. Произвольный многоугольник, если он задан, иначе
             прямоугольник по габаритам — так выглядят все планы до ver. 6.69. */}
         {outlinePoints ? (
-          <path data-role="bg" d={pointsToPath(outlinePoints)}
+          // evenodd вырезает внутренние дворы прямо в заливке этажа: под дыркой
+          // видно поле вокруг плана, а не подкрашенный пол. Отдельная маска для
+          // этого не нужна.
+          <path data-role="bg" d={shapeToPath(outlinePoints, floorShape.holes)} fillRule="evenodd"
                 fill="var(--wh-plan-bg, #fbfcfe)" stroke="#c9d3e0" strokeWidth={0.12 * k}
                 strokeLinejoin="round" />
         ) : (
@@ -823,7 +1106,7 @@ export default function FloorPlanSvg({
             контур можно было выбрать только кнопкой на панели, а догадаться, что
             он вообще выбирается, было нельзя. */}
         {mode === 'edit' && outlinePoints && onOutlineClick && !drawing && (
-          <path d={pointsToPath(outlinePoints)} fill="none" stroke="rgba(0,0,0,0)"
+          <path d={shapeToPath(outlinePoints, floorShape.holes)} fill="none" stroke="rgba(0,0,0,0)"
                 strokeWidth={0.6 * k} strokeLinejoin="round"
                 style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
                 onMouseDown={(e) => { e.stopPropagation(); onOutlineClick(); }}>
@@ -854,8 +1137,8 @@ export default function FloorPlanSvg({
         <g>
           {shapes.map((shape, idx) => {
             const st = SHAPE_STYLE[shape.kind] || SHAPE_STYLE.area;
-            const pts = shape.geometry?.points;
-            if (!Array.isArray(pts) || pts.length < 2) return null;
+            const { points: pts, holes: shapeHoles } = ringsOf(shape.geometry);
+            if (pts.length < 2) return null;
             const center = shape.geometry?.label || polygonCenter(pts);
             const id = shape.id || `tmp-${idx}`;
             const isSel = selectedShapeId === id;
@@ -875,7 +1158,10 @@ export default function FloorPlanSvg({
                    setDrag({ kind: 'shape', shapeId: id, startPlan: toPlan(e) });
                  } : undefined}>
                 <title>{[st.label, shape.label].filter(Boolean).join(' · ')}</title>
-                <path d={pointsToPath(pts)}
+                {/* Кольцевой коридор — это внешний контур с вырезом посередине.
+                    evenodd делает вырез настоящей дыркой: двор внутри «бублика»
+                    остаётся не закрашен, и кликнуть по нему коридор нельзя. */}
+                <path d={shapeToPath(pts, shapeHoles)} fillRule="evenodd"
                       fill={shape.style?.fill || st.fill}
                       stroke={isSel ? '#1e3a5f' : (shape.style?.stroke || st.stroke)}
                       strokeWidth={(isSel ? 0.14 : 0.06) * k}
@@ -894,11 +1180,14 @@ export default function FloorPlanSvg({
                     у вторых сторона одна, и её длина уже есть на самой линии. */}
                 {pts.length >= 3 && shape.kind !== 'text'
                   && (dimensions === 'all' || (dimensions === 'selected' && isSel)) && (
-                  <Dimensions points={pts} k={k} />
+                  <>
+                    <Dimensions points={pts} k={k} />
+                    {shapeHoles.map((hole, hi) => <Dimensions key={hi} points={hole} k={k} />)}
+                  </>
                 )}
                 {editable && isSel && !drawing && (
-                  <VertexHandles points={pts} kind="shape" id={id} k={k} color="#1e3a5f"
-                                 onDrag={i => setDrag({ kind: 'shapeVertex', shapeId: id, index: i })}
+                  <VertexHandles geometry={shape.geometry} kind="shape" id={id} k={k} color="#1e3a5f"
+                                 onDrag={(ring, i) => setDrag({ kind: 'shapeVertex', shapeId: id, ring, index: i })}
                                  onAdd={pts.length >= 3 ? onVertexAdd : null} onRemove={onVertexRemove} />
                 )}
               </g>
@@ -909,8 +1198,8 @@ export default function FloorPlanSvg({
         {/* Кабинеты */}
         <g>
           {rooms.map(room => {
-            const pts = room.plan?.points;
-            if (!Array.isArray(pts) || pts.length < 3) return null;
+            const { points: pts, holes: roomHoles } = ringsOf(room.plan);
+            if (pts.length < 3) return null;
 
             const custom = colorOf ? colorOf(room) : null;
             const zone = ZONE_FILL[room.metricZone || room.zone || 'unknown'] || ZONE_FILL.unknown;
@@ -942,7 +1231,7 @@ export default function FloorPlanSvg({
                    e.stopPropagation();
                    setDrag({ kind: 'room', roomId: id, startPlan: toPlan(e) });
                  }}>
-                <path d={pointsToPath(pts)}
+                <path d={shapeToPath(pts, roomHoles)} fillRule="evenodd"
                       fill={fill}
                       stroke={isSelected ? '#1e3a5f' : stroke}
                       strokeWidth={(isSelected ? 0.16 : isHovered ? 0.12 : 0.07) * k}
@@ -963,15 +1252,18 @@ export default function FloorPlanSvg({
                 )}
 
                 {(dimensions === 'all' || (dimensions === 'selected' && isSelected)) && (
-                  <Dimensions points={pts} k={k} />
+                  <>
+                    <Dimensions points={pts} k={k} />
+                    {roomHoles.map((hole, hi) => <Dimensions key={hi} points={hole} k={k} />)}
+                  </>
                 )}
 
                 {/* Ручки вершин — только в редакторе и только у выбранного кабинета.
                     Во время рисования они прячутся: плюс на стене перехватил бы
                     клик, которым ставят точку нового помещения. */}
                 {mode === 'edit' && isSelected && !drawing && (
-                  <VertexHandles points={pts} kind="room" id={id} k={k} color="#1e3a5f"
-                                 onDrag={idx => setDrag({ kind: 'vertex', roomId: id, index: idx })}
+                  <VertexHandles geometry={room.plan} kind="room" id={id} k={k} color="#1e3a5f"
+                                 onDrag={(ring, idx) => setDrag({ kind: 'vertex', roomId: id, ring, index: idx })}
                                  onAdd={onVertexAdd} onRemove={onVertexRemove} />
                 )}
               </g>
@@ -983,10 +1275,10 @@ export default function FloorPlanSvg({
             обводить кабинеты. */}
         {mode === 'edit' && editOutline && outlinePoints && !drawing && (
           <g>
-            <path d={pointsToPath(outlinePoints)} fill="none" stroke="#1e3a5f"
+            <path d={shapeToPath(outlinePoints, floorShape.holes)} fill="none" stroke="#1e3a5f"
                   strokeWidth={0.16 * k} strokeDasharray={`${0.4 * k} ${0.25 * k}`} />
-            <VertexHandles points={outlinePoints} kind="outline" id={null} k={k} color="#1e3a5f"
-                           onDrag={i => setDrag({ kind: 'outlineVertex', index: i })}
+            <VertexHandles geometry={floor?.outline} kind="outline" id={null} k={k} color="#1e3a5f"
+                           onDrag={(ring, i) => setDrag({ kind: 'outlineVertex', ring, index: i })}
                            onAdd={onVertexAdd} onRemove={onVertexRemove} />
           </g>
         )}
