@@ -84,33 +84,25 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   const medCenters = tree?.medCenters || [];
   const mc = medCenters.find(m => m.id === selection.mcId);
   const building = mc?.buildings?.find(b => b.id === selection.buildingId);
-  const directRooms = mc?.rooms || [];
   const currentDepartments = (departments || []).filter(d => d.medCenterId === selection.mcId);
 
-  // Первый медцентр с корпусами — сразу, иначе редактор открывается пустым и
-  // выглядит неработающим.
-  //
-  // Признак «ещё ничего не выбрано» — пустой МЕДЦЕНТР, а не пустой этаж. Пока
-  // здесь сторожился floorId, переключатель медцентров не работал ровно там, где
-  // он нужнее всего: у клиники без корпусов этажа нет по определению, выбор
-  // сбрасывался обратно на первый медцентр с корпусами, и завести план новой
-  // клинике было нельзя вовсе. Ветка «в этом медцентре ещё нет корпусов» ниже
-  // существовала, но до неё не доходило.
+  // Базовый контекст — сам медцентр. Корпус и этаж не подставляются автоматически:
+  // это необязательное усложнение структуры, а не обязательный путь до помещения.
   useEffect(() => {
     if (selection.mcId || !medCenters.length) return;
-    const firstMc = medCenters.find(m => m.buildings?.length) || medCenters[0];
-    const firstBuilding = firstMc?.buildings?.[0];
     setSelection({
-      mcId: firstMc?.id || null,
-      buildingId: firstBuilding?.id || null,
-      floorId: firstBuilding?.floors?.[0]?.id || null,
+      mcId: medCenters[0]?.id || null,
+      buildingId: null,
+      floorId: null,
     });
   }, [medCenters, selection.mcId]);
 
-  const loadPlan = useCallback(async (floorId) => {
-    if (!floorId) { setPlan(null); return; }
+  const loadPlan = useCallback(async ({ mcId, buildingId, floorId }) => {
+    if (!mcId || (buildingId && !floorId)) { setPlan(null); return; }
     try {
-      const { data } = await warehouseApi.floorPlan(floorId);
+      const { data } = floorId
+        ? await warehouseApi.floorPlan(floorId)
+        : await warehouseApi.medCenterPlan(mcId);
       setPlan(data);
       setDirty(false);
       setSnapshot(null);
@@ -121,7 +113,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     }
   }, []);
 
-  useEffect(() => { loadPlan(selection.floorId); }, [selection.floorId, loadPlan]);
+  useEffect(() => { loadPlan(selection); }, [selection.mcId, selection.buildingId, selection.floorId, loadPlan]);
 
   const selectedRoom = useMemo(
     () => (selected.kind === 'room' ? plan?.rooms?.find(r => r.id === selected.id) : null) || null,
@@ -361,7 +353,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     }
     setModal({
       type: 'room',
-      title: 'Новый кабинет',
+      title: 'Новое помещение',
       pendingGeometry: { points, label: centroid(points) },
       form: { number: '', name: '', kind: 'office', departmentId: '', capacityHours: 8 },
     });
@@ -373,7 +365,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     if (!plan) return;
     setSaving(true);
     try {
-      await warehouseApi.saveFloorPlan(selection.floorId, {
+      const payload = {
         planWidthM: plan.floor.planWidthM,
         planHeightM: plan.floor.planHeightM,
         outline: plan.floor.outline || {},
@@ -389,11 +381,13 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
           kind: s.kind, geometry: s.geometry, label: s.label,
           style: s.style || {}, z: s.z ?? i, isTechnical: s.isTechnical !== false,
         })),
-      });
+      };
+      if (selection.floorId) await warehouseApi.saveFloorPlan(selection.floorId, payload);
+      else await warehouseApi.saveMedCenterPlan(selection.mcId, payload);
       setDirty(false);
       setSnapshot(null);
       toast.success('План сохранён');
-      await loadPlan(selection.floorId);
+      await loadPlan(selection);
       onReloadTree?.();
     } catch (e) {
       toast.error(e.response?.data?.error || 'Не удалось сохранить план');
@@ -520,22 +514,15 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
         await onReloadTree?.();
         // Перечитываем именно план: в нём живут габариты холста, и без этого
         // на экране остались бы старые.
-        await loadPlan(selection.floorId);
+        await loadPlan(selection);
         return;
       } else if (modal.type === 'department') {
         await warehouseApi.createDepartment({ medCenterId: selection.mcId, ...form });
         toast.success('Отделение добавлено');
-      } else if (modal.type === 'room-direct') {
-        const { data } = await warehouseApi.createRoom({
-          medCenterId: selection.mcId,
-          floorId: null,
-          ...form,
-          plan: {},
-        });
-        toast.success(`Помещение ${data.number} создано`);
       } else if (modal.type === 'room') {
         const { data } = await warehouseApi.createRoom({
-          floorId: selection.floorId,
+          medCenterId: selection.mcId,
+          floorId: selection.floorId || null,
           ...form,
           plan: modal.pendingGeometry,
         });
@@ -606,18 +593,6 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
         <div className="wh-panel__head">
           <div className="wh-panel__title"><Building2 size={16} /> Локация</div>
           <div className="wh-panel__actions">
-            <button className="wh-btn wh-btn--sm wh-btn--primary"
-                    disabled={!selection.mcId}
-                    onClick={() => setModal({
-                      type: 'room-direct',
-                      title: 'Новое помещение без корпуса и этажа',
-                      form: {
-                        number: '', name: '', kind: 'office',
-                        departmentId: '', capacityHours: 8,
-                      },
-                    })}>
-              <Plus size={13} /> Помещение
-            </button>
             <button className="wh-btn wh-btn--sm wh-btn--secondary"
                     disabled={!selection.mcId}
                     onClick={() => setModal({ type: 'department', title: 'Новое отделение', form: { name: '', specialtyCode: '', kind: 'specialty', color: '#4a90d9' } })}>
@@ -629,9 +604,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
           <div className="wh-field">
             <label>Медцентр</label>
             <select value={selection.mcId || ''} onChange={e => {
-              const nextMc = medCenters.find(m => m.id === e.target.value);
-              const b = nextMc?.buildings?.[0];
-              setSelection({ mcId: e.target.value, buildingId: b?.id || null, floorId: b?.floors?.[0]?.id || null });
+              setSelection({ mcId: e.target.value, buildingId: null, floorId: null });
             }}>
               <option value="">—</option>
               {medCenters.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -684,7 +657,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                       }}>
                 <Plus size={15} />
               </button>
-              {plan && (
+              {selection.floorId && plan && (
                 <>
                   <button className="wh-icon-btn" title="Свойства этажа"
                           onClick={() => setModal({ type: 'floor-edit', id: plan.floor.id, title: 'Этаж', form: { number: plan.floor.number, name: plan.floor.name || '', planWidthM: plan.floor.planWidthM, planHeightM: plan.floor.planHeightM } })}>
@@ -701,8 +674,8 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 
           {!selection.buildingId && selection.mcId && (
             <div className="wh-alert wh-alert--info wh-editor__loc-alert">
-              Корпус и этаж необязательны. Нажмите «Помещение», чтобы завести
-              кабинет напрямую в медцентре. Корпус нужен только для поэтажного плана.
+              Открыта общая схема медцентра. Корпус и этаж добавляйте только если
+              помещения нужно разнести по нескольким схемам.
             </div>
           )}
         </div>
@@ -759,7 +732,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
             </div>
 
             <div className="wh-toolgroup">
-              <span className="wh-toolgroup__label">Контур этажа</span>
+              <span className="wh-toolgroup__label">Контур схемы</span>
               <button className={`wh-tool ${tool.mode === 'outline' && tool.shape === 'polygon' ? 'is-active' : ''}`}
                       onClick={() => { setTool({ mode: 'outline', shape: 'polygon' }); setEditOutline(true); }}
                       title="Обвести контур по точкам — для Г-образных этажей">
@@ -887,7 +860,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                   || (tool.mode === 'shape' && SHAPE_KINDS[tool.kind]?.technical !== false)
                 }
                 onOutOfBounds={() => toast.error(
-                  'За пределами этажа. Кабинеты и технические помещения можно размещать только внутри контура.',
+                  'За пределами схемы. Помещения можно размещать только внутри контура.',
                   { id: 'wh-out-of-bounds' }
                 )}
                 editOutline={editOutline}
@@ -916,7 +889,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 
               <div className="wh-editor__stats">
                 <span>Габарит холста: <b>{plan.floor.planWidthM} × {plan.floor.planHeightM} м</b></span>
-                <span>Площадь этажа: <b>{outlineArea.toFixed(1)} м²</b></span>
+                <span>Площадь схемы: <b>{outlineArea.toFixed(1)} м²</b></span>
                 <span>Кабинеты: <b>{usableArea.toFixed(1)} м²</b></span>
                 <span>Технические: <b>{technicalArea.toFixed(1)} м²</b></span>
                 {plan.floor.outline?.points?.length >= 3
@@ -925,57 +898,18 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
               </div>
             </>
           ) : (
-            selection.mcId ? (
-              <div className="wh-panel">
-                <div className="wh-panel__head">
-                  <div className="wh-panel__title">
-                    <DoorOpen size={15} /> Помещения без корпуса и этажа ({directRooms.length})
-                  </div>
-                  <button className="wh-btn wh-btn--sm wh-btn--primary"
-                          onClick={() => setModal({
-                            type: 'room-direct',
-                            title: 'Новое помещение без корпуса и этажа',
-                            form: {
-                              number: '', name: '', kind: 'office',
-                              departmentId: '', capacityHours: 8,
-                            },
-                          })}>
-                    <Plus size={13} /> Добавить помещение
-                  </button>
-                </div>
-                <div className="wh-panel__body">
-                  <p className="wh-hint">
-                    Помещение будет привязано напрямую к медцентру. Корпус и этаж
-                    можно не создавать; они нужны только если потребуется план здания.
-                  </p>
-                  <ul className="wh-objlist">
-                    {directRooms.map(r => (
-                      <li key={r.id} className="wh-objlist__item">
-                        <span className="wh-objlist__dot" />
-                        <span className="wh-objlist__num">{r.number}</span>
-                        <span className="wh-objlist__name">
-                          {r.name && r.name !== r.number ? r.name : ''}
-                        </span>
-                        <span className="wh-objlist__meta">без этажа</span>
-                      </li>
-                    ))}
-                    {!directRooms.length && (
-                      <li className="wh-empty">Помещений пока нет</li>
-                    )}
-                  </ul>
-                  {selection.buildingId && (
-                    <p className="wh-hint">Для поэтажного плана выберите или добавьте этаж выше.</p>
-                  )}
-                </div>
-              </div>
-            ) : <div className="wh-empty">Выберите медцентр</div>
+            <div className="wh-empty">
+              {selection.buildingId
+                ? 'Выберите или добавьте этаж либо очистите корпус для общей схемы медцентра'
+                : 'Выберите медцентр'}
+            </div>
           )}
         </div>
 
         {plan && <aside className="wh-editor__side">
           <div className="wh-tabs wh-tabs--sub">
             <button className={sideTab === 'objects' ? 'is-active' : ''} onClick={() => setSideTab('objects')}>
-              Объекты этажа
+              {plan?.floor?.scope === 'medCenter' ? 'Объекты схемы' : 'Объекты этажа'}
             </button>
             <button className={sideTab === 'mis' ? 'is-active' : ''} onClick={() => setSideTab('mis')}>
               Сопоставление с МИС
@@ -1394,10 +1328,6 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
       ['number', 'Номер кабинета', 'text', true],
       ['name', 'Название', 'text'],
     ],
-    'room-direct': [
-      ['number', 'Номер или название помещения', 'text', true],
-      ['name', 'Уточняющее название', 'text'],
-    ],
   }[modal.type] || [];
 
   const valid = fields.filter(f => f[3]).every(f => String(form[f[0]] ?? '').trim() !== '');
@@ -1449,7 +1379,7 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
               </>
             )}
 
-            {(modal.type === 'room' || modal.type === 'room-direct') && (
+            {modal.type === 'room' && (
               <>
                 <div className="wh-form__row2">
                   <label>Тип

@@ -135,7 +135,8 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
           .sort(byRoomNumber)
           .map(roomJson),
       }))
-      .filter(mc => mc.buildings.length > 0 || mc.rooms.length > 0 || req.warehouse.level === 'admin');
+      .filter(mc => mc.buildings.length > 0 || mc.rooms.length > 0
+        || req.warehouse.capabilities.canEditLocations);
 
     res.json({
       medCenters: tree,
@@ -262,6 +263,103 @@ router.delete('/floors/:id', authenticate, requireWarehouse('canEditLocations'),
   res.json({ ok: true });
 });
 
+// ── Общая схема медцентра ────────────────────────────────────────────────────
+// Это базовый вариант для небольшого МЦ: помещения лежат прямо в медцентре и
+// рисуются на одной схеме. Корпуса и этажи добавляются только когда одной схемы
+// становится мало; отдельного вида «помещение без этажа» при этом не возникает.
+router.get('/med-centers/:id/plan', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const medCenter = await MedCenter.findByPk(req.params.id);
+    if (!medCenter) return res.status(404).json({ error: 'Медцентр не найден' });
+
+    const rooms = await WhRoom.findAll({
+      where: { medCenterId: medCenter.id, floorId: null, isActive: true },
+      include: [
+        { model: WhDepartment, as: 'department', attributes: ['id', 'name', 'color', 'specialtyCode'] },
+        { model: User, as: 'responsible', attributes: userAttrs },
+      ],
+      order: [['number', 'ASC']],
+    });
+    const saved = medCenter.warehousePlan || {};
+    const shapes = Array.isArray(saved.shapes) ? saved.shapes : [];
+
+    res.json({
+      floor: {
+        id: `med-center:${medCenter.id}`,
+        scope: 'medCenter',
+        medCenterId: medCenter.id,
+        medCenterName: medCenter.displayName || medCenter.name,
+        name: 'Общая схема',
+        planWidthM: Number(saved.planWidthM) || 40,
+        planHeightM: Number(saved.planHeightM) || 25,
+        planBgUrl: saved.planBgUrl || null,
+        planBgOpacity: Number(saved.planBgOpacity ?? 0.35),
+        outline: saved.outline || {},
+      },
+      rooms: rooms.map(roomPlanJson),
+      shapes: shapes.map((shape, index) => ({
+        ...shape,
+        id: shape.id || `med-center-shape:${index}`,
+      })),
+    });
+  } catch (err) {
+    console.error('GET warehouse/med-centers/:id/plan error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.put('/med-centers/:id/plan', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const medCenter = await MedCenter.findByPk(req.params.id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!medCenter) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'Медцентр не найден' });
+    }
+
+    const { planWidthM, planHeightM, planBgOpacity, outline, rooms = [], shapes = [] } = req.body;
+    const normalizedOutline = normalizeOutline(outline);
+    if (normalizedOutline.error) {
+      await transaction.rollback();
+      return res.status(400).json({ error: normalizedOutline.error });
+    }
+
+    await medCenter.update({
+      warehousePlan: {
+        ...(medCenter.warehousePlan || {}),
+        planWidthM: planWidthM ?? 40,
+        planHeightM: planHeightM ?? 25,
+        planBgOpacity: planBgOpacity ?? 0.35,
+        outline: normalizedOutline.value,
+        shapes: Array.isArray(shapes) ? shapes.map((shape, index) => ({
+          kind: shape.kind || 'wall',
+          geometry: shape.geometry || {},
+          label: shape.label || null,
+          style: shape.style || {},
+          z: shape.z ?? index,
+          sortOrder: shape.sortOrder ?? (index + 1) * 10,
+          isTechnical: shape.isTechnical !== false,
+        })) : [],
+      },
+    }, { transaction });
+
+    for (const room of rooms) {
+      if (!room.id || room.plan === undefined || room.plan === null) continue;
+      await WhRoom.update(
+        { plan: room.plan },
+        { where: { id: room.id, medCenterId: medCenter.id, floorId: null }, transaction }
+      );
+    }
+
+    await transaction.commit();
+    res.json({ ok: true });
+  } catch (err) {
+    await transaction.rollback();
+    console.error('PUT warehouse/med-centers/:id/plan error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── План этажа: геометрия кабинетов и оформление ─────────────────────────────
 // Клиент присылает весь план целиком, а не отдельные фигуры: редактор работает с
 // планом как с единым документом, и частичные сохранения давали бы битые состояния
@@ -287,7 +385,7 @@ router.get('/floors/:id/plan', authenticate, requireWarehouse(), async (req, res
 
     res.json({
       floor: {
-        id: floor.id, number: floor.number, name: floor.name,
+        id: floor.id, scope: 'floor', number: floor.number, name: floor.name,
         buildingId: floor.buildingId,
         buildingName: floor.building?.name,
         medCenterName: floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
@@ -296,14 +394,7 @@ router.get('/floors/:id/plan', authenticate, requireWarehouse(), async (req, res
         // Контур произвольной формы (ver. 6.69). Пустой — этаж прямоугольный.
         outline: floor.outline || {},
       },
-      rooms: rooms.map(r => ({
-        id: r.id, number: r.number, name: r.name, kind: r.kind,
-        departmentId: r.departmentId, department: r.department,
-        responsible: r.responsible,
-        capacityHours: Number(r.capacityHours),
-        misRoomAliases: r.misRoomAliases,
-        plan: r.plan || {},
-      })),
+      rooms: rooms.map(roomPlanJson),
       shapes,
     });
   } catch (err) {
@@ -311,6 +402,27 @@ router.get('/floors/:id/plan', authenticate, requireWarehouse(), async (req, res
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+function roomPlanJson(room) {
+  return {
+    id: room.id, number: room.number, name: room.name, kind: room.kind,
+    departmentId: room.departmentId, department: room.department,
+    responsible: room.responsible,
+    capacityHours: Number(room.capacityHours),
+    misRoomAliases: room.misRoomAliases,
+    plan: room.plan || {},
+  };
+}
+
+function normalizeOutline(outline) {
+  const points = Array.isArray(outline?.points) ? outline.points : [];
+  const valid = points.length >= 3 && points.every(point => Array.isArray(point) && point.length === 2
+    && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])));
+  if (points.length && !valid) {
+    return { error: 'Контур схемы должен состоять минимум из трёх точек [x, y]' };
+  }
+  return { value: valid ? { points: points.map(point => [Number(point[0]), Number(point[1])]) } : {} };
+}
 
 router.put('/floors/:id/plan', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const t = await sequelize.transaction();

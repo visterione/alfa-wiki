@@ -825,6 +825,9 @@ const MedCenter = sequelize.define('MedCenter', {
     comment: 'Полное название для отображения'
   },
   description: { type: DataTypes.TEXT },
+  // Общая схема медцентра используется по умолчанию, когда помещения не
+  // разбиты по корпусам и этажам. Иерархия склада остаётся необязательной.
+  warehousePlan: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
   organizationId: { type: DataTypes.UUID, allowNull: true, comment: 'Юрлицо, которому принадлежит медцентр' },
   // Мост между справочником и всем МИС-блоком (расписание, зарплата, бонусы,
   // платежи). Массив, потому что у Сукко исторически два id (11 и 12) — раньше это
