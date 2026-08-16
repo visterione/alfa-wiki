@@ -269,7 +269,20 @@ async function downtimeByRoom(day) {
  * Агрегат за период для тепловой карты. Возвращает по кабинету средний процент,
  * зону и вспомогательные показатели для альтернативных раскрасок.
  */
-async function aggregate({ floorId, from, to }) {
+/**
+ * Показатели по кабинетам одной схемы.
+ *
+ * Схема — это либо этаж, либо сам медцентр: у небольшого МЦ помещения лежат прямо
+ * в нём, без корпуса и этажа (ver. 6.81), и такая схема ничем не хуже этажной.
+ * Условие выборки поэтому одно из двух, а не жёсткое «по floorId» — иначе у
+ * общей схемы медцентра тепловая карта была бы пуста в принципе.
+ */
+async function aggregate({ floorId, medCenterId, from, to }) {
+  const scope = floorId
+    ? 'r."floorId" = :floorId'
+    : 'r."medCenterId" = :medCenterId AND r."floorId" IS NULL';
+  const scopeArgs = floorId ? { floorId } : { medCenterId };
+
   const [rows] = await sequelize.query(`
     SELECT r.id AS "roomId", r.number, r.name, r.kind, r.plan, r."departmentId",
            d.name AS "departmentName", d.color AS "departmentColor",
@@ -283,10 +296,10 @@ async function aggregate({ floorId, from, to }) {
     LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
     LEFT JOIN warehouse_utilization_daily u
            ON u."roomId" = r.id AND u.date BETWEEN :from AND :to
-    WHERE r."floorId" = :floorId AND r."isActive" = TRUE
+    WHERE ${scope} AND r."isActive" = TRUE
     GROUP BY r.id, r.number, r.name, r.kind, r.plan, r."departmentId", d.name, d.color
     ORDER BY r.number
-  `, { replacements: { floorId, from: toDateOnly(from), to: toDateOnly(to) } });
+  `, { replacements: { ...scopeArgs, from: toDateOnly(from), to: toDateOnly(to) } });
 
   // Показатели, которые не зависят от расчёта загрузки: стоимость активов,
   // дефицит, просрочка, просроченные ТО. Нужны альтернативным раскраскам из ТЗ.
@@ -307,8 +320,8 @@ async function aggregate({ floorId, from, to }) {
               JOIN warehouse_storages st2 ON st2.id = s2."storageId"
              WHERE st2."roomId" = r.id AND rr."roomId" = r.id AND s2.quantity < rr."minQty") AS "belowMinimum"
     FROM warehouse_rooms r
-    WHERE r."floorId" = :floorId AND r."isActive" = TRUE
-  `, { replacements: { floorId } });
+    WHERE ${scope} AND r."isActive" = TRUE
+  `, { replacements: scopeArgs });
 
   const extraById = new Map(extra.map(e => [e.roomId, e]));
 

@@ -23,20 +23,38 @@ const utilization = require('../../services/warehouse/utilization');
  */
 router.get('/heatmap', authenticate, requireWarehouse(), requireReport('RPT-HEATMAP'), async (req, res) => {
   try {
-    const { floorId, from, to, metric = 'utilization' } = req.query;
-    if (!floorId) return res.status(400).json({ error: 'Нужен floorId' });
+    const { floorId, medCenterId, from, to, metric = 'utilization' } = req.query;
+    if (!floorId && !medCenterId) {
+      return res.status(400).json({ error: 'Нужен floorId или medCenterId' });
+    }
 
-    const floor = await WhFloor.findByPk(floorId, {
-      include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }],
-    });
-    if (!floor) return res.status(404).json({ error: 'Этаж не найден' });
+    // Схема бывает двух видов, и это не два разных отчёта. У небольшого МЦ
+    // помещения лежат прямо в медцентре, без корпуса и этажа (ver. 6.81), и
+    // геометрия у них хранится в med_centers.warehousePlan, а не в этаже. Дальше
+    // по коду разницы нет: и там и там — контур, фигуры и кабинеты с планом.
+    let floor = null;
+    let medCenter = null;
+    if (floorId) {
+      floor = await WhFloor.findByPk(floorId, {
+        include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }],
+      });
+      if (!floor) return res.status(404).json({ error: 'Этаж не найден' });
+    } else {
+      medCenter = await MedCenter.findByPk(medCenterId);
+      if (!medCenter) return res.status(404).json({ error: 'Медцентр не найден' });
+    }
 
     const dateTo = to || new Date().toISOString().slice(0, 10);
     const dateFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
 
+    const saved = medCenter?.warehousePlan || {};
     const [rooms, shapes] = await Promise.all([
-      utilization.aggregate({ floorId, from: dateFrom, to: dateTo }),
-      WhFloorShape.findAll({ where: { floorId }, order: [['z', 'ASC']] }),
+      utilization.aggregate({ floorId, medCenterId, from: dateFrom, to: dateTo }),
+      // Фигуры общей схемы живут в том же JSON, что и её контур: отдельной
+      // таблицы у них нет, потому что нет и этажа, к которому её привязать.
+      floorId
+        ? WhFloorShape.findAll({ where: { floorId }, order: [['z', 'ASC']] })
+        : Promise.resolve(Array.isArray(saved.shapes) ? saved.shapes : []),
     ]);
 
     const scoped = await req.warehouse.scopedRoomIds();
@@ -54,13 +72,23 @@ router.get('/heatmap', authenticate, requireWarehouse(), requireReport('RPT-HEAT
       }));
 
     res.json({
-      floor: {
+      floor: floor ? {
         id: floor.id, number: floor.number, name: floor.name,
         planWidthM: Number(floor.planWidthM), planHeightM: Number(floor.planHeightM),
         planBgUrl: floor.planBgUrl, planBgOpacity: Number(floor.planBgOpacity),
         outline: floor.outline || {},
         building: floor.building?.name,
         medCenter: floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
+      } : {
+        id: `med-center:${medCenter.id}`,
+        scope: 'medCenter',
+        name: 'Общая схема',
+        planWidthM: Number(saved.planWidthM) || 40,
+        planHeightM: Number(saved.planHeightM) || 25,
+        planBgUrl: saved.planBgUrl || null,
+        planBgOpacity: Number(saved.planBgOpacity ?? 0.35),
+        outline: saved.outline || {},
+        medCenter: medCenter.displayName || medCenter.name,
       },
       period: { from: dateFrom, to: dateTo },
       metric,

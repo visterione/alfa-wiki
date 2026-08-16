@@ -33,7 +33,9 @@ const METRIC_HINTS = {
 };
 
 export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom }) {
-  // Уровень: { kind: 'network' } | { kind: 'medCenter', mcId } | { kind: 'floor', mcId, buildingId, floorId }
+  // Уровень: { kind: 'network' } | { kind: 'medCenter', mcId }
+  //        | { kind: 'floor', mcId, buildingId, floorId }
+  //        | { kind: 'scheme', mcId } — общая схема медцентра без корпусов и этажей
   const [level, setLevel] = useState({ kind: 'network' });
   const [overview, setOverview] = useState([]);
   const [heatmap, setHeatmap] = useState(null);
@@ -76,21 +78,41 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   }, [level.kind]);
 
   const loadHeatmap = useCallback(async () => {
-    if (level.kind !== 'floor' || !level.floorId) return;
+    // Общая схема медцентра запрашивается тем же отчётом, только по medCenterId:
+    // это такая же схема с контуром, фигурами и кабинетами, просто у неё нет
+    // этажа. Отдельный запрос завёл бы вторую тепловую карту со своими порогами.
+    const params = level.kind === 'floor' && level.floorId ? { floorId: level.floorId }
+      : level.kind === 'scheme' && level.mcId ? { medCenterId: level.mcId }
+      : null;
+    if (!params) return;
+
     setLoading(true);
     try {
-      const { data } = await warehouseApi.heatmap({
-        floorId: level.floorId, from: period.from, to: period.to, metric,
-      });
+      const { data } = await warehouseApi.heatmap({ ...params, from: period.from, to: period.to, metric });
       setHeatmap(data);
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Не удалось загрузить план этажа');
+      toast.error(e.response?.data?.error || 'Не удалось загрузить план');
     } finally {
       setLoading(false);
     }
-  }, [level.kind, level.floorId, period.from, period.to, metric]);
+  }, [level.kind, level.floorId, level.mcId, period.from, period.to, metric]);
 
   useEffect(() => { loadHeatmap(); }, [loadHeatmap]);
+
+  /**
+   * Открыть медцентр.
+   *
+   * Промежуточный экран со списком корпусов нужен, только когда есть из чего
+   * выбирать. У небольшого МЦ помещения лежат прямо в медцентре, корпусов нет
+   * вовсе — и весь уровень вырождался в список кнопок с номерами кабинетов
+   * вместо нарисованного плана. Схема в таком случае открывается сразу.
+   */
+  const openMedCenter = (mcId) => {
+    const mc = treeById.get(mcId);
+    const hasBuildings = (mc?.buildings || []).length > 0;
+    const hasScheme = (mc?.rooms || []).length > 0;
+    setLevel(!hasBuildings && hasScheme ? { kind: 'scheme', mcId } : { kind: 'medCenter', mcId });
+  };
 
   const openRoomPanel = async (roomId) => {
     setSelectedRoom(roomId);
@@ -155,7 +177,7 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
                            mc={mc}
                            shape={treeById.get(mc.id)}
                            canSeeCosts={canSeeCosts}
-                           onOpen={() => setLevel({ kind: 'medCenter', mcId: mc.id })} />
+                           onOpen={() => openMedCenter(mc.id)} />
           ))}
           {!withData.length && (
             <div className="wh-empty">Ни в одном медцентре не заведены кабинеты</div>
@@ -218,18 +240,8 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
         ))}
 
         {directRooms.length > 0 && (
-          <section className="wh-card">
-            <h3>Кабинеты без корпуса и этажа</h3>
-            <div className="wh-map__grid">
-              {directRooms.map(room => (
-                <button key={room.id} className="wh-btn wh-btn--secondary"
-                        onClick={() => onOpenRoom?.(room.id)}>
-                  {room.name && room.name !== room.number
-                    ? `${room.number} — ${room.name}` : room.number}
-                </button>
-              ))}
-            </div>
-          </section>
+          <SchemeSection medCenter={currentMc} rooms={directRooms}
+                         onOpen={() => setLevel({ kind: 'scheme', mcId: level.mcId })} />
         )}
 
         {!buildings.length && !directRooms.length && (
@@ -239,7 +251,10 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
     );
   }
 
-  // ── Уровень 3: этаж, план и тепловая карта ─────────────────────────────────
+  // ── Уровень 3: план и тепловая карта ───────────────────────────────────────
+  // Этаж и общая схема медцентра рисуются одним и тем же экраном: различаются они
+  // только тем, есть ли между чем переключаться слева.
+  const isScheme = level.kind === 'scheme';
   const metricInfo = (heatmap?.metrics || []).find(m => m.key === metric);
   const coverage = heatmap?.coverage;
   const noUtilData = metric === 'utilization' && coverage && coverage.withData === 0;
@@ -248,9 +263,13 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
     <div className="wh-map">
       <Breadcrumbs items={[
         { label: 'Сеть', onClick: () => setLevel({ kind: 'network' }) },
-        { label: currentMc?.name || '—', onClick: () => setLevel({ kind: 'medCenter', mcId: level.mcId }) },
-        { label: currentBuilding?.name || '—' },
-        { label: currentFloor ? (currentFloor.name || `${currentFloor.number} этаж`) : '—' },
+        { label: currentMc?.name || '—', onClick: () => openMedCenter(level.mcId) },
+        ...(isScheme
+          ? [{ label: 'Общая схема' }]
+          : [
+              { label: currentBuilding?.name || '—' },
+              { label: currentFloor ? (currentFloor.name || `${currentFloor.number} этаж`) : '—' },
+            ]),
       ]} />
 
       <div className="wh-map__toolbar">
@@ -297,9 +316,10 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
 
       <div className="wh-floor-view">
         {/* Вертикальный переключатель этажей — как в многоуровневых картах: этаж
-            меняется, кадр и выбранный показатель остаются. */}
+            меняется, кадр и выбранный показатель остаются. У общей схемы этажей
+            нет, и пустая колонка кнопок только отнимала бы место. */}
         <div className="wh-floor-switch">
-          {(currentBuilding?.floors || []).slice().reverse().map(f => (
+          {(isScheme ? [] : currentBuilding?.floors || []).slice().reverse().map(f => (
             <button key={f.id}
                     className={`wh-floor-switch__btn ${f.id === level.floorId ? 'is-active' : ''}`}
                     title={f.name || `${f.number} этаж`}
@@ -531,6 +551,56 @@ function BuildingSection({ building, onOpenFloor }) {
 
       {/* Земля под стопкой этажей: без неё стопка висит в воздухе и не читается
           как здание. */}
+      <div className="wh-bld__ground" />
+    </section>
+  );
+}
+
+/**
+ * Общая схема медцентра — когда корпуса всё-таки есть, но часть помещений лежит
+ * прямо в медцентре. Выглядит как этаж в стопке, потому что по сути это он и
+ * есть: та же схема с контуром и кабинетами, просто без здания над ней.
+ *
+ * Раньше на этом месте был список кнопок с номерами кабинетов — нарисованный
+ * план на карте было не увидеть вообще.
+ */
+function SchemeSection({ medCenter, rooms, onOpen }) {
+  const assets = rooms.reduce((s, r) => s + (r.counters?.assets || 0), 0);
+  const noPlan = rooms.filter(r => !r.hasPlan).length;
+  const floor = {
+    outline: medCenter?.warehousePlan?.outline || {},
+    planWidthM: medCenter?.warehousePlan?.planWidthM,
+    planHeightM: medCenter?.warehousePlan?.planHeightM,
+  };
+
+  return (
+    <section className="wh-bld">
+      <div className="wh-bld__head">
+        <Boxes size={16} />
+        <div className="wh-bld__id">
+          <div className="wh-bld__name">Общая схема</div>
+          <div className="wh-bld__addr">Помещения без корпуса и этажа</div>
+        </div>
+        <div className="wh-bld__sum">
+          <span><Boxes size={12} /> {rooms.length}</span>
+          <span><Package size={12} /> {assets}</span>
+        </div>
+      </div>
+
+      <div className="wh-bld__stack">
+        <button className="wh-fl" onClick={onOpen}>
+          <span className="wh-fl__level">—</span>
+          <span className="wh-fl__main">
+            <span className="wh-fl__name">Схема медцентра</span>
+            <span className="wh-fl__meta">
+              {rooms.length} каб. · {assets} ед. ОС
+              {noPlan > 0 && <em className="wh-fl__warn">без плана: {noPlan}</em>}
+            </span>
+          </span>
+          <MiniPlan floor={floor} rooms={rooms} />
+          <ChevronRight size={15} className="wh-fl__go" />
+        </button>
+      </div>
       <div className="wh-bld__ground" />
     </section>
   );

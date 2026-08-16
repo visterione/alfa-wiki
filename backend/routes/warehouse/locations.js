@@ -57,7 +57,10 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
     const [medCenters, buildings, floors, departments, rooms, storages, counts] = await Promise.all([
       MedCenter.findAll({
         where: { isActive: true, isVirtual: false },
-        attributes: ['id', 'name', 'displayName', 'code', 'color', 'logoUrl', 'city', 'sortOrder'],
+        // warehousePlan нужен карте: у медцентра без корпусов схема лежит здесь,
+        // и без неё миниатюра общей схемы рисовалась бы по одним кабинетам, без стен.
+        attributes: ['id', 'name', 'displayName', 'code', 'color', 'logoUrl', 'city',
+          'sortOrder', 'warehousePlan'],
         order: [['sortOrder', 'ASC'], ['name', 'ASC']],
       }),
       WhBuilding.findAll({ where: { isActive: true }, order: [['sortOrder', 'ASC'], ['name', 'ASC']] }),
@@ -128,6 +131,13 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
         logoUrl: mc.logoUrl,
         city: mc.city,
         buildings: buildingsByMc.get(mc.id) || [],
+        // Только геометрия схемы: фигуры бывают тяжёлыми, а дерево грузится на
+        // каждом экране модуля. Полная схема приходит отдельным запросом плана.
+        warehousePlan: {
+          outline: mc.warehousePlan?.outline || {},
+          planWidthM: Number(mc.warehousePlan?.planWidthM) || null,
+          planHeightM: Number(mc.warehousePlan?.planHeightM) || null,
+        },
         // Кабинеты без этажа показываются прямо под медцентром.
         rooms: rooms
           .filter(r => !r.floorId && r.medCenterId === mc.id)
