@@ -1016,8 +1016,9 @@ export default function FloorPlanSvg({
       return legal(cursor ? [...polyPoints, cursor] : polyPoints);
     }
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawRect, polyPoints, cursor, drawing, floorShape, constrainDrawing, avoidRooms, rooms]);
+    // hitsOtherRooms и rectPoints пересоздаются каждый рендер, но зависят только
+    // от rooms и floorShape — они в списке.
+  }, [drawRect, polyPoints, cursor, drawing, floorShape, constrainDrawing, avoidRooms, rooms]); // eslint-disable-line
 
   const onMouseUp = () => {
     if (drawRect && onCanvasDraw) {
