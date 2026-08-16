@@ -876,7 +876,7 @@ export default function FloorPlanSvg({
           })}
         </g>
 
-        {/* Ручки контура этажа — только когда его правят, чтобы они не мешали
+        {/* Ручки контура схемы — только когда его правят, чтобы они не мешали
             обводить кабинеты. */}
         {mode === 'edit' && editOutline && outlinePoints && !drawing && (
           <g>
@@ -915,7 +915,7 @@ export default function FloorPlanSvg({
               <text x={cursor[0] + 0.4 * k} y={cursor[1] - 0.4 * k}
                     fontSize={0.55 * k} fill={drawValid ? '#1e3a5f' : '#cf5555'}
                     style={{ pointerEvents: 'none' }}>
-                {drawValid ? 'двойной клик — замкнуть' : 'за пределами этажа'}
+                {drawValid ? 'двойной клик — замкнуть' : 'за пределами схемы'}
               </text>
             )}
           </g>

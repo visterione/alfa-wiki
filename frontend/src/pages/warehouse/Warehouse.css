@@ -869,6 +869,7 @@
 .wh-tool:hover:not(:disabled):not(.is-active) { background: var(--wh-bg); color: var(--wh-text); }
 .wh-tool.is-active { background: var(--wh-primary); border-color: var(--wh-primary); color: #fff; }
 .wh-tool:disabled { opacity: .35; cursor: not-allowed; }
+.wh-tool--labeled { width: auto; padding: 0 9px; gap: 5px; font-size: 11px; }
 /* Кнопка размеров переключает три состояния, и по одной подсветке «выкл / у
    выбранного / у всех» не различить. Метка говорит, какое из двух включённых. */
 .wh-tool { position: relative; }

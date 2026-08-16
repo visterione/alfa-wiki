@@ -217,6 +217,39 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   };
 
   /**
+   * У нового плана прямоугольник раньше был только визуальной подложкой по
+   * размеру холста. Поэтому кнопка ручек формально включалась, но править было
+   * нечего: явного массива вершин ещё не существовало. При первом переходе к
+   * правке превращаем эту же подложку в обычный четырёхугольный контур. Дальше
+   * он редактируется ровно как кабинет: плюс добавляет вершину, белая точка
+   * двигает её, двойной клик удаляет.
+   */
+  const enableOutlineEditing = () => {
+    if (!plan) return;
+    const hasOutline = Array.isArray(plan.floor.outline?.points)
+      && plan.floor.outline.points.length >= 3;
+
+    if (!hasOutline) {
+      pushSnapshot();
+      setPlan(prev => {
+        const width = Number(prev.floor.planWidthM) || 40;
+        const height = Number(prev.floor.planHeightM) || 25;
+        return {
+          ...prev,
+          floor: {
+            ...prev.floor,
+            outline: { points: [[0, 0], [width, 0], [width, height], [0, height]] },
+          },
+        };
+      });
+      setDirty(true);
+    }
+
+    setTool({ mode: 'select' });
+    setEditOutline(true);
+  };
+
+  /**
    * Добавление и удаление вершины у уже нарисованного объекта.
    *
    * Один обработчик на кабинеты, технические помещения и контур этажа: правка
@@ -301,7 +334,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     await createRoomWithGeometry(points);
   };
 
-  /** Многоугольник по точкам: контур этажа или фигура сложной формы. */
+  /** Многоугольник по точкам: контур схемы или фигура сложной формы. */
   const handlePolygonDone = async (rawPoints) => {
     const points = rawPoints.map(([x, y]) => [round2(x), round2(y)]);
     pushSnapshot();
@@ -311,7 +344,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
       setDirty(true);
       setTool({ mode: 'select' });
       setEditOutline(true);
-      toast.success('Контур этажа задан');
+      toast.success('Контур схемы задан');
       return;
     }
     if (tool.mode === 'shape') {
@@ -735,7 +768,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
               <span className="wh-toolgroup__label">Контур схемы</span>
               <button className={`wh-tool ${tool.mode === 'outline' && tool.shape === 'polygon' ? 'is-active' : ''}`}
                       onClick={() => { setTool({ mode: 'outline', shape: 'polygon' }); setEditOutline(true); }}
-                      title="Обвести контур по точкам — для Г-образных этажей">
+                      title="Обвести контур по точкам — для Г-образных схем">
                 <PenLine size={16} />
               </button>
               <button className={`wh-tool ${tool.mode === 'outline' && tool.shape === 'rect' ? 'is-active' : ''}`}
@@ -743,10 +776,11 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                       title="Прямоугольный контур">
                 <Square size={16} />
               </button>
-              <button className={`wh-tool ${editOutline ? 'is-active' : ''}`}
-                      onClick={() => setEditOutline(v => !v)}
-                      title="Показать ручки контура">
+              <button className={`wh-tool wh-tool--labeled ${editOutline ? 'is-active' : ''}`}
+                      onClick={() => (editOutline ? setEditOutline(false) : enableOutlineEditing())}
+                      title={editOutline ? 'Закончить правку контура' : 'Добавить и двигать вершины контура'}>
                 <Boxes size={16} />
+                <span>{editOutline ? 'Готово' : 'Вершины'}</span>
               </button>
             </div>
 
@@ -826,6 +860,15 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
         <div className="wh-alert wh-alert--info">
           <Info size={15} />
           <div>{toolHint(tool, selectedRoom)}</div>
+        </div>
+      )}
+      {plan && tool.mode === 'select' && editOutline && (
+        <div className="wh-alert wh-alert--info">
+          <Info size={15} />
+          <div>
+            Правка контура: тяните белые вершины; нажмите <b>+</b> на стороне,
+            чтобы добавить новую. Двойной клик по лишней вершине удаляет её.
+          </div>
         </div>
       )}
 
@@ -1086,8 +1129,8 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 function toolHint(tool, selectedRoom) {
   if (tool.mode === 'outline') {
     return tool.shape === 'polygon'
-      ? 'Кликайте по углам этажа. Двойной клик или клик по первой точке замыкает контур, Backspace убирает последнюю точку, Escape отменяет. Так обводят Г-образные крылья и срезанные углы.'
-      : 'Протяните прямоугольник — он станет контуром этажа.';
+      ? 'Кликайте по углам схемы. Двойной клик или клик по первой точке замыкает контур, Backspace убирает последнюю точку, Escape отменяет. Так обводят Г-образные крылья и срезанные углы.'
+      : 'Протяните прямоугольник — он станет контуром схемы.';
   }
   if (tool.mode === 'shape') {
     const info = SHAPE_KINDS[tool.kind];
