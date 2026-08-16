@@ -415,9 +415,9 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     // Числовой размер — обход мыши, а значит и обход всех проверок, которые
     // держат перетаскивание. Без этой ветки правило «кабинеты не накладываются»
     // отменялось бы вводом ширины с клавиатуры.
-    const hit = overlappingRoom({ points }, roomId);
+    const hit = overlappingOccupant({ points }, roomId);
     if (hit) {
-      toast.error(`Такой размер накладывается на кабинет ${hit.number}.`, { id: 'wh-overlap' });
+      toast.error(`Такой размер накладывается на ${hit.label}.`, { id: 'wh-overlap' });
       return;
     }
 
@@ -425,10 +425,46 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     mutateRoom(roomId, r => ({ ...r, plan: { ...r.plan, points, label: centroid(points) } }));
   };
 
-  /** Первый кабинет, на который наложилась бы геометрия. null — место свободно. */
-  const overlappingRoom = (geometry, exceptId = null) => (plan?.rooms || []).find(r => (
-    r.id !== exceptId && hasGeometry(r) && shapesOverlap(geometry, r.plan)
+  /**
+   * Всё, что занимает место на этаже: кабинеты и технические помещения. Оформление
+   * (стены, проёмы, зоны, подписи) сюда не входит — оно пересекается с соседями по
+   * своей природе, и правило наложения к нему неприменимо.
+   */
+  const occupants = useMemo(() => ([
+    ...(plan?.rooms || []).filter(hasGeometry)
+      .map(r => ({ kind: 'room', id: r.id, geometry: r.plan, label: `кабинет ${r.number}` })),
+    ...(plan?.shapes || [])
+      .filter(s => s.isTechnical !== false && (s.geometry?.points || []).length >= 3)
+      .map(s => ({
+        kind: 'shape',
+        id: s.id,
+        geometry: s.geometry,
+        label: (s.label || SHAPE_KINDS[s.kind]?.label || 'помещение').toLowerCase(),
+      })),
+  ]), [plan]);
+
+  /** Первое занятое место, на которое наложилась бы геометрия. null — свободно. */
+  const overlappingOccupant = (geometry, exceptId = null) => occupants.find(o => (
+    o.id !== exceptId && shapesOverlap(geometry, o.geometry)
   )) || null;
+
+  /**
+   * Уже наложенные пары на плане. Правило запрещает создавать новые наложения, но
+   * старые планы могли приехать с коридором-прямоугольником под всем этажом —
+   * такие места надо показать, иначе про них никто не узнает: перетаскиванию они
+   * не мешают (объект, который уже пересекается, из-под правила выведен).
+   */
+  const overlapPairs = useMemo(() => {
+    const pairs = [];
+    for (let i = 0; i < occupants.length; i++) {
+      for (let j = i + 1; j < occupants.length; j++) {
+        if (shapesOverlap(occupants[i].geometry, occupants[j].geometry)) {
+          pairs.push([occupants[i], occupants[j]]);
+        }
+      }
+    }
+    return pairs;
+  }, [occupants]);
 
   /** Прямоугольник: кабинет или фигура — зависит от активного инструмента. */
   const handleDraw = async ({ x, y, w, h }) => {
@@ -493,6 +529,20 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 
   const addShape = (kind, points) => {
     const info = SHAPE_KINDS[kind] || {};
+    // Коридор и лестница занимают место наравне с кабинетами, поэтому проверяются
+    // при создании так же. Оформление — стены, проёмы, зоны, подписи — нет: зону
+    // рисуют поверх нескольких кабинетов специально.
+    if (info.technical !== false) {
+      const hit = overlappingOccupant({ points });
+      if (hit) {
+        toast.error(
+          `Здесь уже ${hit.label}. Помещения не накладываются друг на друга.`,
+          { id: 'wh-overlap' }
+        );
+        setTool({ mode: 'select' });
+        return;
+      }
+    }
     // Фигуры живут только в локальном состоянии до сохранения плана: у них нет
     // собственного API, PUT плана заменяет их целиком.
     const tmpId = `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -517,10 +567,10 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   const createRoomWithGeometry = async (points) => {
     // Наложение ловится до диалога с номером и отделением: спрашивать реквизиты, а
     // потом отказать — худший из возможных порядков.
-    const hit = overlappingRoom({ points }, selectedRoom?.id);
+    const hit = overlappingOccupant({ points }, selectedRoom?.id);
     if (hit) {
       toast.error(
-        `Здесь уже стоит кабинет ${hit.number}. Кабинеты не накладываются друг на друга — `
+        `Здесь уже ${hit.label}. Помещения не накладываются друг на друга — `
         + 'обведите свободное место или сначала подвиньте соседа.',
         { id: 'wh-overlap' }
       );
@@ -1100,14 +1150,17 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                   'За пределами схемы. Помещения можно размещать только внутри контура.',
                   { id: 'wh-out-of-bounds' }
                 )}
-                // Кабинеты не накладываются друг на друга. Правило намеренно не
-                // трогает коридоры и холлы: на живых планах они лежат общим
-                // прямоугольником под всем этажом, и запрет пересечения с ними
-                // обездвижил бы все кабинеты разом.
+                // Помещения не накладываются друг на друга — ни кабинеты между
+                // собой, ни кабинет на коридор. Оформление (стены, зоны, подписи)
+                // правилу не подчиняется: зона рисуется поверх нескольких
+                // кабинетов специально, а стена стоит ровно на их границе.
                 preventOverlap
-                avoidRooms={tool.mode === 'room'}
-                onOverlap={() => toast.error(
-                  'Кабинеты не могут накладываться друг на друга.',
+                avoidOccupied={
+                  tool.mode === 'room'
+                  || (tool.mode === 'shape' && SHAPE_KINDS[tool.kind]?.technical !== false)
+                }
+                onOverlap={label => toast.error(
+                  `Помещения не накладываются: здесь уже ${label}.`,
                   { id: 'wh-overlap' }
                 )}
                 editOutline={editOutline}
@@ -1145,6 +1198,20 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                           onClick={() => setSelected({ kind: 'room', id: roomsOutside[0].id })}
                           title="Показать первый такой кабинет">
                     <AlertTriangle size={13} /> вне контура: {roomsOutside.length}
+                  </button>
+                )}
+                {/* Наложения со старых планов. Новые правило не пропускает, а
+                    приехавшие раньше видны только так: перетаскиванию они не
+                    мешают, потому что уже пересекающийся объект из-под правила
+                    выведен — иначе его нельзя было бы и растащить. */}
+                {overlapPairs.length > 0 && (
+                  <button className="wh-warn wh-editor__stats-warn"
+                          onClick={() => setSelected({
+                            kind: overlapPairs[0][0].kind, id: overlapPairs[0][0].id,
+                          })}
+                          title={overlapPairs.slice(0, 6)
+                            .map(([a, b]) => `${a.label} ↔ ${b.label}`).join('\n')}>
+                    <AlertTriangle size={13} /> накладываются: {overlapPairs.length}
                   </button>
                 )}
               </div>

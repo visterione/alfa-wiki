@@ -93,6 +93,18 @@ function shapeToPath(points, holes) {
  * геометрию, и разъехавшиеся правила «какой индекс к какому кольцу» дали бы
  * вершину, которая тянется не там, где её взяли.
  */
+/**
+ * Сдвиг всех колец фигуры. Вырез едет вместе с контуром — иначе при проверке
+ * наложения двор кольцевого коридора оставался бы на прежнем месте, и коридор
+ * «наезжал» бы сам на свою же дырку. Без округления и подписи: это геометрия для
+ * проверок, а не для сохранения.
+ */
+export function moveRings(geometry, dx, dy) {
+  const { points, holes } = ringsOf(geometry);
+  const move = pts => pts.map(([x, y]) => [x + dx, y + dy]);
+  return { ...geometry, points: move(points), ...(holes.length ? { holes: holes.map(move) } : {}) };
+}
+
 export function withRingPoint(geometry, ring, index, point) {
   const { points, holes } = ringsOf(geometry);
   if (ring < 0) {
@@ -585,8 +597,8 @@ export default function FloorPlanSvg({
   // касается только кабинетов: коридоры и холлы на живых планах намеренно лежат
   // общим прямоугольником под всем этажом.
   preventOverlap = false,
-  avoidRooms = false,            // рисуемая фигура тоже не должна наезжать на кабинеты
-  onOverlap = null,              // движение отменено из-за наложения
+  avoidOccupied = false,         // рисуемая фигура тоже не должна наезжать на занятое
+  onOverlap = null,              // (label) — движение отменено из-за наложения
   editOutline = false,           // показывать ручки контура этажа
   showGrid = false,
   // Размеры сторон: 'none' | 'selected' | 'all'. По умолчанию только у
@@ -770,20 +782,35 @@ export default function FloorPlanSvg({
   const isInside = points => Array.isArray(points) && points.every(p => pointInShape(p, floorShape.points, floorShape.holes));
 
   /**
-   * Наложился ли кабинет на другие кабинеты. Свой из проверки исключён — иначе
-   * помещение всегда пересекалось бы само с собой.
+   * Всё, что занимает место на этаже: кабинеты и технические помещения.
    *
-   * Проверяются только кабинеты между собой. Коридоры и прочие технические
-   * помещения намеренно не участвуют: на живых планах под кабинетами лежит общий
-   * прямоугольник коридора или холла, и запрет на пересечение с ним сделал бы
-   * неперемещаемым весь этаж разом.
+   * Оформление сюда не входит, и это не упущение. Стена стоит ровно на границе
+   * помещения, дверь — в проёме, «зона» рисуется поверх нескольких кабинетов
+   * специально, а у подписи площади нет вовсе: любое из них пересекается с
+   * соседями по своей природе, и запрет на это сделал бы их бесполезными.
    */
-  const hitsOtherRooms = (roomId, geometry) => rooms.some(other => {
-    const id = other.roomId || other.id;
-    if (id === roomId) return false;
-    const pts = other.plan?.points;
-    return Array.isArray(pts) && pts.length >= 3 && shapesOverlap(geometry, other.plan);
-  });
+  const occupants = useMemo(() => ([
+    ...rooms
+      .filter(r => Array.isArray(r.plan?.points) && r.plan.points.length >= 3)
+      .map(r => ({ kind: 'room', id: r.roomId || r.id, geometry: r.plan, label: `кабинет ${r.number}` })),
+    ...shapes
+      .filter(s => s.isTechnical !== false
+        && Array.isArray(s.geometry?.points) && s.geometry.points.length >= 3)
+      .map(s => ({
+        kind: 'shape',
+        id: s.id || '',
+        geometry: s.geometry,
+        label: (s.label || SHAPE_KINDS[s.kind]?.label || 'помещение').toLowerCase(),
+      })),
+  ]), [rooms, shapes]);
+
+  /**
+   * Первый занятый объект, на который наложилась бы геометрия. Сам объект из
+   * проверки исключается — иначе он всегда пересекался бы сам с собой.
+   */
+  const hitsOccupied = (selfKind, selfId, geometry) => occupants.find(o => (
+    !(o.kind === selfKind && o.id === selfId) && shapesOverlap(geometry, o.geometry)
+  )) || null;
 
   const handleWheel = useCallback((evt) => {
     evt.preventDefault();
@@ -902,16 +929,15 @@ export default function FloorPlanSvg({
       const pos = toPlan(evt);
       const p = isInside(room?.plan?.points) ? snapInside(pos) : [snap(pos.x), snap(pos.y)];
 
-      // Вершина, которая завела бы кабинет на соседний, просто не принимается:
-      // она остаётся на месте, а как только курсор вернётся в допустимое
-      // положение, потянется дальше. Скользить вдоль чужой стены, как при
-      // упоре в контур этажа, здесь нечем — направления «вдоль» у произвольной
+      // Вершина, которая завела бы кабинет на соседнее помещение, просто не
+      // принимается: она остаётся на месте, а как только курсор вернётся в
+      // допустимое положение, потянется дальше. Скользить вдоль чужой стены, как
+      // при упоре в контур этажа, здесь нечем — направления «вдоль» у произвольной
       // границы соседа нет.
-      if (preventOverlap && room && !hitsOtherRooms(drag.roomId, room.plan)
-          && hitsOtherRooms(drag.roomId, withRingPoint(room.plan, drag.ring, drag.index, p))) {
-        onOverlap?.();
-        return;
-      }
+      const hit = preventOverlap && room && !hitsOccupied('room', drag.roomId, room.plan)
+        && hitsOccupied('room', drag.roomId, withRingPoint(room.plan, drag.ring, drag.index, p));
+      if (hit) { onOverlap?.(hit.label); return; }
+
       onVertexDrag(drag.roomId, { ring: drag.ring, index: drag.index }, p);
       return;
     }
@@ -920,8 +946,16 @@ export default function FloorPlanSvg({
       const pos = toPlan(evt);
       // Оформление (стены, проёмы, подписи) не ограничиваем: стена стоит ровно на
       // границе этажа, и загонять её внутрь было бы неверно.
-      const free = (shape && shape.isTechnical === false) || !isInside(shape?.geometry?.points);
+      const decor = shape?.isTechnical === false;
+      const free = decor || !isInside(shape?.geometry?.points);
       const p = free ? [snap(pos.x), snap(pos.y)] : snapInside(pos);
+
+      // Коридор — такое же помещение, как кабинет: наехать им на комнату нельзя.
+      const hit = preventOverlap && shape && !decor
+        && !hitsOccupied('shape', drag.shapeId, shape.geometry)
+        && hitsOccupied('shape', drag.shapeId, withRingPoint(shape.geometry, drag.ring, drag.index, p));
+      if (hit) { onOverlap?.(hit.label); return; }
+
       onShapeVertexDrag(drag.shapeId, { ring: drag.ring, index: drag.index }, p);
       return;
     }
@@ -955,23 +989,30 @@ export default function FloorPlanSvg({
       const constrained = (drag.kind === 'room' || (target && target.isTechnical !== false))
         && isInside(pts);
 
-      // Кабинет, который уже с кем-то пересекается, правилу не подчиняется — иначе
-      // растащить такую пару было бы нечем: любое смещение из наложенного положения
-      // тоже наложенное, ни один вариант не проходит, кабинет замирает намертво.
-      // Разъехались — правило снова в силе.
-      const noOverlap = preventOverlap && drag.kind === 'room' && pts
-        && !hitsOtherRooms(drag.roomId, geometry);
+      // Правило наложения касается всего, что занимает место: и кабинетов, и
+      // технических помещений. Оформление (стены, зоны, подписи) им не связано.
+      //
+      // Помещение, которое уже с кем-то пересекается, правилу не подчиняется —
+      // иначе растащить такую пару было бы нечем: любое смещение из наложенного
+      // положения тоже наложенное, ни один вариант не проходит, объект замирает
+      // намертво. Разъехались — правило снова в силе. Это же и путь для планов,
+      // нарисованных до появления правила: их можно разобрать руками.
+      const selfId = drag.kind === 'room' ? drag.roomId : drag.shapeId;
+      const occupies = drag.kind === 'room' || (target && target.isTechnical !== false);
+      const noOverlap = preventOverlap && occupies && pts
+        && !hitsOccupied(drag.kind, selfId, geometry);
 
       // Пробуем полное смещение, потом только по X, потом только по Y. Так фигура
       // скользит вдоль стены, а не замирает целиком, когда упёрлась одним углом.
       const variants = [[dx, dy], [dx, 0], [0, dy]];
-      let blockedByRoom = false;
+      let blockedBy = null;
       for (const [vx, vy] of variants) {
         if (vx === 0 && vy === 0) continue;
         if (constrained && pts && !fitsInside(pts, vx, vy)) continue;
         if (noOverlap) {
-          const moved = { ...geometry, points: pts.map(([x, y]) => [x + vx, y + vy]) };
-          if (hitsOtherRooms(drag.roomId, moved)) { blockedByRoom = true; continue; }
+          const moved = moveRings(geometry, vx, vy);
+          const hit = hitsOccupied(drag.kind, selfId, moved);
+          if (hit) { blockedBy = hit.label; continue; }
         }
         if (drag.kind === 'room') onRoomMove?.(drag.roomId, vx, vy);
         else onShapeMove?.(drag.shapeId, vx, vy);
@@ -981,7 +1022,7 @@ export default function FloorPlanSvg({
       // Ни один вариант не поместился — курсор ушёл за стену или упёрся в соседа.
       // Точку отсчёта не двигаем: когда курсор вернётся, накопленное смещение
       // отработает верно.
-      if (blockedByRoom) onOverlap?.();
+      if (blockedBy) onOverlap?.(blockedBy);
     }
   };
 
@@ -998,14 +1039,14 @@ export default function FloorPlanSvg({
 
   // Красная рамка при рисовании — единственная обратная связь до того, как
   // помещение создано. Раньше она загоралась только на выходе за контур этажа;
-  // теперь и на наезде на соседний кабинет, потому что промах виден сразу, а не
+  // теперь и на наезде на занятое место, потому что промах виден сразу, а не
   // после диалога с номером и отделением.
   const drawValid = useMemo(() => {
     const legal = (points) => {
       if (constrainDrawing && !points.every(p => pointInShape(p, floorShape.points, floorShape.holes))) {
         return false;
       }
-      return !(avoidRooms && points.length >= 3 && hitsOtherRooms(null, { points }));
+      return !(avoidOccupied && points.length >= 3 && hitsOccupied(null, null, { points }));
     };
     if (drawRect) {
       const { w, h, points } = rectPoints(drawRect);
@@ -1016,9 +1057,9 @@ export default function FloorPlanSvg({
       return legal(cursor ? [...polyPoints, cursor] : polyPoints);
     }
     return true;
-    // hitsOtherRooms и rectPoints пересоздаются каждый рендер, но зависят только
-    // от rooms и floorShape — они в списке.
-  }, [drawRect, polyPoints, cursor, drawing, floorShape, constrainDrawing, avoidRooms, rooms]); // eslint-disable-line
+    // hitsOccupied и rectPoints пересоздаются каждый рендер, но зависят только
+    // от occupants и floorShape — они в списке.
+  }, [drawRect, polyPoints, cursor, drawing, floorShape, constrainDrawing, avoidOccupied, occupants]); // eslint-disable-line
 
   const onMouseUp = () => {
     if (drawRect && onCanvasDraw) {
