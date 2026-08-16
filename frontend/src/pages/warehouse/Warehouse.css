@@ -935,6 +935,20 @@
   background: var(--wh-card-bg); border: 1px solid var(--wh-border); border-radius: 8px;
   font-size: 12px; color: var(--wh-text-secondary);
 }
+/* Кабинеты за стеной здания — не ошибка ввода, а промежуточное состояние: сначала
+   обводят стены, потом переносят комнаты. Поэтому счётчик, а не запрет, и по нему
+   можно перейти к первому такому кабинету. */
+.wh-editor__stats-warn {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: none; padding: 0; font: inherit; cursor: pointer;
+  color: var(--wh-warning); font-weight: 600;
+}
+.wh-editor__stats-warn:hover { text-decoration: underline; }
+
+/* Контур схемы в списке объектов: та же карточка, что у кабинетов, но с рамкой
+   выделения — он такой же выбираемый объект плана. */
+.wh-panel--outline .wh-panel__head:hover { background: var(--wh-primary-soft2, #eef4fc); }
+.wh-panel--outline.is-active { border-color: var(--wh-primary, #1e3a5f); }
 
 .wh-chiplist { display: flex; flex-wrap: wrap; gap: 5px; }
 .wh-chip {
@@ -1276,10 +1290,10 @@
 .wh-room__path { display: inline-flex; align-items: center; gap: 5px; }
 .wh-room__meta { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 
-/* ── Габариты холста над планом ────────────────────────────────────────────── */
-/* Поля меняют локальное состояние, поэтому лист перерисовывается сразу. Раньше
-   габариты правились только в модалке свойств этажа, и без перечитывания плана
-   выглядело так, будто размер не применился. */
+/* ── Размер схемы над планом ───────────────────────────────────────────────── */
+/* Поля правят сам контур этажа, а не отдельный «холст» вокруг него: пока это были
+   две разные величины, схему приходилось вписывать в область, которую никто не
+   задавал осознанно. У непрямоугольной схемы вместо полей показан габарит. */
 .wh-editor__dims {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 9px 13px; margin-bottom: 9px;

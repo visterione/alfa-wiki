@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
 import FloorPlanSvg, {
-  polygonArea, polygonBounds, GRID_STEP, SHAPE_KINDS,
+  polygonArea, polygonBounds, pointInPolygon, GRID_STEP, SHAPE_KINDS,
 } from '../../components/warehouse/FloorPlanSvg';
 
 /**
@@ -74,12 +74,19 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   // в принципе — такого значения нет в сетке.
   const [step, setStep] = useState(GRID_STEP);
   const [shapeShape, setShapeShape] = useState('rect');
+  // Выбранный объект: кабинет, фигура или контур схемы. Контур попал сюда не для
+  // симметрии — раньше он правился отдельным режимом-тумблером, о существовании
+  // которого нельзя было догадаться, и включить его получалось не из каждого
+  // состояния панели. Как обычный выбираемый объект он ведёт себя предсказуемо:
+  // выбран — видны вершины, выбран другой — не видны.
   const [selected, setSelected] = useState({ kind: null, id: null });
   const [saving, setSaving] = useState(false);
   const [misRooms, setMisRooms] = useState(null);
-  const [editOutline, setEditOutline] = useState(false);
   const [modal, setModal] = useState(null);
   const [sideTab, setSideTab] = useState('objects');
+
+  const editOutline = selected.kind === 'outline';
+  const selectOutline = () => { setTool({ mode: 'select' }); setSelected({ kind: 'outline', id: null }); };
 
   const medCenters = tree?.medCenters || [];
   const mc = medCenters.find(m => m.id === selection.mcId);
@@ -103,11 +110,10 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
       const { data } = floorId
         ? await warehouseApi.floorPlan(floorId)
         : await warehouseApi.medCenterPlan(mcId);
-      setPlan(data);
+      setPlan(materializeOutline(data));
       setDirty(false);
       setSnapshot(null);
       setSelected({ kind: null, id: null });
-      setEditOutline(false);
     } catch (e) {
       toast.error(e.response?.data?.error || 'Не удалось загрузить план');
     }
@@ -124,37 +130,64 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     [plan, selected]
   );
 
+  const outlinePoints = plan?.floor?.outline?.points || [];
+
+  /** Прямоугольный ли контур: только тогда его размер имеет смысл задавать числом. */
+  const outlineIsRect = useMemo(() => {
+    if (outlinePoints.length !== 4) return false;
+    const { width, depth } = polygonBounds(outlinePoints);
+    const box = width * depth;
+    return box > 0 && Math.abs(polygonArea(outlinePoints) - box) / box < 0.02;
+  }, [outlinePoints]);
+
   /**
-   * Габариты уже нарисованного: кабинеты, технические помещения и контур. Нужны,
-   * чтобы не дать сделать холст меньше содержимого.
+   * Кабинеты, оказавшиеся снаружи контура. Проверка нужна, потому что контур
+   * теперь свободно перекраивается: подрезал крыло — и половина кабинетов
+   * формально вне здания. Запрещать такую правку неверно (сначала обводят стены,
+   * потом двигают комнаты), поэтому это предупреждение, а не блокировка.
    */
-  const contentExtent = () => {
-    const all = [];
-    for (const r of plan?.rooms || []) if (hasGeometry(r)) all.push(...r.plan.points);
-    for (const sh of plan?.shapes || []) all.push(...(sh.geometry?.points || []));
-    if (plan?.floor?.outline?.points?.length >= 3) all.push(...plan.floor.outline.points);
-    if (!all.length) return { w: 4, h: 4 };
-    return {
-      w: Math.max(...all.map(p => p[0])),
-      h: Math.max(...all.map(p => p[1])),
-    };
+  const roomsOutside = useMemo(() => {
+    if (outlinePoints.length < 3) return [];
+    return (plan?.rooms || []).filter(r => hasGeometry(r)
+      && !r.plan.points.every(p => pointInPolygon(p, outlinePoints)));
+  }, [plan, outlinePoints]);
+
+  /**
+   * Точный размер прямоугольного контура числом. Угол слева сверху остаётся на
+   * месте — так же, как у кабинета: иначе схема уезжала бы от уже расставленных
+   * помещений.
+   */
+  const resizeOutline = (widthM, depthM) => {
+    if (!(widthM > 0) || !(depthM > 0)) return;
+    pushSnapshot();
+    setPlan(prev => {
+      const pts = prev.floor.outline?.points || [];
+      const x0 = Math.min(...pts.map(p => p[0]));
+      const y0 = Math.min(...pts.map(p => p[1]));
+      return {
+        ...prev,
+        floor: {
+          ...prev.floor,
+          outline: {
+            points: [
+              [round2(x0), round2(y0)],
+              [round2(x0 + widthM), round2(y0)],
+              [round2(x0 + widthM), round2(y0 + depthM)],
+              [round2(x0), round2(y0 + depthM)],
+            ],
+          },
+        },
+      };
+    });
+    setDirty(true);
   };
 
-  const setCanvas = (key, raw) => {
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value <= 0) return;
-    const need = contentExtent();
-    const min = key === 'planWidthM' ? need.w : need.h;
-    if (value < min) {
-      toast.error(
-        `Меньше нельзя: содержимое доходит до ${min.toFixed(1)} м. Сначала переместите кабинеты.`,
-        { id: 'wh-canvas-min' }
-      );
-      return;
-    }
-    pushSnapshot();
-    setPlan(prev => ({ ...prev, floor: { ...prev.floor, [key]: value } }));
-    setDirty(true);
+  /** Свести контур обратно к прямоугольнику по его же габариту — выход из тупика. */
+  const rectifyOutline = () => {
+    const { width, depth } = polygonBounds(outlinePoints);
+    if (!(width > 0) || !(depth > 0)) return;
+    resizeOutline(round2(width), round2(depth));
+    toast.success('Контур снова прямоугольный');
   };
 
   const pushSnapshot = () => {
@@ -214,39 +247,6 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
       return { ...prev, floor: { ...prev.floor, outline: { points } } };
     });
     setDirty(true);
-  };
-
-  /**
-   * У нового плана прямоугольник раньше был только визуальной подложкой по
-   * размеру холста. Поэтому кнопка ручек формально включалась, но править было
-   * нечего: явного массива вершин ещё не существовало. При первом переходе к
-   * правке превращаем эту же подложку в обычный четырёхугольный контур. Дальше
-   * он редактируется ровно как кабинет: плюс добавляет вершину, белая точка
-   * двигает её, двойной клик удаляет.
-   */
-  const enableOutlineEditing = () => {
-    if (!plan) return;
-    const hasOutline = Array.isArray(plan.floor.outline?.points)
-      && plan.floor.outline.points.length >= 3;
-
-    if (!hasOutline) {
-      pushSnapshot();
-      setPlan(prev => {
-        const width = Number(prev.floor.planWidthM) || 40;
-        const height = Number(prev.floor.planHeightM) || 25;
-        return {
-          ...prev,
-          floor: {
-            ...prev.floor,
-            outline: { points: [[0, 0], [width, 0], [width, height], [0, height]] },
-          },
-        };
-      });
-      setDirty(true);
-    }
-
-    setTool({ mode: 'select' });
-    setEditOutline(true);
   };
 
   /**
@@ -325,13 +325,25 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
       return;
     }
     if (tool.mode === 'outline') {
-      setPlan(prev => ({ ...prev, floor: { ...prev.floor, outline: { points } } }));
-      setDirty(true);
-      setTool({ mode: 'select' });
-      setEditOutline(true);
+      replaceOutline(points);
       return;
     }
     await createRoomWithGeometry(points);
+  };
+
+  /**
+   * Новый контур заменяет старый — второй схемы не появляется.
+   *
+   * Так было и раньше, но выглядело иначе: нарисованная фигура оказывалась внутри
+   * прямоугольника холста, который тоже рисовался на плане, и читалось это как
+   * «мою схему вписали в чей-то чужой этаж». Прямоугольник холста убран, контур
+   * сразу выделяется — видно, что это тот же самый объект, просто другой формы.
+   */
+  const replaceOutline = (points) => {
+    setPlan(prev => ({ ...prev, floor: { ...prev.floor, outline: { points } } }));
+    setDirty(true);
+    setTool({ mode: 'select' });
+    setSelected({ kind: 'outline', id: null });
   };
 
   /** Многоугольник по точкам: контур схемы или фигура сложной формы. */
@@ -340,10 +352,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     pushSnapshot();
 
     if (tool.mode === 'outline') {
-      setPlan(prev => ({ ...prev, floor: { ...prev.floor, outline: { points } } }));
-      setDirty(true);
-      setTool({ mode: 'select' });
-      setEditOutline(true);
+      replaceOutline(points);
       toast.success('Контур схемы задан');
       return;
     }
@@ -398,19 +407,25 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     if (!plan) return;
     setSaving(true);
     try {
+      // Холст подгоняется под содержимое здесь, а не руками в поле ввода. Раньше
+      // это была отдельная забота человека: контур не пускали за границы холста,
+      // а холст не давали сузить под контур — из этой пары ограничений и росло
+      // ощущение, что схему во что-то впихивают. Теперь размеры листа — просто
+      // следствие того, что нарисовано.
+      const sheet = normalizeSheet(plan);
       const payload = {
-        planWidthM: plan.floor.planWidthM,
-        planHeightM: plan.floor.planHeightM,
-        outline: plan.floor.outline || {},
+        planWidthM: sheet.planWidthM,
+        planHeightM: sheet.planHeightM,
+        outline: sheet.outline,
         // Кабинеты уходят все, включая те, у которых геометрию только что убрали:
         // у них plan уже пустой, и сервер должен об этом узнать. Пока сюда шли
         // только кабинеты с геометрией, убранный с плана просто не попадал в
         // запрос — сервер оставлял старые точки, и после сохранения кабинет
         // возвращался на место.
-        rooms: plan.rooms.map(r => ({ id: r.id, plan: r.plan || {} })),
+        rooms: sheet.rooms.map(r => ({ id: r.id, plan: r.plan || {} })),
         // Фигуры уходят целиком: их немного, а diff на клиенте потребовал бы
         // отслеживать удаления — лишняя сложность на ровном месте.
-        shapes: (plan.shapes || []).map((s, i) => ({
+        shapes: sheet.shapes.map((s, i) => ({
           kind: s.kind, geometry: s.geometry, label: s.label,
           style: s.style || {}, z: s.z ?? i, isTechnical: s.isTechnical !== false,
         })),
@@ -436,6 +451,9 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
   };
 
   const deleteSelected = () => {
+    // Контур удалить нельзя: этаж без границ не нарисовать, а «пустой контур» —
+    // это возврат к безымянному прямоугольнику, из которого всё и началось.
+    if (editOutline) return;
     if (selectedShape) {
       pushSnapshot();
       setPlan(prev => ({ ...prev, shapes: prev.shapes.filter(s => s.id !== selectedShape.id) }));
@@ -530,24 +548,13 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
         setModal(null);
         return;
       } else if (modal.type === 'floor-edit') {
-        // Уменьшать холст ниже уже нарисованного нельзя: кабинеты и контур
-        // оказались бы снаружи, а правило «только внутри этажа» стало бы
-        // невыполнимым. Границу считаем по фактическому содержимому.
-        const need = contentExtent();
-        if (form.planWidthM < need.w || form.planHeightM < need.h) {
-          toast.error(
-            `Холст меньше нарисованного: содержимое занимает ${need.w.toFixed(1)} × ${need.h.toFixed(1)} м. `
-            + 'Сначала переместите кабинеты и контур.'
-          );
-          return;
-        }
+        // Проверки «холст не меньше содержимого» здесь больше нет: форма правит
+        // только номер и название, а лист координат подгоняется под нарисованное
+        // при сохранении плана.
         await warehouseApi.updateFloor(modal.id, form);
         toast.success('Этаж обновлён');
         setModal(null);
         await onReloadTree?.();
-        // Перечитываем именно план: в нём живут габариты холста, и без этого
-        // на экране остались бы старые.
-        await loadPlan(selection);
         return;
       } else if (modal.type === 'department') {
         await warehouseApi.createDepartment({ medCenterId: selection.mcId, ...form });
@@ -686,14 +693,14 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
               <button className="wh-icon-btn" title="Добавить этаж" disabled={!selection.buildingId}
                       onClick={() => {
                         const next = Math.max(0, ...(building?.floors || []).map(f => f.number)) + 1;
-                        setModal({ type: 'floor', title: 'Новый этаж', form: { number: next, name: '', planWidthM: 40, planHeightM: 25 } });
+                        setModal({ type: 'floor', title: 'Новый этаж', form: { number: next, name: '' } });
                       }}>
                 <Plus size={15} />
               </button>
               {selection.floorId && plan && (
                 <>
                   <button className="wh-icon-btn" title="Свойства этажа"
-                          onClick={() => setModal({ type: 'floor-edit', id: plan.floor.id, title: 'Этаж', form: { number: plan.floor.number, name: plan.floor.name || '', planWidthM: plan.floor.planWidthM, planHeightM: plan.floor.planHeightM } })}>
+                          onClick={() => setModal({ type: 'floor-edit', id: plan.floor.id, title: 'Этаж', form: { number: plan.floor.number, name: plan.floor.name || '' } })}>
                     <Pencil size={14} />
                   </button>
                   <button className="wh-icon-btn wh-icon-btn--danger" title="Удалить этаж"
@@ -721,7 +728,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
             <div className="wh-toolgroup">
               <span className="wh-toolgroup__label">Правка</span>
               <button className={`wh-tool ${tool.mode === 'select' ? 'is-active' : ''}`}
-                      onClick={() => { setTool({ mode: 'select' }); setEditOutline(false); }}
+                      onClick={() => setTool({ mode: 'select' })}
                       title="Выбор и перемещение">
                 <MousePointer2 size={16} />
               </button>
@@ -764,23 +771,28 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
               </button>
             </div>
 
+            {/* Форма схемы. Кнопка правки стоит первой и не тумблер: она просто
+                выбирает контур, как клик по кабинету выбирает кабинет. Прежний
+                тумблер «Вершины/Готово» соседние кнопки обвода включали за
+                компанию, поэтому нажатие на него чаще выключало правку, чем
+                включало — вершины не появлялись ни при каком порядке действий. */}
             <div className="wh-toolgroup">
-              <span className="wh-toolgroup__label">Контур схемы</span>
+              <span className="wh-toolgroup__label">Форма схемы</span>
+              <button className={`wh-tool wh-tool--labeled ${editOutline ? 'is-active' : ''}`}
+                      onClick={selectOutline}
+                      title="Править форму этажа: тянуть вершины, добавлять новые">
+                <Boxes size={16} />
+                <span>Стены</span>
+              </button>
               <button className={`wh-tool ${tool.mode === 'outline' && tool.shape === 'polygon' ? 'is-active' : ''}`}
-                      onClick={() => { setTool({ mode: 'outline', shape: 'polygon' }); setEditOutline(true); }}
-                      title="Обвести контур по точкам — для Г-образных схем">
+                      onClick={() => setTool({ mode: 'outline', shape: 'polygon' })}
+                      title="Обвести форму заново по точкам — для Г-образных схем">
                 <PenLine size={16} />
               </button>
               <button className={`wh-tool ${tool.mode === 'outline' && tool.shape === 'rect' ? 'is-active' : ''}`}
-                      onClick={() => { setTool({ mode: 'outline', shape: 'rect' }); setEditOutline(true); }}
-                      title="Прямоугольный контур">
+                      onClick={() => setTool({ mode: 'outline', shape: 'rect' })}
+                      title="Обвести форму заново прямоугольником">
                 <Square size={16} />
-              </button>
-              <button className={`wh-tool wh-tool--labeled ${editOutline ? 'is-active' : ''}`}
-                      onClick={() => (editOutline ? setEditOutline(false) : enableOutlineEditing())}
-                      title={editOutline ? 'Закончить правку контура' : 'Добавить и двигать вершины контура'}>
-                <Boxes size={16} />
-                <span>{editOutline ? 'Готово' : 'Вершины'}</span>
               </button>
             </div>
 
@@ -866,8 +878,11 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
         <div className="wh-alert wh-alert--info">
           <Info size={15} />
           <div>
-            Правка контура: тяните белые вершины; нажмите <b>+</b> на стороне,
-            чтобы добавить новую. Двойной клик по лишней вершине удаляет её.
+            Выбран контур схемы: тяните белые вершины по углам; <b>+</b> посреди
+            стены добавляет новую вершину и сразу берёт её в перетаскивание — так
+            из прямоугольника получается «Г». Двойной клик по вершине удаляет её.
+            Границ у схемы нет: тяните стену куда нужно, лист координат подстроится
+            при сохранении.
           </div>
         </div>
       )}
@@ -877,17 +892,47 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
         <div className="wh-editor__canvas">
           {plan ? (
             <>
+              {/* Размер схемы, а не «холста». Это один и тот же прямоугольник,
+                  пока форма прямоугольная, — но теперь числа правят сам контур, а
+                  не отдельную область вокруг него, в которую контур обязан
+                  вписаться. */}
               <div className="wh-editor__dims">
-                <label>Холст, м</label>
-                <input type="number" step="0.5" min="4" value={plan.floor.planWidthM}
-                       onChange={e => setCanvas('planWidthM', e.target.value)} />
-                <span>×</span>
-                <input type="number" step="0.5" min="4" value={plan.floor.planHeightM}
-                       onChange={e => setCanvas('planHeightM', e.target.value)} />
-                <span className="wh-hint">
-                  Лист координат: кабинеты рисуются внутри него. Меняется сразу,
-                  сохраняется кнопкой «Сохранить план».
-                </span>
+                <label>Схема, м</label>
+                {outlineIsRect ? (
+                  <>
+                    <input type="number" step="0.5" min="1"
+                           value={round2(polygonBounds(outlinePoints).width)}
+                           onChange={e => resizeOutline(
+                             Number(e.target.value), round2(polygonBounds(outlinePoints).depth)
+                           )} />
+                    <span>×</span>
+                    <input type="number" step="0.5" min="1"
+                           value={round2(polygonBounds(outlinePoints).depth)}
+                           onChange={e => resizeOutline(
+                             round2(polygonBounds(outlinePoints).width), Number(e.target.value)
+                           )} />
+                    <span className="wh-hint">
+                      Пока схема прямоугольная, её размер задаётся числом. Нужна
+                      другая форма — нажмите <b>Стены</b> и тяните вершины.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <b>
+                      {fmt1(polygonBounds(outlinePoints).width)} ×{' '}
+                      {fmt1(polygonBounds(outlinePoints).depth)}
+                    </b>
+                    <button className="wh-btn wh-btn--sm wh-btn--secondary" onClick={rectifyOutline}
+                            title="Свести контур обратно к прямоугольнику по его габариту">
+                      Сделать прямоугольной
+                    </button>
+                    <span className="wh-hint">
+                      Схема непрямоугольная ({outlinePoints.length} вершин), поэтому
+                      показан габарит — описанный прямоугольник. Форма правится
+                      вершинами.
+                    </span>
+                  </>
+                )}
               </div>
               <FloorPlanSvg
                 floor={plan.floor}
@@ -920,6 +965,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                 labelOf={room => (room.name && room.name !== room.number ? room.name : '')}
                 onRoomClick={id => setSelected({ kind: 'room', id })}
                 onShapeClick={id => setSelected({ kind: 'shape', id })}
+                onOutlineClick={selectOutline}
                 onVertexDrag={handleVertexDrag}
                 onRoomMove={handleRoomMove}
                 onShapeVertexDrag={handleShapeVertexDrag}
@@ -931,13 +977,17 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
               />
 
               <div className="wh-editor__stats">
-                <span>Габарит холста: <b>{plan.floor.planWidthM} × {plan.floor.planHeightM} м</b></span>
                 <span>Площадь схемы: <b>{outlineArea.toFixed(1)} м²</b></span>
                 <span>Кабинеты: <b>{usableArea.toFixed(1)} м²</b></span>
                 <span>Технические: <b>{technicalArea.toFixed(1)} м²</b></span>
-                {plan.floor.outline?.points?.length >= 3
-                  ? <span className="wh-ok">контур задан ({plan.floor.outline.points.length} вершин)</span>
-                  : <span className="wh-muted">контур прямоугольный</span>}
+                <span className="wh-muted">вершин контура: {outlinePoints.length}</span>
+                {roomsOutside.length > 0 && (
+                  <button className="wh-warn wh-editor__stats-warn"
+                          onClick={() => setSelected({ kind: 'room', id: roomsOutside[0].id })}
+                          title="Показать первый такой кабинет">
+                    <AlertTriangle size={13} /> вне контура: {roomsOutside.length}
+                  </button>
+                )}
               </div>
             </>
           ) : (
@@ -962,6 +1012,51 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 
           {sideTab === 'objects' && (
             <>
+              {/* Контур — первая строка списка объектов, а не спрятанный режим.
+                  Пока его там не было, единственным способом узнать о его
+                  существовании была кнопка на панели с иконкой без подписи. */}
+              <div className={`wh-panel wh-panel--outline ${editOutline ? 'is-active' : ''}`}>
+                <div className="wh-panel__head" onClick={selectOutline} style={{ cursor: 'pointer' }}>
+                  <div className="wh-panel__title"><Boxes size={15} /> Контур схемы</div>
+                  <div className="wh-panel__actions">
+                    <span className="wh-objlist__meta">
+                      {fmt1(polygonBounds(outlinePoints).width)} × {fmt1(polygonBounds(outlinePoints).depth)} м
+                    </span>
+                  </div>
+                </div>
+                {editOutline && (
+                  <div className="wh-panel__body">
+                    <div className="wh-metrics">
+                      <div className="wh-metrics__row">
+                        <span>Площадь</span><b>{outlineArea.toFixed(1)} м²</b>
+                      </div>
+                      <div className="wh-metrics__row">
+                        <span>Вершин</span><b>{outlinePoints.length}</b>
+                      </div>
+                    </div>
+                    <p className="wh-hint">
+                      Тяните белые вершины на плане. <b>+</b> посреди стены добавляет
+                      новую вершину — из прямоугольника так получается «Г», «П» или
+                      срезанный угол. Двойной клик по вершине убирает её; меньше трёх
+                      не останется.
+                    </p>
+                    {!outlineIsRect && (
+                      <button className="wh-btn wh-btn--secondary wh-btn--wide" onClick={rectifyOutline}>
+                        Вернуть прямоугольник
+                      </button>
+                    )}
+                    {roomsOutside.length > 0 && (
+                      <div className="wh-alert wh-alert--warning">
+                        Вне контура оказалось кабинетов: {roomsOutside.length}
+                        {' '}({roomsOutside.slice(0, 5).map(r => r.number).join(', ')}
+                        {roomsOutside.length > 5 ? '…' : ''}). Сохранить это можно, но
+                        на тепловой карте они будут стоять за стеной здания.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {roomsWithoutPlan.length > 0 && (
                 <div className="wh-panel wh-panel--warn">
                   <div className="wh-panel__head">
@@ -1128,9 +1223,12 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 // ── Подсказки по инструментам ────────────────────────────────────────────────
 function toolHint(tool, selectedRoom) {
   if (tool.mode === 'outline') {
+    const common = 'Новая форма заменит текущую, второй схемы не появится. '
+      + 'Кабинеты останутся на своих местах.';
     return tool.shape === 'polygon'
-      ? 'Кликайте по углам схемы. Двойной клик или клик по первой точке замыкает контур, Backspace убирает последнюю точку, Escape отменяет. Так обводят Г-образные крылья и срезанные углы.'
-      : 'Протяните прямоугольник — он станет контуром схемы.';
+      ? 'Кликайте по углам схемы. Двойной клик или клик по первой точке замыкает контур, '
+        + `Backspace убирает последнюю точку, Escape отменяет. Так обводят Г-образные крылья и срезанные углы. ${common}`
+      : `Протяните прямоугольник — он станет формой схемы. ${common}`;
   }
   if (tool.mode === 'shape') {
     const info = SHAPE_KINDS[tool.kind];
@@ -1351,17 +1449,16 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
       ['code', 'Код', 'text'],
       ['address', 'Адрес', 'text'],
     ],
+    // Габариты листа из формы этажа убраны: они считаются по нарисованной схеме
+    // при сохранении плана. Пока их спрашивали здесь, человек задавал размер
+    // здания до того, как увидел здание, — и потом упирался в него как в стену.
     floor: [
       ['number', 'Номер этажа', 'number', true],
       ['name', 'Название', 'text'],
-      ['planWidthM', 'Ширина холста, м', 'number'],
-      ['planHeightM', 'Глубина холста, м', 'number'],
     ],
     'floor-edit': [
       ['number', 'Номер этажа', 'number', true],
       ['name', 'Название', 'text'],
-      ['planWidthM', 'Ширина холста, м', 'number'],
-      ['planHeightM', 'Глубина холста, м', 'number'],
     ],
     department: [
       ['name', 'Название отделения', 'text', true],
@@ -1450,8 +1547,9 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
 
             {(modal.type === 'floor' || modal.type === 'floor-edit') && (
               <p className="wh-hint">
-                Холст — система координат плана в метрах. Контур этажа рисуется внутри
-                него и может быть любой формы; габариты просто должны его вмещать.
+                Форма и размер этажа задаются на самом плане: новый этаж открывается
+                прямоугольником, дальше его правят вершинами — до «Г», «П» или любой
+                другой формы.
               </p>
             )}
           </div>
@@ -1470,6 +1568,85 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
 // ── Утилиты ──────────────────────────────────────────────────────────────────
 const round2 = n => Math.round(n * 100) / 100;
 const hasGeometry = r => Array.isArray(r?.plan?.points) && r.plan.points.length >= 3;
+
+/**
+ * Контур схемы существует всегда, даже у только что заведённого этажа.
+ *
+ * Раньше пустой контур означал «этаж прямоугольный», и прямоугольник рисовался
+ * подложкой по габаритам холста. Выглядело это как готовая схема, но вершин у
+ * неё не было — править было буквально нечего, и первое, что делал человек
+ * («потяну угол»), не работало ни при каком выбранном инструменте. Развернув
+ * подложку в четыре настоящие вершины сразу при загрузке, мы убираем это
+ * состояние вовсе: то, что видно на плане, всегда можно взять и потянуть.
+ *
+ * Планы, сохранённые до ver. 6.69, приходят с пустым outline и разворачиваются
+ * здесь же — отдельной миграции для этого не нужно.
+ */
+function materializeOutline(data) {
+  const pts = data?.floor?.outline?.points;
+  if (Array.isArray(pts) && pts.length >= 3) return data;
+  const w = Number(data?.floor?.planWidthM) || 40;
+  const h = Number(data?.floor?.planHeightM) || 25;
+  return {
+    ...data,
+    floor: { ...data.floor, outline: { points: [[0, 0], [w, 0], [w, h], [0, h]] } },
+  };
+}
+
+/**
+ * Лист координат под нарисованное — перед отправкой на сервер.
+ *
+ * planWidthM/planHeightM остались в базе (по ним привязывается скан БТИ), но
+ * перестали быть областью, в которую всё обязано вмещаться. Здесь они просто
+ * пересчитываются по фактическому содержимому.
+ *
+ * Сдвиг делается только если что-то ушло в отрицательные координаты — так бывает,
+ * когда стену тянут влево или вверх за начало отсчёта. Двигаются при этом все
+ * объекты сразу, поэтому взаимное расположение не меняется. Без нужды координаты
+ * не трогаем: по ним заказывают мебель и сверяются со сканом.
+ */
+function normalizeSheet(plan) {
+  const outline = plan.floor.outline?.points || [];
+  const all = [
+    ...outline,
+    ...(plan.rooms || []).filter(hasGeometry).flatMap(r => r.plan.points),
+    ...(plan.shapes || []).flatMap(s => s.geometry?.points || []),
+  ];
+  if (!all.length) {
+    return {
+      planWidthM: Number(plan.floor.planWidthM) || 40,
+      planHeightM: Number(plan.floor.planHeightM) || 25,
+      outline: {},
+      rooms: plan.rooms || [],
+      shapes: plan.shapes || [],
+    };
+  }
+
+  const xs = all.map(p => p[0]);
+  const ys = all.map(p => p[1]);
+  const dx = Math.min(...xs) < 0 ? round2(-Math.min(...xs)) : 0;
+  const dy = Math.min(...ys) < 0 ? round2(-Math.min(...ys)) : 0;
+  const move = pts => (dx || dy ? pts.map(([x, y]) => [round2(x + dx), round2(y + dy)]) : pts);
+
+  return {
+    planWidthM: Math.max(4, round2(Math.max(...xs) + dx)),
+    planHeightM: Math.max(4, round2(Math.max(...ys) + dy)),
+    outline: outline.length >= 3 ? { points: move(outline) } : {},
+    rooms: (plan.rooms || []).map(r => (hasGeometry(r)
+      ? { ...r, plan: { ...r.plan, points: move(r.plan.points), label: centroid(move(r.plan.points)) } }
+      : r)),
+    shapes: (plan.shapes || []).map(s => (s.geometry?.points?.length
+      ? {
+          ...s,
+          geometry: {
+            ...s.geometry,
+            points: move(s.geometry.points),
+            label: centroid(move(s.geometry.points)),
+          },
+        }
+      : s)),
+  };
+}
 
 function centroid(points) {
   const sx = points.reduce((s, p) => s + p[0], 0);

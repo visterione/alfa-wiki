@@ -84,6 +84,15 @@ function clip(text, widthM, fontSize) {
 
 const round2 = n => Math.round(n * 100) / 100;
 
+/**
+ * Окно просмотра вокруг габарита содержимого. Поле — 5 % от большей стороны, но
+ * не меньше 1,2 м: на маленьком этаже подписи размеров иначе налезают на стены.
+ */
+function frameOf(box) {
+  const pad = Math.max(1.2, Math.max(box.w, box.h) * 0.05);
+  return { w: box.w + pad * 2, h: box.h + pad * 2, x: box.minX - pad, y: box.minY - pad };
+}
+
 /** Метры для подписи: без хвостовых нулей — «19,8», а не «19,80». */
 const fmtM = n => String(Math.round(Number(n) * 10) / 10).replace('.', ',');
 
@@ -288,24 +297,38 @@ function VertexHandles({ points, kind, id, k, color, onDrag, onAdd, onRemove }) 
     <g>
       {mids.map(m => (
         <g key={`add-${m.index}`} style={{ cursor: 'copy' }}
-           onMouseDown={(e) => { e.stopPropagation(); onAdd({ kind, id, index: m.index, point: [round2(m.x), round2(m.y)] }); }}>
+           onMouseDown={(e) => {
+             e.stopPropagation();
+             onAdd({ kind, id, index: m.index, point: [round2(m.x), round2(m.y)] });
+             // Новая вершина сразу берётся в перетаскивание. Иначе после плюса её
+             // надо было отпустить, найти среди остальных ручек и поймать заново —
+             // а поскольку вершина появляется ровно посреди стороны, то есть на
+             // самой линии, выглядело это так, будто ничего не произошло.
+             onDrag(m.index);
+           }}>
+          <circle cx={m.x} cy={m.y} r={0.45 * k} fill="transparent" />
           <circle cx={m.x} cy={m.y} r={0.2 * k} fill="#fff" stroke={color} strokeWidth={0.05 * k} opacity="0.85" />
           <path d={`M ${m.x - 0.09 * k} ${m.y} H ${m.x + 0.09 * k} M ${m.x} ${m.y - 0.09 * k} V ${m.y + 0.09 * k}`}
-                stroke={color} strokeWidth={0.045 * k} strokeLinecap="round" />
+                stroke={color} strokeWidth={0.045 * k} strokeLinecap="round" style={{ pointerEvents: 'none' }} />
           <title>Добавить вершину</title>
         </g>
       ))}
       {points.map((p, i) => (
-        <circle key={i} cx={p[0]} cy={p[1]} r={0.22 * k}
-                fill="#fff" stroke={color} strokeWidth={0.06 * k}
-                style={{ cursor: 'nwse-resize' }}
-                onMouseDown={(e) => { e.stopPropagation(); onDrag(i); }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  if (onRemove && points.length > 3) onRemove({ kind, id, index: i });
-                }}>
+        // Ручка нарисована мелкой, а ловится крупной: точка радиусом 0,22 м — это
+        // около пяти пикселей на неприближённом плане, попасть в неё мышью почти
+        // нельзя. Прозрачный круг вдвое больше решает это, не превращая вершины в
+        // кляксы поверх чертежа.
+        <g key={i} style={{ cursor: 'nwse-resize' }}
+           onMouseDown={(e) => { e.stopPropagation(); onDrag(i); }}
+           onDoubleClick={(e) => {
+             e.stopPropagation();
+             if (onRemove && points.length > 3) onRemove({ kind, id, index: i });
+           }}>
+          <circle cx={p[0]} cy={p[1]} r={0.5 * k} fill="transparent" />
+          <circle cx={p[0]} cy={p[1]} r={0.22 * k}
+                  fill="#fff" stroke={color} strokeWidth={0.06 * k} style={{ pointerEvents: 'none' }} />
           <title>{points.length > 3 ? 'Тянуть; двойной клик — удалить вершину' : 'Тянуть'}</title>
-        </circle>
+        </g>
       ))}
     </g>
   );
@@ -349,10 +372,10 @@ export default function FloorPlanSvg({
   gridStep = GRID_STEP,
   onVertexAdd = null,             // ({ kind:'room'|'shape'|'outline', id, index, point })
   onVertexRemove = null,          // ({ kind, id, index })
+  onOutlineClick = null,          // клик по стене контура — выбрать контур
   height = 560,
 }) {
   const svgRef = useRef(null);
-  const [view, setView] = useState(() => ({ x: 0, y: 0, scale: 1 }));
   const [drag, setDrag] = useState(null);
   const [drawRect, setDrawRect] = useState(null);
   // Рисование многоугольником: набранные точки плюс позиция курсора для «резинки».
@@ -362,24 +385,62 @@ export default function FloorPlanSvg({
   const width = Number(floor?.planWidthM) || 40;
   const depth = Number(floor?.planHeightM) || 25;
 
-  // Поле вокруг холста — 5 % от большей стороны, но не меньше 1,2 м, иначе на
-  // маленьком этаже подписи размеров налезали бы на сам лист.
-  const pad = Math.max(1.2, Math.max(width, depth) * 0.05);
-  const viewW = width + pad * 2;
-  const viewH = depth + pad * 2;
-  const homeView = useMemo(() => ({ x: -pad, y: -pad, scale: 1 }), [pad]);
-
   // Контур этажа. Пустой — этаж прямоугольный по габаритам: так ведут себя все
-  // планы, созданные до ver. 6.69, и так проще заводить новый этаж.
+  // планы, созданные до ver. 6.69, и так же выглядит просмотр из тепловой карты.
+  // В редакторе контур существует всегда: пустого не бывает, его материализует
+  // FloorPlanEditor при загрузке.
   const outlinePoints = Array.isArray(floor?.outline?.points) && floor.outline.points.length >= 3
     ? floor.outline.points
     : null;
 
-  // Сброс камеры при смене этажа: иначе на новом плане остаётся кадр от старого,
-  // и пользователь смотрит в пустоту рядом с домом.
-  useEffect(() => {
-    setView(homeView);
-  }, [floor?.id, homeView]);
+  // Габарит содержимого — по контуру, а не по «холсту». Холст (planWidthM ×
+  // planHeightM) остался только системой координат и точкой привязки для скана
+  // БТИ; как область, в которую всё обязано влезать, он больше не работает.
+  const contentBox = useMemo(() => {
+    const pts = outlinePoints || [[0, 0], [width, 0], [width, depth], [0, depth]];
+    const xs = pts.map(p => p[0]);
+    const ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    return {
+      minX,
+      minY,
+      w: Math.max(1, Math.max(...xs) - minX),
+      h: Math.max(1, Math.max(...ys) - minY),
+    };
+  }, [outlinePoints, width, depth]);
+
+  /**
+   * Кадр — размер окна просмотра в метрах, и он намеренно НЕ пересчитывается на
+   * каждое движение вершины.
+   *
+   * Раньше кадр считался от габаритов холста. Стоило потянуть стену наружу, как
+   * холст подрастал, вслед за ним менялся viewBox, и весь план уезжал из-под
+   * курсора вместе с вершиной, которую в этот момент тянут. Тот же пересчёт
+   * сбрасывал камеру через эффект «сменился этаж» — правка контура на приближении
+   * каждый раз выкидывала на общий вид.
+   *
+   * Кадр берётся один раз при открытии этажа и по кнопке «показать весь этаж».
+   */
+  const [frame, setFrame] = useState(() => frameOf(contentBox));
+  const [view, setView] = useState(() => ({ x: frame.x, y: frame.y, scale: 1 }));
+
+  const viewW = frame.w;
+  const viewH = frame.h;
+
+  const fitAll = useCallback(() => {
+    const next = frameOf(contentBox);
+    setFrame(next);
+    setView({ x: next.x, y: next.y, scale: 1 });
+  }, [contentBox]);
+
+  // Кнопке «весь этаж» нужен свежий контур, а сбросу камеры — ровно одно
+  // срабатывание на смену этажа. Ссылка на актуальную функцию разводит эти два
+  // требования: положи fitAll в зависимости эффекта — и он сработает на каждое
+  // движение вершины контура.
+  const fitRef = useRef(fitAll);
+  fitRef.current = fitAll;
+  useEffect(() => { fitRef.current(); }, [floor?.id]);
 
   // Смена инструмента бросает недорисованную ломаную: незамкнутые точки от
   // прошлого инструмента, всплывающие поверх нового, — источник недоумения.
@@ -466,6 +527,18 @@ export default function FloorPlanSvg({
   /** Уместится ли фигура целиком внутри этажа после смещения. */
   const fitsInside = (points, dx, dy) =>
     points.every(([x, y]) => pointInPolygon([x + dx, y + dy], floorPolygon));
+
+  /**
+   * Правило «только внутри этажа» действует, пока помещение внутри и есть.
+   *
+   * Контур теперь свободно перекраивается, и кабинет запросто оказывается снаружи:
+   * подрезали крыло — три комнаты за стеной. Продолжать держать их правилом
+   * «внутрь» значило бы запереть их намертво: любое смещение из положения снаружи
+   * тоже снаружи, ни один вариант не проходит проверку, и кабинет перестаёт
+   * двигаться вовсе — без единого объяснения на экране. Поэтому вышедшее наружу
+   * тянется свободно, а вернувшись внутрь, снова подчиняется контуру.
+   */
+  const isInside = points => Array.isArray(points) && points.every(p => pointInPolygon(p, floorPolygon));
 
   const handleWheel = useCallback((evt) => {
     evt.preventDefault();
@@ -580,27 +653,31 @@ export default function FloorPlanSvg({
       return;
     }
     if (drag.kind === 'vertex' && onVertexDrag) {
-      const p = snapInside(toPlan(evt));
+      const room = rooms.find(r => (r.roomId || r.id) === drag.roomId);
+      const pos = toPlan(evt);
+      const p = isInside(room?.plan?.points) ? snapInside(pos) : [snap(pos.x), snap(pos.y)];
       onVertexDrag(drag.roomId, drag.index, p);
       return;
     }
     if (drag.kind === 'shapeVertex' && onShapeVertexDrag) {
       const shape = shapes.find(s => (s.id || '') === drag.shapeId);
+      const pos = toPlan(evt);
       // Оформление (стены, проёмы, подписи) не ограничиваем: стена стоит ровно на
       // границе этажа, и загонять её внутрь было бы неверно.
-      const p = shape && shape.isTechnical === false
-        ? [snap(toPlan(evt).x), snap(toPlan(evt).y)]
-        : snapInside(toPlan(evt));
+      const free = (shape && shape.isTechnical === false) || !isInside(shape?.geometry?.points);
+      const p = free ? [snap(pos.x), snap(pos.y)] : snapInside(pos);
       onShapeVertexDrag(drag.shapeId, drag.index, p);
       return;
     }
     if (drag.kind === 'outlineVertex' && onOutlineVertexDrag) {
-      // Контур ограничен холстом: за его пределами он просто не отрисуется.
+      // Контур не ограничен ничем, и это исправление, а не упущение. Раньше он
+      // зажимался в прямоугольник холста, поэтому вытянуть крыло Г-образного
+      // здания за исходные 40 × 25 м было нельзя: вершина упиралась в невидимую
+      // границу и выглядело это так, будто нарисованная схема «вписывается» в
+      // какой-то другой, главный этаж. Границы у здания задаёт сам контур, а
+      // холст под него подгоняется при сохранении.
       const pos = toPlan(evt);
-      onOutlineVertexDrag(drag.index, [
-        snap(Math.min(Math.max(pos.x, 0), width)),
-        snap(Math.min(Math.max(pos.y, 0), depth)),
-      ]);
+      onOutlineVertexDrag(drag.index, [snap(pos.x), snap(pos.y)]);
       return;
     }
     if ((drag.kind === 'room' || drag.kind === 'shape')) {
@@ -618,7 +695,8 @@ export default function FloorPlanSvg({
         ? rooms.find(r => (r.roomId || r.id) === drag.roomId)
         : shapes.find(s => (s.id || '') === drag.shapeId);
       const pts = drag.kind === 'room' ? target?.plan?.points : target?.geometry?.points;
-      const constrained = drag.kind === 'room' || (target && target.isTechnical !== false);
+      const constrained = (drag.kind === 'room' || (target && target.isTechnical !== false))
+        && isInside(pts);
 
       // Пробуем полное смещение, потом только по X, потом только по Y. Так фигура
       // скользит вдоль стены, а не замирает целиком, когда упёрлась одним углом.
@@ -684,14 +762,30 @@ export default function FloorPlanSvg({
   // масштаб, иначе на приближении обводка превращается в кляксу.
   const k = 1 / view.scale;
 
+  // Видимая область в метрах. Нужна и сетке, и подложке для панорамирования:
+  // после отвязки кадра от холста «весь лист» и «то, что на экране» — разные
+  // прямоугольники.
+  const port = useMemo(() => ({
+    x0: view.x, y0: view.y,
+    x1: view.x + viewW / view.scale,
+    y1: view.y + viewH / view.scale,
+  }), [view, viewW, viewH]);
+
   const gridLines = useMemo(() => {
     if (!showGrid) return null;
     const step = view.scale > 3 ? 0.5 : view.scale > 1.5 ? 1 : 2;
     const lines = [];
-    for (let x = 0; x <= width + 0.001; x += step) lines.push(['v', Math.round(x * 100) / 100]);
-    for (let y = 0; y <= depth + 0.001; y += step) lines.push(['h', Math.round(y * 100) / 100]);
+    // Сетка идёт по видимому окну, а не от нуля до края холста. Обрываясь на
+    // границе холста, она рисовала на плане лишнюю прямую, которую принимали за
+    // стену — при том что за этой «стеной» вполне законно лежит крыло здания.
+    for (let x = Math.ceil(port.x0 / step) * step; x <= port.x1; x += step) {
+      lines.push(['v', Math.round(x * 100) / 100]);
+    }
+    for (let y = Math.ceil(port.y0 / step) * step; y <= port.y1; y += step) {
+      lines.push(['h', Math.round(y * 100) / 100]);
+    }
     return lines;
-  }, [showGrid, width, depth, view.scale]);
+  }, [showGrid, port, view.scale]);
 
   return (
     <div className="wh-plan" style={{ height }}>
@@ -706,20 +800,11 @@ export default function FloorPlanSvg({
         onDoubleClick={onDoubleClick}
         className={`wh-plan__svg ${drawing ? 'wh-plan__svg--draw' : ''} ${drag?.kind === 'pan' ? 'wh-plan__svg--panning' : ''}`}
       >
-        {/* Поле вокруг холста — тоже подложка: панорамировать можно и оттуда. */}
-        <rect data-role="bg" x={-pad} y={-pad} width={viewW} height={viewH} fill="transparent" />
-
-        {/* Граница холста с подписанными габаритами. Без неё изменение размера
-            холста выглядело так, будто ничего не произошло: и viewBox, и подложка
-            менялись вместе, лист всегда упирался в края экрана. */}
-        <rect x="0" y="0" width={width} height={depth} fill="none"
-              stroke="#b9c4d2" strokeWidth={0.05 * k}
-              strokeDasharray={`${0.5 * k} ${0.35 * k}`} />
-        <g fontSize={0.6 * k} fill="#8794a5" style={{ pointerEvents: 'none' }}>
-          <text x={width / 2} y={-pad * 0.35} textAnchor="middle">{fmtM(width)} м</text>
-          <text x={-pad * 0.35} y={depth / 2} textAnchor="middle"
-                transform={`rotate(-90 ${-pad * 0.35} ${depth / 2})`}>{fmtM(depth)} м</text>
-        </g>
+        {/* Подложка на всё видимое поле: панорамировать можно из любой точки.
+            Прямоугольника холста на плане больше нет — он изображал вторую,
+            главную границу этажа, которой на самом деле не существует. */}
+        <rect data-role="bg" x={port.x0} y={port.y0}
+              width={port.x1 - port.x0} height={port.y1 - port.y0} fill="transparent" />
 
         {/* Контур этажа. Произвольный многоугольник, если он задан, иначе
             прямоугольник по габаритам — так выглядят все планы до ver. 6.69. */}
@@ -732,11 +817,28 @@ export default function FloorPlanSvg({
                 fill="var(--wh-plan-bg, #fbfcfe)" stroke="#c9d3e0" strokeWidth={0.08 * k} />
         )}
 
+        {/* Стена контура как объект выбора. Полоса шириной 0,6 м прозрачна и
+            лежит ПОД кабинетами: иначе она перехватывала бы клики у всех комнат,
+            стоящих вплотную к стене, то есть почти у всех. Без такой полосы
+            контур можно было выбрать только кнопкой на панели, а догадаться, что
+            он вообще выбирается, было нельзя. */}
+        {mode === 'edit' && outlinePoints && onOutlineClick && !drawing && (
+          <path d={pointsToPath(outlinePoints)} fill="none" stroke="rgba(0,0,0,0)"
+                strokeWidth={0.6 * k} strokeLinejoin="round"
+                style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+                onMouseDown={(e) => { e.stopPropagation(); onOutlineClick(); }}>
+            <title>Контур схемы — выбрать и править вершинами</title>
+          </path>
+        )}
+
+        {/* Сетка и скан БТИ кликов не ловят. Иначе попадание в волосяную линию
+            сетки или в подложку отменяло бы и панорамирование, и выбор контура:
+            обработчик фона смотрит на цель события, а целью оказывалась линия. */}
         {gridLines && (
-          <g opacity="0.5">
+          <g opacity="0.5" style={{ pointerEvents: 'none' }}>
             {gridLines.map(([dir, v], i) => dir === 'v'
-              ? <line key={`v${i}`} x1={v} y1={0} x2={v} y2={depth} stroke="#dfe6ef" strokeWidth={0.02 * k} />
-              : <line key={`h${i}`} x1={0} y1={v} x2={width} y2={v} stroke="#dfe6ef" strokeWidth={0.02 * k} />
+              ? <line key={`v${i}`} x1={v} y1={port.y0} x2={v} y2={port.y1} stroke="#dfe6ef" strokeWidth={0.02 * k} />
+              : <line key={`h${i}`} x1={port.x0} y1={v} x2={port.x1} y2={v} stroke="#dfe6ef" strokeWidth={0.02 * k} />
             )}
           </g>
         )}
@@ -744,7 +846,8 @@ export default function FloorPlanSvg({
         {/* Подложка: скан поэтажного плана, по которому обводят кабинеты */}
         {floor?.planBgUrl && (
           <image href={floor.planBgUrl} x="0" y="0" width={width} height={depth}
-                 opacity={floor.planBgOpacity ?? 0.35} preserveAspectRatio="none" />
+                 opacity={floor.planBgOpacity ?? 0.35} preserveAspectRatio="none"
+                 style={{ pointerEvents: 'none' }} />
         )}
 
         {/* Технические помещения и оформление: коридоры, лестницы, стены, подписи */}
@@ -921,8 +1024,10 @@ export default function FloorPlanSvg({
           </g>
         )}
 
-        {/* Масштабная линейка: без неё «метры» на плане — пустое слово */}
-        <g transform={`translate(${view.x + 0.6 / view.scale}, ${view.y + depth / view.scale - 0.8 / view.scale})`}>
+        {/* Масштабная линейка: без неё «метры» на плане — пустое слово. Привязана
+            к нижнему краю окна просмотра, а не к нижней стене этажа: после
+            панорамирования линейка уезжала вместе с планом и пропадала с экрана. */}
+        <g transform={`translate(${port.x0 + 0.6 * k}, ${port.y1 - 0.8 * k})`}>
           <line x1="0" y1="0" x2={5} y2="0" stroke="#5a6779" strokeWidth={0.06 * k} />
           <line x1="0" y1={-0.2 * k} x2="0" y2={0.2 * k} stroke="#5a6779" strokeWidth={0.06 * k} />
           <line x1={5} y1={-0.2 * k} x2={5} y2={0.2 * k} stroke="#5a6779" strokeWidth={0.06 * k} />
@@ -934,7 +1039,7 @@ export default function FloorPlanSvg({
         <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.min(8, v.scale * 1.3) }))}>+</button>
         <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.max(0.5, v.scale / 1.3) }))}>−</button>
         <button type="button" title="Показать весь этаж"
-                onClick={() => setView(homeView)}>⤢</button>
+                onClick={fitAll}>⤢</button>
       </div>
     </div>
   );
