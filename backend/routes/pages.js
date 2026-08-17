@@ -52,9 +52,32 @@ const sanitizeConfig = {
   allowedSchemes: ['http', 'https', 'data', 'mailto', 'tel']
 };
 
+// Интерактивные таблицы (ver. 2.69) хранят разметку не в теле документа, а в
+// атрибуте: <div data-itable="1" data-table-html="%3Ctable%3E...">. sanitizeHtml
+// вырезает атрибуты целиком, поэтому весь текст таблицы не попадал в
+// searchContent — а на страницах вроде «Процедурных кабинетов» таблица и есть
+// всё содержимое, и searchContent у них оставался пустым. Разворачиваем таблицу
+// обратно в разметку перед тем, как снимать теги.
+function expandInteractiveTables(html) {
+  if (!html || html.indexOf('data-table-html') === -1) return html;
+  return html.replace(/<div\b[^>]*\bdata-table-html="([^"]*)"[^>]*>/gi, (_full, encoded) => {
+    let decoded;
+    try {
+      decoded = decodeURIComponent(encoded);
+    } catch (e) {
+      // Битая percent-последовательность: лучше потерять одну таблицу, чем
+      // уронить сохранение страницы.
+      return '<div>';
+    }
+    // Ячейки в атрибуте лежат без переносов (`<td>А</td><td>Б</td>`), и после
+    // снятия тегов слова склеились бы в «АБ». Разделяем их пробелом.
+    return '<div>' + decoded.replace(/<\/(td|th|tr)>/gi, ' </$1>');
+  });
+}
+
 function extractTextContent(html) {
   if (!html) return '';
-  return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
+  return sanitizeHtml(expandInteractiveTables(html), { allowedTags: [], allowedAttributes: {} })
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -818,3 +841,7 @@ router.get('/:id/export-xlsx', authenticate, async (req, res) => {
 });
 
 module.exports = router;
+// Нужны скрипту переиндексации (scripts/reindexPagesSearchContent.js), чтобы
+// пересчитывать searchContent ровно тем же кодом, что и сохранение страницы.
+module.exports.extractTextContent = extractTextContent;
+module.exports.expandInteractiveTables = expandInteractiveTables;

@@ -36,6 +36,8 @@
     "migrate:6.81:check": "node scripts/migrateWarehouseRoomsOptionalFloor.js --check",
     "migrate:6.82": "node scripts/migrateWarehouseMedCenterPlan.js",
     "migrate:6.82:check": "node scripts/migrateWarehouseMedCenterPlan.js --check",
+    "migrate:6.92": "node scripts/reindexPagesSearchContent.js",
+    "migrate:6.92:check": "node scripts/reindexPagesSearchContent.js --check",
     "migrate:6.67-6.70": "node scripts/migrateMedCentersWarehouse.js",
     "migrate:6.67-6.70:check": "node scripts/migrateMedCentersWarehouse.js --check",
     "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",
