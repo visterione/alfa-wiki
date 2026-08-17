@@ -32,7 +32,10 @@ router.get('/', authenticate, async (req, res) => {
     const scope = teams.peopleInScope(all, req.user.id, req.user.isAdmin, { medCenterId, teamId });
 
     const users = await User.findAll({
-      attributes: ['id', 'displayName', 'username', 'avatar', 'taskWorkSchedule'],
+      // position — это должность из профиля («Старшая медсестра»), а не роль в
+      // системе: права здесь ни при чём, в таблице людей нужно понимать, кто
+      // перед тобой, прежде чем ставить ему задачу.
+      attributes: ['id', 'displayName', 'username', 'avatar', 'position', 'taskWorkSchedule'],
       where: { id: scope },
       raw: true,
     });
@@ -48,6 +51,11 @@ router.get('/', authenticate, async (req, res) => {
         freeByUser.set(userId, {
           freeHours: round(days.reduce((s, d) => s + (d.free || 0), 0)),
           overloadedDays: days.filter(d => d.color === workload.COLORS.OVER).length,
+          // Часы сверх нормы, а не только число испорченных дней: «2 дн.» ничего
+          // не говорит о масштабе — это может быть и лишние двадцать минут, и
+          // лишний рабочий день. Считается только там, где норма есть: в
+          // выходной и в отпуск норма null, и вычитать из неё нечего.
+          overloadHours: round(days.reduce((s, d) => s + (d.norm > 0 ? Math.max((d.hours || 0) - d.norm, 0) : 0), 0)),
         });
       }
     }

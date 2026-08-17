@@ -97,6 +97,19 @@ export function dshort(key) {
   return `${DOW[dow(key)]} ${fromKey(key).getDate()}`;
 }
 
+/**
+ * «18.08.26» — срок в списке задач.
+ *
+ * День недели с числом («Вт 18») хорош в календаре, где вокруг стоит неделя и
+ * год очевиден. В плоском списке рядом с задачами разных месяцев такой срок
+ * приходится домысливать, а даты через полгода читаются как позавчерашние.
+ */
+export function dnum(key) {
+  const d = fromKey(key);
+  const pad = value => String(value).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(-2)}`;
+}
+
 export function monthTitle(key) {
   const d = fromKey(key);
   return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`;
@@ -118,6 +131,18 @@ export function shiftHours(day) {
 
 export function scheduleWeeklyHours(schedule) {
   return Object.values(schedule?.days || {}).reduce((sum, day) => sum + shiftHours(day), 0);
+}
+
+/**
+ * «04:00», «00:30» — длительность часами и минутами.
+ *
+ * Для мест, где часы стоят рядом иконкой, а не текстом: в столбце карточек и в
+ * плане дня «2,5 ч» и «40 мин» соседними строками не выравниваются и читаются
+ * как разные величины, а чч:мм — одна колонка цифр одинаковой ширины.
+ */
+export function clockText(hours) {
+  const minutes = Math.round(Math.max(Number(hours) || 0, 0) * 60);
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
 /** «2 ч», «40 мин» — для оценок, где дробные часы читаются плохо. */

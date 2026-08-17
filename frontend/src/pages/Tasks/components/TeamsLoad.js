@@ -13,8 +13,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
 import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, dshort, hoursText, fromKey, today, scheduleWeeklyHours } from '../utils/dates';
+import { Eye, EyeOff, User } from 'lucide-react';
 import { userName, loadColor } from '../utils/labels';
-import { LoadBar, Avatar, Badge, Empty, Note } from './Bits';
+import { LoadBar, Avatar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 
 export default function TeamsLoad({ ctx }) {
@@ -112,18 +113,22 @@ function TeamCards({ start, end, controls, onOpen, ctx }) {
                 className={`tsk-team ${team.isHidden ? 'is-hidden' : ''}`}
                 onClick={() => team.canSeeLoad && onOpen(team.id)}
               >
+                {/* В шапке — только имя и число людей. Уровень доступа никого
+                    не интересует на экране про загрузку (он настраивается в
+                    «Командах»), а «Открыть →» дублировал клик по самой
+                    карточке. Скрытость команды показывает перечёркнутый глаз:
+                    подпись «скрытая» кричала громче названия. */}
                 <div className="tsk-team-head">
-                  <div>
-                    <div className="tsk-team-name">
-                      {team.name}
-                      {team.isHidden && <Badge tone="warn">скрытая</Badge>}
-                    </div>
-                    <div className="tsk-team-sub">
-                      {team.members?.length || 0} чел. · доступ: {
-                        { all: 'вся компания', members: 'только участники', invite: 'по приглашению' }[team.access]
-                      }
-                    </div>
+                  <div className="tsk-team-name">
+                    {team.name}
+                    <span className="tsk-team-eye" title={team.isHidden ? 'Скрытая команда' : 'Видна по правилам доступа'}>
+                      {team.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </span>
                   </div>
+                  <span className="tsk-team-people" title="человек в команде">
+                    <User size={13} strokeWidth={2} />
+                    {team.members?.length || 0}
+                  </span>
                 </div>
 
                 {!team.canSeeLoad ? (
@@ -137,13 +142,7 @@ function TeamCards({ start, end, controls, onOpen, ctx }) {
                           {percent ?? '—'}%
                         </b> от нормы
                       </span>
-                      {s?.overloadedDays > 0
-                        ? <Badge tone="bad">{s.overloadedDays} дн. переработки</Badge>
-                        : <Badge tone="ok">в норме</Badge>}
-                    </div>
-                    <div className="tsk-team-foot">
                       <span>Свободно {hoursText(s?.freeHours)}</span>
-                      <span style={{ color: 'var(--primary)' }}>Открыть →</span>
                     </div>
                   </>
                 )}

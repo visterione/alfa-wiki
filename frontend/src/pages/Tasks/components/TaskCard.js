@@ -120,7 +120,12 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
     <div className="tsk-mask tsk-task-card-mask" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="tsk-modal tsk-task-card-modal">
         <div className="tsk-modal-head">
-          <div className="tsk-modal-title">{task.title}</div>
+          <div className="tsk-modal-title">
+            {/* Код над названием: именно им задачу называют вслух, и в открытой
+                карточке он должен читаться сразу, а не искаться по мелочи. */}
+            {task.code && <span className="tsk-code is-lead">{task.code}</span>}
+            {task.title}
+          </div>
           <button className="tsk-x" onClick={onClose}>×</button>
         </div>
 

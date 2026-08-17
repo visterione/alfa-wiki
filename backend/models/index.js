@@ -2309,6 +2309,14 @@ const TaskProject = sequelize.define('TaskProject', {
     allowNull: false,
     comment: 'Название проекта'
   },
+  // Префикс кодов задач проекта: «Ремонт МЦ-04» → РЕМ, задачи РЕМ-1, РЕМ-2…
+  // Уникален, предлагается по названию, но правится руками: «Обслуживание» и
+  // «Обследования» дают одинаковое сокращение.
+  key: {
+    type: DataTypes.STRING(8),
+    allowNull: true,
+    comment: 'Префикс кодов задач проекта (РЕМ)'
+  },
   color: {
     type: DataTypes.STRING(20),
     comment: 'Цвет метки проекта'
@@ -2423,6 +2431,15 @@ const TaskTeamInvite = sequelize.define('TaskTeamInvite', {
 // разойдутся на первом же переносе.
 const Task = sequelize.define('Task', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  // Человеческий код задачи: РЕМ-42. Выдаётся один раз при создании и дальше не
+  // меняется — ни при переименовании проекта, ни при переносе задачи в другой.
+  // Счётчики по префиксам живут в task_code_counters, выдача — в
+  // services/tasks/codes.js.
+  code: {
+    type: DataTypes.STRING(24),
+    allowNull: true,
+    comment: 'Неизменяемый код задачи вида РЕМ-42'
+  },
   title: { type: DataTypes.STRING(500), allowNull: false },
   description: { type: DataTypes.TEXT },
   projectId: { type: DataTypes.UUID },

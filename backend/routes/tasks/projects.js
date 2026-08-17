@@ -12,6 +12,31 @@ const router = express.Router();
 
 const { authenticate, requireAdminAccess } = require('../../middleware/auth');
 const { TaskProject, Task } = require('../../models');
+const codes = require('../../services/tasks/codes');
+
+/**
+ * Ключ проекта — префикс кодов его задач (РЕМ-42).
+ *
+ * Предлагается по названию, но остаётся редактируемым: «Обслуживание» и
+ * «Обследования» дают одинаковое сокращение, и решать, кто из них ОБСЛ, должен
+ * человек. Уже выданные коды при смене ключа не меняются — они записаны в самих
+ * задачах, и в этом весь смысл кода.
+ */
+async function resolveKey(requested, name, excludeId = null) {
+  const taken = (await TaskProject.findAll({ attributes: ['id', 'key'], raw: true }))
+    .filter(row => row.key && row.id !== excludeId)
+    .map(row => row.key.toUpperCase());
+
+  if (requested !== undefined && requested !== null && String(requested).trim() !== '') {
+    const key = codes.normalizeKey(requested);
+    if (!codes.isValidKey(key)) {
+      return { error: `Ключ проекта — от ${codes.KEY_MIN} до ${codes.KEY_MAX} букв или цифр` };
+    }
+    if (taken.includes(key)) return { error: `Ключ ${key} уже занят другим проектом` };
+    return { key };
+  }
+  return { key: codes.uniqueKey(name, taken) };
+}
 
 const manage = [authenticate, requireAdminAccess('tasks')];
 
@@ -34,8 +59,12 @@ router.post('/', ...manage, async (req, res) => {
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Нужно название проекта' });
 
+    const resolved = await resolveKey(req.body.key, name);
+    if (resolved.error) return res.status(400).json({ error: resolved.error });
+
     const project = await TaskProject.create({
       name,
+      key: resolved.key,
       color: req.body.color || null,
       sortOrder: Number.isFinite(+req.body.sortOrder) ? +req.body.sortOrder : 100,
       createdBy: req.user.id,
@@ -61,6 +90,14 @@ router.put('/:id', ...manage, async (req, res) => {
       const name = String(req.body.name).trim();
       if (!name) return res.status(400).json({ error: 'Название не может быть пустым' });
       patch.name = name;
+    }
+    // Ключ меняется только явно: переименование проекта его не трогает, иначе
+    // у половины задач префикс перестал бы соответствовать проекту, а у второй
+    // половины — нет.
+    if (req.body.key !== undefined) {
+      const resolved = await resolveKey(req.body.key, patch.name || project.name, project.id);
+      if (resolved.error) return res.status(400).json({ error: resolved.error });
+      patch.key = resolved.key;
     }
     if (req.body.color !== undefined) patch.color = req.body.color;
     if (req.body.sortOrder !== undefined) patch.sortOrder = +req.body.sortOrder;

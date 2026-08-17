@@ -12,14 +12,15 @@
 
 import React from 'react';
 import toast from 'react-hot-toast';
+import { Clock } from 'lucide-react';
 import { tasks as api } from '../../../services/api';
-import { hoursText, dfull, addDays, today, estimateText } from '../utils/dates';
+import { hoursText, dfull, addDays, today, clockText } from '../utils/dates';
 import { useDayLoad, useEvents, dayEvents, eventHours } from '../utils/useLoad';
-import { LoadBar, Empty, Badge, Note } from './Bits';
+import { LoadBar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 
 export default function MyDay({ ctx }) {
-  const { me, cursor, setCursor, go } = ctx;
+  const { me, cursor, setCursor } = ctx;
   const { load } = useDayLoad(me?.id, cursor);
   const { events } = useEvents(cursor, cursor);
   const list = dayEvents(events, cursor);
@@ -43,7 +44,6 @@ export default function MyDay({ ctx }) {
         onPrevious={() => setCursor(addDays(cursor, -1))}
         onNext={() => setCursor(addDays(cursor, 1))}
         onToday={!isToday ? () => setCursor(today()) : null}
-        trailing={<button onClick={() => go('chart')}>График</button>}
       />
 
       <div className="tsk-grid-2">
@@ -64,15 +64,20 @@ export default function MyDay({ ctx }) {
                     {' '}из {hoursText(load.norm)}
                   </span>
                 </div>
-                <div style={{ margin: '12px 0 8px' }}>
+                <div style={{ margin: '12px 0 0' }}>
                   <LoadBar {...load} />
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  {load.color === 'r'
-                    ? `Переработка ${hoursText(load.hours - load.norm)}`
-                    : `Свободно ${hoursText(load.free)}`}
-                  {load.done > 0 && ` · выполнено ${hoursText(load.done)}`}
-                </div>
+                {/* Свободный остаток из подписи убран: он есть и в полосе, и в
+                    самом «8 из 9 ч» над ней. Переработка и выполненное — другое
+                    дело, их из цифр дня не вычитаешь. */}
+                {(load.hours > load.norm || load.done > 0) && (
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 8 }}>
+                    {[
+                      load.hours > load.norm && `Переработка ${hoursText(load.hours - load.norm)}`,
+                      load.done > 0 && `${load.hours > load.norm ? 'выполнено' : 'Выполнено'} ${hoursText(load.done)}`,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -93,6 +98,13 @@ export default function MyDay({ ctx }) {
             </Empty>
           ) : list.map(event => {
             const done = event.status === 'completed';
+            const subtitle = done
+              ? 'выполнено'
+              : event.isOpaque
+                ? 'содержание скрыто'
+                : event.isFloating
+                  ? ''
+                  : new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
             return (
             <div className={`tsk-inbox-card ${event.taskPartId ? 'is-clickable' : ''} ${done ? 'is-done' : ''}`}
               key={event.id} style={{ padding: '12px 14px', marginBottom: 8 }}
@@ -102,19 +114,16 @@ export default function MyDay({ ctx }) {
                   <div className="tsk-inbox-title" style={{ fontSize: 14 }}>
                     {event.isOpaque ? 'Занято' : event.title}
                   </div>
-                  <div className="tsk-inbox-from">
-                    {done
-                      ? 'выполнено'
-                      : event.isOpaque
-                        ? 'содержание скрыто'
-                        : event.isFloating
-                          ? 'рабочий блок — время в дне выбираете вы'
-                          : new Date(event.startTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
+                  {/* У плавающего блока времени начала нет и быть не должно —
+                      см. planning.js. Раньше на его месте стояло объяснение
+                      этого, но строка «время в дне выбираете вы» читалась как
+                      обещание настройки, которой в модуле нет. Пусто честнее. */}
+                  {subtitle && <div className="tsk-inbox-from">{subtitle}</div>}
                 </div>
-                <Badge tone={done ? 'ok' : event.isOpaque ? 'muted' : 'info'}>
-                  {estimateText(eventHours(event))}
-                </Badge>
+                <span className="tsk-hours-chip">
+                  <Clock size={13} strokeWidth={1.9} />
+                  {clockText(eventHours(event))}
+                </span>
               </div>
             </div>
             );

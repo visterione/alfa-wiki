@@ -10,9 +10,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { STATUS_LABEL, STATUS_TONE, MODE_LABEL, userName } from '../utils/labels';
-import { hoursText, dshort } from '../utils/dates';
-import { Badge, AvatarStack, Empty } from './Bits';
+import { STATUS_LABEL, STATUS_ICON, STATUS_COLOR, MODE_LABEL } from '../utils/labels';
+import { hoursText, dnum } from '../utils/dates';
+import { AvatarStack, Empty } from './Bits';
 import CustomSelect from './CustomSelect';
 
 const FILTERS = [
@@ -57,7 +57,6 @@ export default function TaskList({ ctx }) {
           options={FILTERS.map(([value, label]) => ({ value, label }))}
           className="is-wide"
         />
-        <span className="tsk-result-count">{loading ? 'Обновляем…' : `${list.length} задач`}</span>
       </div>
 
       {loading ? <Empty compact>Загружаем…</Empty>
@@ -83,16 +82,21 @@ export default function TaskList({ ctx }) {
                   .map(p => String(p.dueDate))
                   .sort()
                   .pop();
+                const StatusIcon = STATUS_ICON[task.status];
                 return (
                   <tr key={task.id} className="is-clickable" onClick={() => ctx.openTask(task.id)}>
                     <td>
+                      {/* Код перед названием, а не отдельным столбцом: столбец
+                          из шести знаков забрал бы ширину у самих названий,
+                          ради которых таблицу и открывают. */}
+                      {task.code && <span className="tsk-code">{task.code}</span>}
                       {task.title}
-                      <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 3 }}>
-                        {task.project?.name || 'без проекта'}
-                        {task.parts?.length > 1 && ` · ${task.parts.length} части`}
-                        {!!task.attachments?.length && ` · 📎${task.attachments.length}`}
-                        {task.author && ` · от ${userName(task.author)}`}
-                      </div>
+                      {/* Вторая строка — только проект. Число частей, вложения и
+                          автор есть в карточке задачи, а в списке они сливались
+                          в серую строку, которую никто не дочитывал до конца. */}
+                      {task.project?.name && (
+                        <div className="tsk-task-project">{task.project.name}</div>
+                      )}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -100,12 +104,12 @@ export default function TaskList({ ctx }) {
                         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{users.length}</span>
                       </div>
                     </td>
-                    <td>
-                      <Badge tone={task.mode === 'single' ? 'muted' : 'violet'}>{MODE_LABEL[task.mode]}</Badge>
-                    </td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{MODE_LABEL[task.mode]}</td>
                     <td>{hoursText(task.totalEffortHours)}</td>
-                    <td>{due ? dshort(due) : '—'}</td>
-                    <td><Badge tone={STATUS_TONE[task.status]}>{STATUS_LABEL[task.status]}</Badge></td>
+                    <td>{due ? dnum(due) : '—'}</td>
+                    <td className="tsk-task-status" title={STATUS_LABEL[task.status]}>
+                      {StatusIcon && <StatusIcon size={18} strokeWidth={1.8} color={STATUS_COLOR[task.status]} />}
+                    </td>
                   </tr>
                 );
               })}

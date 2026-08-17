@@ -23,6 +23,7 @@ const {
 const context = require('../../services/tasks/context');
 const teamsService = require('../../services/tasks/teams');
 const partsService = require('../../services/tasks/parts');
+const codes = require('../../services/tasks/codes');
 const planning = require('../../services/tasks/planning');
 const loadQuery = require('../../services/tasks/loadQuery');
 const workload = require('../../services/tasks/workload');
@@ -351,10 +352,19 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     const created = await sequelize.transaction(async transaction => {
+      // Код выдаётся в той же транзакции, что и сама задача: иначе номер
+      // сгорает на каждой неудачной проверке ниже, и в нумерации остаются дыры.
+      const projectId = req.body.projectId || null;
+      const project = projectId
+        ? await TaskProject.findByPk(projectId, { attributes: ['id', 'key'], transaction })
+        : null;
+      const code = await codes.issue(sequelize, project?.key || codes.NO_PROJECT_PREFIX, transaction);
+
       const task = await Task.create({
+        code,
         title,
         description: req.body.description || null,
-        projectId: req.body.projectId || null,
+        projectId,
         authorId: req.user.id,
         attachments: req.body.attachments || [],
       }, { transaction });

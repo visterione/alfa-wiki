@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { weekStart, addDays, hoursText } from '../utils/dates';
-import { userName } from '../utils/labels';
-import { Avatar, Empty, Note, Badge } from './Bits';
+import { weekStart, addDays, hoursText, clockText } from '../utils/dates';
+import { userName, shortName } from '../utils/labels';
+import { Avatar, Empty, Note } from './Bits';
 
 const DAYS = [
   ['mon', 'Понедельник'], ['tue', 'Вторник'], ['wed', 'Среда'], ['thu', 'Четверг'],
@@ -81,9 +81,9 @@ export default function People({ ctx }) {
     <div className="tsk-scroll"><table className="tsk-table">
       <thead><tr><th>Человек</th><th>Команды</th><th>Рабочее расписание</th><th>Часы недели</th><th>Свободно</th><th>Переработка</th></tr></thead>
       <tbody>{people.map(person => <tr key={person.id}>
-        <td><div className="tsk-person" style={{ cursor: 'default' }}><Avatar user={person} /><div>
-          <div className="tsk-person-name">{userName(person)}</div>
-          {person.id === me?.id && <div className="tsk-person-sub">это вы</div>}
+        <td><div className="tsk-person" style={{ cursor: 'default' }} title={userName(person)}><Avatar user={person} /><div>
+          <div className="tsk-person-name">{shortName(person)}</div>
+          {person.position && <div className="tsk-person-sub">{person.position}</div>}
         </div></div></td>
         <td className="tsk-muted-cell">{person.teams?.map(t => t.name).join(', ') || '—'}</td>
         <td><button className="tsk-schedule-summary" onClick={() => setEditing(person)}>
@@ -100,7 +100,16 @@ export default function People({ ctx }) {
         </button></td>
         <td>{person.workSchedule ? hoursText(person.weeklyHours) : '—'}</td>
         <td>{person.workSchedule ? hoursText(person.freeHours ?? 0) : '—'}</td>
-        <td>{person.overloadedDays > 0 ? <Badge tone="bad">{person.overloadedDays} дн.</Badge> : <Badge tone="ok">нет</Badge>}</td>
+        {/* Переработка часами, а не днями: «2 дн.» одинаково выглядит и при
+            лишних двадцати минутах, и при лишнем рабочем дне. Число дней
+            осталось в подсказке — по нему видно, разовый это завал или
+            привычка. Цвет вместо плашки: ноль не должен требовать внимания. */}
+        <td
+          className={person.overloadHours > 0 ? 'tsk-over' : ''}
+          title={person.overloadedDays > 0 ? `${person.overloadedDays} дн. с переработкой` : 'дней с переработкой нет'}
+        >
+          {person.workSchedule ? clockText(person.overloadHours || 0) : '—'}
+        </td>
       </tr>)}</tbody>
     </table></div>
     <Note>Норма каждого рабочего дня равна длительности смены. Встречи и уже запланированные дела уменьшают свободный остаток, выходные не участвуют в расчёте и подборе срока.</Note>
@@ -127,7 +136,7 @@ function ScheduleModal({ person, onClose, onSaved }) {
   };
   return <div className="tsk-mask" onClick={e => e.target === e.currentTarget && onClose()}>
     <div className="tsk-modal tsk-schedule-modal">
-      <div className="tsk-modal-head"><div><div className="tsk-modal-title">Расписание · {userName(person)}</div>
+      <div className="tsk-modal-head"><div><div className="tsk-modal-title">Расписание · {shortName(person)}</div>
         <div className="tsk-person-sub">Рабочие дни и фактические границы смен</div></div><button className="tsk-x" onClick={onClose}>×</button></div>
       <div className="tsk-modal-body"><div className="tsk-schedule-head"><span>День</span><span>Смена</span></div>
         {DAYS.map(([key, label]) => { const day = value.days[key] || { enabled: false }; return <div className={`tsk-schedule-row ${day.enabled ? '' : 'is-off'}`} key={key}>

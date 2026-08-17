@@ -15,7 +15,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
 import { weekOf, monthDays, addDays, addMonths, dstr, monthTitle, hoursText, today } from '../utils/dates';
-import { userName, loadColor } from '../utils/labels';
+import { userName, shortName, loadColor } from '../utils/labels';
 import { Avatar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 
@@ -89,15 +89,13 @@ export default function Reports({ ctx }) {
         </div>
       </div>
 
-      <div className="tsk-sect">Свободное время за период — норма у каждого своя</div>
+      <div className="tsk-sect">Свободное время за период</div>
       <div className="tsk-bars">
         {data.freeByPerson.map(row => (
           <div className="tsk-brow" key={row.user.id}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="tsk-bname" title={userName(row.user)}>
               <Avatar user={row.user} size={20} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {userName(row.user)}
-              </span>
+              <span>{shortName(row.user)}</span>
             </div>
             <div className="tsk-btrack">
               <div
@@ -115,13 +113,11 @@ export default function Reports({ ctx }) {
 
       {!!data.byTeam.length && (
         <>
-          <div className="tsk-sect">По командам — процент от суммы личных норм</div>
+          <div className="tsk-sect">По командам</div>
           <div className="tsk-bars">
             {data.byTeam.map(team => (
               <div className="tsk-brow" key={team.id}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {team.name}
-                </span>
+                <span className="tsk-bname">{team.name}</span>
                 <div className="tsk-btrack">
                   <div
                     className="tsk-bfill"

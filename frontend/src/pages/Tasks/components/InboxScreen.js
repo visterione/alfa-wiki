@@ -90,107 +90,126 @@ export default function InboxScreen({ ctx }) {
   if (loading) return <Empty compact>Загружаем…</Empty>;
 
   return (
-    <>
-      <div className="tsk-sect">Требует вашего решения · {data.mine.length}</div>
-      {!data.mine.length ? (
-        <Empty>Входящие разобраны.<br />Ни одна задача не ждёт вашего решения.</Empty>
-      ) : data.mine.map(part => {
-        const a = part.assessment || {};
-        const date = String(part.dueDate);
-        return (
-          <div className="tsk-inbox-card" key={part.id}>
-            <div className="tsk-inbox-title">{part.title}</div>
-            <div className="tsk-inbox-from">
-              {part.task?.title !== part.title && `${part.task?.title} · `}
-              от {userName(part.task?.author)}
-              {part.task?.project && ` · ${part.task.project.name}`}
-              {' · '}{estimateText(part.estimateHours)}
-              {' · срок '}<b>{dshort(date)}</b>
-            </div>
+    /**
+     * Два этажа во всю высоту, а не один длинный список.
+     *
+     * Верхний — то, что требует решения прямо сейчас; нижний — то, чего человек
+     * ждёт от других. Раньше они шли подряд, и «жду ответа» уезжало под сгиб
+     * ровно в тот день, когда входящих много: список, который нужен, чтобы
+     * вовремя пнуть коллегу, был виден реже всего.
+     */
+    <div className="tsk-inbox-split">
+      <section className="tsk-inbox-pane">
+        <div className="tsk-sect">Требует вашего решения — {data.mine.length}</div>
+        <div className="tsk-inbox-pane-body">
+          {!data.mine.length ? (
+            <Empty>Входящие разобраны.<br />Ни одна задача не ждёт вашего решения.</Empty>
+          ) : data.mine.map(part => {
+            const a = part.assessment || {};
+            const date = String(part.dueDate);
+            return (
+              <div className="tsk-inbox-card" key={part.id}>
+                <div className="tsk-inbox-title">{part.title}</div>
+                <div className="tsk-inbox-from">
+                  {part.task?.title !== part.title && `${part.task?.title} · `}
+                  от {userName(part.task?.author)}
+                  {part.task?.project && ` · ${part.task.project.name}`}
+                  {' · '}{estimateText(part.estimateHours)}
+                  {' · срок '}<b>{dshort(date)}</b>
+                </div>
 
-            <div className={`tsk-fit ${a.fits ? 'is-ok' : 'is-bad'}`}>
-              {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
-              {a.reason === 'no_norm' && 'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
-              {a.reason === 'ok' && (
-                <>{dshort(date)}: станет <b>{hoursText(a.after)}</b> из {hoursText(a.norm)}. Помещается,
-                  свободного останется {hoursText(a.free)}.</>
-              )}
-              {a.reason === 'overload' && (
-                <>{dshort(date)}: станет <b>{hoursText(a.after)}</b> из {hoursText(a.norm)} —
-                  не помещается, переработка {hoursText(a.over)}.</>
-              )}
-            </div>
+                <div className={`tsk-fit ${a.fits ? 'is-ok' : 'is-bad'}`}>
+                  {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
+                  {a.reason === 'no_norm' && 'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
+                  {a.reason === 'ok' && (
+                    <>{dshort(date)}: станет <b>{hoursText(a.after)}</b> из {hoursText(a.norm)}. Помещается,
+                      свободного останется {hoursText(a.free)}.</>
+                  )}
+                  {a.reason === 'overload' && (
+                    <>{dshort(date)}: станет <b>{hoursText(a.after)}</b> из {hoursText(a.norm)} —
+                      не помещается, переработка {hoursText(a.over)}.</>
+                  )}
+                </div>
 
-            <div className="tsk-acts">
-              {a.fits ? (
-                <button className="tsk-btn is-primary" disabled={busy === part.id}
-                  onClick={() => plan(part, date)}>
-                  В план на {dshort(date)}
-                </button>
-              ) : (
-                <button className="tsk-btn is-primary" disabled={busy === part.id}
-                  onClick={() => propose(part)}>
-                  Предложить другой срок
-                </button>
-              )}
-              <button className="tsk-btn" disabled={busy === part.id}
-                onClick={() => a.fits ? propose(part) : plan(part, date, true)}>
-                {a.fits ? 'Другой день' : 'Всё равно взять'}
-              </button>
-              <button className="tsk-btn" onClick={() => ctx.openTask(part.taskId)}>
-                Открыть задачу
-              </button>
-              <button className="tsk-btn is-danger" disabled={busy === part.id}
-                onClick={() => act(part.id, () => api.declinePart(part.id), 'Возвращено автору с пометкой «не моя зона»')}>
-                Не моё
-              </button>
-            </div>
-          </div>
-        );
-      })}
+                <div className="tsk-acts">
+                  {a.fits ? (
+                    <button className="tsk-btn is-primary" disabled={busy === part.id}
+                      onClick={() => plan(part, date)}>
+                      В план на {dshort(date)}
+                    </button>
+                  ) : (
+                    <button className="tsk-btn is-primary" disabled={busy === part.id}
+                      onClick={() => propose(part)}>
+                      Предложить другой срок
+                    </button>
+                  )}
+                  <button className="tsk-btn" disabled={busy === part.id}
+                    onClick={() => a.fits ? propose(part) : plan(part, date, true)}>
+                    {a.fits ? 'Другой день' : 'Всё равно взять'}
+                  </button>
+                  <button className="tsk-btn" onClick={() => ctx.openTask(part.taskId)}>
+                    Открыть задачу
+                  </button>
+                  <button className="tsk-btn is-danger" disabled={busy === part.id}
+                    onClick={() => act(part.id, () => api.declinePart(part.id), 'Возвращено автору с пометкой «не моя зона»')}>
+                    Не моё
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
-      {/* Части, которые ждут завершения предыдущих. Связь «после» — это условие
-          появления во входящих, а не пометка на схеме. */}
-      {!!data.blocked?.length && (
-        <>
-          <div className="tsk-sect">Ждут предыдущую часть · {data.blocked.length}</div>
-          {data.blocked.map(part => (
+      <section className="tsk-inbox-pane">
+        <div className="tsk-sect">Жду ответа от других — {data.waiting.length}</div>
+        <div className="tsk-inbox-pane-body">
+          {!data.waiting.length ? (
+            <Empty compact>Вы никого не ждёте.</Empty>
+          ) : data.waiting.map(part => (
             <div className="tsk-list-row" key={part.id} onClick={() => ctx.openTask(part.taskId)}>
               <div>
                 <div className="tsk-list-row-title">{part.title}</div>
                 <div className="tsk-list-row-sub">
-                  Появится во входящих, когда завершится предыдущая часть
+                  {(part.assignees || []).map(a => userName(a.user)).join(', ')} · ещё не в плане
                 </div>
               </div>
-              <Badge tone="muted">{estimateText(part.estimateHours)}</Badge>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <AvatarStack users={(part.assignees || []).map(a => a.user).filter(Boolean)} />
+                <Badge tone="warn">не обработана</Badge>
+              </div>
             </div>
           ))}
-        </>
-      )}
 
-      <div className="tsk-sect">Жду ответа от других · {data.waiting.length}</div>
-      {!data.waiting.length ? (
-        <Empty compact>Вы никого не ждёте.</Empty>
-      ) : data.waiting.map(part => (
-        <div className="tsk-list-row" key={part.id} onClick={() => ctx.openTask(part.taskId)}>
-          <div>
-            <div className="tsk-list-row-title">{part.title}</div>
-            <div className="tsk-list-row-sub">
-              {(part.assignees || []).map(a => userName(a.user)).join(', ')} · ещё не в плане
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <AvatarStack users={(part.assignees || []).map(a => a.user).filter(Boolean)} />
-            <Badge tone="warn">не обработана</Badge>
-          </div>
+          {/* Части, которые ждут завершения предыдущих. Связь «после» — это
+              условие появления во входящих, а не пометка на схеме. Стоят в
+              нижнем этаже: решения они не требуют, сейчас от человека ничего
+              не зависит — он ждёт, как и в списке выше. */}
+          {!!data.blocked?.length && (
+            <>
+              <div className="tsk-sect">Ждут предыдущую часть — {data.blocked.length}</div>
+              {data.blocked.map(part => (
+                <div className="tsk-list-row" key={part.id} onClick={() => ctx.openTask(part.taskId)}>
+                  <div>
+                    <div className="tsk-list-row-title">{part.title}</div>
+                    <div className="tsk-list-row-sub">
+                      Появится во входящих, когда завершится предыдущая часть
+                    </div>
+                  </div>
+                  <Badge tone="muted">{estimateText(part.estimateHours)}</Badge>
+                </div>
+              ))}
+            </>
+          )}
+
         </div>
-      ))}
 
-      <Note>
-        «Не обработана» — это задача, которую исполнитель ещё не разобрал: не
-        поставил в план и не предложил другой срок. Пока она в этом состоянии,
-        она не занимает у него времени, и рассчитывать на неё нельзя.
-      </Note>
-    </>
+        <Note>
+          «Не обработана» — это задача, которую исполнитель ещё не разобрал: не
+          поставил в план и не предложил другой срок. Пока она в этом состоянии,
+          она не занимает у него времени, и рассчитывать на неё нельзя.
+        </Note>
+      </section>
+    </div>
   );
 }

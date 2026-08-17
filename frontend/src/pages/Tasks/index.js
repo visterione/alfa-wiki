@@ -196,9 +196,23 @@ export default function Tasks() {
     setParams(next, { replace: true });
   }, [params, setParams]);
 
+  /**
+   * Обводка активного пункта — отдельный слой под кнопками, и её положение
+   * приходится измерять.
+   *
+   * Зависимость от loading здесь не для красоты. Пока страница грузит права,
+   * оболочка отдаёт спиннер вместо всей боковой панели: navRef пуст, измерять
+   * нечего, и эффект выходит ни с чем. Меню появлялось следующим рендером, а
+   * эффект больше не запускался — экран-то не менялся, — и обводка не
+   * показывалась до первого переключения вкладки. Ровно это и было видно после
+   * перезагрузки: синяя подпись есть, подложки под ней нет.
+   *
+   * Более поздние перестроения меню ловит ResizeObserver: «Проекты» появляются
+   * только у руководителя, и с приходом прав панель становится выше.
+   */
   useLayoutEffect(() => {
     const nav = navRef.current;
-    if (!nav) return undefined;
+    if (loading || !nav) return undefined;
     const update = () => {
       const active = nav.querySelector('button.is-on');
       if (!active) return;
@@ -214,7 +228,7 @@ export default function Tasks() {
       observer?.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, [screen]);
+  }, [screen, loading]);
 
   /** Общий контекст экранов — чтобы не протаскивать десяток пропсов по одному. */
   const ctx = useMemo(() => ({

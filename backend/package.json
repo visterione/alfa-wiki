@@ -24,6 +24,8 @@
     "migrate:role-badges:check": "node scripts/migrateRoleChatBadges.js --check",
     "migrate:tasks": "node scripts/migrateTasksModule.js",
     "migrate:tasks:check": "node scripts/migrateTasksModule.js --check",
+    "migrate:task-codes": "node scripts/migrateTaskCodes.js",
+    "migrate:task-codes:check": "node scripts/migrateTaskCodes.js --check",
     "migrate:task-invites": "node scripts/migrateTaskTeamInvites.js",
     "migrate:task-invites:check": "node scripts/migrateTaskTeamInvites.js --check",
     "migrate:task-schedules": "node scripts/migrateTaskWorkSchedules.js",

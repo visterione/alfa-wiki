@@ -44,7 +44,21 @@
 .tsk-side-brand small { color: var(--text-tertiary); font-size: 10px; font-weight: 400; }
 
 .tsk-main { min-width: 0; display: flex; flex-direction: column; }
-.tsk-content { padding: 18px 20px 34px; overflow: visible; }
+
+/* Рабочая область занимает всю высоту оболочки, а не столько, сколько вышло у
+   содержимого. Экраны решают сами, что в ней тянуть: доска — колонки, неделя —
+   дни, входящие — оба своих этажа. Всё остальное по умолчанию не растягивается
+   и не сжимается (flex: 0 0 auto), иначе таблицы и карточки начали бы ужиматься
+   на низком окне вместо того, чтобы честно прокрутиться. */
+.tsk-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 34px;
+  overflow: visible;
+}
+.tsk-content > * { flex: 0 0 auto; }
 
 /* ── Шапка и навигация по разделам ─────────────────────────────────────── */
 
@@ -345,7 +359,17 @@
 /* minmax(0, 1fr), а не 1fr: у колонки с 1fr минимальная ширина равна
    min-content содержимого, и одно длинное название задачи в чипе раздувало
    свой день, сжимало соседние и выносило сетку за границы области. */
-.tsk-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
+/* Единственная строка сетки тянется на всю высоту рабочей области: неделя из
+   семи невысоких карточек оставляла под собой пустой экран, хотя именно в них
+   и складывается день. minmax, а не 1fr: на низком окне день не должен стать
+   ниже своих 190 px. */
+.tsk-content > .tsk-week { flex: 1; min-height: 0; }
+.tsk-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: minmax(190px, 1fr);
+  gap: 10px;
+}
 
 .tsk-day {
   min-width: 0;
@@ -364,6 +388,9 @@
 .tsk-day-name { font-size: 12px; color: var(--text-tertiary); }
 .tsk-day-hours { font-size: 17px; font-weight: 600; margin: 2px 0 9px; }
 
+/* Название переносится, а не обрезается: день в неделе теперь высокий, и место
+   под вторую строку есть. Многоточие на «Согласовать смету с…» экономило пустоту
+   ценой единственного, что человек хочет узнать с одного взгляда. */
 .tsk-chip-ev {
   font-size: 11px;
   padding: 4px 7px;
@@ -372,10 +399,13 @@
   border-left: 2px solid var(--primary);
   margin-bottom: 4px;
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
+/* В месяце всё наоборот: клетка низкая, дел в ней до пяти, и перенос вытолкнул
+   бы половину за край. Там название по-прежнему обрезается, а целиком видно во
+   всплывающей подсказке. */
+.tsk-month .tsk-chip-ev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .tsk-chip-ev.is-opaque { border-left-color: var(--text-tertiary); color: var(--text-secondary); font-style: italic; }
 .tsk-chip-ev.is-meeting { border-left-color: var(--secondary); }
 /* Выполненное дело гасится и получает галочку: оно остаётся в дне (время на
@@ -393,7 +423,16 @@
   font-weight: 600;
 }
 
-.tsk-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+/* То же и в месяце: шапка с днями недели по содержимому, недели — поровну на
+   остаток высоты. */
+.tsk-content > .tsk-month { flex: 1; min-height: 0; }
+.tsk-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: auto;
+  grid-auto-rows: minmax(76px, 1fr);
+  gap: 6px;
+}
 .tsk-month-head { font-size: 11px; color: var(--text-tertiary); text-align: center; padding-bottom: 4px; }
 
 .tsk-mcell {
@@ -415,10 +454,36 @@
 
 /* ── Доска ─────────────────────────────────────────────────────────────── */
 
-.tsk-board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 10px; }
+/* Колонки одинаковой высоты во всю рабочую область: пустая колонка — это тоже
+   ответ («здесь ничего не ждёт»), и она должна выглядеть колонкой, а не
+   обрубком в две строки. */
+.tsk-content > .tsk-board { flex: 1; min-height: 0; }
+.tsk-board { display: flex; gap: 12px; align-items: stretch; min-height: 420px; overflow-x: auto; padding-bottom: 10px; }
+
+/**
+ * Цвет колонки — это её состояние, а не украшение.
+ *
+ * Порядок слева направо и есть путь задачи, и цвет меняется вместе с ним: синее
+ * ещё никем не разобрано, красное требует решения, оранжевое и жёлтое в работе
+ * и на проверке, зелёное закрыто. Оттенки взяты приглушённее системных: пять
+ * чистых цветов рядом спорят друг с другом и с полосами загрузки на соседних
+ * экранах.
+ *
+ * Из --col выводится всё остальное — подложка, рамка и текст шапки, — чтобы
+ * колонка перекрашивалась одной строкой.
+ */
+.tsk-col.is-new { --col: #2F7DE0; }
+.tsk-col.is-stuck { --col: #E0453F; }
+.tsk-col.is-work { --col: #EE8412; }
+.tsk-col.is-review { --col: #E0AC00; }
+.tsk-col.is-done { --col: #2CA24C; }
 
 .tsk-col {
+  --col: var(--text-tertiary);
   flex: 0 0 250px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--bg-secondary);
   border-radius: var(--radius-lg);
   padding: 12px;
@@ -427,13 +492,35 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--col) 62%, #16233a);
   margin-bottom: 10px;
 }
+.tsk-col-head > span:last-child {
+  flex: none;
+  min-width: 21px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--col) 15%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* Карточки прокручиваются внутри колонки, а шапка со счётчиком остаётся на
+   месте: иначе на длинной колонке непонятно, что именно сейчас видно. */
+.tsk-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tsk-col-body .tsk-tcard { margin-bottom: 0; }
 
 .tsk-tcard {
   background: var(--bg-primary);
@@ -454,9 +541,45 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Верхняя строка карточки: слева проект или родительская задача, справа часы. */
+.tsk-tcard-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 14px; margin-bottom: 5px; }
+.tsk-tcard-top .tsk-tcard-parent { min-width: 0; margin-bottom: 0; }
 .tsk-tcard-title { font-size: 13.5px; font-weight: 500; line-height: 1.35; margin-bottom: 8px; }
+/* Своей высоты у нижней строки нет: без бейджей в ней остаются одни аватарки, а
+   на карточке из чистого названия она схлопывается в ноль и не тянет за собой
+   пустую полосу. */
 .tsk-tcard-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); }
 .tsk-part-index { margin-left: auto; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* Код задачи (РЕМ-42) — служебная пометка, а не заголовок: приглушённый, мельче
+   названия и моноширинными цифрами, чтобы коды в столбик читались колонкой.
+   Подложки нет намеренно — плашек в модуле и так хватало. */
+.tsk-code {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tsk-table .tsk-code { margin-right: 8px; }
+.tsk-code.is-lead { display: block; margin-bottom: 3px; font-size: 12px; }
+
+/* Часы без подложки: иконка и чч:мм.
+   Бейдж сообщал ровно одно число, но спорил цветом и с колонкой, и с бейджем
+   статуса рядом. Моноширинные цифры — чтобы столбец карточек читался колонкой,
+   а не рябью из разной ширины. */
+.tsk-hours-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tsk-hours-chip svg { opacity: .65; }
 
 /* ── Карточки команд ───────────────────────────────────────────────────── */
 
@@ -473,11 +596,50 @@
 .tsk-team:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); }
 .tsk-team.is-hidden { border-style: dashed; }
 .tsk-team-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
-.tsk-team-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tsk-team-name { min-width: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .tsk-team-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+
+/* Глаз и счётчик людей — служебные пометки, а не содержание карточки: серые,
+   мельче названия и без подложки. */
+.tsk-team-eye { display: inline-flex; color: var(--text-tertiary); }
+.tsk-team-people {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
 .tsk-team-foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
 
 /* ── Входящие ──────────────────────────────────────────────────────────── */
+
+/* Два равных этажа на всю высоту: сверху то, что требует решения, снизу то,
+   чего ждёшь от других. Каждый прокручивается сам, поэтому длинная очередь
+   входящих больше не уносит нижний список под сгиб. */
+.tsk-content > .tsk-inbox-split { flex: 1; }
+.tsk-inbox-split {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 18px;
+  min-height: 0;
+}
+.tsk-inbox-pane { display: flex; flex-direction: column; min-height: 0; }
+.tsk-inbox-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+/* Пустой этаж не жмётся к заголовку: рамка занимает свою половину целиком. */
+.tsk-inbox-pane-body > .tsk-empty:only-child {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
 
 .tsk-inbox-card {
   background: var(--bg-primary);
@@ -1008,7 +1170,12 @@
 .tsk-stat-label { font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; }
 
 .tsk-bars { display: flex; flex-direction: column; gap: 10px; }
-.tsk-brow { display: grid; grid-template-columns: 170px 1fr 70px; gap: 12px; align-items: center; font-size: 13px; }
+/* Имя занимает больше места, чем раньше, и шкала на столько же короче: в списке
+   читают, у кого сколько осталось, а обрезанное на отчестве имя не отвечает
+   даже на первую половину вопроса. Длинная фамилия переносится на вторую
+   строку — многоточия здесь быть не должно. */
+.tsk-brow { display: grid; grid-template-columns: 215px 1fr 70px; gap: 12px; align-items: center; font-size: 13px; }
+.tsk-bname { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 .tsk-btrack { height: 9px; background: var(--bg-tertiary); border-radius: 5px; overflow: hidden; }
 .tsk-bfill { height: 100%; border-radius: 5px; }
 .tsk-bvalue { text-align: right; color: var(--text-secondary); font-size: 12.5px; }
@@ -1229,9 +1396,12 @@
   box-shadow: 0 14px 30px rgba(20,29,45,.09), inset 0 1px 0 rgba(255,255,255,.6);
 }
 
+/* Подложка колонки — сильно разбавленный её собственный цвет: доска должна
+   читаться пятью состояниями с одного взгляда, но не превращаться в светофор,
+   на котором не видно самих карточек. */
 .tsk-col {
-  border: 1px solid color-mix(in srgb, var(--border-light) 60%, transparent);
-  background: color-mix(in srgb, var(--bg-secondary) 66%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col) 22%, transparent);
+  background: color-mix(in srgb, var(--col) 7%, var(--bg-primary));
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
 }
 
@@ -1407,13 +1577,6 @@
 .tsk-custom-select-menu button:hover { background: var(--bg-secondary); }
 .tsk-custom-select-menu button.is-selected { color: var(--primary); background: var(--primary-light); }
 
-.tsk-result-count {
-  align-self: flex-end;
-  margin: 0 0 10px auto;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  white-space: nowrap;
-}
 .tsk-list-toolbar {
   position: relative;
   z-index: 40;
@@ -1445,10 +1608,13 @@
 .tsk-task-table-wrap .tsk-table td:nth-child(6) { width: 13%; }
 .tsk-task-table-wrap .tsk-table td { overflow-wrap: anywhere; }
 
-/* Доска всегда укладывается в рабочее полотно — горизонтальной ленты нет. */
+/* Доска всегда укладывается в рабочее полотно — горизонтальной ленты нет.
+   Единственная строка сетки забирает всю высоту: колонки стоят вровень и
+   доходят до низа области независимо от того, сколько в них карточек. */
 .tsk-board {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
   width: 100%;
   gap: 10px;
   overflow: visible;
@@ -1458,6 +1624,19 @@
 .tsk-tcard { min-width: 0; }
 .tsk-tcard-title { overflow-wrap: anywhere; }
 .tsk-tcard-meta { gap: 4px; }
+
+/* ── Таблица списка задач ──────────────────────────────────────────────── */
+
+/* Заголовки по центру. Тело осталось по левому краю — там читают названия, — а
+   статус центрируется вместе со своим заголовком: одна иконка в широкой ячейке
+   иначе висела бы у самого края. */
+.tsk-task-table-wrap .tsk-table th { text-align: center; }
+.tsk-task-status { text-align: center; line-height: 0; }
+.tsk-task-project { margin-top: 3px; font-size: 11.5px; color: var(--text-tertiary); }
+
+/* Переработка в таблице людей: цветом, но без плашки — ноль внимания не просит,
+   а часы сверх нормы просят. */
+.tsk-over { color: var(--error); font-variant-numeric: tabular-nums; }
 
 @keyframes tsk-popover-in {
   from { opacity: 0; transform: translateY(-5px) scale(.98); }
@@ -1515,14 +1694,22 @@
   .tsk-period-spacer { display: none; }
   .tsk-period-modes, .tsk-period-nav, .tsk-period-actions { justify-self: center; }
   .tsk-period-label { min-width: 180px; }
-  .tsk-board { grid-template-columns: 1fr; }
+  /* На телефоне высоту никто не делит: экраны идут лентой сверху вниз, и
+     растянутые на пол-экрана пустые колонки здесь только мешают. */
+  .tsk-board { grid-template-columns: 1fr; grid-auto-rows: auto; min-height: 0; }
+  .tsk-col-body { overflow-y: visible; }
+  .tsk-week { grid-template-rows: none; }
+  .tsk-month { grid-auto-rows: minmax(62px, auto); }
+  .tsk-inbox-split { grid-template-rows: none; gap: 10px; }
+  .tsk-inbox-pane-body { overflow-y: visible; padding-right: 0; }
+  .tsk-inbox-pane-body > .tsk-empty:only-child { height: auto; }
   .tsk-list-toolbar { align-items: stretch; }
   .tsk-custom-select.is-wide { min-width: 0; flex: 1; }
   .tsk-nav-group { display: none; }
   .tsk-week { grid-template-columns: 1fr; }
   .tsk-day { min-height: auto; }
   .tsk-load th:first-child { width: 140px; }
-  .tsk-brow { grid-template-columns: 110px 1fr 58px; }
+  .tsk-brow { grid-template-columns: 130px 1fr 58px; }
   .tsk-modal { max-height: 96vh; border-radius: var(--radius-lg); }
   .tsk-mcell { min-height: 62px; padding: 5px; }
   .tsk-mcell-hours { display: none; }
@@ -1586,7 +1773,7 @@
 .tsk-project-row {
   min-height: 58px;
   display: grid;
-  grid-template-columns: 11px minmax(0, 1fr) auto;
+  grid-template-columns: 11px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 13px;
   padding: 9px 13px 9px 16px;
@@ -1629,7 +1816,9 @@
   gap: 9px;
   margin-top: 16px;
 }
-.tsk-project-palette { display: flex; align-items: center; gap: 9px; }
+/* Палитра переносится по строкам: двадцать четыре кружка в одну линию не влезают
+   ни в какое окно. */
+.tsk-project-palette { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .tsk-project-palette button {
   width: 24px;
   height: 24px;
@@ -1764,8 +1953,8 @@
   .tsk-team-fields, .tsk-member-list { grid-template-columns: 1fr; }
   .tsk-team-fields { width: 100%; }
   .tsk-team-modal-body { overflow-y: auto; }
-  .tsk-project-row { grid-template-columns: 11px minmax(0, 1fr); }
-  .tsk-project-actions { grid-column: 2; justify-content: flex-start; }
+  .tsk-project-row { grid-template-columns: 11px minmax(0, 1fr) auto; }
+  .tsk-project-actions { grid-column: 2 / -1; justify-content: flex-start; }
   .tsk-task-fields { grid-template-columns: 1fr 1fr; }
   .tsk-task-fields > :first-child { grid-column: 1 / -1; }
   .tsk-mode-segment { grid-template-columns: 1fr 1fr; }
