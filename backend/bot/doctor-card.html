@@ -2413,7 +2413,41 @@ window.dcApp = (function() {
       }));
     }
 
-    fetchLivePrices.then(function(clinicResults) {
+    // Длительность по клиникам хранится отдельной таблицей, а в serviceOverrides
+    // лежит лишь снимок стандартной длительности МИС. Без этого запроса избранные
+    // услуги показывали 30 минут из МИС вместо настроенных в карточке 20 —
+    // вкладка «Услуги» же запрашивала эндпоинт и выводила верное значение.
+    var fetchDurations = fetchAPI(API_BASE + '/doctor-cards/service-durations?doctor_id=' + encodeURIComponent(misUserId))
+      .catch(function() { return []; });
+
+    // Если МИС недоступен — рендерим с сохранёнными ценами, но настроенные
+    // длительности при этом терять не должны, поэтому цены гасят свою ошибку сами.
+    Promise.all([
+      fetchLivePrices.catch(function() { return []; }),
+      fetchDurations
+    ]).then(function(results) {
+      var clinicResults = results[0];
+      var durationRows = Array.isArray(results[1]) ? results[1] : [];
+
+      var favDurationMap = {};
+      durationRows.forEach(function(row) {
+        var sid = String(row.serviceId);
+        if (!favDurationMap[sid]) favDurationMap[sid] = {};
+        favDurationMap[sid][String(row.clinicId)] = row.durationMinutes;
+      });
+
+      favorites.forEach(function(fav) {
+        var structured = favDurationMap[String(fav.id)] || {};
+        var configured = clinicIds.filter(function(cid) {
+          return structured[String(cid)] != null;
+        });
+        if (configured.length > 0) {
+          fav.duration = configured.map(function(cid) {
+            return structured[String(cid)] + ' мин' + (clinicIds.length > 1 ? ' (' + (CLINIC_SHORT_NAMES[cid] || cid) + ')' : '');
+          }).join(', ');
+        }
+      });
+
       // Строим карту живых цен: serviceId -> { clinicId: price }
       var livePricesMap = {};
       clinicResults.forEach(function(cr) {

@@ -12,6 +12,7 @@ import {
   hoursText, DOW, dow, today, fromKey,
 } from '../utils/dates';
 import { usePersonLoad, useEvents, dayEvents } from '../utils/useLoad';
+import { loadColor } from '../utils/labels';
 import { LoadBar, Note, Empty } from './Bits';
 import PeriodControl from './PeriodControl';
 
@@ -22,6 +23,16 @@ import PeriodControl from './PeriodControl';
  * человек утром гадает, доделал он её или нет.
  */
 const isDone = event => event.status === 'completed';
+
+/**
+ * Часы дня красятся той же шкалой, что и полоса под ними.
+ *
+ * Отпуск, выходной и день без нормы остаются нейтральными: сравнивать их не с
+ * чем, а зелёный «0 ч» в выходной читался бы как оценка, которой никто не давал.
+ */
+const hoursColor = day => (day.onVacation || day.onDayOff || !day.norm
+  ? undefined
+  : loadColor((day.hours || 0) / day.norm));
 
 export default function Chart({ ctx }) {
   const { me, cursor, setCursor, go } = ctx;
@@ -68,7 +79,7 @@ export default function Chart({ ctx }) {
                 onClick={() => openDay(date)}
               >
                 <div className="tsk-day-name">{DOW[dow(date)]}, {fromKey(date).getDate()}</div>
-                <div className="tsk-day-hours" style={{ color: d.color === 'r' ? 'var(--error)' : d.color === 'y' ? 'var(--warning)' : undefined }}>
+                <div className="tsk-day-hours" style={{ color: hoursColor(d) }}>
                   {d.onVacation ? 'отпуск' : d.onDayOff ? 'выходной' : hoursText(d.hours)}
                 </div>
                 <LoadBar {...d} compact />

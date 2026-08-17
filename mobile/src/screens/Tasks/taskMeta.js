@@ -36,21 +36,55 @@ export const MODE_LABEL = {
   mixed: 'Смешанная',
 };
 
-/** Цвета загрузки. Ключи приходят с сервера: g/y/r/v/o (выходной). */
-export const LOAD_COLOR = {
-  g: 'success',
-  y: 'warning',
-  r: 'error',
-  v: 'textTertiary',
-  o: 'textTertiary',
-};
+/**
+ * Цвет загрузки — непрерывная шкала от нуля до нормы и дальше в переработку.
+ *
+ * Раньше цвет приходил с сервера тремя ступенями (g/y/r) и требовал легенды под
+ * графиком. Ступени приходилось объяснять, и они врали на границах: 84% и 86%
+ * выглядели как два разных дня, зато 20% и 80% как один и тот же. Непрерывный
+ * градиент показывает ровно ту величину, которая есть, и подписи не требует.
+ * Порядок и пороги повторяют веб (frontend/src/pages/Tasks/utils/labels.js):
+ * одна и та же неделя обязана выглядеть одинаково на телефоне и в браузере.
+ *
+ * Опорные точки берутся из темы, чтобы в тёмной схеме полосы не светились
+ * чужими оттенками. Лайм и жёлтый заданы напрямую: в палитре их нет, а прямая
+ * линия от зелёного к оранжевому проходит через грязную оливу, из-за которой
+ * спокойный наполовину день выглядит тревожным.
+ */
+const LOAD_SCALE = theme => [
+  [0, theme.success],
+  [0.55, '#7ECF46'],
+  [0.75, '#D6BF30'],
+  [0.85, theme.warning],
+  [1, theme.error],
+  [1.4, '#B01B14'],
+];
 
-export const LOAD_TITLE = {
-  g: 'есть запас',
-  y: 'плотно',
-  r: 'переработка',
-  v: 'отпуск',
-};
+/** Доля нормы (1 = ровно норма) → цвет. Значение вне шкалы прижимается к краю. */
+export function loadColor(theme, ratio) {
+  const scale = LOAD_SCALE(theme);
+  const value = Number.isFinite(ratio) ? Math.max(ratio, 0) : 0;
+  const last = scale[scale.length - 1];
+  if (value >= last[0]) return last[1];
+
+  for (let i = 1; i < scale.length; i += 1) {
+    const [to, toColor] = scale[i];
+    if (value > to) continue;
+    const [from, fromColor] = scale[i - 1];
+    const t = (value - from) / (to - from);
+    const a = rgbOf(fromColor);
+    const b = rgbOf(toColor);
+    return `rgb(${a.map((channel, k) => Math.round(channel + (b[k] - channel) * t)).join(', ')})`;
+  }
+  return scale[0][1];
+}
+
+/** #RGB или #RRGGBB → [r, g, b]. Цвета темы приходят только в этих двух видах. */
+function rgbOf(hex) {
+  const value = String(hex).replace('#', '');
+  const full = value.length === 3 ? value.split('').map(ch => ch + ch).join('') : value;
+  return [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16));
+}
 
 export function toneColor(theme, key) {
   return theme[key] || theme.textSecondary;

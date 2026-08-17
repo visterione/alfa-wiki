@@ -283,11 +283,13 @@
 }
 .tsk-bar.is-compact { height: 8px; border-radius: 4px; }
 
-.tsk-bar-fill { height: 100%; border-radius: var(--radius-sm); transition: width var(--transition-normal); }
-.tsk-bar-ok { background: var(--success); }
-.tsk-bar-warn { background: var(--warning); }
-.tsk-bar-bad { background: var(--error); }
-.tsk-bar-muted { background: var(--text-tertiary); }
+/* Цвет заливки приходит из loadColor: он считается из доли нормы непрерывно,
+   и классов под ступени «зелёный/жёлтый/красный» здесь больше нет. */
+.tsk-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-sm);
+  transition: width var(--transition-normal), background var(--transition-normal);
+}
 
 /* Выполненная часть дня — штриховка поверх заливки, а не отдельный цвет:
    выполненное время потрачено и из часов не вычитается, но день, который уже
@@ -318,18 +320,6 @@
 
 .tsk-bar-vac { background: repeating-linear-gradient(45deg, var(--bg-tertiary), var(--bg-tertiary) 5px, var(--bg-secondary) 5px, var(--bg-secondary) 10px); }
 .tsk-bar-vac-label { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; color: var(--text-secondary); }
-
-.tsk-legend {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 14px;
-  align-items: center;
-}
-.tsk-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
-.tsk-legend .dash { display: inline-block; width: 12px; border-top: 1px dashed var(--text-secondary); margin-right: 6px; vertical-align: middle; }
 
 /* ── Таблица загрузки ──────────────────────────────────────────────────── */
 
@@ -1247,21 +1237,19 @@
 
 .tsk-note { display: none; }
 
-/* Единый контрол периода: режим слева, дата строго по центру, действия справа. */
+/* Единый контрол периода: режим слева, дата строго по центру, действия справа.
+   Собственной подложки у панели нет: она стояла белой плашкой поверх такого же
+   белого содержимого экрана и делила его пополам без всякой на то причины.
+   Границы контрола держат сегменты режимов и кнопки — их фона достаточно. */
 .tsk-periodbar {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
   align-items: center;
   gap: 14px;
   min-height: 52px;
-  margin-bottom: 20px;
-  padding: 7px 9px;
-  border: 1px solid color-mix(in srgb, var(--border-light) 70%, rgba(255,255,255,.35));
-  border-radius: 17px;
-  background: color-mix(in srgb, var(--bg-primary) 68%, transparent);
-  box-shadow: 0 8px 22px rgba(20,29,45,.05), inset 0 1px 0 rgba(255,255,255,.52);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-  backdrop-filter: blur(18px) saturate(130%);
+  margin-bottom: 16px;
+  padding: 3px 0;
+  background: transparent;
 }
 
 .tsk-period-modes,

@@ -15,7 +15,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
 import { weekOf, monthDays, addDays, addMonths, dstr, monthTitle, hoursText, today } from '../utils/dates';
-import { userName } from '../utils/labels';
+import { userName, loadColor } from '../utils/labels';
 import { Avatar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 
@@ -46,6 +46,13 @@ export default function Reports({ ctx }) {
   if (!data) return <Empty compact>Считаем…</Empty>;
 
   const maxFree = Math.max(...data.freeByPerson.map(p => p.freeHours), 1);
+
+  // Свободное время красится той же шкалой, но с конца: пусто — красный, полный
+  // свободный день и больше — зелёный. Отсчёт от восьми часов, а не от самого
+  // свободного человека в списке: иначе в перегруженной команде тот, у кого
+  // осталось два часа, оказывался бы зелёным просто потому, что у остальных нет
+  // и этого.
+  const freeColor = hours => loadColor(1 - Math.min((hours || 0) / 8, 1));
 
   return (
     <>
@@ -97,7 +104,7 @@ export default function Reports({ ctx }) {
                 className="tsk-bfill"
                 style={{
                   width: `${(row.freeHours / maxFree) * 100}%`,
-                  background: row.freeHours < 3 ? 'var(--error)' : row.freeHours < 8 ? 'var(--warning)' : 'var(--success)',
+                  background: freeColor(row.freeHours),
                 }}
               />
             </div>
@@ -120,7 +127,7 @@ export default function Reports({ ctx }) {
                     className="tsk-bfill"
                     style={{
                       width: `${Math.min(team.percent, 100)}%`,
-                      background: team.percent > 100 ? 'var(--error)' : team.percent > 85 ? 'var(--warning)' : 'var(--success)',
+                      background: loadColor(team.percent / 100),
                     }}
                   />
                 </div>

@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
 import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, dshort, hoursText, fromKey, today, scheduleWeeklyHours } from '../utils/dates';
-import { userName } from '../utils/labels';
+import { userName, loadColor } from '../utils/labels';
 import { LoadBar, Avatar, Badge, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 
@@ -106,7 +106,6 @@ function TeamCards({ start, end, controls, onOpen, ctx }) {
           {teams.map(team => {
             const s = stats[team.id];
             const percent = s?.percent ?? null;
-            const tone = percent === null ? 'muted' : percent > 100 ? 'bad' : percent >= 85 ? 'warn' : 'ok';
             return (
               <div
                 key={team.id}
@@ -131,10 +130,10 @@ function TeamCards({ start, end, controls, onOpen, ctx }) {
                   <div className="tsk-team-sub">Загрузка этой команды вам закрыта</div>
                 ) : (
                   <>
-                    <LoadBar hours={s?.hours} norm={s?.capacity} color={tone === 'bad' ? 'r' : tone === 'warn' ? 'y' : 'g'} compact />
+                    <LoadBar hours={s?.hours} norm={s?.capacity} compact />
                     <div className="tsk-team-foot">
                       <span>
-                        Загрузка <b style={{ color: `var(--${tone === 'bad' ? 'error' : tone === 'warn' ? 'warning' : 'success'})` }}>
+                        Загрузка <b style={{ color: percent === null ? 'var(--text-tertiary)' : loadColor(percent / 100) }}>
                           {percent ?? '—'}%
                         </b> от нормы
                       </span>
@@ -242,13 +241,6 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
             </tr>
           </tbody>
         </table>
-      </div>
-
-      <div className="tsk-legend">
-        <span><i style={{ background: 'var(--success)' }} />до 85% нормы</span>
-        <span><i style={{ background: 'var(--warning)' }} />85–100%</span>
-        <span><i style={{ background: 'var(--error)' }} />переработка</span>
-        <span><span className="dash" />личная норма — у каждого своя</span>
       </div>
 
       <Note>

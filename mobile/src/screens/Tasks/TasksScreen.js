@@ -38,7 +38,7 @@ import LoadBar from './LoadBar';
 import {
   DOW, addDays, addMonths, dayEvents, dfull, dstr, estimateText,
   eventHours, fromKey, hoursText, monthGrid, monthTitle, today,
-  weekOf, LOAD_COLOR,
+  weekOf, loadColor,
 } from './taskMeta';
 
 export default function TasksScreen({navigation}) {
@@ -843,7 +843,9 @@ function WeekView({cursor, byDate, styles, c, onPick}) {
                     styles.weekFill,
                     {
                       height: `${height}%`,
-                      backgroundColor: c[LOAD_COLOR[day.color] || 'success'],
+                      backgroundColor: day.norm
+                        ? loadColor(c, (day.hours || 0) / day.norm)
+                        : c.textTertiary,
                     },
                   ]}
                 />
@@ -859,25 +861,9 @@ function WeekView({cursor, byDate, styles, c, onPick}) {
         })}
       </View>
 
-      <View style={styles.legend}>
-        <Legend color={c.success} text="запас" styles={styles} />
-        <Legend color={c.warning} text="плотно" styles={styles} />
-        <Legend color={c.error} text="переработка" styles={styles} />
-        <Text style={styles.legendText}>пунктир — ваша норма</Text>
-      </View>
-
       <Text style={styles.hint}>
-        Нажмите на столбик, чтобы открыть день целиком.
+        Пунктир — ваша норма. Нажмите на столбик, чтобы открыть день целиком.
       </Text>
-    </View>
-  );
-}
-
-function Legend({color, text, styles}) {
-  return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, {backgroundColor: color}]} />
-      <Text style={styles.legendText}>{text}</Text>
     </View>
   );
 }
@@ -930,7 +916,7 @@ function MonthView({cursor, byDate, events, styles, c, onPick}) {
                       styles.monthBarFill,
                       {
                         width: `${Math.min((day.hours || 0) / day.norm, 1) * 100}%`,
-                        backgroundColor: c[LOAD_COLOR[day.color] || 'success'],
+                        backgroundColor: loadColor(c, (day.hours || 0) / day.norm),
                       },
                     ]}
                   />
@@ -1133,11 +1119,6 @@ const makeStyles = c =>
     },
     weekLabel: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 6},
     weekHours: {fontFamily: font.regular, fontSize: 11, color: c.textTertiary},
-
-    legend: {flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16, justifyContent: 'center'},
-    legendItem: {flexDirection: 'row', alignItems: 'center', gap: 5},
-    legendDot: {width: 9, height: 9, borderRadius: 2},
-    legendText: {fontFamily: font.regular, fontSize: 11.5, color: c.textTertiary},
 
     monthHead: {flexDirection: 'row'},
     monthHeadCell: {

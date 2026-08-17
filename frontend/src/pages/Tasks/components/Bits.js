@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { User } from 'lucide-react';
-import { userName, LOAD_TONE, LOAD_TITLE } from '../utils/labels';
+import { userName, loadColor } from '../utils/labels';
 import { hoursText } from '../utils/dates';
 import { BASE_URL } from '../../../services/api';
 
@@ -73,8 +73,12 @@ export function Badge({ tone = 'muted', children, title }) {
  * Выполненная часть заштрихована внутри заливки, а не вычтена из неё: сделанная
  * работа время потратила, и день от неё пустым не становится. Разница между
  * «восемь часов ещё предстоят» и «восемь часов уже отработаны» видна штриховкой.
+ *
+ * Цвет заливки считается здесь из часов и нормы, а не приходит готовым классом с
+ * бэкенда: `color` в ответе — это три ступени (запас/плотно/переработка), а
+ * полоса красится непрерывной шкалой, см. loadColor.
  */
-export function LoadBar({ hours, done, norm, color, onVacation, compact }) {
+export function LoadBar({ hours, done, norm, onVacation, compact }) {
   if (onVacation) {
     return (
       <div className={`tsk-bar tsk-bar-vac ${compact ? 'is-compact' : ''}`} title="Отпуск">
@@ -93,13 +97,22 @@ export function LoadBar({ hours, done, norm, color, onVacation, compact }) {
   const doneFill = Math.min((done || 0) / scale, 1) * 100;
   const normAt = (norm / scale) * 100;
 
+  // Выходной приходит с нормой 0: сравнивать не с чем, поэтому такой день не
+  // красится шкалой вовсе — иначе любой час в субботу выглядел бы переработкой.
+  const ratio = norm > 0 ? (hours || 0) / norm : null;
+
   return (
     <div
       className={`tsk-bar ${compact ? 'is-compact' : ''}`}
-      title={`${hoursText(hours)} из ${hoursText(norm)} — ${LOAD_TITLE[color] || ''}${
-        done > 0 ? `, выполнено ${hoursText(done)}` : ''}`}
+      title={ratio === null
+        ? `${hoursText(hours)} — норма на этот день не задана`
+        : `${hoursText(hours)} из ${hoursText(norm)} — ${Math.round(ratio * 100)}% нормы${
+          done > 0 ? `, выполнено ${hoursText(done)}` : ''}`}
     >
-      <div className={`tsk-bar-fill tsk-bar-${LOAD_TONE[color] || 'ok'}`} style={{ width: `${fill}%` }} />
+      <div
+        className="tsk-bar-fill"
+        style={{ width: `${fill}%`, background: ratio === null ? 'var(--text-tertiary)' : loadColor(ratio) }}
+      />
       {doneFill > 0 && <div className="tsk-bar-done" style={{ width: `${doneFill}%` }} />}
       <div className="tsk-bar-norm" style={{ left: `${normAt}%` }} />
     </div>

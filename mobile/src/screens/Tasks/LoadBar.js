@@ -11,6 +11,9 @@
  *     край и перестаёт расти визуально ровно там, где становится важной;
  *   — норма отмечена пунктиром. У каждого она своя, и без метки одинаковая
  *     длина заливки у двух людей означала бы совершенно разное.
+ *
+ * Цвет считается здесь из часов и нормы, а не берётся из поля color в ответе:
+ * там три ступени, а полоса красится непрерывной шкалой — см. loadColor.
  */
 
 import React from 'react';
@@ -18,9 +21,9 @@ import {View, Text, StyleSheet} from 'react-native';
 
 import {radius, font} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
-import {LOAD_COLOR} from './taskMeta';
+import {loadColor} from './taskMeta';
 
-export default function LoadBar({hours, norm, color, onVacation, compact}) {
+export default function LoadBar({hours, norm, onVacation, compact}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
 
@@ -47,7 +50,7 @@ export default function LoadBar({hours, norm, color, onVacation, compact}) {
       <View
         style={[
           styles.fill,
-          {width: `${fill}%`, backgroundColor: c[LOAD_COLOR[color] || 'success']},
+          {width: `${fill}%`, backgroundColor: loadColor(c, (hours || 0) / norm)},
         ]}
       />
       <View style={[styles.norm, {left: `${normAt}%`, borderColor: c.textSecondary}]} />
