@@ -124,6 +124,7 @@ const SALARY_CLINICS = [
   { id: '7',  name: 'Смайл',       color: '#999999' },
   { id: '8',  name: 'Направители', color: '#00bfff' },
   { id: '11', name: 'Сукко',       color: '#2d7055' },
+  { id: '12', name: 'Нео',         color: '#008cb4' },
   { id: 'ip', name: 'ИП Микаелян', color: '#e05252' },
 ];
 

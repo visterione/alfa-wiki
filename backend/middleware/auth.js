@@ -51,7 +51,17 @@ const authenticate = async (req, res, next) => {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Token expired' });
     }
-    return res.status(401).json({ error: 'Invalid token' });
+    if (error.name === 'JsonWebTokenError' || error.name === 'NotBeforeError') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    // Всё остальное — отказ на нашей стороне, а не проблема с токеном. Раньше
+    // сюда же сваливалась любая ошибка запроса к БД (например, невыкаченная
+    // миграция: модель просит колонку, которой в базе нет), и клиент честно
+    // делал то, что положено делать при 401 — стирал токен. Со стороны это
+    // выглядело как «вход прошёл и тут же выбросило на форму входа», причём
+    // в логах не было ничего. Пусть такие случаи будут 500 и с записью.
+    console.error('authenticate failed:', error);
+    return res.status(500).json({ error: 'Ошибка проверки авторизации' });
   }
 };
 

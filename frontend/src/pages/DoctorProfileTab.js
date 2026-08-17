@@ -10,7 +10,8 @@ const CLINICS = [
   { id: 6, name: 'Линия', color: '#c4aa88' },
   { id: 4, name: '3К', color: '#800080' },
   { id: 7, name: 'Смайл', color: '#777' },
-  { id: 11, name: 'Сукко', color: '#2d7055' }
+  { id: 11, name: 'Сукко', color: '#2d7055' },
+  { id: 12, name: 'Нео', color: '#008cb4' }
 ];
 const OLD_TO_NEW = { 1: 2, 2: 3, 3: 1, 4: 6, 5: 4, 6: 7 };
 const clinicIdsFor = card => (card?.metadata?.clinics || []).map(id => OLD_TO_NEW[id] || Number(id));

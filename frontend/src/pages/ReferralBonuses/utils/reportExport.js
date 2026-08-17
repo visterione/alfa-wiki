@@ -587,7 +587,7 @@ export function buildSingleWorkbook(reportData, cashPayments) {
 // bulkResults: [{doctor, clinicReports, periodLabel, dateFrom, dateTo}]
 
 const _CLINIC_COMPANY = {
-  'Альфа': 'Престиж', 'Кидс': 'Престиж', 'Линия': 'Престиж',
+  'Альфа': 'Престиж', 'Кидс': 'Престиж', 'Линия': 'Престиж', 'Нео': 'Престиж',
   'Проф': 'Проф',
   'Смайл': 'Лаб Групп', '3К': 'Лаб Групп',
   'Сукко': 'Алекс',

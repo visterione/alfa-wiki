@@ -247,21 +247,15 @@ export default function ReferralBonusesPage() {
   const [preselectedReportDoctorId, setPreselectedReportDoctorId] = useState(null);
 
   // ── Load clinics ──
+  // Дописывание недостающих клиник (Направители, Сукко, ИП Микаелян) отсюда убрано:
+  // с ver. 6.90 /mis/clinics отдаёт справочник med_centers целиком. Заплатки нужны
+  // были ровно потому, что маршрут возвращал захардкоженный список — и по той же
+  // причине новый филиал («Нео») на страницу не попадал.
   useEffect(() => {
     mis.getClinics()
       .then(res => {
         if (res.data?.success && Array.isArray(res.data?.data)) {
-          const list = res.data.data;
-          if (!list.find(c => String(c.id) === '8')) {
-            list.push({ id: 8, name: 'Направители', color: '#00bfff' });
-          }
-          if (!list.find(c => String(c.id) === '11')) {
-            list.push({ id: 11, name: 'Сукко', color: '#2d7055' });
-          }
-          if (!list.find(c => String(c.id) === 'ip')) {
-            list.push({ id: 'ip', name: 'ИП Микаелян', color: '#e05252' });
-          }
-          setClinics(list);
+          setClinics(res.data.data);
         }
       })
       .catch(() => {

@@ -24,6 +24,7 @@ export const CLINIC_LOGOS = {
   '4':  '/lab-logos/alfa-3k.png',      // 3К
   '7':  '/lab-logos/alfa-smile.jpeg',  // Смайл
   '11': '/lab-logos/alfa-sukko.jpg',   // Сукко
+  '12': '/lab-logos/neo.png',          // Нео (пункт забора анализов) — положите файл
   'ip': '/lab-logos/ip-mikaelyan.png', // ИП Микаелян — положите файл
   // '8'  Направители — служебный медцентр, логотип не нужен
 };

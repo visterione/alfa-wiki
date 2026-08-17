@@ -4,13 +4,15 @@ import { rbParseFullName, rbParseAbbrevName } from './nameMatching';
 
 // ── Org groups ─────────────────────────────────────────────────────────────────
 const ORG_GROUPS = [
-  { key: 'prestige', label: 'Альфа Престиж', color: '#de64a1', ids: ['2','3','6'],
-    nameMatch: n => (n.includes('альфа') || n.includes('кидс') || n.includes('kids') || n.includes('линия')) && !n.includes('проф') },
+  // 12 — пункт забора «Нео»: по справочнику med_centers он относится к Престижу.
+  // До ver. 6.90 этот id считался вторым id Сукко и попадал в группу «Алекс».
+  { key: 'prestige', label: 'Альфа Престиж', color: '#de64a1', ids: ['2','3','6','12'],
+    nameMatch: n => (n.includes('альфа') || n.includes('кидс') || n.includes('kids') || n.includes('линия') || n.includes('нео')) && !n.includes('проф') },
   { key: 'prof',     label: 'Проф',           color: '#9999ff', ids: ['1'],
     nameMatch: n => n.includes('проф') },
   { key: 'labgroup', label: 'Лабгрупп',       color: '#800080', ids: ['4','7'],
     nameMatch: n => n.includes('3к') || n.includes('3k') || n.includes('смайл') || n.includes('лабгрупп') },
-  { key: 'sukko',    label: 'Алекс',          color: '#2d7055', ids: ['11','12'],
+  { key: 'sukko',    label: 'Алекс',          color: '#2d7055', ids: ['11'],
     nameMatch: n => n.includes('сукко') || n.includes('алекс') },
 ];
 

@@ -8,6 +8,7 @@ const axios = require('axios');
 const qs = require('qs');
 const { authenticate } = require('../middleware/auth');
 const { syncAndAnnotate } = require('../services/rbEmployeeRegistry');
+const medCenters = require('../services/medCenters');
 const { resolveBookingDuration, addMinutesToMisDateTime } = require('../services/bookingDurationService');
 
 const router = express.Router();
@@ -997,21 +998,36 @@ router.post('/debtors', authenticate, async (req, res) => {
 // КЛИНИКИ
 // ═══════════════════════════════════════════════════════════════
 
-router.get('/clinics', authenticate, (req, res) => {
-  // ID соответствуют реальным clinic_id из МИС (как в doctor-card.html)
-  res.json({
-    success: true,
-    data: [
-      { id: 2,  name: 'Альфа',       code: 'А',  color: '#de64a1' },
-      { id: 3,  name: 'Кидс',        code: 'К',  color: '#ed9121' },
-      { id: 1,  name: 'Проф',        code: 'П',  color: '#9999ff' },
-      { id: 6,  name: 'Линия',       code: 'Л',  color: '#e2d1bb' },
-      { id: 4,  name: '3К',          code: '3К', color: '#800080' },
-      { id: 7,  name: 'Смайл',       code: 'С',  color: '#999999' },
-      { id: 11, name: 'Сукко',       code: 'Ск', color: '#2d7055' },
-      { id: 8,  name: 'Направители', code: 'Н',  color: '#00bfff' },
-    ]
-  });
+// Список клиник для фронта. id — это clinic_id из МИС (первый в misClinicIds), а не
+// UUID справочника: по нему модули сверяют клиники сотрудника, пришедшие из getUsers.
+//
+// Раньше список был захардкожен прямо здесь, и новый филиал в справочнике до
+// зарплатного модуля не доезжал: «Нео» (clinic_id 12) завели в med_centers, а страница
+// продолжала знать только про Сукко и красила сотрудников Нео её цветом. Читаем
+// справочник — ver. 6.67 для того его и заводил.
+//
+// includeVirtual: «Направители» (id 8) — служебная группировка зарплатного модуля,
+// но выбирать её там нужно наравне с филиалами. АУП отдавать не надо: страница
+// добавляет его сама и только тем, у кого есть доступ.
+router.get('/clinics', authenticate, async (req, res) => {
+  try {
+    const rows = await medCenters.list({ includeVirtual: true });
+    const data = rows
+      .map(r => ({ misId: (r.misClinicIds || [])[0], row: r }))
+      .filter(({ misId }) => misId && misId !== 'aup')
+      .map(({ misId, row }) => ({
+        // Числовые id отдаём числами: так их отдавал прежний хардкод, и часть
+        // сравнений на фронте до сих пор нестрогая.
+        id: /^\d+$/.test(misId) ? Number(misId) : misId,
+        name: row.name,
+        code: row.code,
+        color: row.color
+      }));
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('❌ Ошибка /mis/clinics:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка загрузки справочника клиник' });
+  }
 });
 
 module.exports = router;
