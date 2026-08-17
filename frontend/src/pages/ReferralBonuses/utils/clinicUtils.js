@@ -3,6 +3,11 @@
 // Ported verbatim from referral-bonuses.html
 // ═══════════════════════════════════════
 
+// Как клинику подписывают в импортируемых Excel. Основной источник — поле
+// importAliases в справочнике med_centers: его правят в админке, и новую подпись
+// («Забор крови» у Нео) не нужно ждать релизом. Карта ниже осталась фолбэком на
+// случай, когда справочник ещё не доехал: страница парсит Excel сразу, а список
+// клиник грузится асинхронно, и терять сопоставление из-за гонки нельзя.
 export const CLINIC_EXCEL_MAP = {
   'альфа': '2',
   'альфа kids': '3',
@@ -82,9 +87,43 @@ export function rbGetClinicName(clinicsOrId, clinicIdOrUndef) {
   return c?.name || clinicId;
 }
 
+// Подписи из справочника: ключ — нормализованная подпись, значение — id клиники в МИС.
+// null означает «справочник ещё не подкладывали», и тогда работает CLINIC_EXCEL_MAP.
+let RUNTIME_EXCEL_ALIASES = null;
+
+// Excel-подписи приходят из выгрузок 1С и МИС, где хватает неразрывных пробелов и
+// двойных пробелов между словами. Сверяем по нормализованной строке, иначе
+// «Забор  крови» не совпадёт с «Забор крови».
+function normAlias(s) {
+  return String(s || '')
+    .replace(/\s+/g, ' ') // \s в JS покрывает и \u00A0, так что неразрывный пробел схлопнется тоже
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Подкладывает подписи клиник из справочника (ответ /mis/clinics).
+ * Сверяются name, displayName и importAliases — именно это обещает подпись поля
+ * в админке медцентров («Само название и полное название сверяются всегда»).
+ */
+export function rbSetClinicImportAliases(clinics) {
+  if (!Array.isArray(clinics)) return;
+  const map = {};
+  for (const c of clinics) {
+    if (!c || c.id === undefined || c.id === null || c.id === '') continue;
+    const id = String(c.id);
+    for (const label of [c.name, c.displayName, ...(c.importAliases || [])]) {
+      const key = normAlias(label);
+      if (key) map[key] = id;
+    }
+  }
+  RUNTIME_EXCEL_ALIASES = map;
+}
+
 export function rbMatchClinicId(name) {
   if (!name) return null;
-  const id = CLINIC_EXCEL_MAP[String(name).toLowerCase().trim()] || null;
+  const key = normAlias(name);
+  const id = (RUNTIME_EXCEL_ALIASES && RUNTIME_EXCEL_ALIASES[key]) || CLINIC_EXCEL_MAP[key] || null;
   return id ? rbCanonicalClinicId(id) : null;
 }
 

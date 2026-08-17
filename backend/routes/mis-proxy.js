@@ -1021,7 +1021,12 @@ router.get('/clinics', authenticate, async (req, res) => {
         id: /^\d+$/.test(misId) ? Number(misId) : misId,
         name: row.name,
         code: row.code,
-        color: row.color
+        color: row.color,
+        // displayName и importAliases нужны импорту Excel: по ним сопоставляется
+        // колонка «Клиника», когда в выгрузке клиника подписана не так, как в портале
+        // («Забор крови» у Нео). Правится в админке медцентров, без релиза.
+        displayName: row.displayName,
+        importAliases: row.importAliases || []
       }));
     res.json({ success: true, data });
   } catch (err) {

@@ -7,7 +7,7 @@ const ORG_GROUPS = [
   // 12 — пункт забора «Нео»: по справочнику med_centers он относится к Престижу.
   // До ver. 6.90 этот id считался вторым id Сукко и попадал в группу «Алекс».
   { key: 'prestige', label: 'Альфа Престиж', color: '#de64a1', ids: ['2','3','6','12'],
-    nameMatch: n => (n.includes('альфа') || n.includes('кидс') || n.includes('kids') || n.includes('линия') || n.includes('нео')) && !n.includes('проф') },
+    nameMatch: n => (n.includes('альфа') || n.includes('кидс') || n.includes('kids') || n.includes('линия') || n.includes('нео') || n.includes('забор')) && !n.includes('проф') },
   { key: 'prof',     label: 'Проф',           color: '#9999ff', ids: ['1'],
     nameMatch: n => n.includes('проф') },
   { key: 'labgroup', label: 'Лабгрупп',       color: '#800080', ids: ['4','7'],

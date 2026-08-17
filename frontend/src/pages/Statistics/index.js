@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { mis } from '../../services/api';
 import { getSources } from '../ReferralBonuses/utils/excelSources';
-import { rbClinicId } from '../ReferralBonuses/utils/clinicUtils';
+import { rbClinicId, rbSetClinicImportAliases } from '../ReferralBonuses/utils/clinicUtils';
 import StepKpi from '../ReferralBonuses/components/StepKpi';
 import Directories from './components/Directories';
 import ServicesPage from './components/Services';
@@ -22,6 +22,15 @@ export default function StatisticsPage() {
 
   useEffect(() => {
     getSources().then(setExcelSources).catch(() => {});
+  }, []);
+
+  // Справочники и аналитика читают те же Excel-выгрузки, что и зарплатный модуль,
+  // и колонку «Клиника» в них сопоставляет rbMatchClinicId. Список клиник самой
+  // странице не нужен — забираем его только ради подписей из importAliases.
+  useEffect(() => {
+    mis.getClinics()
+      .then(res => rbSetClinicImportAliases(res.data?.data))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

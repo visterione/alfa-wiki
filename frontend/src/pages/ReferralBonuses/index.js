@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import './ReferralBonuses.css';
 import { mis, referralBonuses as rbApi, executorSettings as execSettingsApi } from '../../services/api';
-import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetClinicName } from './utils/clinicUtils';
+import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetClinicName, rbSetClinicImportAliases } from './utils/clinicUtils';
 import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
 import { parseSalarySlipPdf, normSubdivision, toSubdivisionList } from './utils/pdfUtils';
@@ -54,6 +54,11 @@ const STEP_LABELS = [
 // "Престиж" = Альфа(2) + Кидс(3) + Линия(6)
 // "Проф"    = Проф(1)
 // "Лабгрупп"= 3К(4) + Смайл(7)
+//
+// В колонке «Клиника» зарплатной выгрузки стоит юрлицо, а не филиал, поэтому строку
+// приходится доводить до конкретной клиники по тому, где сотрудник числится в МИС.
+// Но не всегда: филиал, у которого юрлицо одно на всю выгрузку, подписывают прямо
+// («Забор крови» = Нео) — такие строки разбирает rbMatchClinicId по справочнику.
 const IMPORT_GROUP_CLINIC_IDS = {
   'престиж':  ['2', '3', '6'],
   'проф':     ['1'],
@@ -111,6 +116,10 @@ function parsePayrollImportRows(rows) {
       return {
         name:        String(row[nameKey] || '').trim(),
         clinicGroup, // 'престиж' | 'проф' | 'лабгрупп' | null
+        // Подпись сразу узнаётся как филиал (название, полное название или один из
+        // importAliases в справочнике) — тогда доводить строку по клиникам сотрудника
+        // не нужно, клиника в ней уже названа однозначно.
+        clinicMatchId: clinicGroup ? null : rbMatchClinicId(clinicRaw),
         mainPayment: salaryKey  ? parseNum(row[salaryKey])  : null,
         advance:     advanceKey ? parseNum(row[advanceKey]) : null,
         ndfl:        ndflKey    ? parseNum(row[ndflKey])    : null,
@@ -256,6 +265,9 @@ export default function ReferralBonusesPage() {
       .then(res => {
         if (res.data?.success && Array.isArray(res.data?.data)) {
           setClinics(res.data.data);
+          // Подписи клиник в Excel (importAliases) приезжают тем же ответом:
+          // ими сопоставляет колонку «Клиника» весь импорт на этой странице.
+          rbSetClinicImportAliases(res.data.data);
         }
       })
       .catch(() => {
@@ -669,7 +681,7 @@ export default function ReferralBonusesPage() {
     rows.forEach(row => {
       const doctor = matchDoctorByName(row.name);
       if (doctor) {
-        matched.push({ doctor, clinicGroup: row.clinicGroup, clinicId: null, mainPayment: row.mainPayment, advance: row.advance, ndfl: row.ndfl });
+        matched.push({ doctor, clinicGroup: row.clinicGroup, clinicMatchId: row.clinicMatchId, clinicId: null, mainPayment: row.mainPayment, advance: row.advance, ndfl: row.ndfl });
       } else {
         if (!unmatchedNames.includes(row.name)) unmatchedNames.push(row.name);
       }
@@ -695,6 +707,10 @@ export default function ReferralBonusesPage() {
     // based on the clinics the doctor is registered in (from MIS doctor data).
     const ambiguousCases = []; // { idx, doctor, clinicGroup, options: [{id, name}] }
     matched.forEach((entry, idx) => {
+      if (entry.clinicMatchId) {
+        entry.clinicId = String(entry.clinicMatchId); // клиника названа в файле прямо
+        return;
+      }
       if (!entry.clinicGroup) {
         entry.clinicId = null; // → 'global'
         return;
