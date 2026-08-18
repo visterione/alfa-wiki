@@ -341,7 +341,7 @@
 .wh-note,
 .wh-alert--info,
 .wh-tree__hint {
-  display: none;
+  display: none !important;
 }
 
 /* ── Хлебные крошки ────────────────────────────────────────────────────────── */
@@ -1486,7 +1486,6 @@
 /* Селекты внутри таблицы разбора — рабочий инструмент, а не поле формы: их тут
    полсотни в столбец, и полноразмерные они превращают таблицу в анкету. */
 .wh-osv-map__select { min-width: 150px; max-width: 260px; font-size: 12px; }
-.wh-osv-map__threshold { width: 92px; font-size: 12px; text-align: right; }
 .wh-osv-map .wh-tree__group > td:first-child { cursor: pointer; }
 .wh-osv-map .wh-tree__group > td { background: transparent; }
 .wh-osv-map .wh-table tbody tr:hover > td { background: var(--wh-primary-soft); }
@@ -1568,20 +1567,29 @@
 }
 .wh-place__room label {
   display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
   font-size: 12px; color: var(--wh-text-secondary);
 }
-.wh-place__room label select { min-width: 260px; }
+.wh-place__room label:first-child { flex: 1 1 360px; }
+.wh-place__room label:nth-child(2) { flex: 0 1 300px; }
+.wh-place__room label select { width: 100%; min-width: 0; }
 .wh-place__room > button { margin-left: auto; }
 
-/* Две колонки: слева очередь, справа содержимое выбранного кабинета. Рядом, а не
-   переключателем, — иначе после каждой пачки надо было бы ходить проверять себя
-   на другой экран. */
-.wh-place__cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
-@media (max-width: 1200px) { .wh-place__cols { grid-template-columns: 1fr; } }
+/* Очередь и склад кабинета идут один под другим. Две широкие
+   таблицы в колонках конкурировали за ширину: правая не помещалась
+   и выталкивала весь экран. Теперь прокрутка остаётся внутри каждой таблицы. */
+.wh-place { min-width: 0; }
+.wh-place__sections { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wh-place__queue, .wh-place__room-content { min-width: 0; }
+.wh-place__room-content .wh-table-wrap--tall { max-height: 42vh; }
+.wh-place__room-content .wh-subhead { margin-top: 0; }
 .wh-place .wh-row--picked > td { background: var(--wh-primary-soft); }
 .wh-place__queue tbody td:nth-child(2) { cursor: pointer; }
 .wh-place .wh-subhead { display: flex; align-items: center; gap: 6px; }
-.wh-place .wh-hint { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+@media (max-width: 720px) {
+  .wh-place__room label, .wh-place__room > button { flex: 1 1 100%; width: 100%; }
+  .wh-place__room > button { margin-left: 0; }
+}
 
 /* ── Ведомость 1С (ver. 6.72) ──────────────────────────────────────────────── */
 /* Список снимков вынесен в колонку слева и не сворачивается в выпадающий список:

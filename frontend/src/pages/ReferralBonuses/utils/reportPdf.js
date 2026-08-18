@@ -121,6 +121,10 @@ function buildLeftRows(salary, periodCell) {
         rows.push({ label: 'Премия', period: periodCell, days: '', hours: overStr, paid: overStr, sum: p.premiumAmount });
       }
     }
+  } else if (pt === 'hourly' && rawHours > 0 && !salary.basePay) {
+    // Часы есть, а ставки по ним не нашлось — строку всё равно печатаем, иначе листок
+    // уходит расчётчику с пустой левой колонкой и понять, что потерялось, невозможно.
+    rows.push({ label: 'Оплата по часовому тарифу', period: periodCell, days: daysStr, hours: hoursStr, paid: hoursStr, sum: 0 });
   } else if (salary.basePay) {
     // Пропорциональный со спец. условиями: базу капаем на норме, часы сверх — отдельной строкой «Переработка»
     const overtimeAmt = pt === 'prorated' ? (parseFloat(salary.proratedOvertimeAmount) || 0) : 0;
@@ -375,7 +379,12 @@ function isEmptyReport(salary) {
   const finalSal   = parseFloat(salary.finalSalary) || 0;
   const refBonus   = parseFloat(salary.referralBonuses) || 0;
   const perfBonus  = parseFloat(salary.performedBonusTotal) || 0;
-  return basePay === 0 && finalSal === 0 && refBonus === 0 && perfBonus === 0;
+  // Почасовику с отработанными часами листок нужен даже при нулевой сумме. Раньше его
+  // спасал от отсева только проставленный аванс или основная ЗП, и без них человек со
+  // ста часами молча пропадал из выгрузки. Пусть лучше попадёт в неё с явным нулём —
+  // это видно расчётчику, а исчезнувший сотрудник не виден никому.
+  const hourlyHours = (salary.payType === 'hourly') ? (parseFloat(salary.hoursWorked) || 0) : 0;
+  return basePay === 0 && finalSal === 0 && refBonus === 0 && perfBonus === 0 && hourlyHours === 0;
 }
 
 // ── Экспорт одного отчёта (один врач, возможно несколько клиник) ──────────────

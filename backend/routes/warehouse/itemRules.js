@@ -62,7 +62,7 @@ router.put('/', authenticate, requireWarehouse('canManageCatalog'), async (req, 
   try {
     const {
       id, pattern, matchType = 'head', accounting = 'auto',
-      categoryId, unit, assetThreshold, note, isActive,
+      categoryId, unit, note, isActive,
     } = req.body;
 
     const clean = String(pattern || '').trim();
@@ -93,8 +93,6 @@ router.put('/', authenticate, requireWarehouse('canManageCatalog'), async (req, 
       accounting,
       categoryId: categoryId || null,
       unit: unit || null,
-      assetThreshold: assetThreshold === '' || assetThreshold === undefined || assetThreshold === null
-        ? null : Number(assetThreshold),
       note: note || null,
       ...(isActive === undefined ? {} : { isActive: Boolean(isActive) }),
       createdBy: req.user.id,

@@ -26,7 +26,7 @@ const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
 const { parseOsv, diffSnapshots, OsvParseError } = require('../../services/warehouse/osv');
 const {
-  materializeOsv, planMaterialization, ROOT_PREFIX, DEFAULT_ASSET_THRESHOLD,
+  materializeOsv, planMaterialization, ROOT_PREFIX,
 } = require('../../services/warehouse/osvMaterialize');
 
 // Файл держим в памяти: он разбирается целиком и на диск не ложится. Предел в
@@ -401,7 +401,6 @@ router.get('/mapping', authenticate, requireWarehouse(), requireReport('RPT-OSV'
       },
       nodes,
       totals,
-      defaultThreshold: DEFAULT_ASSET_THRESHOLD,
       mappings,
     });
   } catch (err) {
@@ -459,7 +458,7 @@ router.put('/mapping', authenticate, requireWarehouse('canImportOsv'), async (re
   try {
     const {
       account = 'МЦ.04', lineKey, pathPrefix, name,
-      kind = 'auto', unit, roomId, storageId, categoryId, assetThreshold, note,
+      kind = 'auto', unit, roomId, storageId, categoryId, note,
     } = req.body;
 
     if (!lineKey && !pathPrefix) {
@@ -480,7 +479,6 @@ router.put('/mapping', authenticate, requireWarehouse('canImportOsv'), async (re
       roomId: roomId || null,
       storageId: storageId || null,
       categoryId: categoryId || null,
-      assetThreshold: assetThreshold === '' || assetThreshold === undefined ? null : assetThreshold,
       note: note || null,
       mappedBy: req.user.id,
     };

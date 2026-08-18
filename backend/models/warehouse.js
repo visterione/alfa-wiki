@@ -552,11 +552,10 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     // Название на момент сопоставления: если в 1С группу переименуют, ключ
     // порвётся, и по этому полю будет видно, чем строка была раньше.
     name:           { type: DataTypes.STRING(500) },
-    // auto — делить строки ветки по цене за единицу: дороже порога отдельная
-    // карточка, дешевле остаток. Требовать решения по каждой из 2992 строк
-    // означало бы не разобрать ведомость никогда.
+    // auto — взять способ учёта из словаря предметов. Если словарь не знает
+    // позицию, она остаётся неразобранной. Поле assetThreshold — legacy для старых данных.
     kind:           { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'auto' },
-    assetThreshold: { type: DataTypes.DECIMAL(12, 2) },
+    assetThreshold: { type: DataTypes.DECIMAL(12, 2) }, // legacy, не используется
     unit:           { type: DataTypes.STRING(20) },
     nomenclatureId: { type: DataTypes.UUID },
     categoryId:     { type: DataTypes.UUID },
@@ -605,7 +604,7 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     accounting:     { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'auto' },
     categoryId:     { type: DataTypes.UUID },
     unit:           { type: DataTypes.STRING(20) },
-    assetThreshold: { type: DataTypes.DECIMAL(12, 2) },
+    assetThreshold: { type: DataTypes.DECIMAL(12, 2) }, // legacy, не используется
     note:           { type: DataTypes.TEXT },
     isActive:       { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdBy:      { type: DataTypes.UUID },

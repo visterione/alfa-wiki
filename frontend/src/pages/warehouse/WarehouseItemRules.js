@@ -18,8 +18,8 @@ import { warehouseApi } from '../../services/api';
  *
  * Поэтому главная таблица здесь — слова снимка, отсортированные по числу строк, с
  * ценой вопроса рядом. Человек видит, что одно решение про «шкаф» закрывает 129
- * строк на 8,5 млн ₽, и идёт сверху вниз, пока не надоест: недоразмеченный
- * словарь работает, просто оставшееся достаётся порогу цены, как было раньше.
+ * строк на 8,5 млн ₽, и идёт сверху вниз. Неразмеченные позиции не угадываются
+ * по цене, а остаются неразобранными.
  *
  * ── Почему сохранение без кнопки ─────────────────────────────────────────────
  *
@@ -38,7 +38,7 @@ import { warehouseApi } from '../../services/api';
 // Способ учёта. Формулировки намеренно описывают последствие, а не механику:
 // человек выбирает не значение поля, а то, что произойдёт с вещью.
 const ACCOUNTING = [
-  { value: 'auto',     label: 'По цене: дорогое — карточкой' },
+  { value: 'auto',     label: 'Не задано' },
   { value: 'asset',    label: 'Всегда карточкой' },
   { value: 'material', label: 'Всегда остатком' },
   { value: 'ignore',   label: 'Не заводить' },
@@ -110,7 +110,6 @@ export default function WarehouseItemRules({ access, onChanged }) {
         matchType: 'head',
         accounting: current.accounting || 'auto',
         categoryId: current.categoryId || null,
-        assetThreshold: current.assetThreshold ?? null,
         ...patch,
       });
       await load();
@@ -206,7 +205,7 @@ export default function WarehouseItemRules({ access, onChanged }) {
         <div>
           Слова отсортированы по числу позиций: первые полсотни закрывают около
           половины ведомости. Размечать весь список не нужно — неразмеченное
-          достанется порогу цены, как и раньше. Категория попадёт в карточку
+          останется неразобранным. Категория попадёт в карточку
           оборудования и в номенклатуру, а «как учитывать» решит, появится ли у
           вещи инвентарный номер.
         </div>
@@ -235,7 +234,6 @@ export default function WarehouseItemRules({ access, onChanged }) {
               <th className="wh-num">Сумма, ₽</th>
               <th>Что это</th>
               <th>Как учитывать</th>
-              <th className="wh-num">Порог, ₽</th>
               <th />
             </tr>
           </thead>
@@ -288,20 +286,6 @@ export default function WarehouseItemRules({ access, onChanged }) {
                     </select>
                   </td>
                   <td className="wh-num">
-                    {(rule?.accounting || 'auto') === 'auto' && (
-                      <input className="wh-osv-map__threshold" type="number" step="1000"
-                             disabled={!canEdit || busy}
-                             defaultValue={rule?.assetThreshold ?? ''}
-                             placeholder="общий"
-                             title="Порог для этого класса вещей: дороже — карточка, дешевле — остаток"
-                             onBlur={(e) => {
-                               const value = e.target.value === '' ? null : Number(e.target.value);
-                               const was = rule?.assetThreshold == null ? null : Number(rule.assetThreshold);
-                               if (value !== was) save(h.head, { assetThreshold: value });
-                             }} />
-                    )}
-                  </td>
-                  <td className="wh-num">
                     {rule && canEdit && (
                       <button className="wh-icon-btn wh-icon-btn--danger" title="Убрать правило"
                               disabled={busy} onClick={() => remove(rule)}>
@@ -313,7 +297,7 @@ export default function WarehouseItemRules({ access, onChanged }) {
               );
             })}
             {!visible.length && (
-              <tr><td colSpan={8} className="wh-empty">
+              <tr><td colSpan={7} className="wh-empty">
                 {onlyOpen ? 'Неразмеченных слов не осталось.' : 'Ничего не нашлось.'}
               </td></tr>
             )}
@@ -378,7 +362,7 @@ export default function WarehouseItemRules({ access, onChanged }) {
 function ExpressionModal({ categories, onClose, onSaved }) {
   const [form, setForm] = useState({
     pattern: '', matchType: 'contains', accounting: 'auto',
-    categoryId: '', assetThreshold: '', note: '',
+    categoryId: '', note: '',
   });
   const [probe, setProbe] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -413,7 +397,6 @@ function ExpressionModal({ categories, onClose, onSaved }) {
         matchType: form.matchType,
         accounting: form.accounting,
         categoryId: form.categoryId || null,
-        assetThreshold: form.assetThreshold === '' ? null : Number(form.assetThreshold),
         note: form.note || null,
       });
       toast.success('Правило сохранено');
@@ -469,13 +452,6 @@ function ExpressionModal({ categories, onClose, onSaved }) {
                 </select>
               </label>
             </div>
-            {form.accounting === 'auto' && (
-              <label>Порог, ₽
-                <input type="number" step="1000" value={form.assetThreshold}
-                       placeholder="общий порог модуля"
-                       onChange={e => set('assetThreshold', e.target.value)} />
-              </label>
-            )}
             <label>Примечание
               <input value={form.note} placeholder="Зачем это правило"
                      onChange={e => set('note', e.target.value)} />

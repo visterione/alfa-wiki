@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {
   headWord, normalize, compileRules, classify, headStats,
 } = require('../services/warehouse/itemRules');
-const { effectiveKind, DEFAULT_ASSET_THRESHOLD } = require('../services/warehouse/osvMaterialize');
+const { effectiveKind } = require('../services/warehouse/osvMaterialize');
 
 /**
  * Словарь предметов (ver. 6.79).
@@ -116,7 +116,7 @@ test('ведущие слова снимка: покрытие и порядок
 
 // ── Цепочка решений: строка → ветка → словарь → порог ────────────────────────
 
-const branch = (over = {}) => ({ kind: 'auto', assetThreshold: null, ...over });
+const branch = (over = {}) => ({ kind: 'auto', ...over });
 
 test('без сопоставления строка не разбирается независимо от словаря', () => {
   const rule = { accounting: 'asset' };
@@ -151,22 +151,12 @@ test('дробное количество остаётся материалом 
   assert.equal(effectiveKind(line, branch(), { accounting: 'asset' }), 'material');
 });
 
-test('порог ветки сильнее порога словаря', () => {
+test('словарь без способа учёта не угадывает решение', () => {
   const line = { unitCost: 12_000, closingQty: 1 };
-  const rule = { accounting: 'auto', assetThreshold: 20_000 };
-
-  // Только словарный порог — 12 000 ниже 20 000, значит остаток.
-  assert.equal(effectiveKind(line, branch(), rule), 'material');
-  // Человек задал ветке свой порог — он и работает.
-  assert.equal(effectiveKind(line, branch({ assetThreshold: 5000 }), rule), 'asset');
+  assert.equal(effectiveKind(line, branch(), { accounting: 'auto' }), 'unmapped');
 });
 
-test('при пустом словаре поведение прежнее — по общему порогу', () => {
-  const cheap = { unitCost: DEFAULT_ASSET_THRESHOLD - 1, closingQty: 3 };
-  const pricey = { unitCost: DEFAULT_ASSET_THRESHOLD, closingQty: 3 };
-
-  assert.equal(effectiveKind(cheap, branch(), null), 'material');
-  assert.equal(effectiveKind(pricey, branch(), null), 'asset');
-  // И без третьего аргумента вовсе: старые вызовы не должны сломаться.
-  assert.equal(effectiveKind(pricey, branch()), 'asset');
+test('пустой словарь оставляет строку неразобранной независимо от цены', () => {
+  assert.equal(effectiveKind({ unitCost: 100, closingQty: 3 }, branch(), null), 'unmapped');
+  assert.equal(effectiveKind({ unitCost: 1_000_000, closingQty: 3 }, branch()), 'unmapped');
 });

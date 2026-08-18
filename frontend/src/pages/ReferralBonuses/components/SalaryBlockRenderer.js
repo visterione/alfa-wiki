@@ -358,7 +358,10 @@ export default function SalaryBlock({ salary }) {
   const turnoverMaterialItems  = materials.filter(m => m.deductionType !== 'final');
   const finalMaterialItems     = materials.filter(m => m.deductionType === 'final');
 
-  const hasWage             = (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0;
+  // Отработанные часы сами по себе делают листок непустым: без этого почасовик с нулевой
+  // ставкой держался в отчёте только за счёт аванса или основной ЗП и исчезал вместе с ними.
+  const hasHourlyTime       = payType === 'hourly' && (_hoursWorked || 0) > 0;
+  const hasWage             = (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0 || hasHourlyTime;
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
   const hasDeductions       = !interim && (adjustedFinalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0);
@@ -383,7 +386,7 @@ export default function SalaryBlock({ salary }) {
 
       {hasWage && (
         <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub((basePay || 0) + (holidaySurchargeTotal || 0))} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly' || (payType === 'prorated' && (normFixedSalary > 0 || hoursWorked > 0))}>
-          {payType === 'hourly' && (hourlyRatesBreakdown.length > 0 || _hourlyRate > 0) && (
+          {payType === 'hourly' && (hourlyRatesBreakdown.length > 0 || _hourlyRate > 0 || _hoursWorked > 0) && (
             <table className="rb-report-table rb-report-table--bordered">
               <thead><tr><th>Деятельность</th><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
               <tbody>

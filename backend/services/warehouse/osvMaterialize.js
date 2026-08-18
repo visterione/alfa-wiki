@@ -13,10 +13,9 @@
  * «Оргтехника Владимирская,93»), а строки его наследуют. Групп третьего уровня
  * всего 54, и половина названа прямо по кабинету.
  *
- * Но внутри одной ветки лежит и хирургический инструмент за 300 000 ₽, и
- * салфетки по рублю — одинаково обойтись с ними нельзя. Отсюда тип 'auto':
- * ветка сопоставляется целиком, а разделение идёт по цене за единицу. Дороже
- * порога — отдельная карточка с этикеткой, дешевле — количество на полке.
+ * Но внутри одной ветки лежит и хирургический инструмент, и салфетки — одинаково
+ * обойтись с ними нельзя. Поэтому тип 'auto' не угадывает способ учёта, а берёт
+ * его из словаря предметов. Неизвестная словарю позиция остаётся неразобранной.
  *
  * ── Откуда берётся категория и способ учёта (ver. 6.79) ──────────────────────
  *
@@ -25,11 +24,11 @@
  * неразличимы. На второй вопрос отвечает словарь предметов по названию
  * (services/warehouse/itemRules.js), и цепочка решений выглядит так:
  *
- *     правило по строке → правило ветки → СЛОВАРЬ → порог цены
+ *     правило по строке → правило ветки → СЛОВАРЬ
  *
- * Явно заданное человеком сильнее словаря, словарь сильнее порога, порог
- * остаётся последним фолбэком. При пустом словаре разбор ведёт себя ровно так
- * же, как до ver. 6.79.
+ * Явно заданное человеком сильнее словаря. Без явного решения
+ * и без правила словаря строка не материализуется: цена больше не участвует в
+ * классификации.
  *
  * ── Идемпотентность ──────────────────────────────────────────────────────────
  *
@@ -57,10 +56,6 @@ const { compileRules, classify } = require('./itemRules');
 const { splitName } = require('./nameParts');
 const qr = require('./qr');
 
-// Порог по умолчанию. По августовской выгрузке даёт 3277 карточек и 79 %
-// стоимости имущества под поштучным контролем — при 18 867 единицах всего.
-const DEFAULT_ASSET_THRESHOLD = 10000;
-
 /**
  * Сопоставление, действующее на строку. Точное правило по строке важнее
  * ветки — иначе исключение внутри ветки нечем было бы задать, — а из веток
@@ -85,7 +80,6 @@ function resolveMapping(line, byLineKey, byPrefix) {
     mapping: {
       id: exact.id,
       kind: exact.kind,
-      assetThreshold: exact.assetThreshold ?? branch?.assetThreshold ?? null,
       unit: exact.unit || branch?.unit || null,
       roomId: exact.roomId || branch?.roomId || null,
       storageId: exact.storageId || branch?.storageId || null,
@@ -111,7 +105,7 @@ const weight = prefix => (prefix === ROOT_PREFIX ? -1 : prefix.length);
  * Во что превращается строка: карточки, остаток или ничего.
  *
  * Порядок ответов — от самого конкретного к самому общему: решение человека по
- * строке или ветке, затем словарь предметов по названию, затем порог цены.
+ * строке или ветке, затем словарь предметов по названию.
  * Словарь стоит НИЖЕ человека сознательно: это правило по умолчанию для класса
  * вещей, а не начальство над тем, кто смотрит на конкретную ветку.
  */
@@ -129,13 +123,7 @@ function effectiveKind(line, mapping, rule = null) {
 
   if (rule?.accounting === 'asset' || rule?.accounting === 'material') return rule.accounting;
 
-  // Порог ветки сильнее порога словаря по той же причине: его задал человек,
-  // глядя на эту ветку, а словарный — общий для класса предметов.
-  const threshold = Number(
-    mapping.assetThreshold ?? rule?.assetThreshold ?? DEFAULT_ASSET_THRESHOLD,
-  );
-  const unitCost = Number(line.unitCost) || 0;
-  return unitCost >= threshold ? 'asset' : 'material';
+  return 'unmapped';
 }
 
 /**
@@ -197,9 +185,7 @@ async function planMaterialization(importId, account) {
 
   const totals = {
     unmapped: 0, ignore: 0, material: 0, asset: 0, assetUnits: 0, sumMapped: 0,
-    // Сколько строк решил словарь, а сколько досталось порогу цены. Это мера
-    // того, насколько словарь заполнен, и она нужна на экране разметки.
-    byDictionary: 0, byThreshold: 0, withCategory: 0,
+    byDictionary: 0, byMapping: 0, withCategory: 0,
     // Размещение: сколько единиц уже разложено по кабинетам и сколько ждёт.
     placedUnits: 0, unplacedUnits: 0, linesWithPlacement: 0,
   };
@@ -213,7 +199,8 @@ async function planMaterialization(importId, account) {
         totals.assetUnits += Math.round(Number(item.line.closingQty) || 0);
       } else totals.material += 1;
 
-      if (item.rule) totals.byDictionary += 1; else totals.byThreshold += 1;
+      if (item.rule && item.mapping?.kind === 'auto') totals.byDictionary += 1;
+      else totals.byMapping += 1;
       if (item.categoryId) totals.withCategory += 1;
       if (item.placements.length) totals.linesWithPlacement += 1;
       totals.placedUnits += item.placedQty;
@@ -504,5 +491,4 @@ module.exports = {
   targetsOf,
   matchesPrefix,
   ROOT_PREFIX,
-  DEFAULT_ASSET_THRESHOLD,
 };

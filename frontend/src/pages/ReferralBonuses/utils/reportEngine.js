@@ -1225,6 +1225,17 @@ export async function buildReport({
       const roleRates = clinicSettings.roleRates || [];
       basePayLabel = 'Почасовой оклад';
 
+      // Смена в графике заводится без роли и категории сплошь и рядом — это просто интервал
+      // времени, оба поля в doctor_schedules nullable. Такие часы попадают в безымянную
+      // корзину, которая ни с одной ставкой по ролям не совпадает, и раньше считались по
+      // общей ставке. А она равна нулю у всех, кому ставки заданы только по ролям: человек
+      // со ста отработанными часами получал ноль, и листок ему вообще не формировался.
+      // Когда ставка по ролям ровно одна, выбирать не из чего — считаем по ней.
+      // При нескольких ставках угадывать нельзя, там остаётся ноль и видимый в листке ноль
+      // ставки, чтобы расчётчик заметил недостающую привязку, а не потерял сотрудника.
+      const _soleRoleRate = roleRates.length === 1 ? (parseFloat(roleRates[0].rate) || 0) : 0;
+      const _fallbackRate = baseRate || _soleRoleRate;
+
       if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
         const { total: schedTotal, days: schedDays, byRole: schedByRole, byCategory: schedByCategory, categoryRoles: schedCategoryRoles } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
         effectiveHoursWorked = schedTotal;
@@ -1234,7 +1245,7 @@ export async function buildReport({
 
         for (const [roleTitle, hours] of Object.entries(schedByRole)) {
           const rr = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
-          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          const rate = rr ? (parseFloat(rr.rate) || _fallbackRate) : _fallbackRate;
           const pay = Math.round(rate * hours);
           basePay += pay;
           hourlyRatesBreakdown.push({ label: roleTitle || 'Без указания', rate, hours, pay });
@@ -1250,7 +1261,7 @@ export async function buildReport({
 
         for (const [categoryId, hours] of Object.entries(schedByCategory)) {
           const rr = roleRates.find(r => r.roleTitle === categoryId);
-          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          const rate = rr ? (parseFloat(rr.rate) || _fallbackRate) : _fallbackRate;
           const pay = Math.round(rate * hours);
           basePay += pay;
           hourlyRatesBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, rate, hours, pay });
@@ -1269,7 +1280,7 @@ export async function buildReport({
         if (hasPerRoleHours) {
           for (const rr of roleRates) {
             const hours = parseFloat(rr.hoursWorked) || 0;
-            const rate  = parseFloat(rr.rate) || baseRate;
+            const rate  = parseFloat(rr.rate) || _fallbackRate;
             const pay = Math.round(rate * hours);
             basePay += pay;
             effectiveHoursWorked += hours;
@@ -1277,10 +1288,10 @@ export async function buildReport({
           }
         } else {
           effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;
-          basePay = baseRate * effectiveHoursWorked;
+          basePay = _fallbackRate * effectiveHoursWorked;
           if (_normHoursForPeriod != null && effectiveHoursWorked > 0 && effectiveHoursWorked >= 2 * _normHoursForPeriod) {
             const premiumHours = effectiveHoursWorked - 2 * _normHoursForPeriod;
-            normPremiumAmount = baseRate * premiumHours;
+            normPremiumAmount = _fallbackRate * premiumHours;
             normPremiumByRole.push({ roleTitle: null, premiumAmount: normPremiumAmount, workedHours: effectiveHoursWorked, norm: _normHoursForPeriod, premiumHours });
           }
         }
@@ -1416,10 +1427,14 @@ export async function buildReport({
       if (pt === 'hourly') {
         const baseRate  = parseFloat(clinicSettings.hourlyRate) || 0;
         const roleRates = clinicSettings.roleRates || [];
+        // Та же подстановка, что и в основном почасовом расчёте: смены без роли и категории
+        // иначе остаются с нулевой ставкой и праздничная надбавка по ним просто теряется.
+        const soleRoleRate = roleRates.length === 1 ? (parseFloat(roleRates[0].rate) || 0) : 0;
+        const fallbackRate = baseRate || soleRoleRate;
         for (const [roleTitle, hours] of Object.entries(hByRole)) {
           if (hours <= 0) continue;
           const rr   = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
-          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          const rate = rr ? (parseFloat(rr.rate) || fallbackRate) : fallbackRate;
           if (rate <= 0) continue;
           const amount = rate * hours;
           holidaySurchargeBreakdown.push({ label: roleTitle || 'Без указания', hours, rate, amount });
@@ -1428,7 +1443,7 @@ export async function buildReport({
         for (const [categoryId, hours] of Object.entries(hByCategory)) {
           if (hours <= 0) continue;
           const rr   = roleRates.find(r => r.roleTitle === categoryId);
-          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          const rate = rr ? (parseFloat(rr.rate) || fallbackRate) : fallbackRate;
           if (rate <= 0) continue;
           const amount = rate * hours;
           holidaySurchargeBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, categoryId, hours, rate, amount });

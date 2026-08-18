@@ -247,7 +247,7 @@ export default function WarehousePlacement({ access, tree, onDone }) {
         </button>
       </div>
 
-      <div className="wh-place__cols">
+      <div className="wh-place__sections">
         <div className="wh-place__queue">
           <div className="wh-subhead"><Package size={15} /> Ещё нигде не лежит</div>
           <div className="wh-assets__filters">
@@ -334,16 +334,13 @@ export default function WarehousePlacement({ access, tree, onDone }) {
               </tbody>
             </table>
           </div>
-          {queue.total > queue.items.length && (
-            <div className="wh-assets__count">
-              Показано {queue.items.length} из {queue.total} — сузьте поиск или ветку
-            </div>
-          )}
         </div>
 
         <div className="wh-place__room-content">
           <div className="wh-subhead">
-            <DoorOpen size={15} /> {inRoom?.room ? `В кабинете ${inRoom.room.number}` : 'Кабинет не выбран'}
+            <DoorOpen size={15} />
+            {inRoom?.room ? `Склад кабинета ${inRoom.room.number}` : 'Склад кабинета'}
+            {inRoom?.items && <span className="wh-count">{inRoom.items.length}</span>}
           </div>
           {!roomId && (
             <div className="wh-empty">

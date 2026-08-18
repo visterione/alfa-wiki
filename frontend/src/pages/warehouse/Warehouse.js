@@ -47,7 +47,7 @@ const TABS = [
   // чужие данные, которые портал показывает как есть. Внутри вкладки отчётов она
   // читалась бы как ещё один наш расчёт — и расхождение с бухгалтерией выглядело
   // бы нашей ошибкой.
-  { key: 'osv',       label: 'Ведомость 1С',     icon: FileSpreadsheet, needsReport: 'RPT-OSV' },
+  { key: 'osv',       label: 'Импорт',           icon: FileSpreadsheet, needsReport: 'RPT-OSV' },
   { key: 'reports',   label: 'Отчёты',           icon: BarChart3 },
   { key: 'scanner',   label: 'Сканер',           icon: ScanLine },
   { key: 'plans',     label: 'Планы помещений',  icon: PencilRuler,   needs: 'canEditPlans' },

@@ -242,7 +242,8 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
 
       {sub === 'dictionary' && <WarehouseItemRules access={access} />}
 
-      <div className="wh-osv__layout" hidden={sub !== 'snapshot'}>
+      {sub === 'snapshot' && (
+        <div className="wh-osv__layout">
         <aside className="wh-osv__side">
           <div className="wh-subhead">Снимки</div>
           {loadingList && <div className="wh-table__loading"><div className="loading-spinner" /></div>}
@@ -417,7 +418,8 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
             </>
           )}
         </section>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
