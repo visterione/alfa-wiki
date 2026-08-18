@@ -1,11 +1,27 @@
-Применение миграции ver. 6.98 (уровень видимости блоков задач):
+Применение миграции ver. 6.98 (уровень видимости блоков задач в календаре).
 
-  psql "$DATABASE_URL" -f "backend/migrations/ver. 6.98 task-block-visibility.sql"
+Из папки backend:
 
-либо, если подключение задано по частям в .env:
+  npm run migrate:task-visibility
 
-  psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "backend/migrations/ver. 6.98 task-block-visibility.sql"
+Только посмотреть состояние, ничего не меняя:
 
-Миграция идемпотентна: повторный запуск не находит строк с уровнем team и
-ничего не меняет. Отката нет и он не нужен — вернуть блоку уровень team можно
-тем же UPDATE с обратным условием, но это снова раскроет названия задач.
+  npm run migrate:task-visibility:check
+
+Почему не psql. Параметры подключения лежат в backend/.env и в шелле их нет:
+"psql -U $DB_USER" подставит пустую строку, уйдёт в локальный сокет под именем
+системного пользователя и ответит «role administrator does not exist».
+Переменной DATABASE_URL в проекте нет вовсе — подключение собирается из
+DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD. Runner читает .env сам, тем же
+кодом, что и приложение.
+
+Если psql всё же нужен (например, миграцию применяет DBA без доступа к node):
+
+  cd backend
+  set -a; . ./.env; set +a
+  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+    -U "$DB_USER" -d "$DB_NAME" -f "migrations/ver. 6.98 task-block-visibility.sql"
+
+Миграция идемпотентна: повторный запуск не находит блоков с уровнем team и
+ничего не меняет. Отката нет намеренно — вернуть уровень team можно тем же
+UPDATE с обратным условием, но это снова раскроет названия задач сокомандникам.

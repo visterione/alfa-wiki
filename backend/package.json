@@ -26,6 +26,8 @@
     "migrate:tasks:check": "node scripts/migrateTasksModule.js --check",
     "migrate:task-codes": "node scripts/migrateTaskCodes.js",
     "migrate:task-codes:check": "node scripts/migrateTaskCodes.js --check",
+    "migrate:task-visibility": "node scripts/migrateTaskBlockVisibility.js",
+    "migrate:task-visibility:check": "node scripts/migrateTaskBlockVisibility.js --check",
     "migrate:task-invites": "node scripts/migrateTaskTeamInvites.js",
     "migrate:task-invites:check": "node scripts/migrateTaskTeamInvites.js --check",
     "migrate:task-schedules": "node scripts/migrateTaskWorkSchedules.js",
