@@ -11,7 +11,11 @@ import {
 import {AuthProvider, useAuth} from './src/store/authStore';
 import {SettingsProvider, useSettings} from './src/store/settingsStore';
 import AppNavigator, {navigationRef} from './src/navigation/AppNavigator';
-import NotificationService, {takePendingChat, takePendingCalendar} from './src/services/notifications';
+import NotificationService, {
+  takePendingChat,
+  takePendingCalendar,
+  takePendingTask,
+} from './src/services/notifications';
 import PushService from './src/services/push';
 import {setForeground} from './src/services/activeChat';
 import {syncCalendarReminders} from './src/services/calendarReminders';
@@ -41,6 +45,19 @@ function AppInner() {
   openCalendarRef.current = () => {
     if (!navigationRef.isReady()) return;
     (navigationRef.navigate as (name: string, params?: object) => void)('CalendarTab');
+  };
+
+  // Тап по уведомлению задачи. Известен id — открываем карточку, нет (например,
+  // задачу отменили, и открывать нечего) — просто раздел.
+  const openTaskRef = useRef<(taskId?: string | null) => void>(() => {});
+  openTaskRef.current = (taskId?: string | null) => {
+    if (!navigationRef.isReady()) return;
+    const navigate = navigationRef.navigate as (name: string, params?: object) => void;
+    if (taskId) {
+      navigate('TasksTab', {screen: 'TaskCard', params: {id: taskId}, initial: false});
+    } else {
+      navigate('TasksTab');
+    }
   };
 
   useEffect(() => {
@@ -73,13 +90,15 @@ function AppInner() {
       });
       // Тап по уведомлению, поднявший приложение из фона
       unsubscribeOpened = onNotificationOpenedApp(messaging, remoteMessage => {
-        const chatId = remoteMessage?.data?.chatId;
-        if (chatId) openChatRef.current(String(chatId));
+        const data = remoteMessage?.data || {};
+        if (data.kind === 'task') openTaskRef.current(data.taskId ? String(data.taskId) : null);
+        else if (data.chatId) openChatRef.current(String(data.chatId));
       });
       // Холодный старт из уведомления
       getInitialNotification(messaging).then(remoteMessage => {
-        const chatId = remoteMessage?.data?.chatId;
-        if (chatId) openChatRef.current(String(chatId));
+        const data = remoteMessage?.data || {};
+        if (data.kind === 'task') openTaskRef.current(data.taskId ? String(data.taskId) : null);
+        else if (data.chatId) openChatRef.current(String(data.chatId));
       });
     }
 
@@ -95,6 +114,8 @@ function AppInner() {
         const chatId = takePendingChat();
         if (chatId) openChatRef.current(chatId);
         if (takePendingCalendar()) openCalendarRef.current();
+        const task = takePendingTask();
+        if (task) openTaskRef.current(task.taskId);
         // Возврат в приложение — хороший момент подтянуть изменения календаря:
         // расписание уведомлений могло устареть, пока приложение было свёрнуто
         syncCalendarReminders();
