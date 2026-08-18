@@ -1,0 +1,11 @@
+Применение миграции ver. 6.98 (уровень видимости блоков задач):
+
+  psql "$DATABASE_URL" -f "backend/migrations/ver. 6.98 task-block-visibility.sql"
+
+либо, если подключение задано по частям в .env:
+
+  psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "backend/migrations/ver. 6.98 task-block-visibility.sql"
+
+Миграция идемпотентна: повторный запуск не находит строк с уровнем team и
+ничего не меняет. Отката нет и он не нужен — вернуть блоку уровень team можно
+тем же UPDATE с обратным условием, но это снова раскроет названия задач.
