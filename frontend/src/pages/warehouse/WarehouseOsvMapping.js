@@ -8,11 +8,9 @@ import { warehouseApi } from '../../services/api';
 /**
  * Разбор ведомости: во что превращается каждая ветка дерева 1С.
  *
- * Экран строится вокруг одного действия — «эта ветка лежит в этом кабинете».
- * Всё остальное портал выводит сам: строку дороже порога делает карточкой с
- * инвентарным номером и QR, дешевле — остатком на полке. Требовать решения по
- * каждой из 2992 строк значило бы не разобрать ведомость никогда, поэтому
- * решение принимается по ветке, а строки его наследуют.
+ * Решение принимается по ветке, а строки его наследуют. Режим «по
+ * словарю» берёт способ учёта из «Словаря предметов». Неизвестные
+ * словарю позиции остаются неразобранными.
  *
  * Наследование показано явно, отдельным значением «наследует» в списке: без
  * него пустой выпадающий список у вложенной ветки читался бы как «не разобрано»,
@@ -24,7 +22,7 @@ import { warehouseApi } from '../../services/api';
  */
 
 const KINDS = [
-  { value: 'auto', label: 'Авто: дорогое — карточкой, дешёвое — остатком' },
+  { value: 'auto', label: 'По словарю предметов' },
   { value: 'asset', label: 'Всё карточками оборудования' },
   { value: 'material', label: 'Всё остатками материалов' },
   { value: 'ignore', label: 'Не учитывать' },
@@ -90,7 +88,6 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
         kind: node.mapping?.kind || 'auto',
         roomId: node.mapping?.roomId || null,
         storageId: node.mapping?.storageId || null,
-        assetThreshold: node.mapping?.assetThreshold ?? null,
         ...patch,
       });
       await load();
@@ -168,7 +165,7 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
       <div className="wh-panel">
         <div className="wh-panel__head">
           <div className="wh-panel__title">
-            Разобрано {mapped} из {total} позиций · {percent}%
+            Способ учёта определён у {mapped} из {total} позиций · {percent}%
           </div>
           <div className="wh-panel__actions">
             <button className="wh-btn wh-btn--ghost wh-btn--sm" onClick={load}>
@@ -198,11 +195,8 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
             <span className="wh-muted">не учитывать: {t.ignore}</span>
             <span className={t.unmapped ? 'wh-warn' : 'wh-ok'}>не разобрано: {t.unmapped}</span>
             <span className="wh-muted">на сумму {money(t.sumMapped)} ₽</span>
-            {/* Сколько решил словарь, а сколько досталось порогу цены. Без этой
-                цифры непонятно, стоит ли идти размечать слова: разбор выглядит
-                одинаково и при пустом словаре, и при заполненном. */}
             <span className="wh-muted">
-              по словарю: {t.byDictionary}, по цене: {t.byThreshold}
+              по словарю: {t.byDictionary}, задано явно: {t.byMapping}
             </span>
           </div>
         </div>
@@ -211,10 +205,9 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
       <div className="wh-note wh-note--subtle">
         <Info size={15} />
         <div>
-          Достаточно выбрать кабинет — остальное портал решит сам: позиция дороже{' '}
-          {money(data.defaultThreshold)} ₽ за единицу станет карточкой с инвентарным номером
-          и QR, дешевле — остатком на полке. Вложенные ветки наследуют выбор родителя,
-          пока им не задан свой.
+          Вложенные ветки наследуют выбор родителя, пока им не задан свой.
+          Режим «По словарю» не угадывает тип: неизвестная словарю позиция
+          останется неразобранной.
         </div>
       </div>
 
@@ -222,13 +215,12 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
         <table className="wh-table wh-table--compact">
           <thead>
             <tr>
-              <th>Ветка ведомости</th>
+              <th>Ветка — правило действует на всё внутри</th>
               <th className="wh-num">Позиций</th>
               <th className="wh-num">Сумма, ₽</th>
-              <th>Кабинет</th>
-              <th>Что это</th>
-              <th className="wh-num">Порог, ₽</th>
-              <th className="wh-num">Разобрано</th>
+              <th>Кабинет, если ещё не размещено</th>
+              <th>Как учитывать</th>
+              <th className="wh-num">Определено</th>
               <th />
             </tr>
           </thead>
@@ -274,20 +266,6 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
                     </select>
                   </td>
                   <td className="wh-num">
-                    {own?.kind === 'auto' && (
-                      <input className="wh-osv-map__threshold" type="number" step="1000"
-                             disabled={!canEdit || busy}
-                             defaultValue={own.assetThreshold ?? data.defaultThreshold}
-                             title="Порог: дороже — карточка, дешевле — остаток"
-                             onBlur={(e) => {
-                               const value = e.target.value === '' ? null : Number(e.target.value);
-                               if (value !== (own.assetThreshold === null ? data.defaultThreshold : Number(own.assetThreshold))) {
-                                 save(node, { assetThreshold: value });
-                               }
-                             }} />
-                    )}
-                  </td>
-                  <td className="wh-num">
                     {node.stats.lines === 0 ? '—' : (
                       <span className={node.stats.unmapped ? 'wh-muted' : 'wh-ok'}>
                         {done} / {node.stats.lines}
@@ -297,7 +275,7 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
                   <td className="wh-num">
                     <button className="wh-btn wh-btn--link wh-btn--sm"
                             onClick={() => setBranchLines({ node })}>
-                      позиции
+                      свои позиции
                     </button>
                   </td>
                 </tr>
@@ -311,7 +289,7 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
 
       {branchLines && (
         <BranchLines node={branchLines.node} importId={data.import.id} account={data.import.account}
-                     canEdit={canEdit} threshold={data.defaultThreshold}
+                     canEdit={canEdit}
                      onClose={() => setBranchLines(null)} onChanged={load} />
       )}
     </div>
@@ -319,16 +297,10 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
 }
 
 /**
- * Позиции одной ветки: что именно стало карточкой, что остатком и почему.
- *
- * Без этого списка разделение выглядит произволом. Разделяет цена за единицу в
- * КОНКРЕТНОЙ строке, а не название товара, — и одна и та же вещь в разных ветках
- * 1С стоит по-разному (это партии: разное время закупки, разная амортизация).
- * Поэтому «Облучатель МЕГИДЕЗ» может быть карточкой за 14 044 ₽ на Астраханской
- * и остатком по 5 162 ₽ в новом корпусе. Пока цены не видно рядом, это выглядит
- * ошибкой программы.
+ * Позиции одной ветки: итог правила ветки и словаря по каждой строке.
+ * Здесь же можно задать исключение для одной конкретной позиции.
  */
-function BranchLines({ node, importId, account, canEdit, threshold, onClose, onChanged }) {
+function BranchLines({ node, importId, account, canEdit, onClose, onChanged }) {
   const [lines, setLines] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
 
@@ -371,11 +343,8 @@ function BranchLines({ node, importId, account, canEdit, threshold, onClose, onC
           <div className="wh-note wh-note--subtle">
             <Info size={15} />
             <div>
-              Сторону выбирает цена за единицу в этой строке, а не название: порог{' '}
-              {money(node.mapping?.assetThreshold ?? threshold)} ₽. Одна и та же вещь в разных
-              ветках 1С числится по разной балансовой стоимости — это партии, — поэтому она
-              может оказаться и карточкой, и остатком. Здесь любую строку можно переставить
-              вручную.
+              Здесь виден итог правила ветки и словаря. Любую отдельную строку
+              можно переопределить вручную.
             </div>
           </div>
           {!lines && <div className="wh-table__loading"><div className="loading-spinner" /></div>}
