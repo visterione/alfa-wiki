@@ -1,0 +1,120 @@
+/**
+ * Уведомление задачи. Геометрия и анимация повторяют ChatNotification.css —
+ * они стоят в одной стопке в углу и не должны выглядеть из разных приложений.
+ * Отличие только в акценте слева: по цветной полосе видно, что это не чат.
+ */
+
+.task-notification {
+  position: relative;
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  display: flex;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 12px;
+  border-left: 3px solid var(--primary, #007AFF);
+  background: var(--bg-primary, #fff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .15), 0 0 0 1px rgba(0, 0, 0, .05);
+  cursor: pointer;
+  pointer-events: all;
+  animation: task-notification-in .3s cubic-bezier(.4, 0, .2, 1);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.task-notification:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .2), 0 0 0 1px rgba(0, 0, 0, .05);
+}
+
+.task-notification.exiting {
+  animation: task-notification-out .3s cubic-bezier(.4, 0, .2, 1) forwards;
+}
+
+@keyframes task-notification-in {
+  from { transform: translateX(calc(100% + 20px)); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes task-notification-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(calc(100% + 20px)); opacity: 0; }
+}
+
+.task-notification-content { flex: 1; min-width: 0; }
+
+.task-notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.task-notification-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary, #1a1a1a);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-notification-body {
+  color: var(--text-secondary, #666);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+/* Код задачи — служебная пометка, как и в самом модуле: мельче и приглушённее. */
+.task-notification-code {
+  margin-top: 4px;
+  color: var(--text-tertiary, #999);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-notification-close {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.task-notification-close:hover { background: var(--bg-secondary, #f5f5f5); color: var(--text-primary, #333); }
+
+/**
+ * Стопка стоит выше чатовой: уведомления чата занимают низ угла и появляются
+ * чаще, а перекрывать уже показанное новое окно не должно. Отступ снизу — как
+ * раз под одну карточку чата, дальше стопки просто растут вверх каждая своя.
+ */
+.task-notifications-container {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 10001;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 12px;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .task-notifications-container { left: 20px; right: 20px; }
+  .task-notification { width: auto; }
+}

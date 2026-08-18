@@ -95,6 +95,9 @@ export function SocketProvider({ children }) {
   const { user } = useAuth();
   const socketRef = useRef(null);
   const [notifications, setNotifications] = useState([]);
+  // Уведомления модуля «Задачи» — отдельной стопкой от чатовых: у них другая
+  // форма (заголовок события вместо отправителя) и другая жизнь (гаснут сами).
+  const [taskNotifications, setTaskNotifications] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   // Счётчик непрочитанных нововведений (Центр обновлений)
   const [releaseUnreadCount, setReleaseUnreadCount] = useState(0);
@@ -349,6 +352,24 @@ export function SocketProvider({ children }) {
       playNotificationSound();
     });
 
+    /**
+     * Событие модуля «Задачи»: поставили задачу, согласовали срок, часть
+     * застряла после третьего переноса.
+     *
+     * Показывается всплывающим окном где угодно в портале, кроме случая, когда
+     * человек и так стоит в модуле: там он видит изменение на самом экране, а
+     * окно поверх него только мешало бы.
+     */
+    socket.on('task:notify', (data) => {
+      window.dispatchEvent(new Event('tasks-badge-changed'));
+      if (window.location.pathname.startsWith('/tasks')) return;
+      setTaskNotifications(prev => [
+        ...prev,
+        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...data },
+      ]);
+      playNotificationSound();
+    });
+
     socket.on('new_message', (data) => {
       console.log('New message received:', data);
 
@@ -400,6 +421,10 @@ export function SocketProvider({ children }) {
     };
   }, [user?.id, startTitleBlink]);
 
+  const removeTaskNotification = useCallback((id) => {
+    setTaskNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
   const removeNotification = (id) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
@@ -422,6 +447,8 @@ export function SocketProvider({ children }) {
     notifications,
     removeNotification,
     clearAllNotifications,
+    taskNotifications,
+    removeTaskNotification,
     userStatuses,
     pendingChatNavigation,
     clearPendingNavigation,

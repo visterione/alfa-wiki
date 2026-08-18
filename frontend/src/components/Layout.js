@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import ChatNotification from './ChatNotification';
+import TaskNotification from './TaskNotification';
 import ReleaseNoteModal from './ReleaseNoteModal';
 import { useSocket } from '../context/SocketContext';
 import { releaseNotes as releaseNotesApi } from '../services/api';
@@ -13,7 +14,8 @@ export default function Layout() {
   const [isMobile, setIsMobile] = useState(false);
   const {
     notifications, removeNotification, pendingChatNavigation, clearPendingNavigation,
-    latestReleaseNote, setLatestReleaseNote, setReleaseUnreadCount
+    latestReleaseNote, setLatestReleaseNote, setReleaseUnreadCount,
+    taskNotifications, removeTaskNotification
   } = useSocket();
   const [importantNotes, setImportantNotes] = useState([]);
   const navigate = useNavigate();
@@ -59,6 +61,13 @@ export default function Layout() {
   const handleNotificationClick = (notification) => {
     removeNotification(notification.id);
     navigate('/', { state: { openChatId: notification.chat?.id } });
+  };
+
+  // Нажатие по уведомлению задачи открывает саму задачу, а не раздел: человек
+  // прочитал «требует решения» — решать он идёт в карточку.
+  const handleTaskNotificationClick = (notification) => {
+    removeTaskNotification(notification.id);
+    navigate(notification.taskId ? `/tasks?task=${notification.taskId}` : '/tasks');
   };
 
   // Handle native desktop notification click (Tauri): window focused → navigate to chat
@@ -126,6 +135,20 @@ export default function Layout() {
               notification={notification}
               onClose={() => removeNotification(notification.id)}
               onClick={() => handleNotificationClick(notification)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Уведомления модуля «Задачи» — своей стопкой над чатовыми */}
+      {taskNotifications.length > 0 && (
+        <div className="task-notifications-container">
+          {taskNotifications.map(notification => (
+            <TaskNotification
+              key={notification.id}
+              notification={notification}
+              onClose={() => removeTaskNotification(notification.id)}
+              onClick={() => handleTaskNotificationClick(notification)}
             />
           ))}
         </div>

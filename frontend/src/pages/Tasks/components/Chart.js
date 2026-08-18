@@ -64,7 +64,7 @@ export default function Chart({ ctx }) {
         label={view === 'week' ? `${dstr(days[0])} — ${dstr(days[6])}` : monthTitle(cursor)}
         onPrevious={() => shift(true)}
         onNext={() => shift(false)}
-        onToday={() => setCursor(today())}
+        onPick={setCursor}
       />
 
       {view === 'week' ? (
@@ -88,8 +88,11 @@ export default function Chart({ ctx }) {
                     <div
                       key={e.id}
                       className={`tsk-chip-ev ${e.isOpaque ? 'is-opaque' : ''} ${e.eventType === 'meeting' ? 'is-meeting' : ''} ${isDone(e) ? 'is-done' : ''}`}
-                      title={e.isOpaque ? 'Занято' : e.title}
+                      title={e.isOpaque ? 'Занято' : [e.taskCode, e.title].filter(Boolean).join(' · ')}
                     >
+                      {/* Код блока задачи первой строкой: в графике планируют
+                          вперёд, и чаще всего дело называют именно кодом. */}
+                      {!e.isOpaque && e.taskCode && <span className="tsk-chip-code">{e.taskCode}</span>}
                       {e.isOpaque ? 'Занято' : e.title}
                     </div>
                   ))}

@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Clock } from 'lucide-react';
 import { tasks as api } from '../../../services/api';
@@ -88,9 +89,14 @@ export default function Board({ ctx }) {
     columnStatus: card.part?.status === 'plan' ? 'work' : card.part?.status || card.task.status,
   }));
 
-  return (
+  /**
+   * Фильтры уезжают в шапку модуля, к названию раздела: на доске и так пять
+   * колонок во всю высоту, и отдельная строка над ними съедала место у карточек.
+   * Пока слот не смонтирован (первый рендер оболочки), фильтры не рисуются
+   * вовсе — мигание пустой строки хуже, чем их появление кадром позже.
+   */
+  const filters = (
     <>
-      <div className="tsk-ctl">
         <CustomSelect
           label="Команда"
           value={teamId}
@@ -109,7 +115,12 @@ export default function Board({ ctx }) {
           onChange={setPersonId}
           options={[{ value: '', label: 'Все сотрудники' }, ...people.map(user => ({ value: user.id, label: shortName(user) }))]}
         />
-      </div>
+    </>
+  );
+
+  return (
+    <>
+      {ctx.headerSlot && createPortal(filters, ctx.headerSlot)}
 
       {loading ? <Empty compact>Загружаем…</Empty> : (
         <div className="tsk-board">

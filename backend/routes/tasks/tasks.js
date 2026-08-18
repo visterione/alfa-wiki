@@ -28,7 +28,7 @@ const planning = require('../../services/tasks/planning');
 const loadQuery = require('../../services/tasks/loadQuery');
 const workload = require('../../services/tasks/workload');
 const scheduleService = require('../../services/tasks/schedule');
-const notificationService = require('../../services/notificationService');
+const taskNotify = require('../../services/tasks/notify');
 
 const USER_FIELDS = ['id', 'displayName', 'username', 'avatar'];
 
@@ -77,18 +77,22 @@ function log(taskId, partId, userId, action, payload = {}, transaction) {
 }
 
 /**
- * Уведомления о задачах идут через уже существующего Альфа-Ассистента.
- * Ошибка чата не должна откатывать выполненное действие с задачей: история и
- * календарь уже являются источником правды, а уведомление можно дочитать при
- * следующем открытии входящих.
+ * Уведомление о событии задачи: всплывающее окно в вебе, push на телефоне.
+ *
+ * Раньше это было сообщение от Альфа-Ассистента в чате — см. services/tasks/
+ * notify.js о том, почему оно перестало быть перепиской. Здесь остался только
+ * сбор текста: заголовок — суть события, тело — кто и что сделал.
  */
-async function notifyUsers(userIds, text, taskId) {
-  const unique = [...new Set((userIds || []).filter(Boolean))];
-  await Promise.allSettled(unique.map(userId => notificationService.sendMessageToUser(
-    userId,
-    taskId ? `${text}\n\n[Открыть задачу →](/tasks?task=${taskId})` : text,
-    { type: 'task', ...(taskId ? { taskId } : {}) }
-  )));
+function notifyUsers(userIds, event) {
+  return taskNotify.notify(userIds, event);
+}
+
+/** «18.08.26» — в уведомлении срок должен читаться без домысливания года. */
+function dateText(value) {
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${String(date.getFullYear()).slice(-2)}`;
 }
 
 function actorName(user) {
@@ -449,11 +453,12 @@ router.post('/', authenticate, async (req, res) => {
 
     const task = await Task.findByPk(created.id, { include: TASK_INCLUDE() });
     const recipients = incoming.flatMap(p => p.assignees).filter(id => id !== req.user.id);
-    await notifyUsers(
-      recipients,
-      `📌 ${actorName(req.user)} поставил вам задачу «${title}»`,
-      created.id
-    );
+    await notifyUsers(recipients, {
+      title: '📌 Новая задача',
+      body: `${actorName(req.user)}: «${title}»`,
+      taskId: created.id,
+      code: created.code,
+    });
     res.status(201).json(shape(task, await depsOf([created.id])));
   } catch (error) {
     console.error('Создание задачи:', error);
@@ -473,12 +478,13 @@ router.delete('/:id', authenticate, async (req, res) => {
       .flatMap(part => (part.assignees || []).map(a => a.userId))
       .filter(id => id !== req.user.id);
     const taskTitle = task.title;
+    const taskCode = task.code;
     await task.destroy();
-    await notifyUsers(
-      recipients,
-      `🗑 ${actorName(req.user)} отменил задачу «${taskTitle}»`,
-      null
-    );
+    await notifyUsers(recipients, {
+      title: '🗑 Задача отменена',
+      body: `${actorName(req.user)}: «${taskTitle}»`,
+      code: taskCode,
+    });
     res.json({ deleted: true });
   } catch (error) {
     console.error('Отмена задачи:', error);
@@ -581,11 +587,12 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
     });
 
     if (part.task.authorId !== req.user.id) {
-      await notifyUsers(
-        [part.task.authorId],
-        `✅ ${actorName(req.user)} поставил в план «${part.title}» на ${date}`,
-        part.taskId
-      );
+      await notifyUsers([part.task.authorId], {
+        title: '✅ Взято в план',
+        body: `${actorName(req.user)} поставил «${part.title}» на ${dateText(date)}`,
+        taskId: part.taskId,
+        code: part.task.code,
+      });
     }
 
     res.json({ planned: true, date, assessment });
@@ -625,11 +632,12 @@ router.post('/parts/:id/propose', authenticate, async (req, res) => {
       }, transaction);
     });
 
-    await notifyUsers(
-      [part.task.authorId],
-      `📅 ${actorName(req.user)} предложил новый срок для «${part.title}»: ${date}`,
-      part.taskId
-    );
+    await notifyUsers([part.task.authorId], {
+      title: '📅 Предложен другой срок',
+      body: `${actorName(req.user)}: «${part.title}» — ${dateText(date)}`,
+      taskId: part.taskId,
+      code: part.task.code,
+    });
 
     res.json({ proposed: true, date });
   } catch (error) {
@@ -649,8 +657,12 @@ router.post('/parts/:id/accept', authenticate, async (req, res) => {
     await log(part.taskId, part.id, req.user.id, 'accepted_date', { date: String(part.dueDate) });
     await notifyUsers(
       (part.assignees || []).map(a => a.userId).filter(id => id !== req.user.id),
-      `✅ ${actorName(req.user)} согласовал срок для «${part.title}»: ${String(part.dueDate)}`,
-      part.taskId
+      {
+        title: '✅ Срок согласован',
+        body: `${actorName(req.user)}: «${part.title}» — ${dateText(part.dueDate)}`,
+        taskId: part.taskId,
+        code: part.task.code,
+      }
     );
     res.json({ accepted: true, date: String(part.dueDate) });
   } catch (error) {
@@ -687,11 +699,12 @@ router.post('/parts/:id/decline', authenticate, async (req, res) => {
       }
     });
 
-    await notifyUsers(
-      [part.task.authorId],
-      `↩️ ${actorName(req.user)} вернул задачу «${part.title}» с пометкой «не моя зона»`,
-      part.taskId
-    );
+    await notifyUsers([part.task.authorId], {
+      title: '↩️ Задача возвращена',
+      body: `${actorName(req.user)}: «${part.title}» — не моя зона`,
+      taskId: part.taskId,
+      code: part.task.code,
+    });
 
     res.json({ declined: true });
   } catch (error) {
@@ -758,11 +771,14 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
     });
 
     if (part.task.authorId !== req.user.id) {
-      await notifyUsers(
-        [part.task.authorId],
-        `📅 ${actorName(req.user)} перенёс «${part.title}» на ${date}${next.requiresDecision ? ' — задача требует решения' : ''}`,
-        part.taskId
-      );
+      await notifyUsers([part.task.authorId], {
+        title: next.requiresDecision ? '⚠️ Требует решения' : '📅 Задача перенесена',
+        body: next.requiresDecision
+          ? `«${part.title}» переносится третий раз — нужно разбить, передоговориться или отменить`
+          : `${actorName(req.user)} перенёс «${part.title}» на ${dateText(date)}`,
+        taskId: part.taskId,
+        code: part.task.code,
+      });
     }
 
     res.json({ moved: true, date, ...next });
@@ -806,11 +822,12 @@ router.post('/parts/:id/extend', authenticate, async (req, res) => {
     });
 
     if (part.task.authorId !== req.user.id) {
-      await notifyUsers(
-        [part.task.authorId],
-        `⏱ ${actorName(req.user)} продлил «${part.title}» на ${hours} ч`,
-        part.taskId
-      );
+      await notifyUsers([part.task.authorId], {
+        title: '⏱ Задача продлена',
+        body: `${actorName(req.user)}: «${part.title}» — плюс ${hours} ч`,
+        taskId: part.taskId,
+        code: part.task.code,
+      });
     }
     res.json({ extended: true, estimateHours, added: hours });
   } catch (error) {
@@ -924,11 +941,12 @@ router.put('/parts/:id/status', authenticate, async (req, res) => {
       part.task.authorId,
       ...(part.assignees || []).map(a => a.userId),
     ].filter(id => id !== req.user.id);
-    await notifyUsers(
-      recipients,
-      `🔄 ${actorName(req.user)} изменил статус «${part.title}»: ${status}`,
-      part.taskId
-    );
+    await notifyUsers(recipients, {
+      title: status === partsService.STATUS.DONE ? '✅ Часть завершена' : '🔄 Статус изменён',
+      body: `${actorName(req.user)}: «${part.title}» — ${partsService.STATUS_LABEL[status] || status}`,
+      taskId: part.taskId,
+      code: part.task.code,
+    });
 
     res.json({ status });
   } catch (error) {

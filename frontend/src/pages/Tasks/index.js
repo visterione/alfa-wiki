@@ -84,6 +84,18 @@ export default function Tasks() {
   const [formState, setFormState] = useState(null);
   const [joinInvite, setJoinInvite] = useState(null);
   const [joinBusy, setJoinBusy] = useState(false);
+  /**
+   * Слот для фильтров экрана в общей шапке.
+   *
+   * Фильтры рисует сам экран — он знает, какие они, — но стоять они должны в
+   * одной строке с названием раздела, над рабочим полотном. Тащить их наверх
+   * пропсами значит описывать в оболочке фильтры каждого экрана; вместо этого
+   * оболочка отдаёт узел, а экран рисует в него порталом.
+   *
+   * Через state, а не ref: узел появляется после первого рендера, и без
+   * перерисовки экран не узнал бы, что портал уже есть куда ставить.
+   */
+  const [headerSlot, setHeaderSlot] = useState(null);
   const navRef = useRef(null);
   const [navIndicator, setNavIndicator] = useState({ top: 0, height: 0, ready: false });
 
@@ -102,6 +114,10 @@ export default function Tasks() {
     try {
       const { data } = await api.getInbox();
       setInboxCount((data.mine || []).length);
+      // Бейдж на кнопке модуля живёт в сайдбаре, вне этой страницы. Без сигнала
+      // он обновится только по своему таймеру, и человек, только что разобравший
+      // входящие, ещё минуту видел бы на кнопке старое число.
+      window.dispatchEvent(new Event('tasks-badge-changed'));
     } catch {
       // Счётчик входящих не критичен: молча оставляем прежний, чтобы одна
       // неудачная выборка не роняла весь экран.
@@ -238,6 +254,7 @@ export default function Tasks() {
     setCursor,
     go,
     selectedTeamId: params.get('team'),
+    headerSlot,
     openTask: setOpenTaskId,
     newTask: (preset = {}) => setFormState(preset),
     refreshInbox,
@@ -245,7 +262,7 @@ export default function Tasks() {
     teamsRevision,
     projectsRevision,
     tasksRevision,
-  }), [user, access, cursor, go, refreshInbox, loadAccess, teamsRevision, projectsRevision, tasksRevision, params]);
+  }), [user, access, cursor, go, refreshInbox, loadAccess, teamsRevision, projectsRevision, tasksRevision, params, headerSlot]);
 
   if (loading) return <div className="tsk"><Spinner /></div>;
 
@@ -255,7 +272,10 @@ export default function Tasks() {
     ? null
     : ['inbox', 'people', 'reports'].includes(screen)
     ? null
-    : ['load', 'teams'].includes(screen) ? 'team' : screen === 'projects' ? 'project' : 'task';
+    // Команды заводят в «Командах». На «Загрузке» кнопка стояла над экраном,
+    // который отвечает на другой вопрос — кто перегружен, — и предлагала
+    // завести ещё одну команду вместо ответа.
+    : screen === 'teams' ? 'team' : screen === 'projects' ? 'project' : 'task';
   return (
     <div className="tsk">
       <div className="tsk-shell">
@@ -288,14 +308,17 @@ export default function Tasks() {
 
         <main className="tsk-main">
           <div className="tsk-top">
-            <div>
-              <div className="tsk-title">{current.label}</div>
+            <div className="tsk-title">{current.label}</div>
+            {/* Фильтры стоят справа, рядом с главной кнопкой: слева читают, где
+                находишься, справа — управляют тем, что видишь. */}
+            <div className="tsk-top-right">
+              <div className="tsk-top-filters" ref={setHeaderSlot} />
+              {headerAction && <button className="tsk-btn is-primary"
+                onClick={() => headerAction === 'team' ? setTeamFormOpen(true)
+                  : headerAction === 'project' ? setProjectFormOpen(true) : setFormState({})}>
+                {headerAction === 'team' ? 'Создать команду' : headerAction === 'project' ? 'Создать проект' : 'Новая задача'}
+              </button>}
             </div>
-            {headerAction && <button className="tsk-btn is-primary"
-              onClick={() => headerAction === 'team' ? setTeamFormOpen(true)
-                : headerAction === 'project' ? setProjectFormOpen(true) : setFormState({})}>
-              {headerAction === 'team' ? 'Создать команду' : headerAction === 'project' ? 'Создать проект' : 'Новая задача'}
-            </button>}
           </div>
 
           <div className="tsk-content">

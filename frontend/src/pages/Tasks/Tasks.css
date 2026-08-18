@@ -363,11 +363,26 @@
    семи невысоких карточек оставляла под собой пустой экран, хотя именно в них
    и складывается день. minmax, а не 1fr: на низком окне день не должен стать
    ниже своих 190 px. */
+/**
+ * Неделя — флексы, а не сетка, и ровно из-за анимации.
+ *
+ * День под курсором раздвигает соседей: семь колонок на всю ширину — это по
+ * ~150 px на день, и названия дел в них читаются по слогам. Увеличивать масштаб
+ * бессмысленно (то же самое, только крупнее) — колонка забирает место у соседей,
+ * и строка помещается целиком.
+ *
+ * Сетка это умела, но переключалась скачком: grid-template-columns браузер не
+ * интерполирует — замер по кадрам показал ноль промежуточных значений при любой
+ * длительности перехода. Доля флекс-элемента — обычное число, и оно
+ * анимируется как ширина: те же четырнадцать кадров на переход.
+ *
+ * Бонусом ушёл :has: сжатие соседей вешается на наведение самой недели, а рост
+ * активного — на него самого, так что работает и в браузерах постарше.
+ */
 .tsk-content > .tsk-week { flex: 1; min-height: 0; }
 .tsk-week {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-template-rows: minmax(190px, 1fr);
+  display: flex;
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -382,6 +397,13 @@
   cursor: pointer;
   transition: border-color var(--transition-fast);
 }
+/* Доли недели: обычная — 1, сжатая — .85, раскрытая — 1.9. Сжатие соседей
+   включается наведением на всю неделю, поэтому в момент перехода от дня к дню
+   они не успевают дёрнуться обратно к единице. */
+.tsk-week > .tsk-day { flex: 1 1 0; }
+.tsk-week:hover > .tsk-day { flex-grow: .85; }
+.tsk-week > .tsk-day:hover { flex-grow: 1.9; }
+
 .tsk-day:hover { border-color: var(--primary); }
 .tsk-day.is-weekend { background: var(--bg-secondary); }
 .tsk-day.is-today { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
@@ -405,6 +427,18 @@
    бы половину за край. Там название по-прежнему обрезается, а целиком видно во
    всплывающей подсказке. */
 .tsk-month .tsk-chip-ev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Код над названием дела: в неделе — отдельной строкой, в месяце его нет
+   вовсе, там клетка не выдержит второй строки. */
+.tsk-chip-code {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+.tsk-month .tsk-chip-code { display: none; }
 
 .tsk-chip-ev.is-opaque { border-left-color: var(--text-tertiary); color: var(--text-secondary); font-style: italic; }
 .tsk-chip-ev.is-meeting { border-left-color: var(--secondary); }
@@ -500,14 +534,23 @@
   color: color-mix(in srgb, var(--col) 62%, #16233a);
   margin-bottom: 10px;
 }
+/* Счётчик строго квадратный при любом числе: ряд из пяти колонок читается как
+   ряд, только пока их метки одинаковой формы. Поэтому фиксированный размер, а не
+   padding — от него «1» и «12» разъезжались по ширине. */
 .tsk-col-head > span:last-child {
   flex: none;
-  min-width: 21px;
-  padding: 1px 7px;
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--col) 15%, transparent);
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 6px;
+  /* Белая плашка, цвет цифры прежний: на подложке колонки заливка того же
+     оттенка сливалась с ней, и счётчик читался хуже названия. */
+  background: var(--bg-primary);
+  font-size: 10.5px;
   font-variant-numeric: tabular-nums;
-  text-align: center;
 }
 
 /* Карточки прокручиваются внутри колонки, а шапка со счётчиком остаётся на
@@ -594,7 +637,9 @@
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .tsk-team:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); }
-.tsk-team.is-hidden { border-style: dashed; }
+/* Пунктира у скрытой команды больше нет: закрыты все команды модуля без
+   исключения (CHECK task_teams_always_hidden, миграция 6.78), так что рамка
+   отличала карточку ровно ни от чего. */
 .tsk-team-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
 .tsk-team-name { min-width: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .tsk-team-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
@@ -836,6 +881,57 @@
 .tsk-card-scheme-deps > b { padding: 3px 7px; border-radius: 7px; background: var(--bg-secondary); color: var(--text-secondary); font-size: 10.5px; font-weight: 500; }
 
 /* История — цветовая шкала событий, а не неоформленная строка текста. */
+/* Вкладки карточки задачи — по образцу rb-wizard-nav из зарплатного модуля:
+   подложка активной вкладки переезжает, а не перерисовывается. */
+.tsk-card-tabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 20px 14px;
+  padding: 5px;
+  border: 1px solid var(--border-light);
+  border-radius: 13px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.tsk-card-tabs-slider {
+  position: absolute;
+  top: 5px;
+  height: calc(100% - 10px);
+  border-radius: 9px;
+  background: var(--primary);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--primary) 26%, transparent);
+  pointer-events: none;
+  z-index: 0;
+  transition-property: left, width;
+  transition-duration: var(--slide, .3s);
+  transition-timing-function: cubic-bezier(.34, 1.3, .64, 1);
+}
+.tsk-card-tab {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 200ms ease;
+}
+.tsk-card-tab svg { flex: none; }
+.tsk-card-tab:hover:not(.is-on) { color: var(--text-primary); }
+.tsk-card-tab.is-on { color: #fff; font-weight: 600; }
+
 .tsk-card-history { display: grid; }
 .tsk-card-history-row {
   --history-color: var(--info);
@@ -1039,6 +1135,24 @@
 .tsk-scheme-meta, .tsk-scheme-deps { margin-top: 5px; color: var(--text-secondary); font-size: 11.5px; line-height: 1.45; }
 .tsk-scheme-deps { color: var(--primary); }
 .tsk-scheme-arrow { align-self: center; color: var(--text-tertiary); font-size: 18px; }
+/* Ряд выбора под кнопками части: «завершить или на проверку», «на сколько
+   продлить». Отдельной строкой, а не выпадающим меню: вариантов мало, они
+   короткие, и лишний слой поверх модалки ради двух слов не нужен. */
+.tsk-choice {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, var(--border-light) 80%, transparent);
+}
+.tsk-choice-title { margin-right: 3px; color: var(--text-tertiary); font-size: 12px; }
+
+/* Иконка статуса части — по центру своей ячейки, без собственной высоты строки,
+   иначе она приподнимает заголовок. */
+.tsk-part-status { flex: none; display: inline-flex; line-height: 0; }
+
 .tsk-move { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-light); }
 .tsk-move .tsk-input { width: auto; }
 .tsk-invite-create {
@@ -1169,6 +1283,22 @@
 .tsk-stat-value { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
 .tsk-stat-label { font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; }
 
+/**
+ * Отчёт распределяется по высоте, когда данных мало.
+ *
+ * У пятерых сотрудников и одной команды содержимое занимало верхнюю треть, а
+ * ниже оставался пустой экран. Секции делят остаток высоты между собой, а
+ * строки внутри расходятся по своей секции — но только пока есть куда:
+ * space-evenly при переполнении не действует, и на большой команде список
+ * снова собирается плотно, с обычным зазором.
+ */
+.tsk-content > .tsk-report { flex: 1; min-height: 0; }
+.tsk-report { display: flex; flex-direction: column; gap: 20px; }
+.tsk-report-block { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.tsk-report-block .tsk-bars { flex: 1 1 auto; justify-content: space-evenly; }
+/* Плитки со сводкой отступ снизу уже не задают — расстояние держит gap. */
+.tsk-report .tsk-stats { margin-bottom: 0; }
+
 .tsk-bars { display: flex; flex-direction: column; gap: 10px; }
 /* Имя занимает больше места, чем раньше, и шкала на столько же короче: в списке
    читают, у кого сколько осталось, а обрезанное на отчестве имя не отвечает
@@ -1257,6 +1387,21 @@
   border-bottom: 1px solid color-mix(in srgb, var(--border-light) 72%, transparent);
   background: linear-gradient(180deg, rgba(255,255,255,.1), transparent);
 }
+
+/* Правая половина шапки: фильтры экрана и главная кнопка. Фильтры приезжают
+   сюда порталом из самого экрана (см. headerSlot в index.js), поэтому их набор
+   меняется вместе с разделом, а место под них одно и то же. */
+.tsk-top-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.tsk-top-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Пустой слот не должен занимать место и растягивать шапку. */
+.tsk-top-filters:empty { display: none; }
 
 .tsk-title {
   font-size: 22px;
@@ -1388,6 +1533,16 @@
 .tsk-inbox-card {
   transition: transform 240ms cubic-bezier(.22,1,.36,1), border-color 200ms ease, box-shadow 240ms ease;
 }
+/* Раскрытие дня недели живёт здесь же, иначе правило выше затрёт переход доли:
+   у него та же специфичность, но оно ниже по файлу. Кривая длиннее и мягче
+   остальных — это единственное движение в модуле, за которым следят глазами. */
+.tsk-week > .tsk-day {
+  transition:
+    flex-grow 420ms cubic-bezier(.32, .72, 0, 1),
+    transform 240ms cubic-bezier(.22,1,.36,1),
+    border-color 200ms ease,
+    box-shadow 240ms ease;
+}
 .tsk-day:hover,
 .tsk-team:hover,
 .tsk-tcard:hover,
@@ -1487,6 +1642,109 @@
   white-space: nowrap;
 }
 
+/* Дата в середине — кнопка выбора дня. Выглядит она подписью, пока на неё не
+   навели: панель периода не должна выглядеть рядом из трёх кнопок. */
+.tsk-period-picker { position: relative; display: flex; }
+.tsk-period-label.is-pick {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 580;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+.tsk-period-label.is-pick:hover,
+.tsk-period-label.is-pick.is-open { background: var(--bg-secondary); }
+
+/**
+ * Центрируется вычислением от собственной ширины, а не translateX(-50%).
+ *
+ * Общая анимация появления задаёт свой transform и на время проигрывания
+ * затирала сдвиг: окно возникало правее на половину ширины и прыгало на место,
+ * когда анимация заканчивалась. Автополя (left:0; right:0; margin:0 auto) тут
+ * тоже не годятся — окно шире кнопки, под которой висит, а отрицательные
+ * автополя браузер обнуляет, и оно прижималось к левому краю.
+ */
+.tsk-period-pop {
+  --pop-width: 262px;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: calc(50% - var(--pop-width) / 2);
+  z-index: 40;
+  width: var(--pop-width);
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-primary);
+  box-shadow: 0 18px 44px rgba(20, 28, 44, .16);
+  animation: tsk-popover-in 160ms ease;
+}
+.tsk-period-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+.tsk-period-pop-head b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.tsk-period-pop-head button {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.tsk-period-pop-head button:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+.tsk-period-months {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  padding-bottom: 9px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid var(--border-light);
+}
+.tsk-period-months button {
+  padding: 5px 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.tsk-period-months button:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.tsk-period-months button.is-on { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+
+.tsk-period-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.tsk-period-dow {
+  padding-bottom: 3px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  text-align: center;
+}
+.tsk-period-days button {
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.tsk-period-days button:hover { background: var(--primary-light); color: var(--primary); }
+/* Сегодня выделено кольцом, а не заливкой: это ориентир, а не выбор. Отдельной
+   кнопки «Сегодня» в панели больше нет — её роль играет эта отметка. */
+.tsk-period-days button.is-today { box-shadow: inset 0 0 0 1.5px var(--primary); color: var(--primary); font-weight: 600; }
+
 .tsk-period-actions { justify-self: end; gap: 6px; }
 .tsk-period-actions button {
   padding: 7px 11px;
@@ -1577,14 +1835,6 @@
 .tsk-custom-select-menu button:hover { background: var(--bg-secondary); }
 .tsk-custom-select-menu button.is-selected { color: var(--primary); background: var(--primary-light); }
 
-.tsk-list-toolbar {
-  position: relative;
-  z-index: 40;
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  margin-bottom: 18px;
-}
 
 .tsk-task-table-wrap {
   width: 100%;
@@ -1627,10 +1877,15 @@
 
 /* ── Таблица списка задач ──────────────────────────────────────────────── */
 
-/* Заголовки по центру. Тело осталось по левому краю — там читают названия, — а
-   статус центрируется вместе со своим заголовком: одна иконка в широкой ячейке
-   иначе висела бы у самого края. */
+/* Заголовки по центру, и тело — вслед за ними. По левому краю остаётся только
+   первый столбец: там читают названия задач, и рваный левый край списка мешал
+   бы сильнее, чем несовпадение с собственным заголовком. Остальные четыре —
+   короткие значения, и прижатые влево под центрированной шапкой они выглядели
+   съехавшими. */
 .tsk-task-table-wrap .tsk-table th { text-align: center; }
+.tsk-task-table-wrap .tsk-table th:first-child,
+.tsk-task-table-wrap .tsk-table td:first-child { text-align: left; }
+.tsk-task-table-wrap .tsk-table td { text-align: center; }
 .tsk-task-status { text-align: center; line-height: 0; }
 .tsk-task-project { margin-top: 3px; font-size: 11.5px; color: var(--text-tertiary); }
 
@@ -1664,7 +1919,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tsk-side::after { animation: none; display: none; }
-  .tsk-nav::before, .tsk-btn, .tsk-day, .tsk-team, .tsk-tcard { transition-duration: 1ms; }
+  /* .tsk-week > .tsk-day перечислен отдельно: у правила с раскрытием дня
+     специфичность выше, и без этого оно продолжало бы анимировать. */
+  .tsk-nav::before, .tsk-btn, .tsk-day, .tsk-team, .tsk-tcard,
+  .tsk-week > .tsk-day { transition-duration: 1ms; }
   .tsk-custom-select-menu { animation: none; }
 }
 
@@ -1698,12 +1956,16 @@
      растянутые на пол-экрана пустые колонки здесь только мешают. */
   .tsk-board { grid-template-columns: 1fr; grid-auto-rows: auto; min-height: 0; }
   .tsk-col-body { overflow-y: visible; }
-  .tsk-week { grid-template-rows: none; }
+  /* На телефоне неделя разворачивается лентой, и раздвигать в ней нечего:
+     касание — это не наведение, а «раскрытый» день просто застревал бы
+     раскрытым после тапа. */
+  .tsk-week { flex-direction: column; }
+  .tsk-week:hover > .tsk-day,
+  .tsk-week > .tsk-day:hover { flex-grow: 1; }
   .tsk-month { grid-auto-rows: minmax(62px, auto); }
   .tsk-inbox-split { grid-template-rows: none; gap: 10px; }
   .tsk-inbox-pane-body { overflow-y: visible; padding-right: 0; }
   .tsk-inbox-pane-body > .tsk-empty:only-child { height: auto; }
-  .tsk-list-toolbar { align-items: stretch; }
   .tsk-custom-select.is-wide { min-width: 0; flex: 1; }
   .tsk-nav-group { display: none; }
   .tsk-week { grid-template-columns: 1fr; }
@@ -1740,7 +2002,11 @@
 .tsk-day-off { font-size: 13px; }
 
 /* Справочник проектов. */
+/* align-self обязателен: .tsk-content — флекс-колонка, и её элементы по
+   умолчанию растягиваются на всю ширину. inline-flex этому не мешает — правило
+   растяжения смотрит на выравнивание, а не на тип отображения. */
 .tsk-project-switch {
+  align-self: flex-start;
   display: inline-flex;
   gap: 3px;
   padding: 3px;

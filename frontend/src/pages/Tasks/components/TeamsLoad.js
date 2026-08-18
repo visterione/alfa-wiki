@@ -12,9 +12,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, dshort, hoursText, fromKey, today, scheduleWeeklyHours } from '../utils/dates';
-import { Eye, EyeOff, User } from 'lucide-react';
-import { userName, loadColor } from '../utils/labels';
+import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, dshort, hoursText, fromKey, scheduleWeeklyHours } from '../utils/dates';
+import { User } from 'lucide-react';
+import { userName, shortName, loadColor } from '../utils/labels';
 import { LoadBar, Avatar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 
@@ -43,7 +43,7 @@ export default function TeamsLoad({ ctx }) {
       label={view === 'week' ? `${dstr(days[0])} — ${dstr(days[days.length - 1])}` : monthTitle(cursor)}
       onPrevious={() => shift(true)}
       onNext={() => shift(false)}
-      onToday={() => setCursor(today())}
+      onPick={setCursor}
     />
   );
 
@@ -110,21 +110,17 @@ function TeamCards({ start, end, controls, onOpen, ctx }) {
             return (
               <div
                 key={team.id}
-                className={`tsk-team ${team.isHidden ? 'is-hidden' : ''}`}
+                className="tsk-team"
                 onClick={() => team.canSeeLoad && onOpen(team.id)}
               >
                 {/* В шапке — только имя и число людей. Уровень доступа никого
                     не интересует на экране про загрузку (он настраивается в
-                    «Командах»), а «Открыть →» дублировал клик по самой
-                    карточке. Скрытость команды показывает перечёркнутый глаз:
-                    подпись «скрытая» кричала громче названия. */}
+                    «Командах»), а «Открыть →» дублировал клик по карточке.
+                    Пометки о скрытости здесь тоже нет: закрыты все команды
+                    модуля без исключения, и значок отличал бы карточку ни от
+                    чего. */}
                 <div className="tsk-team-head">
-                  <div className="tsk-team-name">
-                    {team.name}
-                    <span className="tsk-team-eye" title={team.isHidden ? 'Скрытая команда' : 'Видна по правилам доступа'}>
-                      {team.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </span>
-                  </div>
+                  <div className="tsk-team-name">{team.name}</div>
                   <span className="tsk-team-people" title="человек в команде">
                     <User size={13} strokeWidth={2} />
                     {team.members?.length || 0}
@@ -201,10 +197,10 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
             {data.rows.map(row => (
               <tr key={row.userId} className={selected === row.userId ? 'is-sel' : ''}>
                 <td>
-                  <div className="tsk-person" onClick={() => setSelected(row.userId)}>
+                  <div className="tsk-person" onClick={() => setSelected(row.userId)} title={userName(row.user)}>
                     <Avatar user={row.user} />
                     <div>
-                      <div className="tsk-person-name">{userName(row.user)}</div>
+                      <div className="tsk-person-name">{shortName(row.user)}</div>
                       <div className="tsk-person-sub">
                         неделя {row.user?.taskWorkSchedule
                           ? hoursText(scheduleWeeklyHours(row.user.taskWorkSchedule))
@@ -255,7 +251,7 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
         <div style={{ marginTop: 16 }}>
           <button className="tsk-btn is-primary"
             onClick={() => ctx.newTask({ assignee: selected })}>
-            Поставить задачу: {userName(byUser.get(selected)?.user)}
+            Поставить задачу: {shortName(byUser.get(selected)?.user)}
           </button>
         </div>
       )}

@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -371,6 +371,7 @@ function QuickAccessButtons({ onClose }) {
   const { user, isAdmin } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [assignedReviewsCount, setAssignedReviewsCount] = useState(0);
+  const [tasksCount, setTasksCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
   const canAccessSalary = isAdmin || user?.canAccessSalary === true;
   // Складской учёт закрыт тем же гранулярным флагом, что «Отзывы»: раздел
@@ -415,6 +416,35 @@ function QuickAccessButtons({ onClose }) {
       console.error('Failed to load assigned reviews count:', error);
     }
   };
+
+  /**
+   * Бейдж «Задач» — то, что ждёт решения самого человека: неразобранные
+   * входящие плюс части, застрявшие после трёх переносов. Не число активных
+   * задач: оно никогда не падает до нуля, и такой бейдж через неделю
+   * перестают замечать.
+   *
+   * Обновляется по событию из модуля и по сокету, а раз в минуту — на случай,
+   * если задачу поставили, пока вкладка была закрыта (сокет доставит только
+   * то, что случилось при живом соединении).
+   */
+  useEffect(() => {
+    if (!canAccessTasks) return undefined;
+    const load = async () => {
+      try {
+        const { data } = await tasksApi.getBadge();
+        setTasksCount(data.count || 0);
+      } catch {
+        // Молча: бейдж не тот повод, чтобы шуметь на каждой странице портала.
+      }
+    };
+    load();
+    const interval = setInterval(load, 60000);
+    window.addEventListener('tasks-badge-changed', load);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('tasks-badge-changed', load);
+    };
+  }, [canAccessTasks]);
 
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
@@ -535,6 +565,11 @@ function QuickAccessButtons({ onClose }) {
       >
         <ListTodo size={20} />
         {!canAccessTasks && <Lock size={10} className="quick-access-lock" />}
+        {canAccessTasks && tasksCount > 0 && (
+          <span className="quick-access-badge">
+            {tasksCount > 99 ? '99+' : tasksCount}
+          </span>
+        )}
       </button>
     </div>
   );

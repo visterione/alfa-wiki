@@ -14,7 +14,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { weekOf, monthDays, addDays, addMonths, dstr, monthTitle, hoursText, today } from '../utils/dates';
+import { weekOf, monthDays, addDays, addMonths, dstr, monthTitle, hoursText } from '../utils/dates';
 import { userName, shortName, loadColor } from '../utils/labels';
 import { Avatar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
@@ -63,9 +63,13 @@ export default function Reports({ ctx }) {
         label={view === 'week' ? `${dstr(start)} — ${dstr(end)}` : monthTitle(cursor)}
         onPrevious={() => shift(true)}
         onNext={() => shift(false)}
-        onToday={() => setCursor(today())}
+        onPick={setCursor}
       />
 
+      {/* Полотно отчёта тянется на всю высоту, а секции внутри делят остаток.
+          Когда людей и команд мало, экран не заканчивается на середине; когда
+          их много — распределять нечего, и всё собирается плотно, как раньше. */}
+      <div className="tsk-report">
       <div className="tsk-stats">
         <div className="tsk-stat">
           <div className="tsk-stat-value">{data.unprocessed}</div>
@@ -89,6 +93,7 @@ export default function Reports({ ctx }) {
         </div>
       </div>
 
+      <div className="tsk-report-block">
       <div className="tsk-sect">Свободное время за период</div>
       <div className="tsk-bars">
         {data.freeByPerson.map(row => (
@@ -110,9 +115,10 @@ export default function Reports({ ctx }) {
           </div>
         ))}
       </div>
+      </div>
 
       {!!data.byTeam.length && (
-        <>
+        <div className="tsk-report-block">
           <div className="tsk-sect">По командам</div>
           <div className="tsk-bars">
             {data.byTeam.map(team => (
@@ -131,8 +137,9 @@ export default function Reports({ ctx }) {
               </div>
             ))}
           </div>
-        </>
+        </div>
       )}
+      </div>
 
       <Note>
         Чего здесь нет намеренно: {data.deliberatelyAbsent.join(', ')}. Загрузка —

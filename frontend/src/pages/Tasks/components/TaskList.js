@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
 import { STATUS_LABEL, STATUS_ICON, STATUS_COLOR, MODE_LABEL } from '../utils/labels';
@@ -47,17 +48,21 @@ export default function TaskList({ ctx }) {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // Фильтр стоит в шапке модуля рядом с названием раздела — там же, где фильтры
+  // доски. Свою строку над таблицей он занимал целиком ради одного поля.
+  const filters = (
+    <CustomSelect
+      label="Показывать"
+      value={filter}
+      onChange={setFilter}
+      options={FILTERS.map(([value, label]) => ({ value, label }))}
+      className="is-wide"
+    />
+  );
+
   return (
     <>
-      <div className="tsk-list-toolbar">
-        <CustomSelect
-          label="Показывать"
-          value={filter}
-          onChange={setFilter}
-          options={FILTERS.map(([value, label]) => ({ value, label }))}
-          className="is-wide"
-        />
-      </div>
+      {ctx.headerSlot && createPortal(filters, ctx.headerSlot)}
 
       {loading ? <Empty compact>Загружаем…</Empty>
         : !list.length ? <Empty>В этом фильтре пусто.</Empty> : (
@@ -99,7 +104,9 @@ export default function TaskList({ ctx }) {
                       )}
                     </td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {/* Ячейка центрирована, но её содержимое — своя флекс-строка,
+                          и собрать её к середине надо отдельно. */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                         <AvatarStack users={users} size={20} />
                         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{users.length}</span>
                       </div>

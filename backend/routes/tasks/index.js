@@ -53,6 +53,48 @@ router.get('/access', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * Счётчик для бейджа на кнопке модуля.
+ *
+ * Считаются только те части, где ход за самим человеком: не разобранные
+ * входящие и застрявшие после трёх переносов. Числа активных задач здесь
+ * намеренно нет — оно никогда не опускается до нуля, а бейдж, который горит
+ * всегда, перестают замечать через неделю. Ноль на кнопке должен означать
+ * «сейчас от тебя ничего не ждут», иначе он ничего не означает.
+ *
+ * Запрос лёгкий: только count, без выборки самих частей и без расчёта загрузки,
+ * которым занимаются «Входящие». Его дёргает сайдбар на каждой странице
+ * портала, в том числе у людей, которые в модуль не заходят.
+ */
+router.get('/badge', authenticate, async (req, res) => {
+  try {
+    const { TaskPart, TaskPartAssignee } = require('../../models');
+    const partsService = require('../../services/tasks/parts');
+
+    const [inbox, stuck] = await Promise.all([
+      TaskPartAssignee.count({
+        where: { userId: req.user.id, plannedDate: null, declinedAt: null },
+        include: [{ model: TaskPart, as: 'part', required: true }],
+      }),
+      TaskPartAssignee.count({
+        where: { userId: req.user.id, declinedAt: null },
+        include: [{
+          model: TaskPart,
+          as: 'part',
+          required: true,
+          where: { status: partsService.STATUS.STUCK },
+        }],
+      }),
+    ]);
+
+    res.json({ count: inbox + stuck, inbox, stuck });
+  } catch (error) {
+    console.error('Счётчик задач:', error);
+    // Бейдж не стоит того, чтобы страница отдавала ошибку: показываем ноль.
+    res.json({ count: 0, inbox: 0, stuck: 0 });
+  }
+});
+
 router.use('/projects', require('./projects'));
 router.use('/teams', require('./teams'));
 router.use('/people', require('./people'));

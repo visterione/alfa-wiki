@@ -9,7 +9,7 @@ const visibility = require('../services/tasks/visibility');
 const taskContext = require('../services/tasks/context');
 
 // Импортируем модели безопасно
-let CalendarEvent, User, Accreditation, Vehicle, Page;
+let CalendarEvent, User, Accreditation, Vehicle, Page, Task, TaskPart;
 try {
   const models = require('../models');
   CalendarEvent = models.CalendarEvent;
@@ -17,8 +17,65 @@ try {
   Accreditation = models.Accreditation;
   Vehicle = models.Vehicle;
   Page = models.Page;
+  Task = models.Task;
+  TaskPart = models.TaskPart;
 } catch (error) {
   console.error('Failed to import models:', error);
+}
+
+/**
+ * Подписывает блоки задач их кодом (РЕМ-42, у части — РЕМ-42/2).
+ *
+ * Код лежит в задаче, а событие календаря знает только про часть, поэтому его
+ * приходится добирать отдельным запросом — но только для тех событий, у которых
+ * есть taskPartId. В обычном дне таких единицы, и лишнего запроса при пустом
+ * списке не будет.
+ *
+ * Номер части считается по её месту в задаче, поэтому тянутся все части
+ * затронутых задач, а не только запланированные.
+ */
+async function withTaskCodes(events) {
+  if (!Task || !TaskPart) return events;
+  const partIds = [...new Set(events.map(e => e.taskPartId).filter(Boolean))];
+  if (!partIds.length) return events;
+
+  const parts = await TaskPart.findAll({
+    where: { id: partIds },
+    attributes: ['id', 'taskId'],
+    raw: true,
+  });
+  const taskIds = [...new Set(parts.map(p => p.taskId))];
+  const [siblings, tasks] = await Promise.all([
+    TaskPart.findAll({
+      where: { taskId: taskIds },
+      attributes: ['id', 'taskId', 'sortOrder'],
+      order: [['sortOrder', 'ASC']],
+      raw: true,
+    }),
+    Task.findAll({ where: { id: taskIds }, attributes: ['id', 'code'], raw: true }),
+  ]);
+
+  const codeByTask = new Map(tasks.map(t => [t.id, t.code]));
+  const indexByPart = new Map();
+  const countByTask = new Map();
+  for (const part of siblings) {
+    const seen = countByTask.get(part.taskId) || 0;
+    indexByPart.set(part.id, seen);
+    countByTask.set(part.taskId, seen + 1);
+  }
+  const taskByPart = new Map(parts.map(p => [p.id, p.taskId]));
+
+  return events.map(event => {
+    if (!event.taskPartId) return event;
+    const taskId = taskByPart.get(event.taskPartId);
+    const code = codeByTask.get(taskId);
+    if (!code) return event;
+    const plain = typeof event.toJSON === 'function' ? event.toJSON() : { ...event };
+    plain.taskCode = countByTask.get(taskId) > 1
+      ? `${code}/${indexByPart.get(event.taskPartId) + 1}`
+      : code;
+    return plain;
+  });
 }
 
 const router = express.Router();
@@ -338,7 +395,7 @@ router.get('/events', authenticate, async (req, res) => {
       allEvents = allEvents.filter(e => !e.isRecurring || e.isInstance);
     }
 
-    res.json(allEvents);
+    res.json(await withTaskCodes(allEvents));
   } catch (error) {
     console.error('Get events error:', error);
     res.status(500).json({ error: 'Failed to fetch events', details: error.message });

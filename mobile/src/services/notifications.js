@@ -26,6 +26,19 @@ export function takePendingChat() {
   return id;
 }
 
+// Тап по уведомлению задачи: открываем саму задачу, если её id известен, иначе
+// раздел целиком. Как и с чатом, цель может появиться раньше навигатора.
+let pendingTaskId = null;
+let pendingTasks = false;
+
+export function takePendingTask() {
+  const id = pendingTaskId;
+  const any = pendingTasks;
+  pendingTaskId = null;
+  pendingTasks = false;
+  return any || id ? {taskId: id} : null;
+}
+
 // То же самое для напоминаний календаря: тап открывает вкладку календаря.
 // Экран конкретного события не открываем — событие могли уже удалить или
 // изменить, а календарь на нужную дату покажет актуальное положение дел.
@@ -118,6 +131,40 @@ async function displayMessage({chatId, chatName, senderName, senderAvatar, body,
   }
 }
 
+/**
+ * Показать уведомление модуля «Задачи».
+ *
+ * Стиль обычный, а не MESSAGING: это не переписка, автора-собеседника у события
+ * нет, и собирать такие уведомления в диалог нечего. Канал и звук те же, что у
+ * сообщений — заводить отдельный ради пары событий в день значит заставить
+ * человека настраивать два списка вместо одного.
+ */
+async function displayTask({title, body, taskId, code}) {
+  const {notificationSound} = await readSettings();
+  const sound = soundOption(notificationSound);
+
+  try {
+    await notifee.displayNotification({
+      title: title || 'Задачи',
+      body: [code, stripFormatting(body || '')].filter(Boolean).join(' · '),
+      android: {
+        channelId: sound.channelId,
+        groupId: 'tasks',
+        pressAction: {id: 'open_task', launchActivity: 'default'},
+        smallIcon: 'ic_notification',
+        color: '#2563EB',
+      },
+      ios: {
+        sound: sound.iosSound,
+        threadId: 'tasks',
+      },
+      data: {taskId: taskId ? String(taskId) : '', kind: 'task'},
+    });
+  } catch (e) {
+    console.warn('[Notifications] displayTask error:', e);
+  }
+}
+
 const NotificationService = {
   /**
    * Создаёт канал под конкретный звук. Идемпотентно: повторный вызов с тем же
@@ -185,6 +232,7 @@ const NotificationService = {
   },
 
   displayMessage,
+  displayTask,
 
   /**
    * Обработка входящего FCM-сообщения. Используется и в foreground, и в фоне.
@@ -192,6 +240,17 @@ const NotificationService = {
    */
   async handleRemoteMessage(remoteMessage) {
     const data = remoteMessage?.data || {};
+
+    if (data.kind === 'task') {
+      await displayTask({
+        title: data.title,
+        body: data.body,
+        taskId: data.taskId,
+        code: data.code,
+      });
+      return true;
+    }
+
     if (data.kind !== 'new_message') return false;
 
     // Открытый чат не дёргаем: сообщение уже видно в ленте
@@ -218,6 +277,10 @@ const NotificationService = {
         const data = detail.notification?.data || {};
         if (data.chatId) pendingChatId = String(data.chatId);
         if (data.calendarEventId) pendingCalendar = true;
+        if (data.kind === 'task') {
+          pendingTasks = true;
+          if (data.taskId) pendingTaskId = String(data.taskId);
+        }
       }
     });
   },
@@ -232,6 +295,10 @@ const NotificationService = {
         const data = detail.notification?.data || {};
         if (data.chatId) pendingChatId = String(data.chatId);
         if (data.calendarEventId) pendingCalendar = true;
+        if (data.kind === 'task') {
+          pendingTasks = true;
+          if (data.taskId) pendingTaskId = String(data.taskId);
+        }
       }
     });
   },
@@ -272,10 +339,23 @@ const NotificationService = {
         body: text,
       });
     });
+
+    // События модуля «Задачи» приходят тем же путём: на iOS сокет — вообще
+    // единственный источник уведомлений, а на Android этот слушатель не нужен,
+    // там задачу доставит FCM (и доставит даже выгруженному приложению).
+    SocketService.on('notify:task', 'task:notify', async data => {
+      await displayTask({
+        title: data?.title,
+        body: data?.body,
+        taskId: data?.taskId,
+        code: data?.code,
+      });
+    });
   },
 
   detachSocketListeners() {
     SocketService.off('notify:new_message');
+    SocketService.off('notify:task');
   },
 };
 

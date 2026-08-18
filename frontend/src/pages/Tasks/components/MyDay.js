@@ -43,7 +43,7 @@ export default function MyDay({ ctx }) {
         label={`${dfull(cursor)}${isToday ? ' · сегодня' : ''}`}
         onPrevious={() => setCursor(addDays(cursor, -1))}
         onNext={() => setCursor(addDays(cursor, 1))}
-        onToday={!isToday ? () => setCursor(today()) : null}
+        onPick={setCursor}
       />
 
       <div className="tsk-grid-2">
@@ -111,6 +111,12 @@ export default function MyDay({ ctx }) {
               onClick={() => openEvent(event)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Код блока задачи — тем же приглушённым знаком, что и на
+                      доске, в списке и в графике: план дня читают вместе с
+                      ними, и дело должно называться везде одинаково. */}
+                  {!event.isOpaque && event.taskCode && (
+                    <div className="tsk-code">{event.taskCode}</div>
+                  )}
                   <div className="tsk-inbox-title" style={{ fontSize: 14 }}>
                     {event.isOpaque ? 'Занято' : event.title}
                   </div>
