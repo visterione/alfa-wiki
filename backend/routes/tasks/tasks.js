@@ -194,10 +194,23 @@ router.get('/inbox', authenticate, async (req, res) => {
 router.get('/', authenticate, async (req, res) => {
   try {
     const all = await context.loadTeams();
-    const scope = teamsService.peopleInScope(all, req.user.id, req.user.isAdmin, {
-      medCenterId: req.query.medCenterId,
-      teamId: req.query.teamId,
-    });
+    /**
+     * Область видимости названий, а не загрузки: свои задачи, задачи своих
+     * подчинённых по команде и (ниже, отдельным условием) поставленные самим.
+     * Часы коллег по-прежнему видны всей команде — но на экранах загрузки, где
+     * это цифра занятости, а не содержание чужой работы.
+     */
+    let scope = teamsService.taskScope(all, req.user.id);
+
+    // Фильтры доски сужают выборку, но не расширяют права: пересекаем с
+    // составом выбранной команды или филиала, а не заменяем область видимости.
+    if (req.query.teamId || req.query.medCenterId) {
+      const filtered = new Set(all
+        .filter(team => (!req.query.teamId || team.id === req.query.teamId)
+          && (!req.query.medCenterId || team.medCenterId === req.query.medCenterId))
+        .flatMap(team => teamsService.memberIds(team)));
+      scope = scope.filter(id => filtered.has(id));
+    }
 
     // Видны задачи, у которых хотя бы один исполнитель попал в область
     // видимости, плюс собственные. Фильтровать по ярлыку на задаче нельзя:
@@ -256,11 +269,7 @@ router.get('/:id', authenticate, async (req, res) => {
     // область видимости, что список задач, иначе скрытую работу можно открыть
     // прямой ссылкой, хотя в интерфейсе её нет.
     const allTeams = await context.loadTeams();
-    const scope = new Set(teamsService.peopleInScope(
-      allTeams,
-      req.user.id,
-      req.user.isAdmin
-    ));
+    const scope = new Set(teamsService.taskScope(allTeams, req.user.id));
     const assigneeIds = (task.parts || []).flatMap(part =>
       (part.assignees || []).map(a => a.userId)
     );
@@ -432,7 +441,12 @@ router.post('/', authenticate, async (req, res) => {
           endTime: slot.endTime,
           eventType: 'task',
           status: 'planned',
-          visibility: 'team',
+          // «Занято, без названия»: коллеге нужно знать, что время у человека
+          // занято, а чем именно — его дело. Раньше блок создавался с уровнем
+          // team, и название задачи уходило любому сокоманднику по запросу
+          // события. Сам исполнитель и его руководитель видят задачу там, где
+          // ей место, — в модуле «Задачи».
+          visibility: 'busy',
           createdBy: req.user.id,
           taskPartId: part.id,
           isFloating: true,
@@ -565,7 +579,8 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
         endTime: slot.endTime,
         eventType: 'task',
         status: 'planned',
-        visibility: 'team',
+        // См. выше: время наружу, содержание — нет.
+        visibility: 'busy',
         createdBy: req.user.id,
         taskPartId: part.id,
         isFloating: true,

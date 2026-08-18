@@ -127,3 +127,17 @@ jest.mock('react-native-vision-camera', () => {
   Camera.requestCameraPermission = () => Promise.resolve('granted');
   return {Camera, useCameraDevice: () => null, useCodeScanner: config => config};
 });
+
+// Settings — нативный модуль iOS (через него приложение кладёт цвет заставки
+// для следующего запуска). В node-окружении его бинарной части нет, и обращение
+// к нему роняет рендер провайдера настроек. Индекс react-native отдаёт этот
+// модуль лениво и берёт из него default — поэтому в заглушке он тоже default.
+jest.mock('react-native/Libraries/Settings/Settings', () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(),
+    set: jest.fn(),
+    watchKeys: jest.fn(() => 0),
+    clearWatch: jest.fn(),
+  },
+}));

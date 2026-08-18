@@ -21,10 +21,28 @@ import {radius, font} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {useAuth} from '../../store/authStore';
+import {Clock, FileText, GitBranch, History} from 'lucide-react-native';
+import Avatar from '../../components/Avatar';
 import {
-  MODE_LABEL, STATUS_LABEL, STATUS_TONE, dfull, dshort, estimateText,
-  hoursText, toneColor, userName, addDays,
+  MODE_LABEL, STATUS_LABEL, STATUS_ICON, STATUS_COLOR, addDays, clockText,
+  ddate, dfull, dnum, hoursText, partCode, shortName,
 } from './taskMeta';
+
+/**
+ * Цвет точки в истории. Тот же смысл, что в вебе: возврат и продавленная
+ * проверка — тревожные, перенос и предложение срока — предупреждающие,
+ * согласование и план — спокойные.
+ */
+function historyColor(c, row) {
+  if (row.action === 'declined' || row.action === 'forced') return c.error;
+  if (['moved', 'extended', 'proposed_date'].includes(row.action)) return c.warning;
+  if (['planned', 'accepted_date'].includes(row.action)) return c.success;
+  if (row.action === 'status_changed') {
+    if (row.payload?.to === 'done') return c.success;
+    if (row.payload?.to === 'review') return c.secondary;
+  }
+  return c.primary;
+}
 
 /** Человеческие формулировки событий истории — те же, что в вебе. */
 function historyText(row) {
@@ -36,18 +54,18 @@ function historyText(row) {
         : 'создал задачу';
     case 'planned':
       return p.overload
-        ? `взял в план на ${dshort(p.date)} сверх нормы — стало ${hoursText(p.after)} из ${hoursText(p.norm)}`
-        : `поставил в план на ${dshort(p.date)}`;
+        ? `взял в план на ${dnum(p.date)} сверх нормы — стало ${hoursText(p.after)} из ${hoursText(p.norm)}`
+        : `поставил в план на ${dnum(p.date)}`;
     case 'proposed_date':
-      return `предложил срок ${dshort(p.to)}`;
+      return `предложил срок ${dnum(p.to)}`;
     case 'accepted_date':
-      return `согласовал срок ${dshort(p.date)}`;
+      return `согласовал срок ${dnum(p.date)}`;
     case 'declined':
       return 'вернул задачу автору с пометкой «не моя зона»';
     case 'moved':
       return p.becameStuck
-        ? `перенёс на ${dshort(p.to)} — третий перенос, задача требует решения`
-        : `перенёс на ${dshort(p.to)}`;
+        ? `перенёс на ${dnum(p.to)} — третий перенос, задача требует решения`
+        : `перенёс на ${dnum(p.to)}`;
     case 'extended':
       return `продлил: ${hoursText(p.from)} → ${hoursText(p.to)}`;
     case 'split':
@@ -70,6 +88,9 @@ export default function TaskCardScreen({route, navigation}) {
 
   const [task, setTask] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Вкладки как в вебе: части, схема и история шли одной лентой, и до истории
+  // добирались прокруткой мимо всего остального — на телефоне особенно долгой.
+  const [tab, setTab] = useState('main');
 
   const load = useCallback(async () => {
     try {
@@ -123,27 +144,58 @@ export default function TaskCardScreen({route, navigation}) {
 
   if (!task) return <LogoLoader />;
 
+  const parts = [...(task.parts || [])].sort(
+    (a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0),
+  );
+  const TaskStatusIcon = STATUS_ICON[task.status];
+  const TABS = [
+    ['main', 'Основное', FileText],
+    ...(parts.length > 1 ? [['scheme', 'Схема', GitBranch]] : []),
+    ['history', 'История', History],
+  ];
+
   return (
     <ScrollView
       style={styles.root}
       contentContainerStyle={{padding: 16, paddingBottom: tabInset + 24}}>
-      <Text style={styles.title}>{task.title}</Text>
-
-      <View style={styles.badges}>
-        {task.project && (
-          <Badge text={task.project.name} color={c.primary} styles={styles} />
+      <View style={styles.head}>
+        <View style={{flex: 1}}>
+          {!!task.code && <Text style={styles.code}>{task.code}</Text>}
+          <Text style={styles.title}>{task.title}</Text>
+        </View>
+        {TaskStatusIcon && (
+          <TaskStatusIcon size={22} strokeWidth={1.8} color={STATUS_COLOR[task.status]} />
         )}
-        <Badge text={MODE_LABEL[task.mode]} color={c.textSecondary} styles={styles} />
-        <Badge text={hoursText(task.totalEffortHours)} color={c.textSecondary} styles={styles} />
-        <Badge
-          text={STATUS_LABEL[task.status]}
-          color={toneColor(c, STATUS_TONE[task.status])}
-          styles={styles}
-        />
       </View>
 
-      <Text style={styles.author}>Автор: {userName(task.author)}</Text>
+      <View style={styles.headMeta}>
+        {!!task.project?.name && <Text style={styles.headMetaText}>{task.project.name}</Text>}
+        <Text style={styles.headMetaText}>{MODE_LABEL[task.mode]}</Text>
+        <View style={styles.headMetaRow}>
+          <Clock size={13} color={c.textTertiary} />
+          <Text style={styles.headMetaText}>{clockText(task.totalEffortHours)}</Text>
+        </View>
+      </View>
 
+      <View style={styles.author}>
+        <Avatar uri={task.author?.avatar} size={22} />
+        <Text style={styles.authorText}>{shortName(task.author)}</Text>
+      </View>
+
+      {/* Переключатель вкладок повторяет веб: одна панель с тремя положениями. */}
+      <View style={styles.tabs}>
+        {TABS.map(([key, label, Icon]) => (
+          <Pressable
+            key={key}
+            style={[styles.tab, tab === key && styles.tabOn]}
+            onPress={() => setTab(key)}>
+            <Icon size={14} color={tab === key ? '#FFFFFF' : c.textSecondary} />
+            <Text style={[styles.tabText, tab === key && styles.tabTextOn]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {tab === 'main' && (<>
       {!!task.description && (
         <>
           <Text style={styles.section}>Описание</Text>
@@ -176,11 +228,12 @@ export default function TaskCardScreen({route, navigation}) {
         </>
       )}
 
-      {(task.parts?.length || 0) > 1 && (
+      </>)}
+
+      {tab === 'scheme' && (
         <>
-          <Text style={styles.section}>Схема выполнения</Text>
           <View style={styles.scheme}>
-            {task.parts.map((part, index) => {
+            {parts.map((part, index) => {
               const prerequisites = (task.deps || [])
                 .filter(dep => dep.partId === part.id)
                 .map(dep => task.parts.find(item => item.id === dep.afterPartId)?.title)
@@ -189,11 +242,26 @@ export default function TaskCardScreen({route, navigation}) {
                 <View style={styles.schemeRow} key={part.id}>
                   <View style={styles.schemeIndex}><Text style={styles.schemeIndexText}>{index + 1}</Text></View>
                   <View style={{flex: 1}}>
+                    {!!task.code && (
+                      <Text style={styles.code}>{partCode(task.code, index)}</Text>
+                    )}
                     <Text style={styles.schemeTitle}>{part.title}</Text>
+                    <View style={styles.schemeMeta}>
+                      <Text style={styles.schemeMetaText}>
+                        {(part.assignees || []).map(a => shortName(a.user)).join(', ')}
+                      </Text>
+                      <View style={styles.headMetaRow}>
+                        <Clock size={12} color={c.textTertiary} />
+                        <Text style={styles.schemeMetaText}>{clockText(part.estimateHours)}</Text>
+                      </View>
+                    </View>
                     {!!prerequisites.length && (
                       <Text style={styles.schemeAfter}>после: {prerequisites.join(', ')}</Text>
                     )}
                   </View>
+                  {STATUS_ICON[part.status] && React.createElement(STATUS_ICON[part.status], {
+                    size: 17, strokeWidth: 1.8, color: STATUS_COLOR[part.status],
+                  })}
                 </View>
               );
             })}
@@ -201,37 +269,51 @@ export default function TaskCardScreen({route, navigation}) {
         </>
       )}
 
-      <Text style={styles.section}>Части · {task.parts?.length || 0}</Text>
-      {(task.parts || []).map(part => {
+      {tab === 'main' && (<>
+      <Text style={styles.section}>Части — {parts.length}</Text>
+      {parts.map((part, partIndex) => {
         const mine = (part.assignees || []).find(a => a.userId === user?.id);
         const notPlanned = (part.assignees || []).filter(a => !a.plannedDate);
         const partHistory = (task.history || []).filter(row => row.partId === part.id);
         const actions = partHistory.map(row => row.action);
         const hasPendingProposal = actions.lastIndexOf('proposed_date') > actions.lastIndexOf('accepted_date');
+        const PartStatusIcon = STATUS_ICON[part.status];
 
         return (
           <View key={part.id} style={styles.part}>
             <View style={styles.partHead}>
-              <Text style={styles.partTitle}>{part.title}</Text>
-              <Badge
-                text={STATUS_LABEL[part.status]}
-                color={toneColor(c, STATUS_TONE[part.status])}
-                styles={styles}
-              />
+              <View style={{flex: 1}}>
+                {!!task.code && (
+                  <Text style={styles.code}>
+                    {partCode(task.code, parts.length > 1 ? partIndex : null)}
+                  </Text>
+                )}
+                <Text style={styles.partTitle}>{part.title}</Text>
+              </View>
+              {PartStatusIcon && (
+                <PartStatusIcon size={19} strokeWidth={1.8} color={STATUS_COLOR[part.status]} />
+              )}
             </View>
 
-            <Text style={styles.partMeta}>
-              {(part.assignees || []).map(a => userName(a.user)).join(', ')}
-              {' · '}
-              {estimateText(part.estimateHours)}
-              {' · '}
-              {dshort(String(part.dueDate))}
-              {part.moveCount > 0 ? ` · переносов: ${part.moveCount}` : ''}
-            </Text>
+            <View style={styles.partMetaRow}>
+              <Text style={styles.partMeta}>
+                {(part.assignees || []).map(a => shortName(a.user)).join(', ')}
+              </Text>
+              <View style={styles.headMetaRow}>
+                <Clock size={13} color={c.textTertiary} />
+                <Text style={styles.partMeta}>{clockText(part.estimateHours)}</Text>
+              </View>
+              <Text style={styles.partMeta}>· {ddate(String(part.dueDate))}</Text>
+              {part.moveCount > 0 && (
+                <Text style={[styles.partMeta, {color: c.warning}]}>
+                  · переносов {part.moveCount}
+                </Text>
+              )}
+            </View>
 
             {!!notPlanned.length && (
               <Text style={[styles.partNote, {color: c.warning}]}>
-                Не обработали: {notPlanned.map(a => userName(a.user)).join(', ')}
+                Не обработали: {notPlanned.map(a => shortName(a.user)).join(', ')}
               </Text>
             )}
 
@@ -313,18 +395,20 @@ export default function TaskCardScreen({route, navigation}) {
                       onPress={() => moveNext(part)}>
                       <Text style={styles.btnText}>Перенести</Text>
                     </Pressable>
-                    {[15, 30, 60].map(minutes => (
+                    {/* Те же шаги продления, что в вебе: получасом обходилось
+                        не всегда, и кнопку жали по четыре раза подряд. */}
+                    {[[0.25, '+15 мин'], [0.5, '+30 мин'], [1, '+1 ч'], [2, '+2 ч']].map(([hours, label]) => (
                       <Pressable
-                        key={minutes}
+                        key={hours}
                         style={[styles.btn, busy && styles.btnOff]}
                         disabled={busy}
                         onPress={() =>
                           run(
-                            () => tasksApi.extendPart(part.id, minutes / 60),
-                            `Продлено на ${minutes} минут — загрузка пересчитана.`,
+                            () => tasksApi.extendPart(part.id, hours),
+                            `Продлено на ${label.slice(1)} — загрузка пересчитана.`,
                           )
                         }>
-                        <Text style={styles.btnText}>+ {minutes} мин</Text>
+                        <Text style={styles.btnText}>{label}</Text>
                       </Pressable>
                     ))}
                   </>
@@ -349,31 +433,35 @@ export default function TaskCardScreen({route, navigation}) {
         );
       })}
 
-      <Text style={styles.section}>История</Text>
-      {!task.history?.length ? (
-        <Text style={styles.historyEmpty}>
-          Срок назначен односторонне и не пересматривался.
-        </Text>
-      ) : (
-        task.history.map(row => (
-          <View key={row.id} style={styles.historyRow}>
-            <Text style={styles.historyWho}>{userName(row.user)}</Text>
-            <Text style={styles.historyWhat}>{historyText(row)}</Text>
-            <Text style={styles.historyWhen}>
-              {new Date(row.createdAt).toLocaleString('ru-RU', {
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </Text>
-          </View>
-        ))
-      )}
+      </>)}
 
-      <Text style={styles.hint}>
-        Срок — согласование, а не поле. Поэтому у него есть история.
-      </Text>
+      {tab === 'history' && (
+        !task.history?.length ? (
+          <Text style={styles.historyEmpty}>История пока пуста.</Text>
+        ) : (
+          /* Лента с рельсой и цветной точкой — как в вебе: по цвету видно, что
+             это было, ещё до чтения текста. */
+          task.history.map((row, index) => (
+            <View key={row.id} style={styles.historyRow}>
+              <View style={styles.historyRail}>
+                <View style={[styles.historyDot, {backgroundColor: historyColor(c, row)}]} />
+                {index < task.history.length - 1 && <View style={styles.historyLine} />}
+              </View>
+              <View style={styles.historyCard}>
+                <View style={styles.historyHead}>
+                  <Text style={styles.historyWho}>{shortName(row.user)}</Text>
+                  <Text style={styles.historyWhen}>
+                    {new Date(row.createdAt).toLocaleString('ru-RU', {
+                      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+                <Text style={styles.historyWhat}>{historyText(row)}</Text>
+              </View>
+            </View>
+          ))
+        )
+      )}
 
       {task.authorId === user?.id && (
         <Pressable
@@ -407,19 +495,35 @@ export default function TaskCardScreen({route, navigation}) {
   );
 }
 
-function Badge({text, color, styles}) {
-  return (
-    <View style={[styles.badge, {backgroundColor: `${color}22`}]}>
-      <Text style={[styles.badgeText, {color}]}>{text}</Text>
-    </View>
-  );
-}
-
 const makeStyles = c =>
   StyleSheet.create({
     root: {flex: 1, backgroundColor: c.bgSecondary},
 
+    head: {flexDirection: 'row', alignItems: 'flex-start', gap: 12},
+    code: {fontFamily: font.semiBold, fontSize: 11, letterSpacing: 0.2, color: c.textTertiary, marginBottom: 3},
     title: {fontFamily: font.semiBold, fontSize: 20, color: c.textPrimary, lineHeight: 27},
+
+    headMeta: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 10},
+    headMetaRow: {flexDirection: 'row', alignItems: 'center', gap: 4},
+    headMetaText: {fontFamily: font.regular, fontSize: 12.5, color: c.textTertiary},
+
+    // Панель вкладок: активная — залитая пилюля, как ползунок в вебе.
+    tabs: {
+      flexDirection: 'row', gap: 4, padding: 4, marginTop: 14, marginBottom: 6,
+      borderRadius: radius.lg, backgroundColor: c.bgSecondary,
+    },
+    tab: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 6, paddingVertical: 8, borderRadius: radius.md,
+    },
+    tabOn: {backgroundColor: c.primary},
+    tabText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary},
+    tabTextOn: {fontFamily: font.semiBold, color: '#FFFFFF'},
+
+    partMetaRow: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginTop: 7},
+    schemeMeta: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 5},
+    schemeMetaText: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary},
+
     badges: {flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12},
     badge: {paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20},
     badgeText: {fontFamily: font.medium, fontSize: 11},
@@ -491,25 +595,21 @@ const makeStyles = c =>
     btnPrimary: {backgroundColor: c.primary},
     btnPrimaryText: {fontFamily: font.semiBold, fontSize: 13.5, color: '#FFFFFF'},
 
-    historyRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'baseline',
-      gap: 6,
-      paddingVertical: 6,
+    historyRow: {flexDirection: 'row', gap: 10},
+    historyRail: {alignItems: 'center', width: 12, paddingTop: 5},
+    historyDot: {width: 9, height: 9, borderRadius: 5},
+    historyLine: {flex: 1, width: StyleSheet.hairlineWidth, backgroundColor: c.borderLight, marginTop: 3},
+    historyCard: {
+      flex: 1, marginBottom: 12, padding: 11,
+      borderRadius: radius.md, backgroundColor: c.bgPrimary,
+      borderWidth: StyleSheet.hairlineWidth, borderColor: c.borderLight,
     },
+    historyHead: {flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 2},
     historyWho: {fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
     historyWhat: {flex: 1, fontFamily: font.regular, fontSize: 13, color: c.textSecondary},
     historyWhen: {fontFamily: font.regular, fontSize: 11.5, color: c.textTertiary},
     historyEmpty: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary},
 
-    hint: {
-      fontFamily: font.regular,
-      fontSize: 12.5,
-      color: c.textTertiary,
-      lineHeight: 19,
-      marginTop: 22,
-    },
     cancelBtn: {alignItems: 'center', padding: 12, marginTop: 18, borderRadius: radius.md, backgroundColor: c.errorLight || `${c.error}15`},
     cancelText: {fontFamily: font.medium, fontSize: 13.5, color: c.error},
   });

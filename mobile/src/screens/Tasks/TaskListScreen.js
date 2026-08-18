@@ -24,9 +24,9 @@ import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {
-  STATUS_LABEL, STATUS_TONE, dshort, estimateText, hoursText, toneColor,
-} from './taskMeta';
+import {Clock} from 'lucide-react-native';
+import Avatar from '../../components/Avatar';
+import {STATUS_ICON, STATUS_COLOR, clockText, dnum} from './taskMeta';
 
 const FILTERS = [
   ['all', 'Все'],
@@ -108,42 +108,55 @@ export default function TaskListScreen({navigation}) {
             .map(p => String(p.dueDate))
             .sort()
             .pop();
+          const users = (task.parts || [])
+            .flatMap(part => (part.assignees || []).map(a => a.user))
+            .filter((user, i, arr) => user && arr.findIndex(x => x?.id === user.id) === i);
+          const StatusIcon = STATUS_ICON[task.status];
           return (
             <Pressable
               key={task.id}
               style={styles.card}
               onPress={() => navigation.navigate('TaskCard', {id: task.id})}>
               <View style={styles.cardHead}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {task.title}
-                </Text>
-                <View
-                  style={[
-                    styles.badge,
-                    {backgroundColor: `${toneColor(c, STATUS_TONE[task.status])}22`},
-                  ]}>
-                  <Text
-                    style={[styles.badgeText, {color: toneColor(c, STATUS_TONE[task.status])}]}>
-                    {STATUS_LABEL[task.status]}
-                  </Text>
+                <View style={{flex: 1}}>
+                  {/* Код и проект над названием — как в таблице веба. */}
+                  <View style={styles.cardTop}>
+                    {!!task.code && <Text style={styles.cardCode}>{task.code}</Text>}
+                    {!!task.project?.name && (
+                      <Text style={styles.cardProject} numberOfLines={1}>{task.project.name}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.cardTitle} numberOfLines={2}>{task.title}</Text>
+                </View>
+                {/* Статус иконкой, подпись не нужна: цвет и форма те же, что в
+                    вебе, и повторять их словом на узком экране расточительно. */}
+                {StatusIcon && (
+                  <StatusIcon size={19} strokeWidth={1.8} color={STATUS_COLOR[task.status]} />
+                )}
+              </View>
+
+              <View style={styles.cardFoot}>
+                <View style={styles.avatars}>
+                  {users.slice(0, 3).map((user, index) => (
+                    <View key={user.id} style={index ? styles.avatarNext : null}>
+                      <Avatar uri={user.avatar} size={22} />
+                    </View>
+                  ))}
+                  {users.length > 3 && (
+                    <Text style={styles.avatarMore}>+{users.length - 3}</Text>
+                  )}
+                </View>
+                <View style={styles.cardMetaRow}>
+                  <Clock size={13} color={c.textTertiary} />
+                  <Text style={styles.cardMeta}>{clockText(task.totalEffortHours)}</Text>
+                  {!!due && <Text style={styles.cardMeta}>· {dnum(due)}</Text>}
                 </View>
               </View>
-              <Text style={styles.cardMeta}>
-                {task.project?.name || 'без проекта'}
-                {' · '}
-                {hoursText(task.totalEffortHours)}
-                {due ? ` · ${dshort(due)}` : ''}
-                {task.parts?.length > 1 ? ` · ${task.parts.length} части` : ''}
-              </Text>
             </Pressable>
           );
         })
       )}
 
-      <Text style={styles.hint}>
-        Новую задачу можно быстро создать кнопкой «+» на календаре. Для сложной
-        задачи с несколькими частями используйте веб-версию — там видна загрузка команды.
-      </Text>
     </ScrollView>
   );
 }
@@ -151,6 +164,20 @@ export default function TaskListScreen({navigation}) {
 const makeStyles = c =>
   StyleSheet.create({
     root: {flex: 1, backgroundColor: c.bgSecondary},
+
+    cardTop: {flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 3},
+    cardCode: {fontFamily: font.semiBold, fontSize: 10.5, letterSpacing: 0.2, color: c.textTertiary},
+    cardProject: {flex: 1, fontFamily: font.regular, fontSize: 11.5, color: c.textTertiary},
+    cardFoot: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      gap: 10, marginTop: 10,
+    },
+    // Аватарки внахлёст, как в вебе: на узкой карточке они занимают меньше
+    // места и сразу читаются как один список исполнителей.
+    avatars: {flexDirection: 'row', alignItems: 'center'},
+    avatarNext: {marginLeft: -7},
+    avatarMore: {fontFamily: font.medium, fontSize: 11.5, color: c.textTertiary, marginLeft: 6},
+    cardMetaRow: {flexDirection: 'row', alignItems: 'center', gap: 5},
 
     chips: {flexGrow: 0, marginBottom: 14},
     chip: {
@@ -174,8 +201,6 @@ const makeStyles = c =>
     cardTitle: {flex: 1, fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
     cardMeta: {fontFamily: font.regular, fontSize: 12.5, color: c.textSecondary, marginTop: 6},
 
-    badge: {paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20},
-    badgeText: {fontFamily: font.medium, fontSize: 11},
 
     empty: {
       fontFamily: font.regular,
@@ -183,12 +208,5 @@ const makeStyles = c =>
       color: c.textSecondary,
       textAlign: 'center',
       padding: 24,
-    },
-    hint: {
-      fontFamily: font.regular,
-      fontSize: 12.5,
-      color: c.textTertiary,
-      lineHeight: 19,
-      marginTop: 22,
     },
   });

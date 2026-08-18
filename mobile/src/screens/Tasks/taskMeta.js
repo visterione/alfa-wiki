@@ -10,6 +10,10 @@
  * поясом, и задача на понедельник у части людей уедет в воскресенье.
  */
 
+import {
+  CircleDashed, CalendarClock, PlayCircle, Eye, CheckCircle2, AlertTriangle,
+} from 'lucide-react-native';
+
 export const STATUS_LABEL = {
   new: 'не обработана',
   plan: 'в плане',
@@ -27,6 +31,32 @@ export const STATUS_TONE = {
   review: 'secondary',
   done: 'success',
   stuck: 'error',
+};
+
+/**
+ * Иконка и цвет статуса — как в вебе (frontend/src/pages/Tasks/utils/labels.js).
+ *
+ * Цвета совпадают с колонками доски, чтобы «в работе» выглядело одинаково на
+ * телефоне и в браузере. Заданы числами, а не через тему: это цвета состояний
+ * задачи, а не оформления приложения, и в тёмной схеме они не меняются — иначе
+ * один и тот же статус на двух экранах читался бы по-разному.
+ */
+export const STATUS_ICON = {
+  new: CircleDashed,
+  plan: CalendarClock,
+  work: PlayCircle,
+  review: Eye,
+  done: CheckCircle2,
+  stuck: AlertTriangle,
+};
+
+export const STATUS_COLOR = {
+  new: '#2F7DE0',
+  plan: '#5856D6',
+  work: '#EE8412',
+  review: '#E0AC00',
+  done: '#2CA24C',
+  stuck: '#E0453F',
 };
 
 export const MODE_LABEL = {
@@ -189,3 +219,38 @@ export function dayEvents(events, date) {
 }
 
 export const userName = user => user?.displayName || user?.username || 'Без имени';
+
+/**
+ * «Стеценко Виталий» — фамилия и имя, без отчества.
+ *
+ * В системе у людей полное ФИО, а на телефоне места ещё меньше, чем в вебе:
+ * имя обрезалось ровно там, где начинается отчество, и половина списка
+ * выглядела одинаково.
+ */
+export function shortName(user) {
+  const full = userName(user);
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  return parts.length > 2 ? parts.slice(0, 2).join(' ') : full;
+}
+
+/** «04:00», «00:30» — длительность там, где рядом стоит иконка часов. */
+export function clockText(hours) {
+  const minutes = Math.round(Math.max(Number(hours) || 0, 0) * 60);
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/** «18.08.26» — срок в списках. */
+export function dnum(key) {
+  const d = fromKey(key);
+  const pad = value => String(value).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(-2)}`;
+}
+
+/** «чт, 20.08.26» — срок в карточке задачи. */
+export const ddate = key => `${DOW[dow(key)].toLowerCase()}, ${dnum(key)}`;
+
+/** Код части: РЕМ-42/2. У задачи из одной части — просто её код. */
+export function partCode(code, index) {
+  if (!code) return '';
+  return index === null || index === undefined ? code : `${code}/${Number(index) + 1}`;
+}

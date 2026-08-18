@@ -24,7 +24,7 @@ import {
   Alert,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {ChevronLeft, ChevronRight, Bell, ListTodo, Plus, CalendarDays, MoreHorizontal, Users} from 'lucide-react-native';
+import {ChevronLeft, ChevronRight, Bell, Clock, ListTodo, Plus, CalendarDays, MoreHorizontal, Users} from 'lucide-react-native';
 
 import {tasks as tasksApi, calendar as calendarApi, chat as chatApi} from '../../services/api';
 import BottomSheet from '../../components/BottomSheet';
@@ -36,8 +36,8 @@ import {useAuth} from '../../store/authStore';
 import {setInboxCount, useInboxCount} from '../../store/tasksStore';
 import LoadBar from './LoadBar';
 import {
-  DOW, addDays, addMonths, dayEvents, dfull, dstr, estimateText,
-  eventHours, fromKey, hoursText, monthGrid, monthTitle, today,
+  DOW, MONTHS_NOM, addDays, addMonths, clockText, dayEvents, dfull, dstr,
+  eventHours, fromKey, hoursText, monthGrid, monthTitle, shortName, today,
   weekOf, loadColor,
 } from './taskMeta';
 
@@ -55,12 +55,25 @@ export default function TasksScreen({navigation}) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Выбор произвольной даты. Листать по одному периоду до марта через год —
+  // это полсотни нажатий, поэтому дата в шапке открывает календарь.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerCursor, setPickerCursor] = useState(today);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickText, setQuickText] = useState('');
   const [quickBusy, setQuickBusy] = useState(false);
   const [people, setPeople] = useState([]);
   const [moreOpen, setMoreOpen] = useState(false);
   const [teams, setTeams] = useState([]);
+  /**
+   * Загрузка команды показывается в той же шторке «Ещё», а не в своей.
+   *
+   * Раньше это были два BottomSheet, то есть два нативных Modal: нажатие
+   * закрывало первый и тут же открывало второй, и секунду они существовали
+   * одновременно. На iOS это кончалось наглухо: второй не появлялся, а от
+   * первого оставалась невидимая подложка, которая съедала все касания —
+   * приложение выглядело зависшим. Один Modal, два состояния внутри.
+   */
   const [teamLoad, setTeamLoad] = useState(null);
   const [teamLoadBusy, setTeamLoadBusy] = useState(false);
   const [fillDate, setFillDate] = useState(null);
@@ -278,8 +291,13 @@ export default function TasksScreen({navigation}) {
           <Pressable style={styles.navBtn} onPress={() => shift(true)} hitSlop={8}>
             <ChevronLeft size={20} color={c.textSecondary} />
           </Pressable>
-          <Pressable style={styles.todayBtn} onPress={() => setCursor(today())}>
-            <Text style={styles.todayText}>Сегодня</Text>
+          {/* Сама дата — кнопка выбора, как в вебе. Отдельной кнопки «Сегодня»
+              нет: сегодняшний день отмечен в календаре кольцом. */}
+          <Pressable
+            style={styles.pickBtn}
+            onPress={() => { setPickerCursor(cursor); setPickerOpen(true); }}>
+            <CalendarDays size={15} color={c.primary} />
+            <Text style={styles.pickText}>{periodTitle}</Text>
           </Pressable>
           <Pressable style={styles.navBtn} onPress={() => shift(false)} hitSlop={8}>
             <ChevronRight size={20} color={c.textSecondary} />
@@ -398,17 +416,66 @@ export default function TasksScreen({navigation}) {
         <Plus size={27} color="#FFFFFF" />
       </Pressable>
 
+      {/* Выбор даты: год стрелками, месяц из двенадцати, день из сетки. До любой
+          даты — три нажатия, а не полсотни листаний. Повторяет виджет веба. */}
+      <BottomSheet visible={pickerOpen} title="Выбор даты" onClose={() => setPickerOpen(false)}>
+        <View style={styles.pickerBody}>
+          <View style={styles.pickerHead}>
+            <Pressable style={styles.navBtn} hitSlop={8}
+              onPress={() => setPickerCursor(addMonths(pickerCursor, -12))}>
+              <ChevronLeft size={18} color={c.textSecondary} />
+            </Pressable>
+            <Text style={styles.pickerYear}>{fromKey(pickerCursor).getFullYear()}</Text>
+            <Pressable style={styles.navBtn} hitSlop={8}
+              onPress={() => setPickerCursor(addMonths(pickerCursor, 12))}>
+              <ChevronRight size={18} color={c.textSecondary} />
+            </Pressable>
+          </View>
+
+          <View style={styles.pickerMonths}>
+            {MONTHS_NOM.map((name, index) => {
+              const on = fromKey(pickerCursor).getMonth() === index;
+              return (
+                <Pressable
+                  key={name}
+                  style={[styles.pickerMonth, on && styles.pickerMonthOn]}
+                  onPress={() => setPickerCursor(addMonths(pickerCursor, index - fromKey(pickerCursor).getMonth()))}>
+                  <Text style={[styles.pickerMonthText, on && {color: c.primary}]}>
+                    {name.slice(0, 3).toLowerCase()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.pickerGrid}>
+            {DOW.map(name => (
+              <Text style={styles.pickerDow} key={name}>{name}</Text>
+            ))}
+            {monthGrid(pickerCursor).map((date, index) => date ? (
+              <Pressable
+                key={date}
+                style={[styles.pickerDay, date === today() && styles.pickerDayToday]}
+                onPress={() => {
+                  setCursor(date);
+                  setPickerOpen(false);
+                }}>
+                <Text style={[styles.pickerDayText, date === today() && {color: c.primary}]}>
+                  {fromKey(date).getDate()}
+                </Text>
+              </Pressable>
+            ) : <View style={styles.pickerDay} key={`empty-${index}`} />)}
+          </View>
+        </View>
+      </BottomSheet>
+
       <BottomSheet visible={quickOpen} title="Быстрый ввод" onClose={() => setQuickOpen(false)}>
         <View style={styles.quickBody}>
-          <Text style={styles.quickHint}>
-            Например: «Подготовить отчёт завтра 2 ч @Анна». Личные дела можно
-            написать как «Врач завтра 1 ч».
-          </Text>
           <TextInput
             style={styles.quickInput}
             value={quickText}
             onChangeText={setQuickText}
-            placeholder="Что сделать, когда и сколько"
+            placeholder="Например: отчёт завтра 2 ч @Анна"
             placeholderTextColor={c.textTertiary}
             autoFocus
             multiline
@@ -430,7 +497,6 @@ export default function TasksScreen({navigation}) {
         title={`Свободное время · ${fillDate ? dstr(fillDate) : ''}`}
         onClose={() => setFillDate(null)}>
         <View style={styles.fillBody}>
-          <Text style={styles.quickHint}>Выберите точный интервал или возьмите подходящую задачу из входящих.</Text>
           <View style={styles.fillSteps}>
             {[15, 30, 60].map(value => (
               <Pressable
@@ -493,11 +559,45 @@ export default function TasksScreen({navigation}) {
         </View>
       </BottomSheet>
 
-      <BottomSheet visible={moreOpen} title="Ещё" onClose={() => setMoreOpen(false)}>
+      <BottomSheet
+        visible={moreOpen}
+        title={teamLoad ? teamLoad.team?.name || 'Загрузка команды' : 'Ещё'}
+        onClose={() => { setMoreOpen(false); setTeamLoad(null); }}>
+        {teamLoad ? (
+          <View style={styles.moreBody}>
+            <Pressable style={styles.sheetBack} onPress={() => setTeamLoad(null)}>
+              <ChevronLeft size={16} color={c.primary} />
+              <Text style={styles.sheetBackText}>Все команды</Text>
+            </Pressable>
+            <Text style={styles.teamLoadSummary}>
+              {teamLoad.summary
+                ? `${teamLoad.summary.percent}% от нормы — свободно ${hoursText(teamLoad.summary.freeHours)}`
+                : ''}
+            </Text>
+            {(teamLoad.rows || []).map(row => {
+              const total = (row.days || []).reduce((sum, day) => sum + (day.hours || 0), 0);
+              const over = (row.days || []).filter(day => day.color === 'r').length;
+              return (
+                <View style={styles.teamLoadRow} key={row.userId}>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.moreTitle}>{shortName(row.user)}</Text>
+                    <Text style={styles.moreTeamMeta}>
+                      {over ? `переработка ${over} дн.` : 'без переработки'}
+                    </Text>
+                  </View>
+                  <Text style={styles.teamLoadHours}>{hoursText(total)}</Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
         <View style={styles.moreBody}>
           <Pressable style={styles.moreRow} onPress={() => {
             setMoreOpen(false);
-            navigation.getParent()?.navigate('SettingsTab', {screen: 'TasksNorm'});
+            // initial: false — чтобы экран лёг поверх корня настроек и в шапке
+            // появилась стрелка «назад». Без этого расписание открывалось как
+            // единственный экран стека, и уйти из него было некуда.
+            navigation.getParent()?.navigate('SettingsTab', {screen: 'TasksNorm', initial: false});
           }}>
             <Text style={styles.moreTitle}>Рабочее расписание</Text>
             <Text style={styles.moreValue}>{dayLoad?.onDayOff ? 'сегодня выходной' : dayLoad?.norm ? `${hoursText(dayLoad.norm)} сегодня` : 'настроить'} ›</Text>
@@ -543,7 +643,6 @@ export default function TasksScreen({navigation}) {
                   const week = weekOf(cursor);
                   const {data} = await tasksApi.getTeamLoad(team.id, week[0], week[6]);
                   setTeamLoad(data);
-                  setMoreOpen(false);
                 } catch (e) {
                   Alert.alert('Загрузка закрыта', e?.response?.data?.error || 'Нет доступа к загрузке команды');
                 } finally {
@@ -557,34 +656,8 @@ export default function TasksScreen({navigation}) {
               <Text style={styles.moreValue}>{team.canSeeLoad ? 'загрузка ›' : 'закрыто'}</Text>
             </Pressable>
           ))}
-          <Text style={styles.moreHint}>Создание команд, права доступа и отчёты доступны в веб-версии.</Text>
         </View>
-      </BottomSheet>
-
-      <BottomSheet
-        visible={Boolean(teamLoad)}
-        title={teamLoad?.team?.name || 'Загрузка команды'}
-        onClose={() => setTeamLoad(null)}>
-        <View style={styles.teamLoadBody}>
-          <Text style={styles.teamLoadSummary}>
-            {teamLoad?.summary
-              ? `${teamLoad.summary.percent}% загрузки · свободно ${hoursText(teamLoad.summary.freeHours)}`
-              : ''}
-          </Text>
-          {(teamLoad?.rows || []).map(row => {
-            const total = (row.days || []).reduce((sum, day) => sum + (day.hours || 0), 0);
-            const over = (row.days || []).filter(day => day.color === 'r').length;
-            return (
-              <View style={styles.teamLoadRow} key={row.userId}>
-                <View style={{flex: 1}}>
-                  <Text style={styles.moreTitle}>{row.user?.displayName || row.user?.username || 'Сотрудник'}</Text>
-                  <Text style={styles.moreTeamMeta}>{over ? `переработка: ${over} дн.` : 'без переработки'}</Text>
-                </View>
-                <Text style={styles.teamLoadHours}>{hoursText(total)}</Text>
-              </View>
-            );
-          })}
-        </View>
+        )}
       </BottomSheet>
     </View>
   );
@@ -741,7 +814,11 @@ function DayView({date, load, events, styles, c, onOpenEvent, onCreate, onTaskDo
         <View style={styles.nowCard}>
           <Text style={styles.nowLabel}>Сейчас</Text>
           <Text style={styles.nowTitle}>{current.title}</Text>
-          <Text style={styles.nowMeta}>{estimateText(eventHours(current))} · рабочая задача</Text>
+          <View style={styles.nowMetaRow}>
+            <Clock size={13} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.nowMeta}>{clockText(eventHours(current))}</Text>
+            {!!current.taskCode && <Text style={styles.nowCode}>{current.taskCode}</Text>}
+          </View>
           <View style={styles.nowActions}>
             <Pressable style={styles.nowPrimary} onPress={() => onTaskDone(current)}>
               <Text style={styles.nowPrimaryText}>Завершить</Text>
@@ -785,27 +862,37 @@ function DayView({date, load, events, styles, c, onOpenEvent, onCreate, onTaskDo
               ]}
             />
             <View style={{flex: 1}}>
+              {/* Код блока — тем же приглушённым знаком, что и в вебе: дело
+                  называют кодом, и в плане дня он должен быть виден. */}
+              {!event.isOpaque && !!event.taskCode && (
+                <Text style={styles.blockCode}>{event.taskCode}</Text>
+              )}
               <Text style={styles.blockTitle} numberOfLines={2}>
                 {event.isOpaque ? 'Занято' : event.title}
               </Text>
-              <Text style={styles.blockMeta}>
-                {event.isOpaque
-                  ? 'содержание скрыто'
-                  : event.isFloating
-                    ? 'рабочий блок — время в дне выбираете вы'
+              {/* У плавающего блока времени начала нет по замыслу модуля, и
+                  объяснять это в каждой строке плана незачем. */}
+              {(event.isOpaque || !event.isFloating) && (
+                <Text style={styles.blockMeta}>
+                  {event.isOpaque
+                    ? 'содержание скрыто'
                     : new Date(event.startTime).toLocaleTimeString('ru-RU', {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
-              </Text>
+                </Text>
+              )}
             </View>
-            <Text style={styles.blockHours}>{estimateText(eventHours(event))}</Text>
+            <View style={styles.blockHoursRow}>
+              <Clock size={13} color={c.textTertiary} />
+              <Text style={styles.blockHours}>{clockText(eventHours(event))}</Text>
+            </View>
           </Pressable>
         ))
       )}
       {!!load?.free && (
         <Pressable style={styles.freeCard} onPress={onFill}>
-          <Text style={styles.freeText}>Свободно · {hoursText(load.free)}</Text>
+          <Text style={styles.freeText}>Свободно — {hoursText(load.free)}</Text>
           <Text style={[styles.freeAction, {color: c.primary}]}>+ Запланировать</Text>
         </Pressable>
       )}
@@ -861,9 +948,6 @@ function WeekView({cursor, byDate, styles, c, onPick}) {
         })}
       </View>
 
-      <Text style={styles.hint}>
-        Пунктир — ваша норма. Нажмите на столбик, чтобы открыть день целиком.
-      </Text>
     </View>
   );
 }
@@ -932,10 +1016,6 @@ function MonthView({cursor, byDate, events, styles, c, onPick}) {
         <SummaryRow label="Свободно за месяц" value={hoursText(free)} styles={styles} />
       </View>
 
-      <Text style={styles.hint}>
-        Месяц отвечает на вопрос «где завал и где окно». Состав дня — по нажатию
-        на число.
-      </Text>
     </View>
   );
 }
@@ -1010,13 +1090,6 @@ const makeStyles = c =>
 
     nav: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 12},
     navBtn: {padding: 4},
-    todayBtn: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: radius.md,
-      backgroundColor: c.bgSecondary,
-    },
-    todayText: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary},
     moduleNav: {
       flexDirection: 'row',
       gap: 4,
@@ -1161,14 +1234,6 @@ const makeStyles = c =>
     summaryLabel: {fontFamily: font.regular, fontSize: 13.5, color: c.textSecondary},
     summaryValue: {fontFamily: font.semiBold, fontSize: 13.5, color: c.textPrimary},
 
-    hint: {
-      fontFamily: font.regular,
-      fontSize: 12.5,
-      color: c.textTertiary,
-      lineHeight: 19,
-      marginTop: 16,
-      textAlign: 'center',
-    },
     fab: {
       position: 'absolute',
       right: 18,
@@ -1185,7 +1250,6 @@ const makeStyles = c =>
       elevation: 7,
     },
     quickBody: {paddingHorizontal: 20, paddingBottom: 18},
-    quickHint: {fontFamily: font.regular, fontSize: 12.5, color: c.textSecondary, lineHeight: 19},
     quickInput: {
       minHeight: 82,
       marginTop: 12,
@@ -1213,12 +1277,48 @@ const makeStyles = c =>
     moreTeam: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 11},
     moreTeamMeta: {fontFamily: font.regular, fontSize: 11.5, color: c.textTertiary, marginTop: 2},
     moreEmpty: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary, paddingVertical: 14},
-    moreHint: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, lineHeight: 18, marginTop: 12},
     visibilityChoices: {flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 6},
     visibilityChoice: {paddingHorizontal: 10, paddingVertical: 7, borderRadius: radius.md, backgroundColor: c.bgSecondary},
     visibilityChoiceOn: {backgroundColor: c.primaryLight, borderWidth: StyleSheet.hairlineWidth, borderColor: c.primary},
     visibilityChoiceText: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary},
-    teamLoadBody: {paddingHorizontal: 20, paddingBottom: 20},
+    pickBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.md,
+      backgroundColor: c.bgSecondary,
+    },
+    pickText: {fontFamily: font.semiBold, fontSize: 13.5, color: c.textPrimary},
+
+    pickerBody: {paddingHorizontal: 20, paddingBottom: 20},
+    pickerHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10},
+    pickerYear: {fontFamily: font.semiBold, fontSize: 16, color: c.textPrimary},
+    pickerMonths: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+      paddingBottom: 12, marginBottom: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.borderLight,
+    },
+    pickerMonth: {
+      width: '15%', minWidth: 46, alignItems: 'center',
+      paddingVertical: 7, borderRadius: radius.sm,
+    },
+    pickerMonthOn: {backgroundColor: c.primaryLight || c.bgSecondary},
+    pickerMonthText: {fontFamily: font.medium, fontSize: 12, color: c.textSecondary},
+    pickerGrid: {flexDirection: 'row', flexWrap: 'wrap'},
+    pickerDow: {
+      width: `${100 / 7}%`, textAlign: 'center', paddingBottom: 6,
+      fontFamily: font.regular, fontSize: 11, color: c.textTertiary,
+    },
+    pickerDay: {width: `${100 / 7}%`, height: 42, alignItems: 'center', justifyContent: 'center'},
+    // Сегодня отмечено кольцом, а не заливкой: это ориентир, а не выбор.
+    pickerDayToday: {borderWidth: 1.5, borderColor: c.primary, borderRadius: radius.md},
+    pickerDayText: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
+
+    blockCode: {fontFamily: font.semiBold, fontSize: 10.5, color: c.textTertiary, letterSpacing: 0.2, marginBottom: 2},
+    blockHoursRow: {flexDirection: 'row', alignItems: 'center', gap: 4},
+    nowMetaRow: {flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4},
+    nowCode: {fontFamily: font.semiBold, fontSize: 11, color: 'rgba(255,255,255,0.75)', marginLeft: 4},
+
+    sheetBack: {flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, marginBottom: 4},
+    sheetBackText: {fontFamily: font.medium, fontSize: 13.5, color: c.primary},
     teamLoadSummary: {fontFamily: font.medium, fontSize: 13.5, color: c.textSecondary, marginBottom: 10},
     teamLoadRow: {flexDirection: 'row', alignItems: 'center', paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.borderLight},
     teamLoadHours: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},

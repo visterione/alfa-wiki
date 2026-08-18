@@ -6,6 +6,8 @@ import {
   Pressable,
   Animated,
   Easing,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
@@ -23,6 +25,10 @@ import {useThemedStyles} from '../store/settingsStore';
  *
  * Закрытие анимируется вручную: Modal снимается с экрана мгновенно, поэтому
  * сначала проигрываем уезд, и только потом сообщаем наружу о закрытии.
+ *
+ * Шторка поднимается над клавиатурой. Внутри Modal системного подъёма нет ни на
+ * одной из платформ, и поле ввода в шторке (быстрый ввод задачи, название
+ * личного дела) оказывалось прямо под клавиатурой: человек печатал вслепую.
  */
 export default function BottomSheet({visible, title, onClose, children, maxHeightRatio = 0.8}) {
   const styles = useThemedStyles(makeStyles);
@@ -68,7 +74,12 @@ export default function BottomSheet({visible, title, onClose, children, maxHeigh
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
 
-      <View style={styles.wrap} pointerEvents="box-none">
+      <KeyboardAvoidingView
+        style={styles.wrap}
+        pointerEvents="box-none"
+        // На iOS клавиатура наезжает на содержимое, и шторку надо поднять целиком;
+        // на Android окно уже ужимается системой, лишний отступ увёл бы её вверх.
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Animated.View
           style={[
             styles.sheet,
@@ -84,7 +95,7 @@ export default function BottomSheet({visible, title, onClose, children, maxHeigh
           {!!title && <Text style={styles.title}>{title}</Text>}
           {children}
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

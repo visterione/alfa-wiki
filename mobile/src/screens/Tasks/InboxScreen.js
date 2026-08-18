@@ -29,7 +29,8 @@ import {radius, font} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {setInboxCount} from '../../store/tasksStore';
-import {addDays, dfull, dshort, estimateText, hoursText, userName} from './taskMeta';
+import {Clock} from 'lucide-react-native';
+import {addDays, clockText, dfull, dnum, hoursText, shortName} from './taskMeta';
 
 export default function InboxScreen({navigation, route}) {
   const c = useTheme();
@@ -97,7 +98,7 @@ export default function InboxScreen({navigation, route}) {
       await tasksApi.proposeDate(part.id, fit.date);
       Alert.alert(
         'Срок предложен',
-        `Автор получит ${dshort(fit.date)} и вашу цифру занятости — без названий ваших дел.`,
+        `Автор увидит ${dnum(fit.date)} и вашу занятость — без названий ваших дел`,
       );
       await load({silent: true});
     } catch (e) {
@@ -132,7 +133,9 @@ export default function InboxScreen({navigation, route}) {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={{padding: 16, paddingBottom: tabInset + 24}}
+      // flexGrow, чтобы короткий список не жался к верхней трети экрана:
+      // содержимое занимает всю высоту, а разделы расходятся по ней.
+      contentContainerStyle={{padding: 16, paddingBottom: tabInset + 24, flexGrow: 1}}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -145,7 +148,7 @@ export default function InboxScreen({navigation, route}) {
         />
       }>
       <Text style={styles.section}>
-        {planDate ? `Помещается в свободное окно · ${visibleMine.length}` : `Требует решения · ${data.mine.length}`}
+        {planDate ? `Помещается в свободное окно — ${visibleMine.length}` : `Требует решения — ${data.mine.length}`}
       </Text>
 
       {!visibleMine.length ? (
@@ -162,28 +165,34 @@ export default function InboxScreen({navigation, route}) {
 
           return (
             <View key={part.id} style={styles.card}>
+              {!!part.task?.code && (
+                <Text style={styles.cardCode}>{part.task.code}</Text>
+              )}
               <Text style={styles.cardTitle}>{part.title}</Text>
-              <Text style={styles.cardFrom}>
-                от {userName(part.task?.author)}
-                {part.task?.project ? ` · ${part.task.project.name}` : ''}
-                {' · '}
-                {estimateText(part.estimateHours)}
-                {' · срок '}
-                {dshort(date)}
-              </Text>
+              <View style={styles.cardMeta}>
+                <Text style={styles.cardFrom}>
+                  от {shortName(part.task?.author)}
+                  {part.task?.project ? ` — ${part.task.project.name}` : ''}
+                </Text>
+                <View style={styles.cardMetaRight}>
+                  <Clock size={13} color={c.textTertiary} />
+                  <Text style={styles.cardFrom}>{clockText(part.estimateHours)}</Text>
+                  <Text style={styles.cardFrom}>· {dnum(date)}</Text>
+                </View>
+              </View>
 
               <View style={[styles.fit, (planDate || a.fits) ? styles.fitOk : styles.fitBad]}>
                 <Text style={[styles.fitText, {color: (planDate || a.fits) ? c.success : c.error}]}>
                   {planDate
-                    ? `Выбрано свободное окно ${dshort(date)} · ${hoursText(freeHours)}. Сервер ещё раз проверит пересечения перед постановкой.`
+                    ? `Свободное окно ${dnum(date)} — ${hoursText(freeHours)}`
                     : <>
                       {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
                       {a.reason === 'no_norm' &&
                         'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
                       {a.reason === 'ok' &&
-                        `${dshort(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)}. Помещается.`}
+                        `${dnum(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — помещается`}
                       {a.reason === 'overload' &&
-                        `${dshort(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — переработка ${hoursText(a.over)}.`}
+                        `${dnum(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — переработка ${hoursText(a.over)}`}
                     </>}
                 </Text>
               </View>
@@ -200,7 +209,7 @@ export default function InboxScreen({navigation, route}) {
                         `В плане на ${dfull(date)}. Автору ушло уведомление.`,
                       )
                     }>
-                    <Text style={styles.btnPrimaryText}>В план на {dshort(date)}</Text>
+                    <Text style={styles.btnPrimaryText}>В план на {dnum(date)}</Text>
                   </Pressable>
                 ) : (
                   <Pressable
@@ -251,7 +260,7 @@ export default function InboxScreen({navigation, route}) {
 
       {!!data.blocked?.length && (
         <>
-          <Text style={styles.section}>Ждут предыдущую часть · {data.blocked.length}</Text>
+          <Text style={styles.section}>Ждут предыдущую часть — {data.blocked.length}</Text>
           {data.blocked.map(part => (
             <Pressable
               key={part.id}
@@ -268,7 +277,8 @@ export default function InboxScreen({navigation, route}) {
         </>
       )}
 
-      <Text style={styles.section}>Жду ответа · {data.waiting.length}</Text>
+      <View style={styles.spacer} />
+      <Text style={styles.section}>Жду ответа — {data.waiting.length}</Text>
       {!data.waiting.length ? (
         <Text style={styles.empty}>Вы никого не ждёте.</Text>
       ) : (
@@ -280,18 +290,13 @@ export default function InboxScreen({navigation, route}) {
             <View style={{flex: 1}}>
               <Text style={styles.rowTitle}>{part.title}</Text>
               <Text style={styles.rowSub}>
-                {(part.assignees || []).map(x => userName(x.user)).join(', ')} · ещё не в плане
+                {(part.assignees || []).map(x => shortName(x.user)).join(', ')} — ещё не в плане
               </Text>
             </View>
           </Pressable>
         ))
       )}
 
-      <Text style={styles.hint}>
-        «Не обработана» — задача, которую исполнитель ещё не разобрал. Пока она в
-        этом состоянии, она не занимает у него времени, и рассчитывать на неё
-        нельзя.
-      </Text>
     </ScrollView>
   );
 }
@@ -299,6 +304,16 @@ export default function InboxScreen({navigation, route}) {
 const makeStyles = c =>
   StyleSheet.create({
     root: {flex: 1, backgroundColor: c.bgSecondary},
+
+    // Пружина между «требует решения» и «жду ответа»: на коротком списке она
+    // разводит разделы по экрану, на длинном схлопывается в ноль.
+    spacer: {flexGrow: 1, minHeight: 8},
+    cardCode: {
+      fontFamily: font.semiBold, fontSize: 10.5, letterSpacing: 0.2,
+      color: c.textTertiary, marginBottom: 3,
+    },
+    cardMeta: {marginTop: 5, gap: 3},
+    cardMetaRight: {flexDirection: 'row', alignItems: 'center', gap: 5},
 
     section: {
       fontFamily: font.semiBold,
@@ -355,11 +370,4 @@ const makeStyles = c =>
     rowTitle: {fontFamily: font.medium, fontSize: 14.5, color: c.textPrimary},
     rowSub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 3},
 
-    hint: {
-      fontFamily: font.regular,
-      fontSize: 12.5,
-      color: c.textTertiary,
-      lineHeight: 19,
-      marginTop: 22,
-    },
   });

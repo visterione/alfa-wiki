@@ -1,5 +1,5 @@
 import React, {useEffect, useRef} from 'react';
-import {View, Animated, Easing} from 'react-native';
+import {View, Animated, Easing, StyleSheet} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import {useTheme} from '../store/settingsStore';
 
@@ -30,6 +30,7 @@ import {useTheme} from '../store/settingsStore';
  * @param {number} width  ширина в px, высота считается сама (2:1)
  * @param {string} color  цвет линий; на цветном фоне передают '#FFFFFF'
  * @param {number} duration  длительность одного цикла, мс
+ * @param {boolean} screen  индикатор занимает весь экран и стоит по центру
  */
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -102,15 +103,30 @@ const AT_DRAW = FRAMES.hold / TOTAL;
 const AT_TAIL = (FRAMES.hold + FRAMES.body) / TOTAL;
 const AT_REST = (FRAMES.hold + FRAMES.body + FRAMES.tail) / TOTAL;
 
+/**
+ * Индикатор во весь экран центрируется сам.
+ *
+ * `if (loading) return <LogoLoader />` — самый частый способ его показать, и
+ * без обёртки знак оказывался в левом верхнем углу: у View размер ровно по
+ * фигуре, а разложить её по экрану некому. Каждый экран заводил свой
+ * styles.center, половина забывала. Флаг ставится сам, когда ширину не задают:
+ * встроенные индикаторы (в кнопке, в аватарке, в шапке) всегда приходят с
+ * width, полноэкранные — никогда.
+ */
 export default function LogoLoader({
-  width = 96,
+  width,
   color,
   duration = (TOTAL / FPS) * 1000,
   style,
+  // Значение по умолчанию у width поставить нельзя: к моменту проверки оно уже
+  // было бы подставлено, и «ширину не задавали» стало бы неотличимо от «задали
+  // ровно 96». Поэтому размер по умолчанию берётся ниже, отдельной строкой.
+  screen = width === undefined,
 }) {
   const c = useTheme();
   const stroke = color || c.primary;
-  const height = width / RATIO;
+  const size = width ?? 96;
+  const height = size / RATIO;
 
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -146,9 +162,9 @@ export default function LogoLoader({
     outputRange: [-(TAIL_LEN + PAD), -(TAIL_LEN + PAD), 0, 0],
   });
 
-  return (
-    <View style={[{width, height}, style]} pointerEvents="none">
-      <Svg width={width} height={height} viewBox={VIEW_BOX}>
+  const logo = (
+    <View style={[{width: size, height}, !screen && style]} pointerEvents="none">
+      <Svg width={size} height={height} viewBox={VIEW_BOX}>
         <AnimatedPath
           d={BODY}
           stroke={stroke}
@@ -171,4 +187,11 @@ export default function LogoLoader({
       </Svg>
     </View>
   );
+
+  if (!screen) return logo;
+  return <View style={[styles.screen, style]} pointerEvents="none">{logo}</View>;
 }
+
+const styles = StyleSheet.create({
+  screen: {flex: 1, alignItems: 'center', justifyContent: 'center'},
+});
