@@ -2,27 +2,24 @@ import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Package, Boxes, CalendarClock, Wrench, QrCode, Printer, RefreshCw,
-  Activity, AlertTriangle, Search, Copy, Monitor, X, MapPin, User as UserIcon,
+  Activity, AlertTriangle, Search, Copy, X, MapPin, User as UserIcon, Lock,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
-import SecureImage from '../../components/warehouse/SecureImage';
 
 /**
  * Дашборд кабинета — отчёт № 7 из ТЗ.
  *
- * Это рабочий экран, а не выгружаемый отчёт, и отсюда три следствия:
+ * Это рабочий экран, а не выгружаемый отчёт, и отсюда два следствия:
  *
- *   • Он интерактивный. Плитки сверху — фильтры: клик по «просрочено» оставляет в
- *     таблицах только просроченное, клик по «в ремонте» — только ремонт. Раньше
- *     это были неподвижные счётчики, и до причины цифры приходилось добираться
- *     глазами по всей странице.
+ *   • Он интерактивный. Плитки сверху — фильтры: каждая показывает свой раздел,
+ *     клик по «срокам годности» оставляет только истекающее. Раньше это были
+ *     неподвижные счётчики, и до причины цифры приходилось добираться глазами
+ *     по всей странице.
  *
- *   • Он живой. Автообновление раз в 60 секунд, потому что в ТЗ этот экран
- *     работает в режиме табло на мониторе у входа в кабинет. Интервал снимается
- *     при уходе со страницы — иначе он продолжает дёргать сервер из закрытой вкладки.
- *
- *   • У него есть режим табло: скрывает управление и увеличивает шрифты, чтобы
- *     экран читался с двух метров.
+ *   • Он живой. Автообновление раз в минуту: наряды ТО и остатки правят из других
+ *     вкладок, и открытый дашборд не должен показывать вчерашнюю картину. Интервал
+ *     снимается при уходе со страницы — иначе он продолжает дёргать сервер из
+ *     закрытой вкладки.
  *
  * Полный экран, а не боковая панель: панель на карте — это быстрый просмотр, а
  * сюда приходят разбираться.
@@ -35,13 +32,20 @@ const STATUS_LABELS = {
 
 const REFRESH_MS = 60_000;
 
+// К какому разделу относится фильтр. Плитка сверху выбирает не только набор строк,
+// но и таблицу: показывать обе, когда одна из них заведомо пуста, — значит рисовать
+// пустой блок «Материалов нет» там, где смотрят на оборудование, и наоборот.
+const FILTER_SECTION = {
+  assets: 'assets', repair: 'assets', maintenance: 'assets', maintDue: 'assets',
+  materials: 'stock', belowMin: 'stock', expired: 'stock',
+};
+
 export default function WarehouseRoom({ roomId, access, onBack }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshedAt, setRefreshedAt] = useState(null);
   const [filter, setFilter] = useState(null);   // null | 'repair' | 'maintenance' | 'expired' | 'belowMin'
   const [q, setQ] = useState('');
-  const [kiosk, setKiosk] = useState(false);
   const [qrModal, setQrModal] = useState(false);
 
   const load = async (silent = false) => {
@@ -59,21 +63,12 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [roomId]);
 
-  // Автообновление для режима табло. Интервал живёт только пока экран открыт.
+  // Интервал живёт только пока экран открыт.
   useEffect(() => {
     const timer = setInterval(() => load(true), REFRESH_MS);
     return () => clearInterval(timer);
     /* eslint-disable-next-line */
   }, [roomId]);
-
-  // Escape выходит из режима табло: в нём скрыто всё управление, включая кнопку
-  // выхода, и без клавиши экран становится ловушкой.
-  useEffect(() => {
-    if (!kiosk) return undefined;
-    const onKey = e => { if (e.key === 'Escape') setKiosk(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [kiosk]);
 
   const canSeeCosts = access?.capabilities?.canSeeCosts;
 
@@ -86,7 +81,6 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
       const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
       rows = rows.filter(a => a.nextMaintenanceDate && a.nextMaintenanceDate <= soon);
     }
-    if (filter === 'expired' || filter === 'belowMin') rows = [];
     if (q) {
       const needle = q.toLowerCase();
       rows = rows.filter(a =>
@@ -102,7 +96,6 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
     let rows = data.stock;
     if (filter === 'expired') rows = rows.filter(s => s.expired || s.expiringSoon);
     if (filter === 'belowMin') rows = rows.filter(s => s.stockStatus === 'below');
-    if (filter === 'repair' || filter === 'maintenance' || filter === 'maintDue') rows = [];
     if (q) {
       const needle = q.toLowerCase();
       rows = rows.filter(s => s.name?.toLowerCase().includes(needle));
@@ -110,21 +103,26 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
     return rows;
   }, [data, filter, q]);
 
+  const section = filter ? FILTER_SECTION[filter] : null;
+  const showAssets = section !== 'stock';
+  const showStock = section !== 'assets';
+
   if (loading) return <div className="wh-page--center"><div className="loading-spinner" /></div>;
   if (!data) return <div className="wh-empty">Кабинет недоступен</div>;
 
   const { room, cards, maintenance, attention } = data;
-  const publicUrl = room.publicToken ? `${window.location.origin}/p/r/${room.publicToken}` : null;
+  // Ссылка с QR ведёт внутрь портала, а не на публичную карточку: дверь выходит
+  // в коридор, и сканировать код может кто угодно, включая пациента.
+  const roomUrl = `${window.location.origin}/warehouse?room=${room.id}`;
 
   return (
-    <div className={`wh-room ${kiosk ? 'wh-room--kiosk' : ''}`}>
+    <div className="wh-room">
       {/* ── Шапка ─────────────────────────────────────────────────────────── */}
       <div className="wh-room__head">
-        {!kiosk && (
-          <button className="wh-btn wh-btn--secondary" onClick={onBack}>
-            <ArrowLeft size={15} /> К списку кабинетов
-          </button>
-        )}
+        <button className="wh-icon-btn" onClick={onBack}
+                title="К списку кабинетов" aria-label="К списку кабинетов">
+          <ArrowLeft size={17} />
+        </button>
         <div className="wh-room__title">
           <h2>
             Кабинет {room.number}
@@ -134,33 +132,16 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
           <div className="wh-room__meta">
             <UserIcon size={11} /> МОЛ: {room.responsible?.displayName || 'не назначен'}
             {refreshedAt && ` · обновлено ${refreshedAt.toLocaleTimeString('ru-RU')}`}
-            {' · обновляется автоматически раз в минуту'}
           </div>
         </div>
-        {!kiosk && (
-          <div className="wh-room__actions">
-            <button className="wh-btn wh-btn--secondary" onClick={() => load()}>
-              <RefreshCw size={15} /> Обновить
-            </button>
-            {publicUrl && (
-              <button className="wh-btn wh-btn--secondary" onClick={() => setQrModal(true)}>
-                <QrCode size={15} /> QR на дверь
-              </button>
-            )}
-            <button className="wh-btn wh-btn--secondary" onClick={() => setKiosk(true)}
-                    title="Крупные цифры, без управления — для монитора у кабинета">
-              <Monitor size={15} /> Табло
-            </button>
-            <button className="wh-btn wh-btn--secondary" onClick={() => window.print()}>
-              <Printer size={15} /> Печать
-            </button>
-          </div>
-        )}
-        {kiosk && (
-          <button className="wh-btn wh-btn--secondary" onClick={() => setKiosk(false)}>
-            <X size={15} /> Выйти из табло (Esc)
+        <div className="wh-room__actions">
+          <button className="wh-btn wh-btn--secondary" onClick={() => load()}>
+            <RefreshCw size={15} /> Обновить
           </button>
-        )}
+          <button className="wh-btn wh-btn--secondary" onClick={() => setQrModal(true)}>
+            <QrCode size={15} /> QR-код
+          </button>
+        </div>
       </div>
 
       {/* ── Плитки-фильтры ────────────────────────────────────────────────── */}
@@ -168,11 +149,12 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
         <TileButton
           icon={<Package size={16} />} title="Оборудование"
           value={cards.assets.total} unit="ед."
-          onClick={() => setFilter(null)}
+          active={filter === 'assets'}
+          onClick={() => setFilter(filter === 'assets' ? null : 'assets')}
           rows={[
-            ['🟢', `${cards.assets.inUse} в работе`],
-            ['🟡', `${cards.assets.maintenance} на ТО`],
-            ['🔴', `${cards.assets.repair} в ремонте`],
+            ['green', `${cards.assets.inUse} в работе`],
+            ['yellow', `${cards.assets.maintenance} на ТО`],
+            ['red', `${cards.assets.repair} в ремонте`],
           ]} />
 
         <TileButton
@@ -180,12 +162,11 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
           value={cards.materials.positions} unit="поз."
           sub={canSeeCosts ? `${cards.materials.value.toLocaleString('ru-RU')} ₽` : null}
           alert={cards.materials.belowMin > 0}
-          active={filter === 'belowMin'}
-          onClick={() => setFilter(filter === 'belowMin' ? null : 'belowMin')}
-          hint={cards.materials.belowMin > 0 ? 'показать дефицит' : null}
+          active={section === 'stock' && filter !== 'expired'}
+          onClick={() => setFilter(section === 'stock' && filter !== 'expired' ? null : 'materials')}
           rows={[
-            ['🔴', `${cards.materials.belowMin} ниже минимума`],
-            ['🟡', `${cards.materials.nearMin} близко к минимуму`],
+            ['red', `${cards.materials.belowMin} ниже минимума`],
+            ['yellow', `${cards.materials.nearMin} близко к минимуму`],
           ]} />
 
         <TileButton
@@ -194,10 +175,9 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
           alert={cards.expiry.expired > 0}
           active={filter === 'expired'}
           onClick={() => setFilter(filter === 'expired' ? null : 'expired')}
-          hint={(cards.expiry.expired + cards.expiry.within30) > 0 ? 'показать позиции' : null}
           rows={[
-            ['🔴', `${cards.expiry.expired} просрочено`],
-            ['🟠', `${cards.expiry.within30} истекает в 30 дн.`],
+            ['red', `${cards.expiry.expired} просрочено`],
+            ['orange', `${cards.expiry.within30} истекает в 30 дн.`],
           ]} />
 
         <TileButton
@@ -207,8 +187,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
           alert={cards.maintenance.overdue > 0}
           active={filter === 'maintDue'}
           onClick={() => setFilter(filter === 'maintDue' ? null : 'maintDue')}
-          hint={cards.maintenance.open > 0 ? 'показать оборудование' : null}
-          rows={[['🔴', `${cards.maintenance.overdue} просрочено`]]} />
+          rows={[['red', `${cards.maintenance.overdue} просрочено`]]} />
 
         <div className="wh-bigcard">
           <div className="wh-bigcard__head"><Activity size={16} /> Загрузка кабинета</div>
@@ -253,18 +232,17 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
       {/* ── Основная раскладка: данные слева, внимание справа ─────────────── */}
       <div className="wh-room__layout">
         <div>
-          {!kiosk && (
-            <div className="wh-panel">
-              <div className="wh-panel__body">
-                <div className="wh-search">
-                  <Search size={15} />
-                  <input placeholder="Поиск по оборудованию и материалам кабинета"
-                         value={q} onChange={e => setQ(e.target.value)} />
-                </div>
+          <div className="wh-panel">
+            <div className="wh-panel__body">
+              <div className="wh-search">
+                <Search size={15} />
+                <input placeholder="Поиск по оборудованию и материалам кабинета"
+                       value={q} onChange={e => setQ(e.target.value)} />
               </div>
             </div>
-          )}
+          </div>
 
+          {showAssets && (
           <div className="wh-panel">
             <div className="wh-panel__head">
               <div className="wh-panel__title">
@@ -304,12 +282,23 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
               </table>
             </div>
           </div>
+          )}
 
+          {showStock && (
           <div className="wh-panel">
             <div className="wh-panel__head">
               <div className="wh-panel__title">
                 <Boxes size={15} /> Материалы на местах хранения ({filteredStock.length})
               </div>
+              {/* Дефицит раньше включался кликом по плитке «Материалы», и плитка при
+                  этом показывала общее число позиций, а таблица — только нехватку.
+                  Переключатель стоит у таблицы, которую он и сужает. */}
+              {cards.materials.belowMin > 0 && (
+                <button className="wh-btn wh-btn--link"
+                        onClick={() => setFilter(filter === 'belowMin' ? 'materials' : 'belowMin')}>
+                  {filter === 'belowMin' ? 'все позиции' : `только дефицит (${cards.materials.belowMin})`}
+                </button>
+              )}
             </div>
             <div className="wh-table-wrap">
               <table className="wh-table wh-table--compact">
@@ -343,6 +332,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
               </table>
             </div>
           </div>
+          )}
         </div>
 
         <div>
@@ -390,20 +380,11 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
             </div>
           )}
 
-          {!kiosk && publicUrl && (
-            <div className="wh-alert wh-alert--info">
-              <QrCode size={15} />
-              <div>
-                QR-код на двери ведёт на публичную страницу кабинета: перечень
-                оборудования и его статусы. Остатки материалов и суммы на неё не попадают.
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {qrModal && publicUrl && (
-        <RoomQrModal room={room} url={publicUrl} onClose={() => setQrModal(false)} />
+      {qrModal && (
+        <RoomQrModal room={room} url={roomUrl} onClose={() => setQrModal(false)} />
       )}
     </div>
   );
@@ -412,31 +393,71 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
 /**
  * Плитка-фильтр. Кнопка, а не div: по ней щёлкают, и это должно быть доступно
  * с клавиатуры и очевидно по курсору.
+ *
+ * Без подписей «показать позиции» и «фильтр включён»: все четыре плитки ведут
+ * себя одинаково — клик показывает свой раздел, повторный клик возвращает всё, —
+ * а выбранная и так подсвечена рамкой.
  */
-function TileButton({ icon, title, value, unit, sub, rows, alert, active, onClick, hint }) {
+function TileButton({ icon, title, value, unit, sub, rows, alert, active, onClick }) {
   return (
     <button type="button"
             className={`wh-bigcard wh-bigcard--clickable ${alert ? 'wh-bigcard--alert' : ''} ${active ? 'is-active' : ''}`}
-            onClick={onClick}
-            title={hint || undefined}>
+            onClick={onClick}>
       <div className="wh-bigcard__head">{icon} {title}</div>
       <div className="wh-bigcard__value">{value} <small>{unit}</small></div>
       {sub && <div className="wh-bigcard__sub">{sub}</div>}
       <ul className="wh-bigcard__rows">
-        {(rows || []).filter(r => !/^0 /.test(r[1])).map(([mark, text], i) => (
-          <li key={i}>{mark} {text}</li>
+        {/* Цветная точка, а не эмодзи: тот же индикатор, что в таблицах и на карте,
+            и он не зависит от того, как эмодзи нарисует конкретная система. */}
+        {(rows || []).filter(r => !/^0 /.test(r[1])).map(([zone, text], i) => (
+          <li key={i}><span className={`wh-dot wh-dot--zone-${zone}`} /> {text}</li>
         ))}
       </ul>
-      {hint && <div className="wh-bigcard__sub wh-muted">{active ? 'фильтр включён' : hint}</div>}
     </button>
   );
 }
 
+/**
+ * Карточка кабинета на дверь.
+ *
+ * Печатается не скриншотом превью, а тем же SVG, что показан в модалке: разметка
+ * приходит с сервера в миллиметрах, окно печати задаёт @page ровно в A5, и на
+ * бумаге получается тот же лист, а не картинка, растянутая по ширине A4. Так же
+ * сделана печать этикеток оборудования — см. openPrintWindow в WarehouseAssets.js.
+ */
 function RoomQrModal({ room, url, onClose }) {
+  const [svg, setSvg] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    warehouseApi.roomDoorCard(room.id)
+      .then(({ data }) => { if (alive) setSvg(data); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [room.id]);
+
   const copy = () => {
     navigator.clipboard?.writeText(url)
       .then(() => toast.success('Ссылка скопирована'))
       .catch(() => toast.error('Не удалось скопировать'));
+  };
+
+  const print = () => {
+    if (!svg) return;
+    const w = window.open('', '_blank');
+    if (!w) return toast.error('Браузер заблокировал окно печати');
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8">
+      <title>Кабинет ${escapeHtml(room.number)}</title>
+      <style>
+        @page { size: A5; margin: 0; }
+        html, body { margin: 0; padding: 0; }
+        svg { display: block; }
+        @media screen { body { background: #eef1f5; padding: 16px; } }
+      </style></head><body>${svg}
+      <script>window.onload = () => setTimeout(() => window.print(), 250);<\/script>
+      </body></html>`);
+    w.document.close();
   };
 
   return (
@@ -444,28 +465,34 @@ function RoomQrModal({ room, url, onClose }) {
       <div className="wh-modal__box wh-modal__box--narrow" onClick={e => e.stopPropagation()}>
         <div className="wh-modal__head">
           <div>
-            <div className="wh-modal__title">QR-код на дверь кабинета {room.number}</div>
-            <div className="wh-modal__sub">Открывается без авторизации</div>
+            <div className="wh-modal__title">Карточка кабинета {room.number}</div>
+            <div className="wh-modal__sub">A5 — распечатать и повесить у входа</div>
           </div>
           <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
-        <div className="wh-modal__body" style={{ textAlign: 'center' }}>
-          <SecureImage className="wh-qr__img"
-                       alt={`QR-код кабинета ${room.number}`}
-                       url={warehouseApi.roomQrUrl(room.id)} />
+        <div className="wh-modal__body">
+          <div className="wh-doorcard">
+            {/* Разметка своя, с нашего же бэкенда, и текст в ней экранирован
+                генератором — вставляем как есть, чтобы превью и печать были одним
+                и тем же файлом. */}
+            {svg && <div className="wh-doorcard__sheet" dangerouslySetInnerHTML={{ __html: svg }} />}
+            {!svg && !failed && <div className="loading-spinner" />}
+            {failed && <div className="wh-empty">Не удалось построить карточку</div>}
+          </div>
+
           <div className="wh-qr__url">
             <code>{url}</code>
             <button className="wh-icon-btn" onClick={copy} title="Скопировать"><Copy size={15} /></button>
           </div>
-          <p className="wh-hint">
-            Распечатайте и наклейте у входа. Страница показывает перечень оборудования
-            кабинета и его статусы — без остатков материалов, сумм и ФИО.
-          </p>
+
+          <div className="wh-hint">
+            <Lock size={13} /> Код ведёт на дашборд внутри портала и требует входа.
+          </div>
         </div>
         <div className="wh-modal__foot">
           <button className="wh-btn wh-btn--secondary" onClick={onClose}>Закрыть</button>
-          <button className="wh-btn wh-btn--primary" onClick={() => window.open(url, '_blank')}>
-            Открыть страницу
+          <button className="wh-btn wh-btn--primary" onClick={print} disabled={!svg}>
+            <Printer size={15} /> Печать карточки
           </button>
         </div>
       </div>
@@ -473,7 +500,11 @@ function RoomQrModal({ room, url, onClose }) {
   );
 }
 
+const escapeHtml = t => String(t ?? '').replace(/[&<>"]/g, c => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 const filterLabel = f => ({
+  assets: 'оборудование', materials: 'материалы',
   belowMin: 'ниже минимума', expired: 'сроки годности',
   repair: 'в ремонте', maintenance: 'на ТО', maintDue: 'ТО в течение 30 дней',
 }[f] || f);

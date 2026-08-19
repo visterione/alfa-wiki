@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown, Trash2, RotateCcw, Lock, Eye, PenLine } from 'lucide-react';
-import { users, roles, BASE_URL, referralBonusAccess } from '../../services/api';
+import { users, roles, BASE_URL, referralBonusAccess, warehouseAccessApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import DatePickerInput from '../../components/DatePickerInput';
 import ChatBadgeField from '../../components/ChatBadgeField';
@@ -128,6 +128,14 @@ const SALARY_CLINICS = [
   { id: 'ip', name: 'ИП Микаелян', color: '#e05252' },
 ];
 
+/**
+ * Права складского модуля приходят каталогом с сервера
+ * (services/warehouse/permissions.js): перечень разделов, шестнадцать отчётов и
+ * список медцентров. Дублировать его здесь нельзя — новый отчёт пришлось бы
+ * добавлять в двух местах, и однажды забыли бы в одном.
+ */
+const WAREHOUSE_PERM_DEFAULT = { perms: {}, medCenterIds: [] };
+
 const SALARY_PERM_DEFAULT = {
   clinics: [],
   tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block',
@@ -183,6 +191,9 @@ export default function AdminUsers() {
   const [userList, setUserList] = useState([]);
   const [roleList, setRoleList] = useState([]);
   const [medCenterList, setMedCenterList] = useState([]);
+  // Каталог прав склада: перечень разделов, отчётов и медцентров. Один на всех,
+  // поэтому грузится один раз, а не при открытии каждой карточки.
+  const [whCatalogue, setWhCatalogue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('');
@@ -246,6 +257,15 @@ export default function AdminUsers() {
   });
 
   useEffect(() => { load(); }, []);
+
+  // Каталог прав склада — один запрос на весь экран. Ошибку глотаем: без каталога
+  // ветка склада в дереве просто не рисуется, остальные права настраиваются как
+  // обычно, и падать всей админкой из-за одного модуля незачем.
+  useEffect(() => {
+    warehouseAccessApi.catalogue()
+      .then(({ data }) => setWhCatalogue(data))
+      .catch(() => setWhCatalogue(null));
+  }, []);
 
   useEffect(() => {
     if (!misDropdown.open) return;
@@ -481,6 +501,11 @@ export default function AdminUsers() {
         const res = await referralBonusAccess.getUserPerm(user.id);
         salaryPerm = { ...SALARY_PERM_DEFAULT, ...res.data };
       } catch { /* оставляем дефолт */ }
+      let warehousePerm = { ...WAREHOUSE_PERM_DEFAULT };
+      try {
+        const res = await warehouseAccessApi.getUserPerm(user.id);
+        warehousePerm = { perms: res.data?.perms || {}, medCenterIds: res.data?.medCenterIds || [] };
+      } catch { /* оставляем дефолт */ }
       setForm({
         username: user.username,
         password: '',
@@ -495,6 +520,7 @@ export default function AdminUsers() {
         birthDate: user.birthDate || '',
         bio: user.bio || '',
         chatBadgeOverride: user.chatBadgeOverride || null,
+        warehousePerm,
         roleIds: user.roles ? user.roles.map(r => r.id) : [],
         medCenterIds: user.medCenters ? user.medCenters.map(mc => mc.id) : [],
         isAdmin: user.isAdmin,
@@ -558,6 +584,7 @@ export default function AdminUsers() {
           parser: false, medCenters: false
         },
         salaryPerm: { ...SALARY_PERM_DEFAULT },
+        warehousePerm: { ...WAREHOUSE_PERM_DEFAULT },
         statisticsTabs: {
           kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
           kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
@@ -670,11 +697,15 @@ export default function AdminUsers() {
         if (!data.password) delete data.password;
         await users.update(modal.user.id, data);
         await referralBonusAccess.saveUserPerm(modal.user.id, form.salaryPerm);
+        await warehouseAccessApi.saveUserPerm(modal.user.id, form.warehousePerm);
         toast.success('Пользователь обновлён');
       } else {
         const res = await users.create(form);
         const newUserId = res.data?.id || res.data?.user?.id;
-        if (newUserId) await referralBonusAccess.saveUserPerm(newUserId, form.salaryPerm);
+        if (newUserId) {
+          await referralBonusAccess.saveUserPerm(newUserId, form.salaryPerm);
+          await warehouseAccessApi.saveUserPerm(newUserId, form.warehousePerm);
+        }
         toast.success('Пользователь создан');
       }
       setModal({ open: false, user: null });
@@ -1381,6 +1412,31 @@ export default function AdminUsers() {
                     (() => {
                       const st = form.statisticsTabs || {};
                       const sp = form.salaryPerm || SALARY_PERM_DEFAULT;
+                      // Права склада: тот же трёхпозиционный переключатель, что и
+                      // у зарплаты, только ключи приходят каталогом с сервера.
+                      const wp = form.warehousePerm || WAREHOUSE_PERM_DEFAULT;
+                      const whSet = (key, value) => {
+                        if (form.isAdmin) return;
+                        setForm(f => ({
+                          ...f,
+                          warehousePerm: {
+                            ...(f.warehousePerm || WAREHOUSE_PERM_DEFAULT),
+                            perms: { ...((f.warehousePerm || {}).perms || {}), [key]: value },
+                          },
+                        }));
+                      };
+                      const whTab = key => ({
+                        permVal: form.isAdmin ? 'edit' : ((wp.perms || {})[key] || 'block'),
+                        onPermChange: value => whSet(key, value),
+                      });
+                      const whBulk = (keys, value) => {
+                        if (form.isAdmin) return;
+                        setForm(f => {
+                          const next = { ...((f.warehousePerm || {}).perms || {}) };
+                          for (const key of keys) next[key] = value;
+                          return { ...f, warehousePerm: { ...(f.warehousePerm || WAREHOUSE_PERM_DEFAULT), perms: next } };
+                        });
+                      };
                       const stTab = (k) => ({ checked: form.isAdmin || !!(st[k] ?? true), onChange: v => { if (!form.isAdmin) setForm(f => ({...f, statisticsTabs: {...(f.statisticsTabs||{}), [k]: v}})); } });
                       const spTab = (k) => ({
                         permVal: form.isAdmin ? 'edit' : (sp[k] || 'block'),
@@ -1432,6 +1488,55 @@ export default function AdminUsers() {
                             { key: 'aupAccess', label: 'АУП — секретная клиника', clinicColor: '#111111',
                               checked: !!form.canAccessTopSalary,
                               onChange: v => setForm(f => ({...f, canAccessTopSalary: v})) },
+                          ],
+                        },
+                        // Складской учёт. Родительский тумблер — доступ к разделу
+                        // (adminAccess.warehouse), внутри — что именно открыто.
+                        // Отчёты вынесены в свою подгруппу: их шестнадцать, и в
+                        // общем списке они утопили бы разделы.
+                        {
+                          id: 'warehouse',
+                          label: 'Складской учёт',
+                          isParentToggle: true,
+                          parentChecked: form.isAdmin || !!form.adminAccess.warehouse,
+                          onParentToggle: v => {
+                            if (!form.isAdmin) setForm({ ...form, adminAccess: { ...form.adminAccess, warehouse: v } });
+                          },
+                          items: [
+                            ...(whCatalogue?.medCenters?.length ? [{
+                              isSubGroup: true, key: 'whClinics', expandKey: 'warehouse_clinics',
+                              label: 'Медцентры',
+                              items: whCatalogue.medCenters.map(mc => ({
+                                key: `wh_mc_${mc.id}`,
+                                label: mc.name,
+                                clinicColor: mc.color,
+                                // Пустой список означает «вся сеть»: ограничение с
+                                // пустым списком и его отсутствие выглядели бы в
+                                // дереве одинаково, а значат противоположное.
+                                checked: form.isAdmin || (wp.medCenterIds || []).includes(mc.id),
+                                onChange: v => {
+                                  if (form.isAdmin) return;
+                                  const cur = wp.medCenterIds || [];
+                                  const next = v ? [...cur, mc.id] : cur.filter(id => id !== mc.id);
+                                  setForm(f => ({
+                                    ...f,
+                                    warehousePerm: { ...(f.warehousePerm || WAREHOUSE_PERM_DEFAULT), medCenterIds: next },
+                                  }));
+                                },
+                              })),
+                            }] : []),
+                            ...(whCatalogue?.sections || []).map(sec => ({
+                              key: `wh_${sec.key}`, label: sec.label, ...whTab(sec.key),
+                            })),
+                            ...(whCatalogue?.reports?.length ? [{
+                              isSubGroup: true, key: 'whReports', expandKey: 'warehouse_reports',
+                              label: `Отчёты (${whCatalogue.reports.length})`,
+                              items: whCatalogue.reports.map(rep => ({
+                                key: `wh_${rep.key}`, label: rep.label, ...whTab(rep.key),
+                              })),
+                              onToggleAll: nv => whBulk(
+                                whCatalogue.reports.map(r => r.key), nv ? 'read' : 'block'),
+                            }] : []),
                           ],
                         },
                         {

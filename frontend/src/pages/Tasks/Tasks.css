@@ -12,7 +12,6 @@
 
 .tsk {
   padding: 14px 18px 28px;
-  max-width: 1600px;
   margin: 0 auto;
 }
 
@@ -1316,7 +1315,9 @@
   position: relative;
   isolation: isolate;
   padding: 18px 22px 32px;
-  max-width: 1660px;
+  /* Своего лимита ширины нет, снят он и у обёртки (.content-wrapper в
+     Layout.css): доске из пяти колонок и таблицам загрузки место нужнее, чем
+     поля по краям. */
 }
 
 .tsk-shell {

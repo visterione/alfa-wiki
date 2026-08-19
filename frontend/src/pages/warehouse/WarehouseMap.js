@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Building2, Layers, ChevronRight, RefreshCw, AlertTriangle, Package,
-  Wrench, CalendarClock, Boxes, X, ExternalLink, Info, ShieldCheck,
+  Wrench, CalendarClock, Boxes, X, ExternalLink,
+  Home, PencilRuler,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import FloorPlanSvg from '../../components/warehouse/FloorPlanSvg';
+import FloorPlanEditor from './FloorPlanEditor';
 
 /**
  * Карта склада — многоуровневая навигация по сети.
@@ -20,17 +22,6 @@ import FloorPlanSvg from '../../components/warehouse/FloorPlanSvg';
  * маршрутам React Router было бы честнее с точки зрения ссылок, но тогда каждый
  * переход перезагружал бы дерево локаций — а оно одно на весь модуль.
  */
-
-const METRIC_HINTS = {
-  utilization: 'Часы приёма из МИС, поделённые на суточную ёмкость кабинета. Пересекающиеся приёмы склеиваются: несколько врачей в одном кабинете не дают 200 %.',
-  assetValue: 'Первоначальная стоимость оборудования в кабинете. Раскраска по шкале, а не светофором: дорогой кабинет — не «плохой».',
-  assetCount: 'Количество единиц оборудования.',
-  belowMinimum: 'Позиции, остаток которых ниже минимума.',
-  expired: 'Позиции с истёкшим сроком годности.',
-  overdueMaint: 'Наряды ТО с просроченной плановой датой.',
-  inRepair: 'Оборудование в ремонте.',
-  idleAssets: 'Оборудование без учётных операций 14 дней и больше.',
-};
 
 export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom }) {
   // Уровень: { kind: 'network' } | { kind: 'medCenter', mcId }
@@ -50,16 +41,22 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [roomPanel, setRoomPanel] = useState(null);
   const [recomputing, setRecomputing] = useState(false);
+  // Редактор планов — не соседняя вкладка, а тот же экран в режиме правки:
+  // { mcId?, buildingId?, floorId? } | null. Отдельная вкладка «Планы помещений»
+  // заставляла второй раз выбирать селектами тот медцентр и этаж, на который
+  // человек уже смотрит на карте, и по возвращении карта ничего не знала о
+  // правках. Пустой объект — вход без предвыбора, как было у вкладки.
+  const [editing, setEditing] = useState(null);
 
   const medCenters = tree?.medCenters || [];
   const canSeeCosts = access?.capabilities?.canSeeCosts;
+  const canEditPlans = access?.capabilities?.canEditPlans;
   const currentMc = useMemo(
     () => medCenters.find(mc => mc.id === level.mcId) || null,
     [medCenters, level.mcId]
   );
-  // Сводка по сети даёт цифры, дерево — форму площадки: сколько корпусов, по
-  // сколько этажей в каждом и насколько они населены. Силуэт на карточке рисуется
-  // по дереву, поэтому он не выдумка, а настоящая структура медцентра.
+  // Сводка по сети даёт цифры для карточек, дерево — структуру площадки: по нему
+  // решается, открывать медцентр списком корпусов или сразу общей схемой.
   const treeById = useMemo(() => new Map(medCenters.map(mc => [mc.id, mc])), [medCenters]);
   const currentBuilding = useMemo(
     () => currentMc?.buildings?.find(b => b.id === level.buildingId) || null,
@@ -165,17 +162,41 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
     return String(v);
   }, [metric]);
 
+  // ── Режим правки планов ────────────────────────────────────────────────────
+  // Стоит до разбора уровней, но после всех хуков: редактор подменяет содержимое
+  // карты целиком, а уровень под ним сохраняется — выход возвращает туда, откуда
+  // вошли. Геометрия за время правки могла измениться, поэтому тепловая карта
+  // перечитывается на выходе.
+  if (editing) {
+    return (
+      <FloorPlanEditor tree={tree}
+                       departments={tree?.departments}
+                       initialSelection={editing}
+                       onReloadTree={onReloadTree}
+                       onExit={() => { setEditing(null); loadHeatmap(); }} />
+    );
+  }
+
   // ── Уровень 1: сеть ────────────────────────────────────────────────────────
   if (level.kind === 'network') {
     const withData = overview.filter(o => o.buildings > 0 || o.rooms > 0);
     return (
       <div className="wh-map">
-        <Breadcrumbs items={[{ label: 'Сеть' }]} />
+        <div className="wh-map__head">
+          <h2>Медцентры</h2>
+          {/* Вход в редактор без предвыбора — то же, чем была вкладка «Планы
+              помещений». Нужен именно здесь: пока у площадки нет ни корпуса, ни
+              этажа, войти в правку «с плана» ещё неоткуда. */}
+          {canEditPlans && (
+            <button className="wh-btn wh-btn--secondary" onClick={() => setEditing({})}>
+              <PencilRuler size={15} /> Планы помещений
+            </button>
+          )}
+        </div>
         <div className="wh-map__grid">
           {withData.map(mc => (
             <MedCenterCard key={mc.id}
                            mc={mc}
-                           shape={treeById.get(mc.id)}
                            canSeeCosts={canSeeCosts}
                            onOpen={() => openMedCenter(mc.id)} />
           ))}
@@ -209,7 +230,7 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
     return (
       <div className="wh-map">
         <Breadcrumbs items={[
-          { label: 'Сеть', onClick: () => setLevel({ kind: 'network' }) },
+          { icon: <Home size={14} />, title: 'Все медцентры', onClick: () => setLevel({ kind: 'network' }) },
           { label: currentMc?.name || '—' },
         ]} />
 
@@ -229,6 +250,12 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
             <SpecItem label="Кабинеты" value={totals.rooms} />
             <SpecItem label="Ед. ОС" value={totals.assets} />
           </dl>
+          {canEditPlans && (
+            <button className="wh-btn wh-btn--secondary"
+                    onClick={() => setEditing({ mcId: level.mcId })}>
+              <PencilRuler size={15} /> Планы
+            </button>
+          )}
         </header>
 
         {buildings.map(building => (
@@ -255,14 +282,13 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   // Этаж и общая схема медцентра рисуются одним и тем же экраном: различаются они
   // только тем, есть ли между чем переключаться слева.
   const isScheme = level.kind === 'scheme';
-  const metricInfo = (heatmap?.metrics || []).find(m => m.key === metric);
   const coverage = heatmap?.coverage;
   const noUtilData = metric === 'utilization' && coverage && coverage.withData === 0;
 
   return (
     <div className="wh-map">
       <Breadcrumbs items={[
-        { label: 'Сеть', onClick: () => setLevel({ kind: 'network' }) },
+        { icon: <Home size={14} />, title: 'Все медцентры', onClick: () => setLevel({ kind: 'network' }) },
         { label: currentMc?.name || '—', onClick: () => openMedCenter(level.mcId) },
         ...(isScheme
           ? [{ label: 'Общая схема' }]
@@ -288,28 +314,31 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
             <input type="date" value={period.to} onChange={e => setPeriod(p => ({ ...p, to: e.target.value }))} />
           </div>
         </div>
-        {access?.capabilities?.canEditPlans && (
-          <button className="wh-btn wh-btn--ghost" onClick={recompute} disabled={recomputing}>
-            <RefreshCw size={15} className={recomputing ? 'wh-spin' : ''} /> Пересчитать загрузку
-          </button>
+        {canEditPlans && (
+          <div className="wh-map__toolbar-actions">
+            {/* Правка открывается ровно на том плане, который сейчас на экране:
+                медцентр, корпус и этаж уже выбраны, повторять выбор не нужно. */}
+            <button className="wh-btn wh-btn--secondary"
+                    onClick={() => setEditing({
+                      mcId: level.mcId,
+                      buildingId: isScheme ? null : level.buildingId,
+                      floorId: isScheme ? null : level.floorId,
+                    })}>
+              <PencilRuler size={15} /> Редактировать план
+            </button>
+            <button className="wh-btn wh-btn--ghost" onClick={recompute} disabled={recomputing}>
+              <RefreshCw size={15} className={recomputing ? 'wh-spin' : ''} /> Пересчитать загрузку
+            </button>
+          </div>
         )}
       </div>
-
-      {metricInfo && (
-        <div className="wh-note wh-note--subtle">
-          <Info size={15} />
-          <div>{METRIC_HINTS[metric] || metricInfo.title}</div>
-        </div>
-      )}
 
       {noUtilData && (
         <div className="wh-note wh-note--warn">
           <AlertTriangle size={15} />
           <div>
-            За выбранный период загрузка не рассчитана ни по одному кабинету. Обычная
-            причина — кабинеты не сопоставлены с названиями из МИС, либо кэш расписания
-            (<code>mis_appointments</code>) не покрывает этот период. Кабинеты без данных
-            показаны серым, а не нулём: ноль означал бы «кабинет простаивал».
+            За период загрузка не рассчитана ни по одному кабинету: кабинеты не
+            сопоставлены с МИС либо нет расписания за этот период.
           </div>
         </div>
       )}
@@ -397,7 +426,9 @@ function Breadcrumbs({ items }) {
         <React.Fragment key={i}>
           {i > 0 && <ChevronRight size={14} className="wh-crumbs__sep" />}
           {item.onClick
-            ? <button className="wh-crumbs__link" onClick={item.onClick}>{item.label}</button>
+            ? <button className="wh-crumbs__link" onClick={item.onClick} title={item.title}>
+                {item.icon || item.label}
+              </button>
             : <span className="wh-crumbs__current">{item.label}</span>}
         </React.Fragment>
       ))}
@@ -408,15 +439,30 @@ function Breadcrumbs({ items }) {
 /**
  * Карточка медцентра на верхнем уровне.
  *
- * Раньше здесь была плитка с четырьмя иконками и четырьмя числами — они у всех
- * медцентров выглядели одинаково, и различить площадки можно было только прочитав
- * название. Теперь у карточки есть силуэт: каждый корпус — башня, каждый этаж —
- * блок, ширина блока зависит от числа кабинетов на этаже. Пятиэтажный корпус и
- * два двухэтажных перестают выглядеть одинаково, и карточка начинает нести то,
- * ради чего на неё смотрят, — размер и устройство площадки.
+ * Карточка здесь — кнопка перехода, а не отчёт, поэтому на ней ровно то, что нужно
+ * для выбора: какая это площадка, насколько она большая и есть ли на ней беда.
+ *
+ * До этого середину занимал силуэт площадки — башни из блоков, где высота была
+ * числом этажей, а ширина блока числом кабинетов на этаже. Двойное кодирование в
+ * фигуре размером с ноготь не читалось: ширину принимали за загрузку этажа.
+ * Настоящая структура — с именами корпусов, номерами этажей и миниатюрами планов —
+ * рисуется уровнем ниже, и дублировать её намёком не за чем.
+ *
+ * Крупных чисел ровно два. Третьим стояла стоимость, и в колонке шириной 90 px
+ * обрезались и она сама («34,7 м…»), и подпись («ОБОРУДОВ…»). Стоимость ушла в
+ * подвал строкой: право на неё есть не у всех, и первым делом на карточку смотрят
+ * не за ней. Просроченное ТО поднято в шапку значком — это единственное, на что
+ * с этого экрана реагируют, и внизу карточки оно попадалось на глаза последним.
  */
-function MedCenterCard({ mc, shape, canSeeCosts, onOpen }) {
+function MedCenterCard({ mc, canSeeCosts, onOpen }) {
   const overdue = Number(mc.overdueMaintenance) || 0;
+  // Корпусов и этажей может не быть вовсе (помещения лежат прямо в медцентре) —
+  // тогда в строке остаётся только то, что есть, а не «0 корпусов».
+  const structure = [
+    mc.buildings > 0 && `${mc.buildings} ${plural(mc.buildings, 'корпус', 'корпуса', 'корпусов')}`,
+    mc.floors > 0 && `${mc.floors} ${plural(mc.floors, 'этаж', 'этажа', 'этажей')}`,
+  ].filter(Boolean).join(' · ');
+
   return (
     <button className="wh-mc" onClick={onOpen}
             style={{ '--mc-accent': mc.color || '#3b82f6' }}>
@@ -426,70 +472,41 @@ function MedCenterCard({ mc, shape, canSeeCosts, onOpen }) {
         </span>
         <span className="wh-mc__id">
           <span className="wh-mc__name">{mc.displayName || mc.name}</span>
-          <span className="wh-mc__city">{mc.city || 'город не указан'}</span>
+          {/* Города просто нет, если он не заполнен. Прежняя подпись «город не
+              указан» сообщала об отсутствии данных, которых на этом экране никто
+              не ищет, и занимала строку у каждой площадки без города. */}
+          {mc.city && <span className="wh-mc__city">{mc.city}</span>}
         </span>
+        {overdue > 0 && (
+          <span className="wh-mc__badge" title={`Просрочено нарядов ТО: ${overdue}`}>
+            <AlertTriangle size={11} /> {overdue}
+          </span>
+        )}
         <ChevronRight size={17} className="wh-mc__go" />
       </div>
 
-      <div className="wh-mc__figure">
-        <Silhouette buildings={shape?.buildings || []} />
-        <span className="wh-mc__headline">
-          <b>{mc.assets}</b>
-          <small>единиц оборудования</small>
-          {canSeeCosts && (
-            <span className="wh-mc__money">
-              {(Number(mc.assetValue) / 1e6).toFixed(1)} млн ₽
-            </span>
-          )}
-        </span>
-      </div>
-
-      <dl className="wh-spec">
-        <SpecItem label="Корпуса" value={mc.buildings} />
-        <SpecItem label="Этажи" value={mc.floors} />
-        <SpecItem label="Кабинеты" value={mc.rooms} />
+      <dl className="wh-mc__metrics">
+        <Metric label="Оборудование" value={(mc.assets || 0).toLocaleString('ru-RU')} />
+        <Metric label="Кабинеты" value={(mc.rooms || 0).toLocaleString('ru-RU')} />
       </dl>
 
-      <div className={`wh-mc__foot ${overdue ? 'is-alert' : ''}`}>
-        {overdue ? (
-          <><AlertTriangle size={13} /> Просрочено нарядов ТО: {overdue}</>
-        ) : (
-          <><ShieldCheck size={13} /> Просроченного ТО нет</>
-        )}
-      </div>
+      {/* Подвал появляется, только когда в нём есть что сказать. */}
+      {(structure || canSeeCosts) && (
+        <div className="wh-mc__foot">
+          <span className="wh-mc__structure">{structure || 'структура не заведена'}</span>
+          {canSeeCosts && <span className="wh-mc__money">{shortMoney(mc.assetValue)}</span>}
+        </div>
+      )}
     </button>
   );
 }
 
-/**
- * Силуэт площадки. Не иллюстрация: высота башни — число этажей, ширина блока —
- * заселённость этажа кабинетами. Рисуется в процентах от бокса, поэтому одинаково
- * читается и на узкой карточке, и на широком мониторе.
- */
-function Silhouette({ buildings }) {
-  const towers = buildings
-    .map(b => (b.floors || []).slice().sort((a, z) => a.number - z.number))
-    .filter(f => f.length);
-  if (!towers.length) return <span className="wh-silo wh-silo--empty" />;
-
-  const maxRooms = Math.max(1, ...towers.flat().map(f => (f.rooms || []).length));
-  // Больше пяти башен в ряд не помещается: остаток сворачиваем в счётчик.
-  const shown = towers.slice(0, 5);
-
+function Metric({ label, value }) {
   return (
-    <span className="wh-silo" aria-hidden="true">
-      {shown.map((floors, i) => (
-        <span key={i} className="wh-silo__tower">
-          {floors.slice().reverse().map((f, j) => (
-            <i key={j} className="wh-silo__floor"
-               style={{ width: `${34 + 66 * ((f.rooms || []).length / maxRooms)}%` }} />
-          ))}
-        </span>
-      ))}
-      {towers.length > shown.length && (
-        <span className="wh-silo__more">+{towers.length - shown.length}</span>
-      )}
-    </span>
+    <div className="wh-mc__metric">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -622,6 +639,27 @@ const initials = (name) => (name || '?')
   .slice(0, 2)
   .map(w => w[0].toUpperCase())
   .join('');
+
+/** Русское склонение по числу: 1 корпус, 2 корпуса, 5 корпусов. */
+const plural = (n, one, few, many) => {
+  const mod100 = Math.abs(n) % 100;
+  const mod10 = mod100 % 10;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+};
+
+/**
+ * Стоимость парка в одну строку. Единица подбирается по величине: у мелких
+ * площадок «0,0 млн ₽» читалось как отсутствие оборудования, хотя оно там есть.
+ */
+const shortMoney = (value) => {
+  const n = Number(value) || 0;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace('.', ',')} млн ₽`;
+  if (n >= 1e3) return `${Math.round(n / 1e3).toLocaleString('ru-RU')} тыс. ₽`;
+  return `${n.toLocaleString('ru-RU')} ₽`;
+};
 
 function LegendItem({ color, label }) {
   return (

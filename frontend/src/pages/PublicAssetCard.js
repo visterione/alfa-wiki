@@ -4,7 +4,11 @@ import { warehouseApi } from '../services/api';
 import './PublicAssetCard.css';
 
 /**
- * Цифровой паспорт оборудования и карточка кабинета — публичные страницы по QR.
+ * Цифровой паспорт оборудования — публичная страница по QR с наклейки на приборе.
+ *
+ * Кабинеты такой страницы больше не имеют: их QR висит на двери в общем коридоре
+ * и ведёт на дашборд внутри портала, за авторизацию. Здесь остался только актив —
+ * к нему подходит инженер подрядчика с незалогиненного телефона.
  *
  * Живут вне Layout и вне ProtectedRoute: человек подходит к прибору с телефоном,
  * на котором портал не залогинен, и обязан увидеть карточку, а не форму входа.
@@ -23,14 +27,13 @@ const STATUS_TONE = {
   storage: 'muted', written_off: 'muted', reserved: 'muted',
 };
 
-export default function PublicAssetCard({ kind = 'asset' }) {
+export default function PublicAssetCard() {
   const { token } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const load = kind === 'room' ? warehouseApi.publicRoom : warehouseApi.publicAsset;
-    load(token)
+    warehouseApi.publicAsset(token)
       .then(({ data: res }) => setData(res))
       .catch(e => setError(
         e.response?.status === 404
@@ -39,7 +42,7 @@ export default function PublicAssetCard({ kind = 'asset' }) {
             ? 'Слишком много запросов. Попробуйте через минуту.'
             : 'Не удалось загрузить карточку.'
       ));
-  }, [token, kind]);
+  }, [token]);
 
   if (error) {
     return (
@@ -55,8 +58,6 @@ export default function PublicAssetCard({ kind = 'asset' }) {
   if (!data) {
     return <div className="pac"><div className="pac__card"><div className="pac__skeleton" /></div></div>;
   }
-
-  if (kind === 'room') return <RoomCard data={data} />;
 
   const tone = STATUS_TONE[data.status] || 'muted';
   const maintenanceDone = (data.maintenance || []).filter(m => m.factDate);
@@ -166,55 +167,6 @@ export default function PublicAssetCard({ kind = 'asset' }) {
 
         <footer className="pac__foot">
           Страница только для чтения. Данные актуальны на момент открытия.
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-function RoomCard({ data }) {
-  const { room, assets } = data;
-  return (
-    <div className="pac">
-      <div className="pac__card">
-        <div className="pac__head">
-          <div className="pac__kicker">Кабинет</div>
-          <h1 className="pac__title">{room.number}</h1>
-          {room.name && <div className="pac__model">{room.name}</div>}
-        </div>
-
-        <dl className="pac__rows">
-          {room.department && <Row label="Отделение" value={room.department} />}
-          {(room.building || room.floor) && (
-            <Row label="Расположение" value={[room.building, room.floor].filter(Boolean).join(', ')} />
-          )}
-          <Row label="Единиц оборудования" value={assets.length} />
-        </dl>
-
-        <section className="pac__section">
-          <h2>Оборудование кабинета</h2>
-          <ul className="pac__assets">
-            {assets.map((a, i) => (
-              <li key={i}>
-                <a href={a.cardUrl}>
-                  <div className="pac__assets-name">{a.name}</div>
-                  {a.model && <div className="pac__assets-model">{a.model}</div>}
-                  <div className="pac__assets-meta">
-                    <span className="pac__mono">{a.inventoryNumber}</span>
-                    <span className={`pac__chip pac__chip--${STATUS_TONE[a.status] || 'muted'}`}>
-                      {a.statusLabel}
-                    </span>
-                    {a.nextMaintenanceDate && <span>ТО до {fmt(a.nextMaintenanceDate)}</span>}
-                  </div>
-                </a>
-              </li>
-            ))}
-            {!assets.length && <li className="pac__muted">Оборудование не закреплено</li>}
-          </ul>
-        </section>
-
-        <footer className="pac__foot">
-          Страница только для чтения. Остатки материалов и стоимость не отображаются.
         </footer>
       </div>
     </div>

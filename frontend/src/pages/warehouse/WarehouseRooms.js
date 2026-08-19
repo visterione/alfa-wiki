@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Search, X, ChevronRight, ChevronDown, Maximize2, Minimize2, Settings2,
-  Layers, Building2, Import, Info, Check,
+  Search, X, ChevronRight, ChevronDown, Maximize2, Minimize2,
+  Settings2, Layers, Building2, Check,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import RoomSettings from '../../components/warehouse/RoomSettings';
@@ -40,7 +40,6 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
   // места хранения — это операционные данные, а не структура сети.
   const canSetup = Boolean(access?.capabilities?.canIssue);
   // А заведение самих кабинетов — это уже структура, и право на неё отдельное.
-  const canEditLocations = Boolean(access?.capabilities?.canEditLocations);
 
   const departments = tree?.departments || [];
   const depById = useMemo(() => new Map(departments.map(d => [d.id, d])), [departments]);
@@ -156,20 +155,6 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
           <option value="">Все отделения</option>
           {visibleDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        {dirty && (
-          <button className="wh-btn wh-btn--secondary"
-                  onClick={() => { setQ(''); setMcId(''); setDepId(''); }}>
-            <X size={14} /> Сбросить
-          </button>
-        )}
-
-        {/* Кабинетов в сети около сотни, и набирать их с клавиатуры незачем:
-            в МИС уже есть перечень тех, в которых реально ведётся приём. */}
-        {canEditLocations && (
-          <button className="wh-btn wh-btn--secondary" onClick={() => setFromMis({})}>
-            <Import size={14} /> Завести из МИС
-          </button>
-        )}
 
         {/* Свёртка дерева стоит рядом с фильтрами: это такая же настройка вида
             списка, как медцентр или отделение. Отдельная полоса «Иерархия» под
@@ -287,6 +272,10 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
                       onSaved={onReloadTree} />
       )}
 
+      {/* Кнопка «Завести из МИС» убрана из полосы фильтров по просьбе, и открыть
+          эту модалку сейчас неоткуда. Сам поток (RoomsFromMis ниже) не удалён:
+          если вход понадобится вернуть — в полосу или в редактор планов, — хватит
+          одной кнопки с setFromMis({}). */}
       {fromMis && (
         <RoomsFromMis
           tree={tree} departments={departments}
@@ -389,16 +378,6 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
           <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="wh-modal__body">
-          <div className="wh-note wh-note--subtle">
-            <Info size={15} />
-            <div>
-              Список — кабинеты, в которых за последние полгода был приём. Вместе
-              с кабинетом создаётся место хранения: без него в кабинет нельзя ни
-              разместить имущество, ни выдать материалы. Название попадает и в
-              номер, и в сопоставление с МИС.
-            </div>
-          </div>
-
           <div className="wh-form">
             <div className="wh-form__row2">
               <label>Медцентр
@@ -424,10 +403,6 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
                 {departments.filter(d => !mcId || d.medCenterId === mcId)
                   .map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              <span className="wh-hint">
-                Код специальности отделения попадёт в инвентарные номера активов
-                этого кабинета
-              </span>
             </label>
           </div>
 

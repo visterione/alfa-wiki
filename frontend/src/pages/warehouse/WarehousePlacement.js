@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import {
-  ArrowRight, Check, DoorOpen, Info, Package, RefreshCw, Search, Trash2,
-} from 'lucide-react';
+import { ArrowRight, DoorOpen, Package, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import Pagination from './components/Pagination';
 
 /**
  * Размещение позиций ведомости по кабинетам.
@@ -76,6 +75,11 @@ export default function WarehousePlacement({ access, tree, onDone }) {
   const [mode, setMode] = useState('all');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  // Очередь размещения приходит страницами: раньше запрашивались первые 150
+  // строк, а под шкалой стояло «позиций в очереди: 900» — до остальных было не
+  // добраться, и разложить ведомость до конца было нельзя в принципе.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   const rooms = useMemo(() => flattenRooms(tree), [tree]);
   const room = rooms.find(r => r.id === roomId);
@@ -86,7 +90,7 @@ export default function WarehousePlacement({ access, tree, onDone }) {
     try {
       const { data } = await warehouseApi.placementQueue({
         q: q || undefined, branch: branch || undefined, kind: kind || undefined,
-        mode, limit: 150,
+        mode, limit: pageSize, offset: (page - 1) * pageSize,
       });
       setQueue(data);
     } catch (e) {
@@ -94,7 +98,9 @@ export default function WarehousePlacement({ access, tree, onDone }) {
     } finally {
       setLoading(false);
     }
-  }, [q, branch, kind, mode]);
+  }, [q, branch, kind, mode, page, pageSize]);
+
+  useEffect(() => { setPage(1); }, [q, branch, kind, mode]);
 
   const loadRoom = useCallback(async () => {
     if (!roomId) { setInRoom(null); return; }
@@ -207,17 +213,6 @@ export default function WarehousePlacement({ access, tree, onDone }) {
             <span>позиций в очереди: {queue.total}</span>
             <span className="wh-muted">строк с размещением: {t?.linesWithPlacement || 0}</span>
           </div>
-        </div>
-      </div>
-
-      <div className="wh-note wh-note--subtle">
-        <Info size={15} />
-        <div>
-          Кабинет выбирается один раз, а позиции набрасываются в него пачкой.
-          Количество можно не указывать — тогда переедет весь нераспределённый
-          остаток позиции. Инвентарный номер выдаётся не здесь, а при создании
-          карточек на вкладке «Разбор»: он содержит код специальности отделения
-          этого кабинета и потом не меняется.
         </div>
       </div>
 
@@ -334,6 +329,9 @@ export default function WarehousePlacement({ access, tree, onDone }) {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} pageSize={pageSize} total={queue.total || 0}
+                      onPage={setPage} onPageSize={size => { setPageSize(size); setPage(1); }}
+                      unit="позиций" />
         </div>
 
         <div className="wh-place__room-content">
@@ -385,12 +383,6 @@ export default function WarehousePlacement({ access, tree, onDone }) {
                   )}
                 </tbody>
               </table>
-            </div>
-          )}
-          {roomId && inRoom?.items?.length > 0 && (
-            <div className="wh-hint">
-              <Check size={13} /> Карточки и остатки создаются на вкладке «Разбор» —
-              там же виден инвентарный номер, который получит каждая вещь.
             </div>
           )}
         </div>

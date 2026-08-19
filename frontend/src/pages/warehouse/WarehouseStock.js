@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Search, AlertTriangle, Info, ShieldAlert, Filter } from 'lucide-react';
+import { Search, AlertTriangle, ShieldAlert, Filter } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import WarehouseCatalog from './WarehouseCatalog';
 
@@ -52,23 +52,24 @@ export default function WarehouseStock({ access, tree }) {
 
   return (
     <div className="wh-stock">
-      <div className="wh-subtabs">
-        <button className={view === 'stock' ? 'is-active' : ''} onClick={() => setView('stock')}>
-          Остатки
-        </button>
-        <button className={view === 'expiring' ? 'is-active' : ''} onClick={() => setView('expiring')}>
-          Сроки годности
-        </button>
-        <button className={view === 'catalog' ? 'is-active' : ''} onClick={() => setView('catalog')}>
-          Справочники
-        </button>
-      </div>
+      {/* Переключатель вида и фильтры — одна полоса. Раздельно они занимали
+          две строки над таблицей, во второй сидели два контрола. */}
+      <div className="wh-assets__filters">
+        <div className="wh-subtabs">
+          <button className={view === 'stock' ? 'is-active' : ''} onClick={() => setView('stock')}>
+            Остатки
+          </button>
+          <button className={view === 'expiring' ? 'is-active' : ''} onClick={() => setView('expiring')}>
+            Сроки годности
+          </button>
+          <button className={view === 'catalog' ? 'is-active' : ''} onClick={() => setView('catalog')}>
+            Справочники
+          </button>
+        </div>
 
-      {view === 'catalog' && <WarehouseCatalog access={access} />}
-
-      {view === 'stock' && (
-        <>
-          <div className="wh-assets__filters">
+        {view === 'stock' && (
+          <>
+            <span className="wh-filters__sep" />
             <div className="wh-search">
               <Search size={15} />
               <input placeholder="Наименование или код" value={q} onChange={e => setQ(e.target.value)} />
@@ -77,12 +78,14 @@ export default function WarehouseStock({ access, tree }) {
               <input type="checkbox" checked={belowOnly} onChange={e => setBelowOnly(e.target.checked)} />
               Только ниже минимума
             </label>
-            {stock && access?.capabilities?.canSeeCosts && (
-              <div className="wh-total">
-                Итого: <b>{stock.totalValue.toLocaleString('ru-RU')} ₽</b> · {stock.total} позиций
-              </div>
-            )}
-          </div>
+          </>
+        )}
+      </div>
+
+      {view === 'catalog' && <WarehouseCatalog access={access} />}
+
+      {view === 'stock' && (
+        <>
 
           <div className="wh-table-wrap">
             <table className="wh-table">
@@ -222,14 +225,6 @@ export default function WarehouseStock({ access, tree }) {
             </table>
           </div>
 
-          <div className="wh-note wh-note--subtle">
-            <Info size={15} />
-            <div>
-              Прогноз «успеем израсходовать» считается по среднему расходу за шесть месяцев.
-              Позиции без истории расхода помечены отдельно — по ним прогноза нет,
-              а не «успеем».
-            </div>
-          </div>
         </>
       )}
     </div>

@@ -1,47 +1,45 @@
 /**
  * Права складского модуля.
  *
- * Три уровня, и их важно не путать:
+ * Два уровня, и их важно не путать:
  *
  *   1) **Доступ к разделу** — гранулярный флаг adminAccess.warehouse, тем же
  *      механизмом, что «Отзывы» и «Справочник медцентров». Без него человек не
  *      видит раздел вообще.
  *
- *   2) **Роли внутри модуля** — матрица из ТЗ (services/warehouse/roles.js):
- *      бухгалтер, зав. складом, инженер, эпидемиолог и так далее. Часть ролей
- *      назначается ролью портала, часть выводится из данных — зав. отделением это
- *      тот, кто указан головой отделения, а не тот, кому выдали галочку.
+ *   2) **Права внутри модуля** — строка в warehouse_user_permissions: по разделу
+ *      и по каждому отчёту block / read / edit. Выставляются человеку поимённо в
+ *      дереве прав админки (services/warehouse/permissions.js — перечень ключей).
+ *      Прежнего третьего уровня — матрицы должностей — больше нет: чтобы выдать
+ *      один отчёт, приходилось подбирать должность, в которую он входит.
  *
- *   3) **Область видимости** — сеть или свои локации. ТЗ прямо оговаривает, что
- *      зав. отделением видит отчёты «в рамках своего отделения», и это не
- *      фильтр в интерфейсе, а условие в SQL: иначе достаточно поправить адрес
- *      запроса, чтобы увидеть чужие данные.
+ * **Область видимости** считается отдельно и из двух источников: списка медцентров
+ * в правах и того, где человек записан ответственным. Второе — не право, а факт:
+ * МОЛ кабинета видит свой кабинет, даже если медцентры в правах не перечислены.
+ * Это условие в SQL, а не фильтр в интерфейсе: иначе достаточно поправить адрес
+ * запроса, чтобы увидеть чужие данные.
  */
 
-const { WhDepartment, WhRoom, WhFloor, WhBuilding, WhAsset, WhInventorySession } = require('../../models');
-const roles = require('./roles');
+const {
+  WhDepartment, WhRoom, WhFloor, WhBuilding, WhAsset, WhUserPermission,
+} = require('../../models');
+const perms = require('./permissions');
 
 /**
- * Роли, выводимые из данных: их не назначают, они следуют из того, где человек
- * записан ответственным. Отдельным запросом на пользователя — это три коротких
- * COUNT по индексированным полям, и кэшировать их опаснее, чем выполнять: права
- * должны меняться сразу после смены ответственного.
+ * Где человек записан ответственным. Не право, а факт: сегодня он ведёт кабинет,
+ * завтра нет, и видимость должна меняться вместе с этим, а не отдельной заявкой.
+ *
+ * Отдельным запросом на пользователя — это два коротких COUNT по индексированным
+ * полям, и кэшировать их опаснее, чем выполнять.
  */
-async function derivedRoles(user) {
-  const out = new Set();
-  if (!user?.id) return out;
-
-  const [depts, rooms, assets, sessions] = await Promise.all([
+async function ownsAnything(user) {
+  if (!user?.id) return false;
+  const [depts, rooms, assets] = await Promise.all([
     WhDepartment.count({ where: { headUserId: user.id, isActive: true } }),
     WhRoom.count({ where: { responsibleUserId: user.id, isActive: true } }),
     WhAsset.count({ where: { responsibleUserId: user.id, isArchived: false } }),
-    WhInventorySession.count({ where: { chairmanUserId: user.id } }),
   ]);
-
-  if (depts > 0) out.add('department_head');
-  if (rooms > 0 || assets > 0) out.add('responsible');
-  if (sessions > 0) out.add('commission_chair');
-  return out;
+  return depts > 0 || rooms > 0 || assets > 0;
 }
 
 function hasModuleAccess(user) {
@@ -51,24 +49,40 @@ function hasModuleAccess(user) {
 }
 
 /**
- * Полный расчёт прав пользователя в модуле: набор ролей, область видимости,
- * доступные отчёты и возможности.
+ * Полный расчёт прав пользователя в модуле.
+ *
+ * Администратор портала получает полный набор в коде, без строки в таблице:
+ * иначе после выката некому было бы раздать права, и модуль оказался бы заперт
+ * сам от себя.
  */
 async function resolveAccess(user) {
   if (!hasModuleAccess(user)) {
-    return { allowed: false, roles: new Set(), scope: 'none' };
+    return { allowed: false, perms: perms.emptyPerms(), medCenterIds: [] };
   }
-  const assigned = roles.assignedRoles(user);
-  const derived = await derivedRoles(user);
-  const all = new Set([...assigned, ...derived]);
+
+  if (user.isAdmin) {
+    const full = perms.fullPerms();
+    return {
+      allowed: true,
+      perms: full,
+      medCenterIds: [],
+      capabilities: perms.capabilities(full),
+      tabs: perms.visibleTabs(full),
+      isAdmin: true,
+    };
+  }
+
+  const row = await WhUserPermission.findOne({ where: { userId: user.id } });
+  const normalized = perms.normalize(row?.perms);
+  const medCenterIds = Array.isArray(row?.medCenterIds) ? row.medCenterIds : [];
 
   return {
     allowed: true,
-    roles: all,
-    assigned,
-    derived,
-    scope: all.size ? roles.widestScope(all) : 'none',
-    capabilities: roles.capabilities(all),
+    perms: normalized,
+    medCenterIds,
+    capabilities: perms.capabilities(normalized),
+    tabs: perms.visibleTabs(normalized),
+    isAdmin: false,
   };
 }
 
@@ -76,43 +90,63 @@ async function resolveAccess(user) {
  * Кабинеты, доступные пользователю. null означает «ограничений нет» — так
  * вызывающий код отличает «вся сеть» от «ограничение с пустым списком», которые
  * иначе выглядели бы одинаково и открыли бы наблюдателю всю сеть.
+ *
+ * Ограничение складывается из двух источников. Список медцентров в правах — то,
+ * что выдал администратор. Свои кабинеты — то, за что человек отвечает по данным;
+ * они добавляются всегда, даже если медцентр в правах не перечислен, иначе МОЛ
+ * перестал бы видеть собственный кабинет из-за чужой настройки.
  */
 async function visibleRoomIds(user, access) {
-  if (access.scope === 'network') return null;
-  if (access.scope === 'none') return [];
+  if (!access.allowed) return [];
+  const scoped = Array.isArray(access.medCenterIds) ? access.medCenterIds : [];
+  if (!scoped.length) return null;
+
+  const ids = new Set();
+
+  const inScope = await WhRoom.findAll({
+    where: { medCenterId: scoped, isActive: true }, attributes: ['id'],
+  });
+  for (const r of inScope) ids.add(r.id);
 
   const [ownDepts, ownRooms, ownAssets] = await Promise.all([
     WhDepartment.findAll({ where: { headUserId: user.id, isActive: true }, attributes: ['id'] }),
     WhRoom.findAll({ where: { responsibleUserId: user.id, isActive: true }, attributes: ['id'] }),
     WhAsset.findAll({ where: { responsibleUserId: user.id, isArchived: false }, attributes: ['roomId'] }),
   ]);
-
-  const ids = new Set(ownRooms.map(r => r.id));
+  for (const r of ownRooms) ids.add(r.id);
   for (const a of ownAssets) if (a.roomId) ids.add(a.roomId);
-
   if (ownDepts.length) {
     const deptRooms = await WhRoom.findAll({
-      where: { departmentId: ownDepts.map(d => d.id), isActive: true },
-      attributes: ['id'],
+      where: { departmentId: ownDepts.map(d => d.id), isActive: true }, attributes: ['id'],
     });
     for (const r of deptRooms) ids.add(r.id);
   }
+
   return [...ids];
 }
 
 async function visibleDepartmentIds(user, access) {
-  if (access.scope === 'network') return null;
-  if (access.scope === 'none') return [];
+  if (!access.allowed) return [];
+  const scoped = Array.isArray(access.medCenterIds) ? access.medCenterIds : [];
+  if (!scoped.length) return null;
+
+  const ids = new Set();
+  const inScope = await WhDepartment.findAll({
+    where: { medCenterId: scoped, isActive: true }, attributes: ['id'],
+  });
+  for (const d of inScope) ids.add(d.id);
 
   const own = await WhDepartment.findAll({
     where: { headUserId: user.id, isActive: true }, attributes: ['id'],
   });
-  if (own.length) return own.map(d => d.id);
+  for (const d of own) ids.add(d.id);
 
   const rooms = await WhRoom.findAll({
     where: { responsibleUserId: user.id, isActive: true }, attributes: ['departmentId'],
   });
-  return [...new Set(rooms.map(r => r.departmentId).filter(Boolean))];
+  for (const r of rooms) if (r.departmentId) ids.add(r.departmentId);
+
+  return [...ids];
 }
 
 /**
@@ -126,25 +160,27 @@ function requireWarehouse(capability = null) {
       if (!access.allowed) {
         return res.status(403).json({ error: 'Нет доступа к разделу «Складской учёт»' });
       }
-      if (!access.roles.size) {
+      // Раздел открыт, но в дереве прав не отмечено ничего. Сообщение прямое:
+      // прежнее говорило про «роль в модуле», которых больше нет, и человек шёл
+      // искать их в настройках, где их уже не было.
+      if (!perms.hasAnything(access.perms) && !(await ownsAnything(req.user))) {
         return res.status(403).json({
-          error: 'Раздел открыт, но роль в модуле не назначена. Обратитесь к администратору модуля.',
+          error: 'Доступ к разделу открыт, но права внутри модуля не выданы. '
+            + 'Попросите администратора отметить нужное в дереве прав вашей карточки.',
         });
       }
       if (capability && !access.capabilities[capability]) {
-        const title = roles.CAPABILITY_MATRIX[capability]?.title || capability;
-        return res.status(403).json({ error: `Недостаточно прав: «${title}»` });
+        return res.status(403).json({
+          error: `Недостаточно прав: «${perms.capabilityTitle(capability)}»`,
+        });
       }
 
       req.warehouse = {
         access,
-        roles: access.roles,
-        scope: access.scope,
+        perms: access.perms,
         capabilities: access.capabilities,
-        // Уровень оставлен для совместимости с экранами, написанными до матрицы.
-        level: access.capabilities.canManageAccess ? 'admin'
-          : access.capabilities.canManageCatalog ? 'warehouse'
-          : access.capabilities.canIssue ? 'department' : 'viewer',
+        tabs: access.tabs,
+        medCenterIds: access.medCenterIds,
         scopedRoomIds: () => visibleRoomIds(req.user, access),
         scopedDepartmentIds: () => visibleDepartmentIds(req.user, access),
       };
@@ -158,23 +194,24 @@ function requireWarehouse(capability = null) {
 
 /**
  * Middleware конкретного отчёта. Ставится после requireWarehouse и проверяет
- * право по матрице ТЗ — именно здесь «эпидемиолог не открывает амортизацию»
+ * право на этот отчёт — именно здесь «этот человек не открывает амортизацию»
  * перестаёт быть обещанием интерфейса и становится правилом сервера.
  */
 function requireReport(code, mode = 'read') {
   return (req, res, next) => {
-    const set = req.warehouse?.roles;
+    const set = req.warehouse?.perms;
     if (!set) return res.status(403).json({ error: 'Нет доступа' });
 
-    const ok = mode === 'write' ? roles.canWrite(set, code) : roles.canRead(set, code);
+    const ok = mode === 'write'
+      ? perms.canWriteReport(set, code)
+      : perms.canReadReport(set, code);
     if (!ok) {
-      const entry = roles.ACCESS_MATRIX[code];
-      const allowed = (mode === 'write' ? entry?.write : entry?.read) || [];
+      const title = perms.REPORTS[code]?.label || code;
       return res.status(403).json({
-        error: `Отчёт «${entry?.title || code}» доступен ролям: `
-          + allowed.map(r => roles.WAREHOUSE_ROLES[r]?.label || r).join(', '),
+        error: mode === 'write'
+          ? `Нет права на изменение в отчёте «${title}»`
+          : `Отчёт «${title}» вам не открыт. Права выдаёт администратор в вашей карточке пользователя.`,
         code,
-        requiredRoles: allowed,
       });
     }
     next();
@@ -203,7 +240,7 @@ async function roomPath(roomId) {
 
 module.exports = {
   hasModuleAccess,
-  derivedRoles,
+  ownsAnything,
   resolveAccess,
   visibleRoomIds,
   visibleDepartmentIds,

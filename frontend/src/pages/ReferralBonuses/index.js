@@ -10,6 +10,7 @@ import { parseExcelFile } from './utils/excelUtils';
 import { parseSalarySlipPdf, normSubdivision, toSubdivisionList } from './utils/pdfUtils';
 import { exportSalaryImportCheckPdf, resolveImportRows } from './utils/salaryImportCheckPdf';
 import { getSources } from './utils/excelSources';
+import { useTabSlider } from './utils/useTabSlider';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
 import SearchableSelect from './components/SearchableSelect';
 import ScheduleDivisionPanel from './components/ScheduleDivisionPanel';
@@ -162,29 +163,12 @@ export default function ReferralBonusesPage() {
   React.useEffect(() => { step1DirtyRef.current = step1Dirty; }, [step1Dirty]);
   const [pendingNav, setPendingNav] = useState(null); // { action: fn, doctorName: string }
   const [settingsResetKey, setSettingsResetKey] = useState(0);
-  const wizardNavRef = React.useRef(null);
-  const [wizardSlider, setWizardSlider] = React.useState({ left: 0, width: 0, duration: 0 });
-  React.useLayoutEffect(() => {
-    const nav = wizardNavRef.current;
-    if (!nav) return;
-
-    const recalc = (animate) => {
-      const active = nav.querySelector('.rb-wizard-step.active');
-      if (!active) return;
-      const newLeft = active.offsetLeft;
-      setWizardSlider(prev => ({
-        left: newLeft,
-        width: active.offsetWidth,
-        duration: animate ? Math.min(0.65, 0.3 + Math.abs(newLeft - prev.left) / 2000) : 0,
-      }));
-    };
-
-    recalc(true);
-
-    const ro = new ResizeObserver(() => recalc(false));
-    ro.observe(nav);
-    return () => ro.disconnect();
-  }, [currentStep]);
+  // Шаги визарда живут на том же бегунке, что и вкладки внутри шагов, поэтому
+  // считает его общий хук — со всеми его оговорками про скрытую полосу.
+  const { wrapRef: wizardNavRef, sliderEl: wizardSliderEl } = useTabSlider(currentStep, {
+    itemSelector: '.rb-wizard-step',
+    sliderClass: 'rb-wizard-nav-slider',
+  });
 
   // ── Clinics ──
   const [clinics, setClinics] = useState(DEFAULT_CLINICS);
@@ -1089,7 +1073,7 @@ export default function ReferralBonusesPage() {
 
       {/* Wizard Navigation */}
       <div className="rb-wizard-nav" ref={wizardNavRef}>
-        <div className="rb-wizard-nav-slider" style={{ left: wizardSlider.left, width: wizardSlider.width, '--slider-duration': `${wizardSlider.duration}s` }} />
+        {wizardSliderEl}
         {STEP_LABELS.map((label, i) => {
           const step = i + 1;
           const active = currentStep === step;

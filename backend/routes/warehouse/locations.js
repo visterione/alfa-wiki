@@ -17,7 +17,7 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
-const { generateToken, qrSvg, roomPublicUrl } = require('../../services/warehouse/qr');
+const { generateToken, qrSvg, roomAppUrl, roomDoorCardSvg } = require('../../services/warehouse/qr');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 
@@ -779,25 +779,53 @@ async function resolveRoomLocation({ medCenterId, floorId }) {
 }
 
 /**
- * QR-код на дверь кабинета. Ведёт на публичную страницу /p/r/<token> с перечнем
- * оборудования и его статусами — без остатков, сумм и ФИО.
- *
- * Токен создаётся вместе с кабинетом, но у кабинетов, заведённых до появления
- * публичных карточек, его может не быть — тогда выдаём его здесь, а не отвечаем
- * ошибкой: человек нажал «QR на дверь», и это единственное, чего он хочет.
+ * QR-код кабинета. Ведёт внутрь портала, на дашборд этого кабинета, и потому
+ * требует входа — почему именно так, см. roomAppUrl в services/warehouse/qr.js.
  */
 router.get('/rooms/:id/qr.svg', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const room = await WhRoom.findByPk(req.params.id);
     if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
 
-    if (!room.publicToken) {
-      await room.update({ publicToken: generateToken() });
-    }
-    const svg = await qrSvg(roomPublicUrl(room.publicToken), { width: Number(req.query.size) || 300 });
+    const svg = await qrSvg(roomAppUrl(room.id), { width: Number(req.query.size) || 300 });
     res.type('image/svg+xml').send(svg);
   } catch (err) {
     console.error('GET warehouse/locations/rooms/:id/qr.svg error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Карточка кабинета на дверь, A5. Отдаётся и как картинка для превью, и как
+ * разметка для окна печати, поэтому SVG, а не PDF: печать идёт из браузера в
+ * точный размер листа, как и у этикеток оборудования.
+ */
+router.get('/rooms/:id/door-card.svg', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const room = await WhRoom.findByPk(req.params.id, {
+      include: [
+        { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
+        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName'] },
+        {
+          model: WhFloor, as: 'floor',
+          include: [{
+            model: WhBuilding, as: 'building',
+            include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName'] }],
+          }],
+        },
+      ],
+    });
+    if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
+
+    // Медцентр у кабинета бывает проставлен напрямую, а бывает — только через
+    // корпус: кабинеты из МИС заводятся без здания. Берём первый, который есть.
+    const mc = room.medCenter || room.floor?.building?.medCenter;
+    const svg = await roomDoorCardSvg(room, {
+      orgName: req.query.org || mc?.displayName || mc?.name || '',
+    });
+    res.type('image/svg+xml').send(svg);
+  } catch (err) {
+    console.error('GET warehouse/locations/rooms/:id/door-card.svg error:', err);
     res.status(500).json({ error: err.message });
   }
 });

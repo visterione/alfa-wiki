@@ -28,7 +28,7 @@ const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 // ── Документы и движения ─────────────────────────────────────────────────────
 router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
   try {
-    const { type, from, to, status, page = 1, limit = 50 } = req.query;
+    const { type, from, to, status, q, page = 1, limit = 50 } = req.query;
     const where = {};
     if (type) where.type = { [Op.in]: String(type).split(',') };
     if (status) where.status = status;
@@ -36,6 +36,22 @@ router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
       where.date = {};
       if (from) where.date[Op.gte] = new Date(from);
       if (to) where.date[Op.lte] = new Date(`${to}T23:59:59`);
+    }
+
+    // Поиск по журналу раньше жил на клиенте и фильтровал только загруженную
+    // сотню документов: искать по номеру в журнале за год было бесполезно —
+    // нужный документ просто не попадал в выборку. С постраничной навигацией
+    // клиентский фильтр стал бы ещё и обманчивым: он показывал бы совпадения
+    // на текущей странице и молчал про остальные.
+    const search = String(q || '').trim();
+    if (search) {
+      const like = { [Op.iLike]: `%${search}%` };
+      where[Op.or] = [
+        { number: like },
+        { reasonText: like },
+        { comment: like },
+        { '$author.displayName$': like },
+      ];
     }
 
     const rows = await WhDocument.findAndCountAll({
@@ -51,6 +67,10 @@ router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
       limit: Math.min(Number(limit) || 50, 200),
       offset: ((Number(page) || 1) - 1) * (Number(limit) || 50),
       distinct: true,
+      // Без subQuery: false условие по $author.displayName$ не доезжает до
+      // подзапроса с LIMIT и роняет запрос. Все связи здесь belongsTo, строк
+      // соединение не размножает — счётчик остаётся верным.
+      subQuery: false,
     });
     res.json({ total: rows.count, items: rows.rows });
   } catch (err) {
@@ -642,8 +662,12 @@ router.patch('/inventory/:id/close', authenticate, requireWarehouse('canIssue'),
 router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
+    // Блокировка описи и подгрузка позиций разнесены по двум запросам намеренно:
+    // include даёт LEFT OUTER JOIN, а PostgreSQL не умеет FOR UPDATE по nullable-стороне
+    // такого join и валит запрос («FOR UPDATE cannot be applied to the nullable side of
+    // an outer join»). Блокируем только саму опись — этого достаточно, чтобы двое не
+    // оформили расхождения одновременно; строки описи после закрытия уже не меняются.
     const session = await WhInventorySession.findByPk(req.params.id, {
-      include: [{ model: WhInventoryItem, as: 'items' }],
       transaction: t, lock: t.LOCK.UPDATE,
     });
     if (!session) {
@@ -659,10 +683,14 @@ router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('c
       return res.status(409).json({ error: 'Расхождения по этой описи уже оформлены' });
     }
 
+    const items = await WhInventoryItem.findAll({
+      where: { sessionId: session.id }, transaction: t,
+    });
+
     const surplusLines = [];
     const shortageLines = [];
     const assetDifferences = [];
-    for (const item of session.items || []) {
+    for (const item of items) {
       const diff = Number(item.actualQty) - Number(item.expectedQty);
       if (!diff) continue;
       if (item.assetId) {

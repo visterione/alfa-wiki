@@ -128,10 +128,6 @@ async function reportHeader({ req, code, title, from, to, filters = {} }) {
       ? named.map(f => `${f.label} = ${f.value}`).join('; ')
       : 'без дополнительного отбора',
     filterList: named,
-    // Обмена с 1С нет — говорим об этом в шапке каждого отчёта, где иначе
-    // ожидалась бы сверка. Иначе пустая строка «Расхождение с 1С» читается как
-    // «расхождений нет».
-    oneCNote: 'Интеграция с 1С не подключена: данные заведены в портале',
   };
 }
 
@@ -306,11 +302,10 @@ router.get('/consumption', authenticate, requireWarehouse(), async (req, res) =>
     // это не оценка качества работы, и открывать его всем, кто видит расход по
     // кабинетам, неправильно.
     const code = mode === 'doctors' ? 'RPT-CONSUMPTION-2' : 'RPT-CONSUMPTION';
-    const rolesSvc = require('../../services/warehouse/roles');
-    if (!rolesSvc.canRead(req.warehouse.roles, code)) {
-      const allowed = rolesSvc.ACCESS_MATRIX[code].read
-        .map(r => rolesSvc.WAREHOUSE_ROLES[r]?.label || r).join(', ');
-      return res.status(403).json({ error: `Доступно ролям: ${allowed}`, code });
+    const permsSvc = require('../../services/warehouse/permissions');
+    if (!permsSvc.canReadReport(req.warehouse.perms, code)) {
+      const title = permsSvc.REPORTS[code]?.label || code;
+      return res.status(403).json({ error: `Отчёт «${title}» вам не открыт`, code });
     }
 
     const scoped = await req.warehouse.scopedRoomIds();
@@ -641,12 +636,6 @@ async function abcXyz({ req, from, to, medCenterId, departmentId, scoped }) {
     matrix,
     items,
     totals: { amount: round2(total), positions: items.length },
-    note: enoughMonths
-      ? 'ABC — вклад позиции в сумму расхода накопленным итогом (A до 80 %, B до 95 %, ' +
-        'остальное C). XYZ — коэффициент вариации помесячного расхода: X до 10 %, ' +
-        'Y до 25 %, дальше Z. Месяцы без расхода входят в ряд нулями.'
-      : `В периоде ${months.length} мес. XYZ не рассчитан: по двум точкам коэффициент ` +
-        'вариации означает шум, а не стабильность спроса. Возьмите период от трёх месяцев.',
   };
 }
 
@@ -862,12 +851,6 @@ router.get('/depreciation', authenticate, requireWarehouse(), requireReport('RPT
           initialCost: round2(items.filter(i => i.fullyDepreciatedInUse).reduce((s, i) => s + i.initialCost, 0)),
         },
       },
-      note:
-        'Накопленная амортизация внесена в портале вручную и считается достоверной: ' +
-        'колонка «на конец» равна значению из карточки актива. «Начислено за период» — ' +
-        'расчёт портала по первоначальной стоимости, СПИ и способу начисления; ' +
-        '«на начало» получено вычитанием. Сверка со счётом 02 появится только после ' +
-        'подключения обмена с 1С.',
     });
   } catch (err) {
     console.error('GET warehouse/reports/depreciation error:', err);
@@ -988,8 +971,6 @@ router.get('/reliability', authenticate, requireWarehouse(), requireReport('RPT-
     res.json({
       header: await reportHeader({ req, code: 'RPT-MAINTENANCE-3', title: 'Отказы и надёжность по моделям', filters: req.query }),
       items,
-      note: 'Показатели считаются за последние 12 месяцев. Модели без истории ремонтов ' +
-            'показывают MTBF как «не определён», а не как максимальное значение.',
     });
   } catch (err) {
     console.error('GET warehouse/reports/reliability error:', err);
@@ -1138,7 +1119,6 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         medCenter: room.medCenter?.displayName || room.medCenter?.name
           || room.floor?.building?.medCenter?.displayName || room.floor?.building?.medCenter?.name,
         path: await roomPath(room.id),
-        publicToken: room.publicToken,
       },
       cards: {
         assets: {
@@ -1293,10 +1273,6 @@ router.get('/one-c-status', authenticate, requireWarehouse(), requireReport('RPT
         discrepancies: internal,
         description: 'Остаток warehouse_stock против суммы движений warehouse_movements',
       },
-      readiness: {
-        note: 'Схема под обмен готова: у номенклатуры и активов есть поле oneCRef, ' +
-              'таблица warehouse_outbox создана по образцу submissions. Не хватает контракта со стороны 1С.',
-      },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1313,9 +1289,9 @@ router.post('/export', authenticate, requireWarehouse(), async (req, res) => {
 
     // Выгрузка — тот же доступ, что и просмотр: иначе отчёт, закрытый на экране,
     // забирался бы файлом.
-    const rolesSvc = require('../../services/warehouse/roles');
-    if (rolesSvc.ACCESS_MATRIX[code] && !rolesSvc.canRead(req.warehouse.roles, code)) {
-      return res.status(403).json({ error: `Отчёт «${rolesSvc.ACCESS_MATRIX[code].title}» вам недоступен` });
+    const permsSvc = require('../../services/warehouse/permissions');
+    if (permsSvc.REPORTS[code] && !permsSvc.canReadReport(req.warehouse.perms, code)) {
+      return res.status(403).json({ error: `Отчёт «${permsSvc.REPORTS[code].label}» вам недоступен` });
     }
 
     if (format === 'xlsx') {

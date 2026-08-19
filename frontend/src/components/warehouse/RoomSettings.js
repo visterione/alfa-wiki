@@ -152,10 +152,6 @@ export default function RoomSettings({ room, departments, onClose, onSaved }) {
                 {users.map(u => <option key={u.id} value={u.id}>{u.displayName || u.username}</option>)}
               </select>
             </label>
-            <p className="wh-hint">
-              Из этого поля выводится роль МОЛ со всеми правами по кабинету. Отдельно
-              её выдавать не нужно: она появляется и снимается вместе с назначением.
-            </p>
           </div>
 
           <div className="wh-section-head">

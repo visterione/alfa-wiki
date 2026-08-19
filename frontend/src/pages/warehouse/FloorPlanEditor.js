@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import {
   Save, Square, MousePointer2, Grid3x3, Trash2, Plus, Undo2, PenLine,
   Link2, AlertTriangle, Info, Building2, Layers, DoorOpen, Boxes,
-  Type, Pencil, X, Check, ChevronRight, Ruler, Scissors,
+  Type, Pencil, X, Check, ChevronRight, Ruler, Scissors, ArrowLeft,
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
 import FloorPlanSvg, {
@@ -63,8 +63,19 @@ const SHAPE_GROUPS = [
 
 const EMPTY_SELECTION = { mcId: null, buildingId: null, floorId: null };
 
-export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
-  const [selection, setSelection] = useState(EMPTY_SELECTION);
+export default function FloorPlanEditor({
+  tree, departments, onReloadTree, initialSelection, onExit,
+}) {
+  // Место открытия приходит с карты: человек уже выбрал там медцентр, корпус и
+  // этаж, и заставлять его повторить тот же выбор тремя селектами — единственное,
+  // чем оправдывалась отдельная вкладка «Планы помещений». Пустой initialSelection
+  // (вход «просто в планы») по-прежнему подхватывает первый медцентр ниже.
+  const [selection, setSelection] = useState(() => ({
+    ...EMPTY_SELECTION,
+    mcId: initialSelection?.mcId || null,
+    buildingId: initialSelection?.buildingId || null,
+    floorId: initialSelection?.floorId || null,
+  }));
   const [plan, setPlan] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
@@ -130,6 +141,13 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
     () => (selected.kind === 'shape' ? plan?.shapes?.find(s => s.id === selected.id) : null) || null,
     [plan, selected]
   );
+
+  const exitToMap = () => {
+    if (dirty && !window.confirm(
+      'Правки плана не сохранены и будут потеряны. Вернуться к карте?'
+    )) return;
+    onExit();
+  };
 
   const outlinePoints = plan?.floor?.outline?.points || [];
   const outlineHoles = ringsOf(plan?.floor?.outline).holes;
@@ -824,6 +842,16 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
 
   return (
     <div className="wh-editor">
+      {onExit && (
+        <div className="wh-crumbs">
+          <button className="wh-crumbs__link" onClick={exitToMap}>
+            <ArrowLeft size={14} /> Карта
+          </button>
+          <ChevronRight size={14} className="wh-crumbs__sep" />
+          <span className="wh-crumbs__current">Планы помещений</span>
+        </div>
+      )}
+
       {/* ── Панель выбора локации ──────────────────────────────────────────── */}
       <div className="wh-panel wh-editor__locations">
         <div className="wh-panel__head">
@@ -908,12 +936,6 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
             </div>
           </div>
 
-          {!selection.buildingId && selection.mcId && (
-            <div className="wh-alert wh-alert--info wh-editor__loc-alert">
-              Открыта общая схема медцентра. Корпус и этаж добавляйте только если
-              помещения нужно разнести по нескольким схемам.
-            </div>
-          )}
         </div>
       </div>
 
@@ -1070,18 +1092,6 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
           <div>{toolHint(tool, selectedRoom)}</div>
         </div>
       )}
-      {plan && tool.mode === 'select' && editOutline && (
-        <div className="wh-alert wh-alert--info">
-          <Info size={15} />
-          <div>
-            Выбран контур схемы: тяните белые вершины по углам; <b>+</b> посреди
-            стены добавляет новую вершину и сразу берёт её в перетаскивание — так
-            из прямоугольника получается «Г». Двойной клик по вершине удаляет её.
-            Границ у схемы нет: тяните стену куда нужно, лист координат подстроится
-            при сохранении.
-          </div>
-        </div>
-      )}
 
       {/* ── Полотно и боковая панель ──────────────────────────────────────── */}
       <div className="wh-editor__body">
@@ -1107,10 +1117,6 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                            onChange={e => resizeOutline(
                              round2(polygonBounds(outlinePoints).width), Number(e.target.value)
                            )} />
-                    <span className="wh-hint">
-                      Пока схема прямоугольная, её размер задаётся числом. Нужна
-                      другая форма — нажмите <b>Стены</b> и тяните вершины.
-                    </span>
                   </>
                 ) : (
                   <>
@@ -1122,11 +1128,7 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                             title="Свести контур обратно к прямоугольнику по его габариту">
                       Сделать прямоугольной
                     </button>
-                    <span className="wh-hint">
-                      Схема непрямоугольная ({outlinePoints.length} вершин), поэтому
-                      показан габарит — описанный прямоугольник. Форма правится
-                      вершинами.
-                    </span>
+                    <span className="wh-hint">габарит, вершин: {outlinePoints.length}</span>
                   </>
                 )}
               </div>
@@ -1265,12 +1267,6 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                         <span>Вершин</span><b>{outlinePoints.length}</b>
                       </div>
                     </div>
-                    <p className="wh-hint">
-                      Тяните белые вершины на плане. <b>+</b> посреди стены добавляет
-                      новую вершину — из прямоугольника так получается «Г», «П» или
-                      срезанный угол. Двойной клик по вершине убирает её; меньше трёх
-                      не останется.
-                    </p>
                     <HoleControls holes={outlineHoles} what="внутренний двор" tool={tool}
                                   onStart={startHole} onRemove={removeHole} />
                     {!outlineIsRect && (
@@ -1305,9 +1301,6 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                         </button>
                       ))}
                     </div>
-                    <p className="wh-hint">
-                      Выберите кабинет и протяните рамку — он появится на плане и в тепловой карте.
-                    </p>
                   </div>
                 </div>
               )}
@@ -1414,12 +1407,9 @@ export default function FloorPlanEditor({ tree, departments, onReloadTree }) {
                 <div className="wh-panel__title"><Link2 size={15} /> Названия кабинетов в МИС</div>
               </div>
               <div className="wh-panel__body">
-                <p className="wh-hint">
-                  Загрузка кабинета считается по расписанию из МИС, а кабинет там записан
-                  свободной строкой — «415 Лаборатория», «Рентген», «Линия Кабинет 23».
-                  Без сопоставления тепловая карта по кабинету пуста.
-                  {roomsWithoutMis.length > 0 && ` Не сопоставлено: ${roomsWithoutMis.length}.`}
-                </p>
+                {roomsWithoutMis.length > 0 && (
+                  <p className="wh-hint">Не сопоставлено с МИС: {roomsWithoutMis.length}</p>
+                )}
                 <button className="wh-btn wh-btn--secondary wh-btn--wide" onClick={loadMisSuggestions}>
                   Показать названия из МИС
                 </button>
@@ -1499,41 +1489,17 @@ function HoleControls({ holes, what, tool, onStart, onRemove }) {
 
 // ── Подсказки по инструментам ────────────────────────────────────────────────
 function toolHint(tool, selectedRoom) {
-  if (tool.mode === 'outline') {
-    const common = 'Новая форма заменит текущую, второй схемы не появится. '
-      + 'Кабинеты останутся на своих местах.';
-    return tool.shape === 'polygon'
-      ? 'Кликайте по углам схемы. Двойной клик или клик по первой точке замыкает контур, '
-        + `Backspace убирает последнюю точку, Escape отменяет. Так обводят Г-образные крылья и срезанные углы. ${common}`
-      : `Протяните прямоугольник — он станет формой схемы. ${common}`;
-  }
-  if (tool.mode === 'hole') {
-    return tool.shape === 'polygon'
-      ? 'Кликайте по углам выреза, двойной клик замыкает. Вырез должен целиком лежать '
-        + 'внутри выбранного объекта. Площадь выреза вычитается: внутренний двор в площадь этажа не идёт.'
-      : 'Протяните рамку внутри выбранного объекта — получится вырез. Его площадь вычитается '
-        + 'из площади объекта: внутренний двор не считается этажом, дырка «бублика» — не коридором.';
-  }
-  if (tool.mode === 'shape') {
-    const info = SHAPE_KINDS[tool.kind];
-    const inside = info?.technical !== false
-      ? ' Размещается только внутри контура этажа.'
-      : ' Оформление можно ставить и по границе этажа.';
-    const how = tool.shape === 'polygon'
-      ? `Кликайте по углам, двойной клик замыкает — так рисуется Г-образный коридор. Появится «${info?.label}».`
-      : `Протяните рамку — появится «${info?.label}».`;
-    return `${how} Это помещение не участвует в учёте: `
-      + `активы и остатки к нему не привязываются.${inside}`;
-  }
+  const draw = tool.shape === 'polygon'
+    ? 'Кликайте по углам, двойной клик замыкает'
+    : 'Протяните рамку';
+
+  if (tool.mode === 'outline') return `${draw} — это станет формой схемы.`;
+  if (tool.mode === 'hole') return `${draw} внутри выбранного объекта — получится вырез.`;
+  if (tool.mode === 'shape') return `${draw} — появится «${SHAPE_KINDS[tool.kind]?.label}».`;
   if (tool.mode === 'room') {
-    if (selectedRoom && !hasGeometry(selectedRoom)) {
-      return `Рамка достанется выбранному кабинету ${selectedRoom.number}.`;
-    }
-    return tool.shape === 'polygon'
-      ? 'Кликайте по углам кабинета, двойной клик замыкает. Точки за пределами этажа не принимаются. '
-        + 'После замыкания спросим номер и отделение.'
-      : 'Протяните рамку внутри контура этажа — спросим номер и отделение нового кабинета. '
-        + 'Красная рамка означает, что кабинет вышел за пределы этажа.';
+    return selectedRoom && !hasGeometry(selectedRoom)
+      ? `${draw} — она достанется кабинету ${selectedRoom.number}.`
+      : `${draw} — спросим номер и отделение нового кабинета.`;
   }
   return '';
 }
@@ -1565,8 +1531,7 @@ function ShapeForm({ shape, onChange, onDelete, holes, tool, onStartHole, onRemo
       </label>
       <p className="wh-hint">
         Площадь: {polygonArea(shape.geometry?.points || [], holes).toFixed(1)} м², вершин:{' '}
-        {shape.geometry?.points?.length || 0}. Перетаскивайте фигуру целиком или её
-        вершины прямо на плане.
+        {shape.geometry?.points?.length || 0}
       </p>
       {/* Кольцевой коридор вокруг двора — это вырез в обычной фигуре, а не особый
           вид фигуры: «бублик» одним контуром не описывается, а два полукольца
@@ -1622,10 +1587,6 @@ function RoomForm({ room, departments, onSave, onClearGeometry, onDelete, onResi
                       onStart={onStartHole} onRemove={onRemoveHole} />
       )}
 
-      <p className="wh-hint">
-        Ёмкость — знаменатель загрузки. Если кабинет показывает больше 100 %, значит
-        он работает дольше заявленного, и это поле занижено.
-      </p>
 
       {(room.misRoomAliases || []).length > 0 && (
         <div className="wh-aliases">
@@ -1702,13 +1663,6 @@ function Metrics({ points, holes, onResize }) {
         <span>Площадь</span>
         <b>{fmt1(area)} м²</b>
       </div>
-      {!isRect && (
-        <div className="wh-hint">
-          Помещение непрямоугольное, поэтому размер числом не задаётся: габарит —
-          это описанный прямоугольник, площадь меньше него. Длины стен подписаны на
-          плане, форма правится вершинами.
-        </div>
-      )}
     </div>
   );
 }
@@ -1811,11 +1765,6 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
                     ))}
                   </select>
                 </label>
-                <p className="wh-hint">
-                  Заведующий не просто подпись: из этого поля выводится роль «зав. отделением»
-                  со всеми её правами. Отдельно её выдавать не нужно, и снимать тоже —
-                  она уходит вместе со сменой заведующего.
-                </p>
               </>
             )}
 
@@ -1838,20 +1787,9 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
                     {(departments || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </label>
-                <p className="wh-hint">
-                  Код специальности отделения попадёт в инвентарные номера активов
-                  этого кабинета и изменению потом не подлежит.
-                </p>
               </>
             )}
 
-            {(modal.type === 'floor' || modal.type === 'floor-edit') && (
-              <p className="wh-hint">
-                Форма и размер этажа задаются на самом плане: новый этаж открывается
-                прямоугольником, дальше его правят вершинами — до «Г», «П» или любой
-                другой формы.
-              </p>
-            )}
           </div>
         </div>
         <div className="wh-modal__foot">

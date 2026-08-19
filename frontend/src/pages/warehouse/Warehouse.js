@@ -1,18 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Map, Boxes, Package, BarChart3, ScanLine, DoorOpen,
-  PencilRuler, Lock, ShieldCheck, ArrowRightLeft, ClipboardCheck, FileSpreadsheet,
+  Map, Boxes, Package, BarChart3, DoorOpen,
+  Lock, ArrowRightLeft, ClipboardCheck, FileSpreadsheet,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import WarehouseMap from './WarehouseMap';
-import FloorPlanEditor from './FloorPlanEditor';
 import WarehouseAssets from './WarehouseAssets';
 import WarehouseStock from './WarehouseStock';
 import WarehouseRoom from './WarehouseRoom';
 import WarehouseReports from './WarehouseReports';
-import WarehouseScanner from './WarehouseScanner';
-import WarehouseAccess from './WarehouseAccess';
 import WarehouseOperations from './WarehouseOperations';
 import WarehouseInventory from './WarehouseInventory';
 import WarehouseRooms from './WarehouseRooms';
@@ -26,10 +23,11 @@ import './Warehouse.css';
  * почти каждый экран, и тянуть его на каждом переключении вкладки означало бы
  * четыре одинаковых запроса за минуту работы.
  *
- * Состав вкладок зависит от уровня доступа, который считает сервер
- * (GET /warehouse/access). Клиент не выводит права сам: то, что человек не видит
- * кнопку, ничего не значит — решение принимается на бэкенде, здесь только не
- * показываем то, чем он всё равно не сможет воспользоваться.
+ * Состав вкладок приходит с сервера готовым: GET /warehouse/access отдаёт
+ * access.tabs — карту «вкладка → показывать ли», рассчитанную по дереву прав
+ * пользователя. Клиент права не выводит: то, что человек не видит кнопку, ничего
+ * не значит — решение принимается на бэкенде, здесь только не показываем то, чем
+ * он всё равно не сможет воспользоваться.
  */
 
 const TABS = [
@@ -47,24 +45,49 @@ const TABS = [
   // чужие данные, которые портал показывает как есть. Внутри вкладки отчётов она
   // читалась бы как ещё один наш расчёт — и расхождение с бухгалтерией выглядело
   // бы нашей ошибкой.
-  { key: 'osv',       label: 'Импорт',           icon: FileSpreadsheet, needsReport: 'RPT-OSV' },
+  { key: 'osv',       label: 'Импорт',           icon: FileSpreadsheet },
   { key: 'reports',   label: 'Отчёты',           icon: BarChart3 },
-  { key: 'scanner',   label: 'Сканер',           icon: ScanLine },
-  { key: 'plans',     label: 'Планы помещений',  icon: PencilRuler,   needs: 'canEditPlans' },
-  // Матрицу доступа видят все: знать, кому что положено, полезно и рядовому
-  // пользователю — он поймёт, к кому идти за правами. Настраивает — админ модуля.
-  { key: 'access',    label: 'Доступ',           icon: ShieldCheck },
+  // Отдельной вкладки «Сканер» здесь нет намеренно. У браузера камера есть только
+  // на телефоне, и то не везде: распознавание держится на BarcodeDetector, которого
+  // нет в Safari, — на iPhone веб-сканер не работал вовсе. За ПК камеры нет, а
+  // ручной сканер в режиме клавиатуры набивает код в поиск «Оборудования» — там он
+  // и разбирается, включая ссылку из QR. Камера для пересчёта осталась внутри
+  // инвентаризации, а полноценное сканирование живёт в мобильном приложении.
+  //
+  // Вкладки «Планы помещений» здесь тоже нет: редактор планов открывается изнутри
+  // карты кнопкой на том медцентре или этаже, который человек уже нашёл. Отдельной
+  // вкладкой он требовал выбрать медцентр, корпус и этаж второй раз — селектами,
+  // после того как ровно то же место было выбрано щелчками по карте.
+  //
+  // Вкладки «Доступ» здесь нет с ver. 7.03. Права модуля настраиваются в дереве
+  // прав карточки пользователя, вместе с остальными правами портала. Внутри
+  // модуля жила матрица должностей и её экран настройки — то есть права правились
+  // в двух местах, и понять, где именно человеку не хватает права, было нельзя.
 ];
 
 export default function Warehouse() {
+  // Кабинет из адреса — это QR с двери: /warehouse?room=<id>. Читаем параметр
+  // один раз при монтировании и дальше живём своим состоянием, иначе возврат к
+  // списку тут же снова открывал бы кабинет из всё того же адреса.
+  const roomFromUrl = React.useMemo(
+    () => new URLSearchParams(window.location.search).get('room'), []);
+
   const [access, setAccess] = useState(null);
   const [tree, setTree] = useState(null);
-  const [tab, setTab] = useState('map');
-  const [openRoomId, setOpenRoomId] = useState(null);
+  const [tab, setTab] = useState(roomFromUrl ? 'rooms' : null);
+  const [openRoomId, setOpenRoomId] = useState(roomFromUrl);
   const [openAssetId, setOpenAssetId] = useState(null);
   const [loading, setLoading] = useState(true);
   const tabsRef = React.useRef(null);
   const [tabSlider, setTabSlider] = useState({ left: 0, width: 0, duration: 0 });
+
+  // Вкладка по умолчанию — первая доступная. Жёсткая «Карта» открывалась пустым
+  // экраном у того, кому карта не выдана, хотя другие вкладки у него есть.
+  useEffect(() => {
+    if (tab || !access?.allowed) return;
+    const first = TABS.find(t => access.tabs?.[t.key]);
+    if (first) setTab(first.key);
+  }, [tab, access]);
 
   React.useLayoutEffect(() => {
     const nav = tabsRef.current;
@@ -129,13 +152,26 @@ export default function Warehouse() {
     );
   }
 
-  // Вкладка скрывается либо по возможности, либо по матрице отчётов — второе
-  // нужно там, где вся вкладка это один отчёт: без роли из матрицы она открылась
-  // бы пустой с ошибкой доступа, а не отсутствовала.
-  const visibleTabs = TABS.filter(t => (
-    (!t.needs || access.capabilities?.[t.needs])
-    && (!t.needsReport || (access.reports || []).some(r => r.code === t.needsReport))
-  ));
+  // Состав вкладок целиком с сервера: access.tabs — это карта «ключ вкладки →
+  // показывать ли», посчитанная по дереву прав. Отсутствующий ключ считаем
+  // закрытым, а не открытым: неизвестное право безопаснее не показывать.
+  const visibleTabs = TABS.filter(t => access.tabs?.[t.key]);
+
+  if (!visibleTabs.length) {
+    return (
+      <div className="wh-app wh-page--center">
+        <div className="wh-denied">
+          <Lock size={30} />
+          <h2>Права в модуле не выданы</h2>
+          <p>
+            Доступ к разделу открыт, но ни один экран пока не отмечен. Попросите
+            администратора выставить права в дереве прав вашей карточки
+            пользователя — раздел «Складской учёт».
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const openRoom = (roomId) => {
     setOpenRoomId(roomId);
@@ -213,13 +249,6 @@ export default function Warehouse() {
         {tab === 'reports' && (
           <WarehouseReports access={access} tree={tree} onOpenAsset={openAsset} />
         )}
-        {tab === 'scanner' && (
-          <WarehouseScanner onOpenRoom={openRoom} />
-        )}
-        {tab === 'plans' && (
-          <FloorPlanEditor tree={tree} departments={tree?.departments} onReloadTree={loadTree} />
-        )}
-        {tab === 'access' && <WarehouseAccess access={access} />}
       </div>
     </div>
   );

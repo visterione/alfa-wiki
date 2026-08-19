@@ -33,10 +33,7 @@ export default function WarehouseInventory({ access, tree }) {
   return (
     <div className="wh-inventory-workspace">
       <div className="wh-assets__filters">
-        <div>
-          <div className="wh-panel__title"><ClipboardCheck size={16} /> Инвентаризация</div>
-          <div className="wh-hint">Фиксируем ожидаемый остаток, считаем QR или вручную, затем закрываем опись.</div>
-        </div>
+        <div className="wh-bar__title">Инвентаризация</div>
         <button className="wh-btn wh-btn--ghost" onClick={load} disabled={loading}><RefreshCw size={14} /> Обновить</button>
         {access?.capabilities?.canIssue && <button className="wh-btn wh-btn--primary" onClick={() => setCreating(true)}><Plus size={14} /> Новая опись</button>}
       </div>

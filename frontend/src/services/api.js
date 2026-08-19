@@ -642,6 +642,17 @@ export const email = {
   toggleFavoriteTemplate: (templateId) => api.post(`/email/favorites/templates/${templateId}`)
 };
 
+/**
+ * Права складского модуля. Настраиваются в дереве прав карточки пользователя,
+ * поэтому живут рядом с правами зарплаты, а не в warehouseApi: тот про работу
+ * со складом, а это про администрирование доступа.
+ */
+export const warehouseAccessApi = {
+  catalogue:    ()               => api.get('/warehouse/permissions/catalogue'),
+  getUserPerm:  (userId)         => api.get(`/warehouse/permissions/${userId}`),
+  saveUserPerm: (userId, data)   => api.put(`/warehouse/permissions/${userId}`, data),
+};
+
 export const referralBonusAccess = {
   getUsers: () => api.get('/referral-bonuses/permissions/users'),
   getUserPerm: (userId) => api.get(`/referral-bonuses/permissions/${userId}`),
@@ -1085,6 +1096,10 @@ export const warehouseApi = {
   transferMatrix:  (params)       => api.get('/warehouse/reports/transfer-matrix', { params }),
   roomDashboard:   (roomId)       => api.get(`/warehouse/reports/room/${roomId}/dashboard`),
   roomQrUrl:       (roomId)       => `${BASE_URL}/api/warehouse/locations/rooms/${roomId}/qr.svg`,
+  // Карточка на дверь приходит разметкой, а не картинкой: тем же SVG рисуется и
+  // превью в модалке, и лист в окне печати — иначе на печать уходил бы скриншот
+  // превью со своим разрешением.
+  roomDoorCard:    (roomId)       => api.get(`/warehouse/locations/rooms/${roomId}/door-card.svg`),
   inventoryReport: (id)           => api.get(`/warehouse/reports/inventory/${id}`),
   oneCStatus:      ()             => api.get('/warehouse/reports/one-c-status'),
   exportReport:    (data)         => api.post('/warehouse/reports/export', data, { responseType: 'blob' }),
@@ -1102,9 +1117,9 @@ export const warehouseApi = {
   idleAssets:      (params)       => api.get('/warehouse/analytics/idle-assets', { params }),
   overview:        ()             => api.get('/warehouse/analytics/overview'),
 
-  // Публичные карточки (без авторизации)
+  // Публичная карточка актива (без авторизации). Кабинеты публичными быть
+  // перестали: их QR ведёт в портал и требует входа.
   publicAsset:     (token)        => publicApi.get(`/a/${token}`),
-  publicRoom:      (token)        => publicApi.get(`/r/${token}`),
 };
 
 export default api;

@@ -403,8 +403,14 @@ router.get('/lookup/:code', authenticate, requireWarehouse(), async (req, res) =
     });
     if (asset) return res.json({ kind: 'asset', asset });
 
+    // Код с двери кабинета ведёт не на публичную страницу с токеном, а внутрь
+    // портала: /warehouse?room=<id>. Последний сегмент такого адреса — это
+    // «warehouse?room=…», и по нему не находилось ничего, поэтому идентификатор
+    // достаём из параметра. Токен продолжаем принимать: у карточек, напечатанных
+    // раньше, в коде именно он.
+    const roomId = (code.match(/[?&]room=([0-9a-fA-F-]{36})/) || [])[1] || null;
     const room = await WhRoom.findOne({
-      where: { publicToken: token },
+      where: roomId ? { [Op.or]: [{ id: roomId }, { publicToken: token }] } : { publicToken: token },
       include: [{ model: WhDepartment, as: 'department' }],
     });
     if (room) return res.json({ kind: 'room', room });

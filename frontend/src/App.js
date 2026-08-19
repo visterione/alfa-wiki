@@ -103,12 +103,13 @@ function AppRoutes() {
       <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
 
-      {/* Цифровой паспорт оборудования и карточка кабинета по QR-коду.
+      {/* Цифровой паспорт оборудования по QR-коду.
           Вне ProtectedRoute по замыслу: QR наклеен на прибор, и подходят к нему с
           телефона, где портал не залогинен. Набор полей узкий — см. комментарий в
-          backend/services/warehouse/qr.js. */}
+          backend/services/warehouse/qr.js.
+          Кабинеты сюда не входят: их код висит на двери в общем коридоре и ведёт
+          на /warehouse?room=<id>, то есть внутрь портала, за авторизацию. */}
       <Route path="/p/a/:token" element={<PublicAssetCard kind="asset" />} />
-      <Route path="/p/r/:token" element={<PublicAssetCard kind="room" />} />
       
       <Route path="/" element={
         <ProtectedRoute>

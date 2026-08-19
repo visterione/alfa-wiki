@@ -626,7 +626,29 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     deliveredAt:    { type: DataTypes.DATE },
   }, { ...ts, tableName: 'warehouse_outbox' });
 
+  /**
+   * Права пользователя в модуле — строка на человека.
+   *
+   * Одна колонка JSONB вместо колонки на каждое право: прав двадцать девять
+   * (разделы и отчёты), и список растёт вместе с отчётами. В зарплатном модуле
+   * под каждую вкладку своя колонка, и там это уже обернулось миграцией на
+   * каждую новую вкладку — повторять не стали. Перечень ключей живёт в
+   * services/warehouse/permissions.js и там же проверяется.
+   *
+   * medCenterIds — область видимости. Пустой массив означает «вся сеть», а не
+   * «ничего»: пустое ограничение и отсутствие ограничения в интерфейсе выглядят
+   * одинаково, и трактовать пустоту как запрет значило бы запирать человека
+   * молча, сразу после выдачи прав.
+   */
+  const WhUserPermission = sequelize.define('WhUserPermission', {
+    id:           { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId:       { type: DataTypes.UUID, allowNull: false, unique: true },
+    perms:        { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+    medCenterIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  }, { ...ts, tableName: 'warehouse_user_permissions' });
+
   const models = {
+    WhUserPermission,
     WhSpecialty, WhBuilding, WhFloor, WhDepartment, WhRoom, WhFloorShape, WhStorage,
     WhContractor, WhCategory, WhNomenclature,
     WhAsset, WhAssetFile,
@@ -708,6 +730,9 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhConsumptionNorm.belongsTo(WhRoom, { foreignKey: 'roomId', as: 'room' });
 
     // Документы и движения
+    WhUserPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+    User.hasOne(WhUserPermission, { foreignKey: 'userId', as: 'warehousePermission' });
+
     WhDocument.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
     WhDocument.belongsTo(User, { foreignKey: 'signedBy', as: 'signer' });
     WhDocument.belongsTo(WhRoom, { foreignKey: 'fromRoomId', as: 'fromRoom' });

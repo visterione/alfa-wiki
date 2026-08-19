@@ -16,7 +16,7 @@ const router = express.Router();
 
 const { authenticate } = require('../../middleware/auth');
 const { resolveAccess, hasModuleAccess } = require('../../services/warehouse/access');
-const roles = require('../../services/warehouse/roles');
+const perms = require('../../services/warehouse/permissions');
 
 /**
  * Что этому пользователю доступно в модуле. Клиент дёргает первым делом и по
@@ -25,28 +25,23 @@ const roles = require('../../services/warehouse/roles');
 router.get('/access', authenticate, async (req, res) => {
   try {
     if (!hasModuleAccess(req.user)) {
-      return res.json({ allowed: false, level: 'none', roles: [] });
+      return res.json({ allowed: false, tabs: {}, capabilities: {}, reports: [] });
     }
     const access = await resolveAccess(req.user);
-    const roleList = [...access.roles];
 
     res.json({
       allowed: true,
-      // Роли из матрицы ТЗ: назначенные ролью портала и выведенные из данных.
-      roles: roleList.map(k => ({
-        key: k,
-        label: roles.WAREHOUSE_ROLES[k]?.label || k,
-        kind: roles.WAREHOUSE_ROLES[k]?.kind,
-      })),
-      scope: access.scope,
+      // Вкладки, которые человеку видно: считает сервер по дереву прав, клиент
+      // только рисует. До этого состав вкладок клиент выводил сам из ролей.
+      tabs: access.tabs,
       capabilities: access.capabilities,
       // Какие отчёты человек вправе открыть: экран отчётов строит по этому списку,
       // а не показывает всё подряд с ошибкой при клике.
-      reports: roles.readableReports(access.roles),
-      // Уровень оставлен для экранов, написанных до матрицы.
-      level: access.capabilities.canManageAccess ? 'admin'
-        : access.capabilities.canManageCatalog ? 'warehouse'
-        : access.capabilities.canIssue ? 'department' : 'viewer',
+      reports: perms.readableReports(access.perms),
+      // Полные права построчно — нужны там, где важна разница read/edit внутри
+      // одного экрана, а не факт доступа к нему.
+      perms: access.perms,
+      medCenterIds: access.medCenterIds,
       // Обмена с 1С нет — сообщаем это один раз здесь, чтобы каждый экран не
       // выяснял отдельно и не рисовал пустые блоки сверки.
       integrations: { oneC: { enabled: false, reason: 'Контракт со стороны 1С не определён' } },

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  AlertTriangle, Check, Info, RefreshCw, Regex, Search, Trash2, X,
+  AlertTriangle, Check, RefreshCw, Regex, Search, Trash2,
+  X,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
@@ -200,16 +201,6 @@ export default function WarehouseItemRules({ access, onChanged }) {
         </div>
       )}
 
-      <div className="wh-note wh-note--subtle">
-        <Info size={15} />
-        <div>
-          Слова отсортированы по числу позиций: первые полсотни закрывают около
-          половины ведомости. Размечать весь список не нужно — неразмеченное
-          останется неразобранным. Категория попадёт в карточку
-          оборудования и в номенклатуру, а «как учитывать» решит, появится ли у
-          вещи инвентарный номер.
-        </div>
-      </div>
 
       <div className="wh-assets__filters">
         <div className="wh-search">
@@ -416,15 +407,6 @@ function ExpressionModal({ categories, onClose, onSaved }) {
           <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="wh-modal__body">
-          <div className="wh-note wh-note--subtle">
-            <Info size={15} />
-            <div>
-              Выражение сильнее правила по ведущему слову — оно для исключений.
-              «Подстрока» ищет кусок текста в названии, «выражение» — регулярное
-              выражение. Проверьте, что попадёт, прежде чем сохранять.
-            </div>
-          </div>
-
           <div className="wh-form">
             <div className="wh-form__row2">
               <label>Что искать

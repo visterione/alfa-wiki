@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Plus, X, Check, Search, Package, Truck, Layers, Gauge, ShieldAlert, Info, Pencil,
+  Plus, X, Check, Search, Package, Truck,
+  Layers, Gauge, ShieldAlert, Pencil,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import Pagination from './components/Pagination';
 
 /**
  * Справочники материалов: номенклатура, контрагенты, партии, минимальные остатки.
@@ -29,6 +31,12 @@ const TABS = [
 export default function WarehouseCatalog({ access }) {
   const [tab, setTab] = useState('nomenclature');
   const [rows, setRows] = useState([]);
+  // Постраничная навигация нужна только номенклатуре: контрагенты, партии и
+  // минимумы приходят одним списком целиком. total хранится отдельно, потому что
+  // у остальных справочников его в ответе нет.
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [refs, setRefs] = useState({ nomenclature: [], contractors: [], categories: [], rooms: [] });
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
@@ -53,26 +61,37 @@ export default function WarehouseCatalog({ access }) {
     setLoading(true);
     try {
       if (tab === 'nomenclature') {
-        const { data } = await warehouseApi.nomenclature({ q: q || undefined, limit: 300 });
+        const { data } = await warehouseApi.nomenclature({ q: q || undefined, page, limit: pageSize });
         setRows(data.items);
+        setTotal(data.total);
       } else if (tab === 'contractors') {
         const { data } = await warehouseApi.contractors({ q: q || undefined });
         setRows(data);
+        setTotal(data.length);
       } else if (tab === 'batches') {
         const { data } = await warehouseApi.batches({});
         setRows(data);
+        setTotal(data.length);
       } else {
         const { data } = await warehouseApi.reorderRules();
         setRows(data);
+        setTotal(data.length);
       }
     } catch (e) {
       toast.error(e.response?.data?.error || 'Не удалось загрузить справочник');
     } finally {
       setLoading(false);
     }
-  }, [tab, q]);
+  }, [tab, q, page, pageSize]);
 
   useEffect(() => { loadRefs(); }, [loadRefs]);
+  // Смена справочника или запроса возвращает на первую страницу: иначе, перейдя
+  // с пятой страницы номенклатуры на контрагентов и обратно, попадаешь в пустоту.
+  useEffect(() => { setPage(1); }, [tab, q]);
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    if (page > pages) setPage(pages);
+  }, [total, pageSize, page]);
   useEffect(() => {
     const t = setTimeout(load, q ? 350 : 0);
     return () => clearTimeout(t);
@@ -133,24 +152,28 @@ export default function WarehouseCatalog({ access }) {
 
   return (
     <div className="wh-catalog">
-      <div className="wh-subtabs">
-        {TABS.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} className={tab === t.key ? 'is-active' : ''}
-                    onClick={() => { setTab(t.key); setQ(''); }}>
-              <Icon size={14} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-
+      {/* Переключатель справочника и его фильтры — одна полоса: раздельно они
+          занимали две строки, во второй чаще всего стояла одна кнопка. */}
       <div className="wh-assets__filters">
+        <div className="wh-subtabs">
+          {TABS.map(t => {
+            const Icon = t.icon;
+            return (
+              <button key={t.key} className={tab === t.key ? 'is-active' : ''}
+                      onClick={() => { setTab(t.key); setQ(''); }}>
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
         {(tab === 'nomenclature' || tab === 'contractors') && (
-          <div className="wh-search">
-            <Search size={15} />
-            <input placeholder="Поиск по названию или коду" value={q} onChange={e => setQ(e.target.value)} />
-          </div>
+          <>
+            <span className="wh-filters__sep" />
+            <div className="wh-search">
+              <Search size={15} />
+              <input placeholder="Поиск по названию или коду" value={q} onChange={e => setQ(e.target.value)} />
+            </div>
+          </>
         )}
         {/* Минимумы — единственный справочник, который заводят не по одной
             записи: позиций 1785, и модалка на каждую означает, что минимумов не
@@ -168,23 +191,12 @@ export default function WarehouseCatalog({ access }) {
             <Plus size={15} /> {addLabel(tab)}
           </button>
         )}
-        {!canEdit && (
-          <div className="wh-badge wh-badge--neutral" style={{ marginLeft: 'auto' }}>
-            Только просмотр — правка доступна зав. складом и администратору модуля
-          </div>
-        )}
+        {/* Плашка «Только просмотр — правка доступна зав. складом…» убрана:
+            у того, кто не может править, просто нет кнопки добавления, и это
+            уже ответ. Постоянная строка про чужие права занимала место в полосе
+            у всех рядовых пользователей. */}
       </div>
 
-      {tab === 'batches' && (
-        <div className="wh-alert wh-alert--info">
-          <Info size={15} />
-          <div>
-            Партия — это конкретная поставка с собственным сроком годности. Просроченные
-            блокируются к выдаче автоматически по дате; блокировать вручную нужно при
-            отзыве производителем, когда срок ещё не вышел.
-          </div>
-        </div>
-      )}
 
       <div className="wh-table-wrap">
         <table className="wh-table wh-table--compact">
@@ -306,7 +318,10 @@ export default function WarehouseCatalog({ access }) {
           </tbody>
         </table>
       </div>
-      <div className="wh-assets__count">Записей: {rows.length}</div>
+      <Pagination page={page} pageSize={pageSize} total={total}
+                  onPage={setPage}
+                  onPageSize={tab === 'nomenclature' ? (size => { setPageSize(size); setPage(1); }) : undefined}
+                  unit="записей" />
 
       {modal && (
         <CatalogModal tab={tab} modal={modal} refs={refs} saving={saving}
@@ -439,13 +454,9 @@ function BulkMinimumsModal({ refs, onClose, onApplied }) {
               Создавать запрос котировок автоматически
             </label>
 
-            <div className="wh-note wh-note--subtle">
-              <Info size={15} />
-              <div>
-                Правило подействует на {target.length} позиций
-                {form.mode === 'category' && !form.categoryId ? ' — выберите категорию' : ''}.
-                Ниже минимума позиция подсвечивается красным и попадает в дефицит.
-              </div>
+            <div className="wh-hint">
+              Правило подействует на {target.length} позиций
+              {form.mode === 'category' && !form.categoryId ? ' — выберите категорию' : ''}.
             </div>
           </div>
         </div>

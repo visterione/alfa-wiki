@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Search, QrCode, Printer, X, Wrench, ArrowRightLeft, FileText,
-  Copy, Info, AlertTriangle, Plus, Pencil, Check, Wand2,
+  Search, QrCode, Printer, X, Wrench, ArrowRightLeft,
+  FileText, Copy, AlertTriangle, Plus, Pencil, Check,
+  Wand2,
 } from 'lucide-react';
 import { warehouseApi, BASE_URL } from '../../services/api';
 import SecureImage from '../../components/warehouse/SecureImage';
 import WarehouseAssetForm from './WarehouseAssetForm';
+import Pagination from './components/Pagination';
 
 /**
  * Оборудование: список, карточка, QR и печать этикеток.
@@ -25,6 +27,8 @@ const STATUS_LABELS = {
 
 export default function WarehouseAssets({ access, tree, onOpenRoom, initialAssetId, onInitialAssetShown }) {
   const [filters, setFilters] = useState({ q: '', status: '', medCenterId: '', departmentId: '', maintenanceDue: false });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState({ total: 0, items: [] });
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -40,10 +44,15 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
     return (tree?.departments || []).filter(d => d.medCenterId === filters.medCenterId);
   }, [tree, filters.medCenterId]);
 
+  const setFilter = (patch) => {
+    setFilters(f => ({ ...f, ...patch }));
+    setPage(1);
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { limit: 200 };
+      const params = { page, limit: pageSize };
       if (filters.q) params.q = filters.q;
       if (filters.status) params.status = filters.status;
       if (filters.medCenterId) params.medCenterId = filters.medCenterId;
@@ -56,11 +65,21 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, page, pageSize]);
 
   useEffect(() => {
+    const pages = Math.max(1, Math.ceil(data.total / pageSize));
+    if (page > pages) setPage(pages);
+  }, [data.total, pageSize, page]);
+
+  useEffect(() => {
+    if (looksLikeCode(filters.q)) {
+      openByCode(filters.q.trim());
+      return undefined;
+    }
     const t = setTimeout(load, filters.q ? 350 : 0);
     return () => clearTimeout(t);
+    /* eslint-disable-next-line */
   }, [load, filters.q]);
 
   // Приход из отчёта по ссылке на инвентарный номер: карточка открывается сразу,
@@ -90,6 +109,34 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
     }
   };
 
+  // Штрих-сканер в режиме клавиатуры набивает в поиск целиком ссылку из QR, а
+  // поиск ищет по названию и номерам — по такой строке не находилось ничего.
+  // Ссылку разбирает сервер тем же lookup, что и сканер в мобильном приложении:
+  // здесь мы только решаем, что введённое похоже на код, а не на название.
+  const looksLikeCode = v => /^https?:\/\//i.test(v) || /^[A-Za-z0-9_-]{22,}$/.test(v);
+  const handledCode = useRef(null);
+
+  const openByCode = useCallback(async (code, { quiet = false } = {}) => {
+    // Enter от сканера и реакция на изменение поля приходят почти одновременно —
+    // отметка не даёт уйти двум одинаковым запросам. Снимается по завершении,
+    // иначе тот же прибор не отсканировать второй раз.
+    if (handledCode.current === code) return;
+    handledCode.current = code;
+    try {
+      const { data: res } = await warehouseApi.lookup(code);
+      setFilters(f => ({ ...f, q: '' }));
+      if (res.kind === 'asset') await openCard(res.asset.id);
+      else if (res.kind === 'room') onOpenRoom?.(res.room.id);
+    } catch (e) {
+      // Enter в поиске нажимают и просто так, набрав кусок названия. Ругаться на
+      // это нельзя: непохожий на код запрос остаётся обычным поиском по списку.
+      if (!quiet) toast.error(e.response?.data?.error || 'По этому коду ничего не найдено');
+    } finally {
+      handledCode.current = null;
+    }
+    /* eslint-disable-next-line */
+  }, [onOpenRoom]);
+
   const toggle = (id) => {
     setChecked(prev => {
       const next = new Set(prev);
@@ -113,26 +160,34 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
       <div className="wh-assets__filters">
         <div className="wh-search">
           <Search size={15} />
-          <input placeholder="Наименование, инв. номер, серийный номер…"
+          <input placeholder="Наименование, инв. номер, серийный номер или код из QR"
                  value={filters.q}
-                 onChange={e => setFilters(f => ({ ...f, q: e.target.value }))} />
+                 onChange={e => setFilter({ q: e.target.value })}
+                 onKeyDown={e => {
+                   // Ручной сканер дописывает Enter — по нему пробуем разобрать
+                   // и то, что на ссылку не похоже: инвентарный номер с этикетки
+                   // так открывает карточку сразу, без клика по строке списка.
+                   if (e.key !== 'Enter') return;
+                   const value = filters.q.trim();
+                   if (value) openByCode(value, { quiet: true });
+                 }} />
         </div>
         <select value={filters.medCenterId}
-                onChange={e => setFilters(f => ({ ...f, medCenterId: e.target.value, departmentId: '' }))}>
+                onChange={e => setFilter({ medCenterId: e.target.value, departmentId: '' })}>
           <option value="">Все медцентры</option>
           {(tree?.medCenters || []).map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
         </select>
-        <select value={filters.departmentId} onChange={e => setFilters(f => ({ ...f, departmentId: e.target.value }))}>
+        <select value={filters.departmentId} onChange={e => setFilter({ departmentId: e.target.value })}>
           <option value="">Все отделения</option>
           {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
+        <select value={filters.status} onChange={e => setFilter({ status: e.target.value })}>
           <option value="">Любой статус</option>
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <label className="wh-check">
           <input type="checkbox" checked={filters.maintenanceDue}
-                 onChange={e => setFilters(f => ({ ...f, maintenanceDue: e.target.checked }))} />
+                 onChange={e => setFilter({ maintenanceDue: e.target.checked })} />
           ТО в течение 30 дней и просроченные
         </label>
         {access?.capabilities?.canManageAssets && (
@@ -144,12 +199,12 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
       </div>
 
       {(access?.capabilities?.canPrintLabels || access?.capabilities?.canManageAssets) && (
-        <div className="wh-assets__bulk">
-          <span>
-            {checked.size
-              ? `Отмечено: ${checked.size}`
-              : 'Отметьте активы — этикетки и правку полей можно сделать пачкой'}
-          </span>
+        <div className={`wh-assets__bulk ${checked.size ? 'is-active' : ''}`}>
+          {/* Пока ничего не отмечено, полоса молчит. Здесь стояла инструкция
+              «Отметьте активы — этикетки и правку полей можно сделать пачкой»:
+              она занимала место постоянно, а нужна была ровно один раз, и то
+              не всем. Кнопки и без неё неактивны, пока выбор пуст. */}
+          {checked.size > 0 && <span>Отмечено: {checked.size}</span>}
           {access?.capabilities?.canPrintLabels && (
             <>
               <select value={labelSize} onChange={e => setLabelSize(e.target.value)}>
@@ -254,7 +309,9 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
           </tbody>
         </table>
       </div>
-      <div className="wh-assets__count">Показано {data.items.length} из {data.total}</div>
+      <Pagination page={page} pageSize={pageSize} total={data.total}
+                  onPage={setPage} onPageSize={size => { setPageSize(size); setPage(1); }}
+                  unit="единиц" />
 
       {selected && (
         <AssetCard data={selected}
@@ -370,14 +427,6 @@ function BulkEditModal({ ids, onClose, onApplied }) {
           <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="wh-modal__body">
-          <div className="wh-note wh-note--subtle">
-            <Info size={15} />
-            <div>
-              Меняются только отмеченные галочкой поля — остальные останутся как
-              есть. Кабинет и МОЛ здесь не меняются: переезд оформляется
-              документом перемещения.
-            </div>
-          </div>
           <div className="wh-form">
             {FIELDS.map(field => (
               <div key={field.key} className="wh-bulk__row">
@@ -485,15 +534,8 @@ function ParseNamesModal({ onClose, onApplied }) {
           {!preview && <div className="wh-table__loading"><div className="loading-spinner" /></div>}
           {preview && (
             <>
-              <div className="wh-note wh-note--subtle">
-                <Info size={15} />
-                <div>
-                  Просмотрено карточек: {preview.scanned}, найдено что заполнить
-                  у {preview.changed}. Наименование не меняется — заполняются
-                  только пустые «модель» и «производитель». Разбор угадывает не
-                  всегда: посмотрите список ниже, и если он выглядит неверно,
-                  просто закройте окно.
-                </div>
+              <div className="wh-hint">
+                Просмотрено карточек: {preview.scanned}, найдено что заполнить у {preview.changed}.
               </div>
               {Boolean(preview.samples?.length) && (
                 <div className="wh-table-wrap wh-table-wrap--tall">
@@ -660,14 +702,8 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
                   <code>{publicUrl}</code>
                   <button className="wh-icon-btn" onClick={copyUrl} title="Скопировать"><Copy size={15} /></button>
                 </div>
-                <div className="wh-note wh-note--subtle">
-                  <Info size={15} />
-                  <div>
-                    Карточка по этой ссылке открывается <b>без авторизации</b> — QR наклеен на
-                    прибор, и подходят к нему с телефона, где портал не залогинен. Поэтому наружу
-                    отдаётся только назначение прибора, статус и даты ТО. Стоимость, амортизация,
-                    ФИО ответственного и документы на публичной карточке не показываются.
-                  </div>
+                <div className="wh-hint">
+                  Открывается без авторизации: назначение, статус и даты ТО. Без стоимости и ФИО.
                 </div>
               </div>
               <div className="wh-qr__col">
@@ -962,13 +998,6 @@ function AssetFiles({ assetId, files, canEdit, onReload }) {
           <input type="file" multiple hidden onChange={upload} />
         </label>
       )}
-      <div className="wh-note wh-note--subtle">
-        <Info size={15} />
-        <div>
-          Флажок «на публичной карточке» открывает файл всем, у кого есть QR-ссылка.
-          По умолчанию выключен: рядом с паспортом прибора обычно лежат договоры и акты с ценами.
-        </div>
-      </div>
       <ul className="wh-files">
         {files.map(f => (
           <li key={f.id}>

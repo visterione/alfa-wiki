@@ -27,7 +27,7 @@ router.get('/categories', authenticate, requireWarehouse(), async (req, res) => 
   res.json(rows);
 });
 
-router.post('/categories', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
+router.post('/categories', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const { name, parentId, kind, okof, depreciationGroup, defaultUsefulMonths } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Нужно название' });
@@ -295,7 +295,7 @@ router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
  * означает, что остатки правили в обход сервиса, и это надо увидеть, а не
  * прятать в ночном логе.
  */
-router.get('/stock/reconcile', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
+router.get('/stock/reconcile', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const diffs = await reconcileStock();
     res.json({ ok: diffs.length === 0, discrepancies: diffs });

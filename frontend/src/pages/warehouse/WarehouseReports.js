@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   FileSpreadsheet, FileText, Info, AlertTriangle, ArrowRightLeft, Plug,
-  ChevronRight, ChevronDown, Minimize2, Maximize2,
+  ChevronRight, ChevronDown, Minimize2, Maximize2, ListTree, FolderTree,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
@@ -242,7 +242,7 @@ const REPORTS = {
     code: 'RPT-IDLE',
     title: 'Простаивающее оборудование',
     load: () => warehouseApi.idleAssets({}),
-    unwrap: data => ({ items: data.items, note: data.note, header: null }),
+    unwrap: data => ({ items: data.items, header: null }),
     columns: [
       { key: 'inventoryNumber', title: 'Инв. №' },
       { key: 'name', title: 'Наименование' },
@@ -480,20 +480,7 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
 
       <div className="wh-reports__main wh-reports__main--slide" key={key}>
         <div className="wh-reports__head">
-          <div>
-            <h2>{report.title}</h2>
-            <span className="wh-mono wh-cell-sub">{report.code}</span>
-          </div>
-          {!report.custom && (
-            <div className="wh-reports__export">
-              <button className="wh-btn wh-btn--ghost" onClick={() => doExport('xlsx')} disabled={exporting}>
-                <FileSpreadsheet size={15} /> XLSX
-              </button>
-              <button className="wh-btn wh-btn--ghost" onClick={() => doExport('pdf')} disabled={exporting}>
-                <FileText size={15} /> PDF
-              </button>
-            </div>
-          )}
+          <h2>{report.title}</h2>
         </div>
 
         {modes.length > 1 && (
@@ -543,6 +530,41 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
+            {state.data?.hierarchical && (
+              <div className="wh-field wh-reports__tree-ctl">
+                <label>Дерево</label>
+                <div className="wh-btn-group">
+                  <button className="wh-icon-btn" title="Раскрыть всё"
+                          onClick={() => setCollapsed(new Set())}>
+                    <Maximize2 size={15} />
+                  </button>
+                  <button className="wh-icon-btn" title="Свернуть до кабинетов"
+                          onClick={() => collapseAll('storage')}>
+                    <ListTree size={15} />
+                  </button>
+                  <button className="wh-icon-btn" title="Свернуть до отделений"
+                          onClick={() => collapseAll('room')}>
+                    <FolderTree size={15} />
+                  </button>
+                  <button className="wh-icon-btn" title="Свернуть всё"
+                          onClick={() => collapseAll()}>
+                    <Minimize2 size={15} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Выгрузки прижаты к правому краю полосы: XLSX и PDF собираются по
+                тем же параметрам, что и таблица, поэтому стоят рядом с ними, но
+                это действия, а не фильтры — отсюда зазор. */}
+            <div className="wh-reports__export">
+              <button className="wh-btn wh-btn--ghost" onClick={() => doExport('xlsx')} disabled={exporting}>
+                <FileSpreadsheet size={15} /> XLSX
+              </button>
+              <button className="wh-btn wh-btn--ghost" onClick={() => doExport('pdf')} disabled={exporting}>
+                <FileText size={15} /> PDF
+              </button>
+            </div>
           </div>
         )}
 
@@ -558,9 +580,6 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
 
         {!report.custom && !state.denied && (
           <>
-            {state.data?.note && (
-              <div className="wh-note wh-note--subtle"><Info size={15} /><div>{state.data.note}</div></div>
-            )}
             {state.data?.disclaimer && (
               <div className="wh-note wh-note--warn"><AlertTriangle size={15} /><div>{state.data.disclaimer}</div></div>
             )}
@@ -574,26 +593,6 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
             {renderKind === 'maintenanceCalendar' && <MaintenanceCalendar items={state.data?.items || []} />}
             {renderKind === 'assetLife' && <AssetLife onOpenAsset={onOpenAsset} />}
 
-            {state.data?.hierarchical && (
-              <div className="wh-tree__bar">
-                <span className="wh-tree__bar-title">Иерархия</span>
-                <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => setCollapsed(new Set())}>
-                  <Maximize2 size={14} /> Раскрыть всё
-                </button>
-                <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => collapseAll('storage')}>
-                  До кабинетов
-                </button>
-                <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => collapseAll('room')}>
-                  До отделений
-                </button>
-                <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => collapseAll()}>
-                  <Minimize2 size={14} /> Свернуть всё
-                </button>
-                <span className="wh-tree__bar-count">
-                  видно {visibleRows.length} из {state.data.items.length} строк
-                </span>
-              </div>
-            )}
             {state.data?.controls?.stockVsMovements?.length > 0 && (
               <div className="wh-note wh-note--warn">
                 <AlertTriangle size={15} />
@@ -674,11 +673,6 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
                 )}
               </table>
             </div>
-            <div className="wh-assets__count">
-              Строк: {visibleRows.length}{state.data?.hierarchical
-                ? ` (в том числе групп: ${visibleRows.filter(r => r.__isGroup).length})` : ''}
-              {state.data?.header?.oneCNote && ` · ${state.data.header.oneCNote}`}
-            </div>
           </>
         )}
       </div>
@@ -723,18 +717,10 @@ function OneCPanel() {
     <div className="wh-onec">
       <div className="wh-note wh-note--warn">
         <Plug size={15} />
-        <div>
-          <b>Обмен с 1С не подключён.</b> {data.integration.reason}. Отчёт существует и
-          показывает это прямо, вместо того чтобы рисовать «расхождение 0,00 ₽» при
-          выключенной интеграции — такая галочка означала бы, что сверка прошла успешно.
-        </div>
+        <div><b>Обмен с 1С не подключён.</b> {data.integration.reason}.</div>
       </div>
 
-      <h3>Готовность к обмену</h3>
-      <p className="wh-hint">{data.readiness.note}</p>
-
       <h3>Внутренняя сверка</h3>
-      <p className="wh-hint">{data.internalReconciliation.description}</p>
       {data.internalReconciliation.ok ? (
         <div className="wh-note wh-note--ok">
           <Info size={15} />
@@ -757,10 +743,6 @@ function OneCPanel() {
       )}
 
       <h3>Очередь исходящих (outbox)</h3>
-      <p className="wh-hint">
-        Таблица создана по образцу очереди заявок публичного API и пока пуста: пока
-        обмен выключен, события в неё не пишутся.
-      </p>
       <pre className="wh-pre">{JSON.stringify(data.integration.outboxQueue, null, 2)}</pre>
 
       <h3>Документы по статусу синхронизации</h3>

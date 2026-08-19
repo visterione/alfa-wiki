@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  AlertTriangle, Boxes, ChevronDown, ChevronRight, Info, Package, Play, RefreshCw, X,
+  AlertTriangle, Boxes, ChevronDown, ChevronRight, Package, Play,
+  RefreshCw, X,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
@@ -202,15 +203,6 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
         </div>
       </div>
 
-      <div className="wh-note wh-note--subtle">
-        <Info size={15} />
-        <div>
-          Вложенные ветки наследуют выбор родителя, пока им не задан свой.
-          Режим «По словарю» не угадывает тип: неизвестная словарю позиция
-          останется неразобранной.
-        </div>
-      </div>
-
       <div className="wh-table-wrap wh-table-wrap--tall">
         <table className="wh-table wh-table--compact">
           <thead>
@@ -340,13 +332,6 @@ function BranchLines({ node, importId, account, canEdit, onClose, onChanged }) {
           <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="wh-modal__body">
-          <div className="wh-note wh-note--subtle">
-            <Info size={15} />
-            <div>
-              Здесь виден итог правила ветки и словаря. Любую отдельную строку
-              можно переопределить вручную.
-            </div>
-          </div>
           {!lines && <div className="wh-table__loading"><div className="loading-spinner" /></div>}
           {lines && (
             <div className="wh-table-wrap wh-table-wrap--tall">
@@ -424,13 +409,10 @@ function ReportModal({ report, onClose }) {
         </div>
         <div className="wh-modal__body">
           {report.dryRun ? (
-            <div className="wh-note wh-note--subtle">
-              <Info size={15} />
-              <div>
-                Ничего не создано. По разобранным веткам получится{' '}
-                {report.totals.asset} позиций карточками ({report.totals.assetUnits} единиц)
-                и {report.totals.material} позиций остатками.
-              </div>
+            <div className="wh-hint">
+              Ничего не создано. По разобранным веткам получится{' '}
+              {report.totals.asset} позиций карточками ({report.totals.assetUnits} единиц)
+              и {report.totals.material} позиций остатками.
             </div>
           ) : (
             <table className="wh-table wh-table--compact">

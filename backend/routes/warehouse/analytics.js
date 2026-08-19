@@ -201,9 +201,6 @@ router.get('/idle-assets', authenticate, requireWarehouse(), requireReport('RPT-
     res.json({
       thresholdDays: Number(days) || utilization.IDLE_DAYS,
       items: rows,
-      note: 'Простой считается по журналу движений: актив не участвовал ни в одной операции. ' +
-            'Это не означает, что прибор не использовался — только то, что по нему не было ' +
-            'учётных операций. Оценочной «экономии на закупках» здесь нет: из этих данных её вывести нельзя.',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  ArrowRightLeft, Check, ChevronRight, Copy, FilePlus2, Plus, RefreshCw,
+  ArrowRightLeft, Check, ChevronRight, Copy, FilePlus2, Plus,
   Search, Trash2, X,
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
 import Combobox from './components/Combobox';
+import Pagination from './components/Pagination';
 
 const TYPES = [
   ['receipt', 'Приём'],
@@ -42,16 +43,25 @@ export default function WarehouseOperations({ access, tree }) {
     nomenclature: [], batches: [], stock: [], assets: [], contractors: [], users: [],
   });
   const [filters, setFilters] = useState({ q: '', type: '' });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   // Документ, который повторяем. Ежедневная выдача в один и тот же кабинет —
   // самая частая операция модуля, и каждый раз собирать её заново значит
   // повторять руками то, что уже сделано вчера.
   const [repeat, setRepeat] = useState(null);
 
+  const setFilter = (patch) => {
+    setFilters(f => ({ ...f, ...patch }));
+    setPage(1);
+  };
+
   const loadDocuments = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await warehouseApi.documents({
-        type: filters.type || undefined, limit: 100,
+        type: filters.type || undefined,
+        q: filters.q.trim() || undefined,
+        page, limit: pageSize,
       });
       setDocuments(data);
     } catch (e) {
@@ -59,7 +69,7 @@ export default function WarehouseOperations({ access, tree }) {
     } finally {
       setLoading(false);
     }
-  }, [filters.type]);
+  }, [filters.type, filters.q, page, pageSize]);
 
   const loadRefs = useCallback(async () => {
     try {
@@ -81,7 +91,15 @@ export default function WarehouseOperations({ access, tree }) {
     }
   }, []);
 
-  useEffect(() => { loadDocuments(); }, [loadDocuments]);
+  useEffect(() => {
+    const t = setTimeout(loadDocuments, filters.q ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [loadDocuments, filters.q]);
+
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(documents.total / pageSize));
+    if (page > pages) setPage(pages);
+  }, [documents.total, pageSize, page]);
   useEffect(() => { loadRefs(); }, [loadRefs]);
 
   const openDocument = async id => {
@@ -93,24 +111,40 @@ export default function WarehouseOperations({ access, tree }) {
     }
   };
 
-  const visible = documents.items.filter(d => {
-    const q = filters.q.trim().toLowerCase();
-    if (!q) return true;
-    return [d.number, d.reasonText, d.comment, d.author?.displayName]
-      .some(v => String(v || '').toLowerCase().includes(q));
-  });
 
   return (
     <div className="wh-operations">
-      <div className="wh-subtabs">
-        <button className={view === 'journal' ? 'is-active' : ''} onClick={() => setView('journal')}>
-          <ArrowRightLeft size={14} /> Журнал документов
-        </button>
-        {access?.capabilities?.canIssue && (
-          <button className={view === 'new' ? 'is-active' : ''}
-                  onClick={() => { setRepeat(null); setView('new'); }}>
-            <FilePlus2 size={14} /> Новый документ
+      {/* Переключатель вида и фильтры журнала живут в одной полосе. Раздельно
+          они занимали две строки над таблицей, и во второй сидели три контрола
+          на всю ширину экрана. Переключатель рисуется всегда, фильтры — только
+          в журнале: в редакторе документа фильтровать нечего, но вернуться к
+          списку надо уметь, поэтому вынести всю полосу внутрь ветки нельзя. */}
+      <div className="wh-assets__filters">
+        <div className="wh-subtabs">
+          <button className={view === 'journal' ? 'is-active' : ''} onClick={() => setView('journal')}>
+            <ArrowRightLeft size={14} /> Журнал документов
           </button>
+          {access?.capabilities?.canIssue && (
+            <button className={view === 'new' ? 'is-active' : ''}
+                    onClick={() => { setRepeat(null); setView('new'); }}>
+              <FilePlus2 size={14} /> Новый документ
+            </button>
+          )}
+        </div>
+
+        {view === 'journal' && (
+          <>
+            <span className="wh-filters__sep" />
+            <div className="wh-search">
+              <Search size={15} />
+              <input value={filters.q} placeholder="Номер, причина, автор…"
+                     onChange={e => setFilter({ q: e.target.value })} />
+            </div>
+            <select value={filters.type} onChange={e => setFilter({ type: e.target.value })}>
+              <option value="">Все операции</option>
+              {TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </>
         )}
       </div>
 
@@ -129,20 +163,6 @@ export default function WarehouseOperations({ access, tree }) {
         />
       ) : (
         <>
-          <div className="wh-assets__filters">
-            <div className="wh-search">
-              <Search size={15} />
-              <input value={filters.q} placeholder="Номер, причина, автор…"
-                     onChange={e => setFilters(f => ({ ...f, q: e.target.value }))} />
-            </div>
-            <select value={filters.type} onChange={e => setFilters(f => ({ ...f, type: e.target.value }))}>
-              <option value="">Все операции</option>
-              {TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <button className="wh-btn wh-btn--ghost" onClick={loadDocuments} disabled={loading}>
-              <RefreshCw size={14} /> Обновить
-            </button>
-          </div>
           <div className="wh-table-wrap">
             <table className="wh-table">
               <thead><tr>
@@ -151,7 +171,7 @@ export default function WarehouseOperations({ access, tree }) {
               </tr></thead>
               <tbody>
                 {loading && <tr><td colSpan={9} className="wh-table__loading"><div className="loading-spinner" /></td></tr>}
-                {!loading && visible.map(d => (
+                {!loading && documents.items.map(d => (
                   <tr key={d.id} className="wh-table__row" onClick={() => openDocument(d.id)}>
                     <td>{fmtDateTime(d.date)}</td>
                     <td className="wh-mono"><b>{d.number}</b></td>
@@ -163,11 +183,13 @@ export default function WarehouseOperations({ access, tree }) {
                     <td><ChevronRight size={15} /></td>
                   </tr>
                 ))}
-                {!loading && !visible.length && <tr><td colSpan={9} className="wh-empty">Документов нет</td></tr>}
+                {!loading && !documents.items.length && <tr><td colSpan={9} className="wh-empty">Документов нет</td></tr>}
               </tbody>
             </table>
           </div>
-          <div className="wh-assets__count">Показано {visible.length} из {documents.total}</div>
+          <Pagination page={page} pageSize={pageSize} total={documents.total}
+                      onPage={setPage} onPageSize={size => { setPageSize(size); setPage(1); }}
+                      unit="документов" />
         </>
       )}
 

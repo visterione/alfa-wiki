@@ -18,9 +18,10 @@
   --rb-shadow: 0 1px 3px rgba(0,0,0,0.12);
   --rb-shadow-lg: 0 4px 12px rgba(0,0,0,0.15);
   --rb-radius: 10px;
-  max-width: 1400px;
+  /* Ширину больше не режем: ограничение снято и здесь, и у обёртки
+     (.content-wrapper в Layout.css) — таблицам начислений нужно место. */
   margin: 0 auto;
-  padding: 20px;
+  padding: 20px 22px;
   font-size: 15px;
   color: var(--rb-text);
   box-sizing: border-box;
@@ -523,6 +524,11 @@
 .rb-wizard-step svg { width: 15px; height: 15px; flex-shrink: 0; }
 .rb-wizard-step-label { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rb-wizard-step.active { color: white; }
+/* Пока бегунок не измерен (полоса ещё скрыта или только появилась), активный шаг
+   красит себя сам: иначе белая надпись оказывается на белой карточке. Как только
+   хук снимет размеры и поставит data-slider-ready="1", подсветку забирает
+   бегунок — фон тут же снимается, и переезд остаётся анимированным. */
+.rb-wizard-nav:not([data-slider-ready="1"]) .rb-wizard-step.active { background: var(--rb-primary); }
 .rb-wizard-step.active .rb-wizard-step-label { font-weight: 600; }
 .rb-wizard-step:hover:not(.active):not(.blocked) { background: #f1f5f9; color: var(--rb-text); }
 .rb-wizard-step.blocked { cursor: not-allowed; opacity: 0.35; }
@@ -599,6 +605,9 @@
 .rb-clinic-tab { position: relative; z-index: 1; display: flex; flex: 1; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-size: 12px; font-weight: 500; border-radius: 7px; border: none; background: transparent; cursor: pointer; color: var(--rb-text-secondary); transition: color 0.2s; white-space: nowrap; user-select: none; }
 .rb-clinic-tab svg { width: 12px; height: 12px; flex-shrink: 0; }
 .rb-clinic-tab.active { color: white; }
+/* То же для вкладок внутри шагов. Вкладка АУП исключена: у неё свой чёрный фон,
+   на котором золотая надпись читается и без бегунка. */
+.rb-clinic-tab-wrap:not([data-slider-ready="1"]) .rb-clinic-tab.active:not(.rb-aup-tab) { background: var(--rb-primary); }
 .rb-clinic-tab:hover:not(.active) { background: #f1f5f9; color: var(--rb-text); }
 .rb-clinic-tab-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .rb-clinic-tab-logo { border-radius: 50%; object-fit: contain; background: #fff; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.06); }

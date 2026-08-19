@@ -49,8 +49,17 @@ function assetPublicUrl(token) {
   return `${PUBLIC_BASE_URL}/p/a/${token}`;
 }
 
-function roomPublicUrl(token) {
-  return `${PUBLIC_BASE_URL}/p/r/${token}`;
+/**
+ * Ссылка с двери кабинета. В отличие от актива, ведёт внутрь портала, а не на
+ * публичную карточку: дверь кабинета выходит в коридор, где ходят пациенты, и
+ * код с неё сканирует кто угодно. Перечень оборудования, ТО и остатки — сведения
+ * для сотрудников, поэтому по ссылке сначала спрашивают вход.
+ *
+ * У актива задача обратная: наклейка висит на приборе, к нему подходит инженер
+ * подрядчика с незалогиненного телефона, и там публичность оправдана.
+ */
+function roomAppUrl(roomId) {
+  return `${PUBLIC_BASE_URL}/warehouse?room=${roomId}`;
 }
 
 /**
@@ -511,12 +520,104 @@ function toPublicAsset(asset, { maintenanceOrders = [], repairs = [], movements 
   };
 }
 
+/**
+ * Карточка на дверь кабинета, A5 книжной ориентации.
+ *
+ * Это не этикетка: этикетку клеят на прибор и печатают пачками на рулонном
+ * принтере, а эту страницу печатают поштучно на обычном A4/A5 и вешают у входа.
+ * Отсюда и разница в раскладке — крупный номер кабинета читается с прохода, а QR
+ * нужен только тому, кто подошёл вплотную.
+ *
+ * ФИО материально ответственного на карточку намеренно не выводится: дверь видна
+ * из коридора, и фамилия сотрудника на ней — это персональные данные, вывешенные
+ * в общедоступном месте. В самом дашборде МОЛ есть.
+ */
+async function roomDoorCardSvg(room, { orgName = '' } = {}) {
+  const W = 148, H = 210, PAD = 12;
+  const FONT = 'Helvetica, Arial, sans-serif';
+  const inner = W - PAD * 2;
+
+  const url = roomAppUrl(room.id);
+  const rawQr = await qrSvg(url, { margin: 0, width: 100 });
+  const qrInner = rawQr
+    .replace(/<\?xml[^>]*\?>/, '')
+    .replace(/<svg[^>]*>/, '')
+    .replace(/<\/svg>/, '')
+    .trim();
+  const qrViewBox = (rawQr.match(/viewBox="([^"]+)"/) || [])[1] || '0 0 100 100';
+
+  // Номер подбирается под ширину: «305» и «312а/2» должны занимать одну и ту же
+  // полосу, а не уезжать за поле.
+  const numberSize = fitFontSize(room.number, inner, 46, 16);
+  const nameLines = room.name && room.name !== room.number
+    ? wrapToWidth(room.name, inner, 7, 2) : [];
+
+  const place = [
+    room.floor?.building?.name,
+    room.floor ? `${room.floor.number} этаж` : null,
+    room.department?.name,
+  ].filter(Boolean).join(' · ');
+
+  let y = PAD + 7;
+  const head = [];
+  head.push(`<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="${FONT}"
+        font-size="4.6" letter-spacing="1.4" fill="#64748b">КАБИНЕТ</text>`);
+
+  y += numberSize * 0.92 + 4;
+  head.push(`<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="${FONT}"
+        font-size="${numberSize}" font-weight="700" fill="#0f172a">${escapeXml(room.number)}</text>`);
+
+  y += 11;
+  for (const line of nameLines) {
+    head.push(`<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="${FONT}"
+        font-size="7" fill="#1f2937">${escapeXml(line)}</text>`);
+    y += 9;
+  }
+
+  if (place) {
+    y += 1;
+    head.push(`<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="${FONT}"
+        font-size="4.4" fill="#64748b">${escapeXml(clipToWidth(place, inner, 4.4))}</text>`);
+    y += 6;
+  }
+
+  // QR прижимается к низу, а не идёт следом за текстом: иначе карточки кабинетов
+  // с длинным названием и без него печатаются с кодом на разной высоте, и пачка
+  // выглядит небрежно.
+  const qrSize = 58;
+  const qrY = H - PAD - 26 - qrSize;
+  const dividerY = Math.min(y + 6, qrY - 6);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm"
+     viewBox="0 0 ${W} ${H}" role="img" aria-label="Карточка кабинета ${escapeXml(room.number)}">
+  <rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>
+  <rect x="4" y="4" width="${W - 8}" height="${H - 8}" fill="none"
+        stroke="#cbd5e1" stroke-width="0.4" rx="3"/>
+
+  ${head.join('\n  ')}
+
+  <line x1="${PAD}" y1="${dividerY}" x2="${W - PAD}" y2="${dividerY}"
+        stroke="#e2e8f0" stroke-width="0.3"/>
+
+  <svg x="${(W - qrSize) / 2}" y="${qrY}" width="${qrSize}" height="${qrSize}"
+       viewBox="${qrViewBox}" preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
+
+  <text x="${W / 2}" y="${qrY + qrSize + 8}" text-anchor="middle" font-family="${FONT}"
+        font-size="4.2" fill="#334155">Оборудование кабинета, сроки ТО и остатки</text>
+  <text x="${W / 2}" y="${qrY + qrSize + 13.6}" text-anchor="middle" font-family="${FONT}"
+        font-size="3.6" fill="#94a3b8">Только для сотрудников — потребуется вход на портал</text>
+  ${orgName ? `<text x="${W / 2}" y="${H - PAD}" text-anchor="middle" font-family="${FONT}"
+        font-size="3.6" fill="#94a3b8">${escapeXml(clipToWidth(orgName, inner, 3.6))}</text>` : ''}
+</svg>`;
+}
+
 module.exports = {
   PUBLIC_BASE_URL,
   LABEL_SIZES,
   generateToken,
   assetPublicUrl,
-  roomPublicUrl,
+  roomAppUrl,
+  roomDoorCardSvg,
   qrSvg,
   qrPngDataUrl,
   assetLabelSvg,

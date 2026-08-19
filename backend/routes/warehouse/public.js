@@ -1,5 +1,10 @@
 /**
- * Публичные карточки по QR — единственная часть модуля БЕЗ авторизации.
+ * Публичная карточка актива по QR — единственная часть модуля БЕЗ авторизации.
+ *
+ * Кабинеты сюда больше не входят: их QR висит на двери в коридоре, где ходят
+ * пациенты, и перечень оборудования кабинета отдавать первому сканировавшему
+ * незачем. Код с двери ведёт внутрь портала и спрашивает вход. У актива задача
+ * обратная — наклейка на приборе, телефон инженера, авторизации нет.
  *
  * Монтируется отдельно от остального модуля именно поэтому: случайно навесить
  * authenticate на весь роутер и сломать сканирование куда проще, чем случайно
@@ -14,10 +19,9 @@
 
 const express = require('express');
 const router = express.Router();
-const { Op } = require('sequelize');
 const {
   WhAsset, WhAssetFile, WhRoom, WhDepartment, WhFloor, WhBuilding,
-  WhMaintenanceOrder, WhRepair, WhMovement, WhStorage, WhStock, WhNomenclature, WhBatch,
+  WhMaintenanceOrder, WhRepair, WhMovement,
 } = require('../../models');
 const qr = require('../../services/warehouse/qr');
 
@@ -88,57 +92,6 @@ router.get('/a/:token', rateLimit, async (req, res) => {
     res.json(qr.toPublicAsset(asset, { maintenanceOrders: maintenance, repairs, movements, files }));
   } catch (err) {
     console.error('GET public asset card error:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-/**
- * Карточка кабинета по QR с двери. Ещё уже, чем карточка актива: перечень
- * оборудования со статусами и ближайшее ТО. Ни остатков, ни сумм — материалы и
- * их стоимость наружу не показываются вообще.
- */
-router.get('/r/:token', rateLimit, async (req, res) => {
-  try {
-    const room = await WhRoom.findOne({
-      where: { publicToken: req.params.token },
-      include: [
-        { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
-        { model: WhFloor, as: 'floor', include: [{ model: WhBuilding, as: 'building', attributes: ['id', 'name'] }] },
-      ],
-    });
-    if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
-
-    const assets = await WhAsset.findAll({
-      where: { roomId: room.id, isArchived: false },
-      attributes: ['inventoryNumber', 'name', 'model', 'status', 'nextMaintenanceDate', 'publicToken'],
-      order: [['name', 'ASC']],
-    });
-
-    const STATUS_LABELS = {
-      in_use: 'В работе', maintenance: 'На ТО', repair: 'В ремонте',
-      storage: 'На хранении', written_off: 'Списано', reserved: 'Зарезервировано',
-    };
-
-    res.json({
-      room: {
-        number: room.number,
-        name: room.name,
-        department: room.department?.name || null,
-        floor: room.floor ? `${room.floor.number} этаж` : null,
-        building: room.floor?.building?.name || null,
-      },
-      assets: assets.map(a => ({
-        inventoryNumber: a.inventoryNumber,
-        name: a.name,
-        model: a.model,
-        status: a.status,
-        statusLabel: STATUS_LABELS[a.status] || a.status,
-        nextMaintenanceDate: a.nextMaintenanceDate,
-        cardUrl: `/p/a/${a.publicToken}`,
-      })),
-    });
-  } catch (err) {
-    console.error('GET public room card error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

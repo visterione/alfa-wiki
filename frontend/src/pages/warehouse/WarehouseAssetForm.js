@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { X, Check, Info, AlertTriangle } from 'lucide-react';
+import { X, Check, AlertTriangle } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
 /**
@@ -284,15 +284,7 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
                       {storages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </label>
-                  <div className="wh-alert wh-alert--info">
-                    <Info size={15} />
-                    <div>
-                      Код специальности отделения этого кабинета попадёт в инвентарный
-                      номер и потом не изменится — номер отражает специальность на момент
-                      постановки на учёт, а не текущее размещение.
-                      {selectedRoom && <div className="wh-hint">{selectedRoom.label}</div>}
-                    </div>
-                  </div>
+                  {selectedRoom && <div className="wh-hint">{selectedRoom.label}</div>}
                 </>
               )}
             </div>
@@ -369,11 +361,6 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
                          onChange={e => set('nextMaintenanceDate', e.target.value)} />
                 </label>
               </div>
-              <p className="wh-hint">
-                Дата следующего ТО печатается на этикетке и светится на дашборде
-                кабинета. При закрытии наряда она пересчитывается по интервалу
-                автоматически — вручную её задают только для первого раза.
-              </p>
               <div className="wh-form__row2">
                 <label>Гарантия до
                   <input type="date" value={form.warrantyUntil || ''}
@@ -384,10 +371,6 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
                          onChange={e => set('dailyCapacityHours', e.target.value)} />
                 </label>
               </div>
-              <p className="wh-hint">
-                Суточная ёмкость участвует в расчёте простоя оборудования. Загрузку
-                кабинета она не задаёт — та считается по расписанию из МИС.
-              </p>
             </div>
           )}
         </div>

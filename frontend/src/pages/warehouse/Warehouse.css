@@ -12,23 +12,37 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .wh-app {
-  --wh-primary: #007AFF;
-  --wh-primary-hover: #1d4ed8;
-  --wh-primary-soft: #eff6ff;
-  --wh-primary-soft2: #dbeafe;
-  --wh-bg: #f8fafc;
-  --wh-card-bg: #ffffff;
-  --wh-border: #e2e8f0;
-  --wh-border-dark: #94a3b8;
-  --wh-text: #1e293b;
-  --wh-text-secondary: #64748b;
-  --wh-text-tertiary: #94a3b8;
-  --wh-danger: #dc2626;
-  --wh-success: #16a34a;
-  --wh-warning: #d97706;
-  --wh-shadow: 0 1px 3px rgba(0, 0, 0, .12);
-  --wh-shadow-lg: 0 4px 12px rgba(0, 0, 0, .15);
-  --wh-radius: 10px;
+  /* Токены модуля — псевдонимы общих токенов портала (:root в index.css), а не
+     свои значения. До этого здесь стояла палитра slate из Tailwind (#f8fafc,
+     #64748b, #e2e8f0), а весь остальной портал — «Задачи», мессенджер, зарплата —
+     живёт на системной палитре Apple (#F5F5F7, #86868B, #E5E5EA). Разница
+     небольшая по числам и очень заметная глазом: у slate холодный зелёно-синий
+     подтон, у системных серых он нейтральный, и склад выглядел деталью из
+     другого приложения. Имена --wh-* сохранены: на них держатся полторы тысячи
+     строк ниже, и переименование ничего бы не улучшило.
+
+     Псевдонимы, а не копии значений, — чтобы смена темы портала доезжала и сюда:
+     иначе склад пришлось бы править отдельно каждый раз. */
+  --wh-primary: var(--primary);
+  --wh-primary-hover: var(--primary-hover);
+  --wh-primary-soft: var(--primary-light);
+  /* Второй тон подсветки в общих токенах не заведён. Значение литеральное, а не
+     color-mix: у пользовательского свойства нет запасного варианта — движок без
+     color-mix получил бы не старый цвет, а невалидное значение. */
+  --wh-primary-soft2: #d6eaff;
+  --wh-bg: var(--bg-secondary);
+  --wh-card-bg: var(--bg-primary);
+  --wh-border: var(--border-light);
+  --wh-border-dark: var(--border);
+  --wh-text: var(--text-primary);
+  --wh-text-secondary: var(--text-secondary);
+  --wh-text-tertiary: var(--text-tertiary);
+  --wh-danger: var(--error);
+  --wh-success: var(--success);
+  --wh-warning: var(--warning);
+  --wh-shadow: var(--shadow-sm);
+  --wh-shadow-lg: var(--shadow-lg);
+  --wh-radius: var(--radius-md);
 
   /* Высота всех интерактивных элементов. Она одна на модуль: до этого поля,
      селекты и кнопки жили в девяти разных высотах, и соседние элементы в одной
@@ -54,9 +68,11 @@
   --wh-zone-red-bg: #fbe3e3;     --wh-zone-red-line: #cf5555;     --wh-zone-red-fg: #a33;
   --wh-zone-none-bg: #eef1f5;    --wh-zone-none-line: #aab4c2;
 
-  max-width: 1720px;
+  /* Собственного лимита ширины нет: модуль занимает всё окно, ограничение
+     снято и у обёртки (.content-wrapper в Layout.css). Таблицам склада ширина
+     нужнее, чем симметричные поля по краям. */
   margin: 0 auto;
-  padding: 20px;
+  padding: 20px 22px;
   font-size: 15px;
   color: var(--wh-text);
   box-sizing: border-box;
@@ -211,8 +227,12 @@
 
 /* Целимся в сам элемент, а не в атрибут type: <input> без type — это тоже
    текстовое поле, и React рендерит его именно так. Раньше такие поля не попадали
-   под правило и оставались браузерными. */
-.wh-app input:not([type="checkbox"]):not([type="radio"]),
+   под правило и оставались браузерными.
+   Исключения завёрнуты в :where() ради нулевого веса: с двумя :not([type=…])
+   базовое правило весило больше любого точечного «.wh-что-то input», и такие
+   переопределения молча не срабатывали — так, лупа в поиске годами лежала на
+   тексте, потому что padding-left из этого правила побеждал. */
+.wh-app input:not(:where([type="checkbox"], [type="radio"])),
 .wh-app select,
 .wh-app textarea {
   height: var(--wh-control-h);
@@ -256,8 +276,15 @@
 .wh-check--inline { font-size: 11px; }
 
 .wh-search { position: relative; display: flex; align-items: center; flex: 1 1 260px; min-width: 200px; }
-.wh-search svg { position: absolute; left: 10px; width: 14px; height: 14px; color: var(--wh-text-secondary); pointer-events: none; }
-.wh-search input { width: 100%; padding-left: 32px; }
+/* Только своя иконка, а не любая вложенная: по `.wh-search svg` крестик кнопки
+   «очистить» тоже уезжал в левый угол и ложился на лупу. */
+.wh-search > svg { position: absolute; left: 11px; width: 15px; height: 15px; color: var(--wh-text-tertiary); pointer-events: none; transition: color .15s; }
+.wh-search input { width: 100%; padding-left: 34px; }
+.wh-search:focus-within > svg { color: var(--wh-primary); }
+/* Кнопка очистки лежит поверх правого края поля, и поле оставляет ей место —
+   иначе длинный запрос уползает под крестик. */
+.wh-search > .wh-icon-btn { position: absolute; right: 3px; width: 28px; height: 28px; border-color: transparent; background: none; }
+.wh-search:has(> .wh-icon-btn) input { padding-right: 36px; }
 
 .wh-form { display: flex; flex-direction: column; gap: 10px; }
 .wh-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--wh-text-secondary); font-weight: 600; }
@@ -346,85 +373,199 @@
 
 /* ── Хлебные крошки ────────────────────────────────────────────────────────── */
 .wh-crumbs { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; font-size: 13px; flex-wrap: wrap; }
-.wh-crumbs__link { background: none; border: none; color: var(--wh-primary); cursor: pointer; font-size: 13px; padding: 0; }
+.wh-crumbs__link {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; color: var(--wh-primary); cursor: pointer;
+  font-size: 13px; font-family: inherit; padding: 0;
+}
 .wh-crumbs__link:hover { text-decoration: underline; }
 .wh-crumbs__current { font-weight: 700; }
 .wh-crumbs__sep { color: var(--wh-text-tertiary); }
 
 /* ═══ Карта: уровень сети ═══════════════════════════════════════════════════
-   Карточка медцентра держится на трёх вещах: цвет площадки как опознавательный
-   знак, силуэт как «портрет» площадки и ряд характеристик с волосяными
-   разделителями. Общего синего градиента у всех карточек больше нет — из-за него
-   площадки различались только подписью, а сеть выглядела набором одинаковых
-   плиток.
+   Карточка медцентра — стеклянная плитка в духе оформления Apple: полупрозрачная
+   поверхность с размытием подложки, световая кромка по верхнему краю, мягкая
+   объёмная тень и глянцевый значок площадки. Цвет медцентра работает не кантом,
+   а светом за стеклом: сквозь белую полупрозрачность он различает площадки мягче
+   и не превращает сетку в набор полосатых плашек.
+
+   Так стекло вообще возможно: полупрозрачность видна только если под ней что-то
+   есть, поэтому под сеткой лежит своя световая подложка (.wh-map__grid::before).
+   Без неё backdrop-filter размывал бы ровную заливку страницы, и «стекло»
+   выглядело бы просто белым прямоугольником.
    ═══════════════════════════════════════════════════════════════════════════ */
-.wh-map__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 14px; }
+.wh-map__head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.wh-map__head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.5px; }
+
+.wh-map__grid {
+  position: relative; isolation: isolate;
+  /* min(268px, 100%) вместо просто 268px: в контейнере уже минимума колонка не
+     сжимается и вылезает за край — на узком телефоне карточка уезжала вправо. */
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(268px, 100%), 1fr)); gap: 16px;
+}
+/* isolation: isolate выше — чтобы подложка с z-index: -1 осталась внутри сетки,
+   а не ушла за фон всего модуля. */
+.wh-map__grid::before {
+  /* Ровно по сетке, без вылета за края: absolute-элемент, выступающий за
+     контейнер, добавляется к его прокручиваемой ширине — и подложка, вылезавшая
+     за край, давала горизонтальную прокрутку всей страницы. */
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(54% 64% at 15% 8%, rgba(0, 122, 255, .34), transparent 74%),
+    radial-gradient(50% 58% at 86% 14%, rgba(88, 86, 214, .29), transparent 74%),
+    radial-gradient(54% 62% at 52% 97%, rgba(52, 199, 89, .22), transparent 74%);
+  /* Маска-эллипс по ближним сторонам: она гарантированно доходит до нуля на всех
+     четырёх краях, потому что радиусы равны половине ширины и половине высоты
+     блока. Раньше здесь стоял эллипс размером 112% × 104%, и на середине левого
+     края маска была ещё непрозрачна на ~85% — свет обрывался вертикальной линией
+     ровно по границе сетки, а дальше сразу шёл плоский серый фон. */
+  -webkit-mask-image: radial-gradient(ellipse closest-side at 50% 50%,
+    #000 26%, rgba(0, 0, 0, .52) 62%, transparent 100%);
+  mask-image: radial-gradient(ellipse closest-side at 50% 50%,
+    #000 26%, rgba(0, 0, 0, .52) 62%, transparent 100%);
+}
 
 .wh-mc {
   --mc-accent: var(--wh-primary);
   position: relative; display: flex; flex-direction: column;
   text-align: left; cursor: pointer; padding: 0; overflow: clip;
-  background: var(--wh-card-bg); border: 1px solid var(--wh-border);
-  border-radius: var(--wh-radius); font-family: inherit; color: var(--wh-text);
-  transition: box-shadow .2s, transform .2s, border-color .2s;
+  border-radius: 20px; font-family: inherit; color: var(--wh-text);
+  /* Запасная непрозрачная заливка идёт первой: движки без color-mix и без
+     backdrop-filter должны получить обычную белую карточку, а не прозрачную. */
+  background: var(--wh-card-bg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .82) 0%, rgba(255, 255, 255, .58) 100%),
+    radial-gradient(135% 105% at 8% -18%, color-mix(in srgb, var(--mc-accent) 62%, transparent) 0%, transparent 64%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, .8);
+  /* Четыре слоя: контактная тень, мягкая объёмная, световая кромка сверху и
+     волосяное кольцо по контуру. Кромка и кольцо и делают поверхность стеклом —
+     без них это белый прямоугольник с тенью. */
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, .05),
+    0 12px 28px -14px rgba(15, 23, 42, .22),
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 0 0 .5px rgba(15, 23, 42, .05);
+  transition: transform .3s cubic-bezier(.22, 1, .36, 1), box-shadow .3s, border-color .3s;
 }
-/* Цветной кант площадки — тонкая полоса сверху, а не заливка: заливка сделала бы
-   карточку рекламной, а по канту медцентры различаются с одного взгляда. */
+/* Блик: узкая световая полоса по диагонали сверху. Лежит поверх заливки, но ниже
+   содержимого — ::before рисуется первым из детей. */
 .wh-mc::before {
-  content: ''; position: absolute; inset: 0 0 auto; height: 3px;
-  background: var(--mc-accent);
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(148deg, rgba(255, 255, 255, .58) 0%, rgba(255, 255, 255, 0) 46%);
 }
-.wh-mc:hover { transform: translateY(-2px); box-shadow: var(--wh-shadow-lg); border-color: var(--wh-border-dark); }
-.wh-mc:focus-visible { outline: 2px solid var(--wh-primary); outline-offset: 2px; }
+.wh-mc:hover {
+  transform: translateY(-3px);
+  border-color: #fff;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, .05),
+    0 22px 44px -18px rgba(15, 23, 42, .30),
+    inset 0 1px 0 #fff,
+    inset 0 0 0 .5px rgba(15, 23, 42, .05);
+}
+.wh-mc:active { transform: translateY(-1px) scale(.995); }
+.wh-mc:focus-visible { outline: 3px solid rgba(0, 122, 255, .5); outline-offset: 2px; }
 
-.wh-mc__top { display: flex; align-items: center; gap: 11px; padding: 16px 16px 12px; }
-/* Запасные background/border идут первыми: color-mix не понимают движки старше
-   Chrome 111 и Safari 16.2, и без них знак площадки остаётся прозрачным. */
-.wh-mc__mark {
-  width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px;
-  display: flex; align-items: center; justify-content: center; overflow: hidden;
-  background: var(--wh-bg);
-  border: 1px solid var(--wh-border);
-  background: color-mix(in srgb, var(--mc-accent) 12%, #fff);
-  border: 1px solid color-mix(in srgb, var(--mc-accent) 28%, #fff);
-  color: var(--mc-accent); font-size: 14px; font-weight: 700; letter-spacing: .3px;
+.wh-mc__top {
+  position: relative; display: flex; align-items: center; gap: 11px;
+  padding: 15px 15px 13px;
 }
-.wh-mc__mark img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
-.wh-mc__id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+/* Значок площадки — глянцевая плитка вроде иконки приложения: вертикальный
+   градиент от светлого к тёмному, световая линия по верхней кромке, цветная тень
+   под ней. Заливка одним цветом идёт первой как запасная. */
+.wh-mc__mark {
+  width: 44px; height: 44px; flex-shrink: 0; border-radius: 13px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  color: #fff; font-size: 15px; font-weight: 700; letter-spacing: .2px;
+  text-shadow: 0 1px 1.5px rgba(0, 0, 0, .22);
+  background: var(--mc-accent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--mc-accent) 78%, #fff) 0%,
+    var(--mc-accent) 54%,
+    color-mix(in srgb, var(--mc-accent) 84%, #000) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .5),
+    inset 0 -1px 0 rgba(0, 0, 0, .12),
+    0 2px 7px -1px rgba(15, 23, 42, .25),
+    0 0 0 .5px rgba(0, 0, 0, .07);
+}
+/* Под логотипом плитка светлая: фирменный знак рисуют для белого фона, и на
+   цветном глянце он читается хуже, чем инициалы. */
+.wh-mc__mark:has(img) {
+  background: rgba(255, 255, 255, .92);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    0 2px 7px -1px rgba(15, 23, 42, .18),
+    0 0 0 .5px rgba(15, 23, 42, .08);
+}
+.wh-mc__mark img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
+
+.wh-mc__id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .wh-mc__name {
-  font-size: 15px; font-weight: 700; line-height: 1.25;
+  font-size: 15px; font-weight: 700; line-height: 1.25; letter-spacing: -.25px;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.wh-mc__city {
+  font-size: 12px; color: var(--wh-text-secondary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.wh-mc__city { font-size: 12px; color: var(--wh-text-secondary); }
-.wh-mc__go { flex-shrink: 0; color: var(--wh-text-tertiary); transition: transform .2s, color .2s; }
+/* Просроченное ТО — значок счётчика системным красным: единственное на карточке,
+   на что реагируют, и в шапке он попадается на глаза первым. */
+.wh-mc__badge {
+  display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+  height: 21px; padding: 0 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: #ff3b30;
+  background: linear-gradient(180deg, #ff5f56, #e0332a);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .42), 0 1px 4px -1px rgba(224, 51, 42, .6);
+}
+.wh-mc__badge svg { width: 11px; height: 11px; flex-shrink: 0; }
+.wh-mc__go { flex-shrink: 0; color: var(--wh-text-tertiary); transition: transform .3s, color .3s; }
 .wh-mc:hover .wh-mc__go { transform: translateX(3px); color: var(--mc-accent); }
 
-.wh-mc__figure {
-  display: flex; align-items: flex-end; justify-content: space-between; gap: 14px;
-  padding: 0 16px 14px;
+/* Числа лежат на вложенных стеклянных плитках — так же, как виджеты Apple
+   раскладывают внутренние блоки. Их ровно два: третьей стояла стоимость, и в
+   колонке шириной 90 px обрезалась и она, и подпись. Ряд прижат к низу, чтобы у
+   площадок с разной длиной названия числа оказывались на одной линии. */
+.wh-mc__metrics {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 9px;
+  margin: auto 0 0; padding: 0 15px 13px;
 }
-.wh-mc__headline { display: flex; flex-direction: column; text-align: right; line-height: 1.15; }
-.wh-mc__headline b { font-size: 27px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.wh-mc__headline small { font-size: 11px; color: var(--wh-text-secondary); }
-.wh-mc__money {
-  margin-top: 5px; font-size: 12px; font-weight: 700; color: var(--wh-text-secondary);
-  font-variant-numeric: tabular-nums;
+.wh-mc__metric {
+  display: flex; flex-direction: column-reverse; justify-content: flex-end;
+  min-width: 0; padding: 9px 11px 10px; border-radius: 13px;
+  background: rgba(255, 255, 255, .55);
+  box-shadow: inset 0 0 0 .5px rgba(15, 23, 42, .07), inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+.wh-mc__metric dd {
+  margin: 0; font-size: 22px; font-weight: 700; line-height: 1.05;
+  letter-spacing: -.7px; font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wh-mc__metric dt {
+  margin-top: 3px; font-size: 10.5px; font-weight: 600; color: var(--wh-text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Силуэт площадки: башни выровнены по земле, поэтому высокий корпус видно сразу. */
-.wh-silo { display: flex; align-items: flex-end; gap: 5px; min-height: 46px; }
-.wh-silo--empty { min-width: 34px; border-bottom: 2px solid var(--wh-border); }
-.wh-silo__tower { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 22px; }
-.wh-silo__floor {
-  display: block; height: 6px; min-width: 7px; border-radius: 2px;
-  background: var(--mc-accent);
-  border: 1px solid var(--mc-accent);
-  background: color-mix(in srgb, var(--mc-accent) 55%, #fff);
-  border: 1px solid color-mix(in srgb, var(--mc-accent) 70%, #fff);
+.wh-mc__foot {
+  position: relative;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 15px 11px;
+  border-top: 1px solid rgba(15, 23, 42, .06);
+  font-size: 11.5px; color: var(--wh-text-secondary);
 }
-/* Первый этаж плотнее: он «стоит на земле» и держит башню зрительно. */
-.wh-silo__tower .wh-silo__floor:last-child { background: var(--mc-accent); border-color: var(--mc-accent); }
-.wh-silo__more { align-self: flex-end; font-size: 11px; color: var(--wh-text-tertiary); font-weight: 700; }
+.wh-mc__structure { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wh-mc__money {
+  flex-shrink: 0; font-weight: 700; color: var(--wh-text);
+  font-variant-numeric: tabular-nums;
+}
 
 /* Ряд характеристик: подписи капителью, числа табличными цифрами, разделители
    волосяные. Это единственный способ показать четыре числа подряд так, чтобы они
@@ -443,20 +584,8 @@
   margin: 1px 0 0; font-size: 15px; font-weight: 700;
   font-variant-numeric: tabular-nums; color: var(--wh-text);
 }
-/* Ряд прижат к низу карточки: у медцентров с разной длиной названия характеристики
-   всё равно оказываются на одной линии, и карточки читаются как одна таблица. */
-.wh-mc .wh-spec { margin-top: auto; }
 .wh-spec--wide { border: 1px solid var(--wh-border); border-radius: 9px; background: var(--wh-card-bg); }
 .wh-spec--wide .wh-spec__item { padding: 8px 14px; text-align: left; }
-
-.wh-mc__foot {
-  display: flex; align-items: center; gap: 6px;
-  padding: 9px 16px; border-top: 1px solid var(--wh-border); background: var(--wh-bg);
-  font-size: 12px; font-weight: 600; color: var(--wh-text-secondary);
-}
-.wh-mc__foot svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--wh-success); }
-.wh-mc__foot.is-alert { background: var(--wh-zone-red-bg); color: var(--wh-zone-red-fg); }
-.wh-mc__foot.is-alert svg { color: var(--wh-danger); }
 
 /* ═══ Карта: уровень медцентра ══════════════════════════════════════════════
    Корпус рисуется разрезом здания: этажи стопкой, верхний — сверху, под стопкой
@@ -585,6 +714,10 @@
   padding: 12px 15px; background: var(--wh-card-bg); border: 1px solid var(--wh-border);
   border-radius: var(--wh-radius); margin-bottom: 12px;
 }
+/* Действия отжаты вправо и держатся вместе: между выбором показателя и кнопками
+   должен быть виден зазор, иначе «Редактировать план» читается как ещё один
+   фильтр тепловой карты. */
+.wh-map__toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 
 .wh-legend {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -770,8 +903,6 @@
   padding: 10px 15px; background: var(--wh-primary-soft); border: 1px solid #bfdbfe;
   border-radius: 8px; margin-bottom: 11px; font-size: 13px; color: #1e40af;
 }
-.wh-assets__count { font-size: 12px; color: var(--wh-text-secondary); margin-top: 9px; }
-.wh-total { margin-left: auto; font-size: 13px; color: var(--wh-text-secondary); }
 
 /* ── Модалки (по образцу .rb-modal) ────────────────────────────────────────── */
 .wh-modal {
@@ -1035,6 +1166,7 @@
 .wh-bigcard__value small { font-size: 13px; font-weight: 400; color: var(--wh-text-secondary); }
 .wh-bigcard__sub { font-size: 12px; color: var(--wh-text-secondary); margin-top: 3px; }
 .wh-bigcard__rows { list-style: none; padding: 0; margin: 9px 0 0; font-size: 12px; color: var(--wh-text-secondary); display: flex; flex-direction: column; gap: 2px; }
+.wh-bigcard__rows li { display: flex; align-items: center; gap: 6px; }
 .wh-bigcard__bar { height: 6px; border-radius: 999px; background: var(--wh-border); margin-top: 9px; overflow: hidden; }
 .wh-bigcard__bar i { display: block; height: 100%; border-radius: 999px; }
 
@@ -1203,26 +1335,6 @@
   font-size: 13px; color: var(--wh-text-secondary);
 }
 
-/* ── Сканер ───────────────────────────────────────────────────────────────── */
-.wh-scanner__cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.wh-scanner__video {
-  position: relative; aspect-ratio: 4 / 3; background: #1b222c;
-  border-radius: 9px; overflow: hidden; display: flex; align-items: center; justify-content: center;
-}
-.wh-scanner__video video { width: 100%; height: 100%; object-fit: cover; display: none; }
-.wh-scanner__video.is-live video { display: block; }
-.wh-scanner__placeholder { color: #6b7787; display: flex; flex-direction: column; align-items: center; gap: 9px; font-size: 13px; }
-.wh-scanner__frame { position: absolute; inset: 18%; border: 2px solid rgba(255, 255, 255, .85); border-radius: 9px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .3); }
-.wh-scanner__actions { margin-top: 11px; }
-.wh-scanner__manual form { display: flex; gap: 7px; }
-.wh-scanner__manual input { flex: 1; padding: 9px 12px !important; font-size: 14px !important; }
-.wh-scanner__history { list-style: none; padding: 0; margin: 0; }
-.wh-scanner__history li { display: flex; justify-content: space-between; gap: 11px; padding: 6px 0; border-bottom: 1px solid var(--wh-border); font-size: 12px; }
-.wh-scanner__history li.is-fail { color: var(--wh-danger); }
-.wh-scanner__result-head { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
-.wh-scanner__result-head svg { color: var(--wh-primary); }
-.wh-scanner__result-title { font-size: 16px; font-weight: 700; }
-.wh-scanner__result-head > span:last-child { margin-left: auto; }
 
 /* ── Отказ в доступе ──────────────────────────────────────────────────────── */
 .wh-denied { text-align: center; max-width: 450px; color: var(--wh-text-secondary); }
@@ -1251,7 +1363,7 @@
   .wh-editor__side { width: 100%; max-height: none; }
   .wh-floor-view { flex-direction: column; }
   .wh-room-panel { width: 100%; max-height: none; }
-  .wh-qr, .wh-scanner__cols, .wh-grid2 { grid-template-columns: 1fr; }
+  .wh-qr, .wh-grid2 { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
   .wh-app { padding: 12px 12px 32px; font-size: 14px; }
@@ -1273,6 +1385,8 @@
   .wh-tabs__slider,
   .wh-reports__slider,
   .wh-reports__main--slide { transition: none; animation: none; }
+  .wh-mc, .wh-mc__go { transition: none; }
+  .wh-mc:hover, .wh-mc:active { transform: none; }
 }
 
 /* Печать дашборда кабинета: убираем управление, оставляем данные. */
@@ -1282,19 +1396,27 @@
   .wh-app { padding: 0; max-width: none; }
   .wh-table-wrap { max-height: none; overflow: visible; border: none; }
   .wh-room__head { background: none !important; }
+  /* Стекло на бумаге не печатается, а размытие и тени только съедают тонер:
+     карточки медцентров уходят в печать обычными рамками. */
+  .wh-mc, .wh-mc__metric {
+    background: none !important; box-shadow: none !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+  .wh-mc::before, .wh-map__grid::before { display: none !important; }
 }
 
-/* ── Режим табло (дашборд кабинета на мониторе у входа) ────────────────────── */
-/* Крупнее шрифты и никакого управления: экран читают с двух метров, а трогать
-   его никто не будет. Выход — Escape, о нём написано на самой кнопке выхода. */
-.wh-room--kiosk .wh-bigcard__value { font-size: 40px; }
-.wh-room--kiosk .wh-bigcard__head { font-size: 14px; }
-.wh-room--kiosk .wh-bigcard__rows { font-size: 14px; }
-.wh-room--kiosk .wh-room__title h2 { font-size: 27px; }
-.wh-room--kiosk .wh-table { font-size: 15px; }
-.wh-room--kiosk .wh-table--compact td, .wh-room--kiosk .wh-table--compact th { padding: 9px 13px; font-size: 14px; }
-.wh-room--kiosk .wh-attention__item { font-size: 14px; }
-.wh-room--kiosk .wh-room__cards { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+/* ── Карточка кабинета на дверь ────────────────────────────────────────────── */
+/* Лист приходит с сервера в миллиметрах (148×210), поэтому в превью его тянем по
+   ширине контейнера: пропорции держит viewBox, и то, что видно в модалке, ровно
+   то же, что выйдет из принтера. */
+.wh-doorcard { display: flex; justify-content: center; padding: 2px 0 14px; }
+.wh-doorcard__sheet {
+  width: 100%; max-width: 250px; background: #fff;
+  border: 1px solid var(--wh-border); border-radius: 6px; overflow: hidden;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, .10);
+}
+.wh-doorcard__sheet svg { display: block; width: 100%; height: auto; }
 
 /* Активная плитка-фильтр */
 .wh-bigcard--clickable.is-active {
@@ -1404,16 +1526,6 @@
    колонками «корпус / этаж / отделение». Подытоги на каждом уровне и есть смысл
    иерархии: сколько лежит в кабинете целиком, сколько в отделении, сколько в
    корпусе — по плоской таблице это приходится складывать глазами. */
-.wh-tree__bar {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 9px 13px; margin-bottom: 10px;
-  background: var(--wh-card-bg); border: 1px solid var(--wh-border); border-radius: 8px;
-}
-.wh-tree__bar-title {
-  font-size: var(--wh-fs-label); font-weight: 700; text-transform: uppercase;
-  letter-spacing: .3px; color: var(--wh-text-secondary);
-}
-.wh-tree__bar-count { margin-left: auto; font-size: 12px; color: var(--wh-text-secondary); }
 
 /* Ячейка дерева выравнивает содержимое строчным потоком, а НЕ флексом.
    display:flex на <td> отбирает у ячейки роль ячейки таблицы: браузер обязан
@@ -1630,3 +1742,668 @@
   .wh-osv__side { position: static; flex-direction: row; overflow-x: auto; }
   .wh-osv__snap { min-width: 180px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОБЩЕЕ ОФОРМЛЕНИЕ: стекло и тактильные контролы (ver. 7.02)
+
+   Раздел приводит склад к тому же виду, что у модуля «Задачи»: рецепты
+   поверхности, кнопки, поля и всплывающего окна взяты оттуда один в один
+   (Tasks.css, раздел «Visual refresh: quiet glass + tactile controls»), чтобы
+   два модуля читались как один продукт, а не как две разные программы.
+
+   Почему отдельным разделом в конце файла, а не правкой полутора тысяч строк
+   выше: там лежит геометрия — раскладки, сетки, размеры. Она верная, и трогать
+   её ради цвета незачем. Здесь переопределяются только поверхности, и такой
+   раздел легко читать целиком, откатывать целиком и переносить на новые экраны.
+   Так же сделано и в «Задачах» — сходство не случайное.
+
+   Рецепты вынесены в переменные: у модуля десятки поверхностей, и повторять
+   четырёхслойную тень в каждом правиле означало бы гарантированно разойтись в
+   пятом месте. Новому экрану достаточно взять готовую переменную.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.wh-app {
+  /* Поверхность: панель, обёртка таблицы, полоса фильтров. */
+  --wh-surface-border: color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38));
+  --wh-surface-bg: linear-gradient(145deg,
+    color-mix(in srgb, var(--bg-primary) 96%, rgba(255, 255, 255, .12)),
+    color-mix(in srgb, var(--bg-primary) 84%, transparent));
+  --wh-surface-shadow: 0 9px 24px rgba(20, 29, 45, .055), inset 0 1px 0 rgba(255, 255, 255, .5);
+  --wh-surface-shadow-hover: 0 14px 30px rgba(20, 29, 45, .09), inset 0 1px 0 rgba(255, 255, 255, .6);
+
+  /* Контрол: кнопка, сегмент, пресет — то, что нажимают. */
+  --wh-control-border: color-mix(in srgb, var(--border) 72%, rgba(255, 255, 255, .3));
+  --wh-control-bg: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-primary) 94%, rgba(255, 255, 255, .18)),
+    color-mix(in srgb, var(--bg-secondary) 76%, transparent));
+  --wh-control-shadow: 0 3px 9px rgba(24, 35, 54, .055), inset 0 1px 0 rgba(255, 255, 255, .55);
+  --wh-control-shadow-hover: 0 7px 16px rgba(24, 35, 54, .09), inset 0 1px 0 rgba(255, 255, 255, .65);
+  --wh-control-shadow-active: inset 0 2px 5px rgba(24, 35, 54, .1);
+
+  /* Поле ввода: вдавленное, а не выпуклое — по нему видно, что в него пишут. */
+  --wh-input-border: color-mix(in srgb, var(--border) 68%, rgba(255, 255, 255, .3));
+  --wh-input-bg: color-mix(in srgb, var(--bg-primary) 78%, transparent);
+  --wh-input-shadow: inset 0 1px 2px rgba(19, 28, 45, .04), 0 1px 0 rgba(255, 255, 255, .36);
+
+  /* Всплывающее окно: список автодополнения, меню, подсказка над формой. */
+  --wh-pop-border: color-mix(in srgb, var(--border-light) 65%, rgba(255, 255, 255, .42));
+  --wh-pop-bg: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+  --wh-pop-shadow: 0 18px 44px rgba(12, 20, 33, .18), inset 0 1px 0 rgba(255, 255, 255, .58);
+
+  --wh-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* ── Вкладки модуля ────────────────────────────────────────────────────────── */
+
+.wh-tabs--main {
+  gap: 3px;
+  padding: 7px 9px;
+  border: 1px solid var(--wh-surface-border);
+  border-radius: 18px;
+  background: var(--wh-surface-bg);
+  -webkit-backdrop-filter: blur(26px) saturate(145%);
+  backdrop-filter: blur(26px) saturate(145%);
+  box-shadow: var(--wh-surface-shadow);
+}
+/* Бегунок стал светлой стеклянной пилюлей вместо сплошной синей плашки: у
+   системных переключателей выделение — это подложка под тёмным текстом, а не
+   вырезанная из полосы синяя кнопка с белыми буквами. */
+.wh-tabs__slider {
+  top: 7px;
+  height: calc(100% - 14px);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, rgba(255, 255, 255, .5));
+  border-radius: 12px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--primary-light) 74%, rgba(255, 255, 255, .5)),
+    color-mix(in srgb, var(--bg-primary) 78%, transparent));
+  box-shadow:
+    0 7px 18px color-mix(in srgb, var(--primary) 12%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .7),
+    inset 0 -1px 0 color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.wh-tab { border-radius: 12px; transition: color .22s ease; }
+.wh-tab:hover:not(.is-active) { background: color-mix(in srgb, var(--bg-secondary) 70%, transparent); }
+/* Текст активной вкладки теперь синий, а не белый: под светлой пилюлей белого
+   не видно вовсе. */
+.wh-tab.is-active { color: var(--primary); }
+.wh-tab.is-active svg {
+  filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--primary) 28%, transparent));
+}
+
+.wh-subtabs button, .wh-presets button {
+  border-radius: 11px;
+  border-color: var(--wh-control-border);
+  background: var(--wh-control-bg);
+  box-shadow: var(--wh-control-shadow);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, color .18s ease;
+}
+.wh-subtabs button:hover:not(.is-active), .wh-presets button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--wh-control-shadow-hover);
+}
+.wh-subtabs button.is-active {
+  border-color: color-mix(in srgb, var(--primary) 76%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 84%, white), var(--primary));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 24%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .42);
+}
+.wh-tabs--sub button.is-active { background: var(--primary-light); }
+.wh-modal__tabs button.is-active { background: var(--primary-light); }
+
+/* ── Кнопки ────────────────────────────────────────────────────────────────── */
+
+.wh-btn {
+  border-radius: 11px;
+  border-color: var(--wh-control-border);
+  background: var(--wh-control-bg);
+  box-shadow: var(--wh-control-shadow);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+.wh-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
+  box-shadow: var(--wh-control-shadow-hover);
+}
+.wh-btn:active:not(:disabled) {
+  transform: translateY(1px) scale(.985);
+  box-shadow: var(--wh-control-shadow-active);
+}
+.wh-btn--secondary, .wh-btn--ghost {
+  border-color: var(--wh-control-border);
+  background: var(--wh-control-bg);
+}
+/* Цветные кнопки: вертикальный градиент от разбавленного тона к чистому и
+   цветная тень под ней — она и делает кнопку выпуклой. */
+.wh-btn--primary {
+  border-color: color-mix(in srgb, var(--primary) 76%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 84%, white), var(--primary));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 24%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .42);
+}
+.wh-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--primary), var(--primary-hover));
+  border-color: var(--primary-hover);
+  box-shadow: 0 11px 24px color-mix(in srgb, var(--primary) 32%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .42);
+}
+.wh-btn--success {
+  border-color: color-mix(in srgb, var(--success) 76%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--success) 82%, white), var(--success));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--success) 26%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .42);
+}
+.wh-btn--success:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--success), color-mix(in srgb, var(--success) 84%, black));
+}
+.wh-btn--danger {
+  border-color: color-mix(in srgb, var(--error) 76%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--error) 82%, white), var(--error));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--error) 26%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .42);
+}
+.wh-btn--danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--error), color-mix(in srgb, var(--error) 84%, black));
+}
+.wh-btn--danger-ghost {
+  border-color: color-mix(in srgb, var(--error) 34%, var(--border));
+  background: var(--wh-control-bg);
+  color: var(--error);
+}
+.wh-btn--danger-ghost:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--error) 8%, #fff));
+}
+/* Текстовая кнопка остаётся текстом: объём ей не нужен, а тень выглядела бы
+   ошибкой вёрстки. */
+.wh-btn--link, .wh-btn--link:hover:not(:disabled), .wh-btn--link:active:not(:disabled) {
+  background: none; border: none; box-shadow: none; transform: none; border-radius: 0;
+}
+
+.wh-icon-btn {
+  border-radius: 11px;
+  border-color: var(--wh-control-border);
+  background: var(--wh-control-bg);
+  box-shadow: var(--wh-control-shadow);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, color .18s ease;
+}
+.wh-icon-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--wh-control-shadow-hover);
+}
+.wh-icon-btn:active:not(:disabled) {
+  transform: translateY(1px) scale(.96);
+  box-shadow: var(--wh-control-shadow-active);
+}
+.wh-icon-btn--danger { border-color: color-mix(in srgb, var(--error) 34%, var(--border)); }
+/* Крестик в поиске и кнопка очистки в комбобоксе — накладки поверх поля, объём
+   им противопоказан: он превратил бы одно поле в поле с приклеенной кнопкой. */
+.wh-search > .wh-icon-btn,
+.wh-search > .wh-icon-btn:hover:not(:disabled),
+.wh-combo__clear {
+  transform: none; box-shadow: none; border-color: transparent; background: none;
+}
+.wh-search > .wh-icon-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+}
+
+/* ── Поля ввода ────────────────────────────────────────────────────────────── */
+
+/* Селектор повторяет форму базового правила (:where даёт нулевой вес, поэтому
+   у обоих одинаковая специфичность) — здесь оно ниже по файлу и потому главнее. */
+.wh-app input:not(:where([type="checkbox"], [type="radio"])),
+.wh-app textarea {
+  border-radius: 11px;
+  border-color: var(--wh-input-border);
+  background: var(--wh-input-bg);
+  box-shadow: var(--wh-input-shadow);
+}
+/* У селекта фон задаётся отдельным свойством: background целиком затёр бы
+   background-image со своей галочкой, и вернулся бы браузерный треугольник. */
+.wh-app select {
+  border-radius: 11px;
+  border-color: var(--wh-input-border);
+  background-color: var(--wh-input-bg);
+  box-shadow: var(--wh-input-shadow);
+}
+/* Галочка селекта перерисована в системный серый: прежняя была цвета slate
+   #64748b и рядом с новым текстом отдавала в синеву. */
+.wh-app select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2386868B' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+}
+.wh-app input:focus, .wh-app select:focus, .wh-app textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 52%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent),
+              inset 0 1px 2px rgba(19, 28, 45, .04);
+}
+.wh-combo__value {
+  min-height: var(--wh-control-h);
+  border-radius: 11px;
+  border-color: var(--wh-control-border);
+  background: var(--wh-control-bg);
+  box-shadow: var(--wh-control-shadow);
+}
+
+/* ── Поверхности: панели, таблицы, полосы фильтров ─────────────────────────── */
+
+.wh-panel,
+.wh-table-wrap,
+.wh-map__toolbar,
+.wh-rooms__bar,
+.wh-reports__nav,
+.wh-reports__filters,
+.wh-site__head,
+.wh-bld,
+.wh-spec--wide,
+.wh-denied {
+  border: 1px solid var(--wh-surface-border);
+  border-radius: var(--radius-lg);
+  background: var(--wh-surface-bg);
+  box-shadow: var(--wh-surface-shadow);
+}
+/* Шапка панели — светлый блик сверху, а не серая плашка: сплошная заливка резала
+   стеклянную поверхность надвое. */
+.wh-panel__head {
+  border-bottom-color: color-mix(in srgb, var(--border-light) 72%, transparent);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .5), transparent);
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+}
+.wh-table thead th {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .6),
+              color-mix(in srgb, var(--bg-secondary) 70%, transparent));
+}
+
+/* ── Карточки и плитки дашбордов ───────────────────────────────────────────── */
+
+.wh-minicard,
+.wh-bigcard,
+.wh-sumcard,
+.wh-room-panel,
+.wh-room__head,
+.wh-osv__snap {
+  border: 1px solid var(--wh-surface-border);
+  border-radius: var(--radius-lg);
+  background: var(--wh-surface-bg);
+  box-shadow: var(--wh-surface-shadow);
+}
+.wh-bigcard--clickable {
+  transition: transform .24s var(--wh-ease), box-shadow .24s ease, border-color .2s ease;
+}
+.wh-bigcard--clickable:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border-light));
+  box-shadow: var(--wh-surface-shadow-hover);
+}
+/* Тревожные плитки: тон держится на семантическом токене, а не на подобранном
+   вручную розовом — иначе «опасно» на складе и «опасно» в задачах разного цвета. */
+.wh-minicard.is-danger, .wh-bigcard--alert {
+  border-color: color-mix(in srgb, var(--error) 30%, var(--border-light));
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--error) 7%, var(--bg-primary)),
+    color-mix(in srgb, var(--error) 3%, var(--bg-primary)));
+}
+.wh-room__head {
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--primary) 9%, var(--bg-primary)),
+    color-mix(in srgb, var(--primary) 3%, var(--bg-primary)));
+}
+.wh-room-panel__head {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 10%, var(--bg-primary)),
+    color-mix(in srgb, var(--primary) 3%, var(--bg-primary)));
+  border-bottom-color: color-mix(in srgb, var(--border-light) 72%, transparent);
+}
+/* Строка этажа в разрезе корпуса — нажимаемая, значит приподнимается. */
+.wh-fl { transition: transform .24s var(--wh-ease), box-shadow .24s ease, background .2s ease; }
+.wh-fl:hover { transform: translateY(-1px); box-shadow: var(--wh-control-shadow); }
+
+/* ── Всплывающие окна и модалки ────────────────────────────────────────────── */
+
+.wh-combo__drop,
+.wh-assetlife__options {
+  border: 1px solid var(--wh-pop-border);
+  border-radius: var(--radius-lg);
+  background: var(--wh-pop-bg);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  backdrop-filter: blur(28px) saturate(150%);
+  box-shadow: var(--wh-pop-shadow);
+  animation: wh-pop-in 160ms var(--wh-ease);
+}
+@keyframes wh-pop-in {
+  from { opacity: 0; transform: translateY(-5px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.wh-combo__option, .wh-assetlife__options button { border-radius: 9px; }
+.wh-combo__option.is-cursor { background: var(--primary-light); color: var(--primary); }
+
+.wh-modal {
+  background: rgba(14, 20, 31, .34);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+.wh-modal__box {
+  border: 1px solid rgba(255, 255, 255, .42);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  backdrop-filter: blur(30px) saturate(150%);
+  box-shadow: 0 30px 80px rgba(8, 14, 24, .24), inset 0 1px 0 rgba(255, 255, 255, .62);
+}
+.wh-modal__head, .wh-modal__tabs { border-bottom-color: color-mix(in srgb, var(--border-light) 72%, transparent); }
+.wh-modal__foot { border-top-color: color-mix(in srgb, var(--border-light) 72%, transparent); }
+
+/* ── Плашки-счётчики ──────────────────────────────────────────────────────── */
+
+/* Красный счётчик — системный, тот же, что у непрочитанных в «Задачах». */
+.wh-count {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--error) 86%, white), var(--error));
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4),
+              0 1px 3px color-mix(in srgb, var(--error) 45%, transparent);
+}
+.wh-level, .wh-rolechip {
+  border-color: color-mix(in srgb, var(--primary) 24%, rgba(255, 255, 255, .5));
+  background: linear-gradient(180deg, rgba(255, 255, 255, .5), var(--primary-light));
+  color: var(--primary-hover);
+}
+.wh-level--viewer {
+  border-color: var(--wh-surface-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .6), var(--bg-secondary));
+  color: var(--text-secondary);
+}
+
+/* ── Печать и «меньше движения» ────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .wh-btn, .wh-icon-btn, .wh-subtabs button, .wh-presets button,
+  .wh-bigcard--clickable, .wh-fl { transition-duration: 1ms; }
+  .wh-btn:hover, .wh-btn:active, .wh-icon-btn:hover, .wh-icon-btn:active,
+  .wh-subtabs button:hover, .wh-presets button:hover,
+  .wh-bigcard--clickable:hover, .wh-fl:hover { transform: none; }
+  .wh-combo__drop, .wh-assetlife__options { animation: none; }
+}
+
+@media print {
+  /* На бумаге ни размытия, ни объёма: всё это только съедает тонер, а границы
+     нужны настоящие. */
+  .wh-panel, .wh-table-wrap, .wh-map__toolbar, .wh-rooms__bar, .wh-reports__nav,
+  .wh-reports__filters, .wh-site__head, .wh-bld, .wh-spec--wide, .wh-minicard,
+  .wh-bigcard, .wh-sumcard, .wh-room-panel, .wh-room__head, .wh-modal__box,
+  .wh-btn, .wh-icon-btn, .wh-tabs--main {
+    background: none !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    border-color: #cbd5e1 !important;
+  }
+}
+
+/* ── Цветные варианты поверхностей ─────────────────────────────────────────── */
+/* Правила выше задают поверхность целиком (border + background), поэтому все
+   варианты, которые красили её раньше по файлу, нужно объявить заново — иначе
+   предупреждающая панель и плитки недостач становятся обычными белыми. Тон
+   берётся из зон светофора: их палитра совпадает с выгрузками в XLSX и PDF
+   (backend/services/warehouse/exports.js), и подбирать здесь свои оттенки
+   означало бы развести экран с печатью. */
+.wh-panel--warn {
+  border-color: color-mix(in srgb, var(--warning) 34%, var(--border-light));
+}
+.wh-sumcard--red {
+  border-color: color-mix(in srgb, var(--wh-zone-red-line) 34%, var(--border-light));
+  background: linear-gradient(145deg,
+    var(--wh-zone-red-bg), color-mix(in srgb, var(--wh-zone-red-bg) 45%, var(--bg-primary)));
+}
+.wh-sumcard--orange {
+  border-color: color-mix(in srgb, var(--wh-zone-orange-line) 34%, var(--border-light));
+  background: linear-gradient(145deg,
+    var(--wh-zone-orange-bg), color-mix(in srgb, var(--wh-zone-orange-bg) 45%, var(--bg-primary)));
+}
+.wh-sumcard--yellow {
+  border-color: color-mix(in srgb, var(--wh-zone-yellow-line) 34%, var(--border-light));
+  background: linear-gradient(145deg,
+    var(--wh-zone-yellow-bg), color-mix(in srgb, var(--wh-zone-yellow-bg) 45%, var(--bg-primary)));
+}
+/* Выводимая роль — зелёная: её не назначали, она следует из данных. */
+.wh-level--derived, .wh-rolechip.is-derived {
+  border-color: color-mix(in srgb, var(--success) 34%, var(--border-light));
+  background: linear-gradient(180deg, rgba(255, 255, 255, .5),
+    color-mix(in srgb, var(--success) 12%, var(--bg-primary)));
+  color: color-mix(in srgb, var(--success) 78%, black);
+}
+.wh-icon-btn--danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--error) 9%, #fff));
+  border-color: color-mix(in srgb, var(--error) 45%, var(--border));
+}
+
+/* ── Постраничная навигация (ver. 7.02) ────────────────────────────────────── */
+/* Панель под таблицей: слева видимый диапазон, по центру страницы, справа их
+   размер. Диапазон стоит первым потому, что на него смотрят и когда листать
+   некуда, — при одной странице номера не рисуются вовсе. */
+.wh-pager {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-top: 11px;
+}
+.wh-pager__total {
+  font-size: 12.5px; color: var(--wh-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.wh-pager__pages { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.wh-pager__page {
+  min-width: var(--wh-control-h); height: var(--wh-control-h); padding: 0 9px;
+  border: 1px solid var(--wh-control-border); border-radius: 11px;
+  background: var(--wh-control-bg); box-shadow: var(--wh-control-shadow);
+  color: var(--wh-text); font: inherit; font-size: 13px; font-weight: 500;
+  font-variant-numeric: tabular-nums; cursor: pointer; box-sizing: border-box;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.wh-pager__page:hover:not(.is-active) {
+  transform: translateY(-1px); box-shadow: var(--wh-control-shadow-hover);
+}
+.wh-pager__page.is-active {
+  border-color: color-mix(in srgb, var(--primary) 76%, white);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 84%, white), var(--primary));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 24%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .42);
+  color: #fff; cursor: default;
+}
+.wh-pager__gap {
+  width: 18px; text-align: center; color: var(--wh-text-tertiary); user-select: none;
+}
+.wh-pager__size {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--wh-text-secondary);
+}
+.wh-pager__size select { width: auto; min-width: 72px; }
+
+@media (max-width: 700px) {
+  /* На телефоне номера уводим в отдельную строку по центру: вместе с диапазоном
+     и размером страницы они не помещаются, а стрелки нужнее всего. */
+  .wh-pager { justify-content: center; }
+  .wh-pager__pages { order: -1; flex-basis: 100%; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wh-pager__page { transition-duration: 1ms; }
+  .wh-pager__page:hover:not(.is-active) { transform: none; }
+}
+
+/* ── Отчёты: боковая панель во всю высоту (ver. 7.02) ──────────────────────── */
+/* align-items: start прижимал список отчётов к верху, и он заканчивался там же,
+   где кончались его кнопки: рядом с длинной таблицей панель висела огрызком в
+   четверть экрана. Теперь колонки растягиваются, а сетке задан минимум по высоте
+   окна — панель доходит до низа рабочей области и на коротком отчёте тоже.
+   Вычитаются шапка портала, отступы модуля и полоса вкладок. */
+.wh-reports {
+  align-items: stretch;
+  min-height: calc(100vh - 210px);
+}
+.wh-reports__nav { align-self: stretch; }
+/* Список отчётов не растягивается вместе с панелью: кнопки должны остаться
+   вверху, а не разъезжаться на всю высоту. */
+.wh-reports__nav > .wh-reports__group:last-child { margin-bottom: auto; }
+
+/* Управление деревом в строке фильтров: четыре значка плотной группой, чтобы
+   читались как один переключатель вида, а не как четыре отдельные команды
+   вперемешку с медцентром и периодом. */
+.wh-reports__tree-ctl { flex: 0 0 auto; }
+.wh-btn-group { display: inline-flex; gap: 3px; }
+.wh-btn-group .wh-icon-btn { border-radius: 9px; }
+
+@media (max-width: 900px) {
+  /* На узком экране отчёты уже сложены в одну колонку — растягивать нечего. */
+  .wh-reports { min-height: 0; }
+}
+
+/* ── Отчёты: активная строка как везде в модуле ────────────────────────────── */
+/* Бегунок в списке отчётов был плоским голубым прямоугольником с чёрным текстом
+   поверх, а вкладки модуля к этому времени уже получили стеклянную пилюлю с
+   синей подписью. Получилось, что «выбранное» в отчётах выглядит иначе, чем
+   «выбранное» на соседнем экране. Рецепт здесь тот же, что у .wh-tabs__slider,
+   один в один. Высоту бегунка считает JS по высоте кнопки — рамка помещается
+   внутрь за счёт общего border-box, поэтому пересчёт не нужен. */
+.wh-reports__slider {
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, rgba(255, 255, 255, .5));
+  border-radius: 12px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--primary-light) 74%, rgba(255, 255, 255, .5)),
+    color-mix(in srgb, var(--bg-primary) 78%, transparent));
+  box-shadow:
+    0 7px 18px color-mix(in srgb, var(--primary) 12%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .7),
+    inset 0 -1px 0 color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.wh-reports__group button { border-radius: 12px; }
+.wh-reports__group button.is-active { color: var(--primary); font-weight: 600; }
+.wh-reports__group button:hover:not(.is-active) {
+  background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+  color: var(--wh-text);
+}
+/* Заголовки групп уходят в третичный серый. Синими они спорили с синей подписью
+   активного отчёта — на глаз выделенными выглядели сразу четыре строки из
+   десяти. Так же устроена навигация в «Задачах». */
+.wh-reports__group h4 {
+  color: var(--wh-text-tertiary);
+  font-size: 9.5px; letter-spacing: .1em;
+}
+
+/* ── Полосы фильтров без подложки (ver. 7.02) ──────────────────────────────── */
+/* Полоса с поиском, фильтрами и кнопками стояла белой карточкой поверх такого же
+   белого содержимого экрана и делила его надвое горизонтальной линией без всякой
+   на то причины. Границы держат сами контролы — у поля, селекта и кнопки теперь
+   есть и рамка, и объём, и вместе они читаются как ряд органов управления, а не
+   как набор элементов, которые надо обвести, чтобы их сгруппировали.
+   Так же сделано в «Задачах» (.tsk-periodbar). */
+.wh-assets__filters,
+.wh-rooms__bar,
+.wh-map__toolbar,
+.wh-reports__filters {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* Ряд контролов стал ниже — отступ до таблицы задаём здесь, чтобы он не зависел
+   от снятых внутренних полей. */
+.wh-assets__filters,
+.wh-rooms__bar,
+.wh-map__toolbar,
+.wh-reports__filters { margin-bottom: 14px; }
+
+/* Подвкладки переехали в ту же полосу и не должны нести собственный отступ. */
+.wh-assets__filters > .wh-subtabs,
+.wh-rooms__bar > .wh-subtabs { margin-bottom: 0; }
+/* Разделитель между переключателем вида и фильтрами: без него ряд читается как
+   одна каша из восьми кнопок подряд. */
+.wh-assets__filters > .wh-subtabs + * { margin-left: 4px; }
+.wh-filters__sep {
+  align-self: stretch; width: 1px; margin: 2px 3px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+/* Поиск больше не растягивается во всю оставшуюся ширину. Пока у полосы была
+   рамка, растяжение упиралось в неё; без рамки поле разъезжалось на пол-экрана
+   и отжимало остальные контролы к дальнему краю — ряд переставал читаться как
+   одна группа. Теперь после фильтров остаётся пустое место, а не пустое поле. */
+.wh-assets__filters > .wh-search,
+.wh-rooms__bar > .wh-search { flex: 0 1 380px; }
+
+/* Полоса массовых действий над оборудованием: без подложки, пока выбор пуст, и
+   с подсветкой, когда что-то отмечено. Синей плашкой она висела всегда — то
+   есть кричала о выборе и когда выбора не было. */
+.wh-assets__bulk {
+  padding: 0; border: 0; border-radius: 0; background: none; color: inherit;
+  margin-bottom: 12px;
+}
+.wh-assets__bulk.is-active {
+  padding: 7px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, rgba(255, 255, 255, .5));
+  border-radius: 12px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--primary-light) 74%, rgba(255, 255, 255, .5)),
+    color-mix(in srgb, var(--bg-primary) 78%, transparent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+.wh-assets__bulk.is-active > span { color: var(--primary-hover); font-weight: 600; }
+
+/* Название раздела внутри полосы управления. Значком его не помечаем: заголовки
+   в модуле идут без иконок, а .wh-panel__title рисует значок перед текстом —
+   поэтому для полосы отдельный класс, а не тот же. */
+.wh-bar__title {
+  flex-shrink: 0; font-size: 16px; font-weight: 700;
+  letter-spacing: -.3px; white-space: nowrap;
+}
+
+/* ── Переключатель вида — один тумблер (ver. 7.02) ──────────────────────────── */
+/* Было: ряд отдельных кнопок с рамками, где активная заливалась синим. Каждая
+   выглядела самостоятельной командой, и «Снимок», «Размещение», «Разбор» читались
+   как три действия, а не как три положения одного переключателя. Стало: вдавленная
+   дорожка и приподнятая пилюля на выбранном положении — так устроены системные
+   segmented controls и так же сделана панель периода в «Задачах».
+
+   Правило одно на все шесть мест: Импорт, Операции, Материалы, Справочники,
+   режимы отчёта и выбор вида операции в редакторе документа. Все они — выбор
+   одного из нескольких, поэтому и выглядеть должны одинаково.
+
+   Высота считается так, чтобы дорожка совпала с соседними контролами в полосе:
+   26 сегмент + 3×2 внутренние поля + 1×2 рамка = 34 = --wh-control-h. */
+.wh-subtabs {
+  /* width: fit-content вместо align-self: flex-start — дорожку нельзя растягивать
+     в колоночной раскладке, но и прижимать к верху в строке нельзя: рядом стоят
+     поля с подписью над ними, и тумблер уезжал бы выше их середины. Заданная
+     ширина отменяет stretch сама, без выравнивания. */
+  display: inline-flex; width: fit-content;
+  gap: 2px; padding: 3px; margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--border-light) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  box-shadow: inset 0 1px 3px rgba(18, 27, 43, .07);
+}
+.wh-subtabs button {
+  height: 26px; padding: 0 12px;
+  border: 0; border-radius: 9px; background: none; box-shadow: none;
+  color: var(--wh-text-secondary); font-size: 12.5px; font-weight: 500;
+  white-space: nowrap;
+  transition: color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.wh-subtabs button svg { width: 14px; height: 14px; }
+/* Наведение не поднимает сегмент: приподнят в тумблере ровно один — выбранный. */
+.wh-subtabs button:hover:not(.is-active) {
+  transform: none; box-shadow: none; background: none; color: var(--wh-text);
+}
+.wh-subtabs button:active:not(.is-active) { transform: none; box-shadow: none; }
+/* Выбранное положение — та же синяя пилюля, что у вкладок модуля и у списка
+   отчётов; свечение слабее, потому что сама пилюля втрое меньше. */
+.wh-subtabs button.is-active {
+  color: var(--primary); font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, rgba(255, 255, 255, .5));
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--primary-light) 78%, rgba(255, 255, 255, .5)),
+    color-mix(in srgb, var(--bg-primary) 82%, transparent));
+  box-shadow:
+    0 3px 9px color-mix(in srgb, var(--primary) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .75);
+  transform: none;
+}
+
+/* Выгрузки внутри полосы фильтров отчёта — у правого края. */
+.wh-reports__filters > .wh-reports__export { margin-left: auto; }

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  AlertTriangle, Check, ChevronDown, ChevronRight, FileSpreadsheet, Info,
-  Maximize2, Minimize2, RefreshCw, Search, Trash2, Upload, X,
+  AlertTriangle, Check, ChevronDown, ChevronRight, Info,
+  Maximize2, Minimize2, Search, Trash2, Upload, X,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import WarehouseOsvMapping from './WarehouseOsvMapping';
@@ -183,49 +183,73 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
 
   return (
     <div className="wh-osv">
+      {/* Заголовок, переключатель раздела и загрузка файла — одна строка.
+          Раньше это были две полосы одна над другой: в первой стоял заголовок с
+          одной кнопкой, во второй четыре подвкладки, и вместе они съедали две
+          строки над таблицей.
+
+          Снимок и разбор — два разных занятия: первое делают раз в месяц за пять
+          минут, второе один раз за несколько часов. Словарь стоит последним и
+          отдельно, потому что это работа не над снимком, а над справочником:
+          разметка слов переживает следующий месяц и следующую выгрузку, тогда как
+          сопоставление веток с кабинетами привязано к конкретному дереву 1С. */}
       <div className="wh-assets__filters">
-        <div>
-          <div className="wh-panel__title"><FileSpreadsheet size={16} /> Ведомость 1С</div>
-          <div className="wh-hint">
-            Выгрузка по счёту МЦ.04 раз в месяц. Единственный источник, который заполняется автоматически.
-          </div>
+        <div className="wh-bar__title">Импорт</div>
+        <span className="wh-filters__sep" />
+        <div className="wh-subtabs">
+          <button className={sub === 'snapshot' ? 'is-active' : ''} onClick={() => setSub('snapshot')}>
+            Снимок
+          </button>
+          <button className={sub === 'placement' ? 'is-active' : ''} onClick={() => setSub('placement')}>
+            Размещение
+          </button>
+          <button className={sub === 'mapping' ? 'is-active' : ''} onClick={() => setSub('mapping')}>
+            Разбор
+          </button>
+          <button className={sub === 'dictionary' ? 'is-active' : ''} onClick={() => setSub('dictionary')}>
+            Словарь предметов
+          </button>
         </div>
-        <button className="wh-btn wh-btn--ghost" onClick={() => loadList()} disabled={loadingList}>
-          <RefreshCw size={14} /> Обновить
-        </button>
+        {/* Свёртка дерева и поиск по позициям стоят здесь же, а не своей полосой
+            над таблицей: это управление тем же деревом, что и выбор снимка.
+            Появляются они только когда дерево на экране есть — на «Размещении»,
+            «Разборе» и «Словаре» сворачивать нечего. */}
+        {sub === 'snapshot' && !loadingSnapshot && head && (
+          <>
+            <span className="wh-filters__sep" />
+            <div className="wh-btn-group">
+              <button className="wh-icon-btn" title="Раскрыть всё"
+                      onClick={() => setCollapsed(new Set())}>
+                <Maximize2 size={15} />
+              </button>
+              <button className="wh-icon-btn" title="Свернуть всё" onClick={collapseAll}>
+                <Minimize2 size={15} />
+              </button>
+            </div>
+            <div className="wh-search">
+              <Search size={14} />
+              <input value={search} placeholder="Найти позицию…"
+                     onChange={e => setSearch(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') setQuery(search.trim()); }} />
+              {query && (
+                <button className="wh-icon-btn" onClick={() => { setSearch(''); setQuery(''); }}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </>
+        )}
         {canImport && (
           <>
             <input ref={fileRef} type="file" accept=".xlsx" hidden
                    onChange={e => upload(e.target.files?.[0])} />
-            <button className="wh-btn wh-btn--primary" disabled={uploading}
+            <button className="wh-btn wh-btn--primary" style={{ marginLeft: 'auto' }}
+                    disabled={uploading}
                     onClick={() => fileRef.current?.click()}>
               <Upload size={14} /> {uploading ? 'Разбираю…' : 'Загрузить XLSX'}
             </button>
           </>
         )}
-      </div>
-
-      {/* Снимок и разбор — два разных занятия: первое делают раз в месяц за пять
-          минут, второе один раз за несколько часов. В одном экране они мешали бы
-          друг другу.
-
-          Словарь стоит третьим и отдельно, потому что это работа не над снимком, а
-          над справочником: разметка слов переживает следующий месяц и следующую
-          выгрузку, тогда как сопоставление веток с кабинетами привязано к
-          конкретному дереву 1С. */}
-      <div className="wh-subtabs">
-        <button className={sub === 'snapshot' ? 'is-active' : ''} onClick={() => setSub('snapshot')}>
-          Снимок
-        </button>
-        <button className={sub === 'placement' ? 'is-active' : ''} onClick={() => setSub('placement')}>
-          Размещение
-        </button>
-        <button className={sub === 'mapping' ? 'is-active' : ''} onClick={() => setSub('mapping')}>
-          Разбор
-        </button>
-        <button className={sub === 'dictionary' ? 'is-active' : ''} onClick={() => setSub('dictionary')}>
-          Словарь предметов
-        </button>
       </div>
 
       {/* Размещение стоит перед разбором, потому что в этом порядке и идёт
@@ -320,32 +344,6 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
               )}
 
               <DiffPanel diff={diff} />
-
-              <div className="wh-tree__bar">
-                <span className="wh-tree__bar-title">Дерево 1С</span>
-                <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={() => setCollapsed(new Set())}>
-                  <Maximize2 size={14} /> Раскрыть всё
-                </button>
-                <button className="wh-btn wh-btn--secondary wh-btn--sm" onClick={collapseAll}>
-                  <Minimize2 size={14} /> Свернуть всё
-                </button>
-                <div className="wh-search">
-                  <Search size={14} />
-                  <input value={search} placeholder="Найти позицию…"
-                         onChange={e => setSearch(e.target.value)}
-                         onKeyDown={e => { if (e.key === 'Enter') setQuery(search.trim()); }} />
-                  {query && (
-                    <button className="wh-icon-btn" onClick={() => { setSearch(''); setQuery(''); }}>
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                <span className="wh-tree__bar-count">
-                  {snapshot.isSearch
-                    ? `найдено ${lines.length}`
-                    : `видно ${visible.length} из ${lines.length} строк`}
-                </span>
-              </div>
 
               <div className="wh-table-wrap wh-table-wrap--tall">
                 <table className="wh-table wh-table--compact">

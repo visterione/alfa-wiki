@@ -1,135 +1,114 @@
 /**
- * Настройка прав складского модуля.
+ * Права складского модуля: чтение своих и настройка чужих.
  *
- * Роли модуля выдаются ролям портала — тем же механизмом, что и остальные права
- * (roles.permissions), просто в своей ветке `warehouse.roles`. Отдельного реестра
- * прав не заводим: их в портале уже два (adminAccess и permissions), и третий
- * гарантированно разъехался бы с ними.
+ * Настраиваются права не здесь, а в дереве прав карточки пользователя (админка) —
+ * тем же механизмом, что у зарплатного модуля. Этот файл только отдаёт каталог
+ * прав, текущие значения и принимает новые; своего экрана настройки у модуля
+ * больше нет. Прежний экран «Доступ» внутри модуля убран: настройка прав жила в
+ * двух местах — в админке для доступа к разделу и внутри модуля для его
+ * содержимого, — и найти, где именно человеку не хватает права, было нельзя.
  *
- * Экран настройки при этом свой, а не общий экран ролей: там правится вся система
- * прав портала, и чтобы выдать эпидемиологу доступ к срокам годности, пришлось бы
- * пускать человека в настройку всего сразу.
+ * Право настраивать права — общее админское (isAdmin), а не своё внутримодульное.
+ * Отдельное «canManageAccess» означало бы, что администратор склада может выдать
+ * права сам себе, минуя администратора портала.
  */
 
 const express = require('express');
 const router = express.Router();
-const { Role, User, sequelize } = require('../../models');
+const { User, MedCenter, WhUserPermission, sequelize } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
-const { requireWarehouse, resolveAccess, visibleRoomIds } = require('../../services/warehouse/access');
-const roles = require('../../services/warehouse/roles');
+const { requireWarehouse, resolveAccess } = require('../../services/warehouse/access');
+const perms = require('../../services/warehouse/permissions');
+
+const requireAdmin = (req, res, next) => (
+  req.user?.isAdmin ? next() : res.status(403).json({ error: 'Нет доступа' })
+);
 
 /**
- * Справочник: роли модуля, матрица отчётов и возможностей.
- * Отдаётся любому, кто вообще имеет доступ в модуль: знать, кому что положено,
- * полезно и рядовому пользователю — он поймёт, к кому идти за доступом.
+ * Каталог прав для дерева в админке: перечень разделов и отчётов с названиями.
+ * Отдаётся сервером, а не дублируется в вёрстке, — иначе новый отчёт пришлось бы
+ * добавлять в двух местах и однажды забыть в одном из них.
  */
-router.get('/matrix', authenticate, requireWarehouse(), async (req, res) => {
+router.get('/catalogue', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const medCenters = await MedCenter.findAll({
+      where: { isActive: true },
+      attributes: ['id', 'name', 'color'],
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+    });
+    res.json({ ...perms.catalogue(), medCenters });
+  } catch (err) {
+    console.error('GET warehouse/permissions/catalogue error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Свои права — для экранов, которым нужна разница read/edit внутри вкладки. */
+router.get('/my', authenticate, requireWarehouse(), async (req, res) => {
   res.json({
-    roles: Object.entries(roles.WAREHOUSE_ROLES).map(([key, def]) => ({ key, ...def })),
-    reports: Object.entries(roles.ACCESS_MATRIX).map(([code, def]) => ({
-      code, title: def.title, read: def.read, write: def.write,
-    })),
-    capabilities: Object.entries(roles.CAPABILITY_MATRIX).map(([key, def]) => ({
-      key, title: def.title, roles: def.roles,
-    })),
-    // Свои роли и область видимости — чтобы экран мог подсветить строки матрицы,
-    // которые касаются лично тебя.
-    my: {
-      roles: [...req.warehouse.roles],
-      assigned: [...(req.warehouse.access.assigned || [])],
-      derived: [...(req.warehouse.access.derived || [])],
-      scope: req.warehouse.scope,
-      capabilities: req.warehouse.capabilities,
-    },
+    perms: req.warehouse.perms,
+    capabilities: req.warehouse.capabilities,
+    tabs: req.warehouse.tabs,
+    medCenterIds: req.warehouse.medCenterIds,
   });
 });
 
-/**
- * Назначение ролей модуля ролям портала.
- */
-router.get('/role-grants', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
+/** Права конкретного человека — для дерева в его карточке. */
+router.get('/:userId', authenticate, requireAdmin, async (req, res) => {
   try {
-    const all = await Role.findAll({
-      attributes: ['id', 'name', 'description', 'permissions', 'isSystem'],
-      order: [['name', 'ASC']],
+    const row = await WhUserPermission.findOne({ where: { userId: req.params.userId } });
+    res.json({
+      perms: perms.normalize(row?.perms),
+      medCenterIds: Array.isArray(row?.medCenterIds) ? row.medCenterIds : [],
     });
-
-    // Сколько человек в каждой роли: без этого непонятно, на кого повлияет
-    // изменение, и права меняют вслепую.
-    const [counts] = await sequelize.query(`
-      SELECT r.id, COUNT(DISTINCT u.id)::int AS users
-      FROM roles r
-      LEFT JOIN user_roles ur ON ur."roleId" = r.id
-      LEFT JOIN users u ON (u.id = ur."userId" OR u."roleId" = r.id) AND u."isActive" = TRUE
-      GROUP BY r.id
-    `).catch(() => [[]]);
-    const byId = new Map((counts || []).map(c => [c.id, c.users]));
-
-    res.json(all.map(r => ({
-      id: r.id,
-      name: r.name,
-      description: r.description,
-      isSystem: r.isSystem,
-      users: byId.get(r.id) ?? null,
-      warehouseRoles: Array.isArray(r.permissions?.warehouse?.roles)
-        ? r.permissions.warehouse.roles.filter(k => roles.WAREHOUSE_ROLES[k])
-        : [],
-    })));
   } catch (err) {
-    console.error('GET warehouse/permissions/role-grants error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.put('/role-grants/:roleId', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
-  try {
-    const role = await Role.findByPk(req.params.roleId);
-    if (!role) return res.status(404).json({ error: 'Роль не найдена' });
-
-    const incoming = Array.isArray(req.body.warehouseRoles) ? req.body.warehouseRoles : [];
-    const unknown = incoming.filter(k => !roles.WAREHOUSE_ROLES[k]);
-    if (unknown.length) {
-      return res.status(400).json({ error: `Неизвестные роли модуля: ${unknown.join(', ')}` });
-    }
-    // Выводимые роли назначать нельзя: зав. отделением — это тот, кто указан
-    // головой отделения, а не тот, кому поставили галочку. Разрешив назначение,
-    // мы получили бы два несогласованных источника одной и той же роли.
-    const derived = incoming.filter(k => roles.WAREHOUSE_ROLES[k].kind === 'derived');
-    if (derived.length) {
-      return res.status(400).json({
-        error: 'Эти роли не назначаются, они следуют из данных: '
-          + derived.map(k => roles.WAREHOUSE_ROLES[k].label).join(', ')
-          + '. Назначьте человека заведующим отделением или ответственным за кабинет.',
-      });
-    }
-
-    const permissions = { ...(role.permissions || {}) };
-    permissions.warehouse = { ...(permissions.warehouse || {}), roles: incoming };
-    // Ветку read/write/delete/admin оставляем как есть: на неё опирается общий
-    // requirePermission портала, и обнулять её здесь не наше дело.
-    await role.update({ permissions });
-
-    res.json({ id: role.id, warehouseRoles: incoming });
-  } catch (err) {
-    console.error('PUT warehouse/permissions/role-grants error:', err);
+    console.error('GET warehouse/permissions/:userId error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /**
- * Проверка доступа конкретного человека: что он реально откроет и в каком объёме.
- *
- * Экран настройки без этого превращается в гадание — таблица галочек есть, а
- * ответа на вопрос «Иванова увидит амортизацию?» нет. Здесь он считается тем же
- * кодом, что и на боевых запросах, а не пересказывается.
+ * Сохранение прав. Значения нормализуются: всё, чего нет в каталоге, отбрасывается,
+ * а неизвестный уровень превращается в block. Доверять телу запроса тут нельзя —
+ * это ровно та ручка, через которую удобно выдать себе лишнее.
  */
-router.get('/effective/:userId', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
+router.put('/:userId', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.userId, { attributes: ['id'] });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    const clean = perms.normalize(req.body?.perms);
+    const incoming = Array.isArray(req.body?.medCenterIds) ? req.body.medCenterIds : [];
+    // Медцентры сверяем со справочником: несуществующий id в области видимости
+    // молча сузил бы её до нуля, и человек остался бы без данных без объяснений.
+    const known = await MedCenter.findAll({
+      where: { id: incoming, isActive: true }, attributes: ['id'],
+    });
+    const medCenterIds = known.map(m => m.id);
+
+    const [row] = await WhUserPermission.findOrCreate({
+      where: { userId: user.id },
+      defaults: { userId: user.id, perms: clean, medCenterIds },
+    });
+    await row.update({ perms: clean, medCenterIds });
+
+    res.json({ perms: clean, medCenterIds });
+  } catch (err) {
+    console.error('PUT warehouse/permissions/:userId error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Кто и что реально откроет — сводка для админки.
+ *
+ * Считается тем же кодом, что и на боевых запросах (resolveAccess), а не
+ * пересказывается: иначе экран настройки показывал бы одно, а сервер пускал бы
+ * по другому, и расхождение обнаружилось бы жалобой.
+ */
+router.get('/effective/:userId', authenticate, requireAdmin, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.userId, {
-      include: [
-        { model: Role, as: 'role' },
-        { model: Role, as: 'roles', through: { attributes: [] } },
-      ],
       attributes: { exclude: ['password'] },
     });
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
@@ -143,27 +122,18 @@ router.get('/effective/:userId', authenticate, requireWarehouse('canManageAccess
       });
     }
 
-    const roomIds = await visibleRoomIds(user, access);
-
     res.json({
       user: {
         id: user.id, displayName: user.displayName, username: user.username,
         isAdmin: user.isAdmin,
-        portalRoles: [user.role?.name, ...(user.roles || []).map(r => r.name)].filter(Boolean),
       },
       allowed: true,
-      roles: [...access.roles].map(k => ({
-        key: k, label: roles.WAREHOUSE_ROLES[k]?.label || k,
-        kind: roles.WAREHOUSE_ROLES[k]?.kind,
-      })),
-      scope: access.scope,
-      visibleRooms: roomIds === null ? 'all' : roomIds.length,
+      isAdmin: access.isAdmin,
+      perms: access.perms,
       capabilities: access.capabilities,
-      reports: Object.entries(roles.ACCESS_MATRIX).map(([code, def]) => ({
-        code, title: def.title,
-        read: roles.canRead(access.roles, code),
-        write: roles.canWrite(access.roles, code),
-      })),
+      tabs: access.tabs,
+      medCenterIds: access.medCenterIds,
+      reports: perms.readableReports(access.perms),
     });
   } catch (err) {
     console.error('GET warehouse/permissions/effective error:', err);
@@ -171,12 +141,11 @@ router.get('/effective/:userId', authenticate, requireWarehouse('canManageAccess
   }
 });
 
-/** Пользователи с доступом к модулю — для выбора в проверке. */
-router.get('/users', authenticate, requireWarehouse('canManageAccess'), async (req, res) => {
+/** Пользователи с доступом к разделу — для выбора в админке. */
+router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
     const [rows] = await sequelize.query(`
-      SELECT u.id, u."displayName", u.username, u."isAdmin",
-             (u."adminAccess" ->> 'warehouse')::bool AS "hasModule"
+      SELECT u.id, u."displayName", u.username, u."isAdmin"
       FROM users u
       WHERE u."isActive" = TRUE AND (u."isBot" IS NULL OR u."isBot" = FALSE)
         AND (u."isAdmin" = TRUE OR (u."adminAccess" ->> 'warehouse')::bool = TRUE)
@@ -184,7 +153,7 @@ router.get('/users', authenticate, requireWarehouse('canManageAccess'), async (r
     `);
     res.json(rows);
   } catch (err) {
-    console.error('GET warehouse/permissions/users error:', err);
+    console.error('GET warehouse/permissions error:', err);
     res.status(500).json({ error: err.message });
   }
 });
