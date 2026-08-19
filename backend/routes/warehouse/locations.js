@@ -17,7 +17,10 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
-const { generateToken, qrSvg, roomAppUrl, roomDoorCardSvg } = require('../../services/warehouse/qr');
+const {
+  generateToken, qrSvg, roomAppUrl, roomDoorCardSvg, roomDoorCardZpl,
+  LABEL_SIZES, labelPng,
+} = require('../../services/warehouse/qr');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 
@@ -796,21 +799,20 @@ router.get('/rooms/:id/qr.svg', authenticate, requireWarehouse(), async (req, re
 });
 
 /**
- * Карточка кабинета на дверь, A5. Отдаётся и как картинка для превью, и как
- * разметка для окна печати, поэтому SVG, а не PDF: печать идёт из браузера в
- * точный размер листа, как и у этикеток оборудования.
+ * Этикетка кабинета на дверь. Использует те же размеры, что этикетки оборудования,
+ * и отдаётся SVG, чтобы браузер сохранил физический размер на рулонной печати.
  */
 router.get('/rooms/:id/door-card.svg', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const room = await WhRoom.findByPk(req.params.id, {
       include: [
         { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
-        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName'] },
+        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] },
         {
           model: WhFloor, as: 'floor',
           include: [{
             model: WhBuilding, as: 'building',
-            include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName'] }],
+            include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] }],
           }],
         },
       ],
@@ -822,10 +824,48 @@ router.get('/rooms/:id/door-card.svg', authenticate, requireWarehouse(), async (
     const mc = room.medCenter || room.floor?.building?.medCenter;
     const svg = await roomDoorCardSvg(room, {
       orgName: req.query.org || mc?.displayName || mc?.name || '',
+      orgAddress: room.floor?.building?.address || mc?.address || '',
+      size: req.query.size,
     });
+    if (req.query.format === 'png') {
+      const size = LABEL_SIZES[req.query.size] ? req.query.size : '24x45';
+      const png = await labelPng(svg, size);
+      return res.type('image/png').send(png);
+    }
     res.type('image/svg+xml').send(svg);
   } catch (err) {
     console.error('GET warehouse/locations/rooms/:id/door-card.svg error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Отдельный профиль TDP-225: ZPL 44x25 мм, не связанный с лентами Brother. */
+router.get('/rooms/:id/door-card.zpl', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const room = await WhRoom.findByPk(req.params.id, {
+      include: [
+        { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
+        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] },
+        {
+          model: WhFloor, as: 'floor',
+          include: [{
+            model: WhBuilding, as: 'building',
+            include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] }],
+          }],
+        },
+      ],
+    });
+    if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
+
+    const mc = room.medCenter || room.floor?.building?.medCenter;
+    const zpl = roomDoorCardZpl(room, {
+      orgName: req.query.org || mc?.displayName || mc?.name || '',
+      orgAddress: room.floor?.building?.address || mc?.address || '',
+      copies: Number(req.query.copies) || 1,
+    });
+    res.type('text/plain; charset=utf-8').send(zpl);
+  } catch (err) {
+    console.error('GET warehouse/locations/rooms/:id/door-card.zpl error:', err);
     res.status(500).json({ error: err.message });
   }
 });

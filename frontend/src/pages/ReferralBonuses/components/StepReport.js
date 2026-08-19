@@ -5,7 +5,7 @@ import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryReco
 import { parseExcelFile, rbMapNewColumns } from '../utils/excelUtils';
 import { fetchSourceFile } from '../utils/excelSources';
 import DateRangePicker from './DateRangePicker';
-import { buildReport, loadExecSettings, rbGetClinicSettings, extractCorpRows } from '../utils/reportEngine';
+import { buildReport, loadExecSettings, rbGetClinicSettings, extractCorpRows, usesScheduleHours } from '../utils/reportEngine';
 import { exportReport, exportBulkReport, buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
 import { exportReportPdf, exportBulkReportPdf } from '../utils/reportPdf';
 import { rbNamesMatch } from '../utils/nameMatching';
@@ -551,7 +551,9 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
     // Save context for post-generation re-editing
     if (corpRows?.length > 0) {
-      setCorpRecalcState({ corpRows, colMap, corpIncludedKeys, pendingData: { rows, colMap, pbRes, execSettings, savedAsstRes } });
+      // График и праздники обязаны ехать в контекст пересчёта: без них повторный расчёт после
+      // правки корп. счетов считал часы из пустого графика и обнулял почасовой оклад.
+      setCorpRecalcState({ corpRows, colMap, corpIncludedKeys, pendingData: { rows, colMap, pbRes, execSettings, savedAsstRes, scheduleEntries, holidayDates } });
     } else {
       setCorpRecalcState(null);
     }
@@ -564,12 +566,20 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     try {
       const [pbRes, execSettings, savedAsstRes, schedRes, holidaysRes] = await Promise.all([
         psbApi.getByDoctor(selectedDoctor.id),
-        loadExecSettings(selectedDoctor.id, selectedDoctor.roles),
+        // fresh: настройки этого сотрудника мог только что поправить другой пользователь —
+        // отчёт обязан считаться по тому, что сейчас в базе, а не по снимку из кэша.
+        loadExecSettings(selectedDoctor.id, selectedDoctor.roles, { fresh: true }),
         (dateFrom || dateTo) ? salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) : Promise.resolve({ data: [] }),
-        schedulesApi.list(selectedDoctor.misUserId || selectedDoctor.id).catch(() => ({ data: [] })),
+        schedulesApi.list(selectedDoctor.misUserId || selectedDoctor.id).catch(() => ({ data: [], _failed: true })),
         holidaysApi.list().catch(() => ({ data: [] })),
       ]);
       const scheduleEntries = Array.isArray(schedRes.data) ? schedRes.data : [];
+      // Сорванный запрос графика раньше приходил сюда пустым массивом и был неотличим от
+      // «смен нет»: почасовой оклад молча обнулялся, а удержания оставались, и листок уходил
+      // в минус. Лучше остановить расчёт с понятной ошибкой, чем показать неверную сумму.
+      if (schedRes._failed && usesScheduleHours(execSettings)) {
+        throw new Error('Не удалось загрузить график работы — часы посчитались бы нулём. Повторите генерацию.');
+      }
       const holidayDates = new Set((holidaysRes.data || []).map(h => h.date));
 
       const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
@@ -904,11 +914,14 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
     try {
       const [pbRes, execSettings, schedRes] = await Promise.all([
         psbApi.getByDoctor(doctor.id),
-        loadExecSettings(doctor.id, doctor.roles),
-        schedulesApi.list(doctor.misUserId || doctor.id).catch(() => ({ data: [] })),
+        loadExecSettings(doctor.id, doctor.roles, { fresh: true }),
+        schedulesApi.list(doctor.misUserId || doctor.id).catch(() => ({ data: [], _failed: true })),
       ]);
       const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
       const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
+      if (schedRes._failed && usesScheduleHours(execSettings)) {
+        throw new Error('Не удалось загрузить график работы');
+      }
       const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
         cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary' || cs.payType === 'prorated'
       );
@@ -948,11 +961,16 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
       try {
         const [pbRes, execSettings, schedRes] = await Promise.all([
           psbApi.getByDoctor(doctor.id),
-          loadExecSettings(doctor.id, doctor.roles),
-          schedulesApi.list(doctor.misUserId || doctor.id).catch(() => ({ data: [] })),
+          loadExecSettings(doctor.id, doctor.roles, { fresh: true }),
+          schedulesApi.list(doctor.misUserId || doctor.id).catch(() => ({ data: [], _failed: true })),
         ]);
         const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
         const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
+        // Строка свода с ошибкой заметна, а строка с нулевыми часами — нет: при сорвавшемся
+        // запросе графика лучше пометить сотрудника ошибкой, чем выдать заниженную сумму.
+        if (schedRes._failed && usesScheduleHours(execSettings)) {
+          throw new Error('Не удалось загрузить график работы');
+        }
         const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
           cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary' || cs.payType === 'prorated'
         );

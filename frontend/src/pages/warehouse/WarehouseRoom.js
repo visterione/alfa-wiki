@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Package, Boxes, CalendarClock, Wrench, QrCode, Printer, RefreshCw,
-  Activity, AlertTriangle, Search, Copy, X, MapPin, User as UserIcon, Lock,
+  Activity, AlertTriangle, Search, FileText, X, MapPin, User as UserIcon,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
@@ -111,10 +111,6 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
   if (!data) return <div className="wh-empty">Кабинет недоступен</div>;
 
   const { room, cards, maintenance, attention } = data;
-  // Ссылка с QR ведёт внутрь портала, а не на публичную карточку: дверь выходит
-  // в коридор, и сканировать код может кто угодно, включая пациента.
-  const roomUrl = `${window.location.origin}/warehouse?room=${room.id}`;
-
   return (
     <div className="wh-room">
       {/* ── Шапка ─────────────────────────────────────────────────────────── */}
@@ -384,7 +380,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
       </div>
 
       {qrModal && (
-        <RoomQrModal room={room} url={roomUrl} onClose={() => setQrModal(false)} />
+        <RoomQrModal room={room} onClose={() => setQrModal(false)} />
       )}
     </div>
   );
@@ -418,46 +414,62 @@ function TileButton({ icon, title, value, unit, sub, rows, alert, active, onClic
 }
 
 /**
- * Карточка кабинета на дверь.
- *
- * Печатается не скриншотом превью, а тем же SVG, что показан в модалке: разметка
- * приходит с сервера в миллиметрах, окно печати задаёт @page ровно в A5, и на
- * бумаге получается тот же лист, а не картинка, растянутая по ширине A4. Так же
- * сделана печать этикеток оборудования — см. openPrintWindow в WarehouseAssets.js.
+ * Этикетка кабинета на дверь. Размеры и способ печати совпадают с этикетками
+ * оборудования, поэтому её можно отправить на тот же рулонный принтер.
  */
-function RoomQrModal({ room, url, onClose }) {
+function RoomQrModal({ room, onClose }) {
   const [svg, setSvg] = useState(null);
   const [failed, setFailed] = useState(false);
+  const [size, setSize] = useState('24x45');
+  const [mmW, mmH] = size.split('x').map(Number);
 
   useEffect(() => {
     let alive = true;
-    warehouseApi.roomDoorCard(room.id)
+    setSvg(null);
+    setFailed(false);
+    warehouseApi.roomDoorCard(room.id, size)
       .then(({ data }) => { if (alive) setSvg(data); })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
-  }, [room.id]);
+  }, [room.id, size]);
 
-  const copy = () => {
-    navigator.clipboard?.writeText(url)
-      .then(() => toast.success('Ссылка скопирована'))
-      .catch(() => toast.error('Не удалось скопировать'));
-  };
-
-  const print = () => {
+  const print = async () => {
     if (!svg) return;
     const w = window.open('', '_blank');
     if (!w) return toast.error('Браузер заблокировал окно печати');
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8">
+    try {
+      const { data: png } = await warehouseApi.roomDoorCardPng(room.id, size);
+      const pngUrl = URL.createObjectURL(png);
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8">
       <title>Кабинет ${escapeHtml(room.number)}</title>
       <style>
-        @page { size: A5; margin: 0; }
+        @page { size: ${mmW}mm ${mmH}mm; margin: 0; }
         html, body { margin: 0; padding: 0; }
-        svg { display: block; }
+        img { display: block; width: ${mmW}mm; height: ${mmH}mm; image-rendering: pixelated; }
         @media screen { body { background: #eef1f5; padding: 16px; } }
-      </style></head><body>${svg}
+      </style></head><body><img src="${pngUrl}" alt="">
       <script>window.onload = () => setTimeout(() => window.print(), 250);<\/script>
       </body></html>`);
-    w.document.close();
+      w.document.close();
+      w.addEventListener('afterprint', () => URL.revokeObjectURL(pngUrl), { once: true });
+    } catch (e) {
+      w.close();
+      toast.error('Не удалось подготовить PNG этикетки');
+    }
+  };
+
+  const downloadZpl = async () => {
+    try {
+      const { data: zpl } = await warehouseApi.roomDoorCardZpl(room.id);
+      const blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `room-${room.number}-44x25.zpl`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error('Не удалось выгрузить ZPL для TDP-225');
+    }
   };
 
   return (
@@ -466,11 +478,21 @@ function RoomQrModal({ room, url, onClose }) {
         <div className="wh-modal__head">
           <div>
             <div className="wh-modal__title">Карточка кабинета {room.number}</div>
-            <div className="wh-modal__sub">A5 — распечатать и повесить у входа</div>
+            <div className="wh-modal__sub">Этикетка для принтера QR-кодов оборудования</div>
           </div>
           <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="wh-modal__body">
+          <select value={size} onChange={e => setSize(e.target.value)}>
+            <optgroup label="Brother P-touch E550W">
+              <option value="24x45">Компактная · лента 24 мм · 24 × 45 мм</option>
+              <option value="20x80">Лента 20 мм · этикетка 20 × 80 мм</option>
+              <option value="24x80">Лента 24 мм · этикетка 24 × 80 мм</option>
+            </optgroup>
+            <optgroup label="TDP-225">
+              <option value="44x25">Этикетка 44 × 25 мм</option>
+            </optgroup>
+          </select>
           <div className="wh-doorcard">
             {/* Разметка своя, с нашего же бэкенда, и текст в ней экранирован
                 генератором — вставляем как есть, чтобы превью и печать были одним
@@ -479,21 +501,17 @@ function RoomQrModal({ room, url, onClose }) {
             {!svg && !failed && <div className="loading-spinner" />}
             {failed && <div className="wh-empty">Не удалось построить карточку</div>}
           </div>
-
-          <div className="wh-qr__url">
-            <code>{url}</code>
-            <button className="wh-icon-btn" onClick={copy} title="Скопировать"><Copy size={15} /></button>
-          </div>
-
-          <div className="wh-hint">
-            <Lock size={13} /> Код ведёт на дашборд внутри портала и требует входа.
-          </div>
         </div>
         <div className="wh-modal__foot">
           <button className="wh-btn wh-btn--secondary" onClick={onClose}>Закрыть</button>
           <button className="wh-btn wh-btn--primary" onClick={print} disabled={!svg}>
             <Printer size={15} /> Печать карточки
           </button>
+          {size === '44x25' && (
+            <button className="wh-btn wh-btn--secondary" onClick={downloadZpl}>
+              <FileText size={15} /> Скачать ZPL
+            </button>
+          )}
         </div>
       </div>
     </div>

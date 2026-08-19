@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast';
 import {
   Search, QrCode, Printer, X, Wrench, ArrowRightLeft,
-  FileText, Copy, AlertTriangle, Plus, Pencil, Check,
+  FileText, AlertTriangle, Plus, Pencil, Check,
   Wand2,
 } from 'lucide-react';
 import { warehouseApi, BASE_URL } from '../../services/api';
@@ -33,7 +33,7 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(null);
   const [checked, setChecked] = useState(new Set());
-  const [labelSize, setLabelSize] = useState('58x40');
+  const [labelSize, setLabelSize] = useState('80x24');
   // null — форма закрыта; { asset: null } — постановка на учёт; { asset } — правка.
   const [form, setForm] = useState(null);
   const [parsing, setParsing] = useState(null);
@@ -155,6 +155,16 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
     }
   };
 
+  const downloadBatchZpl = async () => {
+    if (!checked.size) return toast.error('Отметьте активы для печати');
+    try {
+      const { data: zpl } = await warehouseApi.labelsBatchZpl({ ids: [...checked] });
+      downloadTextFile(zpl, `tdp-225-44x25-${checked.size}.zpl`);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось подготовить ZPL для TDP-225');
+    }
+  };
+
   return (
     <div className="wh-assets">
       <div className="wh-assets__filters">
@@ -208,12 +218,22 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
           {access?.capabilities?.canPrintLabels && (
             <>
               <select value={labelSize} onChange={e => setLabelSize(e.target.value)}>
-                <option value="58x40">Этикетка 58 × 40 мм</option>
-                <option value="100x70">Этикетка 100 × 70 мм</option>
+                <optgroup label="Brother P-touch E550W">
+                  <option value="80x20">Альбомная · лента 20 мм · 80 × 20 мм</option>
+                  <option value="80x24">Альбомная · лента 24 мм · 80 × 24 мм</option>
+                </optgroup>
+                <optgroup label="TDP-225">
+                  <option value="44x25">Этикетка 44 × 25 мм</option>
+                </optgroup>
               </select>
               <button className="wh-btn wh-btn--ghost" onClick={printLabels} disabled={!checked.size}>
                 <Printer size={15} /> Печать этикеток
               </button>
+              {labelSize === '44x25' && (
+                <button className="wh-btn wh-btn--ghost" onClick={downloadBatchZpl} disabled={!checked.size}>
+                  <FileText size={15} /> Скачать ZPL
+                </button>
+              )}
             </>
           )}
           {/* Отметить всё найденное — то, ради чего массовая правка и нужна:
@@ -579,15 +599,9 @@ function ParseNamesModal({ onClose, onApplied }) {
 // ── Карточка актива ──────────────────────────────────────────────────────────
 
 function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onEdit }) {
-  const { asset, publicUrl, depreciation, files, maintenance, repairs, movements } = data;
+  const { asset, depreciation, files, maintenance, repairs, movements } = data;
   const [tab, setTab] = useState('info');
   const [serviceModal, setServiceModal] = useState(null);
-
-  const copyUrl = () => {
-    navigator.clipboard?.writeText(publicUrl)
-      .then(() => toast.success('Ссылка на публичную карточку скопирована'))
-      .catch(() => toast.error('Не удалось скопировать'));
-  };
 
   const printOne = async () => {
     try {
@@ -601,14 +615,9 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
   const downloadZpl = async () => {
     try {
       const { data: zpl } = await warehouseApi.zpl(asset.id, 1);
-      const blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${asset.inventoryNumber}.zpl`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      downloadTextFile(zpl, `${asset.inventoryNumber}-44x25.zpl`);
     } catch (e) {
-      toast.error('Не удалось выгрузить ZPL');
+      toast.error('Не удалось выгрузить ZPL для TDP-225');
     }
   };
 
@@ -698,10 +707,6 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
               <div className="wh-qr__col">
                 <SecureImage url={warehouseApi.assetQrUrl(asset.id)}
                              alt="QR-код актива" className="wh-qr__img" />
-                <div className="wh-qr__url">
-                  <code>{publicUrl}</code>
-                  <button className="wh-icon-btn" onClick={copyUrl} title="Скопировать"><Copy size={15} /></button>
-                </div>
                 <div className="wh-hint">
                   Открывается без авторизации: назначение, статус и даты ТО. Без стоимости и ФИО.
                 </div>
@@ -715,9 +720,9 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
                   <button className="wh-btn wh-btn--primary" onClick={printOne}>
                     <Printer size={15} /> Печать этикетки {labelSize.replace('x', ' × ')} мм
                   </button>
-                  {access?.capabilities?.canPrintLabels && (
+                  {access?.capabilities?.canPrintLabels && labelSize === '44x25' && (
                     <button className="wh-btn wh-btn--ghost" onClick={downloadZpl}>
-                      <FileText size={15} /> Выгрузить ZPL (термопринтер)
+                      <FileText size={15} /> Скачать ZPL для TDP-225
                     </button>
                   )}
                 </div>
@@ -1021,9 +1026,8 @@ function AssetFiles({ assetId, files, canEdit, onReload }) {
 
 // ── Печать этикеток ──────────────────────────────────────────────────────────
 /**
- * Открывает окно печати с этикетками. @page задаётся ровно в размер этикетки,
- * иначе браузер печатает её по центру листа A4 и рулонный принтер выдаёт пустую
- * ленту с маленькой наклейкой посередине.
+ * Открывает окно печати с уже растеризованными PNG. Сервер формирует их в DPI
+ * выбранного принтера; браузер здесь только передаёт готовые пиксели драйверу.
  */
 function openPrintWindow({ labels, sizeMm }) {
   const w = window.open('', '_blank');
@@ -1035,19 +1039,29 @@ function openPrintWindow({ labels, sizeMm }) {
       @page { size: ${mmW}mm ${mmH}mm; margin: 0; }
       html, body { margin: 0; padding: 0; }
       .label { width: ${mmW}mm; height: ${mmH}mm; page-break-after: always; overflow: hidden; }
+      .label img { display: block; width: ${mmW}mm; height: ${mmH}mm; image-rendering: pixelated; }
       .label:last-child { page-break-after: auto; }
       @media screen {
         body { background: #eef1f5; padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
         .label { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
       }
     </style></head><body>
-    ${labels.map(l => `<div class="label">${l.svg}</div>`).join('')}
+    ${labels.map(l => `<div class="label"><img src="${l.png}" alt=""></div>`).join('')}
     <script>window.onload = () => setTimeout(() => window.print(), 250);</script>
     </body></html>`);
   w.document.close();
 }
 
 // ── Утилиты ──────────────────────────────────────────────────────────────────
+function downloadTextFile(contents, filename) {
+  const blob = new Blob([contents], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function Field({ label, value, mono, action }) {
   return (
     <div className="wh-field-ro">

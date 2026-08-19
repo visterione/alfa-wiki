@@ -44,40 +44,82 @@ export function rbGetClinicSettings(execData, clinicId) {
   return { ...execClinicDefault(), ...found };
 }
 
-// ── In-memory cache for executor settings (per session) ───────────────────────
-const _execCache = {};
-
-export function clearExecCache(misUserId) {
-  if (misUserId) delete _execCache[misUserId];
-  else Object.keys(_execCache).forEach(k => delete _execCache[k]);
+/**
+ * Есть ли у сотрудника хоть одна клиника, где часы берутся из графика. От этого зависит,
+ * можно ли строить отчёт без графика: для таких настроек пустой график означает не
+ * «ноль смен», а «данные не доехали», и считать по нему нельзя.
+ */
+export function usesScheduleHours(execSettings) {
+  return Object.values(execSettings?.clinicSettings || {}).some(cs => !!cs?.hoursFromSchedule);
 }
 
-export async function loadExecSettings(misUserId, roles) {
-  if (!_execCache[misUserId]) {
-    try {
-      const res = await executorSettings.get(misUserId);
-      const raw = res.data;
-      if (!raw || !Object.keys(raw).length) {
-        _execCache[misUserId] = { clinicSettings: { global: execClinicDefault() } };
-      } else if (!raw.clinicSettings) {
-        // Old format migration
-        const global = execClinicDefault();
-        global.deductions = raw.deductions || [];
-        global.materials  = raw.materials  || [];
-        global.extras     = raw.extras     || [];
-        global.payType = 'salary';
-        global.fixedSalary = raw.wage || raw.payment || 0;
-        global.advance = raw.advance || 0;
-        global.paymentMethod = raw.method || 'card';
-        _execCache[misUserId] = { clinicSettings: { global } };
-      } else {
-        _execCache[misUserId] = raw;
-      }
-    } catch {
-      _execCache[misUserId] = { clinicSettings: { global: execClinicDefault() } };
-    }
+// ── In-memory cache for executor settings ─────────────────────────────────────
+// Кэш живёт минуту, а не всю сессию, как раньше. Настройки правит один человек, а отчёт
+// в это же время строит другой, и вкладка, открытая с утра, до перезагрузки считала по
+// снимку настроек на момент первого отчёта: включённые позже «часы из графика» или
+// заведённая ставка в расчёт не попадали, почасовой оклад выходил нулём, а удержания из
+// того же снимка оставались — в листке появлялся минус. Промах кэша стоит одного GET,
+// поэтому короткий TTL здесь безопаснее длинного.
+const EXEC_CACHE_TTL_MS = 60 * 1000;
+const _execCache    = {}; // misUserId → { data, ts }
+const _execInflight = {}; // misUserId → Promise, чтобы свод не слал по запросу на каждую роль
+
+export function clearExecCache(misUserId) {
+  // Ключ приводим к строке: из МИС id приходит строкой, из salary_records — числом,
+  // и без нормализации сброс после сохранения промахивался мимо своей же записи.
+  if (misUserId) {
+    const key = String(misUserId);
+    delete _execCache[key];
+    delete _execInflight[key];
+  } else {
+    Object.keys(_execCache).forEach(k => delete _execCache[k]);
+    Object.keys(_execInflight).forEach(k => delete _execInflight[k]);
   }
-  return _execCache[misUserId];
+}
+
+function normalizeExecSettings(raw) {
+  if (!raw || !Object.keys(raw).length) {
+    return { clinicSettings: { global: execClinicDefault() } };
+  }
+  if (!raw.clinicSettings) {
+    // Old format migration
+    const global = execClinicDefault();
+    global.deductions = raw.deductions || [];
+    global.materials  = raw.materials  || [];
+    global.extras     = raw.extras     || [];
+    global.payType = 'salary';
+    global.fixedSalary = raw.wage || raw.payment || 0;
+    global.advance = raw.advance || 0;
+    global.paymentMethod = raw.method || 'card';
+    return { clinicSettings: { global } };
+  }
+  return raw;
+}
+
+/**
+ * @param {string|number} misUserId
+ * @param {string[]} [roles] - не используется, оставлен ради существующих вызовов
+ * @param {{ fresh?: boolean }} [opts] - fresh: игнорировать кэш (отчёт по выбранному сотруднику)
+ */
+export async function loadExecSettings(misUserId, roles, { fresh = false } = {}) {
+  const key = String(misUserId);
+  const hit = _execCache[key];
+  if (!fresh && hit && Date.now() - hit.ts < EXEC_CACHE_TTL_MS) return hit.data;
+  if (!fresh && _execInflight[key]) return _execInflight[key];
+
+  // Сорванный запрос больше не кэшируем пустыми настройками: раньше один таймаут означал
+  // нулевую зарплату сотруднику до конца сессии, причём молча. Ошибку отдаём наверх —
+  // вызывающий код показывает её пользователю и не сохраняет заведомо неверный расчёт.
+  const request = executorSettings.get(misUserId).then(res => {
+    const data = normalizeExecSettings(res.data);
+    _execCache[key] = { data, ts: Date.now() };
+    return data;
+  }).finally(() => {
+    if (_execInflight[key] === request) delete _execInflight[key];
+  });
+
+  _execInflight[key] = request;
+  return request;
 }
 
 // ── Core calculation engine ────────────────────────────────────────────────────

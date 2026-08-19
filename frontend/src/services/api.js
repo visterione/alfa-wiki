@@ -1024,8 +1024,9 @@ export const warehouseApi = {
   updateAsset:     (id, data)     => api.put(`/warehouse/assets/${id}`, data),
   lookup:          (code)         => api.get(`/warehouse/assets/lookup/${encodeURIComponent(code)}`),
   assetQrUrl:      (id)           => `${BASE_URL}/api/warehouse/assets/${id}/qr.svg`,
-  labelUrl:        (id, size)     => `${BASE_URL}/api/warehouse/assets/${id}/label.svg?size=${size || '58x40'}`,
+  labelUrl:        (id, size)     => `${BASE_URL}/api/warehouse/assets/${id}/label.svg?size=${size || '80x24'}`,
   labelsBatch:     (data)         => api.post('/warehouse/assets/labels/batch', data),
+  labelsBatchZpl:  (data)         => api.post('/warehouse/assets/labels/batch.zpl', data),
   zpl:             (id, copies)   => api.get(`/warehouse/assets/${id}/label.zpl`, { params: { copies } }),
   uploadAssetFiles:(id, formData) => api.post(`/warehouse/assets/${id}/files`, formData, {
                                       headers: { 'Content-Type': 'multipart/form-data' } }),
@@ -1099,7 +1100,11 @@ export const warehouseApi = {
   // Карточка на дверь приходит разметкой, а не картинкой: тем же SVG рисуется и
   // превью в модалке, и лист в окне печати — иначе на печать уходил бы скриншот
   // превью со своим разрешением.
-  roomDoorCard:    (roomId)       => api.get(`/warehouse/locations/rooms/${roomId}/door-card.svg`),
+  roomDoorCard:    (roomId, size) => api.get(`/warehouse/locations/rooms/${roomId}/door-card.svg`, { params: { size } }),
+  roomDoorCardPng: (roomId, size) => api.get(`/warehouse/locations/rooms/${roomId}/door-card.svg`, {
+                                      params: { size, format: 'png' }, responseType: 'blob',
+                                    }),
+  roomDoorCardZpl: (roomId)       => api.get(`/warehouse/locations/rooms/${roomId}/door-card.zpl`),
   inventoryReport: (id)           => api.get(`/warehouse/reports/inventory/${id}`),
   oneCStatus:      ()             => api.get('/warehouse/reports/one-c-status'),
   exportReport:    (data)         => api.post('/warehouse/reports/export', data, { responseType: 'blob' }),

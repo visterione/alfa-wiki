@@ -940,11 +940,6 @@
 .wh-qr { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .wh-qr__col { display: flex; flex-direction: column; gap: 11px; }
 .wh-qr__img { width: 190px; height: 190px; align-self: center; image-rendering: pixelated; }
-.wh-qr__url {
-  display: flex; align-items: center; gap: 7px; background: var(--wh-bg);
-  border: 1px solid var(--wh-border); padding: 8px 10px; border-radius: 8px;
-  font-size: 11px; word-break: break-all;
-}
 .wh-qr__label-preview {
   border: 1px dashed var(--wh-border-dark); border-radius: 8px; padding: 14px;
   display: flex; justify-content: center; background: #fff;
@@ -1407,7 +1402,7 @@
 }
 
 /* ── Карточка кабинета на дверь ────────────────────────────────────────────── */
-/* Лист приходит с сервера в миллиметрах (148×210), поэтому в превью его тянем по
+/* Этикетка приходит с сервера в миллиметрах, поэтому в превью её тянем по
    ширине контейнера: пропорции держит viewBox, и то, что видно в модалке, ровно
    то же, что выйдет из принтера. */
 .wh-doorcard { display: flex; justify-content: center; padding: 2px 0 14px; }

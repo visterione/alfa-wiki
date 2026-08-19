@@ -57,7 +57,14 @@ const assetInclude = [
     model: WhRoom, as: 'room',
     include: [
       { model: WhDepartment, as: 'department', attributes: ['id', 'name', 'color', 'specialtyCode'] },
-      { model: WhFloor, as: 'floor', include: [{ model: WhBuilding, as: 'building', attributes: ['id', 'name', 'medCenterId'] }] },
+      { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] },
+      {
+        model: WhFloor, as: 'floor',
+        include: [{
+          model: WhBuilding, as: 'building', attributes: ['id', 'name', 'address', 'medCenterId'],
+          include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] }],
+        }],
+      },
     ],
   },
   { model: WhStorage, as: 'storage', attributes: ['id', 'name', 'kind'] },
@@ -65,6 +72,16 @@ const assetInclude = [
   { model: WhCategory, as: 'category', attributes: ['id', 'name', 'kind', 'okof', 'depreciationGroup'] },
   { model: WhContractor, as: 'supplier', attributes: ['id', 'name'] },
 ];
+
+function assetLabelOrganization(asset, requestedName) {
+  const mc = asset.room?.medCenter || asset.room?.floor?.building?.medCenter;
+  return {
+    orgName: requestedName || mc?.displayName || mc?.name || '',
+    orgAddress: asset.room?.floor?.building?.address || mc?.address || '',
+  };
+}
+
+const EQUIPMENT_LABEL_SIZES = ['80x20', '80x24', '44x25'];
 
 // ── Список активов ───────────────────────────────────────────────────────────
 router.get('/', authenticate, requireWarehouse(), async (req, res) => {
@@ -435,8 +452,8 @@ router.get('/:id/label.svg', authenticate, requireWarehouse(), async (req, res) 
     const asset = await WhAsset.findByPk(req.params.id, { include: assetInclude });
     if (!asset) return res.status(404).json({ error: 'Актив не найден' });
     const svg = await qr.assetLabelSvg(asset, {
-      size: req.query.size === '100x70' ? '100x70' : '58x40',
-      orgName: req.query.org || 'ООО «Медцентр»',
+      size: EQUIPMENT_LABEL_SIZES.includes(req.query.size) ? req.query.size : '80x24',
+      ...assetLabelOrganization(asset, req.query.org),
     });
     res.type('image/svg+xml').send(svg);
   } catch (err) {
@@ -450,7 +467,7 @@ router.get('/:id/label.zpl', authenticate, requireWarehouse('canManageAssets'), 
   if (!asset) return res.status(404).json({ error: 'Актив не найден' });
   const zpl = qr.assetLabelZpl(asset, {
     copies: Number(req.query.copies) || 1,
-    orgName: req.query.org || 'ООО «Медцентр»',
+    ...assetLabelOrganization(asset, req.query.org),
   });
   res.type('text/plain; charset=utf-8').send(zpl);
 });
@@ -462,17 +479,20 @@ router.get('/:id/label.zpl', authenticate, requireWarehouse('canManageAssets'), 
  */
 router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   try {
-    const { ids = [], size = '58x40', orgName } = req.body;
+    const { ids = [], size = '80x24', orgName } = req.body;
+    const labelSize = EQUIPMENT_LABEL_SIZES.includes(size) ? size : '80x24';
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны активы' });
     if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
 
     const assets = await WhAsset.findAll({ where: { id: { [Op.in]: ids } }, include: assetInclude });
     const labels = [];
     for (const a of assets) {
+      const svg = await qr.assetLabelSvg(a, { size: labelSize, ...assetLabelOrganization(a, orgName) });
+      const png = await qr.labelPng(svg, labelSize);
       labels.push({
         id: a.id,
         inventoryNumber: a.inventoryNumber,
-        svg: await qr.assetLabelSvg(a, { size, orgName: orgName || 'ООО «Медцентр»' }),
+        png: `data:image/png;base64,${png.toString('base64')}`,
       });
     }
 
@@ -480,9 +500,32 @@ router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), 
     // ещё живут без этикетки.
     await WhAsset.update({ labelPrintedAt: new Date() }, { where: { id: { [Op.in]: assets.map(a => a.id) } } });
 
-    res.json({ size, labels, sizeMm: qr.LABEL_SIZES[size] || qr.LABEL_SIZES['58x40'] });
+    res.json({ size: labelSize, labels, sizeMm: qr.LABEL_SIZES[labelSize] });
   } catch (err) {
     console.error('POST warehouse/assets/labels/batch error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Пакет отдельных ZPL-заданий для TDP-225, каждое строго 44x25 мм. */
+router.post('/labels/batch.zpl', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
+  try {
+    const { ids = [], orgName } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны активы' });
+    if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
+
+    const assets = await WhAsset.findAll({ where: { id: { [Op.in]: ids } }, include: assetInclude });
+    const zpl = assets.map(asset => qr.assetLabelZpl(asset, {
+      ...assetLabelOrganization(asset, orgName),
+    })).join('\n');
+
+    await WhAsset.update(
+      { labelPrintedAt: new Date() },
+      { where: { id: { [Op.in]: assets.map(asset => asset.id) } } },
+    );
+    res.type('text/plain; charset=utf-8').send(zpl);
+  } catch (err) {
+    console.error('POST warehouse/assets/labels/batch.zpl error:', err);
     res.status(500).json({ error: err.message });
   }
 });
