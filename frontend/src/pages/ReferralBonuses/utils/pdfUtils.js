@@ -62,6 +62,12 @@ async function extractLines(page) {
 const RU_NUM = '[\\d\\s\\u00A0\\u202F\\u2009]+,\\d{2}';
 const RU_NUM_RE = new RegExp(RU_NUM);
 
+// Колонка «Период» в листке: "май 2026", но месяцы длиннее трёх букв 1С сокращает
+// точкой — "авг. 2026", "сент. 2026", "февр. 2026". Раньше точка не допускалась, и
+// импорт молча терял аванс/зарплату/отпускные во все месяцы, кроме март/май/июнь/июль.
+const MONTH_YEAR_SUM =
+  '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\\.?\\s+\\d{4}\\s+(' + RU_NUM + ')';
+
 function parseBlock(lines) {
   const text = lines.join('\n');
 
@@ -89,11 +95,12 @@ function parseBlock(lines) {
   // ── Аванс: "За первую половину месяца ... май 2026  73 409,93" ─────────────
   // Find the FIRST date+amount after the label (≤200 chars away).
   // Using nums[last] over a large slice bleeds into совместительство rows.
+  // Заголовок листка — "РАСЧЕТНЫЙ ЛИСТОК ЗА АВГУСТ 2026 (ЗА ПЕРВУЮ ПОЛОВИНУ МЕСЯЦА)" —
+  // содержит ту же фразу, поэтому метку в скобках отсекаем: считаем только строку выплаты.
   let advance = null;
   const advMatch = text.match(
     new RegExp(
-      'За первую половину месяца[\\s\\S]{0,200}?' +
-      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\\s+\\d{4}\\s+(' + RU_NUM + ')',
+      '(?:^|[^(])За первую половину месяца[\\s\\S]{0,200}?' + MONTH_YEAR_SUM,
       'i'
     )
   );
@@ -104,8 +111,7 @@ function parseBlock(lines) {
   // Priority 1: "Зарплата за [второй] месяц … май YYYY  NNN,NN"
   const salaryMatch = text.match(
     new RegExp(
-      'Зарплата за\\s+(?:второй\\s+)?месяц[\\s\\S]{0,200}?' +
-      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\\s+\\d{4}\\s+(' + RU_NUM + ')',
+      'Зарплата за\\s+(?:второй\\s+)?месяц[\\s\\S]{0,200}?' + MONTH_YEAR_SUM,
       'i'
     )
   );
@@ -126,8 +132,7 @@ function parseBlock(lines) {
   let vacation = null;
   const vacMatch = text.match(
     new RegExp(
-      'Отпуска,\\s+межрасчет[\\s\\S]{0,200}?' +
-      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\\s+\\d{4}\\s+(' + RU_NUM + ')',
+      'Отпуска,\\s+межрасчет[\\s\\S]{0,200}?' + MONTH_YEAR_SUM,
       'i'
     )
   );
@@ -164,19 +169,6 @@ export async function parseSalarySlipPdf(file) {
     }
   }
   if (block && block.length) blocks.push(block);
-
-  // ── ВРЕМЕННЫЙ ОТЛАДОЧНЫЙ ВЫВОД (удалить после диагностики аванса) ──
-  try {
-    blocks.forEach((b, i) => {
-      const relevant = b.filter(l => /полов|аванс|первую|половину/i.test(l));
-      if (relevant.length) {
-        console.log(`[PDF-DEBUG] блок ${i} строки с авансом:`, JSON.stringify(relevant));
-      } else {
-        console.log(`[PDF-DEBUG] блок ${i}: НЕТ строк со словом "половину/аванс"`);
-      }
-    });
-    if (blocks[0]) console.log('[PDF-DEBUG] полный текст первого блока:\n' + blocks[0].join('\n'));
-  } catch (e) { /* noop */ }
 
   return blocks.map(parseBlock).filter(Boolean);
 }
