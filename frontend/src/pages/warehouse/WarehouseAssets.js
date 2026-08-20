@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import {
   Search, QrCode, Printer, X, Wrench, ArrowRightLeft,
   FileText, AlertTriangle, Plus, Pencil, Check, Download,
-  Wand2,
+  Wand2, Copy, MapPin, User,
 } from 'lucide-react';
 import { warehouseApi, BASE_URL } from '../../services/api';
 import SecureImage from '../../components/warehouse/SecureImage';
@@ -650,14 +650,81 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
     }
   };
 
+  // Инвентарный номер переписывают в акт, в заявку подрядчику и в письмо — а он
+  // из четырёх частей с дефисами, и набирать его руками с экрана значит однажды
+  // ошибиться в одной цифре.
+  const copyInventory = () => {
+    navigator.clipboard?.writeText(asset.inventoryNumber)
+      .then(() => toast.success('Инвентарный номер скопирован'))
+      .catch(() => toast.error('Не удалось скопировать'));
+  };
+
+  /**
+   * Что с активом не так — одной строкой наверху карточки.
+   *
+   * Всё это и раньше лежало в полях, но ровно теми же буквами того же размера,
+   * что «Производитель» и «ОКОФ»: чтобы понять, что поверка просрочена на месяц,
+   * надо было найти строку «Следующее ТО», прочитать дату и сравнить её с
+   * сегодняшней в уме. Признак, ради которого карточку открывают, не должен
+   * требовать вычисления от читателя.
+   */
+  const flags = useMemo(() => {
+    const out = [];
+    const days = d => (d ? Math.round((new Date(d) - new Date()) / 86400000) : null);
+
+    if (asset.status === 'repair') {
+      const open = repairs.find(r => !r.finishedAt);
+      out.push({
+        level: 'danger',
+        text: open
+          ? `В ремонте с ${fmt(open.startedAt)}${open.contractor?.name ? `, подрядчик — ${open.contractor.name}` : ''}`
+          : 'Числится в ремонте',
+      });
+    }
+
+    const toIn = days(asset.nextMaintenanceDate);
+    if (toIn !== null && toIn < 0) {
+      out.push({ level: 'danger', text: `Обслуживание просрочено на ${-toIn} дн. — план был ${fmt(asset.nextMaintenanceDate)}` });
+    } else if (toIn !== null && toIn <= 30) {
+      out.push({ level: 'warn', text: `Обслуживание через ${toIn} дн., ${fmt(asset.nextMaintenanceDate)}` });
+    }
+
+    const warrantyIn = days(asset.warrantyUntil);
+    if (warrantyIn !== null && warrantyIn < 0) {
+      out.push({ level: 'muted', text: `Гарантия истекла ${fmt(asset.warrantyUntil)}` });
+    } else if (warrantyIn !== null && warrantyIn <= 60) {
+      out.push({ level: 'warn', text: `Гарантия заканчивается через ${warrantyIn} дн.` });
+    }
+
+    if (!asset.room) out.push({ level: 'warn', text: 'Не размещён: кабинет не указан' });
+    if (!asset.responsibleUserId && !asset.responsible) {
+      out.push({ level: 'warn', text: 'Не назначен материально ответственный' });
+    }
+    return out;
+  }, [asset, repairs]);
+
+  const wear = Number(depreciation?.wearPercent) || 0;
+
   return (<>
     <div className="wh-modal" onClick={onClose}>
       <div className="wh-modal__box wh-modal__box--wide" onClick={e => e.stopPropagation()}>
-        <div className="wh-modal__head">
-          <div>
+        {/* Шапка несёт то, ради чего карточку чаще всего и открывают: что это,
+            какой у него инвентарный номер и в каком он состоянии. Раньше здесь
+            стояла серая строка «модель · номер», а статус лежал третьим полем в
+            общей сетке — наравне с ОКОФ, — и найти его глазом было нечем. */}
+        <div className="wh-modal__head wh-assetcard__head">
+          <div className="wh-assetcard__ident">
             <div className="wh-modal__title">{asset.name}</div>
-            <div className="wh-modal__sub">
-              {asset.model} · <span className="wh-mono">{asset.inventoryNumber}</span>
+            <div className="wh-assetcard__meta">
+              <button type="button" className="wh-assetcard__inv" onClick={copyInventory}
+                      title="Скопировать инвентарный номер">
+                <span className="wh-mono">{asset.inventoryNumber}</span>
+                <Copy size={12} />
+              </button>
+              <span className={`wh-status wh-status--${asset.status}`}>
+                {STATUS_LABELS[asset.status] || asset.status}
+              </span>
+              {asset.model && <span className="wh-assetcard__model">{asset.model}</span>}
             </div>
           </div>
           <div className="wh-modal__head-actions">
@@ -684,49 +751,131 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
 
         <div className="wh-modal__body">
           {tab === 'info' && (
-            <div className="wh-grid2">
-              <Field label="Производитель" value={asset.manufacturer} />
-              <Field label="Серийный номер" value={asset.serialNumber} mono />
-              <Field label="Статус" value={STATUS_LABELS[asset.status]} />
-              <Field label="Категория" value={asset.category?.name} />
-              <Field label="Размещение" value={asset.room
-                ? `Каб. ${asset.room.number}${asset.room.name ? ` — ${asset.room.name}` : ''}`
-                : 'не размещён'}
-                action={asset.room && (
-                  <button className="wh-btn wh-btn--link" onClick={() => { onClose(); onOpenRoom?.(asset.room.id); }}>
-                    дашборд кабинета
-                  </button>
-                )} />
-              <Field label="Отделение" value={asset.room?.department?.name} />
-              <Field label="МОЛ" value={asset.responsible?.displayName} />
-              <Field label="Дата ввода в эксплуатацию" value={fmt(asset.commissioningDate)} />
-              <Field label="Гарантия до" value={fmt(asset.warrantyUntil)} />
-              <Field label="Поставщик" value={asset.supplier?.name} />
-              <Field label="Интервал ТО, мес." value={asset.maintenanceIntervalMonths} />
-              <Field label="Следующее ТО" value={fmt(asset.nextMaintenanceDate)} />
+            <div className="wh-assetcard">
+              {flags.length > 0 && (
+                <div className="wh-assetcard__flags">
+                  {flags.map((f, i) => (
+                    <div key={i} className={`wh-assetcard__flag wh-assetcard__flag--${f.level}`}>
+                      <AlertTriangle size={14} />
+                      <span>{f.text}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Три вопроса, ради которых карточку открывают чаще всего: где
+                  стоит, кто отвечает, когда обслуживать. Плитками — тем же
+                  wh-bigcard, что и на дашборде кабинета: человек, пришедший
+                  оттуда, читает их не задумываясь. */}
+              <div className="wh-summary wh-summary--strip wh-assetcard__tiles">
+                <div className="wh-bigcard">
+                  <div className="wh-bigcard__head"><MapPin /> Размещение</div>
+                  <div className="wh-assetcard__tile-value">
+                    {asset.room ? `Каб. ${asset.room.number}` : 'Не размещён'}
+                  </div>
+                  <div className="wh-bigcard__sub">
+                    {asset.room?.name && asset.room.name !== asset.room.number ? `${asset.room.name} · ` : ''}
+                    {asset.room?.department?.name || 'отделение не указано'}
+                    {asset.storage?.name ? ` · ${asset.storage.name}` : ''}
+                  </div>
+                  {asset.room && (
+                    <button className="wh-btn wh-btn--link wh-assetcard__tile-link"
+                            onClick={() => { onClose(); onOpenRoom?.(asset.room.id); }}>
+                      Дашборд кабинета
+                    </button>
+                  )}
+                </div>
+
+                <div className="wh-bigcard">
+                  <div className="wh-bigcard__head"><User /> Ответственный</div>
+                  <div className="wh-assetcard__tile-value">
+                    {asset.responsible?.displayName || 'Не назначен'}
+                  </div>
+                  <div className="wh-bigcard__sub">
+                    {asset.commissioningDate
+                      ? `В эксплуатации с ${fmt(asset.commissioningDate)}`
+                      : 'дата ввода не указана'}
+                  </div>
+                </div>
+
+                <div className={`wh-bigcard ${maintOverdue(asset) ? 'wh-bigcard--alert' : ''}`}>
+                  <div className="wh-bigcard__head"><Wrench /> Обслуживание</div>
+                  <div className="wh-assetcard__tile-value">
+                    {asset.nextMaintenanceDate ? fmt(asset.nextMaintenanceDate) : 'Не запланировано'}
+                  </div>
+                  <div className="wh-bigcard__sub">
+                    {asset.maintenanceIntervalMonths
+                      ? `интервал ${asset.maintenanceIntervalMonths} мес.`
+                      : 'интервал не задан'}
+                    {maintenance.length ? ` · нарядов: ${maintenance.length}` : ''}
+                  </div>
+                </div>
+              </div>
+
+              {/* Поля разложены по смыслу, а не одним списком из четырнадцати
+                  строк. В плоской сетке «Производитель» и «ОКОФ» весили
+                  одинаково, и глаз не за что было зацепить: читать приходилось
+                  подряд всё, даже когда нужно одно. */}
+              <section className="wh-assetcard__group">
+                <h4 className="wh-subhead">Что это</h4>
+                <div className="wh-grid2">
+                  <Field label="Производитель" value={asset.manufacturer} />
+                  <Field label="Модель" value={asset.model} />
+                  <Field label="Серийный номер" value={asset.serialNumber} mono />
+                  <Field label="Категория" value={asset.category?.name} />
+                  <Field label="Поставщик" value={asset.supplier?.name} />
+                  <Field label="Гарантия до" value={fmt(asset.warrantyUntil)} />
+                </div>
+              </section>
 
               {access?.capabilities?.canSeeCosts && (
-                <>
-                  <div className="wh-grid2__full wh-subhead">
+                <section className="wh-assetcard__group">
+                  <h4 className="wh-subhead">
                     Стоимость и амортизация
                     <span className="wh-badge wh-badge--neutral" title="Значения внесены вручную: обмена с 1С нет">
                       источник: ручной ввод
                     </span>
+                  </h4>
+
+                  {/* Износ полосой, а не только числом: «45 %» требует сравнить
+                      его со ста в уме, полоса отвечает на тот же вопрос до
+                      чтения. Цвет — тот же светофор, что у зон в отчётах. */}
+                  <div className="wh-assetcard__wear">
+                    <div className="wh-assetcard__wear-head">
+                      <span>Износ</span>
+                      <b>{depreciation.wearPercent} %</b>
+                    </div>
+                    <div className="wh-bigcard__bar">
+                      <i style={{
+                        width: `${Math.min(100, Math.max(0, wear))}%`,
+                        // Тона -line, а не -fg: вторые рассчитаны на текст и
+                        // тёмные до глухоты, заливкой читаются грязью.
+                        background: wear >= 100 ? 'var(--wh-zone-red-line)'
+                          : wear >= 75 ? 'var(--wh-zone-orange-line)'
+                          : 'var(--wh-zone-green-line)',
+                      }} />
+                    </div>
+                    <div className="wh-assetcard__wear-scale">
+                      <span>{money(depreciation.accumulated)} начислено</span>
+                      <span>{money(depreciation.residual)} остаточная</span>
+                    </div>
                   </div>
-                  <Field label="Первоначальная стоимость" value={money(depreciation.initialCost)} />
-                  <Field label="Накопленная амортизация" value={money(depreciation.accumulated)} />
-                  <Field label="Остаточная стоимость" value={money(depreciation.residual)} />
-                  <Field label="Износ" value={`${depreciation.wearPercent} %`} />
-                  <Field label="СПИ, мес." value={asset.usefulLifeMonths} />
-                  <Field label="ОКОФ / аморт. группа"
-                         value={[asset.okof, asset.depreciationGroup].filter(Boolean).join(' / ')} />
+
+                  <div className="wh-grid2">
+                    <Field label="Первоначальная стоимость" value={money(depreciation.initialCost)} />
+                    <Field label="СПИ, мес." value={asset.usefulLifeMonths} />
+                    <Field label="ОКОФ / аморт. группа"
+                           value={[asset.okof, asset.depreciationGroup].filter(Boolean).join(' / ')} />
+                    <Field label="Источник финансирования" value={asset.fundingSource} />
+                  </div>
+
                   {depreciation.fullyDepreciatedInUse && (
-                    <div className="wh-grid2__full wh-note wh-note--warn">
+                    <div className="wh-note wh-note--warn">
                       <AlertTriangle size={15} />
                       <div>Полностью самортизировано, но в эксплуатации — кандидат на замену.</div>
                     </div>
                   )}
-                </>
+                </section>
               )}
             </div>
           )}
@@ -1100,16 +1249,32 @@ function downloadTextFile(contents, filename) {
   URL.revokeObjectURL(a.href);
 }
 
+/**
+ * Поле «только для чтения».
+ *
+ * Пустое значение приглушается: у наполовину заполненной карточки прочерков
+ * больше, чем данных, и в равном по контрасту списке они перетягивают внимание
+ * на себя — читается «здесь ничего нет» вместо того, что там всё-таки есть.
+ */
 function Field({ label, value, mono, action }) {
+  const filled = value || value === 0;
   return (
     <div className="wh-field-ro">
       <span className="wh-field-ro__label">{label}</span>
-      <span className={`wh-field-ro__value ${mono ? 'wh-mono' : ''}`}>
-        {value || value === 0 ? value : '—'} {action}
+      <span className={`wh-field-ro__value ${mono && filled ? 'wh-mono' : ''} ${filled ? '' : 'is-empty'}`}>
+        {filled ? value : '—'} {action}
       </span>
     </div>
   );
 }
+
+/** Просрочено ли обслуживание. Списанного актива обслуживание не касается. */
+const maintOverdue = (asset) => Boolean(
+  asset.nextMaintenanceDate
+  && !asset.isArchived
+  && asset.status !== 'written_off'
+  && new Date(asset.nextMaintenanceDate) < new Date(new Date().toDateString()),
+);
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = d => (d ? new Date(d).toLocaleDateString('ru-RU') : '—');

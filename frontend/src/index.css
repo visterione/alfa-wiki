@@ -13,9 +13,11 @@
   --bg-primary: #FFFFFF;
   --bg-secondary: #F5F5F7;
   --bg-tertiary: #E8E8ED;
+  --bg-hover: #EFEFF4;
   --text-primary: #1D1D1F;
   --text-secondary: #86868B;
   --text-tertiary: #AEAEB2;
+  --text-disabled: #C7C7CC;
   --border: #D2D2D7;
   --border-light: #E5E5EA;
   
@@ -23,7 +25,12 @@
   --success: #34C759;
   --warning: #FF9500;
   --error: #FF3B30;
+  --danger: #FF3B30;
   --info: #5AC8FA;
+
+  /* Компоненты просят --primary-rgb для rgba(): без него подсветки в редакторе
+     и на карточках курсов просто не отрисовывались. */
+  --primary-rgb: 0, 122, 255;
   
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);

@@ -1004,6 +1004,7 @@
 .wh-field-ro { display: flex; flex-direction: column; gap: 2px; }
 .wh-field-ro__label { font-size: 11px; color: var(--wh-text-secondary); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
 .wh-field-ro__value { font-size: 13px; }
+.wh-field-ro__value.is-empty { color: var(--wh-text-tertiary); }
 
 /* ── QR и этикетки ─────────────────────────────────────────────────────────── */
 /* Одна колонка во всю ширину: раньше их было две — голый QR слева и этикетка
@@ -2366,6 +2367,16 @@
   background: linear-gradient(145deg,
     var(--wh-zone-yellow-bg), color-mix(in srgb, var(--wh-zone-yellow-bg) 45%, var(--bg-primary)));
 }
+/* Зелёный тон плитки — «сделано целиком»: вся опись пересчитана, дефицита нет.
+   Объявлен здесь, рядом с остальными тонами, а не в блоке выше: общее правило
+   .wh-sumcard в разделе поверхностей задаёт фон и перекрывает всё, что описано
+   раньше по файлу, — потому красный, оранжевый и жёлтый и переобъявлены тут. */
+.wh-sumcard--green {
+  border-color: color-mix(in srgb, var(--wh-zone-green-line) 34%, var(--border-light));
+  background: linear-gradient(145deg,
+    var(--wh-zone-green-bg), color-mix(in srgb, var(--wh-zone-green-bg) 45%, var(--bg-primary)));
+}
+
 /* Выводимая роль — зелёная: её не назначали, она следует из данных. */
 .wh-level--derived, .wh-rolechip.is-derived {
   border-color: color-mix(in srgb, var(--success) 34%, var(--border-light));
@@ -2627,3 +2638,129 @@
 }
 .wh-mailing__row input { margin-top: 2px; flex-shrink: 0; }
 .wh-mailing__row:has(input:disabled) { opacity: .6; cursor: default; }
+
+/* ── Карточка оборудования ───────────────────────────────────────────────────
+
+   Модалка собрана из тех же кирпичей, что дашборд кабинета и отчёты —
+   wh-bigcard, wh-status, wh-subhead. Своих здесь только раскладка и три мелочи,
+   которых в общем словаре нет: строка признаков, кнопка-инвентарник и полоса
+   износа. Раньше вся карточка была одной сеткой wh-grid2 из четырнадцати
+   одинаковых полей: и «в ремонте», и «ОКОФ» подавались одним кеглем, и глазу
+   было не за что зацепиться.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.wh-assetcard { display: flex; flex-direction: column; gap: 18px; }
+
+/* ── Шапка ───────────────────────────────────────────────────────────────── */
+.wh-assetcard__head { align-items: center; }
+.wh-assetcard__ident { min-width: 0; }
+.wh-assetcard__meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px;
+}
+.wh-assetcard__model { font-size: 13px; color: var(--wh-text-secondary); }
+
+/* Инвентарный номер — кнопка, а не текст: его переписывают в акт и в заявку
+   подрядчику, а он из четырёх частей с дефисами. */
+.wh-assetcard__inv {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--wh-border); background: var(--wh-bg);
+  font-size: 12px; color: var(--wh-text); transition: border-color .15s, color .15s;
+}
+.wh-assetcard__inv svg { color: var(--wh-text-tertiary); }
+.wh-assetcard__inv:hover { border-color: var(--wh-primary); }
+.wh-assetcard__inv:hover svg { color: var(--wh-primary); }
+
+/* ── Строка признаков ────────────────────────────────────────────────────── */
+.wh-assetcard__flags { display: flex; flex-direction: column; gap: 6px; }
+.wh-assetcard__flag {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 11px; border-radius: var(--wh-radius);
+  font-size: 13px; border: 1px solid transparent;
+}
+.wh-assetcard__flag svg { flex-shrink: 0; margin-top: 1px; }
+.wh-assetcard__flag--danger {
+  background: var(--wh-zone-red-bg); border-color: var(--wh-zone-red-line);
+  color: var(--wh-zone-red-fg); font-weight: 600;
+}
+.wh-assetcard__flag--warn {
+  background: var(--wh-zone-yellow-bg); border-color: var(--wh-zone-yellow-line);
+  color: var(--wh-zone-yellow-fg);
+}
+/* Истёкшая гарантия — факт, а не тревога: чинить по ней уже нечего, и кричать
+   об этом каждый раз значит обесценить два цвета выше. */
+.wh-assetcard__flag--muted {
+  background: var(--wh-bg); border-color: var(--wh-border);
+  color: var(--wh-text-secondary);
+}
+
+/* ── Плитки главного ─────────────────────────────────────────────────────── */
+.wh-assetcard__tiles { margin-bottom: 0; }
+.wh-assetcard__tile-value {
+  font-size: 17px; font-weight: 700; line-height: 1.25;
+  /* Не wh-bigcard__value: там 26px под число, а здесь строка — «Каб. 305»,
+     фамилия, дата, — и на 26px длинная фамилия ломает плитку. */
+}
+.wh-assetcard__tile-link { margin-top: 8px; padding: 0; font-size: 12px; }
+
+/* ── Группы полей ────────────────────────────────────────────────────────── */
+.wh-assetcard__group { display: flex; flex-direction: column; gap: 10px; }
+.wh-assetcard__group .wh-subhead { margin: 0; }
+
+/* Внутри широкой модалки (1100 px) две колонки на «Mindray» и «84» дают поле
+   шириной в полэкрана под одно слово — список читается как разрозненный. Здесь
+   сетка набирает столько колонок, сколько влезает по 210 px. */
+.wh-assetcard__group .wh-grid2 {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px 22px;
+}
+.wh-assetcard__group .wh-note { margin-top: 2px; }
+
+/* ── Износ ───────────────────────────────────────────────────────────────── */
+.wh-assetcard__wear {
+  padding: 12px 14px; border: 1px solid var(--wh-border);
+  border-radius: var(--wh-radius); background: var(--wh-bg);
+}
+.wh-assetcard__wear-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 13px; color: var(--wh-text-secondary);
+}
+.wh-assetcard__wear-head b { font-size: 17px; color: var(--wh-text); font-variant-numeric: tabular-nums; }
+.wh-assetcard__wear .wh-bigcard__bar { margin-top: 8px; }
+.wh-assetcard__wear-scale {
+  display: flex; justify-content: space-between; gap: 12px;
+  margin-top: 7px; font-size: 12px; color: var(--wh-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .wh-assetcard__head { align-items: flex-start; flex-direction: column; }
+  .wh-assetcard__wear-scale { flex-direction: column; gap: 2px; }
+  /* Общая полоса сводок держит минимум 135 px и на узком экране всё ещё ставит
+     три плитки в ряд — фамилия МОЛ ломается там на три строки. Здесь плитки
+     несут не числа, а строки, и в столбик они честнее. */
+  .wh-assetcard__tiles { grid-template-columns: 1fr; }
+}
+
+/* ── Ход инвентаризации ──────────────────────────────────────────────────────
+   Полоса из двух отрезков: отмеченное сканером и отмеченное руками, остальное —
+   фон. Два отрезка, а не один, потому что доля ручного ввода — это качество
+   маркировки: если половину описи набирают с клавиатуры, значит половина этикеток
+   не читается, и увидеть это надо на самой описи, а не в отчёте месяц спустя. */
+.wh-invprogress { margin: -4px 0 14px; }
+.wh-invprogress__bar {
+  display: flex; height: 8px; border-radius: 999px;
+  background: var(--wh-border); overflow: hidden;
+}
+.wh-invprogress__bar i { display: block; height: 100%; transition: width .3s ease; }
+.wh-invprogress__qr { background: var(--wh-primary); }
+.wh-invprogress__manual { background: var(--wh-zone-yellow-line); }
+.wh-invprogress__legend {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 7px;
+  font-size: 12px; color: var(--wh-text-secondary);
+}
+.wh-invprogress__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.wh-invprogress__key { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.wh-invprogress__key--qr { background: var(--wh-primary); }
+.wh-invprogress__key--manual { background: var(--wh-zone-yellow-line); }
+.wh-invprogress__key--left { background: var(--wh-border); }

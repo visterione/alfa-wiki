@@ -182,12 +182,44 @@ function InventoryCounting({ data, canEdit, onClose, onReload }) {
 
   const visible = items.filter(i => !q || itemName(i).toLowerCase().includes(q.toLowerCase()));
   const closed = session.status === 'closed';
+  const left = Math.max(0, stats.total - stats.counted);
   return <div className="wh-modal" onClick={onClose}><div className="wh-modal__box wh-modal__box--wide" onClick={e => e.stopPropagation()}>
     <div className="wh-modal__head"><div><div className="wh-modal__title">{session.number}</div><div className="wh-modal__sub">{stats.locationPath || session.department?.name || '—'} · {inventoryStatus(session.status)}</div></div><button className="wh-icon-btn" onClick={onClose}><X size={18} /></button></div>
     <div className="wh-modal__body">
-      <div className="wh-summary wh-inventory-stats">
-        <Stat title="Всего" value={stats.total} /><Stat title="Пересчитано" value={stats.counted} /><Stat title="По QR" value={stats.byQr} /><Stat title="Недостач" value={stats.shortage} tone="red" /><Stat title="Излишков" value={stats.surplus} tone="yellow" />
+      {/* Пять чисел, по которым читается ход пересчёта. Подписи под каждым
+          отвечают на «из скольких» и «сколько осталось» — иначе «Пересчитано 75»
+          требует найти глазами «Всего» и вычесть одно из другого. */}
+      <div className="wh-summary wh-summary--strip wh-inventory-stats">
+        <Stat title="Всего позиций" value={stats.total}
+              sub={stats.total ? `${percent(stats.counted, stats.total)} пересчитано` : 'опись пуста'} />
+        <Stat title="Пересчитано" value={stats.counted}
+              tone={stats.counted >= stats.total && stats.total ? 'green' : undefined}
+              sub={left > 0 ? `осталось ${left}` : 'все отмечены'} />
+        <Stat title="По QR" value={stats.byQr}
+              sub={stats.counted ? `${percent(stats.byQr, stats.counted)} отметок` : 'сканирований нет'} />
+        <Stat title="Недостачи" value={stats.shortage} tone={stats.shortage ? 'red' : undefined}
+              sub={stats.shortage ? 'меньше учёта' : 'нет'} />
+        <Stat title="Излишки" value={stats.surplus} tone={stats.surplus ? 'yellow' : undefined}
+              sub={stats.surplus ? 'больше учёта' : 'нет'} />
       </div>
+
+      {/* Полоса хода: одно движение вместо сравнения двух чисел. Она же
+          показывает, из чего набран пересчёт — сканером или руками, — а доля
+          ручного ввода потом читается как качество маркировки. */}
+      {stats.total > 0 && (
+        <div className="wh-invprogress">
+          <div className="wh-invprogress__bar">
+            <i className="wh-invprogress__qr" style={{ width: `${(stats.byQr / stats.total) * 100}%` }} />
+            <i className="wh-invprogress__manual"
+               style={{ width: `${((stats.counted - stats.byQr) / stats.total) * 100}%` }} />
+          </div>
+          <div className="wh-invprogress__legend">
+            <span><i className="wh-invprogress__key wh-invprogress__key--qr" /> сканером {stats.byQr}</span>
+            <span><i className="wh-invprogress__key wh-invprogress__key--manual" /> вручную {stats.counted - stats.byQr}</span>
+            <span><i className="wh-invprogress__key wh-invprogress__key--left" /> не отмечено {left}</span>
+          </div>
+        </div>
+      )}
       {!closed && canEdit && <div className="wh-inventory-scan">
         <div className="wh-search"><Search size={15} /><input value={code} placeholder="Инвентарный номер или URL из QR" onChange={e => setCode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') countCode(code); }} /></div>
         <button className="wh-btn wh-btn--secondary" onClick={() => countCode(code)}>Отметить</button>
@@ -232,7 +264,24 @@ const userOption = u => <option key={u.id} value={u.id}>{u.displayName || u.user
 const itemName = i => i.asset ? `${i.asset.inventoryNumber} · ${i.asset.name}` : `${i.nomenclature?.code || ''} · ${i.nomenclature?.name || ''}`;
 const inventoryStatus = s => ({ open: 'Открыта', counting: 'Идёт пересчёт', closed: 'Закрыта', cancelled: 'Отменена' }[s] || s);
 const fmtDateTime = d => d ? new Date(d).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
-function Stat({ title, value, tone }) { return <div className={`wh-summary__card ${tone ? `wh-summary__card--${tone}` : ''}`}><span>{title}</span><b>{value}</b></div>; }
+/**
+ * Плитка сводки. Раньше здесь стоял класс wh-summary__card, который не был описан
+ * в CSS ни разу: подпись и число выводились соседними инлайновыми элементами и
+ * слипались в «Всего75». Класс был сиротой — им пользовался только этот экран,
+ * тогда как в отчётах и остатках ту же плитку рисует wh-sumcard. Теперь и здесь
+ * он же: три экрана показывают сводку одинаково.
+ */
+function Stat({ title, value, sub, tone }) {
+  return (
+    <div className={`wh-sumcard ${tone ? `wh-sumcard--${tone}` : ''}`}>
+      <div className="wh-sumcard__title">{title}</div>
+      <div className="wh-sumcard__value">{value}</div>
+      {sub && <div className="wh-sumcard__sub">{sub}</div>}
+    </div>
+  );
+}
+
+const percent = (part, whole) => (whole ? `${Math.round((part / whole) * 100)} %` : '—');
 function flattenRooms(tree) {
   const out = [];
   for (const mc of tree?.medCenters || []) {

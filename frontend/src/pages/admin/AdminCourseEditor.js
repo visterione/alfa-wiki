@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Save, ArrowLeft, Plus, Edit, Trash2, GripVertical,
   BookOpen, FileText, HelpCircle, ChevronDown, X as XIcon, Search, Printer
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { courses, roles as rolesApi, users } from '../../services/api';
-import Editor from '../../components/Editor';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 import './AdminCourseEditor.css';
@@ -293,10 +292,13 @@ export default function AdminCourseEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isNew = id === 'new';
+  const [searchParams] = useSearchParams();
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!isNew);
-  const [activeTab, setActiveTab] = useState('info');
+  // Вкладку помним в адресе: из редактора урока пользователь возвращается
+  // именно к списку уроков, а не к общей информации о курсе.
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'info');
   
   // Course data
   const [form, setForm] = useState({
@@ -321,8 +323,7 @@ export default function AdminCourseEditor() {
   // Admin role ID (всегда должна быть выбрана)
   const [adminRoleId, setAdminRoleId] = useState(null);
 
-  // Modals
-  const [lessonModal, setLessonModal] = useState(null);
+  // Modals (урок правится на отдельной странице, здесь остался только вопрос)
   const [questionModal, setQuestionModal] = useState(null);
 
   useEffect(() => {
@@ -420,21 +421,8 @@ export default function AdminCourseEditor() {
     }
   };
 
-  const handleSaveLesson = async (lessonData) => {
-    try {
-      if (lessonData.id) {
-        await courses.updateLesson(lessonData.id, lessonData);
-        toast.success('Урок сохранен');
-      } else {
-        await courses.createLesson(id, lessonData);
-        toast.success('Урок создан');
-      }
-      loadCourse();
-      setLessonModal(null);
-    } catch (error) {
-      console.error('Save lesson error:', error);
-      toast.error('Ошибка сохранения урока');
-    }
+  const openLessonEditor = (lessonId) => {
+    navigate(`/admin/courses/${id}/lessons/${lessonId}/edit`);
   };
 
   const handleDeleteLesson = async (lesson) => {
@@ -741,7 +729,7 @@ export default function AdminCourseEditor() {
                   )}
                   <button
                     className="btn btn-primary"
-                    onClick={() => setLessonModal({ title: '', content: '' })}
+                    onClick={() => openLessonEditor('new')}
                   >
                     <Plus size={18} />
                     Добавить урок
@@ -789,7 +777,7 @@ export default function AdminCourseEditor() {
                                 <div className="lesson-card-actions">
                                   <button
                                     className="btn btn-icon"
-                                    onClick={() => setLessonModal(lesson)}
+                                    onClick={() => openLessonEditor(lesson.id)}
                                   >
                                     <Edit size={18} />
                                   </button>
@@ -910,14 +898,6 @@ export default function AdminCourseEditor() {
         </div>
       </div>
 
-      {lessonModal && (
-        <LessonModal
-          lesson={lessonModal}
-          onSave={handleSaveLesson}
-          onClose={() => setLessonModal(null)}
-        />
-      )}
-
       {questionModal && (
         <QuestionModal
           question={questionModal}
@@ -925,65 +905,6 @@ export default function AdminCourseEditor() {
           onClose={() => setQuestionModal(null)}
         />
       )}
-    </div>
-  );
-}
-
-// Модальное окно редактирования урока
-function LessonModal({ lesson, onSave, onClose }) {
-  const [form, setForm] = useState({
-    id: lesson.id || null,
-    title: lesson.title || '',
-    content: lesson.content || ''
-  });
-
-  const handleSubmit = () => {
-    if (!form.title.trim()) {
-      toast.error('Введите название урока');
-      return;
-    }
-
-    onSave(form);
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-large" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>{lesson.id ? 'Редактировать урок' : 'Новый урок'}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="modal-body">
-          <div className="form-group">
-            <label className="form-label">Название урока *</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="Введите название урока"
-              value={form.title}
-              onChange={e => setForm({ ...form, title: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Содержание урока</label>
-            <Editor
-              content={form.content}
-              onChange={content => setForm({ ...form, content })}
-              placeholder="Начните писать содержание урока..."
-            />
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
-            Отмена
-          </button>
-          <button className="btn btn-primary" onClick={handleSubmit}>
-            <Save size={18} />
-            Сохранить
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

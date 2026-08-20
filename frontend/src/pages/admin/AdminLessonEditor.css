@@ -1,0 +1,252 @@
+/* Редактор урока во всю высоту окна.
+
+   Ключевая цепочка — .lesson-editor → .lesson-editor-body → .editor-container:
+   каждый уровень flex с min-height: 0, поэтому прокручивается только полотно
+   редактора (.editor-content), а панель инструментов остаётся закреплённой
+   сверху. Именно она уезжала за экран в старой модалке после вставки картинки. */
+.lesson-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.lesson-editor--loading {
+  align-items: center;
+  justify-content: center;
+}
+
+.lesson-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.lesson-editor-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lesson-editor-back:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.lesson-editor-titlebox {
+  flex: 1;
+  min-width: 0;
+}
+
+.lesson-editor-course {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson-editor-title {
+  width: 100%;
+  font-size: 16px;
+  font-weight: 500;
+  padding: 8px 14px;
+}
+
+.lesson-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.lesson-editor-status {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.lesson-editor-status.dirty {
+  color: var(--warning);
+}
+
+.lesson-editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+
+.lesson-editor-list {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.lesson-editor-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.lesson-editor-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lesson-editor-add:hover {
+  background: var(--bg-tertiary);
+  color: var(--primary);
+}
+
+.lesson-editor-list-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.lesson-editor-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.lesson-editor-list-item:hover {
+  background: var(--bg-secondary);
+}
+
+.lesson-editor-list-item.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.lesson-editor-list-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.lesson-editor-list-item.active .lesson-editor-list-num {
+  background: var(--primary);
+  color: #fff;
+}
+
+.lesson-editor-list-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson-editor-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lesson-editor-main .editor-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Панель инструментов не сжимается и не прокручивается вместе с текстом —
+   ради этого вся страница и переехала из модалки. */
+.lesson-editor-main .editor-menu {
+  flex-shrink: 0;
+}
+
+.lesson-editor-main .editor-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* На узких экранах список уроков уходит наверх и сворачивается в одну строку,
+   иначе он съедает половину ширины редактора. */
+@media (max-width: 1024px) {
+  .lesson-editor-body {
+    flex-direction: column;
+  }
+
+  .lesson-editor-list {
+    width: 100%;
+    max-height: 160px;
+  }
+}
+
+@media (max-width: 768px) {
+  .lesson-editor-header {
+    flex-wrap: wrap;
+  }
+
+  .lesson-editor-titlebox {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .lesson-editor-status {
+    display: none;
+  }
+}

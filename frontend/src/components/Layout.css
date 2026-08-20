@@ -65,6 +65,15 @@
   padding: 32px 0;
 }
 
+/* Редактор урока: высота ровно в экран, чтобы прокручивалось только полотно
+   редактора, а панель инструментов оставалась на виду. */
+.content-wrapper:has(.lesson-editor) {
+  max-width: 1600px;
+  height: calc(100vh - var(--header-height));
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 /* Таблицы: полная ширина, высота на весь экран */
 .content-wrapper:has(.spreadsheet-view) {
   max-width: none;

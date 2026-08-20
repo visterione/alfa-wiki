@@ -65,7 +65,7 @@
 .admin-course-stats {
   border-top: 1px solid var(--border);
   padding: 24px;
-  background: var(--background);
+  background: var(--bg-secondary);
 }
 
 .stats-empty {
@@ -94,7 +94,7 @@
 }
 
 .stats-table thead {
-  background: var(--card-bg);
+  background: var(--bg-primary);
 }
 
 .stats-table th {
@@ -113,7 +113,7 @@
 }
 
 .stats-table tbody tr:hover {
-  background: var(--card-bg);
+  background: var(--bg-primary);
 }
 
 .stats-user {
@@ -216,7 +216,7 @@
 }
 
 .badge-secondary {
-  background: var(--background);
+  background: var(--bg-secondary);
   color: var(--text-secondary);
 }
 

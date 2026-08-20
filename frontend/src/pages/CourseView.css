@@ -7,7 +7,7 @@
 
 .course-view-header {
   padding: 24px 32px;
-  background: var(--card-bg);
+  background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
 }
 
@@ -83,7 +83,7 @@
 
 .course-sidebar {
   width: 280px;
-  background: var(--card-bg);
+  background: var(--bg-primary);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -98,7 +98,7 @@
   gap: 12px;
   font-weight: 600;
   font-size: 15px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .course-lessons-list {
@@ -118,7 +118,7 @@
 }
 
 .lesson-item:hover {
-  background: var(--background);
+  background: var(--bg-secondary);
 }
 
 .lesson-item.active {
@@ -215,7 +215,7 @@
 .lesson-content {
   margin-bottom: 48px;
   line-height: 1.8;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .lesson-content h1, .lesson-content h2, .lesson-content h3 {
@@ -269,7 +269,7 @@
   width: 100%;
   min-height: 100vh;
   padding: 32px;
-  background: var(--background);
+  background: var(--bg-secondary);
 }
 
 .course-test-container .btn-back {
@@ -367,7 +367,7 @@
 }
 
 .test-option:hover {
-  background: var(--background);
+  background: var(--bg-secondary);
   border-color: var(--primary);
 }
 
@@ -394,7 +394,7 @@
 .test-result-card {
   max-width: 800px;
   margin: 0 auto;
-  background: var(--card-bg);
+  background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 48px;

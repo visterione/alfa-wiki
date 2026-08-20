@@ -27,6 +27,7 @@ const Courses = lazy(() => import('./pages/Courses'));
 const CourseView = lazy(() => import('./pages/CourseView'));
 const AdminCourses = lazy(() => import('./pages/admin/AdminCourses'));
 const AdminCourseEditor = lazy(() => import('./pages/admin/AdminCourseEditor'));
+const AdminLessonEditor = lazy(() => import('./pages/admin/AdminLessonEditor'));
 const AdminJournal = lazy(() => import('./pages/admin/AdminJournal'));
 const AdminRbAccess = lazy(() => import('./pages/admin/AdminRbAccess'));
 const AdminParser = lazy(() => import('./pages/admin/AdminParser'));
@@ -198,6 +199,9 @@ function AppRoutes() {
         } />
         <Route path="admin/courses/:id/edit" element={
           <ProtectedRoute requireAdminAccess="courses"><AdminCourseEditor /></ProtectedRoute>
+        } />
+        <Route path="admin/courses/:courseId/lessons/:lessonId/edit" element={
+          <ProtectedRoute requireAdminAccess="courses"><AdminLessonEditor /></ProtectedRoute>
         } />
 
         {/* АДМИНКА ЖУРНАЛ СТРАНИЦ */}
