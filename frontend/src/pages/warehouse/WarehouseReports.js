@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import {
   FileSpreadsheet, FileText, AlertTriangle, ArrowRightLeft, Play,
   ChevronRight, ChevronDown, Minimize2, Maximize2, ListTree, FolderTree,
+  Mail, X, Check,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
@@ -475,6 +476,8 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
     return (tree?.departments || []).filter(d => d.medCenterId === medCenterId);
   }, [tree, medCenterId]);
 
+  const [mailingOpen, setMailingOpen] = useState(false);
+
   return (
     <div className="wh-reports">
       <aside className="wh-reports__nav" ref={reportNavRef}>
@@ -497,7 +500,13 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
       <div className="wh-reports__main wh-reports__main--slide" key={key}>
         <div className="wh-reports__head">
           <h2>{report.title}</h2>
+          {/* Настройка рассылок живёт здесь, а не в общих настройках портала:
+              подписка — это отчёт, и включают её там же, где его читают. */}
+          <button className="wh-btn wh-btn--ghost" onClick={() => setMailingOpen(true)}>
+            <Mail size={15} /> Рассылки
+          </button>
         </div>
+        {mailingOpen && <MailingModal onClose={() => setMailingOpen(false)} />}
 
         {modes.length > 1 && (
           <div className="wh-subtabs">
@@ -1350,6 +1359,114 @@ const moveType = t => ({
 const maintType = t => ({ maintenance: 'ТО', verification: 'Поверка', calibration: 'Калибровка', dosimetry: 'Дозиметрия', inspection: 'Осмотр' }[t] || t);
 const maintStatus = s => ({ planned: 'Запланирован', in_progress: 'В работе', done: 'Выполнен', overdue: 'Просрочен', cancelled: 'Отменён' }[s] || s);
 const maintResult = r => ({ normal: 'Норма', with_remarks: 'С замечаниями', failed: 'Не пройдено' }[r] || '—');
+
+
+/**
+ * Настройка регламентной рассылки.
+ *
+ * Список не редактируется вручную: он выводится из прав на отчёты — кому отчёт
+ * доступен в портале, тому он и приходит почтой. Здесь остаётся одно решение,
+ * которое и правда принадлежит человеку: получать или не получать.
+ *
+ * Отдельно показывается адрес. Пустая почта в карточке — самая частая причина
+ * «мне ничего не приходит», и узнавать об этом из лога воркера получателю негде.
+ */
+function MailingModal({ onClose }) {
+  const [state, setState] = useState({ loading: true, email: null, deliverable: false, items: [] });
+  const [saving, setSaving] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    warehouseApi.mailSubscriptions()
+      .then(({ data }) => { if (!cancelled) setState({ loading: false, ...data }); })
+      .catch(() => {
+        if (cancelled) return;
+        setState(s => ({ ...s, loading: false }));
+        toast.error('Не удалось загрузить настройки рассылок');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggle = async (code, enabled) => {
+    setSaving(code);
+    // Переключатель ставится сразу, до ответа: отмена рассылки не то действие,
+    // ради которого стоит смотреть на крутилку. Ошибка вернёт всё назад.
+    setState(s => ({ ...s, items: s.items.map(i => (i.code === code ? { ...i, enabled } : i)) }));
+    try {
+      await warehouseApi.setMailSubscription(code, enabled);
+    } catch (e) {
+      setState(s => ({ ...s, items: s.items.map(i => (i.code === code ? { ...i, enabled: !enabled } : i)) }));
+      toast.error(e.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box wh-modal__box--narrow" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div>
+            <div className="wh-modal__title">Рассылки отчётов</div>
+            <div className="wh-modal__sub">Приходят на почту по расписанию</div>
+          </div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div className="wh-modal__body">
+          {state.loading ? (
+            <div className="wh-table__loading"><div className="loading-spinner" /></div>
+          ) : (
+            <>
+              {!state.deliverable && (
+                <div className="wh-note wh-note--warn">
+                  <AlertTriangle size={15} />
+                  <div>
+                    В вашей карточке не указан адрес электронной почты — письма
+                    отправить некуда. Попросите администратора заполнить его.
+                  </div>
+                </div>
+              )}
+
+              {!state.items.length ? (
+                <div className="wh-empty">
+                  Рассылок нет: они приходят по тем отчётам, к которым у вас есть доступ.
+                </div>
+              ) : (
+                <div className="wh-form">
+                  {state.items.map(item => (
+                    <label key={item.code} className="wh-mailing__row">
+                      <input type="checkbox" checked={item.enabled} disabled={saving === item.code}
+                             onChange={e => toggle(item.code, e.target.checked)} />
+                      <span>
+                        <b>{item.label}</b>
+                        <span className="wh-cell-sub"> · {item.schedule}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              <div className="wh-note wh-note--subtle">
+                <Check size={15} />
+                <div>
+                  Письмо приходит, только когда есть о чём сообщить, и содержит
+                  позиции ваших кабинетов. Отписка не закрывает сам отчёт — он
+                  остаётся доступен здесь, в разделе отчётов.
+                  {state.email ? ` Адрес доставки: ${state.email}.` : ''}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Закрыть</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function summaryLabel(k) {
   return {
