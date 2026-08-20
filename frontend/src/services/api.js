@@ -34,6 +34,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !window.location.pathname.includes('/login')) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      // Куда человек шёл — в sessionStorage: переход жёсткий, и состояние
+      // роутера его не переживёт. Страница входа заберёт адрес оттуда и вернёт
+      // человека на место. Чаще всего это как раз протухший токен на телефоне,
+      // с которого только что перешли по QR-коду с двери кабинета.
+      const { pathname, search, hash } = window.location;
+      sessionStorage.setItem('afterLogin', `${pathname}${search}${hash}`);
       window.location.href = '/login';
     }
     return Promise.reject(error);

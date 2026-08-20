@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { auth as authApi } from '../services/api';
 import { Eye, EyeOff, Shield, RefreshCw } from 'lucide-react';
@@ -7,6 +7,21 @@ import toast from 'react-hot-toast';
 import './Login.css';
 
 import loginLogo from '../assets/images/logo.png';
+
+/**
+ * Адрес возврата после входа: принимаем только путь внутри портала.
+ *
+ * Значение приходит из состояния навигации, а его можно подложить и снаружи —
+ * например ссылкой с чужим доменом в state. Без проверки страница входа
+ * превращалась бы в открытую переадресацию: адрес в строке наш, а уводит на
+ * чужой сайт, где ровно такую же форму логина и покажут.
+ */
+function safeRedirect(value) {
+  if (typeof value !== 'string' || !value.startsWith('/')) return '/';
+  // «//host» и «/\host» браузер читает как протокол-относительный адрес.
+  if (/^\/[\\/]/.test(value)) return '/';
+  return value;
+}
 
 export default function Login() {
   const [step, setStep] = useState('credentials'); // 'credentials' | 'twoFactor'
@@ -19,7 +34,17 @@ export default function Login() {
   const [attemptsLeft, setAttemptsLeft] = useState(5);
   const [codeStatus, setCodeStatus] = useState(''); // '' | 'success' | 'error'
   const inputRefs = useRef([]);
-  const navigate = useNavigate();
+  const location = useLocation();
+  // Куда возвращаться после входа. Адрес приходит двумя путями, и оба нужны:
+  // ProtectedRoute кладёт его в состояние навигации (переход внутри приложения,
+  // токена нет вовсе), а перехватчик 401 — в sessionStorage (жёсткий переход,
+  // токен протух прямо на странице). Читаем один раз при монтировании и сразу
+  // забываем, иначе следующий обычный вход уводил бы по старому адресу.
+  const [redirectTo] = useState(() => {
+    const target = safeRedirect(location.state?.from || sessionStorage.getItem('afterLogin'));
+    sessionStorage.removeItem('afterLogin');
+    return target;
+  });
 
   const handleCredentialsSubmit = async (e) => {
     e.preventDefault();
@@ -45,11 +70,11 @@ export default function Login() {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         toast.success('Добро пожаловать!');
-        // Небольшая задержка для отображения toast
-        setTimeout(() => {
-          navigate('/');
-          window.location.reload(); // Перезагружаем для обновления AuthContext
-        }, 100);
+        // Небольшая задержка для отображения toast. Уходим через
+        // location.replace: это и переход, и перезагрузка (AuthContext читает
+        // токен при старте), и заодно экран входа не остаётся в истории — иначе
+        // кнопка «назад» возвращала бы на него уже авторизованного человека.
+        setTimeout(() => window.location.replace(redirectTo), 100);
       } else {
         console.error('Unexpected response format:', data);
         toast.error('Неожиданный ответ сервера');
@@ -84,10 +109,7 @@ export default function Login() {
           localStorage.setItem('user', JSON.stringify(data.user));
           toast.success('Добро пожаловать!');
 
-          setTimeout(() => {
-            navigate('/');
-            window.location.reload(); // Перезагружаем для обновления AuthContext
-          }, 100);
+          setTimeout(() => window.location.replace(redirectTo), 100);
         }, 500);
       } else {
         toast.error('Неожиданный ответ сервера');

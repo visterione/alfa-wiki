@@ -938,12 +938,17 @@ window.registryApp = (function() {
     event.preventDefault();
     var payload = collectForm();
     payload.pageId = wikiPageId();
-    var request = editingId
-      ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
+    var savedEditingId = editingId;
+    var request = savedEditingId
+      ? api('/' + savedEditingId, { method: 'PUT', body: JSON.stringify(payload) })
       : api('', { method: 'POST', body: JSON.stringify(payload) });
     request.then(function() {
-      showToast('Справка сохранена', 'success');
-      resetForm();
+      showToast(savedEditingId
+        ? 'Изменения сохранены'
+        : 'Справка сохранена — данные оставлены в форме', 'success');
+      // После добавления не очищаем форму: так можно сразу перейти
+      // на другой период и добавить того же человека. Явная очистка остаётся кнопкой «Очистить».
+      if (savedEditingId) resetForm();
       reload();
     }).catch(function(e) {
       showToast('Ошибка сохранения в БД: ' + e.message, 'error');

@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -58,6 +58,7 @@ function PageLoader() {
 
 function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null }) {
   const { user, loading, isAdmin, hasAdminAccess } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -67,7 +68,14 @@ function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  // Запоминаем, куда человек шёл: после входа вернём его именно туда, а не на
+  // домашнюю. Это не мелочь удобства — по QR-коду с двери кабинета приходят с
+  // телефона, на котором сессия давно истекла, и без этого вход всегда уводил
+  // на стартовый экран, а кабинет приходилось искать руками.
+  if (!user) {
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to="/login" replace state={{ from }} />;
+  }
 
   // Проверка полного админ-доступа
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;

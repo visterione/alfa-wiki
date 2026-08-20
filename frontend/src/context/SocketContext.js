@@ -318,6 +318,13 @@ export function SocketProvider({ children }) {
     // это заметит первый же HTTP-запрос.
     const handleSessionEnd = () => {
       localStorage.removeItem('token');
+      // Куда человек смотрел — в sessionStorage, как и в перехватчике 401:
+      // страница входа заберёт адрес оттуда и вернёт его на место, а не на
+      // стартовый экран.
+      const { pathname, search, hash } = window.location;
+      if (!pathname.includes('/login')) {
+        sessionStorage.setItem('afterLogin', `${pathname}${search}${hash}`);
+      }
       window.location.href = '/login';
     };
     socket.on('session_revoked', handleSessionEnd);
