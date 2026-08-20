@@ -27,12 +27,26 @@
 require('dotenv').config();
 
 const cron = require('node-cron');
+const { sequelize } = require('../models');
 const { MAILINGS, runMailing } = require('../services/warehouse/mailing');
+
+// Отчёты — это тяжёлые запросы на каждого получателя, и с включённым логом
+// Sequelize вывод воркера превращается в простыню SQL, в которой не найти
+// собственно результат рассылки.
+sequelize.options.logging = false;
 
 const TZ = process.env.WAREHOUSE_MAIL_TZ || 'Europe/Moscow';
 const args = process.argv.slice(2);
 const isDry = args.includes('--dry');
 const runNow = args.includes('--now') || isDry;
+
+const plural = (n) => {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'позиция';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'позиции';
+  return 'позиций';
+};
 
 const stamp = () => new Date().toLocaleString('ru-RU', { timeZone: TZ });
 
@@ -47,7 +61,7 @@ async function fire(code, reason) {
     for (const d of report.details) {
       console.log(d.error
         ? `   ✗ ${d.user}: ${d.error}`
-        : `   → ${d.user} <${d.email}>: ${d.items} позиций`);
+        : `   → ${d.user} <${d.email}>: ${d.items} ${plural(d.items)}`);
     }
   } catch (err) {
     console.error(`[СКЛАД-ПОЧТА] ${code} упала:`, err.message);
@@ -57,6 +71,7 @@ async function fire(code, reason) {
 async function main() {
   if (runNow) {
     for (const code of Object.keys(MAILINGS)) await fire(code, 'ручной запуск');
+    await sequelize.close().catch(() => {});
     process.exit(0);
   }
 

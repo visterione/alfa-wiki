@@ -5,10 +5,12 @@
 -- на каждую пару «человек × отчёт» значило бы дублировать права второй таблицей,
 -- которая начнёт с ними расходиться. Нет строки — подписан.
 --
--- Запуск:
---   psql "$DATABASE_URL" -f "backend/migrations/ver. 7.07 warehouse-mailing.sql"
-
-BEGIN;
+-- Запуск из backend/:
+--   npm run migrate:7.07:check   # только проверить
+--   npm run migrate:7.07         # применить
+--
+-- Транзакцию открывает раннер (scripts/migrateWarehouseMailing.js), как у
+-- остальных миграций проекта, — здесь её быть не должно.
 
 CREATE TABLE IF NOT EXISTS warehouse_mail_optouts (
   "userId"     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -40,5 +42,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS warehouse_mail_log_run
 
 CREATE INDEX IF NOT EXISTS warehouse_mail_log_sent
   ON warehouse_mail_log ("sentAt" DESC);
-
-COMMIT;

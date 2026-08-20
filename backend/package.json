@@ -45,6 +45,8 @@
     "migrate:6.92:check": "node scripts/reindexPagesSearchContent.js --check",
     "migrate:7.03": "node scripts/migrateWarehouseUserPermissions.js",
     "migrate:7.03:check": "node scripts/migrateWarehouseUserPermissions.js --check",
+    "migrate:7.07": "node scripts/migrateWarehouseMailing.js",
+    "migrate:7.07:check": "node scripts/migrateWarehouseMailing.js --check",
     "migrate:6.67-6.70": "node scripts/migrateMedCentersWarehouse.js",
     "migrate:6.67-6.70:check": "node scripts/migrateMedCentersWarehouse.js --check",
     "audit:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js",
