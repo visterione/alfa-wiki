@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { X, Check, AlertTriangle } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import LocationPicker from './components/LocationPicker';
 
 /**
  * Форма постановки на учёт и правки карточки оборудования.
@@ -53,42 +54,11 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
   const isEdit = Boolean(asset);
   const [form, setForm] = useState(EMPTY);
   const [refs, setRefs] = useState({ categories: [], contractors: [], users: [] });
-  const [storages, setStorages] = useState([]);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('main');
 
   const canSeeCosts = access?.capabilities?.canSeeCosts;
 
-  // Плоский список кабинетов из дерева: выбирать этаж отдельно здесь незачем,
-  // а полный путь нужен, чтобы различить одинаковые номера в разных корпусах.
-  const rooms = useMemo(() => {
-    const out = [];
-    for (const mc of tree?.medCenters || []) {
-      for (const r of mc.rooms || []) {
-        out.push({
-          id: r.id,
-          label: `${mc.name} · Каб. ${r.number}`
-            + (r.name && r.name !== r.number ? ` — ${r.name}` : ''),
-          storages: r.storages || [],
-          responsibleUserId: r.responsible?.id || null,
-        });
-      }
-      for (const b of mc.buildings || []) {
-        for (const f of b.floors || []) {
-          for (const r of f.rooms || []) {
-            out.push({
-              id: r.id,
-              label: `${mc.name} · ${b.name} · ${f.number} эт. · Каб. ${r.number}`
-                + (r.name && r.name !== r.number ? ` — ${r.name}` : ''),
-              storages: r.storages || [],
-              responsibleUserId: r.responsible?.id || null,
-            });
-          }
-        }
-      }
-    }
-    return out;
-  }, [tree]);
 
   useEffect(() => {
     (async () => {
@@ -116,18 +86,7 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
     });
   }, [asset]);
 
-  // Места хранения зависят от выбранного кабинета.
-  useEffect(() => {
-    const room = rooms.find(r => r.id === form.roomId);
-    setStorages(room?.storages || []);
-    if (form.storageId && !(room?.storages || []).some(s => s.id === form.storageId)) {
-      setForm(f => ({ ...f, storageId: '' }));
-    }
-  }, [form.roomId, form.storageId, rooms]);
-
   const set = (key, value) => setForm(f => ({ ...f, [key]: value }));
-
-  const selectedRoom = rooms.find(r => r.id === form.roomId);
 
   const submit = async () => {
     if (!form.name.trim()) { toast.error('Укажите наименование'); setTab('main'); return; }
@@ -201,7 +160,8 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
         <div className="wh-modal__body">
           {tab === 'main' && (
             <div className="wh-form">
-              <label>Наименование <b className="wh-req">*</b>
+              <label>
+                <span className="wh-form__cap">Наименование <b className="wh-req">*</b></span>
                 <input value={form.name} autoFocus
                        placeholder="Аппарат ультразвуковой диагностический"
                        onChange={e => set('name', e.target.value)} />
@@ -264,28 +224,27 @@ export default function WarehouseAssetForm({ asset, tree, access, nested, onClos
                   </div>
                 </div>
               ) : (
-                <>
-                  <label>Кабинет
-                    <select value={form.roomId} onChange={e => {
-                      set('roomId', e.target.value);
-                      // МОЛ по умолчанию — ответственный за кабинет: в девяти случаях
-                      // из десяти это он и есть, а поправить всегда можно.
-                      const r = rooms.find(x => x.id === e.target.value);
-                      if (r?.responsibleUserId) set('responsibleUserId', r.responsibleUserId);
-                    }}>
-                      <option value="">Выберите кабинет…</option>
-                      {rooms.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                    </select>
-                  </label>
-                  <label>Место хранения
-                    <select value={form.storageId} disabled={!storages.length}
-                            onChange={e => set('storageId', e.target.value)}>
-                      <option value="">Выберите место хранения…</option>
-                      {storages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </label>
-                  {selectedRoom && <div className="wh-hint">{selectedRoom.label}</div>}
-                </>
+                <label>
+                  {/* Кабинет и место хранения выбираются одним деревом. Раньше
+                      это были два связанных селекта: второй стоял выключенным,
+                      пока не выбран первый, а в первом лежала сотня строк вида
+                      «МЦ · корпус · этаж · кабинет», различавшихся последним
+                      словом. */}
+                  <span className="wh-form__cap">Где стоит <b className="wh-req">*</b></span>
+                  <LocationPicker
+                    tree={tree} mode="storage"
+                    roomId={form.roomId} storageId={form.storageId}
+                    placeholder="Кабинет и место хранения"
+                    onPick={({ roomId, storageId, node }) => {
+                      setForm(f => ({
+                        ...f, roomId, storageId,
+                        // МОЛ по умолчанию — ответственный за кабинет: в девяти
+                        // случаях из десяти это он и есть, а поправить можно.
+                        responsibleUserId: node?.room?.responsible?.id || f.responsibleUserId,
+                      }));
+                    }}
+                  />
+                </label>
               )}
             </div>
           )}

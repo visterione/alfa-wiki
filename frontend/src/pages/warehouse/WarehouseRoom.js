@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Package, Boxes, CalendarClock, Wrench, QrCode, Printer, RefreshCw,
-  Activity, AlertTriangle, Search, FileText, X, MapPin, User as UserIcon,
+  Activity, AlertTriangle, Search, FileText, X, MapPin, User as UserIcon, Check,
+  Download,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
@@ -47,6 +48,10 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
   const [filter, setFilter] = useState(null);   // null | 'repair' | 'maintenance' | 'expired' | 'belowMin'
   const [q, setQ] = useState('');
   const [qrModal, setQrModal] = useState(false);
+  // Строка остатка, которой проставляют срок годности. Держим саму строку: в
+  // форме нужны название и уже стоящая серия, а перечитывать дашборд ради этого
+  // незачем.
+  const [expiryRow, setExpiryRow] = useState(null);
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -71,6 +76,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
   }, [roomId]);
 
   const canSeeCosts = access?.capabilities?.canSeeCosts;
+  const canEditBatch = access?.capabilities?.canManageCatalog;
 
   const filteredAssets = useMemo(() => {
     if (!data) return [];
@@ -304,6 +310,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
                     <th>Наименование</th><th>Место</th><th>Серия</th><th>Годен до</th>
                     <th className="wh-num">Остаток</th><th className="wh-num">Минимум</th>
                     {canSeeCosts && <th className="wh-num">Сумма, ₽</th>}
+                    {canEditBatch && <th style={{ width: 40 }} />}
                   </tr>
                 </thead>
                 <tbody>
@@ -317,10 +324,23 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
                       <td className="wh-num"><b>{num(s.quantity)}</b> {s.unit}</td>
                       <td className="wh-num wh-cell-sub">{s.minQty === null ? '—' : num(s.minQty)}</td>
                       {canSeeCosts && <td className="wh-num">{s.amount.toLocaleString('ru-RU')}</td>}
+                      {/* Срок годности правится здесь, а не в справочнике партий:
+                          человек смотрит на коробку, стоя в кабинете, и партии у
+                          позиции может не быть вовсе — всё, что поставлено на учёт
+                          по ведомости 1С, лежит без неё. */}
+                      {canEditBatch && (
+                        <td>
+                          <button className="wh-icon-btn wh-room__expiry-btn"
+                                  title={s.expiryDate ? 'Изменить срок годности' : 'Проставить срок годности'}
+                                  onClick={() => setExpiryRow(s)}>
+                            <CalendarClock size={14} />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {!filteredStock.length && (
-                    <tr><td colSpan={8} className="wh-empty">
+                    <tr><td colSpan={8 + (canEditBatch ? 1 : 0)} className="wh-empty">
                       {filter || q ? 'По условию ничего не найдено' : 'Материалов нет'}
                     </td></tr>
                   )}
@@ -382,6 +402,85 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
       {qrModal && (
         <RoomQrModal room={room} onClose={() => setQrModal(false)} />
       )}
+
+      {expiryRow && (
+        <ExpiryModal row={expiryRow}
+                     onClose={() => setExpiryRow(null)}
+                     onSaved={() => { setExpiryRow(null); load(true); }} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Срок годности для строки остатка.
+ *
+ * Форма спрашивает не «партию», а то, что написано на упаковке: дату и, если он
+ * есть, номер серии. Партия заводится за человека — просить его сначала создать
+ * её в справочнике, а потом вернуться в кабинет значит просить дважды объяснить
+ * системе одну коробку.
+ */
+function ExpiryModal({ row, onClose, onSaved }) {
+  const [expiryDate, setExpiryDate] = useState(row.expiryDate || '');
+  const [batchNumber, setBatchNumber] = useState(row.batchNumber || '');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!expiryDate && !batchNumber.trim()) {
+      toast.error('Укажите срок годности или номер серии');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data } = await warehouseApi.setStockBatch(row.stockId, {
+        expiryDate: expiryDate || null,
+        batchNumber: batchNumber.trim(),
+      });
+      toast.success(`Срок годности сохранён · серия ${data.batch.batchNumber}`);
+      onSaved();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось сохранить');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box wh-modal__box--narrow" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div>
+            <div className="wh-modal__title">Срок годности</div>
+            <div className="wh-modal__sub">{row.name} · {row.storageName}</div>
+          </div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-form">
+            <label>Годен до
+              <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+            </label>
+            <label>Номер серии или партии
+              <input type="text" value={batchNumber} maxLength={80}
+                     placeholder="как на упаковке; можно не заполнять"
+                     onChange={e => setBatchNumber(e.target.value)} />
+            </label>
+          </div>
+          <div className="wh-note wh-note--subtle">
+            <AlertTriangle size={15} />
+            <div>
+              Срок ставится на весь остаток этой позиции в месте хранения
+              «{row.storageName}» — {num(row.quantity)} {row.unit}. Если часть коробок
+              с другим сроком, разнесите их разными местами хранения или проведите
+              приход отдельной партией.
+            </div>
+          </div>
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose} disabled={saving}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={save} disabled={saving}>
+            <Check size={15} /> {saving ? 'Сохраняю…' : 'Сохранить'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -420,7 +519,7 @@ function TileButton({ icon, title, value, unit, sub, rows, alert, active, onClic
 function RoomQrModal({ room, onClose }) {
   const [svg, setSvg] = useState(null);
   const [failed, setFailed] = useState(false);
-  const [size, setSize] = useState('24x45');
+  const [size, setSize] = useState('80x24');
   const [mmW, mmH] = size.split('x').map(Number);
 
   useEffect(() => {
@@ -458,6 +557,28 @@ function RoomQrModal({ room, onClose }) {
     }
   };
 
+  /**
+   * Та же карточка файлом — как у этикетки оборудования.
+   *
+   * Печать из браузера задаёт размер страницы правилом @page, а диалог печати
+   * macOS его игнорирует и печатает на том, что выбрано в диалоге, то есть на
+   * A4. Ленточным размерам файл разворачивается на 90°: лента едет мимо
+   * головки, которая пишет поперёк неё, и страницу драйвер ждёт стоячую.
+   */
+  const downloadPng = async () => {
+    const rotate = size.startsWith('80x') ? 90 : 0;
+    try {
+      const { data: png } = await warehouseApi.roomDoorCardPng(room.id, size, rotate);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(png);
+      a.download = `room-${room.number}-${size}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error('Не удалось выгрузить карточку');
+    }
+  };
+
   const downloadZpl = async () => {
     try {
       const { data: zpl } = await warehouseApi.roomDoorCardZpl(room.id);
@@ -485,9 +606,7 @@ function RoomQrModal({ room, onClose }) {
         <div className="wh-modal__body">
           <select value={size} onChange={e => setSize(e.target.value)}>
             <optgroup label="Brother P-touch E550W">
-              <option value="24x45">Компактная · лента 24 мм · 24 × 45 мм</option>
-              <option value="20x80">Лента 20 мм · этикетка 20 × 80 мм</option>
-              <option value="24x80">Лента 24 мм · этикетка 24 × 80 мм</option>
+              <option value="80x24">Альбомная · лента 24 мм · 80 × 24 мм</option>
             </optgroup>
             <optgroup label="TDP-225">
               <option value="44x25">Этикетка 44 × 25 мм</option>
@@ -506,6 +625,9 @@ function RoomQrModal({ room, onClose }) {
           <button className="wh-btn wh-btn--secondary" onClick={onClose}>Закрыть</button>
           <button className="wh-btn wh-btn--primary" onClick={print} disabled={!svg}>
             <Printer size={15} /> Печать карточки
+          </button>
+          <button className="wh-btn wh-btn--secondary" onClick={downloadPng} disabled={!svg}>
+            <Download size={15} /> Скачать PNG
           </button>
           {size === '44x25' && (
             <button className="wh-btn wh-btn--secondary" onClick={downloadZpl}>

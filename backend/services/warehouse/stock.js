@@ -18,6 +18,11 @@ const {
 } = require('../../models');
 const { generateDocumentNumber } = require('./numbering');
 
+// Пометка на документе и движениях уточнения партии. По ней ОСВ исключает пару
+// из оборотов: количество не двигалось, двигалась только его принадлежность
+// партии, и показывать это приходом и расходом значит выдумывать движение.
+const BATCH_ATTACH = 'batch_attach';
+
 // Типы, увеличивающие остаток в точке «куда», и уменьшающие в точке «откуда».
 const INCOMING = new Set(['receipt', 'return', 'surplus', 'repair_in']);
 const OUTGOING = new Set(['issue', 'writeoff', 'repair_out']);
@@ -63,6 +68,120 @@ async function adjustStock({ nomenclatureId, batchId, storageId, delta, unitCost
   await row.update(patch, { transaction });
   return row;
 }
+
+/**
+ * Привязка партии к уже лежащему остатку: «на коробке написан срок годности».
+ *
+ * Обычно партия попадает на остаток при приходе. Но всё, что поставлено на учёт
+ * по ведомости 1С, лежит без партии — сроков в файле нет
+ * (services/warehouse/osvMaterialize.js), — и проставить срок было нечем: партия
+ * из справочника к лежащей строке не цепляется, а приход по новой партии рисует
+ * вторую строку рядом с первой.
+ *
+ * Количество при этом не меняется — меняется только то, к какой партии остаток
+ * отнесён. Но в журнал это всё равно пишется парой движений: расход из «без
+ * партии» и приход в партию, оба в том же месте хранения. Без них контрольная
+ * сверка (reconcileStock) увидит остаток, которого нет в журнале, и объявит, что
+ * склад правили в обход модуля, — то есть соврёт. Пара сходится в ноль по
+ * каждому месту хранения, поэтому на сальдо она не влияет, а из оборотов ОСВ
+ * исключается по reasonCode.
+ */
+async function attachBatchToStock({ stockId, batchNumber, expiryDate, user, scopedRoomIds = null }, options = {}) {
+  const run = async (transaction) => {
+    const stock = await WhStock.findByPk(stockId, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!stock) throw fail(404, 'Строка остатка не найдена');
+
+    const storage = await WhStorage.findByPk(stock.storageId, { transaction });
+    if (scopedRoomIds !== null && !scopedRoomIds.includes(storage?.roomId)) {
+      throw fail(403, 'Кабинет не в вашей зоне ответственности');
+    }
+
+    // Номера серии на упаковке может не быть — бывает одна дата. Пустым номер
+    // оставить нельзя (он обязателен и уникален в паре с номенклатурой), поэтому
+    // собираем его из самой даты: одинаковый у всех коробок с тем же сроком, и
+    // на экране читается как есть.
+    const number = String(batchNumber || '').trim() || `б/н до ${ruDate(expiryDate)}`;
+
+    const [batch, isNew] = await WhBatch.findOrCreate({
+      where: { nomenclatureId: stock.nomenclatureId, batchNumber: number },
+      defaults: { expiryDate: expiryDate || null, unitCost: stock.unitCost },
+      transaction,
+    });
+    if (!isNew && expiryDate && String(batch.expiryDate) !== String(expiryDate)) {
+      await batch.update({ expiryDate }, { transaction });
+    }
+
+    // Раз у позиции появился срок годности, дальше она учитывается по партиям:
+    // иначе следующий приход снова ляжет строкой без партии, и FEFO обойдёт
+    // коробку с ближайшим сроком.
+    await WhNomenclature.update(
+      { tracksBatch: true },
+      { where: { id: stock.nomenclatureId }, transaction },
+    );
+
+    const qty = Number(stock.quantity);
+    if (stock.batchId === batch.id || qty <= 0) {
+      // Партия та же (правили только дату) либо остаток нулевой — двигать нечего.
+      if (stock.batchId !== batch.id) await stock.update({ batchId: batch.id }, { transaction });
+      return { batch, moved: 0 };
+    }
+
+    const unitCost = Number(stock.unitCost);
+    const from = { nomenclatureId: stock.nomenclatureId, storageId: stock.storageId, transaction };
+
+    // Через adjustStock, а не UPDATE по строке: если такая партия уже лежит в
+    // этом месте хранения отдельной строкой, две строки обязаны слиться — второй
+    // их не пустит частичный уникальный индекс warehouse_stock_key_batch.
+    await adjustStock({ ...from, batchId: stock.batchId, delta: -qty, transaction });
+    await adjustStock({ ...from, batchId: batch.id, delta: qty, unitCost, transaction });
+
+    const doc = await WhDocument.create({
+      number: await generateDocumentNumber({ type: 'transfer', transaction }),
+      type: 'transfer',
+      date: new Date(),
+      status: 'signed',
+      fromRoomId: storage?.roomId || null,
+      toRoomId: storage?.roomId || null,
+      reasonCode: BATCH_ATTACH,
+      reasonText: `Уточнение партии и срока годности: ${number}`,
+      createdBy: user?.id || null,
+      signedBy: user?.id || null,
+      signedAt: new Date(),
+      oneCStatus: 'disabled',
+    }, { transaction });
+
+    // Два движения, а не одно с «откуда» и «куда»: движение несёт одну партию, а
+    // смысл операции ровно в том, что партия у количества меняется.
+    const common = {
+      documentId: doc.id, type: 'transfer',
+      nomenclatureId: stock.nomenclatureId,
+      quantity: qty, unitCost, amount: qty * unitCost,
+      reasonCode: BATCH_ATTACH,
+      reasonText: doc.reasonText,
+      initiatorUserId: user?.id || null,
+      occurredAt: doc.date,
+    };
+    await WhMovement.create({
+      ...common, batchId: stock.batchId || null,
+      fromStorageId: stock.storageId, fromRoomId: storage?.roomId || null,
+    }, { transaction });
+    await WhMovement.create({
+      ...common, batchId: batch.id,
+      toStorageId: stock.storageId, toRoomId: storage?.roomId || null,
+    }, { transaction });
+
+    return { batch, moved: qty };
+  };
+
+  return options.transaction ? run(options.transaction) : sequelize.transaction(run);
+}
+
+const fail = (status, message) => Object.assign(new Error(message), { status });
+
+const ruDate = (iso) => {
+  const [year, month, day] = String(iso || '').split('-');
+  return day ? `${day}.${month}.${year}` : 'без срока';
+};
 
 /**
  * Подбор партий под расход по FEFO. Возвращает список {batchId, quantity,
@@ -343,6 +462,8 @@ async function reconcileStock() {
 
 module.exports = {
   adjustStock,
+  attachBatchToStock,
+  BATCH_ATTACH,
   pickBatchesFefo,
   createDocument,
   reconcileStock,

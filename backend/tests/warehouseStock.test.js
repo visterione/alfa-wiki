@@ -52,6 +52,16 @@ function warehouseHarness() {
     const value = row({ id: `stock-${ledger.length + 1}`, unitCost: 0, ...data });
     ledger.push(value); return value;
   });
+  replace(models.WhStock, 'findByPk', async id => ledger.find(x => x.id === id) || null);
+  replace(models.WhBatch, 'findOrCreate', async ({ where, defaults }) => {
+    const found = [...batches.values()].find(b =>
+      b.nomenclatureId === where.nomenclatureId && b.batchNumber === where.batchNumber);
+    if (found) return [found, false];
+    const value = row({ id: `batch-${batches.size + 1}`, ...where, ...defaults });
+    batches.set(value.id, value);
+    return [value, true];
+  });
+  replace(models.WhNomenclature, 'update', async () => [1]);
   replace(models.WhStock, 'findAll', async ({ where }) => ledger
     .filter(x => x.nomenclatureId === where.nomenclatureId && x.storageId === where.storageId && Number(x.quantity) > 0)
     .filter(x => !where.batchId || x.batchId === where.batchId)
@@ -114,6 +124,44 @@ test('выдача не допускает отрицательный остат
   assert.equal(h.quantity('storage-a'), 2);
 });
 
+test('списание не уводит остаток в минус, в том числе двумя строками сразу', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  await stockService.adjustStock({
+    nomenclatureId: 'nom-1', storageId: 'storage-a', delta: 2, unitCost: 10,
+    transaction: { LOCK: { UPDATE: 'UPDATE' } },
+  });
+
+  // Списание берёт и просроченное (для того и списывают), поэтому проверку
+  // остатка оно проходит по другой ветке, чем выдача, — и её нужно закрыть
+  // отдельно: в форме именно из списания можно было запросить сто штук из двух.
+  await assert.rejects(
+    stockService.createDocument({
+      type: 'writeoff', user: { id: 'user-1' }, reasonText: 'test',
+      lines: [{ nomenclatureId: 'nom-1', quantity: 100, fromStorageId: 'storage-a' }],
+    }),
+    /Недостаточно годного остатка/,
+  );
+  assert.equal(h.quantity('storage-a'), 2);
+
+  // Две строки по две штуки: каждая по отдельности остатку не противоречит, а
+  // вместе просят четыре из двух — вторая упирается в то, что первая уже забрала.
+  //
+  // Остаток после этого не проверяем: откат делает транзакция, а в харнессе она
+  // подменена сквозным вызовом без отката, и первая строка остаётся применённой.
+  // На живой базе обе строки уходят одним sequelize.transaction.
+  await assert.rejects(
+    stockService.createDocument({
+      type: 'writeoff', user: { id: 'user-1' }, reasonText: 'test',
+      lines: [
+        { nomenclatureId: 'nom-1', quantity: 2, fromStorageId: 'storage-a' },
+        { nomenclatureId: 'nom-1', quantity: 2, fromStorageId: 'storage-a' },
+      ],
+    }),
+    /Недостаточно годного остатка/,
+  );
+});
+
 test('явно выбранная просроченная партия запрещена к выдаче', async t => {
   const h = warehouseHarness();
   t.after(() => h.restore());
@@ -146,4 +194,64 @@ test('FEFO выбирает партию с ближайшим сроком пе
     transaction: { LOCK: { UPDATE: 'UPDATE' } },
   });
   assert.deepEqual(picks.map(p => [p.batchId, p.quantity]), [['early', 5], ['late', 1]]);
+});
+
+test('срок годности привязывает партию к лежащему остатку и балансирует журнал', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  h.ledger.push({
+    id: 'stock-osv', nomenclatureId: 'nom-1', batchId: null, storageId: 'storage-a',
+    quantity: 10, unitCost: 100, async update(patch) { Object.assign(this, patch); },
+  });
+
+  const { batch, moved } = await stockService.attachBatchToStock({
+    stockId: 'stock-osv', expiryDate: '2027-01-31', user: { id: 'user-1' },
+  });
+
+  assert.equal(moved, 10);
+  // Номер серии собран из даты: на упаковке его может не быть вовсе.
+  assert.equal(batch.batchNumber, 'б/н до 31.01.2027');
+  assert.equal(h.quantity('storage-a'), 0);
+  assert.equal(h.quantity('storage-a', batch.id), 10);
+
+  // Пара движений сходится в ноль по каждой партии — иначе контрольная сверка
+  // объявит, что остаток правили в обход модуля.
+  const net = new Map();
+  for (const m of h.movements) {
+    const key = m.batchId || 'none';
+    const sign = m.toStorageId ? 1 : -1;
+    net.set(key, (net.get(key) || 0) + sign * Number(m.quantity));
+  }
+  assert.equal(net.get('none'), -10);
+  assert.equal(net.get(batch.id), 10);
+  assert.equal(h.movements.every(m => m.reasonCode === stockService.BATCH_ATTACH), true);
+});
+
+test('коробка с уже заведённой партией сливается с ней в одну строку остатка', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  h.batches.set('batch-known', {
+    id: 'batch-known', nomenclatureId: 'nom-1', batchNumber: 'A-77',
+    expiryDate: '2027-01-31', isBlocked: false,
+    async update(patch) { Object.assign(this, patch); },
+  });
+  h.ledger.push({
+    id: 'stock-known', nomenclatureId: 'nom-1', batchId: 'batch-known', storageId: 'storage-a',
+    quantity: 4, unitCost: 50, async update(patch) { Object.assign(this, patch); },
+  });
+  h.ledger.push({
+    id: 'stock-osv', nomenclatureId: 'nom-1', batchId: null, storageId: 'storage-a',
+    quantity: 6, unitCost: 100, async update(patch) { Object.assign(this, patch); },
+  });
+
+  await stockService.attachBatchToStock({
+    stockId: 'stock-osv', batchNumber: 'A-77', expiryDate: '2027-01-31', user: { id: 'user-1' },
+  });
+
+  // Вторая строка по той же партии в том же месте хранения невозможна —
+  // количество обязано слиться, а цена стать средневзвешенной.
+  assert.equal(h.ledger.filter(x => x.batchId === 'batch-known').length, 1);
+  assert.equal(h.quantity('storage-a', 'batch-known'), 10);
+  assert.equal(h.quantity('storage-a'), 0);
+  assert.equal(Number(h.ledger.find(x => x.id === 'stock-known').unitCost), 80);
 });

@@ -19,7 +19,7 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
-const { reconcileStock } = require('../../services/warehouse/stock');
+const { reconcileStock, attachBatchToStock } = require('../../services/warehouse/stock');
 
 // ── Категории ────────────────────────────────────────────────────────────────
 router.get('/categories', authenticate, requireWarehouse(), async (req, res) => {
@@ -286,6 +286,43 @@ router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
     });
   } catch (err) {
     console.error('GET warehouse/stock error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Срок годности на уже лежащем остатке.
+ *
+ * Партия в модуле привязывается к остатку в момент прихода, и для всего, что
+ * приехало из ОСВ 1С, срока годности не существует: в файле его нет, позиции
+ * создаются без партий (services/warehouse/osvMaterialize.js). Проставить его
+ * потом было нечем — завести партию в справочнике мало, она не цепляется к
+ * лежащей строке остатка, а приход по новой партии рисует вторую строку рядом с
+ * первой. Отсюда эта ручка: она правит привязку существующей строки, не трогая
+ * количество.
+ *
+ * Партия ищется по номеру, а не создаётся всегда новой: одна и та же серия
+ * приходит в несколько кабинетов, и плодить по партии на кабинет значит потерять
+ * возможность заблокировать её разом при отзыве производителем.
+ */
+router.patch('/stock/:id/batch', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
+  try {
+    const expiryDate = req.body.expiryDate || null;
+    const batchNumber = String(req.body.batchNumber || '').trim();
+    if (!expiryDate && !batchNumber) {
+      return res.status(400).json({ error: 'Нужен срок годности или номер серии' });
+    }
+
+    const result = await attachBatchToStock({
+      stockId: req.params.id,
+      expiryDate, batchNumber,
+      user: req.user,
+      scopedRoomIds: await req.warehouse.scopedRoomIds(),
+    });
+    res.json({ batch: result.batch, moved: result.moved });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('PATCH warehouse/stock/:id/batch error:', err);
     res.status(500).json({ error: err.message });
   }
 });

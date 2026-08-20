@@ -24,6 +24,15 @@ const MEMBER_PAGE = 50;
 
 function genId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
+function plural(n, one, few, many) {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  const mod10 = n % 10;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
 function SearchableSelect({ value, onChange, options, placeholder = '— выберите —' }) {
   const [open,   setOpen]   = useState(false);
   const [search, setSearch] = useState('');
@@ -125,7 +134,8 @@ function Avatar({ user }) {
 
 export default function DivisionAccessPanel({
   divisionId, divisionName, divisionDoctorIds = [], divisionRates = [],
-  onRenamed, onMembersChanged, doctors = [], getClinicName, getClinicColor,
+  onRenamed, onMembersChanged, onDeleted, canDelete = false,
+  doctors = [], getClinicName, getClinicColor,
   scheduleCategories = [], allRoles = [], allProfessions = [],
 }) {
   const [accessData, setAccessData] = useState(null);
@@ -165,6 +175,15 @@ export default function DivisionAccessPanel({
   const [memberVisible, setMemberVisible] = useState(MEMBER_PAGE);
   useEffect(() => { setMemberIds(divisionDoctorIds); }, [divisionDoctorIds]);
   useEffect(() => { setMemberVisible(MEMBER_PAGE); }, [memberSearch, memberFilterClinic, showAddMember]);
+
+  // ── Удаление подразделения ────────────────────────────────────────────────
+  // Раньше кнопка удаления жила в списке подразделений и срабатывала с одного
+  // клика — на этом несколько раз потеряли состав со ставками, а восстановить
+  // можно только руками. Теперь она спрятана в самый низ настроек и закрыта
+  // модалкой, где надо набрать название подразделения.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteInput,   setDeleteInput]   = useState('');
+  const [deleting,      setDeleting]      = useState(false);
 
   const memberSet = new Set(memberIds);
   const members = doctors.filter(d => memberSet.has(d.id));
@@ -448,6 +467,40 @@ export default function DivisionAccessPanel({
       toast.error('Ошибка добавления');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const currentName = (nameValue || divisionName || '').trim();
+  // Сравниваем без учёта регистра и лишних пробелов: защита нужна от промаха
+  // мышью, а не от того, что человек не попал в Caps Lock.
+  const normalize = (str) => str.trim().replace(/\s+/g, ' ').toLowerCase();
+  const deleteConfirmed = !!currentName && normalize(deleteInput) === normalize(currentName);
+
+  const closeDeleteModal = useCallback(() => {
+    if (deleting) return;
+    setConfirmDelete(false);
+    setDeleteInput('');
+  }, [deleting]);
+
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const onKey = e => { if (e.key === 'Escape') closeDeleteModal(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [confirmDelete, closeDeleteModal]);
+
+  const handleDeleteDivision = async () => {
+    if (!deleteConfirmed || deleting) return;
+    setDeleting(true);
+    try {
+      await divisionsApi.delete(divisionId);
+      toast.success(`Подразделение «${currentName}» удалено`);
+      // Дальше родитель закроет настройки и уберёт строку из списка, поэтому
+      // сбрасывать локальное состояние уже некому и незачем.
+      onDeleted?.(divisionId);
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Ошибка удаления');
+      setDeleting(false);
     }
   };
 
@@ -876,7 +929,90 @@ export default function DivisionAccessPanel({
           })}
         </div>
 
+        {/* Удаление — в самом низу, ниже состава: сюда ещё надо доскроллить */}
+        {canDelete && (
+          <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px dashed #fecaca' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#dc2626', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Опасная зона
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.45, marginBottom: 8 }}>
+              Удаление подразделения снимает его состав, ставки и выданные доступы.
+              Восстановить их можно будет только вручную.
+            </div>
+            <button
+              onClick={() => { setDeleteInput(''); setConfirmDelete(true); }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                height: 28, padding: '0 10px', fontSize: 12, fontWeight: 500,
+                borderRadius: 6, border: '1px solid #fca5a5', background: '#fff',
+                color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+              </svg>
+              Удалить подразделение
+            </button>
+          </div>
+        )}
+
       </div>
+
+      {/* Подтверждение удаления — через портал, т.к. панель обрезает overflow */}
+      {confirmDelete && ReactDOM.createPortal(
+        <div className="rb-modal-overlay" onClick={closeDeleteModal}>
+          <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#dc2626' }}>Удалить подразделение?</h3>
+              <button className="rb-modal-close" onClick={closeDeleteModal} disabled={deleting}>×</button>
+            </div>
+            <div className="rb-modal-body" style={{ padding: '8px 16px 16px' }}>
+              <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fef2f2', borderLeft: '3px solid #dc2626', marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', marginBottom: 6 }}>
+                  «{currentName}»
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.5 }}>
+                  Будут потеряны: состав — {members.length} {plural(members.length, 'сотрудник', 'сотрудника', 'сотрудников')},
+                  {' '}ставки — {savedRates.length} {plural(savedRates.length, 'запись', 'записи', 'записей')},
+                  {' '}доступы — {(accessData?.access || []).length} {plural((accessData?.access || []).length, 'пользователь', 'пользователя', 'пользователей')}.
+                  Расписание и настройки самих сотрудников останутся, но собирать подразделение
+                  придётся заново.
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>
+                Чтобы подтвердить, введите название подразделения:
+              </div>
+              <input
+                autoFocus
+                value={deleteInput}
+                onChange={e => setDeleteInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && deleteConfirmed) handleDeleteDivision(); }}
+                disabled={deleting}
+                placeholder={currentName}
+                style={{
+                  width: '100%', height: 32, padding: '0 10px', fontSize: 13,
+                  border: `1px solid ${deleteConfirmed ? '#dc2626' : 'var(--rb-border)'}`,
+                  borderRadius: 6, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+                }}
+              />
+            </div>
+            <div className="rb-modal-footer">
+              <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={closeDeleteModal} disabled={deleting}>
+                Отмена
+              </button>
+              <button
+                className="rb-btn rb-btn-danger rb-btn-sm"
+                onClick={handleDeleteDivision}
+                disabled={!deleteConfirmed || deleting}
+              >
+                {deleting ? 'Удаление...' : 'Удалить навсегда'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

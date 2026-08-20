@@ -87,61 +87,88 @@ async function qrPngDataUrl(text, { margin = 1, width = 512 } = {}) {
 
 /**
  * Этикетка как самостоятельный SVG в миллиметрах — так её можно и напечатать из
- * браузера в точный размер, и вставить в PDF-лист с несколькими этикетками.
+ * браузера в точный размер и растрировать в PNG без промежуточного листа A4.
  *
- * Brother P-touch E550W печатает на узкой ленте. Доступны две ширины — 20 и
- * 24 мм; длина отрезка задаётся драйвером. Оборудование печатается только в
- * альбомных 80x20/80x24. Для кабинетов есть компактный профиль 24x45 и длинные
- * вертикальные 20x80/24x80.
+ * Brother P-touch E550W печатает на узкой ленте длиной по потребности. Из
+ * ширин оставлена одна — 24 мм: на 20 мм после вычета неснимаемых полей
+ * оставалось около 13 мм печати, и на них не помещалось ничего, кроме кода.
+ * Два почти одинаковых размера в списке только заставляли выбирать между
+ * плохим и никаким.
+ */
+/**
+ * Размеры этикеток.
+ *
+ * h — ширина ленты, то есть размер этикетки. printH — сколько из неё реально
+ * запечатывается: у Brother лента проходит мимо головки, которая не достаёт до
+ * её краёв, и по краям остаётся неснимаемое поле. На ленте 24 мм печатается
+ * примерно 17–18 мм посередине, и рисунок, свёрстанный на все 24, теряет
+ * верхнюю и нижнюю строки — именно так пропадали «АЛЬФА ВИКИ: СКЛАД» и
+ * наименование.
+ *
+ * Этикетка при этом остаётся во всю ширину ленты: printH задаёт не её размер, а
+ * вертикальный отступ содержимого от краёв — (h - printH) / 2 сверху и снизу.
+ * Строки уходят внутрь, в ту полосу, до которой головка достаёт, а сама этикетка
+ * не превращается в узкую наклейку с белыми полями по бокам.
+ *
+ * Значение взято с запасом (17.5 из 18.1 по паспорту TZe-ленты): миллиметр
+ * запаса дешевле, чем срезанная строка, а на конкретной паре «принтер + лента»
+ * его легко подправить здесь одним числом — вёрстка пересчитается сама.
+ *
+ * У TDP-225 высечка 44 × 25 печатается целиком, printH ему не нужен.
  */
 const LABEL_SIZES = {
-  '24x45': {
-    w: 24, h: 45, pad: 1.5, qr: 18, gap: 1.1,
-    numberSize: 2.8, nameSize: 1.8, metaSize: 1.45, footSize: 1.4,
-    nameLines: 2, layout: 'vertical', printer: 'brother', compactRoom: true,
-  },
-  '20x80': {
-    w: 20, h: 80, pad: 1.5, qr: 17, gap: 1.5,
-    numberSize: 2.6, nameSize: 2.1, metaSize: 1.7, footSize: 1.55,
-    nameLines: 3, layout: 'vertical', printer: 'brother',
-  },
-  '24x80': {
-    w: 24, h: 80, pad: 1.5, qr: 21, gap: 1.5,
-    numberSize: 3.0, nameSize: 2.3, metaSize: 1.9, footSize: 1.7,
-    nameLines: 3, layout: 'vertical', printer: 'brother',
-  },
-  '80x20': {
-    w: 80, h: 20, pad: 1.5, qr: 17, gap: 1.5,
-    numberSize: 2.7, nameSize: 1.9, metaSize: 1.5, footSize: 1.25,
-    nameLines: 2, layout: 'horizontal', printer: 'brother', rotated: true,
-  },
   '80x24': {
-    w: 80, h: 24, pad: 1.5, qr: 21, gap: 1.5,
-    numberSize: 3, nameSize: 2.1, metaSize: 1.65, footSize: 1.4,
-    nameLines: 3, layout: 'horizontal', printer: 'brother', rotated: true,
+    // Кегли выросли за счёт убранной шапки: на ленте важны только код и
+    // наименование, и читать их приходится с вытянутой руки, а не с ладони.
+    w: 80, h: 24, printH: 17.5, pad: 1.4, qr: 14.7, gap: 1.6,
+    // numberSize — жёсткий кегль номера, nameSize — только желаемый: если
+    // наименование в него не укладывается целиком, оно мельчает до nameMin.
+    numberSize: 5.2, nameSize: 2.5, nameMin: 1.35, nameGap: 0.7,
+    metaSize: 1.4, footSize: 1.25,
+    layout: 'horizontal', printer: 'brother', rotated: true,
   },
   '44x25': {
     w: 44, h: 25, pad: 1.5, qr: 16, gap: 1.5,
-    numberSize: 2.7, nameSize: 2.05, metaSize: 1.7, footSize: 1.5,
-    nameLines: 3, layout: 'horizontal', printer: 'tdp225',
+    numberSize: 2.7, nameSize: 2.05, nameMin: 1.2, nameGap: 0.6,
+    metaSize: 1.7, footSize: 1.5,
+    layout: 'horizontal', printer: 'tdp225',
   },
 };
 
 /**
  * Растеризует готовую этикетку в физический размер конкретного принтера.
  * PNG выбран намеренно: JPEG размывает границы модулей QR артефактами сжатия.
+ *
+ * rotate — поворот в градусах для ленточных принтеров. Brother печатает
+ * непрерывной лентой шириной 24 мм: печатающая головка пишет поперёк ленты, и
+ * страницу драйвер ждёт «стоя» — 24 мм в ширину, 80 мм в длину, — а сама
+ * этикетка на ней лежит боком. Лежачий файл 80 × 24 такой драйвер разворачивает
+ * сам и как придётся, поэтому поворот делается здесь, на растеризации: плотность
+ * при этом остаётся прежней, и физический размер получается честные 24 × 80 мм.
+ *
+ * Поворот только у скачиваемого файла. Печать прямо из браузера идёт своей
+ * страницей с @page нужного размера — там разворачивать нечего.
  */
-async function labelPng(svg, size) {
+async function labelPng(svg, size, { rotate = 0 } = {}) {
   const sizeKey = LABEL_SIZES[size] ? size : '80x24';
   const cfg = LABEL_SIZES[sizeKey];
   const dpi = cfg.printer === 'tdp225' ? 203 : 180;
   const width = Math.round(cfg.w * dpi / 25.4);
   const height = Math.round(cfg.h * dpi / 25.4);
 
-  return sharp(Buffer.from(svg), { density: dpi })
-    .resize(width, height, { fit: 'fill' })
+  const page = sharp(Buffer.from(svg), { density: dpi })
+    .resize(width, height, { fit: 'fill' });
+
+  const png = { compressionLevel: 9, palette: true, colours: 2, dither: 0 };
+  if (!rotate) return page.withMetadata({ density: dpi }).png(png).toBuffer();
+
+  // Поворот — отдельным проходом по готовой странице. В одной цепочке sharp
+  // выстраивает операции своим порядком и разворачивает картинку раньше, чем
+  // добавит поля: страница выходила повёрнутой полосой без них.
+  return sharp(await page.png(png).toBuffer())
+    .rotate(rotate)
     .withMetadata({ density: dpi })
-    .png({ compressionLevel: 9, palette: true, colours: 2, dither: 0 })
+    .png(png)
     .toBuffer();
 }
 
@@ -189,6 +216,32 @@ function fitFontSize(text, widthMm, preferred, min) {
   let size = preferred;
   while (size > min && textWidth(text, size) > widthMm) size -= 0.1;
   return Math.round(size * 10) / 10;
+}
+
+/**
+ * Кегль и разбивка наименования так, чтобы оно поместилось ЦЕЛИКОМ.
+ *
+ * Инвентарный номер сжимать нельзя — его читают посимвольно, — а наименование
+ * можно: лучше строчка помельче, чем «Комплекс аппаратно-программный для
+ * ультразвуковой диагностики Mindray DC-70…» с многоточием вместо конца. По
+ * обрезанному названию вещь на полке не опознать, а ради этого этикетку и
+ * читают.
+ *
+ * Кегль перебирается от желаемого вниз: берём первый, при котором весь текст
+ * укладывается в отведённую высоту. Число строк при этом не ограничено — его
+ * ограничивает сама высота.
+ */
+function fitTextBlock(text, widthMm, heightMm, preferred, min, lineRatio) {
+  const lineCount = size => wrapToWidth(text, widthMm, size, 99).length;
+  for (let size = preferred; size >= min; size = Math.round((size - 0.05) * 100) / 100) {
+    if (lineCount(size) * size * lineRatio <= heightMm) {
+      return { size, lines: wrapToWidth(text, widthMm, size, 99) };
+    }
+  }
+  // Не поместилось даже минимальным кеглем: показываем сколько влезет. Это уже
+  // не про вёрстку — столько текста на ленту шириной в палец не нанести.
+  const maxLines = Math.max(1, Math.floor(heightMm / (min * lineRatio)));
+  return { size: min, lines: wrapToWidth(text, widthMm, min, maxLines) };
 }
 
 function escapeXml(s) {
@@ -274,21 +327,17 @@ function wrapToWidth(text, widthMm, fontSize, maxLines) {
   return lines.slice(0, maxLines);
 }
 
-/** Обрезает строку в одну линию по ширине. */
-function clipToWidth(text, widthMm, fontSize) {
-  const str = String(text || '');
-  if (!str) return '';
-  if (textWidth(str, fontSize) <= widthMm) return str;
-  let cut = str.length;
-  while (cut > 1 && textWidth(`${str.slice(0, cut)}…`, fontSize) > widthMm) cut--;
-  return `${str.slice(0, cut)}…`;
-}
+/**
+ * Округляет координату для SVG. Деления вроде (17.5 - 14.7) / 2 дают в двоичной
+ * дроби хвост из семнадцати знаков, и он уезжает прямо в разметку.
+ */
+const mm = value => Math.round(value * 1000) / 1000;
 
 /**
  * SVG этикетки актива.
  */
 async function assetLabelSvg(asset, { size = '80x24' } = {}) {
-  const equipmentSizes = ['80x20', '80x24', '44x25'];
+  const equipmentSizes = ['80x24', '44x25'];
   const sizeKey = equipmentSizes.includes(size) ? size : '80x24';
   const cfg = LABEL_SIZES[sizeKey];
   const url = assetPublicUrl(asset.publicToken);
@@ -306,27 +355,37 @@ async function assetLabelSvg(asset, { size = '80x24' } = {}) {
   const qrViewBox = (rawQr.match(/viewBox="([^"]+)"/) || [])[1] || '0 0 100 100';
 
   const { w, h, pad, qr, gap } = cfg;
+  // Отступ содержимого сверху и снизу: сама этикетка остаётся во всю ширину
+  // ленты, внутрь уезжают только строки и код — в полосу, до которой достаёт
+  // головка (см. LABEL_SIZES). Рамка при этом идёт по краю ленты: её верх и низ
+  // приходятся на неснимаемое поле и на ленте видны не будут, но уменьшать ради
+  // них саму этикетку значит печатать узкую наклейку посреди ленты.
+  const padY = pad + (h - (cfg.printH || h)) / 2;
 
   if (cfg.layout === 'horizontal') {
     const colX = pad + qr + gap;
     const colW = w - colX - pad;
     const colCenter = colX + colW / 2;
     const numberSize = fitFontSize(asset.inventoryNumber, colW, cfg.numberSize, 1.45);
-    const nameLines = wrapToWidth(asset.name, colW, cfg.nameSize, cfg.nameLines);
-    const brandSize = cfg.metaSize;
-    const brandY = pad + brandSize;
-    const nameStep = cfg.nameSize * LINE;
-    const nameStart = h - pad - Math.max(0, nameLines.length - 1) * nameStep;
-    const numberAreaTop = brandY + brandSize * 0.7;
-    const numberAreaBottom = nameStart - cfg.nameSize * 1.15;
-    const numberY = (numberAreaTop + numberAreaBottom) / 2 + numberSize * 0.35;
-    const rows = [`<text x="${colCenter}" y="${brandY}" text-anchor="middle" font-family="${FONT}"
-          font-size="${brandSize}" font-weight="700" fill="#000">АЛЬФА ВИКИ: СКЛАД</text>`];
-    rows.push(`<text x="${colCenter}" y="${numberY}" text-anchor="middle" font-family="${FONT}" font-size="${numberSize}"
-          font-weight="700" fill="#000">${escapeXml(asset.inventoryNumber)}</text>`);
+    // Высота под наименование — всё, что остаётся от полосы после номера. Номер
+    // держит свой кегль, наименование подстраивается: оно длиннее и терпимее к
+    // мелкому шрифту, а обрезанным быть не должно.
+    const nameMaxH = (h - padY * 2) - numberSize - cfg.nameGap;
+    const { size: nameSize, lines: nameLines } =
+      fitTextBlock(asset.name, colW, nameMaxH, cfg.nameSize, cfg.nameMin, LINE);
+    const nameStep = nameSize * LINE;
+    const nameStart = h - padY - Math.max(0, nameLines.length - 1) * nameStep;
+    // Шапки «АЛЬФА ВИКИ: СКЛАД» больше нет: на этикетке ей отвечать не на что —
+    // кто её читает, и так стоит внутри организации, — а высоту она отбирала у
+    // инвентарного номера, ради которого этикетку и читают. Номер занял всё
+    // освободившееся место сверху.
+    const numberAreaBottom = nameStart - nameSize * 1.15;
+    const numberY = (padY + numberAreaBottom) / 2 + numberSize * 0.35;
+    const rows = [`<text x="${colCenter}" y="${mm(numberY)}" text-anchor="middle" font-family="${FONT}" font-size="${numberSize}"
+          font-weight="700" fill="#000">${escapeXml(asset.inventoryNumber)}</text>`];
 
     for (const [index, line] of nameLines.entries()) {
-      rows.push(`<text x="${colX}" y="${nameStart + index * nameStep}" font-family="${FONT}" font-size="${cfg.nameSize}"
+      rows.push(`<text x="${colX}" y="${mm(nameStart + index * nameStep)}" font-family="${FONT}" font-size="${nameSize}"
           fill="#000">${escapeXml(line)}</text>`);
     }
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm"
@@ -334,7 +393,7 @@ async function assetLabelSvg(asset, { size = '80x24' } = {}) {
   <rect x="0" y="0" width="${w}" height="${h}" fill="#fff"/>
   <rect x="0.15" y="0.15" width="${w - 0.3}" height="${h - 0.3}" fill="none"
         stroke="#000" stroke-width="0.3" rx="0.8"/>
-  <svg x="${pad}" y="${(h - qr) / 2}" width="${qr}" height="${qr}" viewBox="${qrViewBox}"
+  <svg x="${mm(pad)}" y="${mm((h - qr) / 2)}" width="${qr}" height="${qr}" viewBox="${qrViewBox}"
        preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
   ${rows.join('\n  ')}
 </svg>`;
@@ -478,20 +537,23 @@ function toPublicAsset(asset, { maintenanceOrders = [], repairs = [], movements 
 }
 
 /**
- * Этикетка на дверь кабинета. Для Brother по умолчанию используется компактная
- * вертикальная раскладка 24x45; длинные 20x80/24x80 оставлены как варианты.
- * TDP-225 — отдельная горизонтальная раскладка 44x25.
- * На этикетке остаётся только идентификация кабинета и сам код: инструкции про
- * портал и авторизацию занимали полезную площадь и дублировали поведение ссылки.
+ * Этикетка на дверь кабинета. Brother использует альбомную 80x24, TDP-225 —
+ * отдельную горизонтальную раскладку 44x25.
+ *
+ * На этикетке остаётся только то, ради чего к двери подходят: номер кабинета и
+ * код. Инструкции про портал и авторизацию убраны давно, а следом — шапка
+ * «АЛЬФА ВИКИ: СКЛАД» и подвал с названием и адресом медцентра. На ленте
+ * шириной в палец каждая такая строка отбирает высоту у номера, а сообщает то,
+ * что и так известно всякому, кто стоит перед этой дверью.
  */
-async function roomDoorCardSvg(room, { orgName = '', orgAddress = '', size = '24x45' } = {}) {
-  const sizeKey = LABEL_SIZES[size] ? size : '24x45';
+async function roomDoorCardSvg(room, { size = '80x24' } = {}) {
+  const roomSizes = ['80x24', '44x25'];
+  const sizeKey = roomSizes.includes(size) ? size : '80x24';
   const cfg = LABEL_SIZES[sizeKey];
   const W = cfg.w, H = cfg.h, PAD = cfg.pad;
   const FONT = 'Helvetica, Arial, sans-serif';
   const LINE = 1.28;
   const qrSize = cfg.qr;
-  const inner = W - PAD * 2;
   const center = W / 2;
 
   const url = roomAppUrl(room.id);
@@ -503,48 +565,64 @@ async function roomDoorCardSvg(room, { orgName = '', orgAddress = '', size = '24
     .trim();
   const qrViewBox = (rawQr.match(/viewBox="([^"]+)"/) || [])[1] || '0 0 100 100';
 
-  const titleSize = cfg.compactRoom ? 1.8 : (sizeKey === '24x80' ? 2.2 : 2);
-  const maxNumberSize = cfg.compactRoom ? 4.5 : (sizeKey === '24x80' ? 5.5 : 5);
-  const minNumberSize = 2.5;
-  const nameSize = cfg.compactRoom ? 1.8 : (sizeKey === '24x80' ? 2.2 : 2);
-  const metaSize = cfg.compactRoom ? 1.45 : (sizeKey === '24x80' ? 1.8 : 1.65);
+  if (cfg.rotated) {
+    const isWideTape = sizeKey === '80x24';
+    const colX = PAD + qrSize + cfg.gap;
+    const colW = W - colX - PAD;
+    const colCenter = colX + colW / 2;
+    // На ленте осталось два ряда: номер кабинета и слово «КАБИНЕТ». Всё
+    // остальное — шапка «АЛЬФА ВИКИ / СКЛАД», линия и подвал с названием и
+    // адресом медцентра — убрано. Семь рядов на ленте шириной в палец делали
+    // номер мелким, а сообщали то, что известно всякому, кто стоит перед
+    // дверью. Освободившееся место целиком отдано номеру.
+    const band = cfg.printH || H;
+    const contentTop = (H - band) / 2 + PAD;
+    const contentH = band - PAD * 2;
+    const titleSize = 2.4;
+    const numberSize = fitFontSize(room.number, colW, 8.5, 3);
+    const gapY = 0.9;
+    const stack = numberSize + gapY + titleSize;
+    const numberY = contentTop + (contentH - stack) / 2 + numberSize;
+    const titleY = numberY + gapY + titleSize;
 
-  // Номер подбирается под правую колонку: длинные варианты вроде «312а/2» не
-  // должны обрезаться у края этикетки.
-  const numberSize = fitFontSize(room.number, inner, maxNumberSize, minNumberSize);
-  const nameLines = !cfg.compactRoom && room.name && room.name !== room.number
-    ? wrapToWidth(room.name, inner, nameSize, 2) : [];
-
-  const building = room.floor?.building?.name || '';
-  const floor = room.floor ? `${room.floor.number} этаж` : '';
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm"
+       viewBox="0 0 ${W} ${H}" role="img" aria-label="Карточка кабинета ${escapeXml(room.number)}">
+  <rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>
+  <rect x="0.15" y="0.15" width="${W - 0.3}" height="${H - 0.3}" fill="none"
+        stroke="#000" stroke-width="0.3" rx="0.8"/>
+  <svg x="${mm(PAD)}" y="${mm((H - qrSize) / 2)}" width="${qrSize}" height="${qrSize}"
+       viewBox="${qrViewBox}" preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
+  <text x="${colCenter}" y="${mm(numberY)}" text-anchor="middle" font-family="${FONT}"
+        font-size="${numberSize}" font-weight="700" fill="#000">${escapeXml(room.number)}</text>
+  <text x="${colCenter}" y="${mm(titleY)}" text-anchor="middle" font-family="${FONT}"
+        font-size="${titleSize}" letter-spacing="0.7" fill="#000">КАБИНЕТ</text>
+</svg>`;
+  }
 
   if (cfg.layout === 'horizontal') {
     const colX = PAD + qrSize + cfg.gap;
     const colW = W - colX - PAD;
     const horizontalTitleSize = 2;
     const horizontalNameSize = 2;
-    const horizontalMetaSize = 1.15;
-    const horizontalNumberSize = fitFontSize(room.number, colW, 5.2, 2.5);
+    // Номер стал крупнее: подвал с реквизитами убран, и место под ним свободно.
+    const horizontalNumberSize = fitFontSize(room.number, colW, 6.4, 2.5);
     const horizontalNameLines = room.name && room.name !== room.number
       ? wrapToWidth(room.name, colW, horizontalNameSize, 2) : [];
-    const dividerY = PAD + qrSize + 1;
-    const horizontalBrandSize = 1.1;
+    // Та же чистка, что и на ленте: остаются номер, слово «КАБИНЕТ» и название
+    // кабинета, если оно отличается от номера. Шапка и подвал с реквизитами
+    // медцентра убраны — на двери они не сообщают ничего нового.
     const colCenter = colX + colW / 2;
-    let horizontalY = PAD + horizontalBrandSize;
-    const horizontalRows = [`<text x="${colCenter}" y="${horizontalY}" text-anchor="middle" font-family="${FONT}"
-          font-size="${horizontalBrandSize}" font-weight="700" fill="#000">АЛЬФА ВИКИ</text>`];
-    horizontalY += horizontalBrandSize * 1.2;
-    horizontalRows.push(`<text x="${colCenter}" y="${horizontalY}" text-anchor="middle" font-family="${FONT}"
-          font-size="${horizontalBrandSize}" font-weight="700" fill="#000">СКЛАД</text>`);
-    horizontalY += horizontalTitleSize * 0.9;
-    horizontalRows.push(`<text x="${colCenter}" y="${horizontalY}" text-anchor="middle" font-family="${FONT}"
-          font-size="${horizontalTitleSize}" letter-spacing="0.6" fill="#000">КАБИНЕТ</text>`);
-    horizontalY += horizontalNumberSize + 0.7;
-    horizontalRows.push(`<text x="${colCenter}" y="${horizontalY}" text-anchor="middle" font-family="${FONT}"
-          font-size="${horizontalNumberSize}" font-weight="700" fill="#000">${escapeXml(room.number)}</text>`);
-    horizontalY += horizontalNameSize * 1.35;
+    const numberY = PAD + horizontalNumberSize;
+    const titleY = numberY + horizontalTitleSize + 0.9;
+    const horizontalRows = [
+      `<text x="${colCenter}" y="${mm(numberY)}" text-anchor="middle" font-family="${FONT}"
+          font-size="${horizontalNumberSize}" font-weight="700" fill="#000">${escapeXml(room.number)}</text>`,
+      `<text x="${colCenter}" y="${mm(titleY)}" text-anchor="middle" font-family="${FONT}"
+          font-size="${horizontalTitleSize}" letter-spacing="0.6" fill="#000">КАБИНЕТ</text>`,
+    ];
+    let horizontalY = Math.max(titleY + horizontalNameSize * 1.6, PAD + qrSize + horizontalNameSize);
     for (const line of horizontalNameLines) {
-      horizontalRows.push(`<text x="${colX}" y="${horizontalY}" font-family="${FONT}"
+      horizontalRows.push(`<text x="${center}" y="${mm(horizontalY)}" text-anchor="middle" font-family="${FONT}"
           font-size="${horizontalNameSize}" fill="#000">${escapeXml(line)}</text>`);
       horizontalY += horizontalNameSize * LINE;
     }
@@ -557,148 +635,32 @@ async function roomDoorCardSvg(room, { orgName = '', orgAddress = '', size = '24
   <svg x="${PAD}" y="${PAD}" width="${qrSize}" height="${qrSize}"
        viewBox="${qrViewBox}" preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
   ${horizontalRows.join('\n  ')}
-  <line x1="${PAD}" y1="${dividerY}" x2="${W - PAD}" y2="${dividerY}"
-        stroke="#000" stroke-width="0.25"/>
-  ${[building, floor, orgName, orgAddress].filter(Boolean).map((line, index) =>
-    `<text x="${center}" y="${dividerY + 1.3 + index * 1.3}" text-anchor="middle" font-family="${FONT}"
-        font-size="${horizontalMetaSize}" fill="#000">${escapeXml(clipToWidth(line, inner, horizontalMetaSize))}</text>`).join('\n  ')}
 </svg>`;
   }
 
-  if (cfg.compactRoom) {
-    const compactBrandSize = 1.35;
-    const compactMetaSize = 1.35;
-    const compactTitleSize = 1.8;
-    const compactNumberSize = fitFontSize(room.number, inner, 4.2, 2.5);
-    const compactOrgSize = fitFontSize(orgName, inner, 1.2, 0.9);
-    const compactAddressSize = fitFontSize(orgAddress, inner, 1.2, 0.9);
-    // Реквизиты организации обязаны оставаться последними. Под них резервируем
-    // нижние 7 мм, а QR ставим сразу после номера кабинета.
-    const compactQrY = H - PAD - qrSize - 7;
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm"
-       viewBox="0 0 ${W} ${H}" role="img" aria-label="Карточка кабинета ${escapeXml(room.number)}">
-  <rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>
-  <rect x="0.15" y="0.15" width="${W - 0.3}" height="${H - 0.3}" fill="none"
-        stroke="#000" stroke-width="0.3" rx="0.8"/>
-
-  <text x="${center}" y="${PAD + compactBrandSize}" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactBrandSize}" font-weight="700" fill="#000">АЛЬФА ВИКИ</text>
-  <text x="${center}" y="${PAD + compactBrandSize * (1 + LINE)}" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactBrandSize}" font-weight="700" fill="#000">СКЛАД</text>
-  ${building ? `<text x="${center}" y="7.1" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactMetaSize}" fill="#000">${escapeXml(clipToWidth(building, inner, compactMetaSize))}</text>` : ''}
-  ${floor ? `<text x="${center}" y="8.9" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactMetaSize}" fill="#000">${escapeXml(floor)}</text>` : ''}
-  <text x="${center}" y="14" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactNumberSize}" font-weight="700" fill="#000">${escapeXml(room.number)}</text>
-  <text x="${center}" y="16.8" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactTitleSize}" letter-spacing="0.7" fill="#000">КАБИНЕТ</text>
-  <svg x="${(W - qrSize) / 2}" y="${compactQrY}" width="${qrSize}" height="${qrSize}"
-       viewBox="${qrViewBox}" preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
-  <line x1="${PAD}" y1="38.5" x2="${W - PAD}" y2="38.5"
-        stroke="#000" stroke-width="0.25"/>
-  ${orgName ? `<text x="${center}" y="40.8" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactOrgSize}" fill="#000">${escapeXml(clipToWidth(orgName, inner, compactOrgSize))}</text>` : ''}
-  ${orgAddress ? `<text x="${center}" y="43.5" text-anchor="middle" font-family="${FONT}"
-        font-size="${compactAddressSize}" fill="#000">${escapeXml(clipToWidth(orgAddress, inner, compactAddressSize))}</text>` : ''}
-</svg>`;
-  }
-
-  const brandSize = metaSize;
-  const brandY = PAD + brandSize;
-  const warehouseY = brandY + brandSize * LINE;
-  const qrY = warehouseY + 1;
-  const footerLines = [
-    ...wrapToWidth(orgName, inner, metaSize, 2),
-    ...wrapToWidth(orgAddress, inner, metaSize, 2),
-  ];
-  const footerStep = metaSize * LINE;
-  const footerStart = H - PAD - Math.max(0, footerLines.length - 1) * footerStep;
-  const footerDividerY = footerLines.length ? footerStart - metaSize * 1.15 : H - PAD;
-  let y = qrY + qrSize + cfg.gap + metaSize;
-  const head = [];
-  if (building) {
-    head.push(`<text x="${center}" y="${y}" text-anchor="middle" font-family="${FONT}"
-        font-size="${metaSize}" fill="#000">${escapeXml(clipToWidth(building, inner, metaSize))}</text>`);
-    y += metaSize * LINE;
-  }
-  if (floor) {
-    head.push(`<text x="${center}" y="${y}" text-anchor="middle" font-family="${FONT}"
-        font-size="${metaSize}" fill="#000">${escapeXml(floor)}</text>`);
-    y += metaSize * LINE;
-  }
-  if (cfg.compactRoom) {
-    // На короткой этикетке блок кабинета опирается на нижний разделитель:
-    // свободное место распределяется между QR, местоположением и номером.
-    const compactNumberY = footerDividerY - 1;
-    const compactTitleY = compactNumberY - numberSize - 0.8;
-    head.push(`<text x="${center}" y="${compactTitleY}" text-anchor="middle" font-family="${FONT}"
-        font-size="${titleSize}" letter-spacing="0.7" fill="#000">КАБИНЕТ</text>`);
-    head.push(`<text x="${center}" y="${compactNumberY}" text-anchor="middle" font-family="${FONT}"
-        font-size="${numberSize}" font-weight="700" fill="#000">${escapeXml(room.number)}</text>`);
-  } else {
-    y += titleSize * 0.35;
-    head.push(`<text x="${center}" y="${y}" text-anchor="middle" font-family="${FONT}"
-        font-size="${titleSize}" letter-spacing="0.7" fill="#000">КАБИНЕТ</text>`);
-
-    y += numberSize + 0.8;
-    head.push(`<text x="${center}" y="${y}" text-anchor="middle" font-family="${FONT}"
-        font-size="${numberSize}" font-weight="700" fill="#000">${escapeXml(room.number)}</text>`);
-
-    y += nameSize * 1.35;
-    for (const line of nameLines) {
-      head.push(`<text x="${PAD}" y="${y}" font-family="${FONT}"
-          font-size="${nameSize}" fill="#000">${escapeXml(line)}</text>`);
-      y += nameSize * LINE;
-    }
-  }
-
-  footerLines.forEach((line, index) => {
-    head.push(`<text x="${center}" y="${footerStart + index * footerStep}" text-anchor="middle"
-        font-family="${FONT}" font-size="${metaSize}" fill="#000">${escapeXml(line)}</text>`);
-  });
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm"
-     viewBox="0 0 ${W} ${H}" role="img" aria-label="Карточка кабинета ${escapeXml(room.number)}">
-  <rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>
-  <rect x="0.15" y="0.15" width="${W - 0.3}" height="${H - 0.3}" fill="none"
-        stroke="#000" stroke-width="0.3" rx="0.8"/>
-
-  <text x="${center}" y="${brandY}" text-anchor="middle" font-family="${FONT}"
-        font-size="${brandSize}" font-weight="700" fill="#000">АЛЬФА ВИКИ</text>
-  <text x="${center}" y="${warehouseY}" text-anchor="middle" font-family="${FONT}"
-        font-size="${brandSize}" font-weight="700" fill="#000">СКЛАД</text>
-  <svg x="${(W - qrSize) / 2}" y="${qrY}" width="${qrSize}" height="${qrSize}"
-       viewBox="${qrViewBox}" preserveAspectRatio="xMidYMid meet">${qrInner}</svg>
-
-  ${head.join('\n  ')}
-  ${footerLines.length ? `<line x1="${PAD}" y1="${footerDividerY}" x2="${W - PAD}" y2="${footerDividerY}"
-        stroke="#000" stroke-width="0.25"/>` : ''}
-</svg>`;
+  throw new Error(`Неподдерживаемый размер этикетки кабинета: ${sizeKey}`);
 }
 
-/** ZPL-профиль дверной этикетки для TDP-225, строго 44x25 мм при 203 dpi. */
-function roomDoorCardZpl(room, { orgName = '', orgAddress = '', copies = 1, density = 10 } = {}) {
+/**
+ * ZPL-профиль дверной этикетки для TDP-225, строго 44x25 мм при 203 dpi.
+ * Состав тот же, что у картинки: номер, «КАБИНЕТ» и название — без шапки и без
+ * подвала с реквизитами медцентра.
+ */
+function roomDoorCardZpl(room, { copies = 1, density = 10 } = {}) {
   const DPMM = 8;
   const mm = value => Math.round(value * DPMM);
   const widthMm = 44, heightMm = 25, padMm = 1.5, qrMm = 16;
   const colXmm = padMm + qrMm + 1.5;
   const colWmm = widthMm - colXmm - padMm;
   const url = roomAppUrl(room.id);
-  const numberPt = Math.max(18, Math.round(fitFontSize(room.number, colWmm, 5.2, 2.5) * DPMM));
+  const numberPt = Math.max(18, Math.round(fitFontSize(room.number, colWmm, 6.4, 2.5) * DPMM));
   const namePt = 16;
   const nameLines = room.name && room.name !== room.number
     ? wrapToWidth(room.name, colWmm, namePt / DPMM, 2) : [];
-  const place = [
-    room.floor?.building?.name,
-    room.floor ? `${room.floor.number} этаж` : null,
-  ].filter(Boolean);
-
-  let yMm = 11.2;
+  let yMm = padMm + qrMm + 1.8;
   const nameRows = [];
   for (const line of nameLines) {
-    nameRows.push(`^FO${mm(colXmm)},${mm(yMm)}^A0N,${namePt},${namePt}^FD${line}^FS`);
+    nameRows.push(`^FO${mm(padMm)},${mm(yMm)}^FB${mm(widthMm - padMm * 2)},1,0,C,0^A0N,${namePt},${namePt}^FD${line}^FS`);
     yMm += (namePt / DPMM) * 1.28;
   }
 
@@ -713,17 +675,9 @@ function roomDoorCardZpl(room, { orgName = '', orgAddress = '', copies = 1, dens
 ^FO${mm(padMm)},${mm(padMm)}^BQN,2,3,Q,7
 ^FDQA,${url}^FS
 
-^FO${mm(colXmm)},${mm(padMm)}^FB${mm(colWmm)},1,0,C,0^A0N,9,9^FDАЛЬФА ВИКИ^FS
-^FO${mm(colXmm)},${mm(2.8)}^FB${mm(colWmm)},1,0,C,0^A0N,9,9^FDСКЛАД^FS
-^FO${mm(colXmm)},${mm(4.1)}^FB${mm(colWmm)},1,0,C,0^A0N,12,12^FDКАБИНЕТ^FS
-^FO${mm(colXmm)},${mm(5.8)}^FB${mm(colWmm)},1,0,C,0^A0N,${numberPt},${numberPt}^FD${room.number}^FS
+^FO${mm(colXmm)},${mm(padMm)}^FB${mm(colWmm)},1,0,C,0^A0N,${numberPt},${numberPt}^FD${room.number}^FS
+^FO${mm(colXmm)},${mm(padMm + numberPt / DPMM + 0.9)}^FB${mm(colWmm)},1,0,C,0^A0N,12,12^FDКАБИНЕТ^FS
 ${nameRows.join('\n')}
-
-^FO${mm(padMm)},${mm(padMm + qrMm + 1)}^GB${mm(widthMm - padMm * 2)},2,2^FS
-^FO${mm(padMm)},${mm(18.8)}^A0N,10,10^FD${clipToWidth(place[0], widthMm - padMm * 2, 10 / DPMM)}^FS
-^FO${mm(padMm)},${mm(20.1)}^A0N,10,10^FD${clipToWidth(place[1], widthMm - padMm * 2, 10 / DPMM)}^FS
-^FO${mm(padMm)},${mm(21.4)}^A0N,10,10^FD${clipToWidth(orgName, widthMm - padMm * 2, 10 / DPMM)}^FS
-^FO${mm(padMm)},${mm(22.7)}^A0N,10,10^FD${clipToWidth(orgAddress, widthMm - padMm * 2, 10 / DPMM)}^FS
 
 ^PQ${copies}
 ^XZ`;

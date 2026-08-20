@@ -99,6 +99,11 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
     setManagingDivision(prev => prev?.id === id ? { ...prev, doctorIds } : prev);
     divisionPanelRef.current?.updateDoctorIds(id, doctorIds);
   };
+
+  const handleDivisionDeleted = (id) => {
+    setManagingDivision(prev => prev?.id === id ? null : prev);
+    divisionPanelRef.current?.removeDivision(id);
+  };
   const [managingDivisionId, setManagingDivisionId] = useState(null);
   const [scheduleSearch,      setScheduleSearch]      = useState('');
   const [scheduleFilterClinic,setScheduleFilterClinic] = useState('');
@@ -326,6 +331,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             managingDivision={scheduleView === 'divisions' ? managingDivision : null}
             onDivisionRenamed={handleDivisionRenamed}
             onDivisionMembersChanged={handleDivisionMembersChanged}
+            onDivisionDeleted={handleDivisionDeleted}
             scheduleCategories={categories}
             allRoles={allScheduleRoles}
             allProfessions={allScheduleProfs}

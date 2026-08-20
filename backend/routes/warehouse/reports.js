@@ -145,6 +145,10 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
       WITH bounds AS (
         SELECT :from::timestamptz AS d_from, (:to::date + 1)::timestamptz AS d_to
       ),
+      -- Движения с reasonCode 'batch_attach' исключены из всех трёх выборок: это
+      -- пара «расход из без-партии + приход в партию» в одном месте хранения,
+      -- которой оформляется проставленный задним числом срок годности. Количество
+      -- она не меняла, и показывать её оборотом значит выдумать движение.
       -- Сальдо на начало: все движения до начала периода.
       opening AS (
         SELECT m."nomenclatureId", COALESCE(m."toStorageId", m."fromStorageId") AS storage,
@@ -152,6 +156,7 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
                SUM(CASE WHEN m."toStorageId" IS NOT NULL THEN m.amount ELSE -m.amount END) AS amount
         FROM warehouse_movements m, bounds b
         WHERE m."occurredAt" < b.d_from AND m."nomenclatureId" IS NOT NULL
+          AND m."reasonCode" IS DISTINCT FROM 'batch_attach'
         GROUP BY 1, 2
       ),
       incoming AS (
@@ -160,6 +165,7 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
         FROM warehouse_movements m, bounds b
         WHERE m."occurredAt" >= b.d_from AND m."occurredAt" < b.d_to
           AND m."toStorageId" IS NOT NULL AND m."nomenclatureId" IS NOT NULL
+          AND m."reasonCode" IS DISTINCT FROM 'batch_attach'
         GROUP BY 1, 2
       ),
       outgoing AS (
@@ -168,6 +174,7 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
         FROM warehouse_movements m, bounds b
         WHERE m."occurredAt" >= b.d_from AND m."occurredAt" < b.d_to
           AND m."fromStorageId" IS NOT NULL AND m."nomenclatureId" IS NOT NULL
+          AND m."reasonCode" IS DISTINCT FROM 'batch_attach'
         GROUP BY 1, 2
       ),
       keys AS (
@@ -178,7 +185,7 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
       )
       SELECT
         mc.name AS "medCenterName", bld.name AS "buildingName", f.number AS "floorNumber",
-        d.name AS "departmentName", d.color AS "departmentColor",
+        d.id AS "departmentId", d.name AS "departmentName", d.color AS "departmentColor",
         r.id AS "roomId", r.number AS "roomNumber", r.name AS "roomName",
         st.id AS "storageId", st.name AS "storageName",
         n.id AS "nomenclatureId", n.code, n.name AS "nomenclatureName", n.unit,
@@ -1044,7 +1051,7 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         order: [['name', 'ASC']],
       }),
       sequelize.query(`
-        SELECT s.quantity, s."unitCost", n.name, n.unit, n.id AS "nomenclatureId",
+        SELECT s.id AS "stockId", s.quantity, s."unitCost", n.name, n.unit, n.id AS "nomenclatureId",
                b."batchNumber", b."expiryDate", (b."expiryDate" - CURRENT_DATE) AS "daysLeft",
                st.name AS "storageName",
                (SELECT rr."minQty" FROM warehouse_reorder_rules rr
@@ -1238,43 +1245,6 @@ router.get('/inventory/:id', authenticate, requireWarehouse(), requireReport('RP
     });
   } catch (err) {
     console.error('GET warehouse/reports/inventory error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RPT-1C-RECON — состояние обмена с 1С
-// ─────────────────────────────────────────────────────────────────────────────
-// Обмена нет. Отчёт существует и честно об этом сообщает — вместо того чтобы
-// рисовать зелёные галочки «расхождение 0,00 ₽» при отключённой интеграции.
-router.get('/one-c-status', authenticate, requireWarehouse(), requireReport('RPT-1C-RECON'), async (req, res) => {
-  try {
-    const [outbox] = await sequelize.query(`
-      SELECT status, COUNT(*)::int AS cnt FROM warehouse_outbox GROUP BY status
-    `);
-    const [docs] = await sequelize.query(`
-      SELECT "oneCStatus", COUNT(*)::int AS cnt FROM warehouse_documents GROUP BY "oneCStatus"
-    `);
-    const internal = await reconcileStock();
-
-    res.json({
-      header: await reportHeader({ req, code: 'RPT-1C-RECON', title: 'Сверка с 1С' }),
-      integration: {
-        enabled: false,
-        reason: 'Обмен с 1С не настроен: не определён контракт HTTP-сервиса на стороне 1С',
-        lastSyncAt: null,
-        outboxQueue: outbox.reduce((acc, r) => ({ ...acc, [r.status]: r.cnt }), {}),
-        documentsByStatus: docs.reduce((acc, r) => ({ ...acc, [r.oneCStatus]: r.cnt }), {}),
-      },
-      // Пока 1С нет, единственная доступная сверка — внутренняя: остаток против
-      // журнала движений. Она проверяет целостность самого модуля.
-      internalReconciliation: {
-        ok: internal.length === 0,
-        discrepancies: internal,
-        description: 'Остаток warehouse_stock против суммы движений warehouse_movements',
-      },
-    });
-  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

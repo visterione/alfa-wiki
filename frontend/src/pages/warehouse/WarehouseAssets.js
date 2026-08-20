@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast';
 import {
   Search, QrCode, Printer, X, Wrench, ArrowRightLeft,
-  FileText, AlertTriangle, Plus, Pencil, Check,
+  FileText, AlertTriangle, Plus, Pencil, Check, Download,
   Wand2,
 } from 'lucide-react';
 import { warehouseApi, BASE_URL } from '../../services/api';
@@ -200,11 +200,20 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
                  onChange={e => setFilter({ maintenanceDue: e.target.checked })} />
           ТО в течение 30 дней и просроченные
         </label>
+        {/* Разбор названий стоит на этой вкладке, а не на вкладке ведомости:
+            правит он карточки, и смотреть на результат надо в том же списке, где
+            они лежат. Отдельной полосой под фильтрами он занимал строку ради
+            одной кнопки, которую нажимают раз в несколько месяцев. */}
         {access?.capabilities?.canManageAssets && (
-          <button className="wh-btn wh-btn--primary" style={{ marginLeft: 'auto' }}
-                  onClick={() => setForm({ asset: null })}>
-            <Plus size={15} /> Поставить на учёт
-          </button>
+          <>
+            <button className="wh-btn wh-btn--ghost" style={{ marginLeft: 'auto' }}
+                    onClick={() => setParsing({})}>
+              <Wand2 size={15} /> Разобрать наименования
+            </button>
+            <button className="wh-btn wh-btn--primary" onClick={() => setForm({ asset: null })}>
+              <Plus size={15} /> Поставить на учёт
+            </button>
+          </>
         )}
       </div>
 
@@ -219,7 +228,6 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
             <>
               <select value={labelSize} onChange={e => setLabelSize(e.target.value)}>
                 <optgroup label="Brother P-touch E550W">
-                  <option value="80x20">Альбомная · лента 20 мм · 80 × 20 мм</option>
                   <option value="80x24">Альбомная · лента 24 мм · 80 × 24 мм</option>
                 </optgroup>
                 <optgroup label="TDP-225">
@@ -254,18 +262,6 @@ export default function WarehouseAssets({ access, tree, onOpenRoom, initialAsset
           {checked.size > 0 && (
             <button className="wh-btn wh-btn--link" onClick={() => setChecked(new Set())}>Снять отметки</button>
           )}
-        </div>
-      )}
-
-      {/* Разбор названий стоит здесь, а не на вкладке ведомости: правит он
-          карточки, и смотреть на результат надо в том же списке, где они лежат. */}
-      {access?.capabilities?.canManageAssets && (
-        <div className="wh-assets__bulk">
-          <span>Модель и производитель написаны прямо в наименовании — их можно вытащить в поля</span>
-          <button className="wh-btn wh-btn--ghost" style={{ marginLeft: 'auto' }}
-                  onClick={() => setParsing({})}>
-            <Wand2 size={15} /> Разобрать наименования
-          </button>
         </div>
       )}
 
@@ -612,6 +608,34 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
     }
   };
 
+  /**
+   * Та же этикетка файлом.
+   *
+   * Печать из браузера задаёт размер страницы правилом `@page { size: 80mm 24mm }`,
+   * и это пожелание, а не команда: диалог печати macOS его игнорирует и печатает
+   * на том, что выбрано в самом диалоге, то есть на A4 — этикетка уезжает в угол
+   * листа. Скачанный PNG человек открывает и печатает как ему нужно; DPI принтера
+   * в файле уже проставлен сервером, поэтому физический размер в нём честный.
+   *
+   * Ленточным этикеткам Brother файл разворачивается на 90°: лента шириной
+   * 24 мм едет мимо головки, которая пишет поперёк неё, поэтому страница у
+   * драйвера стоячая — 24 мм в ширину и 80 в длину. TDP-225 печатает готовыми
+   * высечками 44 × 25 и подаёт их как есть, там разворачивать нечего.
+   */
+  const downloadPng = async () => {
+    const rotate = labelSize.startsWith('80x') ? 90 : 0;
+    try {
+      const { data: res } = await warehouseApi.labelsBatch({
+        ids: [asset.id], size: labelSize, rotate,
+      });
+      const png = res.labels?.[0]?.png;
+      if (!png) return toast.error('Сервер не вернул этикетку');
+      downloadDataUrl(png, `${asset.inventoryNumber}-${labelSize}.png`);
+    } catch (e) {
+      toast.error('Не удалось выгрузить этикетку');
+    }
+  };
+
   const downloadZpl = async () => {
     try {
       const { data: zpl } = await warehouseApi.zpl(asset.id, 1);
@@ -644,7 +668,7 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
         <div className="wh-modal__tabs">
           {[
             ['info', 'Карточка'],
-            ['qr', 'QR и этикетка'],
+            ['qr', 'Этикетка'],
             ['maintenance', `ТО и ремонты (${maintenance.length + repairs.length})`],
             ['timeline', `История (${movements.length})`],
             ['files', `Документы (${files.length})`],
@@ -702,15 +726,12 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
             </div>
           )}
 
+          {/* Голого QR-кода здесь больше нет: тот же код напечатан на этикетке,
+              а на дверь и на корпус клеят именно её. Отдельная картинка рядом
+              делала вид, что это два разных документа, и занимала половину
+              вкладки под то, что нельзя ни наклеить, ни выдать. */}
           {tab === 'qr' && (
             <div className="wh-qr">
-              <div className="wh-qr__col">
-                <SecureImage url={warehouseApi.assetQrUrl(asset.id)}
-                             alt="QR-код актива" className="wh-qr__img" />
-                <div className="wh-hint">
-                  Открывается без авторизации: назначение, статус и даты ТО. Без стоимости и ФИО.
-                </div>
-              </div>
               <div className="wh-qr__col">
                 <div className="wh-qr__label-preview">
                   <SecureImage url={warehouseApi.labelUrl(asset.id, labelSize)}
@@ -720,15 +741,15 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
                   <button className="wh-btn wh-btn--primary" onClick={printOne}>
                     <Printer size={15} /> Печать этикетки {labelSize.replace('x', ' × ')} мм
                   </button>
+                  <button className="wh-btn wh-btn--secondary" onClick={downloadPng}>
+                    <Download size={15} /> Скачать PNG
+                  </button>
                   {access?.capabilities?.canPrintLabels && labelSize === '44x25' && (
                     <button className="wh-btn wh-btn--ghost" onClick={downloadZpl}>
                       <FileText size={15} /> Скачать ZPL для TDP-225
                     </button>
                   )}
                 </div>
-                {asset.labelPrintedAt && (
-                  <div className="wh-hint">Этикетка печаталась {fmt(asset.labelPrintedAt)}</div>
-                )}
               </div>
             </div>
           )}
@@ -1053,6 +1074,18 @@ function openPrintWindow({ labels, sizeMm }) {
 }
 
 // ── Утилиты ──────────────────────────────────────────────────────────────────
+/**
+ * Сохраняет data:URL файлом. Сервер отдаёт этикетку именно так — картинкой,
+ * вшитой в JSON рядом с остальными полями, — и превращать её обратно в запрос
+ * ради скачивания незачем.
+ */
+function downloadDataUrl(dataUrl, filename) {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  a.click();
+}
+
 function downloadTextFile(contents, filename) {
   const blob = new Blob([contents], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');

@@ -1096,17 +1096,18 @@ export const warehouseApi = {
   reliability:     ()             => api.get('/warehouse/reports/reliability'),
   transferMatrix:  (params)       => api.get('/warehouse/reports/transfer-matrix', { params }),
   roomDashboard:   (roomId)       => api.get(`/warehouse/reports/room/${roomId}/dashboard`),
+  setStockBatch:   (stockId, body) => api.patch(`/warehouse/catalog/stock/${stockId}/batch`, body),
   roomQrUrl:       (roomId)       => `${BASE_URL}/api/warehouse/locations/rooms/${roomId}/qr.svg`,
   // Карточка на дверь приходит разметкой, а не картинкой: тем же SVG рисуется и
   // превью в модалке, и лист в окне печати — иначе на печать уходил бы скриншот
   // превью со своим разрешением.
   roomDoorCard:    (roomId, size) => api.get(`/warehouse/locations/rooms/${roomId}/door-card.svg`, { params: { size } }),
-  roomDoorCardPng: (roomId, size) => api.get(`/warehouse/locations/rooms/${roomId}/door-card.svg`, {
-                                      params: { size, format: 'png' }, responseType: 'blob',
+  roomDoorCardPng: (roomId, size, rotate) => api.get(`/warehouse/locations/rooms/${roomId}/door-card.svg`, {
+                                      params: { size, format: 'png', rotate: rotate || undefined },
+                                      responseType: 'blob',
                                     }),
   roomDoorCardZpl: (roomId)       => api.get(`/warehouse/locations/rooms/${roomId}/door-card.zpl`),
   inventoryReport: (id)           => api.get(`/warehouse/reports/inventory/${id}`),
-  oneCStatus:      ()             => api.get('/warehouse/reports/one-c-status'),
   exportReport:    (data)         => api.post('/warehouse/reports/export', data, { responseType: 'blob' }),
 
   // Права доступа

@@ -138,7 +138,6 @@ const REPORTS = {
   'RPT-ROOM-DASH':    { label: 'Дашборд кабинета' },
   'RPT-HEATMAP':      { label: 'Тепловая карта загрузки' },
   'RPT-INVENTORY':    { label: 'Инвентаризационная опись' },
-  'RPT-1C-RECON':     { label: 'Сверка с 1С' },
   'RPT-OSV':          { label: 'Оборотно-сальдовая ведомость 1С' },
   'RPT-RFQ-COMPARE':  { label: 'Сравнение котировок' },
   'RPT-IDLE':         { label: 'Простаивающее оборудование' },

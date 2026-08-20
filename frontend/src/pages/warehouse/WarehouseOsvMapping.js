@@ -5,6 +5,7 @@ import {
   RefreshCw, X,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import LocationPicker from './components/LocationPicker';
 
 /**
  * Разбор ведомости: во что превращается каждая ветка дерева 1С.
@@ -31,29 +32,7 @@ const KINDS = [
 
 const money = value => Number(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
 
-function flattenRooms(tree) {
-  const out = [];
-  for (const mc of tree?.medCenters || []) {
-    for (const r of mc.rooms || []) {
-      out.push({
-        id: r.id, storages: r.storages || [],
-        label: `${mc.name} · Каб. ${r.number}${r.name && r.name !== r.number ? ` — ${r.name}` : ''}`,
-      });
-    }
-    for (const b of mc.buildings || []) {
-      for (const f of b.floors || []) {
-        for (const r of f.rooms || []) {
-          out.push({
-            id: r.id,
-            storages: r.storages || [],
-            label: `${b.name} · ${f.number} эт. · Каб. ${r.number}${r.name && r.name !== r.number ? ` — ${r.name}` : ''}`,
-          });
-        }
-      }
-    }
-  }
-  return out;
-}
+const hasStorage = room => (room.storages || []).length > 0;
 
 export default function WarehouseOsvMapping({ access, tree, onDone }) {
   const [data, setData] = useState(null);
@@ -64,7 +43,6 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
   const [running, setRunning] = useState(false);
   const [branchLines, setBranchLines] = useState(null);
 
-  const rooms = useMemo(() => flattenRooms(tree), [tree]);
   const canEdit = Boolean(access?.capabilities?.canImportOsv);
 
   const load = useCallback(async () => {
@@ -234,21 +212,23 @@ export default function WarehouseOsvMapping({ access, tree, onDone }) {
                   <td className="wh-num">{node.stats.lines}</td>
                   <td className="wh-num">{money(node.closingSum)}</td>
                   <td>
-                    <select className="wh-osv-map__select" disabled={!canEdit || busy}
-                            value={own?.roomId || ''}
-                            onChange={(e) => {
-                              const roomId = e.target.value;
-                              if (!roomId && own) return clear(node);
-                              return save(node, { roomId });
-                            }}>
-                      <option value="">— наследует —</option>
-                      {rooms.map(r => (
-                        <option key={r.id} value={r.id}
-                                disabled={!r.storages.length}>
-                          {r.label}{r.storages.length ? '' : ' (нет мест хранения)'}
-                        </option>
-                      ))}
-                    </select>
+                    {/* Кабинет выбирается по дереву локаций, а не из плоского
+                        селекта на сотню строк: строки в нём различались двумя
+                        последними словами, а решений таких — по одному на каждую
+                        ветку ведомости, подряд, сверху вниз. */}
+                    <div className="wh-osv-map__pick">
+                      <LocationPicker
+                        tree={tree} mode="room"
+                        roomId={own?.roomId || ''}
+                        disabled={!canEdit || busy}
+                        filterRoom={hasStorage}
+                        placeholder="— наследует —"
+                        onPick={({ roomId }) => {
+                          if (!roomId) return own ? clear(node) : undefined;
+                          return save(node, { roomId });
+                        }}
+                      />
+                    </div>
                   </td>
                   <td>
                     <select className="wh-osv-map__select" disabled={!canEdit || busy || !own}

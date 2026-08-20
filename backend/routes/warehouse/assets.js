@@ -73,15 +73,9 @@ const assetInclude = [
   { model: WhContractor, as: 'supplier', attributes: ['id', 'name'] },
 ];
 
-function assetLabelOrganization(asset, requestedName) {
-  const mc = asset.room?.medCenter || asset.room?.floor?.building?.medCenter;
-  return {
-    orgName: requestedName || mc?.displayName || mc?.name || '',
-    orgAddress: asset.room?.floor?.building?.address || mc?.address || '',
-  };
-}
-
-const EQUIPMENT_LABEL_SIZES = ['80x20', '80x24', '44x25'];
+// Лента 20 мм убрана: после неснимаемых полей на ней оставалось около 13 мм
+// печати, и туда не помещалось ничего, кроме кода.
+const EQUIPMENT_LABEL_SIZES = ['80x24', '44x25'];
 
 // ── Список активов ───────────────────────────────────────────────────────────
 router.get('/', authenticate, requireWarehouse(), async (req, res) => {
@@ -453,7 +447,6 @@ router.get('/:id/label.svg', authenticate, requireWarehouse(), async (req, res) 
     if (!asset) return res.status(404).json({ error: 'Актив не найден' });
     const svg = await qr.assetLabelSvg(asset, {
       size: EQUIPMENT_LABEL_SIZES.includes(req.query.size) ? req.query.size : '80x24',
-      ...assetLabelOrganization(asset, req.query.org),
     });
     res.type('image/svg+xml').send(svg);
   } catch (err) {
@@ -467,7 +460,6 @@ router.get('/:id/label.zpl', authenticate, requireWarehouse('canManageAssets'), 
   if (!asset) return res.status(404).json({ error: 'Актив не найден' });
   const zpl = qr.assetLabelZpl(asset, {
     copies: Number(req.query.copies) || 1,
-    ...assetLabelOrganization(asset, req.query.org),
   });
   res.type('text/plain; charset=utf-8').send(zpl);
 });
@@ -479,16 +471,19 @@ router.get('/:id/label.zpl', authenticate, requireWarehouse('canManageAssets'), 
  */
 router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   try {
-    const { ids = [], size = '80x24', orgName } = req.body;
+    const { ids = [], size = '80x24', rotate } = req.body;
     const labelSize = EQUIPMENT_LABEL_SIZES.includes(size) ? size : '80x24';
+    // Поворот нужен только скачиваемому файлу под ленточный принтер; из
+    // произвольного числа берём один из четырёх прямых углов.
+    const turn = [90, 180, 270].includes(Number(rotate)) ? Number(rotate) : 0;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны активы' });
     if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
 
     const assets = await WhAsset.findAll({ where: { id: { [Op.in]: ids } }, include: assetInclude });
     const labels = [];
     for (const a of assets) {
-      const svg = await qr.assetLabelSvg(a, { size: labelSize, ...assetLabelOrganization(a, orgName) });
-      const png = await qr.labelPng(svg, labelSize);
+      const svg = await qr.assetLabelSvg(a, { size: labelSize });
+      const png = await qr.labelPng(svg, labelSize, { rotate: turn });
       labels.push({
         id: a.id,
         inventoryNumber: a.inventoryNumber,
@@ -500,7 +495,7 @@ router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), 
     // ещё живут без этикетки.
     await WhAsset.update({ labelPrintedAt: new Date() }, { where: { id: { [Op.in]: assets.map(a => a.id) } } });
 
-    res.json({ size: labelSize, labels, sizeMm: qr.LABEL_SIZES[labelSize] });
+    res.json({ size: labelSize, rotate: turn, labels, sizeMm: qr.LABEL_SIZES[labelSize] });
   } catch (err) {
     console.error('POST warehouse/assets/labels/batch error:', err);
     res.status(500).json({ error: err.message });
@@ -510,13 +505,12 @@ router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), 
 /** Пакет отдельных ZPL-заданий для TDP-225, каждое строго 44x25 мм. */
 router.post('/labels/batch.zpl', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
   try {
-    const { ids = [], orgName } = req.body;
+    const { ids = [] } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны активы' });
     if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
 
     const assets = await WhAsset.findAll({ where: { id: { [Op.in]: ids } }, include: assetInclude });
     const zpl = assets.map(asset => qr.assetLabelZpl(asset, {
-      ...assetLabelOrganization(asset, orgName),
     })).join('\n');
 
     await WhAsset.update(

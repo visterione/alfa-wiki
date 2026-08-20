@@ -39,6 +39,12 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
     updateDoctorIds: (id, doctorIds) => {
       setDivisions(prev => prev.map(d => d.id === id ? { ...d, doctorIds } : d));
     },
+    // Само удаление живёт в настройках подразделения (за модалкой с подтверждением),
+    // сюда приходит только уже случившийся факт — убрать строку из списка.
+    removeDivision: (id) => {
+      setDivisions(prev => prev.filter(d => d.id !== id));
+      setOpenId(prev => prev === id ? null : prev);
+    },
   }));
 
   useEffect(() => {
@@ -68,17 +74,6 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
       toast.error('Ошибка создания');
     } finally {
       setCreating(false);
-    }
-  };
-
-  const handleDelete = async (id, e) => {
-    e.stopPropagation();
-    try {
-      await divisionsApi.delete(id);
-      setDivisions(prev => prev.filter(d => d.id !== id));
-      if (openId === id) setOpenId(null);
-    } catch {
-      toast.error('Ошибка удаления');
     }
   };
 
@@ -286,21 +281,12 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                     {canAdmin && onManageAccess && (
                       <button
-                        onClick={e => { e.stopPropagation(); onManageAccess(isManaging ? null : { id: div.id, name: div.name, doctorIds: div.doctorIds || [], rates: div.rates || [] }); }}
+                        onClick={e => { e.stopPropagation(); onManageAccess(isManaging ? null : { id: div.id, name: div.name, doctorIds: div.doctorIds || [], rates: div.rates || [], canDelete: !readOnly && (isOwner || !!user?.isAdmin) }); }}
                         title="Настройки доступа"
                         style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: isManaging ? '#1d4ed8' : '#64748b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
                           <circle cx="12" cy="12" r="3"/>
                           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                        </svg>
-                      </button>
-                    )}
-                    {canAdmin && !readOnly && !compareMode && (
-                      <button onClick={e => handleDelete(div.id, e)} title="Удалить"
-                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-                          <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
                         </svg>
                       </button>
                     )}

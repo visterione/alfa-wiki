@@ -433,7 +433,8 @@ function BulkMinimumsModal({ refs, onClose, onApplied }) {
             )}
 
             <div className="wh-form__row2">
-              <label>Минимальный остаток <b className="wh-req">*</b>
+              <label>
+                <span className="wh-form__cap">Минимальный остаток <b className="wh-req">*</b></span>
                 <input type="number" min="0" step="any" value={form.minQty}
                        onChange={e => set('minQty', e.target.value)} />
               </label>
@@ -556,7 +557,10 @@ function CatalogModal({ tab, modal, refs, saving, onClose, onSubmit }) {
               }
               return (
                 <label key={f.key} className={f.wide ? 'wh-catalog__wide' : ''}>
-                  {f.label}{f.required && <b className="wh-req"> *</b>}
+                  {/* Подпись и звёздочка одним элементом: иначе <b> вставал
+                      отдельной строкой колоночного флекса и поле оказывалось
+                      выше соседнего в том же ряду. */}
+                  <span className="wh-form__cap">{f.label}{f.required && <b className="wh-req">*</b>}</span>
                   {f.type === 'ref' ? (
                     <select value={value ?? ''} onChange={e => onChange(e.target.value)}>
                       <option value="">—</option>

@@ -112,7 +112,12 @@ function turnoverLevels(rows) {
         ? 'Без этажа' : `${r.floorNumber} этаж` });
   }
   levels.push(
-    { key: 'department', id: r => r.departmentId || `nodept:${r.roomId}`,
+    // Ключ уровня — идентификатор отделения, а не строка на кабинет: иначе
+    // каждый кабинет получает собственную ветку и одно отделение с десятью
+    // кабинетами выглядит как десять одноимённых отделений по кабинету внутри.
+    // Кабинеты без отделения по той же причине сходятся в одну ветку «Без
+    // отделения» своего этажа, а не расползаются по одной на кабинет.
+    { key: 'department', id: r => r.departmentId || 'nodept',
       label: r => r.departmentName || 'Без отделения' },
     { key: 'room',       id: r => r.roomId,
       label: r => `Каб. ${r.roomNumber}${r.roomName && r.roomName !== r.roomNumber ? ` — ${r.roomName}` : ''}` },

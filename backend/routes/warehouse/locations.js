@@ -800,7 +800,7 @@ router.get('/rooms/:id/qr.svg', authenticate, requireWarehouse(), async (req, re
 
 /**
  * Этикетка кабинета на дверь. Использует те же размеры, что этикетки оборудования,
- * и отдаётся SVG, чтобы браузер сохранил физический размер на рулонной печати.
+ * и отдаётся в SVG для превью или PNG точного физического размера для печати.
  */
 router.get('/rooms/:id/door-card.svg', authenticate, requireWarehouse(), async (req, res) => {
   try {
@@ -819,17 +819,14 @@ router.get('/rooms/:id/door-card.svg', authenticate, requireWarehouse(), async (
     });
     if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
 
-    // Медцентр у кабинета бывает проставлен напрямую, а бывает — только через
-    // корпус: кабинеты из МИС заводятся без здания. Берём первый, который есть.
-    const mc = room.medCenter || room.floor?.building?.medCenter;
-    const svg = await roomDoorCardSvg(room, {
-      orgName: req.query.org || mc?.displayName || mc?.name || '',
-      orgAddress: room.floor?.building?.address || mc?.address || '',
-      size: req.query.size,
-    });
+    const svg = await roomDoorCardSvg(room, { size: req.query.size });
     if (req.query.format === 'png') {
-      const size = LABEL_SIZES[req.query.size] ? req.query.size : '24x45';
-      const png = await labelPng(svg, size);
+      const size = LABEL_SIZES[req.query.size] ? req.query.size : '80x24';
+      // Поворот нужен файлу, который печатают лентой: у Brother головка пишет
+      // поперёк ленты, и страницу драйвер ждёт стоячую. Печать из браузера идёт
+      // своей страницей с @page и разворота не просит.
+      const rotate = [90, 180, 270].includes(Number(req.query.rotate)) ? Number(req.query.rotate) : 0;
+      const png = await labelPng(svg, size, { rotate });
       return res.type('image/png').send(png);
     }
     res.type('image/svg+xml').send(svg);
@@ -857,12 +854,7 @@ router.get('/rooms/:id/door-card.zpl', authenticate, requireWarehouse(), async (
     });
     if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
 
-    const mc = room.medCenter || room.floor?.building?.medCenter;
-    const zpl = roomDoorCardZpl(room, {
-      orgName: req.query.org || mc?.displayName || mc?.name || '',
-      orgAddress: room.floor?.building?.address || mc?.address || '',
-      copies: Number(req.query.copies) || 1,
-    });
+    const zpl = roomDoorCardZpl(room, { copies: Number(req.query.copies) || 1 });
     res.type('text/plain; charset=utf-8').send(zpl);
   } catch (err) {
     console.error('GET warehouse/locations/rooms/:id/door-card.zpl error:', err);

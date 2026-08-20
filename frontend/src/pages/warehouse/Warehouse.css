@@ -291,29 +291,100 @@
 .wh-form__row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .wh-form__actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 2px; }
 
-/* Единый экран складского документа. Поля строки переносятся сами: на ноутбуке
-   остаётся одна компактная полоса, на планшете — две строки без горизонтального
-   скролла формы. */
-.wh-operation-editor { padding: 18px; }
-.wh-operation-editor__meta { margin: 14px 0; }
-.wh-operation-kind { margin-top: 8px; }
-.wh-operation-line {
-  padding: 14px;
+/* Складской документ (ver. 7.04). Слева — то, что в документе, справа — то, чем
+   он оформлен, и кнопка проведения. Прежняя одна лента сверху вниз разносила
+   причину и комментарий по разные стороны от таблицы строк, а «Провести»
+   оказывалось за нижним краем экрана. */
+.wh-opdoc__bar {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
   margin-bottom: 14px;
+}
+.wh-opdoc__bar-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--wh-text-secondary); font-weight: 600; }
+.wh-opdoc__bar-field select { min-width: 190px; }
+.wh-opdoc__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: start;
+  gap: 14px;
+}
+.wh-opdoc__main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.wh-opdoc__side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 12px; }
+.wh-opdoc__block {
+  padding: 14px;
   border: 1px solid var(--wh-border);
   border-radius: var(--wh-radius);
-  background: var(--wh-bg);
+  background: var(--wh-card-bg);
 }
-.wh-operation-line__fields {
+/* Блок с таблицей своей рамки не рисует: таблица приносит собственную, и две
+   рамки с зазором между ними читались бы как коробка в коробке. */
+.wh-opdoc__block--flush { padding: 0; border: 0; background: none; }
+.wh-opdoc__head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+.wh-opdoc__head h3 { margin: 0; font-size: 13px; font-weight: 700; }
+.wh-opdoc__head .wh-subtabs { margin: 0 0 0 auto; }
+.wh-opdoc__count {
+  min-width: 20px; padding: 1px 7px; border-radius: 7px;
+  background: var(--wh-primary-soft); color: var(--wh-primary);
+  font-size: var(--wh-fs-small); font-weight: 700; text-align: center;
+}
+.wh-opdoc__fields {
   display: grid;
-  grid-template-columns: minmax(230px, 2fr) repeat(3, minmax(140px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-bottom: 10px;
 }
-.wh-operation-line__wide { grid-column: span 2; }
-.wh-operation-editor__footer { margin-top: 14px; }
-.wh-operation-editor__footer .wh-btn { align-self: flex-start; }
-.wh-sign-check { margin: 10px 0; font-weight: 600; }
+.wh-opdoc__wide { grid-column: 1 / -1; }
+/* Количество больше остатка подсвечивается прямо в поле. Сервер такую строку и
+   так не проведёт, но узнавать об этом на кнопке «Провести» — поздно: к тому
+   моменту документ уже собран. */
+.wh-app .wh-opdoc__fields input.wh-input--over {
+  border-color: var(--wh-danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 12%, transparent);
+}
+/* Правая половина подписи поля: остаток, единицы — то, что относится к самому
+   полю. Не подсказка под ним: подписи под полями в модуле скрыты общим
+   правилом .wh-hint, и предупреждение об остатке там бы не показалось. */
+.wh-form__note {
+  margin-left: auto; padding-left: 8px;
+  color: var(--wh-text-tertiary); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wh-form__note.is-error { color: var(--wh-danger); }
+/* Ошибка ввода — не пояснение, а ответ на действие, поэтому под общий запрет
+   подсказок не попадает и своим классом остаётся видимой. */
+.wh-field-error {
+  margin-top: 4px; font-size: 12px; font-weight: 600; line-height: 1.4;
+  color: var(--wh-danger);
+}
+/* Значок вида объекта в общем списке: коробка — материал, ящик — оборудование.
+   Список у них один, поля разные, и понимать, что именно сейчас выбрано, надо
+   до того, как форма перерисуется. */
+.wh-opdoc__opt-kind {
+  display: inline-flex; align-items: center; vertical-align: -2px;
+  margin-right: 6px; color: var(--wh-text-tertiary);
+}
+.wh-opdoc__opt-kind--asset { color: var(--wh-primary); }
+/* Место внутри кабинета — когда выбран кабинет целиком и одна и та же позиция
+   лежит в двух его шкафах. */
+.wh-opdoc__opt-note {
+  margin-left: 8px; color: var(--wh-text-tertiary); font-size: var(--wh-fs-small);
+}
+/* Остаток и состояние в строке выпадающего списка прижаты к правому краю: это
+   не часть названия, а ответ на вопрос «сколько тут есть» — и колонкой справа
+   он читается по всему списку сразу, а не вычитывается в каждой строке. */
+.wh-opdoc__opt-qty {
+  float: right; margin-left: 12px;
+  color: var(--wh-text-tertiary); font-size: var(--wh-fs-small);
+  font-variant-numeric: tabular-nums;
+}
+.wh-opdoc__add { margin-top: 12px; }
+.wh-opdoc__submit { display: flex; flex-direction: column; gap: 8px; }
+.wh-opdoc__submit .wh-btn { justify-content: center; }
+/* Подпись поля вместе со звёздочкой обязательности — один флекс-элемент:
+   в колоночном флексе <b> со звёздочкой вставал отдельной строкой, поле
+   становилось выше соседнего, и ряд формы разъезжался по высоте. */
+.wh-form__cap { display: flex; align-items: center; gap: 4px; }
 .wh-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .wh-modal--nested { z-index: 10020; }
 .wh-inventory-stats { margin-bottom: 14px; }
@@ -322,8 +393,12 @@
 .wh-inventory-scan__video { width: 240px; max-height: 170px; border-radius: 8px; background: #111827; }
 .wh-input--qty { width: 92px !important; text-align: right; }
 
-@media (max-width: 1000px) {
-  .wh-operation-line__fields { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1100px) {
+  .wh-opdoc__cols { grid-template-columns: minmax(0, 1fr); }
+  .wh-opdoc__side { position: static; }
+}
+@media (max-width: 700px) {
+  .wh-opdoc__fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── Текстовые утилиты ─────────────────────────────────────────────────────── */
@@ -342,7 +417,6 @@
 .wh-subhead { font-size: 13px; font-weight: 700; margin: 16px 0 8px; display: flex; align-items: center; gap: 8px; }
 .wh-empty { text-align: center; padding: 26px 16px; color: var(--wh-text-secondary); font-size: 13px; font-style: italic; }
 .wh-empty-inline { padding: 10px; color: var(--wh-text-tertiary); font-size: 12px; }
-.wh-pre { background: var(--wh-bg); padding: 10px; border-radius: 8px; font-size: 12px; overflow: auto; max-height: 200px; border: 1px solid var(--wh-border); }
 
 .wh-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 700; }
 .wh-badge--red { background: #fee2e2; color: #b91c1c; }
@@ -831,11 +905,6 @@
    а таких кабинетов большинство. Номер вроде «Кабинет Ординаторская (Терапия)
    3 этаж» переносится, а не режется: в таблице для него есть вся ширина колонки. */
 .wh-rooms .wh-tree__leaf .wh-cell-main { line-height: 1.35; }
-/* Маркер листа остаётся распоркой, но чёрточку не рисует: строка кабинета и так
-   отбита отступом уровня, а штрих перед каждым названием читался посторонним
-   знаком. Убрать распорку целиком нельзя — без неё названия кабинетов съедут
-   влево относительно этажей. */
-.wh-rooms .wh-tree__bullet::before { content: none; }
 
 /* ── Таблицы (по образцу .rb-table: рамки по всем ячейкам) ─────────────────── */
 .wh-table-wrap { overflow: auto; background: var(--wh-card-bg); border-radius: var(--wh-radius); border: 1px solid var(--wh-border); }
@@ -937,15 +1006,26 @@
 .wh-field-ro__value { font-size: 13px; }
 
 /* ── QR и этикетки ─────────────────────────────────────────────────────────── */
-.wh-qr { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.wh-qr__col { display: flex; flex-direction: column; gap: 11px; }
-.wh-qr__img { width: 190px; height: 190px; align-self: center; image-rendering: pixelated; }
+/* Одна колонка во всю ширину: раньше их было две — голый QR слева и этикетка
+   справа, — и после удаления кода этикетка осталась сидеть в половине модалки.
+   Этикетка приходит SVG (80 × 24 мм с viewBox), поэтому растягивается без
+   потери чёткости, а разобрать на ней инвентарный номер и надписи нужно прямо
+   с экрана: её сверяют с наклейкой на корпусе, не поднося лупу к монитору. */
+.wh-qr { display: grid; gap: 18px; }
+.wh-qr__col { display: flex; flex-direction: column; gap: 14px; }
 .wh-qr__label-preview {
-  border: 1px dashed var(--wh-border-dark); border-radius: 8px; padding: 14px;
+  border: 1px dashed var(--wh-border-dark); border-radius: 8px; padding: 18px;
   display: flex; justify-content: center; background: #fff;
 }
-.wh-qr__label-preview img { max-width: 100%; }
-.wh-qr__actions { display: flex; flex-direction: column; gap: 7px; }
+/* Ширина по контейнеру, высота по пропорции — но не выше половины экрана:
+   почти квадратная этикетка 44 × 25 иначе выдавливала бы кнопки печати за
+   нижний край модалки. */
+.wh-qr__label-preview img {
+  width: 100%; height: auto; max-height: 52vh; object-fit: contain;
+}
+/* Кнопки в строку по центру под этикеткой: в колонку они растягивались на всю
+   ширину модалки и читались как две панели, а не как два действия. */
+.wh-qr__actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 
 .wh-files { list-style: none; padding: 0; margin: 11px 0 0; }
 .wh-files li { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--wh-border); font-size: 13px; }
@@ -1317,7 +1397,6 @@
   background: var(--wh-card-bg); border: 1px solid var(--wh-border); border-radius: 9px;
 }
 
-.wh-onec h3 { font-size: 14px; margin: 18px 0 6px; }
 .wh-inv-report { margin-top: 20px; }
 .wh-inv-report__meta {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 7px;
@@ -1548,14 +1627,13 @@
 .wh-tree__group { cursor: pointer; }
 .wh-tree__group:hover .wh-tree__toggle { color: var(--wh-primary); }
 /* Пустышка вместо стрелки у листьев: без неё названия номенклатуры съезжают
-   влево относительно групп того же уровня. */
+   влево относительно групп того же уровня. Чёрточку он больше не рисует: в
+   списке кабинетов её убрали ещё раньше, и по той же причине — штрих перед
+   каждым названием читается посторонним знаком, а лист и так отличается от
+   группы обычным начертанием подписи. */
 .wh-tree__bullet {
   width: 18px; height: 18px; flex-shrink: 0; position: relative;
   display: inline-block; vertical-align: middle;
-}
-.wh-tree__bullet::before {
-  content: ''; position: absolute; left: 7px; top: 8px;
-  width: 4px; height: 1px; background: var(--wh-border-dark);
 }
 .wh-tree__label { font-weight: 600; }
 .wh-tree__hint { font-size: 10px; color: var(--wh-text-tertiary); margin-left: 6px; }
@@ -1593,6 +1671,7 @@
 /* Селекты внутри таблицы разбора — рабочий инструмент, а не поле формы: их тут
    полсотни в столбец, и полноразмерные они превращают таблицу в анкету. */
 .wh-osv-map__select { min-width: 150px; max-width: 260px; font-size: 12px; }
+.wh-osv-map__pick { min-width: 170px; max-width: 260px; }
 .wh-osv-map .wh-tree__group > td:first-child { cursor: pointer; }
 .wh-osv-map .wh-tree__group > td { background: transparent; }
 .wh-osv-map .wh-table tbody tr:hover > td { background: var(--wh-primary-soft); }
@@ -1663,6 +1742,116 @@
 }
 .wh-combo__more { border-top: 1px solid var(--wh-border); }
 
+/* Обёртка портала: коробки не создаёт, но держит на себе токены .wh-app — ради
+   них она и существует (см. usePortalHost в LocationPicker.js). */
+.wh-portal-host { display: contents; }
+
+/* ── Выбор кабинета и места хранения (ver. 7.04) ───────────────────────────── */
+/* Поле выглядит как остальные контролы модуля (.wh-combo), а вот список — нет.
+   Общий стиль всплывающих окон здесь полупрозрачный: 92 % белого поверх размытия.
+   На белой карточке это читается стеклом, но дерево локаций всплывает и над
+   серым фоном страницы, и над таблицей разбора — и там сквозь него проступал
+   тот же серый, отчего список сливался с подложкой. Поэтому у него собственная
+   поверхность: непрозрачная, с чёткой рамкой и настоящей тенью.
+
+   Селектор составной (два класса), чтобы не зависеть от того, что общее правило
+   .wh-combo__drop стоит ниже по файлу. */
+.wh-combo__drop.wh-locpick__drop {
+  min-width: 320px;
+  border: 1px solid var(--wh-border-dark);
+  border-radius: 14px;
+  background: var(--wh-card-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  /* Три слоя вместо одного: контактная тень держит край панели, средняя даёт
+     объём, дальняя отрывает список от страницы. Одна большая мягкая тень на
+     светло-сером фоне почти не видна — как раз она и была. */
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, .09),
+    0 12px 24px -8px rgba(16, 24, 40, .14),
+    0 30px 60px -14px rgba(16, 24, 40, .26);
+  overflow: hidden;
+}
+
+/* Поле поиска — шапка панели: своя подложка и линия под ней. Без них строка
+   ввода висела в воздухе и терялась среди строк дерева. */
+.wh-locpick__drop .wh-combo__search {
+  padding: 11px 13px;
+  background: var(--wh-bg);
+  border-bottom: 1px solid var(--wh-border);
+}
+/* Само поле внутри шапки — плоская строка, а не поле в поле. Общее правило
+   .wh-app input рисует ему рамку, фон и вдавленную тень; здесь они лишние —
+   рамкой служит сама шапка, а лупа стоит снаружи поля и с его рамкой не
+   стыкуется. Селектор длиннее ради веса: общее правило стоит ниже по файлу. */
+.wh-app .wh-locpick__drop .wh-combo__search input {
+  height: auto; padding: 0;
+  border: 0; background: none; box-shadow: none; border-radius: 0;
+}
+.wh-app .wh-locpick__drop .wh-combo__search input:focus {
+  border: 0; box-shadow: none;
+}
+.wh-locpick__drop .wh-combo__search input::placeholder { color: var(--wh-text-tertiary); }
+.wh-locpick__drop .wh-combo__search > svg { color: var(--wh-text-secondary); }
+
+.wh-locpick__list { max-height: 330px; padding: 6px; }
+.wh-locpick__row {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 7px 10px;
+  border: 0; background: transparent; font: inherit; font-size: var(--wh-fs-base);
+  text-align: left; cursor: pointer; color: var(--wh-text); border-radius: 9px;
+}
+/* Ветка — заголовок, а не мишень выбора: приглушена и набрана полужирным, чтобы
+   список читался структурой, а не строчками одного веса. */
+.wh-locpick__row.is-branch { color: var(--wh-text-secondary); font-weight: 600; }
+/* Медцентр — верхняя граница раздела: своя подложка режет длинный список на
+   узнаваемые куски, и глаз находит нужный корпус, не перечитывая всё подряд. */
+.wh-locpick__row.is-root {
+  margin-top: 5px;
+  background: var(--wh-bg);
+  color: var(--wh-text); font-weight: 700;
+}
+.wh-locpick__row.is-root:first-child { margin-top: 0; }
+.wh-locpick__twist {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; flex: 0 0 14px; color: var(--wh-text-tertiary);
+}
+.wh-locpick__label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Кабинет в результатах поиска — часть ответа, а не украшение: он не сжимается
+   и не урезается, места ему уступает общий хвост пути. */
+.wh-locpick__room {
+  flex: 0 0 auto;
+  font-size: var(--wh-fs-small); color: var(--wh-text-secondary); font-weight: 600;
+  white-space: nowrap;
+}
+/* Остальной путь мельче всех и урезается первым: он отвечает на вопрос
+   «который из них», а не «что это». */
+.wh-locpick__path {
+  flex: 1 1 0; min-width: 0; text-align: right;
+  font-size: var(--wh-fs-small); color: var(--wh-text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wh-locpick__count {
+  flex: 0 0 auto; min-width: 18px; padding: 1px 6px; border-radius: 6px;
+  border: 1px solid var(--wh-border);
+  color: var(--wh-text-tertiary);
+  font-size: var(--wh-fs-small); font-weight: 600; text-align: center;
+}
+
+/* Состояния идут последними: подсветка под курсором и выбранное значение
+   перебивают и подложку медцентра, и приглушённость ветки. */
+.wh-locpick__row.is-cursor {
+  background: var(--primary-light); color: var(--primary);
+}
+.wh-locpick__row.is-cursor .wh-locpick__twist,
+.wh-locpick__row.is-cursor .wh-locpick__room,
+.wh-locpick__row.is-cursor .wh-locpick__path { color: inherit; opacity: .75; }
+/* Выбранное отмечено галочкой и начертанием, а фоном — нет: фон здесь означает
+   «сюда смотрит курсор», и красить им обе роли значит их спутать. */
+.wh-locpick__row.is-picked { color: var(--primary); font-weight: 700; }
+.wh-locpick__row.is-picked .wh-locpick__twist { color: inherit; }
+.wh-locpick__check { flex: 0 0 auto; color: var(--primary); }
+
 /* ── Размещение по кабинетам (ver. 6.80) ───────────────────────────────────── */
 /* Кабинет и полка вынесены в отдельную полосу над таблицами и не уезжают вместе
    с прокруткой очереди: их выбирают один раз на пачку, и потерять из виду то,
@@ -1677,8 +1866,7 @@
   min-width: 0;
   font-size: 12px; color: var(--wh-text-secondary);
 }
-.wh-place__room label:first-child { flex: 1 1 360px; }
-.wh-place__room label:nth-child(2) { flex: 0 1 300px; }
+.wh-place__pick { flex: 1 1 420px; max-width: 560px; }
 .wh-place__room label select { width: 100%; min-width: 0; }
 .wh-place__room > button { margin-left: auto; }
 
@@ -1723,6 +1911,26 @@
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
   margin-bottom: 3px; text-transform: capitalize;
 }
+/* Карточка снимка больше не элемент button, а div с ролью, — рамку фокуса
+   приходится вернуть руками, иначе список перестаёт проходиться с клавиатуры. */
+.wh-osv__snap:focus-visible { outline: 2px solid var(--wh-primary); outline-offset: 1px; }
+.wh-osv__snap-actions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+/* Статус снимка — цветной значок вместо плашки с подписью: состояний два, и
+   в узкой боковой колонке слово «черновик» занимало больше места, чем период,
+   к которому оно относится. */
+.wh-osv__snap-state { display: inline-flex; align-items: center; }
+.wh-osv__snap-state--applied { color: var(--wh-zone-green-line); }
+.wh-osv__snap-state--draft { color: var(--wh-zone-yellow-line); }
+/* Удаление стоит в самой карточке — там же, где выбирают снимок, и удалять
+   становится нечего искать. Кнопка мельче обычной иконочной: она внутри
+   карточки, а не в панели действий. */
+.wh-osv__snap .wh-osv__snap-del { width: 24px; height: 24px; border-radius: 6px; }
+.wh-osv__confirm-period { text-transform: capitalize; }
+
+/* Кнопка срока годности стоит в строке компактной таблицы — обычная иконочная
+   кнопка в 34 px растянула бы строку остатка вдвое против соседних. */
+.wh-room__expiry-btn { width: 24px; height: 24px; }
+.wh-table--compact .wh-room__expiry-btn { border-radius: 6px; }
 .wh-osv__cards {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px; margin-bottom: 12px;
@@ -2067,6 +2275,8 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .wh-combo__option, .wh-assetlife__options button { border-radius: 9px; }
+/* Подсветка дерева локаций описана в своём разделе выше — вместе с остальными
+   состояниями строки. */
 .wh-combo__option.is-cursor { background: var(--primary-light); color: var(--primary); }
 
 .wh-modal {

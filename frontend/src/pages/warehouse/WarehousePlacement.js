@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { ArrowRight, DoorOpen, Package, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import LocationPicker from './components/LocationPicker';
 import Pagination from './components/Pagination';
 
 /**
@@ -33,6 +34,9 @@ const num = value => {
   const n = Number(value || 0);
   return n % 1 === 0 ? n.toLocaleString('ru-RU') : n.toLocaleString('ru-RU', { maximumFractionDigits: 3 });
 };
+
+// Кабинет без мест хранения принять позиции не может — предлагать его незачем.
+const hasStorage = room => (room.storages || []).length > 0;
 
 function flattenRooms(tree) {
   const out = [];
@@ -82,7 +86,6 @@ export default function WarehousePlacement({ access, tree, onDone }) {
   const [pageSize, setPageSize] = useState(50);
 
   const rooms = useMemo(() => flattenRooms(tree), [tree]);
-  const room = rooms.find(r => r.id === roomId);
   const canEdit = Boolean(access?.capabilities?.canImportOsv);
 
   const loadQueue = useCallback(async () => {
@@ -119,9 +122,11 @@ export default function WarehousePlacement({ access, tree, onDone }) {
 
   useEffect(() => { loadRoom(); }, [loadRoom]);
 
-  // Смена кабинета сбрасывает и отметки, и полку: отмечали их для прошлого
-  // кабинета, и уехать вместе с ним они не должны.
-  useEffect(() => { setPicked(new Map()); setStorageId(''); }, [roomId]);
+  // Смена кабинета сбрасывает отметки: их ставили для прошлого кабинета, и
+  // уехать вместе с ним они не должны. Полку здесь больше не трогаем — кабинет
+  // и место хранения приходят из дерева одной парой, и сброс по смене кабинета
+  // стирал бы только что выбранную полку.
+  useEffect(() => { setPicked(new Map()); }, [roomId]);
 
   const toggle = (item) => {
     setPicked((prev) => {
@@ -217,24 +222,23 @@ export default function WarehousePlacement({ access, tree, onDone }) {
       </div>
 
       <div className="wh-place__room">
-        <label>
-          <DoorOpen size={14} /> Кабинет
-          <select value={roomId} onChange={e => setRoomId(e.target.value)}>
-            <option value="">Выберите кабинет…</option>
-            {rooms.map(r => (
-              <option key={r.id} value={r.id} disabled={!r.storages.length}>
-                {r.label}{r.storages.length ? '' : ' (нет мест хранения)'}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Место хранения
-          <select value={storageId} disabled={!room}
-                  onChange={e => setStorageId(e.target.value)}>
-            <option value="">Первое в кабинете</option>
-            {(room?.storages || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+        {/* Кабинет и полка выбираются одним деревом: до этого здесь стояли два
+            селекта, и в первом лежала сотня строк «МЦ · корпус · этаж · кабинет»,
+            различавшихся последними двумя словами. Кабинет можно выбрать и
+            целиком — тогда сервер положит в первое место хранения, как и
+            раньше по умолчанию. */}
+        <label className="wh-place__pick">
+          <span className="wh-form__cap"><DoorOpen size={14} /> Куда кладём</span>
+          <LocationPicker
+            tree={tree} mode="storage" allowRoom
+            filterRoom={hasStorage}
+            roomId={roomId} storageId={storageId}
+            placeholder="Кабинет или место хранения"
+            onPick={({ roomId: nextRoom, storageId: nextStorage }) => {
+              setRoomId(nextRoom || '');
+              setStorageId(nextStorage || '');
+            }}
+          />
         </label>
         <button className="wh-btn wh-btn--primary" disabled={!canEdit || !roomId || !picked.size || sending}
                 onClick={send}>

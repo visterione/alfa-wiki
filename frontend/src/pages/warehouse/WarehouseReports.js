@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  FileSpreadsheet, FileText, Info, AlertTriangle, ArrowRightLeft, Plug,
+  FileSpreadsheet, FileText, AlertTriangle, ArrowRightLeft, Play,
   ChevronRight, ChevronDown, Minimize2, Maximize2, ListTree, FolderTree,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
@@ -259,17 +259,12 @@ const REPORTS = {
     title: 'Инвентаризационные описи',
     custom: 'inventory',
   },
-  onec: {
-    code: 'RPT-1C-RECON',
-    title: 'Сверка с 1С',
-    custom: 'onec',
-  },
 };
 
 const GROUPS = [
   { title: 'Склад и материалы', keys: ['turnover', 'consumption', 'doctors', 'abc', 'expiring'] },
   { title: 'Основные средства', keys: ['depreciation', 'maintenance', 'idle'] },
-  { title: 'Аудит и сверка', keys: ['movements', 'inventory', 'onec'] },
+  { title: 'Аудит и сверка', keys: ['movements', 'inventory'] },
 ];
 
 export default function WarehouseReports({ access, tree, initialReport, onOpenAsset }) {
@@ -305,6 +300,10 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
   // Свёрнутые узлы дерева по ключу. Хранится «что свёрнуто», а не «что раскрыто»:
   // по умолчанию дерево раскрыто до кабинетов, и список свёрнутого короче.
   const [collapsed, setCollapsed] = useState(() => new Set());
+
+  // Номер последнего запуска расчёта — защита от ответа, который уже никому не
+  // нужен: см. load() ниже.
+  const runIdRef = React.useRef(0);
 
   // Активный режим отчёта. Отдельным состоянием, а не частью key: переключение
   // режима не должно ронять период и фильтры, ради которых их только что задали.
@@ -351,6 +350,10 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
 
   const load = useCallback(async () => {
     if (!report || report.custom) return;
+    // Номер запуска: отчёт теперь строится по кнопке, и переключиться на другой,
+    // не дождавшись ответа, стало обычным делом. Без метки поздний ответ старого
+    // отчёта лёг бы в таблицу нового — с его заголовками колонок.
+    const run = ++runIdRef.current;
     // Режим «сводка по активу» строится только после выбора актива — грузить
     // здесь нечего, экран сам сходит за лентой выбранного оборудования.
     if (renderKind === 'assetLife') { setState({ loading: false, data: null }); return; }
@@ -361,16 +364,29 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
       if (medCenterId) params.medCenterId = medCenterId;
       if (departmentId) params.departmentId = departmentId;
       const { data } = await report.load(params, activeMode);
+      if (run !== runIdRef.current) return;
       const shaped = report.unwrap ? { ...data, ...report.unwrap(data, activeMode) } : data;
       setState({ loading: false, data: shaped });
     } catch (e) {
+      if (run !== runIdRef.current) return;
       const denied = e.response?.status === 403;
       setState({ loading: false, data: null, denied: denied ? e.response.data?.error : null });
       if (!denied) toast.error(e.response?.data?.error || 'Отчёт не построился');
     }
   }, [report, period, medCenterId, departmentId, activeMode, renderKind]);
 
-  useEffect(() => { load(); }, [load]);
+  // Отчёт не строится сам при открытии вкладки. Каждый из них — тяжёлый расчёт
+  // по всей базе (оборотка разворачивает дерево локаций, ABC считает вариацию по
+  // месяцам), и автозапуск приходился ровно на тот момент, когда период и
+  // фильтры ещё не заданы: человек ждал минуту результат за месяц по умолчанию,
+  // чтобы тут же поменять период и ждать снова. Считаем по кнопке.
+  //
+  // При смене отчёта или режима результат сбрасываем: колонки у отчётов разные,
+  // и прошлая таблица под новыми заголовками читалась бы как свежий отчёт.
+  useEffect(() => {
+    runIdRef.current++;
+    setState({ loading: false, data: null });
+  }, [key, activeMode]);
 
   // При смене отчёта или данных сворачиваем места хранения: полностью раскрытое
   // дерево на тысячу строк невозможно читать, а до кабинета структура нужна сразу.
@@ -558,6 +574,15 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
                 тем же параметрам, что и таблица, поэтому стоят рядом с ними, но
                 это действия, а не фильтры — отсюда зазор. */}
             <div className="wh-reports__export">
+              {/* Построение стоит первым в группе действий: пока по нему не
+                  щёлкнули, выгружать нечего, и XLSX с PDF читаются как
+                  продолжение расчёта, а не как замена ему. Сводка по активу
+                  кнопки не получает — она собирается сама после выбора актива. */}
+              {renderKind !== 'assetLife' && (
+                <button className="wh-btn wh-btn--primary" onClick={load} disabled={state.loading}>
+                  <Play size={15} /> {state.loading ? 'Считаю…' : 'Сформировать'}
+                </button>
+              )}
               <button className="wh-btn wh-btn--ghost" onClick={() => doExport('xlsx')} disabled={exporting}>
                 <FileSpreadsheet size={15} /> XLSX
               </button>
@@ -568,7 +593,6 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
           </div>
         )}
 
-        {report.custom === 'onec' && <OneCPanel />}
         {report.custom === 'inventory' && <InventoryPanel />}
 
         {state.denied && (
@@ -589,8 +613,15 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
                 жизни актива и матрица ABC/XYZ. Каждый из них — форма из ТЗ, и
                 разложить её по колонкам значило бы потерять сам смысл формы. */}
             {renderKind === 'abc' && state.data && <AbcMatrix data={state.data} />}
-            {renderKind === 'transferMatrix' && <TransferMatrix data={state.data?.matrix} loading={state.loading} />}
-            {renderKind === 'maintenanceCalendar' && <MaintenanceCalendar items={state.data?.items || []} />}
+            {renderKind === 'transferMatrix' && state.data && <TransferMatrix data={state.data.matrix} />}
+            {renderKind === 'maintenanceCalendar' && state.data && <MaintenanceCalendar items={state.data.items || []} />}
+            {/* Матрица и календарь показываются вместо таблицы, поэтому спиннер и
+                подсказку «ещё не считали» им нужно рисовать отдельно. */}
+            {['transferMatrix', 'maintenanceCalendar'].includes(renderKind) && !state.data && (
+              state.loading
+                ? <div className="wh-table__loading"><div className="loading-spinner" /></div>
+                : <div className="wh-empty">Отчёт не сформирован — нажмите «Сформировать»</div>
+            )}
             {renderKind === 'assetLife' && <AssetLife onOpenAsset={onOpenAsset} />}
 
             {state.data?.controls?.stockVsMovements?.length > 0 && (
@@ -627,9 +658,18 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
                           onClick={hasChildren ? () => toggleNode(row.__key) : undefined}>
                         {columns.map(c => {
                           if (c.type === 'tree') {
+                            // Номенклатура прижата к левому краю ячейки: в ОСВ
+                            // пять уровней локаций, и лист шестым отступом
+                            // оказывался у середины колонки — длинным названиям
+                            // оставалась пара сантиметров. Отступы нужны, чтобы
+                            // читалась вложенность локаций, а лист вложенности не
+                            // продолжает: он последний и виден по обычному
+                            // начертанию подписи против полужирного у групп.
+                            const isLeaf = isTree && !hasChildren;
+                            const indent = isLeaf ? 0 : (row.__level || 0);
                             return (
                               <td key={c.key} className="wh-tree__cell"
-                                  style={{ paddingLeft: 10 + (row.__level || 0) * 18 }}>
+                                  style={{ paddingLeft: 10 + indent * 18 }}>
                                 {/* Стрелка — указатель состояния, а не мишень:
                                     сворачивает строка целиком, поэтому кнопка
                                     выведена из обхода табом и не ловит клик сама. */}
@@ -638,7 +678,7 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
                                           title={isCollapsed ? 'Раскрыть' : 'Свернуть'}>
                                     {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                                   </button>
-                                ) : <span className="wh-tree__bullet" />}
+                                ) : isLeaf ? null : <span className="wh-tree__bullet" />}
                                 <span className={hasChildren ? 'wh-tree__label' : ''}>{row.label}</span>
                                 {isCollapsed && <span className="wh-tree__hint">свёрнуто</span>}
                               </td>
@@ -654,7 +694,9 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
                     );
                   })}
                   {!state.loading && !visibleRows.length && (
-                    <tr><td colSpan={columns.length} className="wh-empty">Данных нет</td></tr>
+                    <tr><td colSpan={columns.length} className="wh-empty">
+                      {state.data ? 'Данных нет' : 'Отчёт не сформирован — задайте период и нажмите «Сформировать»'}
+                    </td></tr>
                   )}
                 </tbody>
                 {state.data?.totals && (
@@ -706,58 +748,25 @@ function SummaryStrip({ summary }) {
   );
 }
 
-function OneCPanel() {
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    warehouseApi.oneCStatus().then(({ data: res }) => setData(res)).catch(() => {});
-  }, []);
-  if (!data) return <div className="wh-page--center"><div className="loading-spinner" /></div>;
-
-  return (
-    <div className="wh-onec">
-      <div className="wh-note wh-note--warn">
-        <Plug size={15} />
-        <div><b>Обмен с 1С не подключён.</b> {data.integration.reason}.</div>
-      </div>
-
-      <h3>Внутренняя сверка</h3>
-      {data.internalReconciliation.ok ? (
-        <div className="wh-note wh-note--ok">
-          <Info size={15} />
-          <div>Остаток совпадает с журналом движений: расхождений нет.</div>
-        </div>
-      ) : (
-        <table className="wh-table wh-table--compact">
-          <thead><tr><th>Номенклатура</th><th className="wh-num">По остаткам</th><th className="wh-num">По движениям</th><th className="wh-num">Разница</th></tr></thead>
-          <tbody>
-            {data.internalReconciliation.discrepancies.map((d, i) => (
-              <tr key={i}>
-                <td>{d.name}</td>
-                <td className="wh-num">{d.stock_qty}</td>
-                <td className="wh-num">{d.calc_qty}</td>
-                <td className="wh-num wh-danger">{d.diff}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      <h3>Очередь исходящих (outbox)</h3>
-      <pre className="wh-pre">{JSON.stringify(data.integration.outboxQueue, null, 2)}</pre>
-
-      <h3>Документы по статусу синхронизации</h3>
-      <pre className="wh-pre">{JSON.stringify(data.integration.documentsByStatus, null, 2)}</pre>
-    </div>
-  );
-}
-
 function InventoryPanel() {
-  const [sessions, setSessions] = useState([]);
+  // null, а не пустой массив: у описей есть третье состояние — «ещё не строили».
+  // Отличить его от «описей нет» нужно, иначе экран до нажатия кнопки уверенно
+  // сообщал бы, что инвентаризаций не было ни одной.
+  const [sessions, setSessions] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
 
-  useEffect(() => {
-    warehouseApi.inventorySessions().then(({ data }) => setSessions(data)).catch(() => {});
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data } = await warehouseApi.inventorySessions();
+      setSessions(data);
+    } catch {
+      toast.error('Не удалось загрузить описи');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const open = async (id) => {
     try {
@@ -770,11 +779,18 @@ function InventoryPanel() {
 
   return (
     <div className="wh-inventory">
+      {/* Описи собираются по кнопке, как и остальные отчёты вкладки. */}
+      <div className="wh-reports__filters">
+        <button className="wh-btn wh-btn--primary" onClick={load} disabled={loading}>
+          <Play size={15} /> {loading ? 'Считаю…' : 'Сформировать'}
+        </button>
+      </div>
+
       <div className="wh-table-wrap">
         <table className="wh-table wh-table--compact">
           <thead><tr><th>Опись</th><th>Локация</th><th>Основание</th><th>Статус</th><th>Начата</th><th>Завершена</th><th>Длительность</th></tr></thead>
           <tbody>
-            {sessions.map(s => (
+            {(sessions || []).map(s => (
               <tr key={s.id} className="wh-table__row" onClick={() => open(s.id)}>
                 <td className="wh-mono">{s.number}</td>
                 <td>{s.room ? `Каб. ${s.room.number}` : s.department?.name || '—'}</td>
@@ -787,7 +803,14 @@ function InventoryPanel() {
                 <td>{s.durationMinutes ? `${Math.floor(s.durationMinutes / 60)} ч ${s.durationMinutes % 60} мин` : '—'}</td>
               </tr>
             ))}
-            {!sessions.length && <tr><td colSpan={7} className="wh-empty">Описей нет</td></tr>}
+            {loading && (
+              <tr><td colSpan={7} className="wh-table__loading"><div className="loading-spinner" /></td></tr>
+            )}
+            {!loading && !sessions?.length && (
+              <tr><td colSpan={7} className="wh-empty">
+                {sessions ? 'Описей нет' : 'Отчёт не сформирован — нажмите «Сформировать»'}
+              </td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -933,6 +956,12 @@ function cell(row, col, ctx = {}) {
     return <span className="wh-muted" title={row.missingReason}>нет данных</span>;
   }
 
+  // В строке-группе показателя позиции нет и быть не может: код, единица, доля,
+  // минимум и статус относятся к номенклатуре, а не к этажу или кабинету.
+  // Прочерк в каждой такой ячейке складывался в столбцы прочерков через весь
+  // отчёт и читался как «данные потерялись», хотя терять там нечего.
+  if (row.__isGroup && (value === null || value === undefined || value === '')) return null;
+
   return format(value, col.type);
 }
 
@@ -1076,7 +1105,7 @@ function AbcMatrix({ data }) {
  * Матрица межотделенческих перемещений — режим 3 отчёта № 2. Показывает, между
  * какими подразделениями оборудование ходит в обход заявок.
  */
-function TransferMatrix({ data, loading }) {
+function TransferMatrix({ data }) {
   const departments = data?.departments || [];
   // Сервер отдаёт разреженный список непустых клеток — плотную таблицу собираем
   // здесь: пересылать нули между всеми парами отделений незачем.
@@ -1086,7 +1115,6 @@ function TransferMatrix({ data, loading }) {
     return map;
   }, [data]);
 
-  if (loading) return <div className="wh-table__loading"><div className="loading-spinner" /></div>;
   if (!departments.length) return <div className="wh-empty">Межотделенческих перемещений за период нет</div>;
 
   const received = d => departments.reduce((s, from) => s + (byPair.get(`${from.id}>${d.id}`) || 0), 0);

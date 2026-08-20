@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  AlertTriangle, Check, ChevronDown, ChevronRight, Info,
+  AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Info,
   Maximize2, Minimize2, Search, Trash2, Upload, X,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
@@ -54,6 +54,9 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState(new Set());
+  // Снимок, для которого открыт вопрос об удалении. Держим саму строку, а не
+  // флаг: в вопросе нужны период и статус, а список к тому моменту мог уехать.
+  const [pendingDelete, setPendingDelete] = useState(null);
   const fileRef = useRef(null);
 
   const canImport = Boolean(access?.capabilities?.canImportOsv);
@@ -130,11 +133,11 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
     } finally { setBusy(false); }
   };
 
+  // Удаление подтверждается своим окном, а не window.confirm: кнопка живёт в
+  // карточке снимка рядом с самим выбором снимка, и промах мышью здесь стоит
+  // месяца истории. Системный confirm к тому же не показывает, какой именно
+  // период сейчас удаляют, — а карточек в списке столбик.
   const remove = async (row) => {
-    const label = row.status === 'applied'
-      ? `Удалить принятый снимок за ${periodOf(row)}? Сравнение следующих месяцев будет считаться от более раннего.`
-      : 'Удалить черновик?';
-    if (!window.confirm(label)) return;
     setBusy(true);
     try {
       await warehouseApi.deleteOsv(row.id);
@@ -143,7 +146,10 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
       toast.success('Удалено');
     } catch (e) {
       toast.error(e.response?.data?.error || 'Не удалось удалить');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      setPendingDelete(null);
+    }
   };
 
   const lines = snapshot?.lines || [];
@@ -276,20 +282,46 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
               Ни одной выгрузки. Загрузите файл «ОСВ по счету МЦ.04 за … .xlsx».
             </div>
           )}
-          {imports.map(row => (
-            <button key={row.id}
-                    className={`wh-osv__snap ${row.id === selectedId ? 'is-active' : ''}`}
-                    onClick={() => setSelectedId(row.id)}>
-              <div className="wh-osv__snap-head">
-                <b>{periodOf(row)}</b>
-                <span className={`wh-status wh-status--${row.status === 'applied' ? 'done' : 'open'}`}>
-                  {row.status === 'applied' ? 'принят' : 'черновик'}
-                </span>
+          {/* Карточка перестала быть кнопкой: внутрь въехало удаление, а кнопка в
+              кнопке — невалидная разметка, в которой клик по мусорке всё равно
+              выбирал бы снимок. Роль и обработчик клавиатуры возвращают то, что
+              давал элемент button. */}
+          {imports.map(row => {
+            const applied = row.status === 'applied';
+            return (
+              <div key={row.id} role="button" tabIndex={0}
+                   className={`wh-osv__snap ${row.id === selectedId ? 'is-active' : ''}`}
+                   onClick={() => setSelectedId(row.id)}
+                   onKeyDown={e => {
+                     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(row.id); }
+                   }}>
+                <div className="wh-osv__snap-head">
+                  <b>{periodOf(row)}</b>
+                  <span className="wh-osv__snap-actions">
+                    {/* Статус — значок, а не плашка с подписью: состояний всего
+                        два, они читаются цветом мгновенно, а плашка «черновик»
+                        отъедала половину узкой карточки. Смысл значка остаётся
+                        доступен наведением и скринридеру. */}
+                    <span className={`wh-osv__snap-state wh-osv__snap-state--${applied ? 'applied' : 'draft'}`}
+                          title={applied ? 'Принят' : 'Черновик, ещё не принят'}
+                          aria-label={applied ? 'Принят' : 'Черновик'}>
+                      {applied ? <CheckCircle2 size={16} /> : <CircleDashed size={16} />}
+                    </span>
+                    {canImport && (
+                      <button className="wh-icon-btn wh-icon-btn--danger wh-osv__snap-del"
+                              title={applied ? 'Удалить снимок' : 'Удалить черновик'}
+                              disabled={busy}
+                              onClick={e => { e.stopPropagation(); setPendingDelete(row); }}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <div className="wh-cell-sub">{money(row.closingSum)} ₽ · {qty(row.closingQty)} ед.</div>
+                <div className="wh-cell-sub wh-muted">{row.leafCount} позиций · {row.account}</div>
               </div>
-              <div className="wh-cell-sub">{money(row.closingSum)} ₽ · {qty(row.closingQty)} ед.</div>
-              <div className="wh-cell-sub wh-muted">{row.leafCount} позиций · {row.account}</div>
-            </button>
-          ))}
+            );
+          })}
         </aside>
 
         <section className="wh-osv__main">
@@ -318,10 +350,6 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
                       <div className="wh-form__actions">
                         <button className="wh-btn wh-btn--primary wh-btn--sm" onClick={apply} disabled={busy}>
                           <Check size={14} /> Принять за {periodOf(head)}
-                        </button>
-                        <button className="wh-btn wh-btn--danger-ghost wh-btn--sm"
-                                onClick={() => remove(head)} disabled={busy}>
-                          <Trash2 size={14} /> Удалить черновик
                         </button>
                       </div>
                     )}
@@ -405,19 +433,64 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
                 </table>
               </div>
 
-              {head.status === 'applied' && canImport && (
-                <div className="wh-form__actions">
-                  <button className="wh-btn wh-btn--danger-ghost wh-btn--sm"
-                          onClick={() => remove(head)} disabled={busy}>
-                    <Trash2 size={14} /> Удалить снимок
-                  </button>
-                </div>
-              )}
             </>
           )}
         </section>
         </div>
       )}
+
+      {pendingDelete && (
+        <ConfirmDelete row={pendingDelete}
+                       busy={busy}
+                       onCancel={() => setPendingDelete(null)}
+                       onConfirm={() => remove(pendingDelete)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Вопрос перед удалением снимка. Отдельное окно, а не window.confirm: удаление
+ * принятого снимка сдвигает базу сравнения для всех следующих месяцев, и это
+ * стоит написать словами, а не уместить в одну строку системного диалога.
+ */
+function ConfirmDelete({ row, busy, onCancel, onConfirm }) {
+  const applied = row.status === 'applied';
+  return (
+    <div className="wh-modal" onClick={onCancel}>
+      <div className="wh-modal__box wh-modal__box--narrow" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div>
+            <div className="wh-modal__title">
+              {applied ? 'Удалить снимок?' : 'Удалить черновик?'}
+            </div>
+            <div className="wh-modal__sub wh-osv__confirm-period">{periodOf(row)}</div>
+          </div>
+          <button className="wh-icon-btn" onClick={onCancel}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-note wh-note--warn">
+            <AlertTriangle size={15} />
+            <div>
+              {applied
+                ? <>Снимок за {periodOf(row)} принят. После удаления расхождения следующих
+                    месяцев будут считаться от более раннего снимка, а сопоставления с
+                    кабинетами, сделанные по этим строкам, останутся без исходника.</>
+                : <>Черновик ещё не стал ведомостью — удаление ничего не меняет
+                    в принятых снимках. Файл придётся загрузить заново.</>}
+            </div>
+          </div>
+          <div className="wh-cell-sub wh-muted">
+            {money(row.closingSum)} ₽ · {qty(row.closingQty)} ед. · {row.leafCount} позиций
+          </div>
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onCancel} disabled={busy}>Отмена</button>
+          <button className="wh-btn wh-btn--danger" onClick={onConfirm} disabled={busy}>
+            <Trash2 size={15} /> {busy ? 'Удаляю…' : 'Удалить'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
