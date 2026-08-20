@@ -13,7 +13,7 @@ const router = express.Router();
 const { Op } = require('sequelize');
 const {
   sequelize, WhBuilding, WhFloor, WhDepartment, WhRoom, WhStorage, WhFloorShape,
-  WhSpecialty, WhAsset, MedCenter, User,
+  WhSpecialty, WhAsset, WhStock, MedCenter, User,
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
@@ -709,13 +709,35 @@ router.put('/rooms/:id', authenticate, requireWarehouse('canIssue'), async (req,
   }
 });
 
+/**
+ * Закрытие кабинета. Мягкое: он гасится, а не удаляется, потому что на него
+ * ссылаются движения за все прошлые периоды.
+ *
+ * Пустым он должен быть по обеим статьям сразу. Раньше считалось только
+ * оборудование, и кабинет с полками материалов гасился беспрепятственно: остаток
+ * продолжал числиться в warehouse_stock и попадать в суммы по сети, а с экранов
+ * пропадал вместе с кабинетом — найти его было негде.
+ */
 router.delete('/rooms/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   const row = await WhRoom.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Кабинет не найден' });
-  const assets = await WhAsset.count({ where: { roomId: row.id, isArchived: false } });
+
+  const [assets, stock] = await Promise.all([
+    WhAsset.count({ where: { roomId: row.id, isArchived: false } }),
+    WhStock.count({
+      where: { quantity: { [Op.gt]: 0 } },
+      include: [{ model: WhStorage, as: 'storage', required: true, where: { roomId: row.id }, attributes: [] }],
+    }),
+  ]);
   if (assets > 0) {
     return res.status(409).json({ error: `В кабинете ${assets} активов — сначала переместите их` });
   }
+  if (stock > 0) {
+    return res.status(409).json({
+      error: `В кабинете ${stock} позиций на остатке — сначала переместите или спишите их`,
+    });
+  }
+
   await row.update({ isActive: false });
   res.json({ ok: true, softDeleted: true });
 });
@@ -883,6 +905,19 @@ router.put('/storages/:id', authenticate, requireWarehouse('canIssue'), async (r
   const row = await WhStorage.findByPk(req.params.id);
   if (!row) return res.status(404).json({ error: 'Место хранения не найдено' });
   const { name, kind, tempMinC, tempMaxC, sortOrder, isActive } = req.body;
+
+  // Погашенная полка пропадает из выбора мест хранения, но остаток на ней
+  // продолжает числиться — и снять его оттуда становится нечем: в форме операции
+  // такое место уже не выбрать.
+  if (isActive === false && row.isActive) {
+    const left = await WhStock.count({ where: { storageId: row.id, quantity: { [Op.gt]: 0 } } });
+    if (left > 0) {
+      return res.status(409).json({
+        error: `На этом месте хранения ${left} позиций на остатке — сначала переместите или спишите их`,
+      });
+    }
+  }
+
   await row.update({
     ...(name !== undefined ? { name: name.trim() } : {}),
     ...(kind !== undefined ? { kind } : {}),

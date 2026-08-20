@@ -20,6 +20,7 @@ const {
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
 const { reconcileStock, attachBatchToStock } = require('../../services/warehouse/stock');
+const { assertNotCounting } = require('../../services/warehouse/inventory');
 
 // ── Категории ────────────────────────────────────────────────────────────────
 router.get('/categories', authenticate, requireWarehouse(), async (req, res) => {
@@ -313,6 +314,14 @@ router.patch('/stock/:id/batch', authenticate, requireWarehouse('canManageCatalo
       return res.status(400).json({ error: 'Нужен срок годности или номер серии' });
     }
 
+    // Привязка партии переносит количество между строками остатка — для открытой
+    // описи это движение под руками у комиссии, ровно то, от чего её защищает
+    // заморозка кабинета (services/warehouse/inventory.js).
+    const stock = await WhStock.findByPk(req.params.id, { attributes: ['id', 'storageId'] });
+    if (!stock) return res.status(404).json({ error: 'Строка остатка не найдена' });
+    const storage = await WhStorage.findByPk(stock.storageId, { attributes: ['roomId'] });
+    await assertNotCounting([storage?.roomId]);
+
     const result = await attachBatchToStock({
       stockId: req.params.id,
       expiryDate, batchNumber,
@@ -354,21 +363,52 @@ router.get('/reorder-rules', authenticate, requireWarehouse(), async (req, res) 
   res.json(rows);
 });
 
+/**
+ * Минимум по одной позиции. Правила те же, что и у массовой постановки ниже, и
+ * разойтись им нельзя: пачка дедуплицировала пару «позиция + место» и проверяла
+ * значения, а поштучная ручка не делала ни того, ни другого — через неё
+ * появлялись вторые минимумы на ту же позицию, и дефицит считался по тому из
+ * них, который нашёлся первым.
+ */
 router.post('/reorder-rules', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const { nomenclatureId, roomId, storageId, minQty, maxQty, autoRfq } = req.body;
     if (!nomenclatureId || minQty === undefined) {
       return res.status(400).json({ error: 'Нужны номенклатура и минимум' });
     }
-    const row = await WhReorderRule.create({
-      nomenclatureId, roomId: roomId || null, storageId: storageId || null,
-      minQty, maxQty: maxQty ?? null, autoRfq: Boolean(autoRfq),
-    });
+    const bad = checkReorderQty(minQty, maxQty);
+    if (bad) return res.status(400).json({ error: bad });
+
+    const where = { nomenclatureId, roomId: roomId || null, storageId: storageId || null };
+    const patch = { minQty, maxQty: maxQty ?? null, autoRfq: Boolean(autoRfq) };
+
+    const existing = await WhReorderRule.findOne({ where });
+    if (existing) {
+      await existing.update(patch);
+      return res.json(existing);
+    }
+    const row = await WhReorderRule.create({ ...where, ...patch });
     res.status(201).json(row);
   } catch (err) {
+    console.error('POST warehouse/catalog/reorder-rules error:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * Минимум и максимум запаса. Максимум ниже минимума — правило, которое нельзя
+ * выполнить: остаток обязан быть одновременно и не меньше первого, и не больше
+ * второго.
+ */
+function checkReorderQty(minQty, maxQty) {
+  const min = Number(minQty);
+  if (!Number.isFinite(min) || min < 0) return 'Минимальный остаток не может быть отрицательным';
+  if (maxQty === undefined || maxQty === null || maxQty === '') return null;
+  const max = Number(maxQty);
+  if (!Number.isFinite(max) || max < 0) return 'Максимальный остаток не может быть отрицательным';
+  if (max < min) return `Максимальный остаток ${max} меньше минимального ${min}`;
+  return null;
+}
 
 /**
  * Минимумы пачкой: одно значение сразу на набор позиций.
@@ -392,9 +432,11 @@ router.post('/reorder-rules/bulk', authenticate, requireWarehouse('canManageCata
       skipExisting = false,
     } = req.body || {};
 
-    if (minQty === undefined || minQty === null || Number(minQty) < 0) {
+    if (minQty === undefined || minQty === null) {
       return res.status(400).json({ error: 'Нужен минимальный остаток' });
     }
+    const badQty = checkReorderQty(minQty, maxQty);
+    if (badQty) return res.status(400).json({ error: badQty });
     if (!categoryId && (!Array.isArray(nomenclatureIds) || !nomenclatureIds.length)) {
       return res.status(400).json({ error: 'Выберите позиции или категорию' });
     }

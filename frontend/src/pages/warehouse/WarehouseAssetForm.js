@@ -25,13 +25,17 @@ import LocationPicker from './components/LocationPicker';
  *     должен понимать, что это не выгрузка из учётной системы.
  */
 
+// «Списано» здесь нет намеренно: это не состояние, а выбытие с баланса, и
+// оформляется оно документом списания. Пока пункт стоял в этом списке, он делал
+// вид, что списывает, а на деле менял только подпись на карточке — вещь
+// оставалась в ведомости амортизации, в описи и доступной к выдаче. Сервер
+// такую правку теперь отклоняет (routes/warehouse/assets.js, checkStatus).
 const STATUSES = [
   { value: 'in_use', label: 'В работе' },
   { value: 'maintenance', label: 'На техобслуживании' },
   { value: 'repair', label: 'В ремонте' },
   { value: 'storage', label: 'На хранении' },
   { value: 'reserved', label: 'Зарезервировано' },
-  { value: 'written_off', label: 'Списано' },
 ];
 
 const DEPRECIATION_METHODS = [

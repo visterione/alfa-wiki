@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  ArrowLeft, Boxes, Check, ChevronRight, Copy, FilePlus2, Package, Plus,
-  Search, Trash2, X,
+  AlertTriangle, ArrowLeft, Boxes, Check, ChevronRight, Copy, FilePlus2, Package,
+  Plus, Search, Trash2, X,
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
 import Combobox from './components/Combobox';
@@ -257,7 +257,7 @@ function DocumentEditor({ refs, tree, onCreated, onCancel, initial }) {
   const [line, setLine] = useState(EMPTY_LINE);
   const [lines, setLines] = useState([]);
   const [meta, setMeta] = useState({
-    occurredAt: new Date().toISOString().slice(0, 16), reasonCode: '', reasonText: '',
+    occurredAt: localNow(), reasonCode: '', reasonText: '',
     comment: '', contractorId: '',
   });
   const [saving, setSaving] = useState(false);
@@ -284,6 +284,39 @@ function DocumentEditor({ refs, tree, onCreated, onCancel, initial }) {
    * позиций, часть кабинетов молча оказалась бы пустой. Запрос по конкретному
    * кабинету всегда точен и невелик.
    */
+  /**
+   * Кабинеты, закрытые сейчас инвентаризацией.
+   *
+   * Пока по кабинету идут пересчёт, остаток в нём двигать нельзя: опись сняла
+   * ожидаемые количества при открытии и проведёт разницу поверх них. Сервер это
+   * и так не пропустит, но узнать об отказе на кнопке «Провести» — значит узнать
+   * после того, как документ уже собран. Предупреждение стоит там, где выбирают
+   * место.
+   */
+  const [frozen, setFrozen] = useState(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    warehouseApi.frozenRooms()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setFrozen(new Map((data.items || []).map(i => [i.roomId, i.number])));
+      })
+      .catch(() => { /* предупреждение необязательное: отказ всё равно придёт с сервера */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Кабинеты документа — те же, что проверяет сервер: и «откуда», и «куда».
+  const frozenInDocument = useMemo(() => {
+    const rooms = new Set();
+    if (source.roomId) rooms.add(source.roomId);
+    for (const row of lines) {
+      if (row.fromRoomId) rooms.add(row.fromRoomId);
+      if (row.toRoomId) rooms.add(row.toRoomId);
+    }
+    if (line.toRoomId) rooms.add(line.toRoomId);
+    return [...rooms].filter(id => frozen.has(id)).map(id => frozen.get(id));
+  }, [frozen, source.roomId, lines, line.toRoomId]);
+
   const [contents, setContents] = useState({ loading: false, stock: [], assets: [] });
   useEffect(() => {
     if (!sourceFirst || !source.roomId) { setContents({ loading: false, stock: [], assets: [] }); return undefined; }
@@ -612,7 +645,6 @@ function DocumentEditor({ refs, tree, onCreated, onCancel, initial }) {
         toRoomId: single(lines.map(l => l.toRoomId)),
         reasonCode: meta.reasonCode || null, reasonText: meta.reasonText.trim(),
         comment: meta.comment || null, contractorId: meta.contractorId || null,
-        sign: true,
       });
       toast.success(`Документ ${data.number} проведён и подписан`);
       onCreated(data.id);
@@ -642,7 +674,11 @@ function DocumentEditor({ refs, tree, onCreated, onCancel, initial }) {
         </label>
         <label className="wh-opdoc__bar-field">
           <span className="wh-form__cap">Дата и время</span>
+          {/* max — задним числом документ оформить можно, будущим нельзя: остаток
+              меняется сейчас, и движение, датированное следующим месяцем, выпало
+              бы из отчёта за текущий. Сервер это проверяет отдельно. */}
           <input type="datetime-local" value={meta.occurredAt}
+                 max={localNow()}
                  onChange={e => setMeta(m => ({ ...m, occurredAt: e.target.value }))} />
         </label>
       </div>
@@ -735,12 +771,24 @@ function DocumentEditor({ refs, tree, onCreated, onCancel, initial }) {
             </div>
           </div>
 
+          {frozenInDocument.length > 0 && (
+            <div className="wh-note wh-note--warn">
+              <AlertTriangle size={15} />
+              <div>
+                По кабинету документа идёт инвентаризация {frozenInDocument.join(', ')}.
+                Пока опись не закрыта, остаток в нём не двигается: комиссия считает
+                полку по количествам, снятым при открытии описи, и движение под
+                руками у неё превратится в недостачу или излишек.
+              </div>
+            </div>
+          )}
+
           {/* Подпись фиксируется самим нажатием кнопки: отдельная галочка
               «подтверждаю подлинность» была вторым замком на той же двери — её
               ставили не читая, чтобы разблокировать кнопку. */}
           <div className="wh-opdoc__submit">
             <button className="wh-btn wh-btn--primary" onClick={submit}
-                    disabled={saving || !lines.length}>
+                    disabled={saving || !lines.length || frozenInDocument.length > 0}>
               <Check size={15} /> {saving ? 'Провожу…' : 'Провести и подписать'}
             </button>
           </div>
@@ -1078,3 +1126,17 @@ const userLabel = (items, id) => { const u = items.find(x => x.id === id); retur
 const batchLabel = (items, id) => items.find(x => x.id === id)?.batchNumber || '—';
 const fmtDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
 const fmtDateTime = d => d ? new Date(d).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+/**
+ * «Сейчас» в том виде, в каком его понимает <input type="datetime-local">.
+ *
+ * Поле работает в местном времени и часового пояса не несёт; сервер разбирает
+ * присланную строку тоже как местную. А toISOString отдаёт UTC — и подставленное
+ * по умолчанию время оказывалось на три часа в прошлом, то есть каждый документ
+ * по умолчанию оформлялся задним числом.
+ */
+const localNow = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+};

@@ -647,8 +647,43 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     medCenterIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   }, { ...ts, tableName: 'warehouse_user_permissions' });
 
+  /**
+   * Отказ от регламентной рассылки (ver. 7.07).
+   *
+   * Хранятся именно ОТКАЗЫ: по умолчанию отчёт приходит тому, у кого есть на него
+   * право, и строка на каждую пару «человек × отчёт» была бы вторым экземпляром
+   * прав, живущим своей жизнью. Нет строки — подписан.
+   */
+  const WhMailOptOut = sequelize.define('WhMailOptOut', {
+    userId:     { type: DataTypes.UUID, allowNull: false, primaryKey: true },
+    reportCode: { type: DataTypes.STRING(32), allowNull: false, primaryKey: true },
+  }, {
+    tableName: 'warehouse_mail_optouts',
+    timestamps: true, updatedAt: false,
+  });
+
+  /**
+   * Журнал отправок. Единственное назначение — не отправить письмо дважды за один
+   * прогон: воркер перезапускается вместе с сервером, а cron может сработать
+   * после сбоя. Уникальный ключ (отчёт, получатель, прогон) делает повтор
+   * невозможным на уровне базы, а не на уровне аккуратности кода.
+   */
+  const WhMailLog = sequelize.define('WhMailLog', {
+    id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    reportCode: { type: DataTypes.STRING(32), allowNull: false },
+    userId:     { type: DataTypes.UUID },
+    runKey:     { type: DataTypes.STRING(64), allowNull: false },
+    status:     { type: DataTypes.STRING(16), allowNull: false },
+    itemCount:  { type: DataTypes.INTEGER },
+    error:      { type: DataTypes.TEXT },
+    sentAt:     { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  }, {
+    tableName: 'warehouse_mail_log',
+    timestamps: false,
+  });
+
   const models = {
-    WhUserPermission,
+    WhUserPermission, WhMailOptOut, WhMailLog,
     WhSpecialty, WhBuilding, WhFloor, WhDepartment, WhRoom, WhFloorShape, WhStorage,
     WhContractor, WhCategory, WhNomenclature,
     WhAsset, WhAssetFile,
@@ -732,6 +767,8 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     // Документы и движения
     WhUserPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
     User.hasOne(WhUserPermission, { foreignKey: 'userId', as: 'warehousePermission' });
+    WhMailOptOut.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+    WhMailLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
     WhDocument.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
     WhDocument.belongsTo(User, { foreignKey: 'signedBy', as: 'signer' });

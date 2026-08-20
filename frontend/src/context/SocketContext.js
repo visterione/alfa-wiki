@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import toast from 'react-hot-toast';
 import { useAuth } from './AuthContext';
 import { BASE_URL, chat as chatApi, releaseNotes as releaseNotesApi } from '../services/api';
 
@@ -375,6 +376,31 @@ export function SocketProvider({ children }) {
         { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...data },
       ]);
       playNotificationSound();
+    });
+
+    /**
+     * Сигнал складского модуля: остаток ушёл ниже минимума, позиция кончилась.
+     *
+     * Всплывающим уведомлением, а не окном поверх экрана: в отличие от задачи,
+     * это не поручение человеку, а сведение к его данным — прочитать его можно
+     * и через минуту. Ссылка ведёт прямо в тот кабинет, где кончилось.
+     *
+     * Звук только у критического: «ниже минимума» случается по нескольку раз в
+     * день, и звенеть на каждую выдачу значит добиться, чтобы звук выключили.
+     */
+    socket.on('warehouse:alert', (data) => {
+      if (!data?.text) return;
+      toast(
+        (t) => React.createElement('span', {
+          style: { cursor: data.link ? 'pointer' : 'default' },
+          onClick: () => {
+            if (data.link) window.location.assign(data.link);
+            toast.dismiss(t.id);
+          },
+        }, `${data.title ? data.title + ': ' : ''}${data.text}`),
+        { icon: data.level === 'critical' ? '🔴' : '🟠', duration: 8000 },
+      );
+      if (data.level === 'critical') playNotificationSound();
     });
 
     socket.on('new_message', (data) => {

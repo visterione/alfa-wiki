@@ -537,10 +537,30 @@ const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [
   return results;
 };
 
+/**
+ * Одно письмо одному адресату через рассылочный ящик.
+ *
+ * sendBulkEmail рядом шлёт ОДНО И ТО ЖЕ письмо списку — для новостей это верно, а
+ * для регламентных отчётов нет: каждый получатель видит только свои кабинеты, и
+ * вложение у каждого своё. Отдельная функция вместо параметра к sendBulkEmail,
+ * потому что общего у них ровно транспорт.
+ *
+ * attachments здесь — буферы в памяти ({ filename, content }), а не пути в
+ * uploads: отчёт формируется на лету и на диск не ложится.
+ */
+const sendReportEmail = async ({ to, subject, html, text, attachments = [] }) => {
+  const transporter = createBroadcastTransporter();
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM_BROADCAST || process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+    to, subject, html, text, attachments,
+  });
+};
+
 module.exports = {
   generateCode,
   send2FACode,
   send2FADisabledNotification,
   sendCredentials,
-  sendBulkEmail
+  sendBulkEmail,
+  sendReportEmail
 };

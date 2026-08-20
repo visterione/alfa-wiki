@@ -19,6 +19,8 @@ const {
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport, roomPath } = require('../../services/warehouse/access');
 const { createDocument } = require('../../services/warehouse/stock');
+const { assertNotCounting, openCountByRoom } = require('../../services/warehouse/inventory');
+const alerts = require('../../services/warehouse/alerts');
 const {
   generateMaintenanceNumber, generateRepairNumber, generateRfqNumber, generateDocumentNumber,
 } = require('../../services/warehouse/numbering');
@@ -105,35 +107,72 @@ router.get('/documents/:id', authenticate, requireWarehouse(), async (req, res) 
 });
 
 /**
+ * Все кабинеты, которых касается документ: и «откуда», и «куда», и те, где
+ * сейчас стоит перемещаемое оборудование.
+ *
+ * Считаются вместе, потому что и зона ответственности, и заморозка на время
+ * пересчёта — правила про кабинет, а не про направление движения.
+ */
+async function documentRooms(lines) {
+  const storageIds = [];
+  const assetIds = [];
+  for (const line of lines || []) {
+    if (line?.fromStorageId) storageIds.push(line.fromStorageId);
+    if (line?.toStorageId) storageIds.push(line.toStorageId);
+    if (line?.assetId) assetIds.push(line.assetId);
+  }
+
+  const [storages, assets] = await Promise.all([
+    storageIds.length
+      ? WhStorage.findAll({ where: { id: { [Op.in]: [...new Set(storageIds)] } }, attributes: ['id', 'roomId'] })
+      : [],
+    assetIds.length
+      ? WhAsset.findAll({ where: { id: { [Op.in]: [...new Set(assetIds)] } }, attributes: ['id', 'roomId'] })
+      : [],
+  ]);
+
+  const rooms = new Set();
+  for (const s of storages) if (s.roomId) rooms.add(s.roomId);
+  for (const a of assets) if (a.roomId) rooms.add(a.roomId);
+  for (const line of lines || []) if (line?.toRoomId) rooms.add(line.toRoomId);
+  return [...rooms];
+}
+
+/**
  * Создание и проведение документа. Один эндпоинт на все типы: логика различий
  * живёт в сервисе, а не размазана по семи маршрутам.
  */
 router.post('/documents', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   try {
-    const { type, lines, comment, reasonCode, reasonText, contractorId, fromRoomId, toRoomId, sign, occurredAt } = req.body;
+    const { type, lines, comment, reasonCode, reasonText, contractorId, fromRoomId, toRoomId, occurredAt } = req.body;
     if (!type) return res.status(400).json({ error: 'Не указан тип документа' });
     const supported = new Set(['receipt', 'return', 'issue', 'transfer', 'repair_out', 'repair_in', 'writeoff', 'surplus']);
     if (!supported.has(type)) return res.status(400).json({ error: 'Неподдерживаемый тип документа' });
 
-    // Зона ответственности: выдавать и перемещать можно только из своих кабинетов.
+    const rooms = await documentRooms(lines);
+
+    // Зона ответственности. Проверяются оба конца и текущее место оборудования:
+    // раньше смотрели только fromStorageId, а его у строки с активом нет вовсе —
+    // источник берётся из карточки, — и проверка не срабатывала ни разу. Вторая
+    // половина дыры была на приёмной стороне: положить материал в чужой кабинет
+    // можно было беспрепятственно, и его МОЛ получал остаток, которого не брал.
     const scoped = await req.warehouse.scopedRoomIds();
     if (scoped !== null) {
-      const storageIds = (lines || []).map(l => l.fromStorageId).filter(Boolean);
-      if (storageIds.length) {
-        const storages = await WhStorage.findAll({ where: { id: { [Op.in]: storageIds } }, attributes: ['id', 'roomId'] });
-        const foreign = storages.find(s => !scoped.includes(s.roomId));
-        if (foreign) {
-          return res.status(403).json({ error: 'В документе есть место хранения не из вашей зоны ответственности' });
-        }
+      const foreign = rooms.find(id => !scoped.includes(id));
+      if (foreign) {
+        return res.status(403).json({ error: 'В документе есть кабинет не из вашей зоны ответственности' });
       }
     }
+
+    // Пока по кабинету идёт пересчёт, остаток в нём двигать нельзя — почему
+    // именно так, см. services/warehouse/inventory.js.
+    await assertNotCounting(rooms);
 
     const result = await createDocument({
       type, lines, user: req.user, comment, reasonCode, reasonText,
       contractorId, fromRoomId, toRoomId,
       // Устройство пишем из User-Agent: колонка 13 отчёта № 2 нужна при разборе недостач.
       device: req.headers['user-agent']?.slice(0, 250) || null,
-      sign: sign !== false,
       occurredAt,
     });
 
@@ -141,12 +180,23 @@ router.post('/documents', authenticate, requireWarehouse('canIssue'), async (req
       include: [{ model: WhMovement, as: 'movements' }],
     });
     res.status(201).json(full);
+
+    // После ответа и без await: сигнал в колокольчик — это удобство, а не часть
+    // проведения. Документ уже проведён, и заставлять человека ждать проверки
+    // минимумов, а тем более уронить ему операцию из-за них, было бы обменом
+    // наоборот. Почему сигнал живёт здесь, а не в рассылке, — см.
+    // services/warehouse/alerts.js.
+    alerts.checkBelowMinimum(result.movements).catch(err => {
+      console.error('warehouse alert after document:', err.message);
+    });
   } catch (err) {
-    // Ошибки вида «недостаточно остатка» — это не сбой сервера, а бизнес-правило:
-    // отдаём 400 с текстом, который можно показать человеку.
-    const businessError = /Недостаточно|требует|не найден|не поддерживает|без строк|больше нуля|место хранения|кабинет/i.test(err.message);
-    if (!businessError) console.error('POST warehouse/documents error:', err);
-    res.status(businessError ? 400 : 500).json({ error: err.message });
+    // Нарушение бизнес-правила сервис помечает сам (fail() в services/warehouse/
+    // stock.js) — маршруту остаётся отдать его статус и текст человеку. Раньше
+    // одно от другого отличалось регулярным выражением по тексту ошибки, и
+    // каждая новая проверка становилась пятисотой.
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('POST warehouse/documents error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -347,6 +397,13 @@ router.patch('/maintenance/:id/close', authenticate, requireWarehouse('canMainte
       await t.rollback();
       return res.status(404).json({ error: 'Наряд не найден' });
     }
+    // Повторное закрытие заново сдвигало график ТО на интервал вперёд от новой
+    // даты и возвращало актив в работу — в том числе актив, который после
+    // первого закрытия успели отправить в ремонт или списать.
+    if (order.status === 'done') {
+      await t.rollback();
+      return res.status(409).json({ error: `Наряд ${order.number} уже закрыт ${order.factDate || ''}`.trim() });
+    }
     const { factDate, result, resultNote, cost, downtimeHours } = req.body;
 
     await order.update({
@@ -359,7 +416,9 @@ router.patch('/maintenance/:id/close', authenticate, requireWarehouse('canMainte
     }, { transaction: t });
 
     const asset = await WhAsset.findByPk(order.assetId, { transaction: t });
-    if (asset) {
+    // Списанного актива обслуживание больше не касается: график ему не нужен, а
+    // возврат в работу вернул бы с баланса вещь, которой там нет.
+    if (asset && !asset.isArchived && asset.status !== 'written_off') {
       const patch = { lastActivityAt: new Date() };
       if (asset.maintenanceIntervalMonths) {
         const next = new Date(order.factDate || Date.now());
@@ -387,6 +446,23 @@ router.post('/repairs', authenticate, requireWarehouse('canMaintenance'), async 
       await t.rollback();
       return res.status(400).json({ error: 'Нужны актив и дата начала' });
     }
+    const asset = await WhAsset.findByPk(b.assetId, { transaction: t });
+    if (!asset) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Актив не найден' });
+    }
+    if (asset.isArchived || asset.status === 'written_off') {
+      await t.rollback();
+      return res.status(409).json({ error: `Актив ${asset.inventoryNumber} списан — в ремонт не отдаётся` });
+    }
+    const openRepair = await WhRepair.findOne({
+      where: { assetId: b.assetId, finishedAt: null }, transaction: t,
+    });
+    if (openRepair) {
+      await t.rollback();
+      return res.status(409).json({ error: `По активу уже открыт ремонт ${openRepair.number} — сначала закройте его` });
+    }
+
     const number = await generateRepairNumber({ transaction: t });
     const row = await WhRepair.create({
       number, assetId: b.assetId, startedAt: b.startedAt,
@@ -394,10 +470,7 @@ router.post('/repairs', authenticate, requireWarehouse('canMaintenance'), async 
       cost: b.cost || 0, createdBy: req.user.id,
     }, { transaction: t });
 
-    await WhAsset.update(
-      { status: 'repair', lastActivityAt: new Date() },
-      { where: { id: b.assetId }, transaction: t }
-    );
+    await asset.update({ status: 'repair', lastActivityAt: new Date() }, { transaction: t });
 
     await t.commit();
     res.status(201).json(row);
@@ -415,6 +488,10 @@ router.patch('/repairs/:id/close', authenticate, requireWarehouse('canMaintenanc
       await t.rollback();
       return res.status(404).json({ error: 'Ремонт не найден' });
     }
+    if (row.finishedAt) {
+      await t.rollback();
+      return res.status(409).json({ error: `Ремонт ${row.number} уже закрыт ${row.finishedAt}` });
+    }
     const { finishedAt, result, cost, downtimeHours, description } = req.body;
     const finish = finishedAt || new Date().toISOString().slice(0, 10);
 
@@ -428,17 +505,33 @@ router.patch('/repairs/:id/close', authenticate, requireWarehouse('canMaintenanc
       description: description ?? row.description,
     }, { transaction: t });
 
-    // «Не подлежит ремонту» — это списание, а не возврат в работу.
-    const nextStatus = result === 'written_off' ? 'written_off' : 'in_use';
-    await WhAsset.update(
-      { status: nextStatus, isArchived: nextStatus === 'written_off', lastActivityAt: new Date() },
-      { where: { id: row.assetId }, transaction: t }
-    );
+    // «Не подлежит ремонту» — это списание, а значит документ.
+    //
+    // Раньше здесь стоял прямой UPDATE карточки: актив уходил с баланса, а в
+    // журнале движений его выбытия не было вовсе — отчёт № 2 переставал быть
+    // аудиторским ровно на тех активах, судьба которых интереснее всего.
+    if (result === 'written_off') {
+      await createDocument({
+        type: 'writeoff',
+        lines: [{ assetId: row.assetId }],
+        user: req.user,
+        reasonCode: 'repair',
+        reasonText: `Не подлежит ремонту, акт ${row.number}`,
+        comment: row.description || null,
+      }, { transaction: t });
+    } else {
+      await WhAsset.update(
+        { status: 'in_use', lastActivityAt: new Date() },
+        { where: { id: row.assetId }, transaction: t }
+      );
+    }
 
     await t.commit();
     res.json(row);
   } catch (err) {
     await t.rollback();
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('PATCH warehouse/repairs/close error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -462,7 +555,39 @@ router.get('/inventory', authenticate, requireWarehouse(), async (req, res) => {
  * Открытие описи. Ожидаемые количества снимаются сразу при открытии: если брать их
  * в момент закрытия, любое движение во время пересчёта попадёт в расхождение и
  * будет выглядеть как недостача.
+ *
+ * Опираться на этот снимок можно только потому, что с открытием описи операции
+ * по её кабинетам останавливаются (services/warehouse/inventory.js). Без этой
+ * остановки снимок расходился с полкой к моменту пересчёта, и разница
+ * проводилась поверх уже проведённых движений.
  */
+/**
+ * Кабинеты, закрытые сейчас пересчётом.
+ *
+ * Отдельной ручкой, потому что форма операции обязана знать это ДО того, как
+ * человек соберёт документ: запрет, срабатывающий на кнопке «Провести», узнаёшь
+ * уже потратив время на строки и причину. Правило то же самое и считается тем же
+ * кодом (services/warehouse/inventory.js) — разойтись экрану с сервером не на чем.
+ */
+router.get('/inventory/frozen-rooms', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const scoped = await req.warehouse.scopedRoomIds();
+    const rooms = scoped !== null
+      ? scoped
+      : (await WhRoom.findAll({ where: { isActive: true }, attributes: ['id'] })).map(r => r.id);
+
+    const frozen = await openCountByRoom(rooms);
+    res.json({
+      items: [...frozen.entries()].map(([roomId, session]) => ({
+        roomId, sessionId: session.id, number: session.number,
+      })),
+    });
+  } catch (err) {
+    console.error('GET warehouse/inventory/frozen-rooms error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/inventory', authenticate, requireWarehouse('canIssue'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -470,6 +595,27 @@ router.post('/inventory', authenticate, requireWarehouse('canIssue'), async (req
     if (!roomId && !departmentId) {
       await t.rollback();
       return res.status(400).json({ error: 'Нужен кабинет или отделение' });
+    }
+
+    const scoped = await req.warehouse.scopedRoomIds();
+    if (scoped !== null && roomId && !scoped.includes(roomId)) {
+      await t.rollback();
+      return res.status(403).json({ error: 'Кабинет не в вашей зоне ответственности' });
+    }
+
+    // Две открытые описи на один кабинет — это два снимка ожидаемых количеств,
+    // снятые в разные моменты, и обе разницы потом проводятся поверх одного и
+    // того же остатка.
+    const already = await WhInventorySession.findOne({
+      where: {
+        status: 'counting',
+        ...(roomId ? { roomId } : { departmentId }),
+      },
+      transaction: t,
+    });
+    if (already) {
+      await t.rollback();
+      return res.status(409).json({ error: `Здесь уже идёт инвентаризация ${already.number}` });
     }
 
     const number = await generateDocumentNumber({ type: 'inventory', transaction: t });
@@ -565,6 +711,17 @@ router.post('/inventory/:id/count', authenticate, requireWarehouse('canIssue'), 
 
     const { code, assetId, itemId, actualQty, scanMethod, note } = req.body;
 
+    // Пересчёт — это «сколько лежит на полке»: ноль бывает, минус не бывает.
+    // Опечатка с минусом раньше доживала до оформления расхождений и роняла
+    // его целиком — списать столько было нечем, и разбираться приходилось уже
+    // по тексту ошибки про недостаточный остаток.
+    if (actualQty !== undefined && actualQty !== null) {
+      const counted = Number(actualQty);
+      if (!Number.isFinite(counted) || counted < 0) {
+        return res.status(400).json({ error: 'Фактическое количество не может быть отрицательным' });
+      }
+    }
+
     let item = null;
     if (itemId) {
       item = await WhInventoryItem.findOne({ where: { id: itemId, sessionId: session.id } });
@@ -622,6 +779,12 @@ router.patch('/inventory/:id/close', authenticate, requireWarehouse('canIssue'),
     if (!session) {
       await t.rollback();
       return res.status(404).json({ error: 'Опись не найдена' });
+    }
+    // Повторное закрытие переписывало время и длительность пересчёта — в том
+    // числе у описи, расхождения по которой уже оформлены.
+    if (session.status === 'closed') {
+      await t.rollback();
+      return res.status(409).json({ error: `Опись ${session.number} уже закрыта` });
     }
 
     const items = session.items || [];
@@ -706,6 +869,11 @@ router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('c
       });
       const line = {
         nomenclatureId: item.nomenclatureId, batchId: item.batchId || null,
+        // Строка описи — это адрес конкретной строки остатка, а не пожелание
+        // подобрать партию. Без этого флага недостача, найденная на строке БЕЗ
+        // партии, уходила по FEFO в коробку с ближайшим сроком: партия
+        // обнулялась, а фантом на непартионной строке оставался лежать.
+        exactBatch: true,
         quantity: Math.abs(diff), unitCost: Number(stock?.unitCost || 0),
         reasonCode: 'inventory', reasonText: `По описи ${session.number}`,
       };
@@ -716,7 +884,7 @@ router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('c
     const posted = [];
     if (surplusLines.length) {
       const result = await createDocument({
-        type: 'surplus', lines: surplusLines, user: req.user, sign: true,
+        type: 'surplus', lines: surplusLines, user: req.user,
         reasonCode: 'inventory', reasonText: `Излишки по инвентаризации ${session.number}`,
         comment: req.body.comment || null,
       }, { transaction: t });
@@ -724,7 +892,7 @@ router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('c
     }
     if (shortageLines.length) {
       const result = await createDocument({
-        type: 'writeoff', lines: shortageLines, user: req.user, sign: true,
+        type: 'writeoff', lines: shortageLines, user: req.user,
         reasonCode: 'inventory', reasonText: `Недостачи по инвентаризации ${session.number}`,
         comment: req.body.comment || null,
       }, { transaction: t });
@@ -736,9 +904,9 @@ router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('c
     res.json({ ok: true, documents: posted, assetDifferences });
   } catch (err) {
     await t.rollback();
-    const businessError = /Недостаточно|просроч|заблокирован|уже оформлены/i.test(err.message);
-    if (!businessError) console.error('POST warehouse/inventory/post-differences error:', err);
-    res.status(businessError ? 400 : 500).json({ error: err.message });
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('POST warehouse/inventory/post-differences error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

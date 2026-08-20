@@ -62,5 +62,6 @@ router.use('/permissions', require('./permissions'));
 router.use('/osv',        require('./osv'));
 router.use('/item-rules', require('./itemRules'));
 router.use('/placements', require('./placements'));
+router.use('/mailing',    require('./mailing'));
 
 module.exports = router;

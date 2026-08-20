@@ -77,6 +77,55 @@ const assetInclude = [
 // печати, и туда не помещалось ничего, кроме кода.
 const EQUIPMENT_LABEL_SIZES = ['80x24', '44x25'];
 
+/**
+ * Статус карточки правится руками — кроме одного значения.
+ *
+ * «Списано» — не состояние, а событие: оно выводит вещь с баланса. Документ
+ * списания делает это целиком (движение в журнале, isArchived, актив уходит из
+ * описи и отчётов), а тот же статус, выставленный из формы, менял только
+ * подпись на карточке. Получалось два разных списания: одно настоящее, другое —
+ * вещь, помеченная списанной, но по-прежнему стоящая в ведомости амортизации,
+ * попадающая в опись и доступная к выдаче.
+ *
+ * То же ограничение действует и в массовой правке: массовая операция не может
+ * быть лазейкой в обход правила.
+ */
+const EDITABLE_STATUSES = new Set(['in_use', 'maintenance', 'repair', 'storage', 'reserved']);
+
+function checkStatus(patch, asset) {
+  if (patch.status === undefined) return null;
+  if (!EDITABLE_STATUSES.has(patch.status)) {
+    return patch.status === 'written_off'
+      ? 'Списание оформляется документом, а не сменой статуса в карточке'
+      : `Неизвестный статус «${patch.status}»`;
+  }
+  if (asset && (asset.isArchived || asset.status === 'written_off')) {
+    return 'Актив списан — вернуть его в работу правкой карточки нельзя';
+  }
+  return null;
+}
+
+/**
+ * Деньги в карточке. Отрицательная стоимость уезжает в стоимость кабинета и в
+ * суммовые отчёты со знаком минус, а износ больше первоначальной стоимости даёт
+ * отрицательную остаточную и износ за сто процентов.
+ */
+function checkMoney(patch, asset = null) {
+  const initial = patch.initialCost !== undefined
+    ? Number(patch.initialCost)
+    : Number(asset?.initialCost ?? 0);
+  const accumulated = patch.accumulatedDepreciation !== undefined
+    ? Number(patch.accumulatedDepreciation)
+    : Number(asset?.accumulatedDepreciation ?? 0);
+
+  if (!Number.isFinite(initial) || initial < 0) return 'Первоначальная стоимость не может быть отрицательной';
+  if (!Number.isFinite(accumulated) || accumulated < 0) return 'Накопленная амортизация не может быть отрицательной';
+  if (accumulated - initial > 0.005) {
+    return `Накопленная амортизация ${accumulated} больше первоначальной стоимости ${initial}`;
+  }
+  return null;
+}
+
 // ── Список активов ───────────────────────────────────────────────────────────
 router.get('/', authenticate, requireWarehouse(), async (req, res) => {
   try {
@@ -230,6 +279,14 @@ router.post('/', authenticate, requireWarehouse('canManageAssets'), async (req, 
       return res.status(400).json({ error: 'Место хранения не относится к выбранному кабинету' });
     }
 
+    // Заводить карточку сразу списанной бессмысленно: постановка на учёт — это
+    // приход, а списание — выбытие, и одним действием они не бывают.
+    const badState = checkStatus({ status: b.status || 'in_use' }, null) || checkMoney(b);
+    if (badState) {
+      await t.rollback();
+      return res.status(400).json({ error: badState });
+    }
+
     // Код специальности для маски берём из отделения кабинета: держать его
     // отдельным полем значило бы дать им разойтись.
     let specialtyCode = b.specialtyCode;
@@ -328,6 +385,10 @@ router.put('/:id', authenticate, requireWarehouse('canManageAssets'), async (req
     for (const key of editable) {
       if (req.body[key] !== undefined) patch[key] = req.body[key] === '' ? null : req.body[key];
     }
+
+    const bad = checkStatus(patch, asset) || checkMoney(patch, asset);
+    if (bad) return res.status(400).json({ error: bad });
+
     await asset.update(patch);
 
     const full = await WhAsset.findByPk(asset.id, { include: assetInclude });
@@ -382,6 +443,11 @@ router.post('/bulk', authenticate, requireWarehouse('canManageAssets'), async (r
     if (!Object.keys(update).length) {
       return res.status(400).json({ error: 'Нечего менять' });
     }
+
+    // Архивные отфильтрованы условием ниже, поэтому проверка статуса здесь
+    // смотрит только на само значение — актив в неё не передаётся.
+    const bad = checkStatus(update, null);
+    if (bad) return res.status(400).json({ error: bad });
 
     // Архивные не трогаем: они выведены из оборота, и массовая правка по фильтру
     // легко зацепила бы их незаметно.

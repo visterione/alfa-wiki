@@ -62,9 +62,13 @@ function warehouseHarness() {
     return [value, true];
   });
   replace(models.WhNomenclature, 'update', async () => [1]);
+  // Условие по партии повторяет семантику SQL, а не «истинность значения»:
+  // отсутствие ключа — это «любая партия», а batchId: null — это IS NULL, то
+  // есть строка остатка без партии. Пока харнесс читал null как «фильтра нет»,
+  // он подтверждал проводку, которой на живой базе не было бы.
   replace(models.WhStock, 'findAll', async ({ where }) => ledger
     .filter(x => x.nomenclatureId === where.nomenclatureId && x.storageId === where.storageId && Number(x.quantity) > 0)
-    .filter(x => !where.batchId || x.batchId === where.batchId)
+    .filter(x => !('batchId' in where) || (x.batchId || null) === (where.batchId || null))
     .map(x => Object.assign(x, { batch: x.batchId ? batches.get(x.batchId) : null })));
 
   return {
@@ -254,4 +258,190 @@ test('коробка с уже заведённой партией сливае�
   assert.equal(h.quantity('storage-a', 'batch-known'), 10);
   assert.equal(h.quantity('storage-a'), 0);
   assert.equal(Number(h.ledger.find(x => x.id === 'stock-known').unitCost), 80);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Операции, невозможные в жизни: ver. 7.07
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('строка без партии расходуется сама, а не ближайшей по сроку партией', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  const base = { user: { id: 'user-1' }, reasonText: 'test' };
+
+  // На одной полке лежит и непартионный остаток (пришёл по ведомости 1С, срока
+  // в файле не было), и коробка с ближним сроком.
+  await stockService.createDocument({ ...base, type: 'receipt', lines: [
+    { nomenclatureId: 'nom-1', quantity: 10, unitCost: 100, toStorageId: 'storage-a' },
+  ] });
+  h.batches.set('near', { id: 'near', nomenclatureId: 'nom-1', batchNumber: 'A', expiryDate: '2030-01-01' });
+  await stockService.createDocument({ ...base, type: 'receipt', lines: [
+    { nomenclatureId: 'nom-1', batchId: 'near', quantity: 5, unitCost: 100, toStorageId: 'storage-a' },
+  ] });
+
+  // Так списывает инвентаризация: адрес строки остатка, а не подсказка FEFO.
+  // Без exactBatch отсюда уходило пять штук из партии, а фантом на непартионной
+  // строке оставался лежать.
+  await assert.rejects(
+    stockService.createDocument({ ...base, type: 'writeoff', lines: [
+      { nomenclatureId: 'nom-1', batchId: null, exactBatch: true, quantity: 12, fromStorageId: 'storage-a' },
+    ] }),
+    /Недостаточно годного остатка/,
+  );
+  assert.equal(h.quantity('storage-a', null), 10);
+  assert.equal(h.quantity('storage-a', 'near'), 5);
+
+  await stockService.createDocument({ ...base, type: 'writeoff', lines: [
+    { nomenclatureId: 'nom-1', batchId: null, exactBatch: true, quantity: 4, fromStorageId: 'storage-a' },
+  ] });
+  assert.equal(h.quantity('storage-a', null), 6);
+  assert.equal(h.quantity('storage-a', 'near'), 5, 'партию расход по непартионной строке не трогает');
+});
+
+test('без exactBatch пустая партия остаётся подсказкой «подбери по FEFO»', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  const base = { user: { id: 'user-1' }, reasonText: 'test' };
+  h.batches.set('near', { id: 'near', nomenclatureId: 'nom-1', batchNumber: 'A', expiryDate: '2030-01-01' });
+  await stockService.createDocument({ ...base, type: 'receipt', lines: [
+    { nomenclatureId: 'nom-1', batchId: 'near', quantity: 5, unitCost: 100, toStorageId: 'storage-a' },
+  ] });
+
+  await stockService.createDocument({ ...base, type: 'issue', lines: [
+    { nomenclatureId: 'nom-1', quantity: 2, fromStorageId: 'storage-a' },
+  ] });
+  assert.equal(h.quantity('storage-a', 'near'), 3, 'форма без выбранной партии по-прежнему берёт FEFO');
+});
+
+test('перемещение в то же место хранения не проводится', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  const base = { user: { id: 'user-1' }, reasonText: 'test' };
+  await stockService.createDocument({ ...base, type: 'receipt', lines: [
+    { nomenclatureId: 'nom-1', quantity: 10, unitCost: 100, toStorageId: 'storage-a' },
+  ] });
+  await assert.rejects(
+    stockService.createDocument({ ...base, type: 'transfer', lines: [
+      { nomenclatureId: 'nom-1', quantity: 7, fromStorageId: 'storage-a', toStorageId: 'storage-a' },
+    ] }),
+    /то же место хранения/,
+  );
+  assert.equal(h.quantity('storage-a'), 10);
+});
+
+test('отрицательная цена в приходе не принимается', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  await assert.rejects(
+    stockService.createDocument({
+      user: { id: 'user-1' }, reasonText: 'test', type: 'receipt',
+      lines: [{ nomenclatureId: 'nom-1', quantity: 3, unitCost: -500, toStorageId: 'storage-a' }],
+    }),
+    /не может быть отрицательной/,
+  );
+  assert.equal(h.ledger.length, 0);
+});
+
+test('дата документа в будущем не принимается', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  await assert.rejects(
+    stockService.createDocument({
+      user: { id: 'user-1' }, reasonText: 'test', type: 'receipt',
+      occurredAt: new Date(Date.now() + 40 * 86400000).toISOString(),
+      lines: [{ nomenclatureId: 'nom-1', quantity: 3, unitCost: 10, toStorageId: 'storage-a' }],
+    }),
+    /не может быть в будущем/,
+  );
+  assert.equal(h.ledger.length, 0);
+});
+
+test('бизнес-правило помечено статусом 400, а не опознаётся по тексту', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  const err = await stockService.createDocument({
+    user: { id: 'user-1' }, reasonText: 'test', type: 'issue',
+    lines: [{ nomenclatureId: 'nom-1', quantity: 1, fromStorageId: 'storage-a' }],
+  }).catch(e => e);
+  assert.equal(err.status, 400);
+});
+
+// ── Операции с оборудованием ────────────────────────────────────────────────
+
+/** Карточка актива в подменённом слое: состояние задаётся тестом. */
+function assetHarness(h, patch = {}) {
+  const asset = {
+    id: 'asset-1', inventoryNumber: 'АХО-0001', name: 'Стул',
+    roomId: 'room-a', storageId: 'storage-a', initialCost: 1000,
+    status: 'in_use', isArchived: false, responsibleUserId: null,
+    async update(p) { Object.assign(this, p); return this; },
+    ...patch,
+  };
+  models.WhAsset.findByPk = async () => asset;
+  return asset;
+}
+
+test('списанный актив в операции не участвует', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  assetHarness(h, { status: 'written_off', isArchived: true });
+  const base = { user: { id: 'user-1' }, reasonText: 'test', lines: [{ assetId: 'asset-1' }] };
+
+  for (const type of ['writeoff', 'transfer', 'repair_out', 'repair_in']) {
+    await assert.rejects(
+      stockService.createDocument({ ...base, type, lines: [{ assetId: 'asset-1', toRoomId: 'room-b', toStorageId: 'storage-b' }] }),
+      /списан/,
+      `тип ${type}`,
+    );
+  }
+  assert.equal(h.movements.length, 0);
+});
+
+test('из ремонта возвращается только то, что в ремонте', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  const asset = assetHarness(h, { status: 'in_use' });
+
+  await assert.rejects(
+    stockService.createDocument({
+      user: { id: 'user-1' }, reasonText: 'test', type: 'repair_in',
+      lines: [{ assetId: 'asset-1' }],
+    }),
+    /не числится в ремонте/,
+  );
+
+  asset.status = 'repair';
+  await assert.rejects(
+    stockService.createDocument({
+      user: { id: 'user-1' }, reasonText: 'test', type: 'repair_out',
+      lines: [{ assetId: 'asset-1' }],
+    }),
+    /уже в ремонте/,
+  );
+
+  await stockService.createDocument({
+    user: { id: 'user-1' }, reasonText: 'test', type: 'repair_in',
+    lines: [{ assetId: 'asset-1' }],
+  });
+  assert.equal(asset.status, 'in_use');
+});
+
+test('перемещение туда, где актив стоит, не проводится — но смена МОЛ на месте проводится', async t => {
+  const h = warehouseHarness();
+  t.after(() => h.restore());
+  const asset = assetHarness(h, { responsibleUserId: 'user-9' });
+
+  await assert.rejects(
+    stockService.createDocument({
+      user: { id: 'user-1' }, reasonText: 'test', type: 'transfer',
+      lines: [{ assetId: 'asset-1', toRoomId: 'room-a', toStorageId: 'storage-a' }],
+    }),
+    /уже стоит в этом месте/,
+  );
+
+  await stockService.createDocument({
+    user: { id: 'user-1' }, reasonText: 'test', type: 'transfer',
+    lines: [{ assetId: 'asset-1', toRoomId: 'room-a', toStorageId: 'storage-a', toResponsibleId: 'user-7' }],
+  });
+  assert.equal(asset.responsibleUserId, 'user-7');
 });

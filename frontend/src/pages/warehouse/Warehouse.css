@@ -2612,3 +2612,18 @@
 
 /* Выгрузки внутри полосы фильтров отчёта — у правого края. */
 .wh-reports__filters > .wh-reports__export { margin-left: auto; }
+
+/* ── Настройка рассылок ──────────────────────────────────────────────────────
+   Строка-переключатель: галочка и подпись в одну линию, с расписанием мелким
+   шрифтом следом. Отдельный класс, а не .wh-form label, потому что здесь подпись
+   стоит СПРАВА от поля — обычные поля формы устроены наоборот. */
+.wh-mailing__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  cursor: pointer;
+  line-height: 1.45;
+}
+.wh-mailing__row input { margin-top: 2px; flex-shrink: 0; }
+.wh-mailing__row:has(input:disabled) { opacity: .6; cursor: default; }

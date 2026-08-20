@@ -1050,6 +1050,14 @@ export const warehouseApi = {
   createRepair:    (data)         => api.post('/warehouse/operations/repairs', data),
   closeRepair:     (id, data)     => api.patch(`/warehouse/operations/repairs/${id}/close`, data),
   inventorySessions: ()           => api.get('/warehouse/operations/inventory'),
+  frozenRooms:      ()            => api.get('/warehouse/operations/inventory/frozen-rooms'),
+
+  // ── Регламентная рассылка ──────────────────────────────────────────────────
+  mailSubscriptions: ()           => api.get('/warehouse/mailing/subscriptions'),
+  setMailSubscription: (code, enabled) =>
+    api.put(`/warehouse/mailing/subscriptions/${code}`, { enabled }),
+  mailPreview:      (code)        => api.get(`/warehouse/mailing/preview/${code}`),
+  mailLog:          ()            => api.get('/warehouse/mailing/log'),
   createInventory: (data)         => api.post('/warehouse/operations/inventory', data),
   inventory:       (id)           => api.get(`/warehouse/operations/inventory/${id}`),
   countInventory:  (id, data)     => api.post(`/warehouse/operations/inventory/${id}/count`, data),

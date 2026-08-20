@@ -14,12 +14,16 @@
  *
  * ── Почему размещение нельзя снять после разбора ─────────────────────────────
  *
- * Как только по размещению созданы карточки, оно перестаёт быть намерением и
+ * Как только по размещению прошёл разбор, оно перестаёт быть намерением и
  * становится фактом: у карточек есть инвентарные номера, они напечатаны на
- * этикетках и попали в движения. Удалить размещение значило бы оставить карточки
- * без источника, а следующий разбор создал бы их заново — вторые номера на те же
- * вещи. Переезд после разбора оформляется документом перемещения, как и любой
- * другой переезд.
+ * этикетках и попали в движения, а у материалов остаток лежит на полке. Удалить
+ * размещение значило бы оставить это без источника, а следующий разбор создал бы
+ * всё заново — вторые номера на те же вещи и второй остаток на тот же товар.
+ * Переезд после разбора оформляется документом перемещения, как и любой другой
+ * переезд.
+ *
+ * Признак «разбор прошёл» у оборудования и материалов считается по-разному —
+ * см. materializedBy ниже.
  */
 
 const express = require('express');
@@ -28,7 +32,7 @@ const { Op } = require('sequelize');
 
 const {
   sequelize, WhOsvPlacement, WhOsvImport, WhOsvLine, WhAsset, WhRoom, WhStorage,
-  WhFloor, WhBuilding, WhDepartment, User,
+  WhFloor, WhBuilding, WhDepartment, WhNomenclature, WhStock, User,
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
@@ -52,6 +56,64 @@ async function currentSnapshot(importId) {
     where: { status: 'applied' },
     order: [['periodYear', 'DESC'], ['periodMonth', 'DESC']],
   });
+}
+
+/**
+ * Что уже создано разбором по этому размещению.
+ *
+ * У оборудования ответ прямой: карточка ссылается на размещение полем
+ * osvPlacementId. У материала ссылки нет и быть не может — остаток складывается
+ * в общую строку warehouse_stock по паре «номенклатура + место хранения», и одно
+ * размещение от другого там не отличить.
+ *
+ * Из-за этого материальное размещение считалось неразобранным ВСЕГДА: счётчик
+ * карточек у него ноль, и снять или переписать его давали свободно. Снятое
+ * размещение уносило с собой только намерение — остаток оставался лежать. Строка
+ * возвращалась в очередь как неразложенная, её клали в другой кабинет, разбор
+ * доводил остаток там до полного количества и чужих мест не трогал: в портале
+ * оказывалось вдвое больше, чем в ведомости.
+ *
+ * Поэтому у материала признак разбора выводится по факту: есть ли номенклатура,
+ * созданная по этой строке ведомости, и лежит ли по ней остаток в том месте
+ * хранения, куда разбор его положил бы. Место вычисляется тем же правилом, что и
+ * в самой материализации (storageFor в services/warehouse/osvMaterialize.js):
+ * явное место размещения, иначе первое активное место кабинета.
+ */
+async function materializedBy(placement) {
+  const assets = await WhAsset.count({ where: { osvPlacementId: placement.id } });
+  if (assets > 0) return { kind: 'asset', assets, quantity: assets };
+
+  const nomenclature = await WhNomenclature.findOne({
+    where: { osvLineKey: placement.lineKey }, attributes: ['id', 'name'],
+  });
+  if (!nomenclature) return { kind: null, assets: 0, quantity: 0 };
+
+  let storageId = placement.storageId;
+  if (!storageId) {
+    const first = await WhStorage.findOne({
+      where: { roomId: placement.roomId, isActive: true },
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      attributes: ['id'],
+    });
+    storageId = first?.id || null;
+  }
+  if (!storageId) return { kind: null, assets: 0, quantity: 0 };
+
+  const stock = await WhStock.findOne({
+    where: { nomenclatureId: nomenclature.id, storageId, batchId: null },
+    attributes: ['quantity'],
+  });
+  const quantity = Number(stock?.quantity || 0);
+  return quantity > 0
+    ? { kind: 'material', assets: 0, quantity, name: nomenclature.name }
+    : { kind: null, assets: 0, quantity: 0 };
+}
+
+/** Текст отказа: он же объясняет, чем теперь оформляется изменение. */
+function materializedError(done, action) {
+  return done.kind === 'asset'
+    ? `По этому размещению уже создано карточек: ${done.assets}. ${action}`
+    : `По этому размещению уже поставлено на учёт ${done.quantity} — остаток лежит на полке. ${action}`;
 }
 
 // ── Очередь: что ещё не разложено ────────────────────────────────────────────
@@ -340,32 +402,44 @@ router.patch('/:id', authenticate, requireWarehouse('canImportOsv'), async (req,
     const row = await WhOsvPlacement.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Размещение не найдено' });
 
-    const materialized = await WhAsset.count({ where: { osvPlacementId: row.id } });
-    if (materialized > 0) {
+    const done = await materializedBy(row);
+    if (done.kind) {
       return res.status(409).json({
-        error: `По этому размещению уже создано карточек: ${materialized}. `
-          + 'Количество меняется списанием или перемещением, а не правкой разбора.',
+        error: materializedError(done, 'Количество меняется списанием или перемещением, а не правкой разбора.'),
       });
     }
 
     const { quantity, storageId, note } = req.body;
     if (quantity !== undefined) {
       const want = Number(quantity);
-      if (!(want > 0)) return res.status(400).json({ error: 'Количество должно быть больше нуля' });
+      if (!Number.isFinite(want) || want <= 0) {
+        return res.status(400).json({ error: 'Количество должно быть больше нуля' });
+      }
 
-      const snapshot = await currentSnapshot();
+      // Снимок берём тот, к чьему счёту привязано размещение, а не «текущий
+      // применённый»: у размещения по другому счёту строка нашлась бы не та.
+      const snapshot = await WhOsvImport.findOne({
+        where: { status: 'applied', account: row.account },
+        order: [['periodYear', 'DESC'], ['periodMonth', 'DESC']],
+      });
       const line = snapshot && await WhOsvLine.findOne({
         where: { importId: snapshot.id, lineKey: row.lineKey, isGroup: false },
         attributes: ['closingQty'],
       });
-      if (line) {
-        const others = await WhOsvPlacement.sum('quantity', {
-          where: { account: row.account, lineKey: row.lineKey, id: { [Op.ne]: row.id } },
-        }) || 0;
-        const free = (Number(line.closingQty) || 0) - Number(others);
-        if (want - free > 0.0005) {
-          return res.status(400).json({ error: `В ведомости осталось нераспределённого ${free}` });
-        }
+      // Не нашлась строка — значит сверить количество не с чем, и принимать
+      // любое число нельзя: раньше вся проверка в этом случае просто
+      // пропускалась, и правкой можно было разложить сколько угодно.
+      if (!line) {
+        return res.status(409).json({
+          error: 'Строки нет в принятом снимке этого счёта — количество не с чем сверить',
+        });
+      }
+      const others = await WhOsvPlacement.sum('quantity', {
+        where: { account: row.account, lineKey: row.lineKey, id: { [Op.ne]: row.id } },
+      }) || 0;
+      const free = (Number(line.closingQty) || 0) - Number(others);
+      if (want - free > 0.0005) {
+        return res.status(400).json({ error: `В ведомости осталось нераспределённого ${free}` });
       }
     }
 
@@ -388,12 +462,15 @@ router.delete('/:id', authenticate, requireWarehouse('canImportOsv'), async (req
     const row = await WhOsvPlacement.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Размещение не найдено' });
 
-    const materialized = await WhAsset.count({ where: { osvPlacementId: row.id } });
-    if (materialized > 0) {
+    const done = await materializedBy(row);
+    if (done.kind) {
       return res.status(409).json({
-        error: `По этому размещению уже создано карточек: ${materialized}. `
-          + 'Снять его нельзя — иначе следующий разбор выдал бы тем же вещам вторые '
-          + 'инвентарные номера. Переезд оформляется документом перемещения.',
+        error: materializedError(done, done.kind === 'asset'
+          ? 'Снять его нельзя — иначе следующий разбор выдал бы тем же вещам вторые '
+            + 'инвентарные номера. Переезд оформляется документом перемещения.'
+          : 'Снять его нельзя — остаток остался бы на полке, а строка вернулась бы в '
+            + 'очередь, и следующий разбор положил бы то же количество ещё раз. '
+            + 'Переезд оформляется документом перемещения.'),
       });
     }
 

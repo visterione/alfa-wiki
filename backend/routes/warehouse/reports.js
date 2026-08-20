@@ -24,6 +24,7 @@ const { requireWarehouse, requireReport, roomPath } = require('../../services/wa
 const { reconcileStock } = require('../../services/warehouse/stock');
 const utilization = require('../../services/warehouse/utilization');
 const exports_ = require('../../services/warehouse/exports');
+const reportData = require('../../services/warehouse/reportData');
 const hierarchy = require('../../services/warehouse/hierarchy');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
@@ -652,115 +653,24 @@ async function abcXyz({ req, from, to, medCenterId, departmentId, scoped }) {
 router.get('/expiring', authenticate, requireWarehouse(), requireReport('RPT-EXPIRING'), async (req, res) => {
   try {
     const { horizonDays = 90, medCenterId, departmentId, medicineOnly, sterileOnly } = req.query;
-    const scoped = await req.warehouse.scopedRoomIds();
 
-    const [rows] = await sequelize.query(`
-      SELECT n.id AS "nomenclatureId", n.code, n.name AS "nomenclatureName", n.unit,
-             n."isMedicine", n."isSterile",
-             b.id AS "batchId", b."batchNumber", b."expiryDate",
-             (b."expiryDate" - CURRENT_DATE) AS "daysLeft",
-             s.quantity, s."unitCost", s.quantity * s."unitCost" AS amount,
-             st.id AS "storageId", st.name AS "storageName",
-             r.id AS "roomId", r.number AS "roomNumber", r.name AS "roomName",
-             d.name AS "departmentName", mc.name AS "medCenterName",
-             u."displayName" AS "responsibleName",
-             sup.name AS "supplierName",
-             -- Средний расход в месяц за последние полгода: без него «успеем ли
-             -- израсходовать» превращается в гадание.
-             (SELECT COALESCE(SUM(m.quantity), 0) / 6.0
-                FROM warehouse_movements m
-               WHERE m."nomenclatureId" = n.id AND m.type = 'issue'
-                 AND m."occurredAt" > now() - interval '6 months') AS "avgMonthly"
-      FROM warehouse_stock s
-      JOIN warehouse_batches b       ON b.id = s."batchId"
-      JOIN warehouse_nomenclature n  ON n.id = s."nomenclatureId"
-      JOIN warehouse_storages st     ON st.id = s."storageId"
-      JOIN warehouse_rooms r         ON r.id = st."roomId"
-      LEFT JOIN warehouse_floors f        ON f.id = r."floorId"
-      LEFT JOIN warehouse_buildings bld   ON bld.id = f."buildingId"
-      JOIN med_centers mc                 ON mc.id = r."medCenterId"
-      LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
-      LEFT JOIN users u              ON u.id = r."responsibleUserId"
-      LEFT JOIN warehouse_contractors sup ON sup.id = b."supplierId"
-      WHERE s.quantity > 0 AND b."expiryDate" IS NOT NULL
-        AND b."expiryDate" <= CURRENT_DATE + (:horizon || ' days')::interval
-        AND (:medCenterId::uuid  IS NULL OR r."medCenterId" = :medCenterId::uuid)
-        AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
-        AND (:medicineOnly::bool IS NOT TRUE OR n."isMedicine" = TRUE)
-        AND (:sterileOnly::bool  IS NOT TRUE OR n."isSterile" = TRUE)
-        AND (:scoped IS NULL OR r.id = ANY(:scoped::uuid[]))
-      ORDER BY b."expiryDate" ASC
-    `, {
-      replacements: {
-        horizon: Number(horizonDays) || 90,
-        medCenterId: medCenterId || null,
-        departmentId: departmentId || null,
-        medicineOnly: medicineOnly === 'true',
-        sterileOnly: sterileOnly === 'true',
-        scoped: toPgUuidArray(scoped),
-      },
-    });
-
-    const items = rows.map(r => {
-      const days = Number(r.daysLeft);
-      const qty = Number(r.quantity);
-      const avgMonthly = Number(r.avgMonthly) || 0;
-      // Успеем ли израсходовать до срока при текущем темпе.
-      const monthsLeft = days / 30;
-      const willConsume = avgMonthly > 0 ? avgMonthly * monthsLeft >= qty : null;
-      const exhaustionDate = avgMonthly > 0
-        ? new Date(Date.now() + (qty / avgMonthly) * 30 * 86400000).toISOString().slice(0, 10)
-        : null;
-
-      return {
-        ...r,
-        quantity: qty,
-        unitCost: Number(r.unitCost),
-        amount: round2(Number(r.amount)),
-        daysLeft: days,
-        zone: days < 0 || days <= 7 ? 'red' : days <= 30 ? 'orange' : days <= 90 ? 'yellow' : 'green',
-        avgMonthly: round(avgMonthly, 2),
-        willConsumeInTime: willConsume,
-        exhaustionDate,
-        recommendation: days < 0 ? 'СПИСАТЬ немедленно'
-          : days <= 7 ? 'Срочно израсходовать или списать'
-          : willConsume === false ? 'Не успеем израсходовать — перевести туда, где расход выше'
-          : willConsume === true ? 'Успеем израсходовать при текущем темпе'
-          : 'Нет истории расхода — оценить вручную',
-      };
+    // Сам расчёт живёт в services/warehouse/reportData.js: этот же отчёт строит
+    // регламентная рассылка, и второй запрос «почти такой же» довольно быстро
+    // разошёлся бы с экраном в цифрах.
+    const data = await reportData.expiring({
+      scopedRoomIds: await req.warehouse.scopedRoomIds(),
+      horizonDays, medCenterId, departmentId, medicineOnly, sterileOnly,
     });
 
     res.json({
       header: await reportHeader({ req, code: 'RPT-EXPIRING', title: 'Просроченные и истекающие позиции', filters: req.query }),
-      items,
-      summary: {
-        expired: sumZone(items, 'red', true),
-        within30: sumZone(items, 'orange'),
-        within90: sumZone(items, 'yellow'),
-        // Потери за 12 месяцев по факту списаний с причиной «просрочка».
-        writeOffLast12Months: await writeOffLosses(),
-      },
+      ...data,
     });
   } catch (err) {
     console.error('GET warehouse/reports/expiring error:', err);
     res.status(500).json({ error: err.message });
   }
 });
-
-function sumZone(items, zone, includeNegative = false) {
-  const rows = items.filter(i => i.zone === zone || (includeNegative && i.daysLeft < 0));
-  return { count: rows.length, amount: round2(rows.reduce((s, i) => s + i.amount, 0)) };
-}
-
-async function writeOffLosses() {
-  const [rows] = await sequelize.query(`
-    SELECT COALESCE(SUM(m.amount), 0) AS amount, COUNT(*)::int AS cnt
-    FROM warehouse_movements m
-    WHERE m.type = 'writeoff' AND m."occurredAt" > now() - interval '12 months'
-      AND (m."reasonCode" = 'expired' OR m."reasonText" ILIKE '%срок%')
-  `);
-  return { amount: round2(Number(rows[0].amount)), count: rows[0].cnt };
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-DEPRECIATION — Ведомость амортизации
@@ -824,7 +734,7 @@ router.get('/depreciation', authenticate, requireWarehouse(), requireReport('RPT
         accruedInPeriod: round2(accrued),
         accumulatedEnd: round2(accumulated),
         residual: Math.max(0, initial - accumulated),
-        wearPercent: initial > 0 ? round2((accumulated / initial) * 100) : null,
+        wearPercent: initial > 0 ? round2(Math.min(100, (accumulated / initial) * 100)) : null,
         fullyDepreciatedInUse: initial > 0 && accumulated >= initial && r.status === 'in_use',
         // Гр. 17 ТЗ. Признак — не статус: он говорит не в каком состоянии актив,
         // а что с ним пора делать.
@@ -891,8 +801,13 @@ function periodAccrual(r, from, to) {
     return Math.max(0, diff);
   };
 
+  // Коэффициент уменьшаемого остатка зажат единицей: при СПИ короче двух месяцев
+  // 2/СПИ больше единицы, основание степени уходит в минус, и накопленная сумма
+  // начинала прыгать между нулём и двумя стоимостями через месяц. Единица здесь
+  // означает «списывается за первый же месяц» — что для такого СПИ и верно.
+  const rate = Math.min(1, 2 / months);
   const accumulatedAt = (k) => (r.depreciationMethod === 'reducing'
-    ? initial * (1 - Math.pow(1 - 2 / months, Math.min(k, months)))
+    ? initial * (1 - Math.pow(1 - rate, Math.min(k, months)))
     : initial * Math.min(1, k / months));
 
   const accrued = accumulatedAt(monthsSince(to)) - accumulatedAt(monthsSince(from));

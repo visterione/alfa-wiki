@@ -28,6 +28,31 @@ const INCOMING = new Set(['receipt', 'return', 'surplus', 'repair_in']);
 const OUTGOING = new Set(['issue', 'writeoff', 'repair_out']);
 
 /**
+ * Нарушение бизнес-правила, а не сбой. Маршруты отдают такое четырёхсотым с
+ * текстом наружу: раньше они отличали одно от другого регулярным выражением по
+ * тексту ошибки, и каждая новая проверка молча становилась пятисотой, пока
+ * кто-нибудь не вспоминал дописать в неё слово.
+ */
+const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+
+/** Количество и деньги приходят из формы строками — берём число и проверяем. */
+function positiveNumber(value, label) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw fail(`${label} должно быть больше нуля`);
+  return n;
+}
+
+function nonNegativeNumber(value, label) {
+  if (value === undefined || value === null || value === '') return 0;
+  const n = Number(value);
+  // Отрицательная цена уезжает в стоимость кабинета и в суммовые отчёты со
+  // знаком минус, и найти её там потом не за что: строка остатка выглядит
+  // обычной, а итог по кабинету меньше, чем сумма его полок.
+  if (!Number.isFinite(n) || n < 0) throw fail(`${label} не может быть отрицательной`);
+  return n;
+}
+
+/**
  * Прибавляет (delta > 0) или убавляет (delta < 0) остаток в конкретном месте
  * хранения. Строка остатка создаётся при первом поступлении.
  */
@@ -38,7 +63,7 @@ async function adjustStock({ nomenclatureId, batchId, storageId, delta, unitCost
 
   if (!row) {
     if (delta < 0) {
-      throw new Error('Списание с места хранения, где позиции нет на остатке');
+      throw fail('Списание с места хранения, где позиции нет на остатке');
     }
     return WhStock.create({
       nomenclatureId, batchId: batchId || null, storageId,
@@ -50,7 +75,7 @@ async function adjustStock({ nomenclatureId, batchId, storageId, delta, unitCost
   const next = Number(row.quantity) + Number(delta);
   if (next < 0) {
     const nom = await WhNomenclature.findByPk(nomenclatureId, { transaction });
-    throw new Error(
+    throw fail(
       `Недостаточно остатка: «${nom?.name || nomenclatureId}», есть ${row.quantity}, требуется ${Math.abs(delta)}`
     );
   }
@@ -89,11 +114,11 @@ async function adjustStock({ nomenclatureId, batchId, storageId, delta, unitCost
 async function attachBatchToStock({ stockId, batchNumber, expiryDate, user, scopedRoomIds = null }, options = {}) {
   const run = async (transaction) => {
     const stock = await WhStock.findByPk(stockId, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!stock) throw fail(404, 'Строка остатка не найдена');
+    if (!stock) throw fail('Строка остатка не найдена', 404);
 
     const storage = await WhStorage.findByPk(stock.storageId, { transaction });
     if (scopedRoomIds !== null && !scopedRoomIds.includes(storage?.roomId)) {
-      throw fail(403, 'Кабинет не в вашей зоне ответственности');
+      throw fail('Кабинет не в вашей зоне ответственности', 403);
     }
 
     // Номера серии на упаковке может не быть — бывает одна дата. Пустым номер
@@ -176,8 +201,6 @@ async function attachBatchToStock({ stockId, batchNumber, expiryDate, user, scop
   return options.transaction ? run(options.transaction) : sequelize.transaction(run);
 }
 
-const fail = (status, message) => Object.assign(new Error(message), { status });
-
 const ruDate = (iso) => {
   const [year, month, day] = String(iso || '').split('-');
   return day ? `${day}.${month}.${year}` : 'без срока';
@@ -187,16 +210,33 @@ const ruDate = (iso) => {
  * Подбор партий под расход по FEFO. Возвращает список {batchId, quantity,
  * unitCost}. Просроченные и заблокированные партии не берутся — их выдача
  * запрещена, и молча подставлять их нельзя.
+ *
+ * ── Что значит batchId ───────────────────────────────────────────────────────
+ *
+ * В форме операции пустая партия означает «подбери сам», и обходить ради этого
+ * FEFO нельзя. Но есть второй случай, где пусто значит буквально пусто: строка
+ * остатка БЕЗ партии — та, что легла по ведомости 1С без срока годности. Её
+ * пересчитывает инвентаризация, и списывать по ней надо ровно её.
+ *
+ * Раньше эти два случая не различались, и оба читались как «любая партия».
+ * Недостача, найденная на непартионной строке, уходила по FEFO в коробку с
+ * ближайшим сроком: партия обнулялась, а фантом на непартионной строке
+ * оставался. Поэтому решение вынесено отдельным флагом, а не выведено из
+ * значения:
+ *
+ *   exactBatch = false — batchId это подсказка: пусто «подбери», иначе «эта»;
+ *   exactBatch = true  — batchId это адрес строки остатка, включая «без партии».
  */
 async function pickBatchesFefo({
-  nomenclatureId, storageId, quantity, transaction, allowExpired = false, batchId = null,
+  nomenclatureId, storageId, quantity, transaction, allowExpired = false,
+  batchId = null, exactBatch = false,
 }) {
   const today = new Date().toISOString().slice(0, 10);
 
   const rows = await WhStock.findAll({
     where: {
       nomenclatureId, storageId, quantity: { [Op.gt]: 0 },
-      ...(batchId ? { batchId } : {}),
+      ...(exactBatch ? { batchId: batchId || null } : (batchId ? { batchId } : {})),
     },
     include: [{ model: WhBatch, as: 'batch', required: false }],
     transaction,
@@ -229,7 +269,7 @@ async function pickBatchesFefo({
   if (left > 0) {
     const nom = await WhNomenclature.findByPk(nomenclatureId, { transaction });
     const total = usable.reduce((s, r) => s + Number(r.quantity), 0);
-    throw new Error(
+    throw fail(
       `Недостаточно годного остатка: «${nom?.name}», доступно ${total}, требуется ${quantity}. ` +
       'Просроченные и заблокированные партии к выдаче не берутся'
     );
@@ -240,18 +280,39 @@ async function pickBatchesFefo({
 /**
  * Создаёт документ вместе со строками и сразу проводит его.
  *
- * lines: [{ nomenclatureId | assetId, batchId?, quantity, unitCost?, fromStorageId?,
- *           toStorageId?, doctorUserId?, serviceCode?, reasonText? }]
+ * lines: [{ nomenclatureId | assetId, batchId?, exactBatch?, quantity, unitCost?,
+ *           fromStorageId?, toStorageId?, doctorUserId?, serviceCode?, reasonText? }]
  *
  * Документ и движения пишутся одной транзакцией: половина проведённого документа
  * хуже, чем непроведённый.
+ *
+ * Черновиков здесь нет. Раньше параметр sign управлял только полем status, а
+ * остатки двигались в любом случае — то есть документ, помеченный в журнале
+ * «черновик», склад уже изменил, и ни провести, ни отменить его было нечем.
+ * Отложенное проведение — это отдельный механизм с хранением строк до подписи,
+ * а не флаг; пока его нет, документ всегда проведён.
  */
 async function createDocument({
   type, lines, user, comment, reasonCode, reasonText,
-  contractorId, fromRoomId, toRoomId, device, sign = true, occurredAt,
+  contractorId, fromRoomId, toRoomId, device, occurredAt,
 }, options = {}) {
   if (!Array.isArray(lines) || lines.length === 0) {
-    throw new Error('Документ без строк');
+    throw fail('Документ без строк');
+  }
+
+  // Дата задним числом законна — документ оформляют не в ту же секунду, — а
+  // будущим числом нет: остаток меняется сейчас, и движение, датированное
+  // следующим месяцем, выпадает из отчёта за текущий, оставив расхождение между
+  // складом и журналом там, где его никто не ищет.
+  //
+  // Запас в сутки, а не в минуту: поле datetime-local часового пояса не несёт, и
+  // строка «2026-08-20T14:30» разбирается здесь как местное время сервера. Пока
+  // сервер и браузер в одном поясе, разницы нет, но закладываться на это ради
+  // проверки, которая ловит документы, датированные следующим месяцем, незачем.
+  const date = occurredAt ? new Date(occurredAt) : new Date();
+  if (Number.isNaN(date.getTime())) throw fail('Неверная дата документа');
+  if (date.getTime() > Date.now() + 24 * 3600 * 1000) {
+    throw fail('Дата документа не может быть в будущем');
   }
 
   const run = async (transaction) => {
@@ -259,8 +320,8 @@ async function createDocument({
 
     const doc = await WhDocument.create({
       number, type,
-      date: occurredAt ? new Date(occurredAt) : new Date(),
-      status: sign ? 'signed' : 'draft',
+      date,
+      status: 'signed',
       fromRoomId: fromRoomId || null,
       toRoomId: toRoomId || null,
       contractorId: contractorId || null,
@@ -268,8 +329,8 @@ async function createDocument({
       reasonText: reasonText || null,
       comment: comment || null,
       createdBy: user?.id || null,
-      signedBy: sign ? (user?.id || null) : null,
-      signedAt: sign ? new Date() : null,
+      signedBy: user?.id || null,
+      signedAt: new Date(),
       device: device || null,
       oneCStatus: 'disabled',
     }, { transaction });
@@ -280,16 +341,40 @@ async function createDocument({
       // ── Основное средство: количество всегда 1, меняется размещение и МОЛ ──
       if (line.assetId) {
         const asset = await WhAsset.findByPk(line.assetId, { transaction, lock: transaction.LOCK.UPDATE });
-        if (!asset) throw new Error('Актив не найден');
+        if (!asset) throw fail('Актив не найден');
+
+        // Списанный актив выведен из оборота, и это не «состояние, из которого
+        // можно продолжить»: раньше по нему проходило второе списание — на ту же
+        // стоимость вторым движением, — перемещение и возврат из ремонта, в
+        // который его не отдавали.
+        const label = `«${asset.inventoryNumber || asset.name}»`;
+        if (asset.isArchived || asset.status === 'written_off') {
+          throw fail(`Актив ${label} списан — операции с ним больше не проводятся`);
+        }
+        if (type === 'repair_in' && asset.status !== 'repair') {
+          throw fail(`Актив ${label} не числится в ремонте — возвращать из ремонта нечего`);
+        }
+        if (type === 'repair_out' && asset.status === 'repair') {
+          throw fail(`Актив ${label} уже в ремонте`);
+        }
 
         if (type === 'transfer') {
           const targetRoomId = line.toRoomId || toRoomId;
           if (!targetRoomId || !line.toStorageId) {
-            throw new Error('Перемещение оборудования требует кабинет и место хранения назначения');
+            throw fail('Перемещение оборудования требует кабинет и место хранения назначения');
           }
           const targetStorage = await WhStorage.findByPk(line.toStorageId, { transaction });
           if (!targetStorage || targetStorage.roomId !== targetRoomId) {
-            throw new Error('Место хранения назначения не относится к выбранному кабинету');
+            throw fail('Место хранения назначения не относится к выбранному кабинету');
+          }
+          // Перемещение туда, где актив и стоит, — это пустая запись в ленте его
+          // жизни. Смена одного только МОЛ на месте — законный случай и остаётся
+          // разрешённой: переезжает ответственность, а не вещь.
+          const samePlace = asset.roomId === targetRoomId && asset.storageId === line.toStorageId;
+          const sameResponsible = !line.toResponsibleId
+            || line.toResponsibleId === asset.responsibleUserId;
+          if (samePlace && sameResponsible) {
+            throw fail(`Актив ${label} уже стоит в этом месте, и МОЛ не меняется`);
           }
         }
 
@@ -330,18 +415,24 @@ async function createDocument({
       }
 
       // ── Материалы ─────────────────────────────────────────────────────────
-      if (!line.nomenclatureId) throw new Error('В строке нет ни актива, ни номенклатуры');
-      const qty = Number(line.quantity);
-      if (!(qty > 0)) throw new Error('Количество в строке должно быть больше нуля');
+      if (!line.nomenclatureId) throw fail('В строке нет ни актива, ни номенклатуры');
+      const qty = positiveNumber(line.quantity, 'Количество в строке');
+      const lineCost = nonNegativeNumber(line.unitCost, 'Цена в строке');
+      const exactBatch = Boolean(line.exactBatch);
 
       const fromStorageId = line.fromStorageId || null;
       const toStorageId   = line.toStorageId || null;
 
       if (type === 'transfer') {
-        if (!fromStorageId || !toStorageId) throw new Error('Перемещение требует и «откуда», и «куда»');
+        if (!fromStorageId || !toStorageId) throw fail('Перемещение требует и «откуда», и «куда»');
+        // Из полки в неё же: остаток не меняется, а в оборотах появляется пара
+        // «приход и расход» на всё количество — сверка сходится, а обороты врут.
+        if (fromStorageId === toStorageId) {
+          throw fail('Перемещение в то же место хранения ничего не меняет');
+        }
         const picks = await pickBatchesFefo({
           nomenclatureId: line.nomenclatureId, storageId: fromStorageId,
-          quantity: qty, transaction, batchId: line.batchId || null,
+          quantity: qty, transaction, batchId: line.batchId || null, exactBatch,
         });
 
         for (const p of picks) {
@@ -364,15 +455,15 @@ async function createDocument({
       }
 
       if (INCOMING.has(type)) {
-        if (!toStorageId) throw new Error('Поступление требует места хранения «куда»');
+        if (!toStorageId) throw fail('Поступление требует места хранения «куда»');
         await adjustStock({
           nomenclatureId: line.nomenclatureId, batchId: line.batchId, storageId: toStorageId,
-          delta: qty, unitCost: line.unitCost || 0, transaction,
+          delta: qty, unitCost: lineCost, transaction,
         });
         created.push(await WhMovement.create({
           documentId: doc.id, type,
           nomenclatureId: line.nomenclatureId, batchId: line.batchId || null,
-          quantity: qty, unitCost: line.unitCost || 0, amount: qty * (line.unitCost || 0),
+          quantity: qty, unitCost: lineCost, amount: qty * lineCost,
           toStorageId, toRoomId: await storageRoom(toStorageId, transaction),
           reasonCode: line.reasonCode || reasonCode || null,
           reasonText: line.reasonText || reasonText || null,
@@ -383,11 +474,12 @@ async function createDocument({
       }
 
       if (OUTGOING.has(type)) {
-        if (!fromStorageId) throw new Error('Расход требует места хранения «откуда»');
+        if (!fromStorageId) throw fail('Расход требует места хранения «откуда»');
         // При списании просрочку разрешаем: её для этого и списывают.
         const picks = await pickBatchesFefo({
           nomenclatureId: line.nomenclatureId, storageId: fromStorageId, quantity: qty,
-          transaction, allowExpired: type === 'writeoff', batchId: line.batchId || null,
+          transaction, allowExpired: type === 'writeoff',
+          batchId: line.batchId || null, exactBatch,
         });
 
         for (const p of picks) {
@@ -409,7 +501,7 @@ async function createDocument({
         continue;
       }
 
-      throw new Error(`Тип документа ${type} не поддерживает строки с материалами`);
+      throw fail(`Тип документа ${type} не поддерживает строки с материалами`);
     }
 
     return { document: doc, movements: created };

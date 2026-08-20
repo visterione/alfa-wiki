@@ -465,9 +465,14 @@ function BulkEditModal({ ids, onClose, onApplied }) {
                     <select disabled={!enabled[field.key]} value={form.status}
                             onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
                       <option value="">—</option>
-                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
+                      {/* Списание массовой правкой не оформляется: это выбытие с
+                          баланса, ему нужен документ. Подпись «Списано» остаётся
+                          в STATUS_LABELS — ею подписаны уже списанные карточки. */}
+                      {Object.entries(STATUS_LABELS)
+                        .filter(([value]) => value !== 'written_off')
+                        .map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
                     </select>
                   )}
                   {['number', 'text', 'date'].includes(field.type) && (
