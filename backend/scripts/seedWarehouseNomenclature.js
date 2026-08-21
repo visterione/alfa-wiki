@@ -101,10 +101,11 @@ async function main() {
       const line = row.get({ plain: true });
       const { mapping } = resolveMapping(line, byLineKey, byPrefix);
       const rule = classify(line.name, compiled);
-      // Ветка, если она есть, сильнее словаря — как и в разборе. Но её
-      // ОТСУТСТВИЕ здесь не приговор: справочнику кабинет не нужен, и ждать
-      // разметки, чтобы завести позицию по названию, было бы нечем оправдать.
-      const kind = effectiveKind(line, mapping || { kind: 'auto' }, rule);
+      // Подпорка `mapping || { kind: 'auto' }` здесь стояла до ver. 7.14: без
+      // неё effectiveKind отказывалась спрашивать словарь у строки без
+      // сопоставления, а справочнику никакая разметка веток не нужна. Теперь
+      // словарь спрашивается сам, и подпорка не нужна.
+      const kind = effectiveKind(line, mapping, rule);
 
       if (kind === 'asset') { stat.asset += 1; continue; }
       if (kind === 'ignore') { stat.ignore += 1; continue; }

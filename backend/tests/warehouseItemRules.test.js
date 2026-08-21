@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {
   headWord, normalize, compileRules, classify, headStats,
 } = require('../services/warehouse/itemRules');
-const { effectiveKind } = require('../services/warehouse/osvMaterialize');
+const { effectiveKind, decisionOf, reviewGroups } = require('../services/warehouse/osvMaterialize');
 
 /**
  * Словарь предметов (ver. 6.79).
@@ -114,18 +114,23 @@ test('ведущие слова снимка: покрытие и порядок
   assert.equal(stats[1].rules.length, 0);
 });
 
-// ── Цепочка решений: строка → ветка → словарь → порог ────────────────────────
+// ── Цепочка решений: правило по строке → словарь ─────────────────────────────
 
 const branch = (over = {}) => ({ kind: 'auto', ...over });
 
-test('без сопоставления строка не разбирается независимо от словаря', () => {
+test('словарь работает без всякого сопоставления', () => {
+  // Ради этого и затевалось ver. 7.14. До него первой строкой effectiveKind
+  // стояло `if (!mapping) return 'unmapped'`, и чтобы словарь спросили, человеку
+  // приходилось сначала завести сопоставление — а завести его можно было только
+  // выбрав ветке кабинет. Вопрос о месте запирал ответ на вопрос о способе учёта.
   const rule = { accounting: 'asset' };
-  assert.equal(effectiveKind({ unitCost: 90_000, closingQty: 1 }, null, rule), 'unmapped');
+  assert.equal(effectiveKind({ unitCost: 90_000, closingQty: 1 }, null, rule), 'asset');
+  assert.equal(effectiveKind({ unitCost: 90_000, closingQty: 1 }, undefined, rule), 'asset');
 });
 
-test('решение человека по ветке сильнее словаря', () => {
+test('решение человека сильнее словаря', () => {
   // Словарь — правило по умолчанию для класса вещей, а не начальство над тем,
-  // кто смотрит на конкретную ветку.
+  // кто смотрит на конкретную позицию.
   const rule = { accounting: 'material' };
   const line = { unitCost: 522, closingQty: 12 };
   assert.equal(effectiveKind(line, branch({ kind: 'asset' }), rule), 'asset');
@@ -159,4 +164,64 @@ test('словарь без способа учёта не угадывает р
 test('пустой словарь оставляет строку неразобранной независимо от цены', () => {
   assert.equal(effectiveKind({ unitCost: 100, closingQty: 3 }, branch(), null), 'unmapped');
   assert.equal(effectiveKind({ unitCost: 1_000_000, closingQty: 3 }, branch()), 'unmapped');
+  assert.equal(effectiveKind({ unitCost: 1_000_000, closingQty: 3 }, null, null), 'unmapped');
+});
+
+// ── Экран проверки: причина решения ──────────────────────────────────────────
+
+/** Строка плана в том виде, в каком её собирает planMaterialization. */
+const planItem = (over = {}) => ({
+  line: { lineKey: 'k1', name: 'Стул', closingQty: 3, closingSum: 3000, ...over.line },
+  mapping: null, scope: null, rule: null, categoryId: null,
+  placedQty: 0, unplacedQty: 3,
+  ...over,
+  kind: over.kind || effectiveKind(
+    { closingQty: 3, ...over.line }, over.mapping || null, over.rule || null,
+  ),
+});
+
+test('причина решения совпадает с самим решением', () => {
+  // decisionOf зеркалит effectiveKind, и разойтись им нельзя: экран проверки
+  // показывал бы не ту причину, по которой строка поедет в объекты.
+  const byRule = planItem({ rule: { id: 'r1', accounting: 'asset', pattern: 'стул' } });
+  assert.equal(byRule.kind, 'asset');
+  assert.equal(decisionOf(byRule).key, 'rule:r1');
+
+  const manual = planItem({ mapping: { id: 'm1', kind: 'material' }, scope: 'line' });
+  assert.equal(manual.kind, 'material');
+  assert.equal(decisionOf(manual).source, 'line');
+
+  const unknown = planItem({});
+  assert.equal(unknown.kind, 'unmapped');
+  assert.equal(decisionOf(unknown).source, 'none');
+});
+
+test('дробное количество показывается своей причиной, а не правилом словаря', () => {
+  // Правило сказало «карточкой», но 2,02 метра портьеры поедут остатком.
+  // Приписать эту строку правилу значило бы назвать причиной то, что как раз
+  // не сработало.
+  const item = planItem({
+    line: { lineKey: 'k2', name: 'Портьера', closingQty: 2.02, closingSum: 5000 },
+    rule: { id: 'r2', accounting: 'asset', pattern: 'портьера' },
+  });
+  assert.equal(item.kind, 'material');
+  assert.equal(decisionOf(item).source, 'fraction');
+});
+
+test('неразобранное стоит первым, остальное — по убыванию суммы', () => {
+  // Прогон необратим: первым в глаза должно попадать то, что требует действия,
+  // а дальше — дорогое.
+  const groups = reviewGroups([
+    planItem({ line: { lineKey: 'a', name: 'Стол', closingQty: 1, closingSum: 500_000 },
+      rule: { id: 'r1', accounting: 'asset', pattern: 'стол' } }),
+    planItem({ line: { lineKey: 'b', name: 'Нечто', closingQty: 1, closingSum: 10 } }),
+    planItem({ line: { lineKey: 'c', name: 'Салфетка', closingQty: 1, closingSum: 900 },
+      rule: { id: 'r3', accounting: 'material', pattern: 'салфетка' } }),
+  ]);
+
+  assert.deepEqual(groups.map(g => g.source), ['none', 'rule', 'rule']);
+  assert.equal(groups[1].pattern, 'стол');
+  assert.equal(groups[1].sum, 500_000);
+  assert.equal(groups[2].pattern, 'салфетка');
+  assert.equal(groups.every(g => !g.mixedKind), true);
 });

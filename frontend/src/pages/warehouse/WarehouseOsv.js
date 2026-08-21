@@ -5,7 +5,7 @@ import {
   Maximize2, Minimize2, Search, Trash2, Upload, X,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
-import WarehouseOsvMapping from './WarehouseOsvMapping';
+import WarehouseOsvReview from './WarehouseOsvReview';
 import WarehouseItemRules from './WarehouseItemRules';
 import WarehousePlacement from './WarehousePlacement';
 
@@ -15,8 +15,9 @@ import WarehousePlacement from './WarehousePlacement';
  * Экран намеренно показывает файл таким, какой он есть, — с деревом номенклатуры
  * 1С, а не с деревом кабинетов портала. Эти два дерева разные: в 1С группы
  * называются то по кабинету («Кабинет Хирурга»), то по назначению («Канцтовары»),
- * и перекладывать одно в другое на лету значит показывать выдумку. Сопоставление
- * с кабинетами — отдельная ручная работа, и до неё здесь честно видно исходник.
+ * и перекладывать одно в другое на лету значит показывать выдумку. Раскладка по
+ * кабинетам — отдельная ручная работа («Размещение»), и до неё здесь честно
+ * видно исходник.
  *
  * Загрузка идёт в два шага: разобранный файл сначала лежит черновиком со
  * сравнением против прошлого месяца, и только потом становится снимком. Ошибку
@@ -194,11 +195,11 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
           одной кнопкой, во второй четыре подвкладки, и вместе они съедали две
           строки над таблицей.
 
-          Снимок и разбор — два разных занятия: первое делают раз в месяц за пять
-          минут, второе один раз за несколько часов. Словарь стоит последним и
-          отдельно, потому что это работа не над снимком, а над справочником:
-          разметка слов переживает следующий месяц и следующую выгрузку, тогда как
-          сопоставление веток с кабинетами привязано к конкретному дереву 1С. */}
+          Порядок вкладок — порядок работы (ver. 7.14): что за файл → что это за
+          вещи → где они стоят → создать объекты. Словарь переехал со своего
+          последнего места на второе, потому что с 7.14 он и есть ответ на вопрос
+          «как учитывать»: раньше на этот вопрос отвечала разметка веток, а
+          словарь был к ней довеском, который без неё даже не спрашивался. */}
       <div className="wh-assets__filters">
         <div className="wh-bar__title">Импорт</div>
         <span className="wh-filters__sep" />
@@ -206,20 +207,20 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
           <button className={sub === 'snapshot' ? 'is-active' : ''} onClick={() => setSub('snapshot')}>
             Снимок
           </button>
+          <button className={sub === 'dictionary' ? 'is-active' : ''} onClick={() => setSub('dictionary')}>
+            Словарь предметов
+          </button>
           <button className={sub === 'placement' ? 'is-active' : ''} onClick={() => setSub('placement')}>
             Размещение
           </button>
-          <button className={sub === 'mapping' ? 'is-active' : ''} onClick={() => setSub('mapping')}>
-            Разбор
-          </button>
-          <button className={sub === 'dictionary' ? 'is-active' : ''} onClick={() => setSub('dictionary')}>
-            Словарь предметов
+          <button className={sub === 'review' ? 'is-active' : ''} onClick={() => setSub('review')}>
+            Проверка
           </button>
         </div>
         {/* Свёртка дерева и поиск по позициям стоят здесь же, а не своей полосой
             над таблицей: это управление тем же деревом, что и выбор снимка.
             Появляются они только когда дерево на экране есть — на «Размещении»,
-            «Разборе» и «Словаре» сворачивать нечего. */}
+            «Размещении», «Проверке» и «Словаре» сворачивать нечего. */}
         {sub === 'snapshot' && !loadingSnapshot && head && (
           <>
             <span className="wh-filters__sep" />
@@ -258,7 +259,7 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
         )}
       </div>
 
-      {/* Размещение стоит перед разбором, потому что в этом порядке и идёт
+      {/* Размещение стоит перед проверкой, потому что в этом порядке и идёт
           работа: пока вещь не разложена по кабинетам, карточку ей создавать
           нельзя — инвентарный номер содержит код специальности отделения и после
           выдачи не меняется. */}
@@ -266,8 +267,9 @@ export default function WarehouseOsv({ access, tree, onReloadTree }) {
         <WarehousePlacement access={access} tree={tree} onDone={onReloadTree} />
       )}
 
-      {sub === 'mapping' && (
-        <WarehouseOsvMapping access={access} tree={tree} onDone={onReloadTree} />
+      {sub === 'review' && (
+        <WarehouseOsvReview access={access} onDone={onReloadTree}
+                            onOpenDictionary={() => setSub('dictionary')} />
       )}
 
       {sub === 'dictionary' && <WarehouseItemRules access={access} />}

@@ -21,12 +21,14 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { Op } = require('sequelize');
 
-const { sequelize, WhOsvImport, WhOsvLine, WhOsvMapping, User } = require('../../models');
+const {
+  sequelize, WhOsvImport, WhOsvLine, WhOsvMapping, WhCategory, WhAsset, WhNomenclature, User,
+} = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
 const { parseOsv, diffSnapshots, OsvParseError } = require('../../services/warehouse/osv');
 const {
-  materializeOsv, planMaterialization, ROOT_PREFIX,
+  materializeOsv, planMaterialization, reviewGroups, decisionOf,
 } = require('../../services/warehouse/osvMaterialize');
 
 // Файл держим в памяти: он разбирается целиком и на диск не ложится. Предел в
@@ -330,14 +332,16 @@ router.delete('/imports/:id', authenticate, requireWarehouse('canImportOsv'), as
   }
 });
 
-// ── Разбор: дерево с сопоставлениями ─────────────────────────────────────────
+// ── Проверка перед прогоном: чем решено и что из этого выйдет ────────────────
 /**
- * Дерево снимка вместе с тем, во что превратится каждая ветка. Расклад считает
- * сервер тем же кодом, которым потом создаёт объекты: если бы предпросмотр
- * считался на клиенте, он однажды разошёлся бы с результатом — и разошёлся бы
- * молча, потому что сверять их между собой некому.
+ * Расклад разбора, сгруппированный по причине решения.
+ *
+ * Считает сервер тем же кодом, которым потом создаёт объекты: если бы
+ * предпросмотр считался на клиенте, он однажды разошёлся бы с результатом — и
+ * разошёлся бы молча, потому что сверять их между собой некому. Для операции без
+ * отката это условие, а не удобство.
  */
-router.get('/mapping', authenticate, requireWarehouse(), requireReport('RPT-OSV'), async (req, res) => {
+router.get('/review', authenticate, requireWarehouse(), requireReport('RPT-OSV'), async (req, res) => {
   try {
     const snapshot = req.query.importId
       ? await WhOsvImport.findByPk(req.query.importId)
@@ -345,53 +349,23 @@ router.get('/mapping', authenticate, requireWarehouse(), requireReport('RPT-OSV'
         where: { status: 'applied' },
         order: [['periodYear', 'DESC'], ['periodMonth', 'DESC']],
       });
-    if (!snapshot) return res.json({ import: null, nodes: [], totals: null, mappings: [] });
+    if (!snapshot) return res.json({ import: null, groups: [], totals: null });
 
-    const [{ plan, totals }, groups, mappings] = await Promise.all([
-      planMaterialization(snapshot.id, snapshot.account),
-      WhOsvLine.findAll({
-        where: { importId: snapshot.id, isGroup: true }, order: [['sortOrder', 'ASC']],
-      }),
-      WhOsvMapping.findAll({ where: { account: snapshot.account } }),
+    const { plan, totals, brokenRules } = await planMaterialization(snapshot.id, snapshot.account);
+    const groups = reviewGroups(plan);
+
+    const categoryIds = [...new Set(groups.flatMap(g => g.categoryIds))];
+    const keys = plan.map(item => item.line.lineKey);
+    // Сколько по этому снимку уже создано. Прогон идемпотентен и второй раз
+    // ничего не задвоит, но человек должен видеть, что снимок уже разобран:
+    // отката нет, и «Создать объекты» на разобранном снимке — не то действие,
+    // которое стоит совершать не глядя.
+    const [categories, assetsDone, nomenclatureDone] = await Promise.all([
+      WhCategory.findAll({ where: { id: { [Op.in]: categoryIds } }, attributes: ['id', 'name'] }),
+      WhAsset.count({ where: { osvLineKey: { [Op.in]: keys } } }),
+      WhNomenclature.count({ where: { osvLineKey: { [Op.in]: keys } } }),
     ]);
-
-    // Путь ветки — то, чем она сопоставляется. Для группы это её собственный
-    // путь вместе с названием: строки внутри неё начинаются именно с него.
-    // Корень счёта — особый случай: путь позиций, лежащих прямо на нём, пустой,
-    // и покрыть их обычным префиксом нельзя.
-    const branchPath = row => (row.level === 0
-      ? ROOT_PREFIX
-      : [row.pathText, row.name].filter(Boolean).join(' / '));
-
-    const stats = new Map();
-    const bump = (key, item) => {
-      if (!stats.has(key)) stats.set(key, { lines: 0, unmapped: 0, assets: 0, materials: 0, sum: 0 });
-      const bucket = stats.get(key);
-      bucket.lines += 1;
-      bucket.sum += Number(item.line.closingSum) || 0;
-      if (item.kind === 'unmapped') bucket.unmapped += 1;
-      else if (item.kind === 'asset') bucket.assets += 1;
-      else if (item.kind === 'material') bucket.materials += 1;
-    };
-
-    for (const item of plan) {
-      bump(ROOT_PREFIX, item);
-      // Строка учитывается во всех своих предках, иначе прогресс верхних веток
-      // всегда показывал бы ноль и по нему нельзя было бы понять, что сделано.
-      const parts = (item.line.pathText || '').split(' / ').filter(Boolean);
-      for (let i = parts.length; i > 0; i--) bump(parts.slice(0, i).join(' / '), item);
-    }
-
-    const byPath = new Map(mappings.filter(m => m.pathPrefix).map(m => [m.pathPrefix, m]));
-    const nodes = groups.map((row) => {
-      const path = branchPath(row);
-      return {
-        id: row.id, level: row.level, name: row.name, pathText: row.pathText, path,
-        closingSum: Number(row.closingSum), closingQty: Number(row.closingQty),
-        stats: stats.get(path) || { lines: 0, unmapped: 0, assets: 0, materials: 0, sum: 0 },
-        mapping: byPath.get(path) || null,
-      };
-    });
+    const categoryName = new Map(categories.map(c => [c.id, c.name]));
 
     res.json({
       import: {
@@ -399,61 +373,74 @@ router.get('/mapping', authenticate, requireWarehouse(), requireReport('RPT-OSV'
         periodMonth: snapshot.periodMonth, leafCount: snapshot.leafCount,
         closingSum: Number(snapshot.closingSum),
       },
-      nodes,
       totals,
-      mappings,
+      brokenRules,
+      materialized: { assets: assetsDone, nomenclature: nomenclatureDone },
+      groups: groups.map(g => ({
+        ...g,
+        categories: g.categoryIds.map(id => categoryName.get(id)).filter(Boolean),
+      })),
     });
   } catch (err) {
-    console.error('GET warehouse/osv/mapping error:', err);
+    console.error('GET warehouse/osv/review error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ── Разбор: позиции внутри ветки ─────────────────────────────────────────────
+// ── Проверка: позиции одной группы ───────────────────────────────────────────
 /**
- * Строки одной ветки с решением по каждой: карточка, остаток или ничего.
+ * Строки, по которым решение принято одной и той же причиной.
  *
- * Нужно именно потому, что решение принимается по ветке, а результат — по
- * строке: внутри «Кабинета Хирурга» и инструмент за 300 000 ₽, и салфетки. Пока
- * этот список не открыть, разделение выглядит произволом, а исключение из общего
- * правила задать нечем.
+ * Нужно потому, что решение принимает правило на класс вещей, а отвечать за
+ * него будет карточка конкретной позиции: пока список не открыть, «правило
+ * „стол“ → 47 строк карточками» — это утверждение, которое не на чем проверить.
+ * Здесь же задаётся исключение по одной строке.
  */
-router.get('/mapping/lines', authenticate, requireWarehouse(), requireReport('RPT-OSV'), async (req, res) => {
+router.get('/review/lines', authenticate, requireWarehouse(), requireReport('RPT-OSV'), async (req, res) => {
   try {
-    const { importId, path } = req.query;
-    if (!importId || !path) return res.status(400).json({ error: 'Нужны снимок и ветка' });
+    const { importId, group } = req.query;
+    if (!importId || !group) return res.status(400).json({ error: 'Нужны снимок и группа' });
 
     const snapshot = await WhOsvImport.findByPk(importId);
     if (!snapshot) return res.status(404).json({ error: 'Снимок не найден' });
 
     const { plan } = await planMaterialization(snapshot.id, snapshot.account);
-    // Только собственные строки ветки, без вложенных: у вложенных своя строка в
-    // таблице разбора и своё правило, и смешивать их здесь значит показывать
-    // человеку то, чем он отсюда не управляет.
-    const own = plan.filter(item => (path === ROOT_PREFIX
-      ? !item.line.pathText
-      : item.line.pathText === path));
+    const own = plan.filter(item => decisionOf(item).key === group);
 
     res.json({
-      path,
+      group,
       lines: own.map(item => ({
         lineKey: item.line.lineKey,
         name: item.line.name,
+        pathText: item.line.pathText,
         closingQty: Number(item.line.closingQty),
         closingSum: Number(item.line.closingSum),
         unitCost: item.line.unitCost === null ? null : Number(item.line.unitCost),
         kind: item.kind,
         scope: item.scope,
+        placedQty: item.placedQty,
+        unplacedQty: item.unplacedQty,
+        // Переопределить можно только собственным правилом строки. Сопоставление
+        // ветки сюда не годится: оно накрыло бы заодно соседние позиции, о
+        // которых человек в этот момент не думает.
         mappingId: item.scope === 'line' ? item.mapping.id : null,
       })),
     });
   } catch (err) {
-    console.error('GET warehouse/osv/mapping/lines error:', err);
+    console.error('GET warehouse/osv/review/lines error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ── Разбор: сохранить сопоставление ветки или строки ─────────────────────────
+// ── Исключение по строке ─────────────────────────────────────────────────────
+/**
+ * Явное решение человека, которое сильнее словаря.
+ *
+ * Сопоставления по ветке (pathPrefix) эндпойнт по-прежнему принимает: они лежат
+ * в базе с прошлых прогонов, ими созданы карточки, и отбирать у них способ
+ * правки значило бы сделать старые данные нередактируемыми. Интерфейс их больше
+ * не заводит — экран проверки задаёт исключения только по строке (ver. 7.14).
+ */
 router.put('/mapping', authenticate, requireWarehouse('canImportOsv'), async (req, res) => {
   try {
     const {
@@ -507,7 +494,7 @@ router.delete('/mapping/:id', authenticate, requireWarehouse('canImportOsv'), as
   }
 });
 
-// ── Разбор: создать объекты портала ──────────────────────────────────────────
+// ── Создать объекты портала ──────────────────────────────────────────────────
 router.post('/imports/:id/materialize', authenticate, requireWarehouse('canImportOsv'), async (req, res) => {
   try {
     const snapshot = await WhOsvImport.findByPk(req.params.id);

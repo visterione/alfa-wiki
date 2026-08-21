@@ -1704,7 +1704,7 @@
 .wh-storage-row--form { display: block; background: var(--wh-card-bg); }
 .wh-storage-row--form .wh-form { gap: 8px; }
 
-/* ── Разбор ведомости (ver. 6.73) ──────────────────────────────────────────── */
+/* ── Проверка разбора (ver. 6.73, переделана в 7.14) ───────────────────────── */
 .wh-osv-map__bar {
   height: 8px; border-radius: 999px; background: var(--wh-border);
   overflow: hidden; margin-bottom: 9px;
@@ -1722,6 +1722,12 @@
 .wh-osv-map .wh-tree__group > td:first-child { cursor: pointer; }
 .wh-osv-map .wh-tree__group > td { background: transparent; }
 .wh-osv-map .wh-table tbody tr:hover > td { background: var(--wh-primary-soft); }
+/* Группа, которую словарь не закрыл, подсвечена фоном, а не значком: строк в
+   таблице сотни, значок в них надо искать, а фон виден боковым зрением при
+   прокрутке. Приём тот же, что в словаре у неразмеченного слова. */
+.wh-review .wh-row--open > td { background: var(--wh-zone-yellow-bg); }
+.wh-review .wh-alert, .wh-review .wh-note { margin: 10px 0 0; }
+.wh-review .wh-table-wrap { margin-top: 12px; }
 
 /* ── Словарь предметов (ver. 6.79) ─────────────────────────────────────────── */
 /* Селекты те же, что в разборе: работа одна и та же — полсотни мелких решений
