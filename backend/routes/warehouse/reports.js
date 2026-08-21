@@ -18,6 +18,7 @@ const {
   sequelize, WhAsset, WhRoom, WhDepartment, WhFloor, WhBuilding, WhStorage,
   WhStock, WhBatch, WhNomenclature, WhMaintenanceOrder, WhRepair,
   WhInventorySession, WhInventoryItem, WhContractor, WhDocument, User, MedCenter,
+  WhSavedReport,
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport, roomPath } = require('../../services/warehouse/access');
@@ -1160,6 +1161,189 @@ router.get('/inventory/:id', authenticate, requireWarehouse(), requireReport('RP
     });
   } catch (err) {
     console.error('GET warehouse/reports/inventory error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Сохранённые отчёты
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Снимок построенного отчёта.
+ *
+ * Отчёты считаются по кнопке и живут до перезагрузки страницы; вернуться к
+ * построенному вчера можно было только построив его заново, а пересчёт за тот же
+ * период даёт уже другие цифры — остатки успели измениться. Поэтому сохраняем
+ * результат целиком: строки, итоги и колонки на момент сохранения.
+ *
+ * Строки приходят с клиента, а не пересчитываются здесь заново. Это сделано
+ * намеренно: сохранить нужно ровно то, что человек проверил глазами в
+ * предпросмотре, а повторный расчёт на сервере вернул бы уже другой результат —
+ * между просмотром и нажатием кнопки прошла минута работы склада. Правом здесь
+ * защищён не состав строк (они и так были показаны этому человеку), а сама
+ * возможность положить снимок в общий список.
+ */
+const SAVED_MAX_ROWS = 20000;
+
+/** Поля списка. payload не берём: строки отчёта весят мегабайты, а списку не нужны. */
+const savedListAttrs = [
+  'id', 'code', 'reportKey', 'mode', 'title', 'note',
+  'periodFrom', 'periodTo', 'params', 'rowCount', 'createdBy', 'createdAt',
+];
+
+/**
+ * Список снимков: страницами и с отбором на стороне базы.
+ *
+ * Раньше отдавались первые двести строк, а вид отчёта, поиск и страница
+ * разбирались в браузере. Архив накапливается годами и только растёт: то, что
+ * не попало в первую сотню, найти было нельзя вовсе — ни поиском, ни
+ * пролистыванием. Поэтому отбор и счёт живут здесь.
+ *
+ * Права проверяются условием запроса, а не фильтром готовых строк. Иначе
+ * страница на двадцать пять записей после вычёркивания закрытых отчётов
+ * оказывалась то на двадцать, то на три, а общее число строк вообще не сходилось
+ * с тем, что видно.
+ */
+router.get('/saved', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const permsSvc = require('../../services/warehouse/permissions');
+    const readable = permsSvc.readableReports(req.warehouse.perms).map(r => r.code);
+    const known = Object.keys(permsSvc.REPORTS);
+
+    // Снимок отчёта, которого нет в каталоге прав, доступен всем: закрыть его
+    // нечем, и прятать его молча — значит потерять снимок навсегда.
+    const where = {
+      [Op.and]: [{ [Op.or]: [{ code: readable }, { code: { [Op.notIn]: known } }] }],
+    };
+    if (req.query.reportKey) where[Op.and].push({ reportKey: String(req.query.reportKey) });
+
+    const q = String(req.query.q || '').trim();
+    if (q) {
+      const like = { [Op.iLike]: `%${q}%` };
+      where[Op.and].push({
+        [Op.or]: [
+          { title: like },
+          { note: like },
+          // Отбор лежит в JSONB человеческой строкой («МЦ Альфа · Терапия») —
+          // ищем по ней же, а не по идентификаторам, которых человек не видел.
+          sequelize.where(sequelize.literal(`"WhSavedReport"."params"->>'filterLabel'`), like),
+          { '$author.displayName$': like },
+        ],
+      });
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(Math.max(1, Number(req.query.limit) || 25), 200);
+
+    const { rows, count } = await WhSavedReport.findAndCountAll({
+      where,
+      attributes: savedListAttrs,
+      include: [{ model: User, as: 'author', attributes: userAttrs }],
+      order: [['createdAt', 'DESC']],
+      offset: (page - 1) * limit,
+      limit,
+      // Поиск идёт и по автору, то есть по полю присоединённой таблицы: с
+      // subQuery Sequelize унёс бы отбор во вложенный SELECT, где этого поля нет.
+      subQuery: false,
+      distinct: true,
+    });
+
+    res.json({
+      items: rows,
+      total: count,
+      page,
+      limit,
+      canSave: Boolean(req.warehouse.capabilities.canSaveReports),
+    });
+  } catch (err) {
+    console.error('GET warehouse/reports/saved error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/saved/:id', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const row = await WhSavedReport.findByPk(req.params.id, {
+      include: [{ model: User, as: 'author', attributes: userAttrs }],
+    });
+    if (!row) return res.status(404).json({ error: 'Сохранённый отчёт не найден' });
+
+    const permsSvc = require('../../services/warehouse/permissions');
+    if (permsSvc.REPORTS[row.code] && !permsSvc.canReadReport(req.warehouse.perms, row.code)) {
+      return res.status(403).json({ error: `Отчёт «${permsSvc.REPORTS[row.code].label}» вам недоступен` });
+    }
+    res.json(row);
+  } catch (err) {
+    console.error('GET warehouse/reports/saved/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/saved', authenticate, requireWarehouse('canSaveReports'), async (req, res) => {
+  try {
+    const {
+      code, reportKey, mode = null, title, note = null,
+      params = {}, columns = [], payload = {},
+    } = req.body;
+
+    if (!code || !reportKey) return res.status(400).json({ error: 'Нужны code и reportKey' });
+    if (!title || !String(title).trim()) return res.status(400).json({ error: 'Нужно название отчёта' });
+    if (!Array.isArray(columns) || !columns.length) return res.status(400).json({ error: 'Нужны колонки отчёта' });
+
+    const items = Array.isArray(payload.items) ? payload.items : null;
+    if (!items) return res.status(400).json({ error: 'Нужны строки отчёта' });
+    if (!items.length) return res.status(400).json({ error: 'Пустой отчёт сохранять нечего' });
+    // Верхняя граница — защита строки JSONB, а не придирка к отчёту: снимок на
+    // сто тысяч строк перестаёт открываться в браузере раньше, чем упрётся в базу.
+    if (items.length > SAVED_MAX_ROWS) {
+      return res.status(400).json({
+        error: `В снимке не больше ${SAVED_MAX_ROWS} строк — сузьте период или отбор`,
+      });
+    }
+
+    const permsSvc = require('../../services/warehouse/permissions');
+    if (permsSvc.REPORTS[code] && !permsSvc.canReadReport(req.warehouse.perms, code)) {
+      return res.status(403).json({ error: `Отчёт «${permsSvc.REPORTS[code].label}» вам недоступен` });
+    }
+
+    const row = await WhSavedReport.create({
+      code, reportKey, mode,
+      title: String(title).trim().slice(0, 300),
+      note: note ? String(note).slice(0, 2000) : null,
+      periodFrom: params.from || null,
+      periodTo: params.to || null,
+      params,
+      columns,
+      payload,
+      rowCount: items.length,
+      createdBy: req.user.id,
+    });
+
+    res.status(201).json({ id: row.id });
+  } catch (err) {
+    console.error('POST warehouse/reports/saved error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Удаление. Свой снимок убирает автор; чужой — только администратор модуля.
+ * Список общий, и «прибраться» в нём чужими руками — самый быстрый способ
+ * потерять то, на что кто-то собирался сослаться.
+ */
+router.delete('/saved/:id', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const row = await WhSavedReport.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Сохранённый отчёт не найден' });
+
+    const isAuthor = row.createdBy && row.createdBy === req.user.id;
+    if (!isAuthor && !req.warehouse.access.isAdmin) {
+      return res.status(403).json({ error: 'Удалить сохранённый отчёт может его автор или администратор' });
+    }
+    await row.destroy();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE warehouse/reports/saved/:id error:', err);
     res.status(500).json({ error: err.message });
   }
 });

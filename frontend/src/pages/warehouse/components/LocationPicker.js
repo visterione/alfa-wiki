@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, ChevronRight, DoorOpen, Search, X } from 'lucide-react';
+import { dropStyle, useAnchoredDrop, usePortalHost } from './dropdownPortal';
 
 /**
  * Выбор кабинета или места хранения по дереву локаций.
@@ -63,8 +64,10 @@ export default function LocationPicker({
   const dropRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
-  const [place, setPlace] = useState(null);
   const portalHost = usePortalHost();
+  // Панель живёт порталом с фиксированными координатами — почему именно так,
+  // рассказано в dropdownPortal.js.
+  const place = useAnchoredDrop(boxRef, open, { maxHeight: 420 });
 
   const roots = useMemo(
     () => buildBranches(tree, { mode, allowRoom, filterRoom, filterStorage }),
@@ -98,45 +101,6 @@ export default function LocationPicker({
     document.addEventListener('mousedown', onDocument);
     return () => document.removeEventListener('mousedown', onDocument);
   }, [open]);
-
-  /**
-   * Список рисуется порталом в body с фиксированными координатами, а не внутри
-   * поля. Причина простая: эти поля стоят в прокручиваемом теле модального окна
-   * и в ячейках таблицы с `overflow: auto`, а такой предок обрезает всё, что
-   * вылезает за его край, — абсолютно позиционированный список превращался бы в
-   * полоску в две строки с собственной прокруткой.
-   *
-   * Раскрывается вниз, а если внизу тесно — вверх; за нижний край экрана список
-   * не выходит в любом случае.
-   */
-  const reposition = useCallback(() => {
-    const rect = boxRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const gap = 4;
-    const below = window.innerHeight - rect.bottom - gap - 8;
-    const above = rect.top - gap - 8;
-    const up = below < 240 && above > below;
-    setPlace({
-      left: rect.left,
-      width: rect.width,
-      top: up ? undefined : rect.bottom + gap,
-      bottom: up ? window.innerHeight - rect.top + gap : undefined,
-      maxHeight: Math.max(180, Math.min(420, up ? above : below)),
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!open) { setPlace(null); return undefined; }
-    reposition();
-    // Прокрутка любого предка сдвигает поле — список едет за ним. Слушаем в фазе
-    // перехвата, иначе прокрутка внутренних контейнеров сюда не долетает.
-    window.addEventListener('scroll', reposition, true);
-    window.addEventListener('resize', reposition);
-    return () => {
-      window.removeEventListener('scroll', reposition, true);
-      window.removeEventListener('resize', reposition);
-    };
-  }, [open, reposition]);
 
   // Дерево и выбранный узел читаются в момент открытия, а не через зависимости
   // эффекта: фильтры прилетают из вызывающих форм новыми функциями на каждый
@@ -242,10 +206,7 @@ export default function LocationPicker({
 
       {open && place && createPortal((
         <div className="wh-combo__drop wh-locpick__drop" ref={dropRef}
-             style={{
-               position: 'fixed', left: place.left, width: place.width,
-               top: place.top, bottom: place.bottom, right: 'auto',
-             }}>
+             style={dropStyle(place)}>
           <div className="wh-combo__search">
             <Search size={14} />
             <input ref={inputRef} value={q} autoFocus
@@ -308,32 +269,6 @@ export default function LocationPicker({
       ), portalHost)}
     </div>
   );
-}
-
-/**
- * Узел под портал: div в конце body с классом wh-app.
- *
- * Класс здесь не для вида. Токены модуля (--wh-bg, --wh-card-bg, --wh-border и
- * прочие полсотни) объявлены на корневом .wh-app — складской модуль намеренно не
- * лезет в :root портала. Список же выносится порталом в body, то есть наружу из
- * .wh-app, и там каждый var(--wh-…) разрешался в пустоту: панель оставалась без
- * фона и без рамки, и сквозь неё просвечивал серый фон страницы.
- *
- * display: contents у обёртки (в CSS) убирает её собственную коробку вместе с
- * отступами .wh-app — наследование значений при этом сохраняется, а лишнего
- * блока в конце страницы не появляется.
- */
-function usePortalHost() {
-  const [host] = useState(() => {
-    const node = document.createElement('div');
-    node.className = 'wh-app wh-portal-host';
-    return node;
-  });
-  useEffect(() => {
-    document.body.appendChild(host);
-    return () => host.remove();
-  }, [host]);
-  return host;
 }
 
 /**

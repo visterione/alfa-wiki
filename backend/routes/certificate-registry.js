@@ -166,6 +166,32 @@ async function getNextNumber(org, year, excludeId) {
   return last ? (Number(last.seqNumber) || 0) + 1 : 1;
 }
 
+// «№ справки» ведут руками, но фактически это такой же сквозной счётчик вкладки,
+// как и № п/п, — поэтому подставляем следующий за последним числовым значением.
+// Нечисловые номера (встречаются в старых импортированных строках) в расчёт не берём,
+// а ведущие нули сохраняем: если в реестре пишут «0007», продолжением будет «0008».
+async function getNextCertNumber(org, year, excludeId) {
+  const replacements = { org };
+  const conds = [
+    'org = CAST(:org AS certificate_registry_org)',
+    // до 9 знаков — чтобы приведение к bigint не упало на мусорном значении
+    "btrim(coalesce(data->>'certNumber', '')) ~ '^[0-9]{1,9}$'"
+  ];
+  if (year) { conds.push('year = :year'); replacements.year = year; }
+  if (excludeId) { conds.push('id <> :excludeId'); replacements.excludeId = excludeId; }
+  const [rows] = await sequelize.query(`
+    SELECT btrim(data->>'certNumber') AS cert
+    FROM certificate_registry_entries
+    WHERE ${conds.join(' AND ')}
+    ORDER BY btrim(data->>'certNumber')::bigint DESC
+    LIMIT 1
+  `, { replacements });
+  const last = rows[0] && rows[0].cert;
+  if (!last) return '1';
+  const next = String(Number(last) + 1);
+  return next.length < last.length ? next.padStart(last.length, '0') : next;
+}
+
 // Лист «ПРЕСТИЖ 2024» → { org: 'prestige', year: 2024 }. Год обязателен: каждая
 // вкладка реестра соответствует своему листу, поэтому листы без года пропускаем.
 function parseSheetName(sheetName) {
@@ -535,7 +561,8 @@ router.get('/next-number', authenticate, async (req, res) => {
     const year = parseYear(req.query.year);
     if (!isValidOrgYear(org, year)) return res.status(400).json({ error: 'Неверная организация или год' });
     const nextNumber = await getNextNumber(org, year, excludeId);
-    res.json({ nextNumber });
+    const nextCertNumber = await getNextCertNumber(org, year, excludeId);
+    res.json({ nextNumber, nextCertNumber });
   } catch (err) {
     console.error('GET /api/certificate-registry/next-number error:', err);
     res.status(500).json({ error: 'Ошибка сервера' });

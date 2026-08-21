@@ -692,12 +692,21 @@ window.registryApp = (function() {
     if (samePerson) copyToPatient();
   }
 
+  // № п/п и № справки — оба сквозные счётчики вкладки, поэтому подставляем их
+  // одним запросом. Это подсказка, а не жёсткое значение: любой номер можно переписать.
   function setDefaultNumber() {
-    var numberInput = document.getElementById('reg-seqNumber');
-    if (!numberInput || editingId) return;
-    if (numberInput.value) return;
+    if (editingId) return;
+    var seqInput = document.getElementById('reg-seqNumber');
+    var certInput = document.getElementById('reg-certNumber');
+    var needSeq = seqInput && !seqInput.value;
+    var needCert = certInput && !certInput.value;
+    if (!needSeq && !needCert) return;
     api('/next-number?org=' + encodeURIComponent(activeOrg) + '&year=' + encodeURIComponent(activeYear))
-      .then(function(res) { if (!numberInput.value) numberInput.value = res.nextNumber || ''; })
+      .then(function(res) {
+        // За время запроса номер могли ввести руками — тогда не перебиваем его
+        if (seqInput && !seqInput.value) seqInput.value = res.nextNumber || '';
+        if (certInput && !certInput.value) certInput.value = res.nextCertNumber || '';
+      })
       .catch(function() {});
   }
 
@@ -892,7 +901,8 @@ window.registryApp = (function() {
     // пациента из вкладки прошлого года и добавить справку в другой год.
     // Полная очистка — только кнопкой «Очистить».
     var draft = currentFormValues();
-    delete draft.seqNumber;                        // номер свой у каждой вкладки — подставится заново
+    delete draft.seqNumber;                        // номера свои у каждой вкладки — подставятся заново
+    delete draft.certNumber;
     if (org !== activeOrg) delete draft.clinics;   // список клиник зависит от организации
 
     activeOrg = org;

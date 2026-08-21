@@ -9,6 +9,7 @@ import { warehouseApi, BASE_URL } from '../../services/api';
 import SecureImage from '../../components/warehouse/SecureImage';
 import WarehouseAssetForm from './WarehouseAssetForm';
 import Pagination from './components/Pagination';
+import { openPrintWindow, downloadTextFile } from './components/printLabels';
 
 /**
  * Оборудование: список, карточка, QR и печать этикеток.
@@ -1199,34 +1200,6 @@ function AssetFiles({ assetId, files, canEdit, onReload }) {
   );
 }
 
-// ── Печать этикеток ──────────────────────────────────────────────────────────
-/**
- * Открывает окно печати с уже растеризованными PNG. Сервер формирует их в DPI
- * выбранного принтера; браузер здесь только передаёт готовые пиксели драйверу.
- */
-function openPrintWindow({ labels, sizeMm }) {
-  const w = window.open('', '_blank');
-  if (!w) return toast.error('Браузер заблокировал окно печати');
-  const { w: mmW, h: mmH } = sizeMm;
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8">
-    <title>Этикетки (${labels.length})</title>
-    <style>
-      @page { size: ${mmW}mm ${mmH}mm; margin: 0; }
-      html, body { margin: 0; padding: 0; }
-      .label { width: ${mmW}mm; height: ${mmH}mm; page-break-after: always; overflow: hidden; }
-      .label img { display: block; width: ${mmW}mm; height: ${mmH}mm; image-rendering: pixelated; }
-      .label:last-child { page-break-after: auto; }
-      @media screen {
-        body { background: #eef1f5; padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .label { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
-      }
-    </style></head><body>
-    ${labels.map(l => `<div class="label"><img src="${l.png}" alt=""></div>`).join('')}
-    <script>window.onload = () => setTimeout(() => window.print(), 250);</script>
-    </body></html>`);
-  w.document.close();
-}
-
 // ── Утилиты ──────────────────────────────────────────────────────────────────
 /**
  * Сохраняет data:URL файлом. Сервер отдаёт этикетку именно так — картинкой,
@@ -1238,15 +1211,6 @@ function downloadDataUrl(dataUrl, filename) {
   a.href = dataUrl;
   a.download = filename;
   a.click();
-}
-
-function downloadTextFile(contents, filename) {
-  const blob = new Blob([contents], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
 }
 
 /**

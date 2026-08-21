@@ -804,6 +804,24 @@ async function resolveRoomLocation({ medCenterId, floorId }) {
 }
 
 /**
+ * Что нужно генератору дверной этикетки: отделение, медцентр и путь через
+ * корпус с этажом. Набор один и тот же у одиночной карточки, у ZPL и у пачки —
+ * держим его одним объявлением, иначе третья копия неизбежно разойдётся с
+ * первыми двумя.
+ */
+const doorCardInclude = [
+  { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
+  { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] },
+  {
+    model: WhFloor, as: 'floor',
+    include: [{
+      model: WhBuilding, as: 'building',
+      include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] }],
+    }],
+  },
+];
+
+/**
  * QR-код кабинета. Ведёт внутрь портала, на дашборд этого кабинета, и потому
  * требует входа — почему именно так, см. roomAppUrl в services/warehouse/qr.js.
  */
@@ -826,19 +844,7 @@ router.get('/rooms/:id/qr.svg', authenticate, requireWarehouse(), async (req, re
  */
 router.get('/rooms/:id/door-card.svg', authenticate, requireWarehouse(), async (req, res) => {
   try {
-    const room = await WhRoom.findByPk(req.params.id, {
-      include: [
-        { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
-        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] },
-        {
-          model: WhFloor, as: 'floor',
-          include: [{
-            model: WhBuilding, as: 'building',
-            include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] }],
-          }],
-        },
-      ],
-    });
+    const room = await WhRoom.findByPk(req.params.id, { include: doorCardInclude });
     if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
 
     const svg = await roomDoorCardSvg(room, { size: req.query.size });
@@ -861,25 +867,80 @@ router.get('/rooms/:id/door-card.svg', authenticate, requireWarehouse(), async (
 /** Отдельный профиль TDP-225: ZPL 44x25 мм, не связанный с лентами Brother. */
 router.get('/rooms/:id/door-card.zpl', authenticate, requireWarehouse(), async (req, res) => {
   try {
-    const room = await WhRoom.findByPk(req.params.id, {
-      include: [
-        { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
-        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] },
-        {
-          model: WhFloor, as: 'floor',
-          include: [{
-            model: WhBuilding, as: 'building',
-            include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'address', 'city'] }],
-          }],
-        },
-      ],
-    });
+    const room = await WhRoom.findByPk(req.params.id, { include: doorCardInclude });
     if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
 
     const zpl = roomDoorCardZpl(room, { copies: Number(req.query.copies) || 1 });
     res.type('text/plain; charset=utf-8').send(zpl);
   } catch (err) {
     console.error('GET warehouse/locations/rooms/:id/door-card.zpl error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Пачка дверных этикеток на печать.
+ *
+ * Кабинеты маркируют не по одному: этикетки нужны сразу на этаж или на весь
+ * медцентр, а карточка кабинета отдавала ровно одну — чтобы промаркировать
+ * тридцать дверей, приходилось тридцать раз открыть дашборд и тридцать раз
+ * пройти через диалог печати. Устроено так же, как пачка этикеток оборудования:
+ * сервер растеризует каждую карточку в PNG нужного принтеру разрешения, а
+ * браузер только раскладывает готовые пиксели по страницам.
+ *
+ * Порядок ответа задаём порядком запроса: findAll возвращает строки как ему
+ * удобно, а человек отмечал кабинеты сверху вниз по списку и ждёт ленту в том же
+ * порядке — иначе разложить отпечатанное по этажам нечем.
+ */
+router.post('/rooms/door-cards/batch', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
+  try {
+    const { ids = [], size = '80x24', rotate } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны кабинеты' });
+    if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
+
+    const labelSize = LABEL_SIZES[size] ? size : '80x24';
+    const turn = [90, 180, 270].includes(Number(rotate)) ? Number(rotate) : 0;
+
+    const rooms = await WhRoom.findAll({ where: { id: { [Op.in]: ids } }, include: doorCardInclude });
+    const byId = new Map(rooms.map(r => [r.id, r]));
+
+    const labels = [];
+    for (const id of ids) {
+      const room = byId.get(id);
+      if (!room) continue;
+      const svg = await roomDoorCardSvg(room, { size: labelSize });
+      const png = await labelPng(svg, labelSize, { rotate: turn });
+      labels.push({
+        id: room.id,
+        number: room.number,
+        png: `data:image/png;base64,${png.toString('base64')}`,
+      });
+    }
+    if (!labels.length) return res.status(404).json({ error: 'Ни одного из выбранных кабинетов не нашлось' });
+
+    res.json({ size: labelSize, rotate: turn, labels, sizeMm: LABEL_SIZES[labelSize] });
+  } catch (err) {
+    console.error('POST warehouse/locations/rooms/door-cards/batch error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Та же пачка отдельными ZPL-заданиями для TDP-225, каждое строго 44x25 мм. */
+router.post('/rooms/door-cards/batch.zpl', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
+  try {
+    const { ids = [] } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны кабинеты' });
+    if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
+
+    const rooms = await WhRoom.findAll({ where: { id: { [Op.in]: ids } }, include: doorCardInclude });
+    const byId = new Map(rooms.map(r => [r.id, r]));
+    const zpl = ids.map(id => byId.get(id)).filter(Boolean)
+      .map(room => roomDoorCardZpl(room)).join('\n');
+    if (!zpl) return res.status(404).json({ error: 'Ни одного из выбранных кабинетов не нашлось' });
+
+    res.type('text/plain; charset=utf-8').send(zpl);
+  } catch (err) {
+    console.error('POST warehouse/locations/rooms/door-cards/batch.zpl error:', err);
     res.status(500).json({ error: err.message });
   }
 });

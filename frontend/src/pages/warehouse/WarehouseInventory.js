@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast';
 import { Check, ClipboardCheck, Plus, RefreshCw, ScanLine, Search, X } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
+import Combobox from './components/Combobox';
+import LocationPicker from './components/LocationPicker';
 
 export default function WarehouseInventory({ access, tree }) {
   const [sessions, setSessions] = useState([]);
@@ -61,9 +63,20 @@ function CreateInventory({ tree, onClose, onCreated }) {
   const [users, setUsers] = useState([]);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ scope: 'room', roomId: '', departmentId: '', basis: '', chairmanUserId: '', responsibleUserId: '' });
-  const rooms = useMemo(() => flattenRooms(tree), [tree]);
   useEffect(() => { usersApi.listBasic().then(({ data }) => setUsers(data)).catch(() => {}); }, []);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Списки для выпадающих полей собираются один раз: сотрудников в сети под
+  // сотню, и пересобирать их на каждое нажатие в соседнем поле незачем.
+  const userOptions = useMemo(
+    () => users.map(u => ({ id: u.id, label: u.displayName || u.username, code: u.username })),
+    [users]
+  );
+  const departmentOptions = useMemo(
+    () => (tree?.departments || []).map(d => ({ id: d.id, label: d.name })),
+    [tree]
+  );
+
   const submit = async () => {
     if (form.scope === 'room' ? !form.roomId : !form.departmentId) return toast.error('Выберите область инвентаризации');
     setSaving(true);
@@ -82,21 +95,56 @@ function CreateInventory({ tree, onClose, onCreated }) {
   return <div className="wh-modal" onClick={onClose}><div className="wh-modal__box wh-modal__box--narrow" onClick={e => e.stopPropagation()}>
     <div className="wh-modal__head"><div className="wh-modal__title">Новая инвентаризация</div><button className="wh-icon-btn" onClick={onClose}><X size={18} /></button></div>
     <div className="wh-modal__body"><div className="wh-form">
-      <label>Область
-        <select value={form.scope} onChange={e => set('scope', e.target.value)}><option value="room">Один кабинет</option><option value="department">Всё отделение</option></select>
+      {/* Все четыре списка формы — свои, а не браузерные <select>. Дело не
+          только в виде: кабинетов под сотню, сотрудников тоже, и в системном
+          списке их можно было искать лишь набором первых букв вслепую — а
+          начинается строка кабинета с названия медцентра, строка сотрудника с
+          фамилии, которую как раз и не помнят. */}
+      <label>
+        <span className="wh-form__cap">Область</span>
+        <Combobox value={form.scope} options={SCOPE_OPTIONS} allowClear={false}
+                  onChange={v => set('scope', v)} />
       </label>
-      {form.scope === 'room' ? <label>Кабинет
-        <select value={form.roomId} onChange={e => set('roomId', e.target.value)}><option value="">Выберите…</option>{rooms.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}</select>
-      </label> : <label>Отделение
-        <select value={form.departmentId} onChange={e => set('departmentId', e.target.value)}><option value="">Выберите…</option>{(tree?.departments || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+      {form.scope === 'room' ? <label>
+        <span className="wh-form__cap">Кабинет <b className="wh-req">*</b></span>
+        {/* То же дерево локаций, что в приёме и перемещении: медцентр → корпус →
+            этаж → кабинет, с поиском по номеру. */}
+        <LocationPicker
+          tree={tree} mode="room" roomId={form.roomId}
+          placeholder="Выберите кабинет"
+          onPick={({ roomId }) => set('roomId', roomId)}
+        />
+      </label> : <label>
+        <span className="wh-form__cap">Отделение <b className="wh-req">*</b></span>
+        <Combobox value={form.departmentId} options={departmentOptions}
+                  placeholder="Выберите отделение" searchPlaceholder="Название отделения"
+                  emptyText="Отделений нет" onChange={v => set('departmentId', v)} />
       </label>}
-      <label>Основание <input value={form.basis} placeholder="Приказ №…, плановая проверка…" onChange={e => set('basis', e.target.value)} /></label>
-      <label>Председатель комиссии <select value={form.chairmanUserId} onChange={e => set('chairmanUserId', e.target.value)}><option value="">Текущий пользователь</option>{users.map(userOption)}</select></label>
-      <label>МОЛ <select value={form.responsibleUserId} onChange={e => set('responsibleUserId', e.target.value)}><option value="">—</option>{users.map(userOption)}</select></label>
+      <label>
+        <span className="wh-form__cap">Основание</span>
+        <input value={form.basis} placeholder="Приказ №…, плановая проверка…" onChange={e => set('basis', e.target.value)} />
+      </label>
+      <label>
+        <span className="wh-form__cap">Председатель комиссии</span>
+        <Combobox value={form.chairmanUserId} options={userOptions}
+                  placeholder="Текущий пользователь" searchPlaceholder="Фамилия или логин"
+                  emptyText="Никого не нашлось" onChange={v => set('chairmanUserId', v)} />
+      </label>
+      <label>
+        <span className="wh-form__cap">МОЛ</span>
+        <Combobox value={form.responsibleUserId} options={userOptions}
+                  placeholder="Не назначен" searchPlaceholder="Фамилия или логин"
+                  emptyText="Никого не нашлось" onChange={v => set('responsibleUserId', v)} />
+      </label>
     </div></div>
     <div className="wh-modal__foot"><button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button><button className="wh-btn wh-btn--primary" onClick={submit} disabled={saving}><Check size={14} /> {saving ? 'Открываю…' : 'Открыть опись'}</button></div>
   </div></div>;
 }
+
+const SCOPE_OPTIONS = [
+  { id: 'room', label: 'Один кабинет' },
+  { id: 'department', label: 'Всё отделение' },
+];
 
 function InventoryCounting({ data, canEdit, onClose, onReload }) {
   const { session, stats } = data;
@@ -260,7 +308,6 @@ function InventoryRow({ item, editable, saving, onSave }) {
   </tr>;
 }
 
-const userOption = u => <option key={u.id} value={u.id}>{u.displayName || u.username}</option>;
 const itemName = i => i.asset ? `${i.asset.inventoryNumber} · ${i.asset.name}` : `${i.nomenclature?.code || ''} · ${i.nomenclature?.name || ''}`;
 const inventoryStatus = s => ({ open: 'Открыта', counting: 'Идёт пересчёт', closed: 'Закрыта', cancelled: 'Отменена' }[s] || s);
 const fmtDateTime = d => d ? new Date(d).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -282,13 +329,3 @@ function Stat({ title, value, sub, tone }) {
 }
 
 const percent = (part, whole) => (whole ? `${Math.round((part / whole) * 100)} %` : '—');
-function flattenRooms(tree) {
-  const out = [];
-  for (const mc of tree?.medCenters || []) {
-    for (const r of mc.rooms || []) out.push({ ...r, label: `${mc.name} · Каб. ${r.number}` });
-    for (const b of mc.buildings || []) for (const f of b.floors || []) for (const r of f.rooms || []) {
-      out.push({ ...r, label: `${mc.name} · ${b.name} · ${f.number} эт. · Каб. ${r.number}` });
-    }
-  }
-  return out;
-}

@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Search, X, ChevronRight, ChevronDown, Maximize2, Minimize2,
-  Settings2, Layers, Building2, Check,
+  Settings2, Layers, Building2, Check, Printer, FileText,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import RoomSettings from '../../components/warehouse/RoomSettings';
+import { openPrintWindow, downloadTextFile } from './components/printLabels';
 
 /**
  * Список кабинетов — точка входа в дашборд кабинета.
@@ -26,6 +27,11 @@ import RoomSettings from '../../components/warehouse/RoomSettings';
  * Данные берутся из уже загруженного дерева локаций, поэтому экран открывается
  * мгновенно и не ходит на сервер: счётчики в дереве считаются тем же запросом,
  * что и сами кабинеты.
+ *
+ * Отсюда же печатаются дверные этикетки пачкой. Раньше карточка кабинета отдавала
+ * ровно одну, и промаркировать этаж значило тридцать раз открыть дашборд и
+ * тридцать раз пройти диалог печати. Отметка стоит и на группах дерева: этикетки
+ * заказывают этажом или медцентром целиком, а не перечислением кабинетов.
  */
 
 export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree }) {
@@ -35,11 +41,16 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [settingsRoom, setSettingsRoom] = useState(null);
   const [fromMis, setFromMis] = useState(null);
+  const [checked, setChecked] = useState(() => new Set());
+  const [labelSize, setLabelSize] = useState('80x24');
+  const [printing, setPrinting] = useState(false);
 
   // Настройка кабинета требует того же права, что и выдача материалов: МОЛ и
   // места хранения — это операционные данные, а не структура сети.
   const canSetup = Boolean(access?.capabilities?.canIssue);
   // А заведение самих кабинетов — это уже структура, и право на неё отдельное.
+  // Печать этикеток — своё право: печатают их не те, кто ведёт учёт.
+  const canPrint = Boolean(access?.capabilities?.canPrintLabels);
 
   const departments = tree?.departments || [];
   const depById = useMemo(() => new Map(departments.map(d => [d.id, d])), [departments]);
@@ -123,6 +134,70 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
     return next;
   });
 
+  // ── Отметки под печать ──────────────────────────────────────────────────────
+  // Отмечаются только кабинеты; галочка на группе — это отметка всех кабинетов
+  // под ней. Хранить в наборе сами группы было бы нечем: печатается кабинет, а
+  // не этаж, и после смены фильтра состав этажа другой.
+  const leafIds = (node) => {
+    const out = [];
+    const walk = (n) => {
+      if (n.children) { for (const c of n.children) walk(c); return; }
+      out.push(n.room.id);
+    };
+    walk(node);
+    return out;
+  };
+
+  // Все кабинеты, попавшие в текущий фильтр: «отметить все найденные» — то, ради
+  // чего печать пачкой и нужна. Человек сужает список до этажа и печатает его
+  // целиком, а не отмечает тридцать строк по одной.
+  const foundIds = useMemo(() => {
+    const out = [];
+    const walk = (list) => {
+      for (const n of list) {
+        if (n.children) walk(n.children); else out.push(n.room.id);
+      }
+    };
+    walk(nodes);
+    return out;
+  }, [nodes]);
+
+  const toggleChecked = (ids) => setChecked(prev => {
+    const next = new Set(prev);
+    // Группа переключается целиком: отмечена не полностью — доотмечаем, отмечена
+    // вся — снимаем. Иначе клик по наполовину отмеченному этажу снимал бы то, что
+    // только что отметили вручную.
+    const all = ids.every(id => next.has(id));
+    for (const id of ids) { if (all) next.delete(id); else next.add(id); }
+    return next;
+  });
+
+  const printCards = async () => {
+    if (!checked.size) return toast.error('Отметьте кабинеты для печати');
+    setPrinting(true);
+    try {
+      const { data } = await warehouseApi.roomDoorCardsBatch({ ids: [...checked], size: labelSize });
+      openPrintWindow({ ...data, title: 'Карточки кабинетов' });
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось подготовить этикетки');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const downloadZpl = async () => {
+    if (!checked.size) return toast.error('Отметьте кабинеты для печати');
+    setPrinting(true);
+    try {
+      const { data: zpl } = await warehouseApi.roomDoorCardsBatchZpl({ ids: [...checked] });
+      downloadTextFile(zpl, `rooms-44x25-${checked.size}.zpl`);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось подготовить ZPL для TDP-225');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   // Свернуть до уровня: в набор попадают все узлы этого уровня и глубже.
   const collapseTo = (level) => {
     const next = new Set();
@@ -181,10 +256,47 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
         </div>
       </div>
 
+      {canPrint && (
+        <div className={`wh-bulkbar ${checked.size ? 'is-active' : ''}`}>
+          {/* Полоса молчит, пока ничего не отмечено: подсказка «отметьте кабинеты»
+              занимала бы строку постоянно, а нужна ровно один раз. Кнопки и без
+              неё неактивны, пока выбор пуст. */}
+          {checked.size > 0 && <span>Отмечено: {checked.size}</span>}
+          <select value={labelSize} onChange={e => setLabelSize(e.target.value)}>
+            <optgroup label="Brother P-touch E550W">
+              <option value="80x24">Альбомная · лента 24 мм · 80 × 24 мм</option>
+            </optgroup>
+            <optgroup label="TDP-225">
+              <option value="44x25">Этикетка 44 × 25 мм</option>
+            </optgroup>
+          </select>
+          <button className="wh-btn wh-btn--ghost" onClick={printCards}
+                  disabled={!checked.size || printing}>
+            <Printer size={15} /> {printing ? 'Готовлю…' : 'Печать этикеток'}
+          </button>
+          {labelSize === '44x25' && (
+            <button className="wh-btn wh-btn--ghost" onClick={downloadZpl}
+                    disabled={!checked.size || printing}>
+              <FileText size={15} /> Скачать ZPL
+            </button>
+          )}
+          <button className="wh-btn wh-btn--ghost" disabled={!foundIds.length}
+                  onClick={() => setChecked(new Set(foundIds))}>
+            Отметить все {foundIds.length}
+          </button>
+          {checked.size > 0 && (
+            <button className="wh-btn wh-btn--link" onClick={() => setChecked(new Set())}>
+              Снять отметки
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="wh-table-wrap wh-table-wrap--tall">
         <table className="wh-table wh-table--compact wh-rooms__table">
           <thead>
             <tr>
+              {canPrint && <th style={{ width: 30 }} />}
               <th>Локация и кабинет</th>
               <th>Отделение</th>
               <th>МОЛ</th>
@@ -199,6 +311,11 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
               ? (
                 <tr key={n.key} className={`wh-tree__group wh-rooms__lvl${n.level}`}
                     onClick={() => toggle(n.key)}>
+                  {canPrint && (
+                    <td onClick={e => { e.stopPropagation(); toggleChecked(leafIds(n)); }}>
+                      <GroupCheck ids={leafIds(n)} checked={checked} />
+                    </td>
+                  )}
                   <td className="wh-tree__cell" style={{ paddingLeft: 10 + n.level * 20 }}>
                     <button className="wh-tree__toggle" tabIndex={-1}
                             title={isCollapsed(n.key) ? 'Раскрыть' : 'Свернуть'}>
@@ -220,6 +337,11 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
               ) : (
                 <tr key={n.key} className="wh-tree__leaf wh-table__row"
                     onClick={() => onOpenRoom(n.room.id)}>
+                  {canPrint && (
+                    <td onClick={e => { e.stopPropagation(); toggleChecked([n.room.id]); }}>
+                      <input type="checkbox" checked={checked.has(n.room.id)} onChange={() => {}} />
+                    </td>
+                  )}
                   <td className="wh-tree__cell" style={{ paddingLeft: 10 + n.level * 20 }}>
                     <span className="wh-tree__bullet" />
                     {/* Одна строка, без вложенного столбика. Раньше здесь под
@@ -258,7 +380,7 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
               )
             ))}
             {!rows.length && (
-              <tr><td colSpan={canSetup ? 7 : 6} className="wh-empty">
+              <tr><td colSpan={6 + (canSetup ? 1 : 0) + (canPrint ? 1 : 0)} className="wh-empty">
                 {dirty ? 'По условию ничего не найдено' : 'Кабинеты не заведены'}
               </td></tr>
             )}
@@ -463,6 +585,24 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
 }
 
 // ── Вспомогательное ──────────────────────────────────────────────────────────
+
+/**
+ * Отметка группы дерева: отмечена, если отмечены все кабинеты под ней, и
+ * промежуточная, если только часть.
+ *
+ * Промежуточное состояние выставляется через ref, а не атрибутом: indeterminate
+ * у чекбокса живёт только в DOM-свойстве, разметкой его не задать — без этого
+ * наполовину отмеченный этаж выглядел бы неотмеченным вовсе.
+ */
+function GroupCheck({ ids, checked }) {
+  const marked = ids.filter(id => checked.has(id)).length;
+  const all = ids.length > 0 && marked === ids.length;
+  return (
+    <input type="checkbox" checked={all} onChange={() => {}}
+           ref={el => { if (el) el.indeterminate = marked > 0 && !all; }} />
+  );
+}
+
 
 const group = (key, level, label, color, sub) => ({
   key, level, label, color, sub, children: [], rooms: 0, assets: 0, positions: 0,

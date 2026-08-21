@@ -682,8 +682,46 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     timestamps: false,
   });
 
+  /**
+   * Сохранённый отчёт (ver. 7.11).
+   *
+   * Отчёты модуля считаются по кнопке и живут ровно до перезагрузки страницы:
+   * каждый из них — тяжёлый расчёт по всей базе, и чтобы вернуться к прошлой
+   * оборотке, её приходилось строить заново. Хуже другое: пересчёт за тот же
+   * период даёт уже другие цифры — остатки успели измениться, — и сослаться на
+   * то, что видели неделю назад, было нечем.
+   *
+   * Поэтому храним не параметры, а сам результат: строки, итоги и колонки на
+   * момент сохранения. Это снимок, а не ссылка на расчёт, — открытие сохранённого
+   * отчёта не ходит в базу за данными и показывает ровно то, что человек проверил
+   * глазами перед сохранением.
+   *
+   * Колонки лежат рядом со строками намеренно. Состав колонок отчёта со временем
+   * меняется, и сохранённый год назад отчёт под нынешними заголовками показывал бы
+   * пустые столбцы и терял бы те, которых уже нет в описании.
+   *
+   * `params` — то, чем отчёт строили (период, медцентр, отделение) и человеческая
+   * строка отбора из шапки. Пересчитать по ним заново модуль не предлагает: это
+   * справка о происхождении снимка, а не рецепт.
+   */
+  const WhSavedReport = sequelize.define('WhSavedReport', {
+    id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    code:        { type: DataTypes.STRING(32), allowNull: false },
+    reportKey:   { type: DataTypes.STRING(40), allowNull: false },
+    mode:        { type: DataTypes.STRING(40) },
+    title:       { type: DataTypes.STRING(300), allowNull: false },
+    note:        { type: DataTypes.TEXT },
+    periodFrom:  { type: DataTypes.DATEONLY },
+    periodTo:    { type: DataTypes.DATEONLY },
+    params:      { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+    columns:     { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+    payload:     { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+    rowCount:    { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    createdBy:   { type: DataTypes.UUID },
+  }, { ...ts, tableName: 'warehouse_saved_reports' });
+
   const models = {
-    WhUserPermission, WhMailOptOut, WhMailLog,
+    WhUserPermission, WhMailOptOut, WhMailLog, WhSavedReport,
     WhSpecialty, WhBuilding, WhFloor, WhDepartment, WhRoom, WhFloorShape, WhStorage,
     WhContractor, WhCategory, WhNomenclature,
     WhAsset, WhAssetFile,
@@ -843,6 +881,8 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhOsvPlacement.belongsTo(WhRoom, { foreignKey: 'roomId', as: 'room' });
     WhOsvPlacement.belongsTo(WhStorage, { foreignKey: 'storageId', as: 'storage' });
     WhOsvPlacement.belongsTo(User, { foreignKey: 'placedBy', as: 'author' });
+
+    WhSavedReport.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
     WhAsset.belongsTo(WhOsvPlacement, { foreignKey: 'osvPlacementId', as: 'osvPlacement' });
   }
 

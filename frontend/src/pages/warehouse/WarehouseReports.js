@@ -2,10 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   FileSpreadsheet, FileText, AlertTriangle, ArrowRightLeft, Play,
-  ChevronRight, ChevronDown, Minimize2, Maximize2, ListTree, FolderTree,
-  Mail, X, Check,
+  Minimize2, Maximize2, ListTree, FolderTree,
+  Mail, X, Check, Save,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import { ReportTable, exportRow, format, maintType } from './components/reportTable';
+import ReportsNav from './components/ReportsNav';
+import ActionMenu from './components/ActionMenu';
 
 /**
  * Отчёты складского модуля.
@@ -268,17 +271,38 @@ const GROUPS = [
   { title: 'Аудит и сверка', keys: ['movements', 'inventory'] },
 ];
 
+/**
+ * Лёгкий каталог для «Архива»: деление на группы и названия отчётов, без
+ * колонок и загрузчиков. Снимки разложены по тем же видам, что и отчёты, и
+ * второй список названий рядом с этим неизбежно разошёлся бы с ним.
+ */
+export const REPORT_GROUPS = GROUPS;
+export const REPORT_TITLES = Object.fromEntries(
+  Object.entries(REPORTS).map(([key, def]) => [key, def.title]),
+);
+
+/**
+ * «Открыт ли человеку этот отчёт». Список отчётов строим по правам, а не
+ * показываем всё подряд: иначе человек кликает по строке и получает отказ —
+ * худший способ узнать о своих правах.
+ *
+ * Пустой список прав означает «ограничений нет»: так отвечает сервер
+ * администратору, у которого набор полный и перечислять его незачем.
+ */
+export function allowedReports(access) {
+  const codes = new Set((access?.reports || []).map(r => r.code));
+  return key => !codes.size || codes.has(REPORTS[key]?.code);
+}
+
 export default function WarehouseReports({ access, tree, initialReport, onOpenAsset }) {
-  // Список отчётов строим по правам, а не показываем всё подряд: иначе человек
-  // кликает по строке и получает отказ — худший способ узнать о своих правах.
   const allowedCodes = useMemo(
     () => new Set((access?.reports || []).map(r => r.code)),
     [access]
   );
-  const isAllowed = useCallback(
-    key => !allowedCodes.size || allowedCodes.has(REPORTS[key].code),
-    [allowedCodes]
-  );
+  // Тот же признак, что и во вкладке «Архив», — общей функцией: два списка
+  // отчётов обязаны совпадать по составу, иначе снимок обнаружился бы у отчёта,
+  // которого в «Отчётах» человеку не видно.
+  const isAllowed = useMemo(() => allowedReports(access), [access]);
   const [key, setKey] = useState(() => {
     if (initialReport && REPORTS[initialReport]) return initialReport;
     // Первый доступный, а не жёстко «оборотно-сальдовая»: инженеру она закрыта,
@@ -287,8 +311,6 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
     const first = Object.keys(REPORTS).find(k => !codes.size || codes.has(REPORTS[k].code));
     return first || 'turnover';
   });
-  const reportNavRef = React.useRef(null);
-  const [reportSlider, setReportSlider] = useState({ top: 0, height: 0 });
   const [period, setPeriod] = useState(() => {
     const to = new Date();
     const from = new Date(to.getFullYear(), to.getMonth(), 1);
@@ -330,24 +352,6 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
   const renderKind = typeof report?.render === 'function' ? report.render(activeMode) : report?.render;
 
   useEffect(() => { setMode(null); }, [key]);
-
-  React.useLayoutEffect(() => {
-    const nav = reportNavRef.current;
-    if (!nav) return undefined;
-
-    const recalc = () => {
-      const active = nav.querySelector('.wh-reports__group button.is-active');
-      if (!active) return;
-      const navRect = nav.getBoundingClientRect();
-      const activeRect = active.getBoundingClientRect();
-      setReportSlider({ top: activeRect.top - navRect.top, height: activeRect.height });
-    };
-
-    recalc();
-    const observer = new ResizeObserver(recalc);
-    observer.observe(nav);
-    return () => observer.disconnect();
-  }, [key, access]);
 
   const load = useCallback(async () => {
     if (!report || report.custom) return;
@@ -400,35 +404,6 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
     setCollapsed(next);
   }, [state.data]);
 
-  /**
-   * Видимые строки дерева: узел скрыт, если свёрнут любой из его предков.
-   * Предки определяются по префиксу ключа — он собран из пути, поэтому сравнения
-   * строк достаточно и обходить дерево заново не нужно.
-   */
-  const visibleRows = useMemo(() => {
-    const items = state.data?.items || [];
-    if (!state.data?.hierarchical || !collapsed.size) return items;
-
-    // Строка видна, если не свёрнут ни один её строгий предок. Сам свёрнутый узел
-    // остаётся виден — иначе его нечем было бы раскрыть обратно.
-    const hiddenUnder = (key) => {
-      if (!key) return false;
-      for (const c of collapsed) {
-        if (key === c || key.startsWith(c + '/')) return true;
-      }
-      return false;
-    };
-
-    return items.filter(row => {
-      if (row.__isGroup) {
-        // Для группы отсекаем сам её ключ: свёрнут — но виден.
-        const parent = row.__key.includes('/') ? row.__key.slice(0, row.__key.lastIndexOf('/')) : null;
-        return !hiddenUnder(parent) && !collapsed.has(parent);
-      }
-      return !hiddenUnder(row.__parentKey);
-    });
-  }, [state.data, collapsed]);
-
   const toggleNode = (key) => setCollapsed(prev => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -477,25 +452,67 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
   }, [tree, medCenterId]);
 
   const [mailingOpen, setMailingOpen] = useState(false);
+  // Диалог сохранения снимка: null — закрыт. Сохраняется то, что уже лежит в
+  // state.data, — то есть ровно то, что человек проверил глазами.
+  const [saveOpen, setSaveOpen] = useState(false);
+
+  // Пока отчёт не построен, ни выгружать, ни сохранять нечего — вся группа
+  // действий заперта одним условием, а не тремя разными.
+  const hasResult = Boolean(state.data?.items?.length);
+
+  const canSave = Boolean(access?.capabilities?.canSaveReports);
+  // Формы, которые таблицей не показываются, снимком не сохраняются: матрица и
+  // календарь рисуются своим кодом по сырым данным, и сохранённая «таблица»
+  // показала бы вместо них пустые колонки.
+  const savable = Boolean(
+    canSave && !report.custom && state.data?.items?.length
+    && !['transferMatrix', 'maintenanceCalendar', 'assetLife'].includes(renderKind),
+  );
+
+  const filterSummary = useMemo(() => [
+    tree?.medCenters?.find(mc => mc.id === medCenterId)?.name,
+    (tree?.departments || []).find(d => d.id === departmentId)?.name,
+  ].filter(Boolean).join(' · ') || 'Вся сеть', [tree, medCenterId, departmentId]);
+
+  const periodLabel = report.needsPeriod && !activeModeDef?.noPeriod
+    ? `${new Date(period.from).toLocaleDateString('ru-RU')} — ${new Date(period.to).toLocaleDateString('ru-RU')}`
+    : null;
+
+  const saveSnapshot = async ({ title, note }) => {
+    await warehouseApi.saveReport({
+      code: report.code,
+      reportKey: key,
+      mode: activeMode,
+      title,
+      note: note || null,
+      params: {
+        from: report.needsPeriod && !activeModeDef?.noPeriod ? period.from : null,
+        to: report.needsPeriod && !activeModeDef?.noPeriod ? period.to : null,
+        medCenterId: medCenterId || null,
+        departmentId: departmentId || null,
+        // Человеческая подпись отбора: через полгода по идентификаторам уже не
+        // скажешь, какой срез перед тобой, а именно за этим к снимку и идут.
+        periodLabel,
+        filterLabel: filterSummary,
+        modeTitle: activeModeDef?.title || null,
+        reportTitle: report.title,
+      },
+      columns,
+      payload: {
+        items: state.data.items,
+        totals: state.data.totals || null,
+        summary: state.data.summary || null,
+        header: state.data.header || null,
+        hierarchical: Boolean(state.data.hierarchical),
+        disclaimer: state.data.disclaimer || null,
+      },
+    });
+  };
 
   return (
     <div className="wh-reports">
-      <aside className="wh-reports__nav" ref={reportNavRef}>
-        <div
-          className="wh-reports__slider"
-          style={{ transform: `translateY(${reportSlider.top}px)`, height: reportSlider.height }}
-        />
-        {GROUPS.filter(g => g.keys.some(isAllowed)).map(g => (
-          <div key={g.title} className="wh-reports__group">
-            <h4>{g.title}</h4>
-            {g.keys.filter(isAllowed).map(k => (
-              <button key={k} className={key === k ? 'is-active' : ''} onClick={() => setKey(k)}>
-                {REPORTS[k].title}
-              </button>
-            ))}
-          </div>
-        ))}
-      </aside>
+      <ReportsNav groups={GROUPS} titles={REPORT_TITLES} isVisible={isAllowed}
+                  active={key} onSelect={setKey} />
 
       <div className="wh-reports__main wh-reports__main--slide" key={key}>
         <div className="wh-reports__head">
@@ -507,6 +524,16 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
           </button>
         </div>
         {mailingOpen && <MailingModal onClose={() => setMailingOpen(false)} />}
+        {saveOpen && (
+          <SaveReportModal
+            defaultTitle={[report.title, activeModeDef?.title, periodLabel]
+              .filter(Boolean).join(' · ')}
+            rowCount={state.data?.items?.length || 0}
+            filterSummary={filterSummary}
+            onSave={saveSnapshot}
+            onClose={() => setSaveOpen(false)}
+          />
+        )}
 
         {modes.length > 1 && (
           <div className="wh-subtabs">
@@ -579,25 +606,41 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
               </div>
             )}
 
-            {/* Выгрузки прижаты к правому краю полосы: XLSX и PDF собираются по
-                тем же параметрам, что и таблица, поэтому стоят рядом с ними, но
-                это действия, а не фильтры — отсюда зазор. */}
+            {/* Действия прижаты к правому краю полосы: собираются они по тем же
+                параметрам, что и таблица, поэтому стоят рядом с ними, но это
+                действия, а не фильтры — отсюда зазор. */}
             <div className="wh-reports__export">
-              {/* Построение стоит первым в группе действий: пока по нему не
-                  щёлкнули, выгружать нечего, и XLSX с PDF читаются как
-                  продолжение расчёта, а не как замена ему. Сводка по активу
-                  кнопки не получает — она собирается сама после выбора актива. */}
+              {/* Построение стоит первым: пока по нему не щёлкнули, ни выгружать,
+                  ни сохранять нечего. Сводка по активу кнопки не получает — она
+                  собирается сама после выбора актива. */}
               {renderKind !== 'assetLife' && (
                 <button className="wh-btn wh-btn--primary" onClick={load} disabled={state.loading}>
                   <Play size={15} /> {state.loading ? 'Считаю…' : 'Сформировать'}
                 </button>
               )}
-              <button className="wh-btn wh-btn--ghost" onClick={() => doExport('xlsx')} disabled={exporting}>
-                <FileSpreadsheet size={15} /> XLSX
-              </button>
-              <button className="wh-btn wh-btn--ghost" onClick={() => doExport('pdf')} disabled={exporting}>
-                <FileText size={15} /> PDF
-              </button>
+              {/* XLSX, PDF и сохранение — один список вместо трёх кнопок подряд.
+                  Порознь они занимали полполосы и спорили за внимание со
+                  «Сформировать», хотя нажимают из них одну и в конце работы. */}
+              <ActionMenu
+                label="Действия"
+                disabled={exporting || !hasResult}
+                items={[
+                  {
+                    key: 'xlsx', label: 'Скачать XLSX', icon: <FileSpreadsheet size={15} />,
+                    onSelect: () => doExport('xlsx'), disabled: exporting || !hasResult,
+                  },
+                  {
+                    key: 'pdf', label: 'Скачать PDF', icon: <FileText size={15} />,
+                    onSelect: () => doExport('pdf'), disabled: exporting || !hasResult,
+                  },
+                  ...(canSave ? [{
+                    key: 'save', label: 'Сохранить в архив', icon: <Save size={15} />,
+                    onSelect: () => setSaveOpen(true), disabled: !savable,
+                    hint: savable ? 'Снимок построенного отчёта во вкладке «Архив»'
+                      : 'Этот отчёт снимком не сохраняется',
+                  }] : []),
+                ]}
+              />
             </div>
           </div>
         )}
@@ -643,89 +686,101 @@ export default function WarehouseReports({ access, tree, initialReport, onOpenAs
               </div>
             )}
 
-            <div className="wh-table-wrap wh-table-wrap--tall"
-                 hidden={['transferMatrix', 'maintenanceCalendar', 'assetLife'].includes(renderKind)}>
-              <table className="wh-table wh-table--compact">
-                <thead>
-                  <tr>{columns.map(c => (
-                    <th key={c.key} className={isNum(c.type) ? 'wh-num' : ''}>{c.title}</th>
-                  ))}</tr>
-                </thead>
-                <tbody>
-                  {state.loading && (
-                    <tr><td colSpan={columns.length} className="wh-table__loading">
-                      <div className="loading-spinner" />
-                    </td></tr>
-                  )}
-                  {!state.loading && visibleRows.map((row, i) => {
-                    const isTree = state.data?.hierarchical;
-                    const hasChildren = row.__isGroup;
-                    const isCollapsed = hasChildren && collapsed.has(row.__key);
-                    return (
-                      <tr key={row.__key || `${row.__parentKey || ''}-${i}`}
-                          className={`${rowClass(row)} ${hasChildren ? 'wh-tree__group' : ''} ${isTree && !hasChildren ? 'wh-tree__leaf' : ''}`}
-                          onClick={hasChildren ? () => toggleNode(row.__key) : undefined}>
-                        {columns.map(c => {
-                          if (c.type === 'tree') {
-                            // Номенклатура прижата к левому краю ячейки: в ОСВ
-                            // пять уровней локаций, и лист шестым отступом
-                            // оказывался у середины колонки — длинным названиям
-                            // оставалась пара сантиметров. Отступы нужны, чтобы
-                            // читалась вложенность локаций, а лист вложенности не
-                            // продолжает: он последний и виден по обычному
-                            // начертанию подписи против полужирного у групп.
-                            const isLeaf = isTree && !hasChildren;
-                            const indent = isLeaf ? 0 : (row.__level || 0);
-                            return (
-                              <td key={c.key} className="wh-tree__cell"
-                                  style={{ paddingLeft: 10 + indent * 18 }}>
-                                {/* Стрелка — указатель состояния, а не мишень:
-                                    сворачивает строка целиком, поэтому кнопка
-                                    выведена из обхода табом и не ловит клик сама. */}
-                                {hasChildren ? (
-                                  <button className="wh-tree__toggle" tabIndex={-1}
-                                          title={isCollapsed ? 'Раскрыть' : 'Свернуть'}>
-                                    {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-                                  </button>
-                                ) : isLeaf ? null : <span className="wh-tree__bullet" />}
-                                <span className={hasChildren ? 'wh-tree__label' : ''}>{row.label}</span>
-                                {isCollapsed && <span className="wh-tree__hint">свёрнуто</span>}
-                              </td>
-                            );
-                          }
-                          return (
-                            <td key={c.key} className={isNum(c.type) ? 'wh-num' : ''}>
-                              {cell(row, c, { onOpenAsset })}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                  {!state.loading && !visibleRows.length && (
-                    <tr><td colSpan={columns.length} className="wh-empty">
-                      {state.data ? 'Данных нет' : 'Отчёт не сформирован — задайте период и нажмите «Сформировать»'}
-                    </td></tr>
-                  )}
-                </tbody>
-                {state.data?.totals && (
-                  <tfoot>
-                    <tr>
-                      {columns.map((c, i) => (
-                        <td key={c.key} className={isNum(c.type) ? 'wh-num' : ''}>
-                          {i === 0 ? <b>ИТОГО</b>
-                            : state.data.totals[c.key] !== undefined
-                              ? <b>{format(state.data.totals[c.key], c.type)}</b>
-                              : ''}
-                        </td>
-                      ))}
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
+            <ReportTable
+              columns={columns}
+              items={state.data?.items || []}
+              totals={state.data?.totals || null}
+              hierarchical={Boolean(state.data?.hierarchical)}
+              loading={state.loading}
+              hidden={['transferMatrix', 'maintenanceCalendar', 'assetLife'].includes(renderKind)}
+              collapsed={collapsed}
+              onToggleNode={toggleNode}
+              onOpenAsset={onOpenAsset}
+              emptyText={state.data
+                ? 'Данных нет'
+                : 'Отчёт не сформирован — задайте период и нажмите «Сформировать»'}
+            />
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «1 строка», «2 строки», «5 строк». Число здесь стоит в живой фразе, а не в
+ * колонке таблицы, и «1 строк» в ней читается как недоделка.
+ */
+function rowsLabel(n) {
+  const count = Number(n) || 0;
+  const tail = count % 100;
+  const last = count % 10;
+  const word = (tail >= 11 && tail <= 14) ? 'строк'
+    : last === 1 ? 'строка'
+      : (last >= 2 && last <= 4) ? 'строки' : 'строк';
+  return `${count.toLocaleString('ru-RU')} ${word}`;
+}
+
+/**
+ * Диалог сохранения снимка.
+ *
+ * Название предзаполнено отчётом, режимом и периодом — тем, по чему снимок ищут в
+ * списке. Поле всё равно оставлено правимым: через месяц «Оборотка · март» из
+ * общего списка выбирают не по формальному имени, а по тому, зачем её строили, —
+ * «на комиссию по списанию».
+ */
+function SaveReportModal({ defaultTitle, rowCount, filterSummary, onSave, onClose }) {
+  const [title, setTitle] = useState(defaultTitle);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim()) return toast.error('Дайте отчёту название');
+    setSaving(true);
+    try {
+      await onSave({ title: title.trim(), note: note.trim() });
+      toast.success('Отчёт сохранён — он во вкладке «Архив»');
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось сохранить отчёт');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box wh-modal__box--narrow" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div>
+            <div className="wh-modal__title">Сохранить отчёт</div>
+            {/* Про снимок сказано прямо и здесь, в подзаголовке: плашки .wh-note
+                в модуле скрыты правилом стилей, и пояснение в ней никто не
+                увидел бы. А без пояснения от сохранённого отчёта ждут, что он
+                обновляется вместе с базой. */}
+            <div className="wh-modal__sub">
+              {rowsLabel(rowCount)} · {filterSummary} · снимок не пересчитывается
+            </div>
+          </div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-form">
+            <label>Название
+              <input value={title} onChange={e => setTitle(e.target.value)} maxLength={300} autoFocus />
+            </label>
+            <label>Примечание (необязательно)
+              <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
+                        placeholder="Зачем строили и что в нём проверено" />
+            </label>
+          </div>
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={submit} disabled={saving || !title.trim()}>
+            <Check size={15} /> {saving ? 'Сохраняю…' : 'Сохранить'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -873,181 +928,6 @@ function InventoryPanel() {
 }
 
 // ── Форматирование ───────────────────────────────────────────────────────────
-const isNum = t => ['money', 'qty', 'number', 'percent', 'share', 'delta', 'deviation'].includes(t);
-
-const STOCK_STATUS = {
-  below: { zone: 'red', label: 'ниже минимума' },
-  near: { zone: 'yellow', label: 'близко к минимуму' },
-  ok: { zone: 'green', label: 'норма' },
-  unknown: { zone: 'none', label: 'минимум не задан' },
-};
-const ASSET_STATUS = {
-  in_use: 'В работе', maintenance: 'На ТО', repair: 'В ремонте',
-  storage: 'На хранении', written_off: 'Списано', reserved: 'Зарезервировано',
-};
-
-/**
- * Значение ячейки. Псевдоколонки (ключ с подчёркиванием) собираются из нескольких
- * полей строки — так в отчёт попадают «Локация» одной колонкой вместо трёх и
- * «Δ количества» абсолютным значением вместе с процентом, как в макетах ТЗ.
- */
-function cell(row, col, ctx = {}) {
-  switch (col.key) {
-    case '_asset': return row.asset ? `${row.asset.name} ${row.asset.model || ''}` : '—';
-    case '_assetNumber': return row.asset?.inventoryNumber || '—';
-    case '_assetName': return [row.asset?.name, row.asset?.model].filter(Boolean).join(' ') || '—';
-    case '_room': return row.asset?.room ? `Каб. ${row.asset.room.number}` : '—';
-    case '_contractor': return row.contractor?.name || '—';
-    case '_nameModel': return [row.name, row.model].filter(Boolean).join(', ') || '—';
-    case '_categoryOkof': return [row.categoryName, row.okof].filter(Boolean).join(' / ') || '—';
-    case '_location': return locationPath(row);
-    case '_forecast': return forecastText(row);
-    default: break;
-  }
-
-  // Отчёт по ТО: справочные значения приходят кодами, а не подписями.
-  if (row.number && ['type', 'status', 'result'].includes(col.key)) {
-    return col.key === 'type' ? maintType(row.type)
-      : col.key === 'status' ? maintStatus(row.status)
-      : maintResult(row.result);
-  }
-
-  const value = row[col.key];
-
-  if (col.type === 'zone') {
-    return <span className={`wh-dot wh-dot--zone-${value || 'none'}`} title={zoneTitle(value)} />;
-  }
-  if (col.type === 'stockStatus') {
-    const s = STOCK_STATUS[value];
-    if (!s || row.__isGroup) return null;
-    return <span className={`wh-zonebadge wh-zonebadge--${s.zone}`}>{s.label}</span>;
-  }
-  if (col.type === 'assetStatus') return ASSET_STATUS[value] || value || '—';
-  if (col.type === 'deprMethod') {
-    return value === 'reducing' ? 'Уменьшаемого остатка' : value === 'linear' ? 'Линейный' : '—';
-  }
-  if (col.type === 'abcCell') {
-    return value ? <span className={`wh-abc wh-abc--${value[0]}`}>{value}</span> : '—';
-  }
-  if (col.type === 'signature') {
-    return row.signedAt
-      ? <span className="wh-ok" title={`Подписано ${format(row.signedAt, 'datetime')}`}>✓ подписано</span>
-      : <span className="wh-muted">✗ без подписи</span>;
-  }
-  if (col.type === 'delta') {
-    // Абсолютное значение и процент вместе: «+18 %» без штук не говорит, много
-    // это или две упаковки.
-    if (row.deltaQty === null || row.deltaQty === undefined) return '—';
-    const abs = Number(row.deltaQty);
-    const pct = row.deltaQtyPct;
-    return `${abs > 0 ? '+' : ''}${abs.toLocaleString('ru-RU', { maximumFractionDigits: 3 })}`
-      + (pct === null || pct === undefined ? '' : ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)} %)`);
-  }
-  if (col.type === 'deviation') {
-    if (value === null || value === undefined) return '—';
-    const n = Number(value);
-    return `${n > 0 ? '+' : ''}${n}${n > 0 ? (row.isOverdue ? ' 🔴' : ' ⚠') : ' ✓'}`;
-  }
-  if (col.type === 'assetLink' && value && ctx.onOpenAsset) {
-    const assetId = row.assetId || row.id || row.asset?.id;
-    if (assetId) {
-      return (
-        <button className="wh-btn wh-btn--link wh-mono"
-                onClick={e => { e.stopPropagation(); ctx.onOpenAsset(assetId); }}>
-          {value}
-        </button>
-      );
-    }
-  }
-  // Причина отсутствия показателя объясняется подсказкой, а не отдельной
-  // колонкой: колонка «почему нет» была почти всегда пустой и занимала ширину.
-  if (col.key === 'normDeviationPct' && (value === null || value === undefined) && row.missingReason) {
-    return <span className="wh-muted" title={row.missingReason}>нет данных</span>;
-  }
-
-  // В строке-группе показателя позиции нет и быть не может: код, единица, доля,
-  // минимум и статус относятся к номенклатуре, а не к этажу или кабинету.
-  // Прочерк в каждой такой ячейке складывался в столбцы прочерков через весь
-  // отчёт и читался как «данные потерялись», хотя терять там нечего.
-  if (row.__isGroup && (value === null || value === undefined || value === '')) return null;
-
-  return format(value, col.type);
-}
-
-/**
- * Строка для выгрузки. Числовые колонки отдаются числами — их форматирует Excel;
- * всё производное сводится к тексту, тому же, что видно на экране.
- */
-const RAW_TYPES = ['money', 'qty', 'number', 'percent', 'share', 'date', 'datetime', 'deviation'];
-
-function exportRow(row, columns) {
-  const out = { __level: row.__level, __isGroup: row.__isGroup, __key: row.__key };
-  for (const col of columns) {
-    if (!col.key.startsWith('_') && (RAW_TYPES.includes(col.type) || !col.type)) {
-      out[col.key] = row[col.key];
-      continue;
-    }
-    const value = cell(row, col);
-    // Ячейки-индикаторы возвращают разметку — в файл идёт их текстовый смысл.
-    out[col.key] = typeof value === 'object' && value !== null
-      ? plainOf(row, col)
-      : value;
-  }
-  return out;
-}
-
-function plainOf(row, col) {
-  if (col.type === 'zone') return zoneTitle(row.zone);
-  if (col.type === 'stockStatus') return STOCK_STATUS[row.status]?.label ?? null;
-  if (col.type === 'abcCell') return row.cell || null;
-  if (col.type === 'signature') return row.signedAt ? 'подписано' : 'без подписи';
-  if (col.type === 'assetLink') return row[col.key] ?? null;
-  return row[col.key] ?? null;
-}
-
-function locationPath(row) {
-  return [row.departmentName, row.roomNumber ? `Каб. ${row.roomNumber}` : null, row.storageName]
-    .filter(Boolean).join(' / ') || '—';
-}
-
-function forecastText(row) {
-  if (row.willConsumeInTime === null || row.willConsumeInTime === undefined) return 'нет истории расхода';
-  return row.willConsumeInTime
-    ? `✓ успеем${row.exhaustionDate ? ` (до ${format(row.exhaustionDate, 'date')})` : ''}`
-    : `✗ не успеем${row.exhaustionDate ? ` (расчёт до ${format(row.exhaustionDate, 'date')})` : ''}`;
-}
-
-const zoneTitle = z => ({
-  red: 'Просрочено или ≤ 7 дней', orange: '8–30 дней',
-  yellow: '31–90 дней', green: 'Больше 90 дней',
-}[z] || 'Зона не определена');
-
-function format(v, type) {
-  if (v === null || v === undefined || v === '') return '—';
-  if (type === 'money') return Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (type === 'qty') return Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 3 });
-  if (type === 'number') return Number(v).toLocaleString('ru-RU');
-  if (type === 'percent') return `${Number(v) > 0 ? '+' : ''}${Number(v).toFixed(1)} %`;
-  // Доля — не изменение: знак «+» перед ней читался бы как рост.
-  if (type === 'share') return `${Number(v).toFixed(1)} %`;
-  if (type === 'date') return new Date(v).toLocaleDateString('ru-RU');
-  if (type === 'datetime') return new Date(v).toLocaleString('ru-RU', {
-    day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
-  if (typeof v === 'boolean') return v ? 'да' : 'нет';
-  return String(v);
-}
-
-function rowClass(row) {
-  const zone = row.zone || row.status || row.stockStatus;
-  if (['red', 'below'].includes(zone)) return 'wh-row--red';
-  if (zone === 'orange') return 'wh-row--orange';
-  if (['yellow', 'near'].includes(zone)) return 'wh-row--yellow';
-  if (row.isOverdue) return 'wh-row--red';
-  if (row.fullyDepreciatedInUse) return 'wh-row--yellow';
-  return '';
-}
-
 /**
  * Строка реестра операций. Актив и номенклатура разложены по отдельным колонкам
  * ТЗ: инвентарный номер должен быть ссылкой на карточку, а для этого его нельзя
@@ -1356,9 +1236,6 @@ const moveType = t => ({
   receipt: 'Приём', return: 'Возврат', issue: 'Выдача', transfer: 'Перемещение', repair_out: 'В ремонт',
   repair_in: 'Из ремонта', writeoff: 'Списание', inventory: 'Инвентаризация', surplus: 'Оприходование',
 }[t] || t);
-const maintType = t => ({ maintenance: 'ТО', verification: 'Поверка', calibration: 'Калибровка', dosimetry: 'Дозиметрия', inspection: 'Осмотр' }[t] || t);
-const maintStatus = s => ({ planned: 'Запланирован', in_progress: 'В работе', done: 'Выполнен', overdue: 'Просрочен', cancelled: 'Отменён' }[s] || s);
-const maintResult = r => ({ normal: 'Норма', with_remarks: 'С замечаниями', failed: 'Не пройдено' }[r] || '—');
 
 
 /**

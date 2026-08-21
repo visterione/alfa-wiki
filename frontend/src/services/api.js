@@ -1121,8 +1121,20 @@ export const warehouseApi = {
                                       responseType: 'blob',
                                     }),
   roomDoorCardZpl: (roomId)       => api.get(`/warehouse/locations/rooms/${roomId}/door-card.zpl`),
+  // Пачка дверных этикеток. В отличие от одиночной карточки приходит готовыми
+  // PNG: страниц в пачке десятки, и растеризовать их по одной в браузере значило
+  // бы столько же запросов подряд.
+  roomDoorCardsBatch:    (data)   => api.post('/warehouse/locations/rooms/door-cards/batch', data),
+  roomDoorCardsBatchZpl: (data)   => api.post('/warehouse/locations/rooms/door-cards/batch.zpl', data),
   inventoryReport: (id)           => api.get(`/warehouse/reports/inventory/${id}`),
   exportReport:    (data)         => api.post('/warehouse/reports/export', data, { responseType: 'blob' }),
+
+  // Сохранённые отчёты. Список приходит без строк и страницами: снимок оборотки
+  // весит мегабайты, и тянуть их все ради перечня названий незачем.
+  savedReports:    (params)       => api.get('/warehouse/reports/saved', { params }),
+  savedReport:     (id)           => api.get(`/warehouse/reports/saved/${id}`),
+  saveReport:      (data)         => api.post('/warehouse/reports/saved', data),
+  deleteSavedReport: (id)         => api.delete(`/warehouse/reports/saved/${id}`),
 
   // Права доступа
   accessMatrix:    ()             => api.get('/warehouse/permissions/matrix'),

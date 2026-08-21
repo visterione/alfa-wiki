@@ -906,6 +906,49 @@
    3 этаж» переносится, а не режется: в таблице для него есть вся ширина колонки. */
 .wh-rooms .wh-tree__leaf .wh-cell-main { line-height: 1.35; }
 
+/* Строка «продолжение ветки» вверху страницы дерева. Приглушена и набрана мелко:
+   это подпись к таблице, а не её строка, и путать её с данными нельзя. */
+.wh-tree__branch > td {
+  padding: 6px 10px; font-size: 11px; font-weight: 600; letter-spacing: .2px;
+  color: var(--wh-text-secondary); background: var(--wh-primary-soft);
+}
+
+/* ── Архив снимков (вкладка «Архив») ───────────────────────────────────────── */
+/* Раскладка у архива та же, что у отчётов: .wh-reports (боковой список + колонка
+   minmax(0, 1fr)) и .wh-reports__main с min-width: 0. Колонка эта не украшение, а
+   ограничитель ширины: таблица снимка бывает в пятнадцать колонок, и без неё её
+   минимальная ширина поднимается по дереву до main-content (у него min-width:
+   auto) и растягивает всю страницу — полоса вкладок уезжала за правый край. */
+/* Шапка снимка: кнопка возврата и название идут рядом, а не по краям. Общий
+   .wh-reports__head разводит содержимое через space-between — там справа стоят
+   действия, — и кнопка возврата уехала бы к левому краю в одиночестве. */
+/* Двойной класс — ради веса правила: .wh-reports__head объявлен ниже по файлу и
+   при равной специфичности побеждал бы своим space-between. */
+.wh-reports__head.wh-saved__viewhead { justify-content: flex-start; align-items: center; }
+/* Поиск в шапке списка: занимает правую треть строки, а не растягивается на всё
+   свободное место, как в полосе фильтров. */
+.wh-saved__search { flex: 0 1 340px; }
+/* Параметры снимка — это подписи, а не поля ввода: у них нет рамки, и по нижнему
+   краю выравнивать нечего. */
+.wh-saved .wh-reports__filters { align-items: center; }
+.wh-saved .wh-reports__filters .wh-cell-sub { padding: 4px 0; }
+.wh-saved__blank { padding: 40px 20px; }
+
+
+/* ── Список действий (XLSX, PDF, сохранение) ───────────────────────────────── */
+.wh-menu { position: relative; display: inline-flex; }
+.wh-menu__button svg:last-child { transition: transform .18s ease; }
+.wh-menu__button svg.is-open { transform: rotate(180deg); }
+.wh-menu__item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 12px; border: none; background: none; cursor: pointer;
+  font-size: 13px; text-align: left; color: var(--wh-text-primary);
+}
+.wh-menu__item:hover:not(:disabled) { background: var(--wh-primary-soft); }
+.wh-menu__item:disabled { opacity: .45; cursor: not-allowed; }
+.wh-menu__item-label { flex: 1; min-width: 0; }
+.wh-menu__item svg { flex: 0 0 auto; }
+
 /* ── Таблицы (по образцу .rb-table: рамки по всем ячейкам) ─────────────────── */
 .wh-table-wrap { overflow: auto; background: var(--wh-card-bg); border-radius: var(--wh-radius); border: 1px solid var(--wh-border); }
 .wh-table-wrap--tall { max-height: 62vh; }
@@ -967,7 +1010,10 @@
   padding: 12px 15px; background: var(--wh-card-bg); border: 1px solid var(--wh-border);
   border-radius: var(--wh-radius); margin-bottom: 12px;
 }
-.wh-assets__bulk {
+/* Полоса массовых действий. Общая для оборудования и кабинетов: набор кнопок в
+   ней разный, а место и поведение — одно и то же. */
+.wh-assets__bulk,
+.wh-bulkbar {
   display: flex; gap: 11px; align-items: center; flex-wrap: wrap;
   padding: 10px 15px; background: var(--wh-primary-soft); border: 1px solid #bfdbfe;
   border-radius: 8px; margin-bottom: 11px; font-size: 13px; color: #1e40af;
@@ -1714,7 +1760,8 @@
 .wh-combo__placeholder { color: var(--wh-text-secondary); }
 .wh-combo__clear { display: inline-flex; padding: 2px; border-radius: 4px; }
 .wh-combo__clear:hover { background: var(--wh-border); }
-.wh-combo__drop {
+.wh-combo__drop,
+.wh-menu__drop {
   position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
   min-width: 260px;
   background: var(--wh-card-bg); border: 1px solid var(--wh-border);
@@ -1728,12 +1775,20 @@
   flex: 1; border: 0; outline: none; background: transparent;
   font-size: var(--wh-fs-base); color: var(--wh-text);
 }
+/* Короткий список без строки поиска ловит стрелки сам и потому получает фокус;
+   рамка фокуса на всей панели выглядела бы поломкой, а не подсказкой. */
+.wh-combo__drop:focus { outline: none; }
 .wh-combo__list { max-height: 280px; overflow-y: auto; }
 .wh-combo__option {
-  display: block; width: 100%; padding: 8px 11px;
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 11px;
   border: 0; background: transparent; font: inherit; font-size: var(--wh-fs-base);
   text-align: left; cursor: pointer; color: var(--wh-text);
 }
+/* Подпись — блок на всю оставшуюся ширину: внутри неё остаток позиции прижат
+   float: right (.wh-opdoc__opt-qty), а float считает от блочного контейнера. */
+.wh-combo__option-label { flex: 1; min-width: 0; }
+/* Галочка выбранного — справа, вне подписи, чтобы не участвовать в переносе. */
+.wh-combo__check { flex: 0 0 auto; color: var(--primary); }
 /* Подсветка идёт за клавишами и за мышью одновременно: список одинаково удобно
    листать стрелками и тыкать курсором, и два разных выделения путали бы. */
 .wh-combo__option.is-cursor { background: var(--wh-primary-soft); }
@@ -2262,6 +2317,7 @@
 /* ── Всплывающие окна и модалки ────────────────────────────────────────────── */
 
 .wh-combo__drop,
+.wh-menu__drop,
 .wh-assetlife__options {
   border: 1px solid var(--wh-pop-border);
   border-radius: var(--radius-lg);
@@ -2546,11 +2602,13 @@
 /* Полоса массовых действий над оборудованием: без подложки, пока выбор пуст, и
    с подсветкой, когда что-то отмечено. Синей плашкой она висела всегда — то
    есть кричала о выборе и когда выбора не было. */
-.wh-assets__bulk {
+.wh-assets__bulk,
+.wh-bulkbar {
   padding: 0; border: 0; border-radius: 0; background: none; color: inherit;
   margin-bottom: 12px;
 }
-.wh-assets__bulk.is-active {
+.wh-assets__bulk.is-active,
+.wh-bulkbar.is-active {
   padding: 7px 12px;
   border: 1px solid color-mix(in srgb, var(--primary) 22%, rgba(255, 255, 255, .5));
   border-radius: 12px;

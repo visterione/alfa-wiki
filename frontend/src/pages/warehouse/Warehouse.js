@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Map, Boxes, Package, BarChart3, DoorOpen,
-  Lock, ArrowRightLeft, ClipboardCheck, FileSpreadsheet,
+  Lock, ArrowRightLeft, ClipboardCheck, FileSpreadsheet, Archive,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import WarehouseMap from './WarehouseMap';
@@ -14,6 +14,7 @@ import WarehouseOperations from './WarehouseOperations';
 import WarehouseInventory from './WarehouseInventory';
 import WarehouseRooms from './WarehouseRooms';
 import WarehouseOsv from './WarehouseOsv';
+import WarehouseSavedReports from './WarehouseSavedReports';
 import './Warehouse.css';
 
 /**
@@ -47,6 +48,13 @@ const TABS = [
   // бы нашей ошибкой.
   { key: 'osv',       label: 'Импорт',           icon: FileSpreadsheet },
   { key: 'reports',   label: 'Отчёты',           icon: BarChart3 },
+  // Архив — сохранённые снимки отчётов. Своей строки в дереве прав у вкладки нет:
+  // она видна тому же, кому видна вкладка «Отчёты» (поле access ниже). Снимок —
+  // тот же отчёт, только построенный вчера, и заводить под него второе право
+  // значило бы, что человек видит отчёт, но не видит его же вчерашнюю копию.
+  // Право на конкретный отчёт при этом проверяется по-прежнему — сервер не отдаёт
+  // снимок того отчёта, который в дереве закрыт.
+  { key: 'archive',   label: 'Архив',            icon: Archive, access: 'reports' },
   // Отдельной вкладки «Сканер» здесь нет намеренно. У браузера камера есть только
   // на телефоне, и то не везде: распознавание держится на BarcodeDetector, которого
   // нет в Safari, — на iPhone веб-сканер не работал вовсе. За ПК камеры нет, а
@@ -85,7 +93,7 @@ export default function Warehouse() {
   // экраном у того, кому карта не выдана, хотя другие вкладки у него есть.
   useEffect(() => {
     if (tab || !access?.allowed) return;
-    const first = TABS.find(t => access.tabs?.[t.key]);
+    const first = TABS.find(t => access.tabs?.[t.access || t.key]);
     if (first) setTab(first.key);
   }, [tab, access]);
 
@@ -155,7 +163,7 @@ export default function Warehouse() {
   // Состав вкладок целиком с сервера: access.tabs — это карта «ключ вкладки →
   // показывать ли», посчитанная по дереву прав. Отсутствующий ключ считаем
   // закрытым, а не открытым: неизвестное право безопаснее не показывать.
-  const visibleTabs = TABS.filter(t => access.tabs?.[t.key]);
+  const visibleTabs = TABS.filter(t => access.tabs?.[t.access || t.key]);
 
   if (!visibleTabs.length) {
     return (
@@ -248,6 +256,9 @@ export default function Warehouse() {
         )}
         {tab === 'reports' && (
           <WarehouseReports access={access} tree={tree} onOpenAsset={openAsset} />
+        )}
+        {tab === 'archive' && (
+          <WarehouseSavedReports access={access} onOpenAsset={openAsset} />
         )}
       </div>
     </div>
