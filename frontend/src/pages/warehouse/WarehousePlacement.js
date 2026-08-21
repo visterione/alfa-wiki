@@ -271,7 +271,14 @@ export default function WarehousePlacement({ access, tree, onDone }) {
           </div>
 
           <div className="wh-table-wrap wh-table-wrap--tall">
-            <table className="wh-table wh-table--compact">
+            <table className="wh-table wh-table--compact wh-place__table">
+              <colgroup>
+                <col className="wh-place__col-check" />
+                <col />
+                <col className="wh-place__col-qty" />
+                <col className="wh-place__col-cost" />
+                <col className="wh-place__col-to-place" />
+              </colgroup>
               <thead>
                 <tr>
                   <th />
@@ -351,7 +358,13 @@ export default function WarehousePlacement({ access, tree, onDone }) {
           )}
           {roomId && inRoom && (
             <div className="wh-table-wrap wh-table-wrap--tall">
-              <table className="wh-table wh-table--compact">
+              <table className="wh-table wh-table--compact wh-place__table wh-place__table--room">
+                <colgroup>
+                  <col />
+                  <col className="wh-place__col-qty" />
+                  <col className="wh-place__col-storage" />
+                  <col className="wh-place__col-action" />
+                </colgroup>
                 <thead>
                   <tr><th>Позиция</th><th className="wh-num">Кол-во</th><th>Место</th><th /></tr>
                 </thead>

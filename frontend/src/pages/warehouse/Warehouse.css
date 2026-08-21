@@ -1943,6 +1943,18 @@
 .wh-place .wh-row--picked > td { background: var(--wh-primary-soft); }
 .wh-place__queue tbody td:nth-child(2) { cursor: pointer; }
 .wh-place .wh-subhead { display: flex; align-items: center; gap: 6px; }
+/* В очереди названия и пути из 1С бывают длиннее самого экрана. Фиксированная
+   раскладка не даёт им раздвигать таблицу, а перенос покрывает в том числе
+   склеенные без пробелов значения из выгрузки. */
+.wh-place__table { table-layout: fixed; }
+.wh-place__table th,
+.wh-place__table td { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.wh-place__col-check { width: 38px; }
+.wh-place__col-qty { width: 96px; }
+.wh-place__col-cost { width: 112px; }
+.wh-place__col-to-place { width: 116px; }
+.wh-place__col-storage { width: 180px; }
+.wh-place__col-action { width: 46px; }
 @media (max-width: 720px) {
   .wh-place__room label, .wh-place__room > button { flex: 1 1 100%; width: 100%; }
   .wh-place__room > button { margin-left: 0; }
