@@ -45,8 +45,8 @@ const num = (value) => {
 const MATCH_LABEL = { head: 'по ведущему слову', contains: 'по подстроке', regex: 'выражение' };
 
 const KIND_LABEL = {
-  asset: 'карточками оборудования',
-  material: 'остатками материалов',
+  asset: 'Оборудование',
+  material: 'Материалы',
   ignore: 'не учитывать',
   unmapped: 'не разобрано',
 };
@@ -183,8 +183,8 @@ export default function WarehouseOsvReview({ access, onDone, onOpenDictionary })
             <div className="wh-osv-map__fill" style={{ width: `${percent}%` }} />
           </div>
           <div className="wh-osv-map__legend">
-            <span><Package size={13} /> карточками: {t.asset} позиций / {t.assetUnits} ед.</span>
-            <span><Boxes size={13} /> остатками: {t.material}</span>
+            <span><Package size={13} /> оборудование: {t.asset} позиций / {t.assetUnits} ед.</span>
+            <span><Boxes size={13} /> материалы: {t.material}</span>
             <span className="wh-muted">не учитывать: {t.ignore}</span>
             <span className={t.unmapped ? 'wh-warn' : 'wh-ok'}>не разобрано: {t.unmapped}</span>
             <span className="wh-muted">на сумму {money(t.sumMapped)} ₽</span>
@@ -383,8 +383,8 @@ function GroupLines({ group, importId, account, canEdit, onClose, onChanged }) {
                                 value={line.scope === 'line' ? line.kind : ''}
                                 onChange={e => override(line, e.target.value)}>
                           <option value="">по словарю предметов</option>
-                          <option value="asset">карточкой оборудования</option>
-                          <option value="material">остатком материала</option>
+                          <option value="asset">Оборудование</option>
+                          <option value="material">Материалы</option>
                           <option value="ignore">не учитывать</option>
                         </select>
                       </td>

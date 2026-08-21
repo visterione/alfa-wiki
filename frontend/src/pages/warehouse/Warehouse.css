@@ -1943,6 +1943,20 @@
 .wh-place .wh-row--picked > td { background: var(--wh-primary-soft); }
 .wh-place__queue tbody td:nth-child(2) { cursor: pointer; }
 .wh-place .wh-subhead { display: flex; align-items: center; gap: 6px; }
+/* Фильтры очереди — одна компактная строка: поиск забирает свободное место,
+   а переключатели остаются одинаковой читаемой ширины. */
+.wh-place__filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(120px, 170px));
+  gap: 8px;
+  align-items: center;
+}
+.wh-place__filters .wh-search { min-width: 0; }
+.wh-place__filters select { width: 100%; min-width: 0; }
+/* До выбора кабинета строка остаётся доступной для просмотра и поиска, но её
+   нельзя по ошибке принять за уже готовую к размещению. */
+.wh-place__row--disabled { opacity: .58; }
+.wh-place__row--disabled td:nth-child(2) { cursor: default; }
 /* В очереди названия и пути из 1С бывают длиннее самого экрана. Фиксированная
    раскладка не даёт им раздвигать таблицу, а перенос покрывает в том числе
    склеенные без пробелов значения из выгрузки. */
@@ -1958,6 +1972,12 @@
 @media (max-width: 720px) {
   .wh-place__room label, .wh-place__room > button { flex: 1 1 100%; width: 100%; }
   .wh-place__room > button { margin-left: 0; }
+  .wh-place__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wh-place__filters .wh-search { grid-column: 1 / -1; }
+}
+@media (max-width: 440px) {
+  .wh-place__filters { grid-template-columns: 1fr; }
+  .wh-place__filters .wh-search { grid-column: auto; }
 }
 
 /* ── Ведомость 1С (ver. 6.72) ──────────────────────────────────────────────── */

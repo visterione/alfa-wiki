@@ -249,7 +249,7 @@ export default function WarehousePlacement({ access, tree, onDone }) {
       <div className="wh-place__sections">
         <div className="wh-place__queue">
           <div className="wh-subhead"><Package size={15} /> Ещё нигде не лежит</div>
-          <div className="wh-assets__filters">
+          <div className="wh-assets__filters wh-place__filters">
             <div className="wh-search">
               <Search size={15} />
               <input value={q} placeholder="Название или ветка"
@@ -261,8 +261,8 @@ export default function WarehousePlacement({ access, tree, onDone }) {
             </select>
             <select value={kind} onChange={e => setKind(e.target.value)}>
               <option value="">Всё</option>
-              <option value="asset">Только карточки</option>
-              <option value="material">Только остатки</option>
+              <option value="asset">Оборудование</option>
+              <option value="material">Материалы</option>
             </select>
             <select value={mode} onChange={e => setMode(e.target.value)}>
               <option value="all">Всё, что не разложено вручную</option>
@@ -292,12 +292,13 @@ export default function WarehousePlacement({ access, tree, onDone }) {
                 {queue.items.map((item) => {
                   const checked = picked.has(item.lineKey);
                   return (
-                    <tr key={item.lineKey} className={checked ? 'wh-row--picked' : ''}>
+                    <tr key={item.lineKey} className={`${checked ? 'wh-row--picked' : ''}${!roomId ? ' wh-place__row--disabled' : ''}`}>
                       <td>
-                        <input type="checkbox" checked={checked} disabled={!canEdit}
+                        <input type="checkbox" checked={checked} disabled={!canEdit || !roomId}
+                               title={!roomId ? 'Сначала выберите кабинет' : undefined}
                                onChange={() => toggle(item)} />
                       </td>
-                      <td onClick={() => canEdit && toggle(item)}>
+                      <td onClick={() => canEdit && roomId && toggle(item)}>
                         <div className="wh-cell-main">{item.name}</div>
                         <div className="wh-cell-sub wh-muted">
                           {item.pathText || 'без ветки'}
