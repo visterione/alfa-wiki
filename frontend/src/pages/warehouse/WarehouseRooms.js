@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Search, X, ChevronRight, ChevronDown, Maximize2, Minimize2,
-  Settings2, Layers, Building2, Check, Printer, FileText,
+  Settings2, Layers, Building2, Check, Printer, FileText, Network,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import RoomSettings from '../../components/warehouse/RoomSettings';
+import DepartmentsManager from '../../components/warehouse/DepartmentsManager';
 import { openPrintWindow, downloadTextFile } from './components/printLabels';
 
 /**
@@ -40,6 +41,7 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
   const [depId, setDepId] = useState('');
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [settingsRoom, setSettingsRoom] = useState(null);
+  const [departmentsOpen, setDepartmentsOpen] = useState(false);
   const [fromMis, setFromMis] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
   const [labelSize, setLabelSize] = useState('80x24');
@@ -49,6 +51,9 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
   // места хранения — это операционные данные, а не структура сети.
   const canSetup = Boolean(access?.capabilities?.canIssue);
   // А заведение самих кабинетов — это уже структура, и право на неё отдельное.
+  // Тем же правом правится справочник отделений: отделение — часть структуры
+  // сети, а не операционные данные кабинета.
+  const canEditStructure = Boolean(access?.capabilities?.canEditLocations);
   // Печать этикеток — своё право: печатают их не те, кто ведёт учёт.
   const canPrint = Boolean(access?.capabilities?.canPrintLabels);
 
@@ -59,6 +64,13 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
     () => departments.filter(d => !mcId || d.medCenterId === mcId),
     [departments, mcId]
   );
+
+  // Погашенное в справочнике отделение исчезает из дерева, а фильтр продолжал бы
+  // держать его id: список кабинетов пустел, и выглядело это так, будто вместе с
+  // отделением пропали и кабинеты. Сбрасываем фильтр, когда отделения не стало.
+  useEffect(() => {
+    if (depId && !departments.some(d => d.id === depId)) setDepId('');
+  }, [departments, depId]);
 
   const nodes = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -230,6 +242,16 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
           <option value="">Все отделения</option>
           {visibleDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
+        {/* Справочник отделений открывается прямо из фильтра по ним: сюда человек
+            приходит ровно в тот момент, когда обнаруживает, что нужного отделения
+            в списке нет. Раньше отделение можно было завести только в редакторе
+            планов — то есть уйдя с этого экрана и выбрав медцентр и этаж заново. */}
+        {canEditStructure && (
+          <button className="wh-icon-btn" title="Справочник отделений"
+                  onClick={() => setDepartmentsOpen(true)}>
+            <Network size={15} />
+          </button>
+        )}
 
         {/* Свёртка дерева стоит рядом с фильтрами: это такая же настройка вида
             списка, как медцентр или отделение. Отдельная полоса «Иерархия» под
@@ -392,6 +414,12 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
         <RoomSettings room={settingsRoom} departments={departments}
                       onClose={() => setSettingsRoom(null)}
                       onSaved={onReloadTree} />
+      )}
+
+      {departmentsOpen && (
+        <DepartmentsManager tree={tree}
+                            onClose={() => setDepartmentsOpen(false)}
+                            onChanged={onReloadTree} />
       )}
 
       {/* Кнопка «Завести из МИС» убрана из полосы фильтров по просьбе, и открыть

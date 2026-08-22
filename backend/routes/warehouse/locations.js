@@ -524,6 +524,62 @@ router.put('/floors/:id/plan', authenticate, requireWarehouse('canEditLocations'
 });
 
 // ── Отделения ────────────────────────────────────────────────────────────────
+//
+// Отделение — разрез, а не уровень дерева: оно принадлежит медцентру и собирает
+// кабинеты, которые могут стоять на разных этажах. Поэтому справочник живёт
+// отдельным списком, а не веткой /tree.
+//
+// Завести отделение важно до постановки оборудования на учёт: код специальности
+// для маски инвентарного номера берётся из отделения того кабинета, куда встаёт
+// актив, и после присвоения номер не меняется никогда. Кабинет без отделения даёт
+// «АХО» — и переезд актива в правильное отделение это уже не исправит.
+
+/**
+ * Справочник отделений. Отдаётся отдельно от дерева, потому что дерево показывает
+ * только действующие отделения и ничего не знает о том, сколько кабинетов на
+ * каждом висит, — а без этого числа нельзя ни решить, что отделение пора гасить,
+ * ни объяснить, почему погасить его нельзя.
+ */
+router.get('/departments', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const { medCenterId } = req.query;
+    // Погашенные отделения видит только тот, кто правит структуру: остальным они
+    // не нужны, а в списке выглядели бы действующими.
+    const withInactive = req.warehouse.capabilities.canEditLocations
+      && ['1', 'true'].includes(String(req.query.includeInactive));
+
+    const rows = await WhDepartment.findAll({
+      where: {
+        ...(medCenterId ? { medCenterId } : {}),
+        ...(withInactive ? {} : { isActive: true }),
+      },
+      include: [{ model: User, as: 'head', attributes: userAttrs }],
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+    });
+
+    // Кабинеты считаем одним запросом на весь список: по запросу на отделение
+    // это полсотни round-trip на открытие справочника.
+    const counts = await WhRoom.findAll({
+      attributes: ['departmentId', [sequelize.fn('COUNT', sequelize.col('id')), 'cnt']],
+      where: { isActive: true, departmentId: { [Op.ne]: null } },
+      group: ['departmentId'],
+      raw: true,
+    });
+    const roomsByDept = new Map(counts.map(c => [c.departmentId, Number(c.cnt)]));
+
+    res.json(rows.map(d => ({
+      id: d.id, medCenterId: d.medCenterId, name: d.name, kind: d.kind,
+      specialtyCode: d.specialtyCode, color: d.color, head: d.head,
+      headUserId: d.headUserId, divisionId: d.divisionId,
+      sortOrder: d.sortOrder, isActive: d.isActive,
+      roomsCount: roomsByDept.get(d.id) || 0,
+    })));
+  } catch (err) {
+    console.error('GET warehouse/departments error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.post('/departments', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const { medCenterId, name, specialtyCode, kind, headUserId, color, divisionId } = req.body;
@@ -546,21 +602,64 @@ router.post('/departments', authenticate, requireWarehouse('canEditLocations'), 
 });
 
 router.put('/departments/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
-  const row = await WhDepartment.findByPk(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Отделение не найдено' });
-  const { name, specialtyCode, kind, headUserId, color, divisionId, isActive } = req.body;
-  const wrong = await badSpecialty(specialtyCode);
-  if (wrong) return res.status(400).json({ error: wrong });
-  await row.update({
-    ...(name !== undefined ? { name: name.trim() } : {}),
-    ...(specialtyCode !== undefined ? { specialtyCode: specialtyCode || null } : {}),
-    ...(kind !== undefined ? { kind } : {}),
-    ...(headUserId !== undefined ? { headUserId: headUserId || null } : {}),
-    ...(divisionId !== undefined ? { divisionId: divisionId || null } : {}),
-    ...(color !== undefined ? { color: color || null } : {}),
-    ...(isActive !== undefined ? { isActive } : {}),
-  });
-  res.json(row);
+  try {
+    const row = await WhDepartment.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Отделение не найдено' });
+    const { name, specialtyCode, kind, headUserId, color, divisionId, isActive } = req.body;
+    const wrong = await badSpecialty(specialtyCode);
+    if (wrong) return res.status(400).json({ error: wrong });
+
+    // Смена кода специальности касается только будущих номеров: у выданных
+    // инвентарный номер остаётся прежним, потому что отражает специальность на
+    // момент постановки на учёт. Здесь это не запрет, а предупреждение клиенту —
+    // иначе правка выглядит как перенумерация всего парка.
+    const renumbering = specialtyCode !== undefined
+      && (specialtyCode || null) !== (row.specialtyCode || null);
+
+    await row.update({
+      ...(name !== undefined ? { name: name.trim() } : {}),
+      ...(specialtyCode !== undefined ? { specialtyCode: specialtyCode || null } : {}),
+      ...(kind !== undefined ? { kind } : {}),
+      ...(headUserId !== undefined ? { headUserId: headUserId || null } : {}),
+      ...(divisionId !== undefined ? { divisionId: divisionId || null } : {}),
+      ...(color !== undefined ? { color: color || null } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    });
+    res.json({ ...row.toJSON(), specialtyChanged: renumbering });
+  } catch (err) {
+    console.error('PUT warehouse/departments error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Закрытие отделения. Мягкое, как и у кабинета: на отделение ссылаются описи
+ * инвентаризации, нормы расхода и группировки отчётов за прошлые периоды —
+ * удалить строку значит оставить их без названия.
+ *
+ * С кабинетами внутри отделение не гасится. Погашенное отделение исчезает из
+ * дерева, и кабинет остался бы с departmentId на невидимую строку: в списке
+ * кабинетов колонка «Отделение» пустеет, актив продолжает числиться неизвестно
+ * где, а вернуть всё обратно можно только через базу.
+ */
+router.delete('/departments/:id', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
+  try {
+    const row = await WhDepartment.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Отделение не найдено' });
+
+    const rooms = await WhRoom.count({ where: { departmentId: row.id, isActive: true } });
+    if (rooms > 0) {
+      return res.status(409).json({
+        error: `В отделении ${rooms} кабинет(ов) — сначала переведите их в другое отделение`,
+      });
+    }
+
+    await row.update({ isActive: false });
+    res.json({ ok: true, softDeleted: true });
+  } catch (err) {
+    console.error('DELETE warehouse/departments error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Кабинеты ─────────────────────────────────────────────────────────────────
