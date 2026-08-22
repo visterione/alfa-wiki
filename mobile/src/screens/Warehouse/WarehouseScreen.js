@@ -12,7 +12,7 @@
 import React, {useCallback, useState} from 'react';
 import {View, Text, ScrollView, Pressable, StyleSheet, RefreshControl} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {ScanLine, ClipboardCheck, PackagePlus, DoorOpen, ChevronRight, Lock} from 'lucide-react-native';
+import {ScanLine, ClipboardCheck, PackagePlus, DoorOpen, ChevronRight, Lock, Printer} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
@@ -117,6 +117,17 @@ export default function WarehouseScreen({navigation}) {
       subtitle: 'Что и где стоит',
       route: 'WarehouseScanner',
       params: {mode: 'room'},
+    },
+    // Печать этикеток — отдельным правом: печатают их не те, кто ведёт учёт.
+    // Двери маркируют обходом этажа, поэтому вход в раздел ведёт сразу к
+    // выбору кабинетов, а не к настройке принтера.
+    {
+      key: 'labels',
+      icon: Printer,
+      title: 'Этикетки на двери',
+      subtitle: 'Выбрать кабинеты и напечатать',
+      route: 'WarehouseRoomLabels',
+      hidden: !access?.capabilities?.canPrintLabels,
     },
   ].filter(s => !s.hidden);
 

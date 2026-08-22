@@ -983,6 +983,7 @@ export const warehouseApi = {
   // Локации
   tree:            ()             => api.get('/warehouse/locations/tree'),
   specialties:     ()             => api.get('/warehouse/locations/specialties'),
+  createSpecialty: (data)         => api.post('/warehouse/locations/specialties', data),
   createBuilding:  (data)         => api.post('/warehouse/locations/buildings', data),
   updateBuilding:  (id, data)     => api.put(`/warehouse/locations/buildings/${id}`, data),
   deleteBuilding:  (id)           => api.delete(`/warehouse/locations/buildings/${id}`),

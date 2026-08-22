@@ -12,7 +12,7 @@
 import React, {useCallback, useState} from 'react';
 import {View, Text, ScrollView, Pressable, StyleSheet} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {DoorOpen, ChevronRight} from 'lucide-react-native';
+import {DoorOpen, ChevronRight, Printer} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
@@ -31,10 +31,17 @@ export default function WarehouseAssetScreen({route, navigation}) {
   const c = useTheme();
   const {assetId} = route.params || {};
   const [data, setData] = useState(null);
+  const [canPrint, setCanPrint] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
+    // Право на этикетки отдельное от права вести учёт: печатают их не те, кто
+    // заполняет карточки. Без него кнопка печати не показывается вовсе — иначе
+    // человек упрётся в 403 уже после того, как подошёл к принтеру.
+    warehouseApi.access()
+      .then(({data: access}) => alive && setCanPrint(Boolean(access?.capabilities?.canPrintLabels)))
+      .catch(() => {});
     warehouseApi.asset(assetId)
       .then(({data: payload}) => {
         if (!alive) return;
@@ -87,6 +94,22 @@ export default function WarehouseAssetScreen({route, navigation}) {
           onPress={() => navigation.navigate('WarehouseRoom', {roomId: asset.room.id})}>
           <DoorOpen size={18} color={c.primary} />
           <Text style={styles.roomText}>{roomText(asset.room)}</Text>
+          <ChevronRight size={16} color={c.textTertiary} />
+        </Pressable>
+      )}
+
+      {canPrint && (
+        <Pressable
+          style={styles.printRow}
+          onPress={() => navigation.navigate('WarehouseLabelPrint', {
+            kind: 'asset',
+            ids: [asset.id],
+            title: asset.inventoryNumber,
+          })}>
+          <Printer size={18} color={c.primary} />
+          <Text style={styles.printText}>
+            {asset.labelPrintedAt ? 'Напечатать этикетку заново' : 'Напечатать этикетку'}
+          </Text>
           <ChevronRight size={16} color={c.textTertiary} />
         </Pressable>
       )}
@@ -180,6 +203,17 @@ const makeStyles = c => StyleSheet.create({
     marginBottom: 14,
   },
   roomText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
+  printRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 14,
+  },
+  printText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, overflow: 'hidden'},
   row: {
     flexDirection: 'row',

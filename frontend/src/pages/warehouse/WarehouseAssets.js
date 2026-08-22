@@ -893,9 +893,15 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
                                alt={`Этикетка ${labelSize} мм`} />
                 </div>
                 <div className="wh-qr__actions">
-                  <button className="wh-btn wh-btn--primary" onClick={printOne}>
-                    <Printer size={15} /> Печать этикетки {labelSize.replace('x', ' × ')} мм
-                  </button>
+                  {/* Печать закрыта правом «Этикетки и QR» — тем же, что и на
+                      списке активов и на кабинетах. Раньше кнопка стояла
+                      открытой, а ручка спрашивала право вести учёт: у того, кто
+                      только печатает, она отвечала 403 уже у принтера. */}
+                  {access?.capabilities?.canPrintLabels && (
+                    <button className="wh-btn wh-btn--primary" onClick={printOne}>
+                      <Printer size={15} /> Печать этикетки {labelSize.replace('x', ' × ')} мм
+                    </button>
+                  )}
                   <button className="wh-btn wh-btn--secondary" onClick={downloadPng}>
                     <Download size={15} /> Скачать PNG
                   </button>

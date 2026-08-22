@@ -1,6 +1,7 @@
 PODS:
   - BVLinearGradient (2.8.3):
     - React-Core
+  - CocoaAsyncSocket (7.6.5)
   - FBLazyVector (0.84.1)
   - Firebase/CoreOnly (12.15.0):
     - FirebaseCore (~> 12.15.0)
@@ -1660,6 +1661,9 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-tcp-socket (6.4.2):
+    - CocoaAsyncSocket
+    - React-Core
   - react-native-video (6.19.2):
     - hermes-engine
     - RCTRequired
@@ -2427,6 +2431,7 @@ DEPENDENCIES:
   - "react-native-document-picker (from `../node_modules/@react-native-documents/picker`)"
   - react-native-image-picker (from `../node_modules/react-native-image-picker`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
+  - react-native-tcp-socket (from `../node_modules/react-native-tcp-socket`)
   - react-native-video (from `../node_modules/react-native-video`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
@@ -2477,6 +2482,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - CocoaAsyncSocket
     - Firebase
     - FirebaseCore
     - FirebaseCoreExtension
@@ -2580,6 +2586,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-image-picker"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
+  react-native-tcp-socket:
+    :path: "../node_modules/react-native-tcp-socket"
   react-native-video:
     :path: "../node_modules/react-native-video"
   React-NativeModulesApple:
@@ -2677,6 +2685,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   BVLinearGradient: cb006ba232a1f3e4f341bb62c42d1098c284da70
+  CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
   FBLazyVector: e97c19a5a442429d1988f182a1940fb08df514da
   Firebase: a8539b633d474fbeb654c7043f9c1649e274045b
   FirebaseCore: 2e86a4ea1684d4381707069e4a6d89ac808e901e
@@ -2731,6 +2740,7 @@ SPEC CHECKSUMS:
   react-native-document-picker: 29b2ee2573287f2b34c7716c98ffc3d9322fbe72
   react-native-image-picker: 48d850454b4a389753053e1d7378b624d3b47d77
   react-native-safe-area-context: ae7587b95fb580d1800c5b0b2a7bd48c2868e67a
+  react-native-tcp-socket: 83a30b5da1deed4c720ee25595737ee851c23339
   react-native-video: 293a1dfb84d6b79b5bf9dd33925931008e225d5a
   React-NativeModulesApple: 5ba0903927f6b8d335a091700e9fda143980f819
   React-networking: 3a4b7f9ed2b2d1c0441beacb79674323a24bcca6

@@ -286,6 +286,19 @@ export const warehouse = {
   closeInventory: (id, data) =>
     api.patch(`/warehouse/operations/inventory/${id}/close`, data),
 
+  // Этикетки для Brother P-touch.
+  //
+  // Сервер отдаёт не картинку, а готовое задание печати в base64: телефон
+  // выкладывает его в сокет принтера как есть. Задание нарочно приезжает одним
+  // куском и целиком — в отделении человек может уйти в сеть самого принтера,
+  // где портала уже не видно, и к этому моменту печатать должно быть уже нечем
+  // рисковать. Подробности формата — backend/services/warehouse/ptouchRaster.js.
+  assetLabelsPrn: data => api.post('/warehouse/assets/labels/batch.prn', data),
+  roomLabelsPrn: data => api.post('/warehouse/locations/rooms/door-cards/batch.prn', data),
+  // Отметку «напечатано» ставит телефон после того, как принтер принял задание,
+  // а не сервер при его подготовке: подготовка ещё не печать.
+  markLabelsPrinted: ids => api.post('/warehouse/assets/labels/printed', {ids}),
+
   // Размещение позиций ведомости по кабинетам (ver. 6.80)
   placementQueue: params => api.get('/warehouse/placements/queue', {params}),
   placementsInRoom: roomId => api.get(`/warehouse/placements/room/${roomId}`),

@@ -21,6 +21,7 @@ const {
   generateToken, qrSvg, roomAppUrl, roomDoorCardSvg, roomDoorCardZpl,
   LABEL_SIZES, labelPng,
 } = require('../../services/warehouse/qr');
+const ptouch = require('../../services/warehouse/ptouchRaster');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 
@@ -185,6 +186,52 @@ async function roomCounters() {
 router.get('/specialties', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhSpecialty.findAll({ where: { isActive: true }, order: [['sortOrder', 'ASC']] });
   res.json(rows);
+});
+
+/**
+ * Свой код специальности. Пятнадцати кодов из Приложения А ТЗ хватает не всякой
+ * сети: у неё бывает косметология, УЗИ, массаж — направления, которых в перечне
+ * нет, а заводить их отделением с кодом «АХО» значит потерять специальность в
+ * инвентарном номере навсегда.
+ *
+ * ── Почему код проверяется так строго ────────────────────────────────────────
+ *
+ * Код становится частью маски МЦ-2026-КОД-00001, где дефис — разделитель полей.
+ * Код с дефисом или пробелом сделал бы номер неразбираемым: «МЦ-2026-УЗИ-2-00001»
+ * невозможно прочитать ни человеку, ни разбору строки. Регистр приводим сами —
+ * генератор номера всё равно поднимает код в верхний, и код «узи» в справочнике
+ * означал бы, что в списке он выглядит иначе, чем на этикетке.
+ */
+router.post('/specialties', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
+  try {
+    const code = String(req.body?.code || '').trim().toUpperCase();
+    const name = String(req.body?.name || '').trim();
+
+    if (!code || !name) return res.status(400).json({ error: 'Нужны код и название' });
+    if (code.length > 20) return res.status(400).json({ error: 'Код длиннее 20 символов' });
+    if (!/^[A-ZА-ЯЁ0-9]+$/.test(code)) {
+      return res.status(400).json({
+        error: 'В коде допустимы только буквы и цифры без пробелов и дефисов: '
+          + 'дефис разделяет части инвентарного номера',
+      });
+    }
+
+    const exists = await WhSpecialty.findByPk(code);
+    if (exists) {
+      return res.status(409).json({ error: `Код «${code}» уже есть: ${exists.name}` });
+    }
+
+    // Свои коды становятся в конец списка: перечень из ТЗ занимает первые сотни
+    // sortOrder, и вклиниваться в него незачем.
+    const last = await WhSpecialty.max('sortOrder');
+    const row = await WhSpecialty.create({
+      code, name: name.slice(0, 120), sortOrder: (Number(last) || 0) + 10,
+    });
+    res.status(201).json(row);
+  } catch (err) {
+    console.error('POST warehouse/specialties error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Корпуса ──────────────────────────────────────────────────────────────────
@@ -1040,6 +1087,45 @@ router.post('/rooms/door-cards/batch.zpl', authenticate, requireWarehouse('canPr
     res.type('text/plain; charset=utf-8').send(zpl);
   } catch (err) {
     console.error('POST warehouse/locations/rooms/door-cards/batch.zpl error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Та же пачка — готовым заданием печати для Brother P-touch.
+ *
+ * Ради этой ручки и затевалась печать с телефона: маркировка дверей это обход
+ * этажа, а не работа за столом. Подробности формата — в
+ * services/warehouse/ptouchRaster.js.
+ */
+router.post('/rooms/door-cards/batch.prn', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
+  try {
+    const { ids = [], rotate, mirror, autoCut } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны кабинеты' });
+    if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
+
+    const rooms = await WhRoom.findAll({ where: { id: { [Op.in]: ids } }, include: doorCardInclude });
+    const byId = new Map(rooms.map(r => [r.id, r]));
+    const ordered = ids.map(id => byId.get(id)).filter(Boolean);
+    if (!ordered.length) return res.status(404).json({ error: 'Ни одного из выбранных кабинетов не нашлось' });
+
+    const pngs = [];
+    for (const room of ordered) {
+      pngs.push(await labelPng(await roomDoorCardSvg(room, { size: '80x24' }), '80x24'));
+    }
+    const job = await ptouch.buildJobFromPngs(pngs, {
+      rotate: Number(rotate) === 270 ? 270 : 90,
+      mirror: mirror === true,
+      autoCut: autoCut !== false,
+    });
+
+    res.json({
+      labels: ordered.map(r => ({ id: r.id, number: r.number, name: r.name })),
+      bytes: job.length,
+      prn: job.toString('base64'),
+    });
+  } catch (err) {
+    console.error('POST warehouse/locations/rooms/door-cards/batch.prn error:', err);
     res.status(500).json({ error: err.message });
   }
 });

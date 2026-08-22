@@ -33,6 +33,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Нужен, чтобы отправлять этикетки на принтер Brother в сети отделения</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Нужен, чтобы снять фото и отправить его в чат</string>
 	<key>NSMicrophoneUsageDescription</key>

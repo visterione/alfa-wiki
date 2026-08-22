@@ -224,6 +224,10 @@
 }
 .wh-field__row { display: flex; gap: 5px; align-items: center; }
 .wh-field__row > select, .wh-field__row > input { flex: 1; min-width: 0; }
+/* Свой выпадающий список в такой строке — это div, а не select, и правило
+   выше его не растягивало: рядом с кнопкой «+ код» поле схлопывалось до
+   ширины текста. */
+.wh-field__row > .wh-combo { flex: 1; min-width: 0; }
 
 /* Целимся в сам элемент, а не в атрибут type: <input> без type — это тоже
    текстовое поле, и React рендерит его именно так. Раньше такие поля не попадали
@@ -289,6 +293,12 @@
 .wh-form { display: flex; flex-direction: column; gap: 10px; }
 .wh-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--wh-text-secondary); font-weight: 600; }
 .wh-form__row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Поле с кнопкой рядом собирается на .wh-field, а не на <label>: кнопка —
+   элемент, на который подпись сама переводит клик, и нажатие «+ Код»
+   попутно раскрывало бы соседний список. Капс подписи при этом снимаем:
+   в одной форме с обычными .wh-form label две разные подписи читаются
+   как разные по важности. */
+.wh-form .wh-field > label { text-transform: none; letter-spacing: 0; }
 .wh-form__actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 2px; }
 
 /* Складской документ (ver. 7.04). Слева — то, что в документе, справа — то, чем

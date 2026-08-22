@@ -13,7 +13,7 @@
 import React, {useCallback, useState} from 'react';
 import {View, Text, ScrollView, Pressable, StyleSheet} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {ChevronRight} from 'lucide-react-native';
+import {ChevronRight, Printer} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
@@ -26,11 +26,17 @@ export default function WarehouseRoomScreen({route, navigation}) {
   const c = useTheme();
   const {roomId} = route.params || {};
   const [data, setData] = useState(null);
+  const [canPrint, setCanPrint] = useState(false);
   const [tab, setTab] = useState('assets');
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
+    // Право «Этикетки и QR» отдельное от права на учёт, и спрашиваем мы его
+    // отдельным запросом: дашборд кабинета про печать ничего не знает.
+    warehouseApi.access()
+      .then(({data: access}) => alive && setCanPrint(Boolean(access?.capabilities?.canPrintLabels)))
+      .catch(() => {});
     warehouseApi.roomDashboard(roomId)
       .then(({data: payload}) => {
         if (!alive) return;
@@ -85,6 +91,37 @@ export default function WarehouseRoomScreen({route, navigation}) {
               cards.materials.belowMin > 0 && `ниже минимума: ${cards.materials.belowMin}`,
             ].filter(Boolean).join(', ')}
           </Text>
+        </View>
+      )}
+
+      {canPrint && (
+        <View style={styles.printBlock}>
+          <Pressable
+            style={[styles.printRow, !assets.length && styles.printRowLast]}
+            onPress={() => navigation.navigate('WarehouseLabelPrint', {
+              kind: 'room',
+              ids: [room.id],
+              title: `Каб. ${room.number}`,
+            })}>
+            <Printer size={18} color={c.primary} />
+            <Text style={styles.printText}>Этикетка на дверь</Text>
+            <ChevronRight size={16} color={c.textTertiary} />
+          </Pressable>
+          {assets.length > 0 && (
+            <Pressable
+              style={[styles.printRow, styles.printRowLast]}
+              onPress={() => navigation.navigate('WarehouseLabelPrint', {
+                kind: 'asset',
+                ids: assets.map(a => a.id),
+                title: `Оборудование каб. ${room.number}`,
+              })}>
+              <Printer size={18} color={c.primary} />
+              <Text style={styles.printText}>
+                Этикетки на всё оборудование · {assets.length}
+              </Text>
+              <ChevronRight size={16} color={c.textTertiary} />
+            </Pressable>
+          )}
         </View>
       )}
 
@@ -189,6 +226,23 @@ const makeStyles = c => StyleSheet.create({
     marginTop: 12,
   },
   alertText: {fontFamily: font.medium, fontSize: 12, color: c.textPrimary},
+  printBlock: {
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginTop: 14,
+  },
+  printRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+  },
+  printRowLast: {borderBottomWidth: 0},
+  printText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   tabs: {flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 10},
   tab: {
     flex: 1,

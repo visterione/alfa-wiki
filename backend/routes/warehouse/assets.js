@@ -24,6 +24,7 @@ const { requireWarehouse } = require('../../services/warehouse/access');
 const { generateInventoryNumber } = require('../../services/warehouse/numbering');
 const { splitName } = require('../../services/warehouse/nameParts');
 const qr = require('../../services/warehouse/qr');
+const ptouch = require('../../services/warehouse/ptouchRaster');
 
 const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 
@@ -521,7 +522,12 @@ router.get('/:id/label.svg', authenticate, requireWarehouse(), async (req, res) 
   }
 });
 
-router.get('/:id/label.zpl', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
+// Печать защищена правом «Этикетки и QR», а не правом вести учёт. Раньше эти
+// три ручки просили canManageAssets, при том что кабинетные этикетки рядом
+// просили canPrintLabels, а список активов рисовал кнопку печати по любому из
+// двух прав. У кладовщика с одним лишь правом на этикетки кнопка была, а печать
+// падала 403 — и на телефоне это первое, обо что спотыкались.
+router.get('/:id/label.zpl', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
   const asset = await WhAsset.findByPk(req.params.id, { include: assetInclude });
   if (!asset) return res.status(404).json({ error: 'Актив не найден' });
   const zpl = qr.assetLabelZpl(asset, {
@@ -535,7 +541,7 @@ router.get('/:id/label.zpl', authenticate, requireWarehouse('canManageAssets'), 
  * раскладку по листу A4 делает клиент — так проще подогнать под конкретный
  * принтер и не гонять PDF ради предпросмотра.
  */
-router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
+router.post('/labels/batch', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
   try {
     const { ids = [], size = '80x24', rotate } = req.body;
     const labelSize = EQUIPMENT_LABEL_SIZES.includes(size) ? size : '80x24';
@@ -569,7 +575,7 @@ router.post('/labels/batch', authenticate, requireWarehouse('canManageAssets'), 
 });
 
 /** Пакет отдельных ZPL-заданий для TDP-225, каждое строго 44x25 мм. */
-router.post('/labels/batch.zpl', authenticate, requireWarehouse('canManageAssets'), async (req, res) => {
+router.post('/labels/batch.zpl', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
   try {
     const { ids = [] } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны активы' });
@@ -586,6 +592,69 @@ router.post('/labels/batch.zpl', authenticate, requireWarehouse('canManageAssets
     res.type('text/plain; charset=utf-8').send(zpl);
   } catch (err) {
     console.error('POST warehouse/assets/labels/batch.zpl error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Готовое задание печати для Brother P-touch — то, что телефон выкладывает в
+ * сокет принтера как есть.
+ *
+ * Считается на сервере, а не в мобилке, по двум причинам. Растеризация лежит
+ * здесь же, где вёрстка этикетки, и расходиться им незачем. И, что важнее,
+ * телефон на бегу может оказаться в сети самого принтера — без интернета и без
+ * портала: задание должно быть готово и лежать в кармане до того, как человек
+ * переключит вайфай. Поэтому ручка отдаёт всю пачку одним куском base64.
+ *
+ * labelPrintedAt здесь не трогаем: подготовка задания ещё не печать, а сокет
+ * может и не открыться. Отметку ставит мобилка после успешной отправки.
+ */
+router.post('/labels/batch.prn', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
+  try {
+    const { ids = [], rotate, mirror, autoCut } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не выбраны активы' });
+    if (ids.length > 200) return res.status(400).json({ error: 'За раз не больше 200 этикеток' });
+
+    const assets = await WhAsset.findAll({ where: { id: { [Op.in]: ids } }, include: assetInclude });
+    const byId = new Map(assets.map(a => [a.id, a]));
+    // Порядок задаём порядком запроса: человек отмечал активы сверху вниз и ждёт
+    // ленту в том же порядке, а findAll возвращает строки как ему удобно.
+    const ordered = ids.map(id => byId.get(id)).filter(Boolean);
+    if (!ordered.length) return res.status(404).json({ error: 'Ни одного из выбранных активов не нашлось' });
+
+    const pngs = [];
+    for (const asset of ordered) {
+      pngs.push(await qr.labelPng(await qr.assetLabelSvg(asset, { size: '80x24' }), '80x24'));
+    }
+    const job = await ptouch.buildJobFromPngs(pngs, {
+      rotate: Number(rotate) === 270 ? 270 : 90,
+      mirror: mirror === true,
+      autoCut: autoCut !== false,
+    });
+
+    res.json({
+      labels: ordered.map(a => ({ id: a.id, inventoryNumber: a.inventoryNumber, name: a.name })),
+      bytes: job.length,
+      prn: job.toString('base64'),
+    });
+  } catch (err) {
+    console.error('POST warehouse/assets/labels/batch.prn error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Отметка «этикетки напечатаны» — ставится после того, как принтер их принял. */
+router.post('/labels/printed', authenticate, requireWarehouse('canPrintLabels'), async (req, res) => {
+  try {
+    const { ids = [] } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Не переданы активы' });
+    await WhAsset.update(
+      { labelPrintedAt: new Date() },
+      { where: { id: { [Op.in]: ids.slice(0, 200) } } },
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST warehouse/assets/labels/printed error:', err);
     res.status(500).json({ error: err.message });
   }
 });

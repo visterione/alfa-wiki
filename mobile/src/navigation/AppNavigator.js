@@ -35,6 +35,9 @@ import WarehouseRoomScreen from '../screens/Warehouse/RoomScreen';
 import WarehouseInventoryListScreen from '../screens/Warehouse/InventoryListScreen';
 import WarehouseInventoryCountScreen from '../screens/Warehouse/InventoryCountScreen';
 import WarehousePlacementScreen from '../screens/Warehouse/PlacementScreen';
+import WarehouseRoomLabelsScreen from '../screens/Warehouse/RoomLabelsScreen';
+import WarehouseLabelPrintScreen from '../screens/Warehouse/LabelPrintScreen';
+import WarehousePrinterScreen from '../screens/Warehouse/PrinterSettingsScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
 import LessonScreen from '../screens/Courses/LessonScreen';
@@ -331,6 +334,21 @@ function WarehouseStack() {
         name="WarehousePlacement"
         component={WarehousePlacementScreen}
         options={{title: 'Размещение'}}
+      />
+      <Stack.Screen
+        name="WarehouseRoomLabels"
+        component={WarehouseRoomLabelsScreen}
+        options={{title: 'Этикетки на двери'}}
+      />
+      <Stack.Screen
+        name="WarehouseLabelPrint"
+        component={WarehouseLabelPrintScreen}
+        options={{title: 'Печать'}}
+      />
+      <Stack.Screen
+        name="WarehousePrinter"
+        component={WarehousePrinterScreen}
+        options={{title: 'Принтер этикеток'}}
       />
     </Stack.Navigator>
   );

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import RoomSettings from '../../components/warehouse/RoomSettings';
-import DepartmentsManager from '../../components/warehouse/DepartmentsManager';
+import DepartmentsManager from './DepartmentsManager';
 import { openPrintWindow, downloadTextFile } from './components/printLabels';
 
 /**
