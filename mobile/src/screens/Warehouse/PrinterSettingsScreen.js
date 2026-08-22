@@ -69,9 +69,13 @@ export default function WarehousePrinterScreen() {
           autoCorrect={false}
         />
       </View>
+      <Text style={styles.where}>
+        Адрес написан в самом принтере: Menu → WLAN → Network Status → тот режим,
+        в котором он работает.
+      </Text>
       <Pressable style={styles.hintRow} onPress={() => commit(DIRECT_MODE_HOST)}>
         <Text style={styles.hint}>
-          Подставить {DIRECT_MODE_HOST} — адрес принтера в его собственной сети
+          Подставить {DIRECT_MODE_HOST} — обычный адрес принтера в его собственной сети
         </Text>
       </Pressable>
 
@@ -159,6 +163,14 @@ const makeStyles = c => StyleSheet.create({
     color: c.textPrimary,
     fontFamily: font.regular,
     fontSize: 15,
+  },
+  where: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    color: c.textSecondary,
+    lineHeight: 18,
+    marginTop: 10,
+    paddingHorizontal: 2,
   },
   hintRow: {paddingVertical: 8, paddingHorizontal: 2},
   hint: {fontFamily: font.regular, fontSize: 12, color: c.primary, lineHeight: 17},
