@@ -30,19 +30,22 @@ export const PRINTER_PORT = 9100;
 // жизни, который можно показать человеку.
 const CHUNK_BYTES = 8192;
 
-// Сколько ждать тишины после того, как всё отправлено. Принтер сам присылает
-// статусы во время печати, но «задание закончилось» отдельным словом не
-// говорит: молчание в пару секунд после последнего байта и есть признак того,
-// что он всё принял и дальше просто печатает.
-const SETTLE_MS = 2500;
+// Сколько держать соединение после того, как всё отправлено.
+//
+// Было 2.5 секунды — и печати не происходило вовсе. Принтер к этому моменту ещё
+// не успевал разложить страницу, а закрытие сокета выбрасывало задание. Восемь
+// секунд с запасом покрывают самую длинную этикетку.
+const SETTLE_MS = 8000;
 
 /**
  * Разбор 32-байтного статуса.
  *
- * Спросить статус у PT-E550W нечем: команду «ESC i S» эта модель не
- * поддерживает. Зато во время печати она присылает пакеты сама — это
- * единственный способ отличить «напечаталось» от «крышка открыта» и не
- * показывать бодрое «отправлено» на пустом приёмнике.
+ * Разбор есть, а рассчитывать на него нельзя. Спросить статус у PT-E550W нечем —
+ * команду «ESC i S» эта модель не поддерживает, — а по документации она должна
+ * слать статусы сама во время печати. На живом принтере не шлёт: ни при удачной
+ * печати, ни при какой. Поэтому молчание здесь считается нормой, а разбор
+ * оставлен на случай, когда принтер всё-таки заговорит: тогда его жалобу видно
+ * дословно, а не «что-то пошло не так».
  */
 export function parseStatus(buf) {
   if (!buf || buf.length < 32 || buf[0] !== 0x80) return null;
@@ -100,6 +103,7 @@ export function sendPrintJob(job, {host, port = PRINTER_PORT, onProgress, timeou
     let settled = false;
     let sent = 0;
     let settleTimer = null;
+    let answered = false;
     const problems = new Set();
 
     const finish = (err, value) => {
@@ -107,9 +111,14 @@ export function sendPrintJob(job, {host, port = PRINTER_PORT, onProgress, timeou
       settled = true;
       clearTimeout(timer);
       clearTimeout(settleTimer);
-      try { socket.destroy(); } catch {}
+      // Закрываем сокет по-человечески, через FIN. Раньше здесь стоял destroy(),
+      // то есть RST посреди разговора: принтер вправе выбросить всё, что успел
+      // принять, и задание пропадало целиком, ничего не напечатав.
+      try { socket.end(); } catch {}
       if (err) reject(err); else resolve(value);
     };
+
+    const done = () => finish(null, {problems: [...problems], answered});
 
     const timer = setTimeout(
       () => finish(new Error('Принтер не ответил за отведённое время. Задание осталось в телефоне — попробуйте ещё раз.')),
@@ -122,10 +131,7 @@ export function sendPrintJob(job, {host, port = PRINTER_PORT, onProgress, timeou
         if (sent >= payload.length) {
           // Всё ушло. Дальше только слушаем: принтер печатает и в это время
           // может пожаловаться на ленту или крышку.
-          settleTimer = setTimeout(
-            () => finish(null, {problems: [...problems]}),
-            SETTLE_MS,
-          );
+          settleTimer = setTimeout(done, SETTLE_MS);
           return;
         }
         const chunk = payload.subarray(sent, sent + CHUNK_BYTES);
@@ -144,6 +150,7 @@ export function sendPrintJob(job, {host, port = PRINTER_PORT, onProgress, timeou
       for (let at = 0; at + 32 <= chunk.length; at += 32) {
         const status = parseStatus(chunk.subarray(at, at + 32));
         if (!status) continue;
+        answered = true;
         if (status.problems.length) status.problems.forEach(p => problems.add(p));
         if (status.isError) {
           return finish(new Error(
@@ -156,7 +163,7 @@ export function sendPrintJob(job, {host, port = PRINTER_PORT, onProgress, timeou
       // Пока принтер разговаривает, задание ещё живо — отодвигаем тишину.
       if (settleTimer) {
         clearTimeout(settleTimer);
-        settleTimer = setTimeout(() => finish(null, {problems: [...problems]}), SETTLE_MS);
+        settleTimer = setTimeout(done, SETTLE_MS);
       }
     });
 
@@ -164,7 +171,7 @@ export function sendPrintJob(job, {host, port = PRINTER_PORT, onProgress, timeou
     socket.on('close', () => {
       // Принтер закрывает соединение сам после задания — это нормальный конец,
       // но только если мы успели всё отправить.
-      if (sent >= payload.length) finish(null, {problems: [...problems]});
+      if (sent >= payload.length) done();
       else finish(new Error('Принтер закрыл соединение, не приняв задание целиком'));
     });
   });

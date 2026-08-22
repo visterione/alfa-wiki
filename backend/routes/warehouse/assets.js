@@ -628,7 +628,8 @@ router.post('/labels/batch.prn', authenticate, requireWarehouse('canPrintLabels'
     }
     const job = await ptouch.buildJobFromPngs(pngs, {
       rotate: Number(rotate) === 270 ? 270 : 90,
-      mirror: mirror === true,
+      // Зеркало по умолчанию включено — так печатает наш PT-E550W (см. ptouchRaster.js)
+      mirror: mirror !== false,
       autoCut: autoCut !== false,
     });
 

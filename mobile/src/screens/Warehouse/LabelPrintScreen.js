@@ -73,7 +73,7 @@ export default function WarehouseLabelPrintScreen({route, navigation}) {
         port: printer.port || PRINTER_PORT,
         onProgress: setProgress,
       });
-      setDone({count: job.labels.length, problems: result.problems || []});
+      setDone({count: job.labels.length, problems: result.problems || [], answered: result.answered});
       // Отметку о печати ставим только для оборудования: по ней в вебе видно,
       // какие карточки промаркированы. У кабинетов такой отметки нет.
       if (kind !== 'room') warehouseApi.markLabelsPrinted(ids).catch(() => {});
@@ -147,10 +147,13 @@ export default function WarehouseLabelPrintScreen({route, navigation}) {
       {Boolean(done) && (
         <View style={styles.ready}>
           <Check size={16} color={c.success} />
+          {/* Молчание принтера — норма: PT-E550W статусы не шлёт (см.
+              services/ptouchPrint.js). Поэтому обычная формулировка нейтральная,
+              а «подтвердил» появляется только если он и правда ответил. */}
           <Text style={styles.readyText}>
-            Принтер принял {done.count}{' '}
-            {done.count === 1 ? 'этикетку' : 'этикеток'}.
-            {done.problems.length ? ` Он при этом жаловался: ${done.problems.join(', ')}.` : ''}
+            {done.count === 1 ? 'Этикетка отправлена в принтер.' : `Отправлено этикеток: ${done.count}.`}
+            {done.answered ? ' Принтер подтвердил печать.' : ''}
+            {done.problems.length ? ` Принтер жаловался: ${done.problems.join(', ')}.` : ''}
           </Text>
         </View>
       )}
