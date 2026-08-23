@@ -1,22 +1,37 @@
 /**
  * Карточка оборудования — то, что видит человек, отсканировав этикетку.
  *
- * Экран намеренно только на просмотр. Постановка на учёт, правка полей и
- * амортизация остались в вебе: это ввод данных за столом, а здесь человек стоит
- * перед прибором и хочет ответить на три вопроса — что это, чьё оно и когда ему
- * следующее ТО.
+ * Три вкладки отвечают на три разных вопроса: что это за прибор, сколько он
+ * стоит и что с ним происходило. Переключаются и нажатием, и свайпом — вкладки
+ * лежат под этикеткой, а не в шапке, и тянуться до них каждый раз незачем.
  *
- * Лента движений внизу отвечает на четвёртый вопрос, который возникает чаще
- * остальных: «как эта штука тут оказалась».
+ * ── Кабинет переехал в шапку ─────────────────────────────────────────────────
+ *
+ * Раньше строка «Каб. 434» стояла в теле страницы, и по ней открывался кабинет,
+ * из списка которого открывался следующий прибор, из него снова кабинет —
+ * стопка экранов росла на каждом шаге, и «назад» приходилось жать десяток раз.
+ * Теперь это кнопка-дверь в правом углу шапки: тот же переход, но рядом с
+ * инвентарным номером, а не посреди карточки, где он читался как часть данных.
+ *
+ * ── Что правится, а что нет ──────────────────────────────────────────────────
+ *
+ * Карандаш в шапке открывает форму правки (ver. 7.24): серийный номер, модель и
+ * дату ввода в эксплуатацию знает тот, кто стоит перед прибором, а не тот, кто
+ * сидит за компьютером. Кабинета и МОЛ в форме нет — их меняет документ
+ * перемещения, см. AssetEditScreen.
  */
-import React, {useCallback, useState} from 'react';
-import {View, Text, ScrollView, Pressable, StyleSheet} from 'react-native';
+import React, {useCallback, useLayoutEffect, useState} from 'react';
+import {
+  View, Text, ScrollView, Pressable, StyleSheet, useWindowDimensions,
+} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {DoorOpen, ChevronRight, Printer} from 'lucide-react-native';
+import {DoorOpen, Printer, Pencil} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import LabelPreview from '../../components/LabelPreview';
+import MarqueeText from '../../components/MarqueeText';
+import SwipeTabs from '../../components/SwipeTabs';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan} from '../../store/warehouseStore';
@@ -31,12 +46,15 @@ const MOVEMENT_LABELS = {
 export default function WarehouseAssetScreen({route, navigation}) {
   const styles = useThemedStyles(makeStyles);
   const c = useTheme();
+  const {width} = useWindowDimensions();
   const {assetId} = route.params || {};
   const [data, setData] = useState(null);
   // Право на этикетки отдельное от права вести учёт: печатают их не те, кто
   // заполняет карточки. Без него кнопка печати не показывается вовсе — иначе
   // человек упрётся в 403 уже после того, как подошёл к принтеру.
   const canPrint = useWarehouseCan('canPrintLabels');
+  const canEdit = useWarehouseCan('canManageAssets');
+  const [tab, setTab] = useState('main');
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(useCallback(() => {
@@ -45,15 +63,54 @@ export default function WarehouseAssetScreen({route, navigation}) {
       .then(({data: payload}) => {
         if (!alive) return;
         setData(payload);
-        // Заголовок — инвентарный номер: он же напечатан на этикетке, которую
-        // человек только что отсканировал, и по нему проще всего убедиться, что
-        // открылось именно то.
-        navigation.setOptions({title: payload.asset.inventoryNumber});
       })
       .catch(() => alive && setData(null))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [assetId, navigation]));
+  }, [assetId]));
+
+  const asset = data?.asset;
+
+  /**
+   * Карандаш и дверь в шапке. Дверь ведёт в кабинет прибора — тот же переход,
+   * что был строкой в теле карточки, но отсюда он не выглядит частью данных и
+   * не наращивает стопку «кабинет → прибор → кабинет» посреди чтения.
+   */
+  useLayoutEffect(() => {
+    if (!asset) return;
+    navigation.setOptions({
+      // Инвентарный номер длинный, а справа от него теперь две кнопки: без
+      // бегущей строки он обрезался бы ровно на той части, по которой прибор и
+      // отличают от соседнего.
+      headerTitle: () => (
+        <MarqueeText style={styles.headerTitle} containerStyle={{width: width - 150}}>
+          {asset.inventoryNumber}
+        </MarqueeText>
+      ),
+      headerRight: () => (
+        <View style={styles.headerButtons}>
+          {canEdit && (
+            <Pressable
+              onPress={() => navigation.navigate('WarehouseAssetEdit', {assetId})}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Править карточку">
+              <Pencil size={19} color="#FFFFFF" />
+            </Pressable>
+          )}
+          {Boolean(asset.room) && (
+            <Pressable
+              onPress={() => navigation.navigate('WarehouseRoom', {roomId: asset.room.id})}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={roomText(asset.room)}>
+              <DoorOpen size={20} color="#FFFFFF" />
+            </Pressable>
+          )}
+        </View>
+      ),
+    });
+  }, [asset, assetId, canEdit, navigation, styles, width]);
 
   if (loading) return <LogoLoader />;
   if (!data) {
@@ -64,7 +121,7 @@ export default function WarehouseAssetScreen({route, navigation}) {
     );
   }
 
-  const {asset, depreciation, movements} = data;
+  const {depreciation, movements} = data;
   const rows = [
     ['Модель', asset.model],
     ['Производитель', asset.manufacturer],
@@ -74,6 +131,83 @@ export default function WarehouseAssetScreen({route, navigation}) {
     ['Следующее ТО', asset.nextMaintenanceDate ? dateText(asset.nextMaintenanceDate) : null],
     ['Гарантия до', asset.warrantyUntil ? dateText(asset.warrantyUntil) : null],
   ].filter(([, value]) => value);
+
+  const mainPage = (
+    <View style={styles.page}>
+      {rows.length ? (
+        <View style={styles.card}>
+          {rows.map(([label, value]) => (
+            <View key={label} style={styles.row}>
+              <Text style={styles.rowLabel}>{label}</Text>
+              <Text style={styles.rowValue}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.none}>Поля карточки пока не заполнены</Text>
+      )}
+    </View>
+  );
+
+  const moneyPage = (
+    <View style={styles.page}>
+      {/* Стоимость показывается, только если сервер её прислал: право «видеть
+          суммы» проверяется там, и прятать блок по догадке клиента нельзя. */}
+      {depreciation?.initialCost ? (
+        <>
+          <View style={styles.card}>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Первоначальная</Text>
+              <Text style={styles.rowValue}>{moneyText(depreciation.initialCost)}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Остаточная</Text>
+              <Text style={styles.rowValue}>{moneyText(depreciation.residual)}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Износ</Text>
+              <Text style={styles.rowValue}>{depreciation.wearPercent} %</Text>
+            </View>
+          </View>
+          {depreciation.fullyDepreciatedInUse && (
+            <Text style={styles.warn}>
+              Самортизировано полностью, но остаётся в работе — кандидат на замену.
+            </Text>
+          )}
+        </>
+      ) : (
+        <Text style={styles.none}>Стоимость не заполнена или закрыта правами</Text>
+      )}
+    </View>
+  );
+
+  const historyPage = (
+    <View style={styles.page}>
+      {movements?.length ? (
+        <View style={styles.card}>
+          {movements.slice(0, 12).map(movement => (
+            <View key={movement.id} style={styles.moveRow}>
+              <View style={styles.moveMain}>
+                <Text style={styles.moveType}>
+                  {MOVEMENT_LABELS[movement.type] || movement.type}
+                </Text>
+                <Text style={styles.moveWhen}>{dateText(movement.occurredAt)}</Text>
+              </View>
+              <Text style={styles.moveWhere}>
+                {movement.fromRoom ? `${roomText(movement.fromRoom)} → ` : ''}
+                {movement.toRoom ? roomText(movement.toRoom) : '—'}
+              </Text>
+              {Boolean(movement.reasonText) && (
+                <Text style={styles.moveReason}>{movement.reasonText}</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.none}>Движений по карточке ещё не было</Text>
+      )}
+    </View>
+  );
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -86,16 +220,6 @@ export default function WarehouseAssetScreen({route, navigation}) {
           </Text>
         </View>
       </View>
-
-      {Boolean(asset.room) && (
-        <Pressable
-          style={styles.roomRow}
-          onPress={() => navigation.navigate('WarehouseRoom', {roomId: asset.room.id})}>
-          <DoorOpen size={18} color={c.primary} />
-          <Text style={styles.roomText}>{roomText(asset.room)}</Text>
-          <ChevronRight size={16} color={c.textTertiary} />
-        </Pressable>
-      )}
 
       {/* Этикетка показывается как есть, а не строкой «напечатать». Стоя перед
           прибором, человек сверяет наклейку на нём с той, что в портале: у
@@ -118,69 +242,19 @@ export default function WarehouseAssetScreen({route, navigation}) {
         </View>
       )}
 
-      {Boolean(rows.length) && (
-        <View style={styles.card}>
-          {rows.map(([label, value]) => (
-            <View key={label} style={styles.row}>
-              <Text style={styles.rowLabel}>{label}</Text>
-              <Text style={styles.rowValue}>{value}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* Стоимость показывается, только если сервер её прислал: право «видеть
-          суммы» проверяется там, и прятать блок по догадке клиента нельзя. */}
-      {Boolean(depreciation?.initialCost) && (
-        <>
-          <Text style={styles.section}>Стоимость</Text>
-          <View style={styles.card}>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Первоначальная</Text>
-              <Text style={styles.rowValue}>{moneyText(depreciation.initialCost)}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Остаточная</Text>
-              <Text style={styles.rowValue}>{moneyText(depreciation.residual)}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Износ</Text>
-              <Text style={styles.rowValue}>{depreciation.wearPercent} %</Text>
-            </View>
-          </View>
-          {depreciation.fullyDepreciatedInUse && (
-            <Text style={styles.warn}>
-              Самортизировано полностью, но остаётся в работе — кандидат на замену.
-            </Text>
-          )}
-        </>
-      )}
-
-      {Boolean(movements?.length) && (
-        <>
-          <Text style={styles.section}>Что с ним происходило</Text>
-          <View style={styles.card}>
-            {movements.slice(0, 12).map(movement => (
-              <View key={movement.id} style={styles.moveRow}>
-                <View style={styles.moveMain}>
-                  <Text style={styles.moveType}>
-                    {MOVEMENT_LABELS[movement.type] || movement.type}
-                  </Text>
-                  <Text style={styles.moveWhen}>{dateText(movement.occurredAt)}</Text>
-                </View>
-                <Text style={styles.moveWhere}>
-                  {movement.fromRoom ? `${roomText(movement.fromRoom)} → ` : ''}
-                  {movement.toRoom ? roomText(movement.toRoom) : '—'}
-                </Text>
-                {Boolean(movement.reasonText) && (
-                  <Text style={styles.moveReason}>{movement.reasonText}</Text>
-                )}
-              </View>
-            ))}
-          </View>
-        </>
-      )}
-
+      <SwipeTabs
+        style={styles.tabs}
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          {key: 'main', label: 'Основное'},
+          {key: 'money', label: 'Стоимость'},
+          {key: 'history', label: 'История'},
+        ]}>
+        {mainPage}
+        {moneyPage}
+        {historyPage}
+      </SwipeTabs>
     </ScrollView>
   );
 }
@@ -193,17 +267,17 @@ const makeStyles = c => StyleSheet.create({
   statusRow: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7},
   dot: {width: 8, height: 8, borderRadius: 4},
   status: {fontFamily: font.medium, fontSize: 13},
-  roomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: c.bgPrimary,
-    borderRadius: radius.lg,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    marginBottom: 14,
+  headerTitle: {fontFamily: font.semiBold, fontSize: 16, color: '#FFFFFF'},
+  headerButtons: {flexDirection: 'row', alignItems: 'center', gap: 18},
+  page: {width: '100%'},
+  tabs: {marginTop: 16},
+  none: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    color: c.textTertiary,
+    textAlign: 'center',
+    paddingVertical: 24,
   },
-  roomText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   labelCard: {
     backgroundColor: c.bgPrimary,
     borderRadius: radius.lg,
@@ -238,14 +312,6 @@ const makeStyles = c => StyleSheet.create({
     fontSize: 13,
     color: c.textPrimary,
     textAlign: 'right',
-  },
-  section: {
-    fontFamily: font.semiBold,
-    fontSize: 13,
-    color: c.textSecondary,
-    marginTop: 20,
-    marginBottom: 8,
-    marginLeft: 2,
   },
   warn: {fontFamily: font.regular, fontSize: 12, color: c.warning, marginTop: 8, lineHeight: 18},
   moveRow: {

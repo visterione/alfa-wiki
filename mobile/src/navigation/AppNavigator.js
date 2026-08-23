@@ -33,6 +33,8 @@ import NormScreen from '../screens/Tasks/NormScreen';
 import WarehouseScreen from '../screens/Warehouse/WarehouseScreen';
 import WarehouseScannerScreen from '../screens/Warehouse/ScannerScreen';
 import WarehouseAssetScreen from '../screens/Warehouse/AssetScreen';
+import WarehouseAssetEditScreen from '../screens/Warehouse/AssetEditScreen';
+import WarehouseMaterialEditScreen from '../screens/Warehouse/MaterialEditScreen';
 import WarehouseRoomScreen from '../screens/Warehouse/RoomScreen';
 import WarehouseInventoryListScreen from '../screens/Warehouse/InventoryListScreen';
 import WarehouseInventoryCountScreen from '../screens/Warehouse/InventoryCountScreen';
@@ -327,6 +329,18 @@ function WarehouseStack() {
         name="WarehouseAsset"
         component={WarehouseAssetScreen}
         options={{title: 'Оборудование'}}
+      />
+      {/* Правка карточек с телефона (ver. 7.24). Заголовок — тот же инвентарный
+          номер: форма и просмотр это один предмет, и подписаны они одинаково */}
+      <Stack.Screen
+        name="WarehouseAssetEdit"
+        component={WarehouseAssetEditScreen}
+        options={{title: 'Правка карточки'}}
+      />
+      <Stack.Screen
+        name="WarehouseMaterialEdit"
+        component={WarehouseMaterialEditScreen}
+        options={{title: 'Материал'}}
       />
       <Stack.Screen
         name="WarehouseRoom"

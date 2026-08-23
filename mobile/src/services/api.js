@@ -294,6 +294,15 @@ export const warehouse = {
   assets: params => api.get('/warehouse/assets', {params}),
   roomDashboard: roomId => api.get(`/warehouse/reports/room/${roomId}/dashboard`),
 
+  // Правка карточек с телефона (ver. 7.24). Кабинета, места хранения и МОЛ среди
+  // полей нет и здесь: их меняет документ перемещения, иначе актив сменил бы
+  // место без следа в журнале. То же ограничение действует в вебе.
+  updateAsset: (id, data) => api.put(`/warehouse/assets/${id}`, data),
+  updateNomenclature: (id, data) => api.put(`/warehouse/catalog/nomenclature/${id}`, data),
+  categories: () => api.get('/warehouse/catalog/categories'),
+  nomenclature: params => api.get('/warehouse/catalog/nomenclature', {params}),
+  contractors: () => api.get('/warehouse/catalog/contractors'),
+
   // Инвентаризация
   inventorySessions: () => api.get('/warehouse/operations/inventory'),
   inventory: id => api.get(`/warehouse/operations/inventory/${id}`),
@@ -338,6 +347,9 @@ export const warehouse = {
 
   // Размещение позиций ведомости по кабинетам (ver. 6.80)
   placementQueue: params => api.get('/warehouse/placements/queue', {params}),
+  // Отмена размещения по кабинету — временный инструмент отладки для
+  // администратора, см. backend/services/warehouse/osvRollback.js
+  rollbackRoom: roomId => api.post(`/warehouse/placements/room/${roomId}/rollback`),
   placementsInRoom: roomId => api.get(`/warehouse/placements/room/${roomId}`),
   placeItems: data => api.post('/warehouse/placements', data),
   deletePlacement: id => api.delete(`/warehouse/placements/${id}`),

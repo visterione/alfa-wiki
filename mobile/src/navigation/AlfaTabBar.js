@@ -69,7 +69,8 @@ const HIDDEN_ROUTES = [
   // кнопка поверх него читалась бы как часть видоискателя. Пересчёт, размещение
   // и выбор этикеток — потому что у них своя кнопка внизу, а два ряда органов
   // управления над жестовой полосой не помещаются.
-  'WarehouseScanner', 'WarehouseAsset', 'WarehouseRoom', 'WarehouseRooms',
+  'WarehouseScanner', 'WarehouseAsset', 'WarehouseAssetEdit', 'WarehouseMaterialEdit',
+  'WarehouseRoom', 'WarehouseRooms',
   'WarehouseInventoryCount', 'WarehouseInventoryNew', 'WarehousePlacement',
   'WarehouseLabelPrint', 'WarehousePrinter',
 ];

@@ -37,6 +37,7 @@ const {
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
 const { planMaterialization, materializeOsv } = require('../../services/warehouse/osvMaterialize');
+const { rollbackRoomPlacement } = require('../../services/warehouse/osvRollback');
 
 const roomInclude = [
   { model: WhStorage, as: 'storages', attributes: ['id', 'name'], required: false },
@@ -438,6 +439,32 @@ router.post('/', authenticate, requireWarehouse('canImportOsv'), async (req, res
     });
   } catch (err) {
     console.error('POST warehouse/placements error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Отмена размещения по кабинету — временный инструмент отладки (ver. 7.24).
+ *
+ * Только администратору и намеренно без права из каталога складских: это не
+ * штатная операция учёта, которую кому-то выдают, а лопата для разгребания
+ * следов, оставленных проверкой мобильных экранов на боевой базе. Подробности и
+ * условие, при котором это надо убрать, — в services/warehouse/osvRollback.js.
+ */
+router.post('/room/:roomId/rollback', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ error: 'Только для администратора' });
+
+    const snapshot = await currentSnapshot(req.body?.importId);
+    if (!snapshot) return res.status(400).json({ error: 'Нет принятого снимка' });
+
+    const room = await WhRoom.findByPk(req.params.roomId);
+    if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
+
+    const report = await rollbackRoomPlacement({ roomId: room.id, account: snapshot.account });
+    res.json({ ...report, room: { id: room.id, number: room.number } });
+  } catch (err) {
+    console.error('POST warehouse/placements/rollback error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -3,76 +3,87 @@
  *
  * Открывается тремя путями: сканированием QR с двери, из списка кабинетов и
  * переходом из карточки актива. Последний важнее, чем кажется: увидев прибор,
- * человек почти всегда хочет посмотреть, что ещё есть в этом кабинете, — и
- * обратный путь «актив → кабинет → другой актив» здесь замкнут.
+ * человек почти всегда хочет посмотреть, что ещё есть в этом кабинете.
  *
- * Схема этажа сверху отвечает на вопрос, которого не было ни в одном списке:
- * «а это вообще где?». Соседние кабинеты на ней намеренно без метрик — см.
- * RoomMiniMap.
+ * ── Порядок на экране ────────────────────────────────────────────────────────
  *
- * Оборудование и материалы разделены вкладками, а не свалены в один список:
- * у них разные вопросы. У оборудования спрашивают «в каком оно состоянии», у
- * материалов — «сколько осталось и не просрочено ли».
+ * Первой идёт этикетка на дверь. Заголовка над ней нет: наклейка с крупным
+ * номером узнаётся сама, а подпись «Этикетка на дверь» повторяла бы то, что и
+ * так нарисовано. Дальше схема этажа — она отвечает на «а это вообще где?».
+ * Дальше списки.
+ *
+ * Ни названия кабинета, ни пути (медцентр, корпус, этаж) на самой странице нет:
+ * всё это переехало в шапку. Строка «Каб. 434 (Архив) | МЦ Альфа» отвечает на
+ * тот же вопрос, но не отнимает у содержимого верхнюю треть экрана, а длинную
+ * прокручивает бегущей строкой.
+ *
+ * Карточек с числом оборудования и материалов тоже нет. Те же числа стоят на
+ * заголовках вкладок прямо под ними, и показывать их дважды означало занимать
+ * экран пересказом самого себя.
  *
  * ── Печать ───────────────────────────────────────────────────────────────────
  *
- * Раньше здесь было три строки-ссылки: «Этикетка на дверь», «Этикетки на
- * непромаркированное», «Перепечатать всё оборудование». Что именно вылезет из
- * принтера, выяснялось уже на ленте. Теперь этикетка кабинета показывается как
- * есть, а оборудование отбирают галочками прямо в списке — там же, где на него
- * смотрят, — и перед печатью видно наклейку первого отмеченного.
+ * Этикетка кабинета показывается как есть, а оборудование отбирают галочками
+ * прямо в списке — там же, где на него смотрят, — и перед печатью видно
+ * наклейку первого отмеченного.
  */
-import React, {useCallback, useMemo, useState} from 'react';
-import {View, Text, ScrollView, Pressable, StyleSheet} from 'react-native';
+import React, {useCallback, useLayoutEffect, useMemo, useState} from 'react';
+import {
+  View, Text, ScrollView, Pressable, StyleSheet, Alert, useWindowDimensions,
+} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {ChevronRight, Printer, Check, X} from 'lucide-react-native';
+import {ChevronRight, Printer, Check, X, Undo2, Pencil} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import LabelPreview from '../../components/LabelPreview';
+import MarqueeText from '../../components/MarqueeText';
 import RoomMiniMap from '../../components/RoomMiniMap';
+import SwipeTabs from '../../components/SwipeTabs';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {useWarehouseCan} from '../../store/warehouseStore';
+import {useWarehouseAccess, useWarehouseCan} from '../../store/warehouseStore';
 import {ASSET_STATUS, statusColor, qtyText, dateText} from './warehouseMeta';
 
 export default function WarehouseRoomScreen({route, navigation}) {
   const styles = useThemedStyles(makeStyles);
   const c = useTheme();
   const insets = useSafeAreaInsets();
+  const {width} = useWindowDimensions();
   const {roomId} = route.params || {};
   const [data, setData] = useState(null);
   const [plan, setPlan] = useState(null);
   // Право «Этикетки и QR» отдельное от права на учёт: дашборд кабинета про
   // печать ничего не знает, и права берутся из общего магазина.
   const canPrint = useWarehouseCan('canPrintLabels');
+  const canEditMaterials = useWarehouseCan('canManageCatalog');
+  const access = useWarehouseAccess();
   const [tab, setTab] = useState('assets');
   const [picking, setPicking] = useState(false);
   const [checked, setChecked] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
+  const [rollingBack, setRollingBack] = useState(false);
 
-  useFocusEffect(useCallback(() => {
-    let alive = true;
+  const load = useCallback(() => {
     warehouseApi.roomDashboard(roomId)
       .then(({data: payload}) => {
-        if (!alive) return;
         setData(payload);
-        navigation.setOptions({title: `Каб. ${payload.room.number}`});
         // Схема — отдельным запросом и только если кабинет вообще привязан к
         // этажу: она украшение по отношению к самому дашборду, и падение её
         // запроса не должно уносить с собой карточку кабинета.
         if (!payload.room.floorId) return;
         warehouseApi.floorPlan(payload.room.floorId)
-          .then(({data: floor}) => alive && setPlan(floor))
+          .then(({data: floor}) => setPlan(floor))
           // Пустой объект, а не null: null означает «ещё грузится», и после
           // отказа схема осталась бы вечной заглушкой вместо сообщения.
-          .catch(() => alive && setPlan({}));
+          .catch(() => setPlan({}));
       })
-      .catch(() => alive && setData(null))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [roomId, navigation]));
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [roomId]);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const {room, cards, assets, stock} = useMemo(() => ({
     room: data?.room,
@@ -81,11 +92,79 @@ export default function WarehouseRoomScreen({route, navigation}) {
     stock: data?.stock || [],
   }), [data]);
 
+  /**
+   * Шапка: «Каб. 434 (Архив) | МЦ Альфа».
+   *
+   * Бегущей строкой, а не многоточием: обрезав, мы спрячем как раз медцентр —
+   * а номер 434 есть в каждом здании сети, и без него строка отвечает на
+   * половину вопроса.
+   */
+  useLayoutEffect(() => {
+    if (!room) return;
+    const title = [
+      `Каб. ${room.number}${room.name && room.name !== room.number ? ` (${room.name})` : ''}`,
+      room.medCenter,
+    ].filter(Boolean).join(' | ');
+
+    navigation.setOptions({
+      headerTitle: () => (
+        // Ширина задаётся числом, а не долей: бегущая строка узнаёт о том, что
+        // текст не влез, сравнивая его с шириной контейнера, а контейнер
+        // заголовка в native-stack по умолчанию сжимается по содержимому — и
+        // сравнивать было бы не с чем. Вычитаем стрелку «назад» и поля.
+        <MarqueeText style={styles.headerTitle} containerStyle={{width: width - 110}}>
+          {title}
+        </MarqueeText>
+      ),
+    });
+  }, [room, navigation, styles, width]);
+
   // Непромаркированное — то, ради чего в кабинет и заходят с принтером: после
   // разбора ведомости в кабинете появляются новые карточки, а стоящее тут годами
   // уже оклеено. Отметку ставит сама печать (labelPrintedAt), так что список
   // тает по мере работы и в конце обхода становится пустым.
   const unlabeled = useMemo(() => assets.filter(a => !a.labelPrintedAt), [assets]);
+
+  /**
+   * Отмена размещения — временный инструмент отладки для администратора.
+   *
+   * Спрашиваем дважды не из вежливости: операция стирает карточки, остатки и
+   * движения без следа, и промахнуться кабинетом здесь стоит дороже, чем
+   * разложить не туда.
+   */
+  const rollback = () => Alert.alert(
+    `Отменить размещение в каб. ${room.number}?`,
+    'Оборудование и материалы, заведённые сюда разбором ведомости, будут удалены '
+    + 'вместе с движениями, а строки вернутся в очередь размещения. Отменить это будет нельзя.',
+    [
+      {text: 'Нет', style: 'cancel'},
+      {
+        text: 'Отменить размещение',
+        style: 'destructive',
+        onPress: async () => {
+          setRollingBack(true);
+          try {
+            const {data: report} = await warehouseApi.rollbackRoom(roomId);
+            setPicking(false);
+            setChecked(new Set());
+            load();
+            const lines = [
+              `Снято размещений: ${report.placements}.`,
+              report.assets && `удалено карточек: ${report.assets}`,
+              report.stockRows && `снято позиций с остатка: ${report.stockRows}`,
+              !report.placements && !report.assets && 'Отменять было нечего.',
+              report.kept?.length && `Не тронуто (${report.kept.length}): ${report.kept[0].name} — ${report.kept[0].reason}`,
+            ].filter(Boolean);
+            Alert.alert('Размещение отменено', lines.join('\n'));
+          } catch (e) {
+            Alert.alert('Не отменено', e?.response?.data?.error || 'Попробуйте ещё раз.');
+          } finally {
+            setRollingBack(false);
+          }
+        },
+      },
+    ],
+  );
 
   if (loading) return <LogoLoader />;
   if (!data) {
@@ -113,6 +192,103 @@ export default function WarehouseRoomScreen({route, navigation}) {
   const allOn = assets.length > 0 && assets.every(a => checked.has(a.id));
   const firstPicked = assets.find(a => checked.has(a.id));
 
+  const assetsPage = (
+    <View style={styles.page}>
+      {/* Строка отбора появляется только у того, кому разрешена печать: у
+          материалов этикеток нет вовсе. */}
+      {canPrint && assets.length > 0 && (
+        <Pressable
+          style={styles.pickBar}
+          onPress={() => (picking
+            ? setChecked(allOn ? new Set() : new Set(assets.map(a => a.id)))
+            : startPicking())}>
+          {picking ? (
+            <>
+              <Text style={styles.pickText}>Отмечено: {checked.size}</Text>
+              <Text style={styles.pickAction}>{allOn ? 'снять' : 'выбрать всё'}</Text>
+              <Pressable onPress={() => setPicking(false)} hitSlop={10}>
+                <X size={16} color={c.textTertiary} />
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Printer size={15} color={c.primary} />
+              <Text style={styles.pickText}>Этикетки на оборудование</Text>
+              {unlabeled.length > 0 && (
+                <Text style={styles.pickAction}>без этикетки: {unlabeled.length}</Text>
+              )}
+            </>
+          )}
+        </Pressable>
+      )}
+
+      <View style={styles.card}>
+        {assets.map(asset => (
+          <Pressable
+            key={asset.id}
+            style={styles.row}
+            onPress={() => (picking
+              ? toggle(asset.id)
+              : navigation.push('WarehouseAsset', {assetId: asset.id}))}>
+            {picking ? (
+              <View style={[styles.box, checked.has(asset.id) && styles.boxOn]}>
+                {checked.has(asset.id) && <Check size={13} color="#FFFFFF" />}
+              </View>
+            ) : (
+              <View style={[styles.dot, {backgroundColor: statusColor(c, asset.status)}]} />
+            )}
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle} numberOfLines={2}>{asset.name}</Text>
+              <Text style={styles.rowSub}>
+                {asset.inventoryNumber} · {ASSET_STATUS[asset.status] || asset.status}
+              </Text>
+            </View>
+            {!picking && <ChevronRight size={16} color={c.textTertiary} />}
+          </Pressable>
+        ))}
+        {!assets.length && <Text style={styles.none}>Оборудования в кабинете нет</Text>}
+      </View>
+    </View>
+  );
+
+  const stockPage = (
+    <View style={styles.page}>
+      <View style={styles.card}>
+        {stock.map((item, index) => (
+          <Pressable
+            key={`${item.nomenclatureId}-${index}`}
+            style={styles.row}
+            disabled={!canEditMaterials}
+            onPress={() => navigation.navigate('WarehouseMaterialEdit', {
+              nomenclatureId: item.nomenclatureId,
+              name: item.name,
+            })}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle} numberOfLines={2}>{item.name}</Text>
+              <Text style={styles.rowSub}>
+                {[
+                  item.storageName,
+                  item.batchNumber && `партия ${item.batchNumber}`,
+                  item.expiryDate && `до ${dateText(item.expiryDate)}`,
+                ].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.qty,
+                item.expired && {color: c.error},
+                item.stockStatus === 'below' && {color: c.warning},
+              ]}>
+              {qtyText(item.quantity)} {item.unit}
+            </Text>
+            {canEditMaterials && <Pencil size={14} color={c.textTertiary} />}
+          </Pressable>
+        ))}
+        {!stock.length && <Text style={styles.none}>Материалов в кабинете нет</Text>}
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.root}>
       <ScrollView
@@ -121,13 +297,35 @@ export default function WarehouseRoomScreen({route, navigation}) {
           styles.content,
           {paddingBottom: insets.bottom + (picking && checked.size ? 200 : 32)},
         ]}>
-        <Text style={styles.title}>{room.name || `Кабинет ${room.number}`}</Text>
-        <Text style={styles.subtitle}>
-          {[room.medCenter, room.building, room.floor && `${room.floor} этаж`, room.department?.name]
-            .filter(Boolean).join(' · ')}
-        </Text>
-        {Boolean(room.responsible?.displayName) && (
-          <Text style={styles.subtitle}>МОЛ: {room.responsible.displayName}</Text>
+        {canPrint && (
+          <View style={styles.labelCard}>
+            <LabelPreview url={warehouseApi.doorCardUrl(room.id)} />
+            <Pressable
+              style={styles.labelButton}
+              onPress={() => navigation.navigate('WarehouseLabelPrint', {
+                kind: 'room',
+                ids: [room.id],
+                title: `Каб. ${room.number}`,
+              })}>
+              <Printer size={16} color={c.primary} />
+              <Text style={styles.labelButtonText}>Напечатать</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Просрочка, минимумы и просроченное ТО — единственное, что требует
+            действия прямо сейчас. Ради них блок и остался после того, как
+            карточки с числами убрали. */}
+        {(cards.expiry.expired > 0 || cards.materials.belowMin > 0 || cards.maintenance.overdue > 0) && (
+          <View style={styles.alert}>
+            <Text style={styles.alertText}>
+              {[
+                cards.expiry.expired > 0 && `просрочено позиций: ${cards.expiry.expired}`,
+                cards.materials.belowMin > 0 && `ниже минимума: ${cards.materials.belowMin}`,
+                cards.maintenance.overdue > 0 && `просрочено ТО: ${cards.maintenance.overdue}`,
+              ].filter(Boolean).join(', ')}
+            </Text>
+          </View>
         )}
 
         {Boolean(room.floorId) && (
@@ -136,144 +334,35 @@ export default function WarehouseRoomScreen({route, navigation}) {
           </View>
         )}
 
-        <View style={styles.stats}>
-          <Stat styles={styles} value={cards.assets.total} label="оборудования" />
-          <Stat styles={styles} value={cards.materials.positions} label="позиций материалов" />
-          <Stat
-            styles={styles}
-            value={cards.maintenance.open}
-            label="нарядов ТО"
-            tone={cards.maintenance.overdue ? c.error : null}
-          />
-        </View>
-
-        {(cards.expiry.expired > 0 || cards.materials.belowMin > 0) && (
-          <View style={styles.alert}>
-            <Text style={styles.alertText}>
-              {[
-                cards.expiry.expired > 0 && `просрочено позиций: ${cards.expiry.expired}`,
-                cards.materials.belowMin > 0 && `ниже минимума: ${cards.materials.belowMin}`,
-              ].filter(Boolean).join(', ')}
-            </Text>
-          </View>
+        {Boolean(room.responsible?.displayName) && (
+          <Text style={styles.mol}>МОЛ: {room.responsible.displayName}</Text>
         )}
 
-        {canPrint && (
-          <View style={styles.block}>
-            <Text style={styles.section}>Этикетка на дверь</Text>
-            <View style={styles.labelCard}>
-              <LabelPreview url={warehouseApi.doorCardUrl(room.id)} />
-              <Pressable
-                style={styles.labelButton}
-                onPress={() => navigation.navigate('WarehouseLabelPrint', {
-                  kind: 'room',
-                  ids: [room.id],
-                  title: `Каб. ${room.number}`,
-                })}>
-                <Printer size={16} color={c.primary} />
-                <Text style={styles.labelButtonText}>Напечатать</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
+        <SwipeTabs
+          style={styles.block}
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            {key: 'assets', label: `Оборудование (${assets.length})`},
+            {key: 'stock', label: `Материалы (${stock.length})`},
+          ]}>
+          {assetsPage}
+          {stockPage}
+        </SwipeTabs>
 
-        <View style={styles.tabs}>
-          {[['assets', `Оборудование (${assets.length})`], ['stock', `Материалы (${stock.length})`]]
-            .map(([key, label]) => (
-              <Pressable
-                key={key}
-                style={[styles.tab, tab === key && styles.tabOn]}
-                onPress={() => { setTab(key); setPicking(false); }}>
-                <Text style={[styles.tabText, tab === key && styles.tabTextOn]}>{label}</Text>
-              </Pressable>
-            ))}
-        </View>
-
-        {/* Строка отбора появляется только на вкладке оборудования и только у
-            того, кому разрешена печать: у материалов этикеток нет вовсе. */}
-        {tab === 'assets' && canPrint && assets.length > 0 && (
+        {/* Временный инструмент отладки: стирает всё, что разбор ведомости
+            завёл в этот кабинет. Только администратору и внизу страницы —
+            рядом с полезными кнопками ему не место. */}
+        {Boolean(access?.isAdmin) && (
           <Pressable
-            style={styles.pickBar}
-            onPress={() => (picking
-              ? setChecked(allOn ? new Set() : new Set(assets.map(a => a.id)))
-              : startPicking())}>
-            {picking ? (
-              <>
-                <Text style={styles.pickText}>Отмечено: {checked.size}</Text>
-                <Text style={styles.pickAction}>{allOn ? 'снять' : 'выбрать всё'}</Text>
-              </>
-            ) : (
-              <>
-                <Printer size={15} color={c.primary} />
-                <Text style={styles.pickText}>Этикетки на оборудование</Text>
-                {unlabeled.length > 0 && (
-                  <Text style={styles.pickAction}>без этикетки: {unlabeled.length}</Text>
-                )}
-              </>
-            )}
-            {picking && (
-              <Pressable onPress={() => setPicking(false)} hitSlop={10}>
-                <X size={16} color={c.textTertiary} />
-              </Pressable>
-            )}
+            style={styles.rollback}
+            disabled={rollingBack}
+            onPress={rollback}>
+            <Undo2 size={15} color={c.error} />
+            <Text style={styles.rollbackText}>
+              {rollingBack ? 'Отменяю…' : 'Отменить размещение в кабинете'}
+            </Text>
           </Pressable>
-        )}
-
-        {tab === 'assets' && (
-          <View style={styles.card}>
-            {assets.map(asset => (
-              <Pressable
-                key={asset.id}
-                style={styles.row}
-                onPress={() => (picking
-                  ? toggle(asset.id)
-                  : navigation.push('WarehouseAsset', {assetId: asset.id}))}>
-                {picking ? (
-                  <View style={[styles.box, checked.has(asset.id) && styles.boxOn]}>
-                    {checked.has(asset.id) && <Check size={13} color="#FFFFFF" />}
-                  </View>
-                ) : (
-                  <View style={[styles.dot, {backgroundColor: statusColor(c, asset.status)}]} />
-                )}
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>{asset.name}</Text>
-                  <Text style={styles.rowSub}>
-                    {asset.inventoryNumber} · {ASSET_STATUS[asset.status] || asset.status}
-                  </Text>
-                </View>
-                {!picking && <ChevronRight size={16} color={c.textTertiary} />}
-              </Pressable>
-            ))}
-            {!assets.length && <Text style={styles.none}>Оборудования в кабинете нет</Text>}
-          </View>
-        )}
-
-        {tab === 'stock' && (
-          <View style={styles.card}>
-            {stock.map((item, index) => (
-              <View key={`${item.nomenclatureId}-${index}`} style={styles.row}>
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>{item.name}</Text>
-                  <Text style={styles.rowSub}>
-                    {[
-                      item.storageName,
-                      item.batchNumber && `партия ${item.batchNumber}`,
-                      item.expiryDate && `до ${dateText(item.expiryDate)}`,
-                    ].filter(Boolean).join(' · ')}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.qty,
-                    item.expired && {color: c.error},
-                    item.stockStatus === 'below' && {color: c.warning},
-                  ]}>
-                  {qtyText(item.quantity)} {item.unit}
-                </Text>
-              </View>
-            ))}
-            {!stock.length && <Text style={styles.none}>Материалов в кабинете нет</Text>}
-          </View>
         )}
       </ScrollView>
 
@@ -310,48 +399,19 @@ export default function WarehouseRoomScreen({route, navigation}) {
   );
 }
 
-function Stat({styles, value, label, tone}) {
-  return (
-    <View style={styles.stat}>
-      <Text style={[styles.statValue, tone && {color: tone}]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
   content: {padding: 16},
-  title: {fontFamily: font.semiBold, fontSize: 19, color: c.textPrimary},
-  subtitle: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 3},
-  block: {marginTop: 16},
-  section: {
-    fontFamily: font.semiBold,
-    fontSize: 13,
-    color: c.textSecondary,
-    marginBottom: 8,
-  },
-  stats: {flexDirection: 'row', gap: 10, marginTop: 16},
-  stat: {
-    flex: 1,
-    backgroundColor: c.bgPrimary,
-    borderRadius: radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  statValue: {fontFamily: font.semiBold, fontSize: 20, color: c.textPrimary},
-  statLabel: {
-    fontFamily: font.regular,
-    fontSize: 11,
-    color: c.textSecondary,
-    marginTop: 3,
-    textAlign: 'center',
-  },
+  headerTitle: {fontFamily: font.semiBold, fontSize: 16, color: '#FFFFFF'},
+  block: {marginTop: 14},
+  page: {width: '100%'},
+  mol: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 12},
+
   alert: {
     backgroundColor: c.primaryLight,
     borderRadius: radius.md,
     padding: 12,
-    marginTop: 12,
+    marginTop: 14,
   },
   alertText: {fontFamily: font.medium, fontSize: 12, color: c.textPrimary},
 
@@ -371,18 +431,6 @@ const makeStyles = c => StyleSheet.create({
     backgroundColor: c.primaryLight,
   },
   labelButtonText: {fontFamily: font.semiBold, fontSize: 14, color: c.primary},
-
-  tabs: {flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 10},
-  tab: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: radius.md,
-    backgroundColor: c.bgTertiary,
-    alignItems: 'center',
-  },
-  tabOn: {backgroundColor: c.primary},
-  tabText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary},
-  tabTextOn: {color: '#FFFFFF'},
 
   pickBar: {
     flexDirection: 'row',
@@ -424,6 +472,19 @@ const makeStyles = c => StyleSheet.create({
   qty: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, padding: 16, textAlign: 'center'},
 
+  rollback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 24,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.error,
+  },
+  rollbackText: {fontFamily: font.medium, fontSize: 13, color: c.error},
+
   printBar: {
     position: 'absolute',
     left: 0,
@@ -439,8 +500,6 @@ const makeStyles = c => StyleSheet.create({
   printPreview: {flexDirection: 'row', alignItems: 'center', gap: 10},
   // Ширина задана числом, а не долей: у превью жёсткое отношение сторон ленты,
   // и растянутое на всю строку оно отобрало бы место у подписи «и ещё N».
-  // Мельче настоящей этикетки — это опознавательный знак «то ли поедет», а не
-  // предмет для чтения; читают его на самом экране печати.
   printPreviewLabel: {width: 150},
   printMore: {fontFamily: font.medium, fontSize: 12, color: c.textSecondary},
   button: {
