@@ -11,7 +11,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
-import Svg, {Circle} from 'react-native-svg';
+import Svg, {Circle, Path} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
@@ -78,6 +78,9 @@ const HIDDEN_ROUTES = [
   'WarehouseItemCreate', 'WarehouseRoom', 'WarehouseRooms',
   'WarehouseInventoryCount', 'WarehouseInventoryNew', 'WarehousePlacement',
   'WarehouseLabelPrint', 'WarehousePrinter',
+  // Отзывы (ver. 7.26). Карточка держит внизу поле комментария, доска —
+  // колонки во всю высоту: знак «Альфа» лёг бы прямо на них.
+  'Review', 'ReviewBoard', 'ReviewsAssigned',
 ];
 
 const ORB_SIZE = 58;
@@ -157,6 +160,36 @@ const slotAngle = (index, count) => (index - (count - 1) / 2) * stepFor(count);
 function slotPoint(index, count) {
   const rad = (slotAngle(index, count) * Math.PI) / 180;
   return {x: WHEEL_R_MID * Math.sin(rad), y: -WHEEL_R_MID * Math.cos(rad)};
+}
+
+/**
+ * Контур подсветки выбранного раздела — сегмент того же кольца.
+ *
+ * Прямоугольник со скруглениями, стоявший здесь раньше, в круге выглядел
+ * заплаткой: у колеса нет ни одной прямой линии, и любая рамка спорит с его
+ * формой. Сектор вписан в обод по построению — те же радиусы, ширина в один
+ * шаг между разделами.
+ *
+ * Рисуется в гнезде сверху (симметрично относительно вертикали), а к нужному
+ * разделу приезжает поворотом всего слоя: у сектора нет верха и низа, так что
+ * обратный поворот, обязательный для подписей, ему не нужен.
+ */
+function sectorPath(count) {
+  const half = (stepFor(count) / 2) * 0.86; // просвет между соседними гнёздами
+  const inner = WHEEL_R_IN + 3;
+  const outer = WHEEL_R_OUT - 3;
+  const at = (deg, r) => {
+    const rad = (deg * Math.PI) / 180;
+    return `${WHEEL_R_OUT + r * Math.sin(rad)} ${WHEEL_R_OUT - r * Math.cos(rad)}`;
+  };
+
+  return [
+    `M ${at(-half, outer)}`,
+    `A ${outer} ${outer} 0 0 1 ${at(half, outer)}`,
+    `L ${at(half, inner)}`,
+    `A ${inner} ${inner} 0 0 0 ${at(-half, inner)}`,
+    'Z',
+  ].join(' ');
 }
 
 /**
@@ -507,9 +540,9 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   const warehouseBadge = useWarehouseBadge();
   const reviewBoards = useReviewBoards();
   const reviewsBadge = useReviewsBadge();
-  // Куда сейчас едет подложка выбранного раздела. Значения в точках от центра
-  // колеса, ими же двигаются и сами ячейки.
-  const active = useRef(new Animated.ValueXY({x: 0, y: 0})).current;
+  // Под каким углом стоит подсветка выбранного раздела, в градусах от верха.
+  // Углом, а не координатами: сектор приезжает в гнездо поворотом.
+  const active = useRef(new Animated.Value(0)).current;
   // С каким поворотом открыть колесо. Считается при отрисовке, применяется в
   // момент открытия — см. openTurnFor ниже.
   const openTurn = useRef(0);
@@ -651,7 +684,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     }));
 
   const activeIndex = items.findIndex(item => state.routes.indexOf(item.route) === state.index);
-  const activeAt = activeIndex >= 0 ? slotPoint(activeIndex, items.length) : null;
+  const activeAt = activeIndex >= 0 ? slotAngle(activeIndex, items.length) : null;
 
   /**
    * Поворот, с которым открывается колесо.
@@ -680,30 +713,6 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
         Math.round((-activeAngle + Math.sign(activeAngle) * 60) / step) * step,
       ),
     );
-
-  /**
-   * Подложка выбранного раздела.
-   *
-   * На открытии встаёт на место без анимации: колесо и так разворачивается, и
-   * ещё одна поездка в этот момент читалась бы как сбой. Дальше, если раздел
-   * сменили при открытом колесе, едет пружиной — по движению видно, откуда и
-   * куда переключились.
-   */
-  useEffect(() => {
-    if (!activeAt) return undefined;
-    if (!mounted) { active.setValue(activeAt); return undefined; }
-    const anim = Animated.spring(active, {
-      toValue: activeAt,
-      useNativeDriver: false,
-      speed: 14,
-      bounciness: 6,
-    });
-    anim.start();
-    return () => anim.stop();
-    // Точка считается из индекса и числа разделов — сравниваем по координатам,
-    // иначе объект, новый на каждом рендере, перезапускал бы пружину впустую.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAt?.x, activeAt?.y, mounted]);
 
   // Центр колеса в координатах экрана — от него PanResponder считает угол пальца
   const wheelPan = useWheelTurn(turn, items.length, width / 2, height - orbCenter);
@@ -745,7 +754,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
           точек — вложи их в него, и нажимались бы они только на iOS.
 
           Слой ловит касания сам (не box-none): вращать обод надо откуда угодно,
-          а не только попав пальцем ровно в 88-точечную полосу. */}
+          а не только попав пальцем ровно в полосу обода. */}
       {mounted && (
         <View style={StyleSheet.absoluteFill} {...wheelPan.panHandlers}>
           {/* Слой колеса перехватывает касания, и до затемнения под ним они уже
@@ -825,26 +834,30 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
                 />
               </Svg>
 
-              {/* Подложка выбранного — под значками: она ездит, они стоят */}
-              {Boolean(activeAt) && (
+              {/* Подсветка выбранного — сектор кольца под значками: она
+                  приезжает поворотом, значки стоят на местах */}
+              {activeAt !== null && (
                 <Animated.View
                   pointerEvents="none"
                   style={[
-                    styles.wheelActive,
+                    StyleSheet.absoluteFill,
                     {
-                      transform: [
-                        {translateX: active.x},
-                        {translateY: active.y},
-                        {
-                          rotate: turn.interpolate({
-                            inputRange: [-360, 360],
-                            outputRange: ['360deg', '-360deg'],
-                          }),
-                        },
-                      ],
+                      transform: [{
+                        rotate: active.interpolate({
+                          inputRange: [-360, 360],
+                          outputRange: ['-360deg', '360deg'],
+                        }),
+                      }],
                     },
-                  ]}
-                />
+                  ]}>
+                  <Svg
+                    width={WHEEL_R_OUT * 2}
+                    height={WHEEL_R_OUT * 2}
+                    pointerEvents="none"
+                    style={StyleSheet.absoluteFill}>
+                    <Path d={sectorPath(items.length)} fill={c.primaryLight} />
+                  </Svg>
+                </Animated.View>
               )}
 
               {items.map((item, index) => (
@@ -885,8 +898,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
 
 const makeStyles = c => StyleSheet.create({
   // Кнопка висит поверх экранов и не занимает места в раскладке — иначе её
-  // появление и уход меняли бы высоту всех вкладок разом (см. комментарий
-  // к анимации выше)
+  // появление и уход меняли бы высоту всех вкладок разом
   wrap: {
     position: 'absolute',
     left: 0,
@@ -904,6 +916,7 @@ const makeStyles = c => StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
+
   // Колесо. Квадрат со стороной в диаметр обода, центрированный по знаку:
   // только так масштаб открытия растит его именно из-под кнопки, а не из угла.
   // Тени у контейнера нет намеренно — он прямоугольный и прозрачный, а обе
@@ -948,25 +961,6 @@ const makeStyles = c => StyleSheet.create({
     fontSize: 10,
     lineHeight: 13,
     color: '#FFFFFF',
-  },
-  /**
-   * Подложка выбранного раздела.
-   *
-   * Ездит между гнёздами пружиной, а не появляется на новом месте: по движению
-   * видно, откуда и куда переключились, — на колесе, где соседний раздел стоит
-   * под углом, это единственное, что связывает старое положение с новым.
-   *
-   * Лежит под значками отдельным слоем: рисовать фон внутри ячейки значило бы
-   * перекрашивать две ячейки на каждом переходе и потерять само движение.
-   */
-  wheelActive: {
-    position: 'absolute',
-    left: WHEEL_R_OUT - (ITEM_WIDTH + 10) / 2,
-    top: WHEEL_R_OUT - (ITEM_HEIGHT + 12) / 2,
-    width: ITEM_WIDTH + 10,
-    height: ITEM_HEIGHT + 12,
-    borderRadius: 16,
-    backgroundColor: c.primaryLight,
   },
   wheelLabel: {
     fontFamily: font.medium,

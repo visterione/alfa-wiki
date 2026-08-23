@@ -19,7 +19,7 @@ import {View, Text, ScrollView, Pressable, StyleSheet, RefreshControl} from 'rea
 import {useFocusEffect} from '@react-navigation/native';
 import {
   ScanLine, ClipboardCheck, DoorOpen, ChevronRight, Lock, PackagePlus, Settings2,
-  BellRing,
+  BellRing, Package, Boxes, ArrowLeftRight,
 } from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
@@ -124,6 +124,27 @@ export default function WarehouseScreen({navigation}) {
       icon: DoorOpen,
       title: 'Кабинеты',
       route: 'WarehouseRooms',
+    },
+    // Оборудование и материалы разделами, как в вебе: до карточки прибора
+    // раньше можно было добраться только через кабинет или сканированием, то
+    // есть зная, где он стоит, — а спрашивают обычно наоборот.
+    {
+      key: 'assets',
+      icon: Package,
+      title: 'Оборудование',
+      route: 'WarehouseAssets',
+    },
+    {
+      key: 'stock',
+      icon: Boxes,
+      title: 'Материалы',
+      route: 'WarehouseStock',
+    },
+    {
+      key: 'operations',
+      icon: ArrowLeftRight,
+      title: 'Операции',
+      route: 'WarehouseOperations',
     },
     {
       key: 'inventory',

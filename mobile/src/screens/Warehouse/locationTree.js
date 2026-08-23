@@ -21,12 +21,34 @@ const floorTitle = floor => floor.name || `${floor.number} этаж`;
  * править локации, — на телефоне править нечего, и пустой корпус здесь только
  * обещание, за которым ничего нет.
  */
+/**
+ * Счётчики ветки: сколько в ней кабинетов, единиц оборудования и позиций
+ * материалов.
+ *
+ * Раньше у узла было одно число — количество кабинетов, — и в строке списка оно
+ * читалось как «сколько там имущества», хотя отвечало на другой вопрос.
+ * Оборудование и материалы разведены, потому что это разные вещи: первое
+ * считается карточками с инвентарными номерами, второе — позициями на остатке,
+ * и складывать их в одну цифру бессмысленно.
+ */
+const countsOf = (node) => {
+  if (node.rooms) {
+    return node.rooms.reduce((acc, room) => ({
+      rooms: acc.rooms + 1,
+      assets: acc.assets + (room.counters?.assets || 0),
+      materials: acc.materials + (room.counters?.positions || 0),
+    }), {rooms: 0, assets: 0, materials: 0});
+  }
+  return node.children.reduce((acc, child) => ({
+    rooms: acc.rooms + child.counts.rooms,
+    assets: acc.assets + child.counts.assets,
+    materials: acc.materials + child.counts.materials,
+  }), {rooms: 0, assets: 0, materials: 0});
+};
+
 export function buildNodes(tree) {
   const byKey = new Map();
   const keep = (node) => { byKey.set(node.key, node); return node; };
-  const countOf = node => (node.rooms
-    ? node.rooms.length
-    : node.children.reduce((sum, child) => sum + child.count, 0));
 
   const medCenters = [];
   for (const mc of tree?.medCenters || []) {
@@ -37,15 +59,16 @@ export function buildNodes(tree) {
       for (const floor of building.floors || []) {
         if (!floor.rooms?.length) continue;
         const path = [mc.name, building.name, floorTitle(floor)].filter(Boolean).join(' · ');
-        floors.push(keep({
+        const node = keep({
           key: `f:${floor.id}`,
           kind: 'floor',
           title: floorTitle(floor),
           subtitle: building.name,
           path,
           rooms: floor.rooms,
-          count: floor.rooms.length,
-        }));
+        });
+        node.counts = countsOf(node);
+        floors.push(node);
       }
       if (!floors.length) continue;
       const node = keep({
@@ -55,19 +78,20 @@ export function buildNodes(tree) {
         subtitle: building.address,
         children: floors,
       });
-      node.count = countOf(node);
+      node.counts = countsOf(node);
       children.push(node);
     }
 
     if (mc.rooms?.length) {
-      children.push(keep({
+      const loose = keep({
         key: `mcr:${mc.id}`,
         kind: 'floor',
         title: 'Без корпуса',
         path: [mc.name, 'Без корпуса'].filter(Boolean).join(' · '),
         rooms: mc.rooms,
-        count: mc.rooms.length,
-      }));
+      });
+      loose.counts = countsOf(loose);
+      children.push(loose);
     }
 
     if (!children.length) continue;
@@ -81,12 +105,12 @@ export function buildNodes(tree) {
       logoUrl: mc.logoUrl || null,
       children,
     });
-    node.count = countOf(node);
+    node.counts = countsOf(node);
     medCenters.push(node);
   }
 
   const root = keep({key: ROOT_KEY, kind: 'root', title: 'Кабинеты', children: medCenters});
-  root.count = countOf(root);
+  root.counts = countsOf(root);
   return byKey;
 }
 

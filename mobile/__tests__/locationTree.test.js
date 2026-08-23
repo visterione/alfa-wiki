@@ -10,7 +10,10 @@ const {
   ROOT_KEY, buildNodes, leavesOf, resolveNode,
 } = require('../src/screens/Warehouse/locationTree');
 
-const room = (id, number) => ({id, number, name: null, counters: {assets: 0}});
+const room = (id, number, counters = {}) => ({
+  id, number, name: null,
+  counters: {assets: 0, positions: 0, ...counters},
+});
 
 const floor = (id, number, rooms) => ({id, number, name: null, rooms});
 
@@ -41,10 +44,33 @@ describe('buildNodes', () => {
       }],
     }));
 
-    expect(nodes.get('mc:mc1').count).toBe(3);
-    expect(nodes.get('b:b1').count).toBe(3);
-    expect(nodes.get('f:f1').count).toBe(2);
-    expect(nodes.get(ROOT_KEY).count).toBe(3);
+    expect(nodes.get('mc:mc1').counts.rooms).toBe(3);
+    expect(nodes.get('b:b1').counts.rooms).toBe(3);
+    expect(nodes.get('f:f1').counts.rooms).toBe(2);
+    expect(nodes.get(ROOT_KEY).counts.rooms).toBe(3);
+  });
+
+  // Оборудование и материалы считаются порознь: первое — карточками с
+  // инвентарными номерами, второе — позициями на остатке, и одна общая цифра
+  // отвечала бы не на тот вопрос
+  it('имущество суммируется по ветке двумя числами', () => {
+    const nodes = buildNodes(tree({
+      buildings: [{
+        id: 'b1',
+        name: 'Корпус А',
+        floors: [
+          floor('f1', 1, [
+            room('r1', '101', {assets: 3, positions: 5}),
+            room('r2', '102', {assets: 1, positions: 0}),
+          ]),
+          floor('f2', 2, [room('r3', '201', {assets: 0, positions: 7})]),
+        ],
+      }],
+    }));
+
+    expect(nodes.get('f:f1').counts).toEqual({rooms: 2, assets: 4, materials: 5});
+    expect(nodes.get('b:b1').counts).toEqual({rooms: 3, assets: 4, materials: 12});
+    expect(nodes.get(ROOT_KEY).counts).toEqual({rooms: 3, assets: 4, materials: 12});
   });
 
   it('корпус без единого кабинета в дерево не попадает', () => {

@@ -39,6 +39,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   Check, Search, Printer, ChevronRight, ChevronDown, X, Building2, Layers, MapPin,
+  Package, Boxes,
 } from 'lucide-react-native';
 
 import CONFIG from '../../config';
@@ -108,7 +109,7 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
       .filter(group => group.rooms.length);
   }, [listNode, q]);
 
-  const hasRooms = Boolean(listNode?.count);
+  const hasRooms = Boolean(listNode?.counts?.rooms);
   // Плоский список вместо спуска — когда ищут или отбирают под печать: и то и
   // другое про кабинеты, а не про то, где они лежат.
   const flat = Boolean(q.trim()) || picking || !listNode?.children;
@@ -171,7 +172,7 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
                 <Text style={styles.rowSub} numberOfLines={1}>{branch.subtitle}</Text>
               )}
             </View>
-            <Text style={styles.branchCount}>{branch.count}</Text>
+            <Counts styles={styles} c={c} counts={branch.counts} />
             <ChevronDown
               size={16}
               color={c.textTertiary}
@@ -194,7 +195,7 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
                     numberOfLines={1}>
                     {item.title}
                   </Text>
-                  <Text style={styles.branchCount}>{item.count}</Text>
+                  <Counts styles={styles} c={c} counts={item.counts} />
                   {item.key === branch.key && <Check size={14} color={c.primary} />}
                 </Pressable>
               ))}
@@ -253,7 +254,7 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
                     <Text style={styles.rowSub} numberOfLines={1}>{item.node.subtitle}</Text>
                   )}
                 </View>
-                <Text style={styles.levelCount}>{item.node.count}</Text>
+                <Counts styles={styles} c={c} counts={item.node.counts} />
                 <ChevronRight size={16} color={c.textTertiary} />
               </Pressable>
             );
@@ -289,11 +290,18 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
                   <Text style={styles.rowSub} numberOfLines={1}>{room.name}</Text>
                 )}
               </View>
-              {/* Сколько в кабинете оборудования — единственная цифра, которую
-                  дерево знает и так. Она отвечает на «тот ли это кабинет»
-                  раньше, чем его откроешь. */}
-              {!picking && Boolean(room.counters?.assets) && (
-                <Text style={styles.rowCount}>{room.counters.assets}</Text>
+              {/* Сколько в кабинете имущества — дерево знает это и так. Числа
+                  два, потому что вопрос два: оборудование считается карточками,
+                  материалы — позициями на остатке. */}
+              {!picking && (
+                <Counts
+                  styles={styles}
+                  c={c}
+                  counts={{
+                    assets: room.counters?.assets || 0,
+                    materials: room.counters?.positions || 0,
+                  }}
+                />
               )}
               {!picking && <ChevronRight size={16} color={c.textTertiary} />}
             </Pressable>
@@ -313,6 +321,35 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
             <Printer size={17} color="#FFFFFF" />
             <Text style={styles.buttonText}>Печать · {checked.size}</Text>
           </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Пара счётчиков со значками: оборудование и материалы.
+ *
+ * Значки, а не подписи: в строке списка на подписи нет места, а Package и Boxes
+ * повторяют те же значки, которыми эти два вида помечены в размещении и в
+ * карточке кабинета. Ноль не показывается вовсе — строка с «0» сообщает ровно
+ * столько же, сколько её отсутствие, но занимает место и притягивает взгляд.
+ */
+function Counts({styles, c, counts}) {
+  if (!counts?.assets && !counts?.materials) return null;
+
+  return (
+    <View style={styles.counts}>
+      {counts.assets > 0 && (
+        <View style={styles.count}>
+          <Package size={12} color={c.textTertiary} />
+          <Text style={styles.countText}>{counts.assets}</Text>
+        </View>
+      )}
+      {counts.materials > 0 && (
+        <View style={styles.count}>
+          <Boxes size={12} color={c.textTertiary} />
+          <Text style={styles.countText}>{counts.materials}</Text>
         </View>
       )}
     </View>
@@ -372,7 +409,6 @@ const makeStyles = c => StyleSheet.create({
     paddingVertical: 11,
   },
   branchTitle: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
-  branchCount: {fontFamily: font.medium, fontSize: 12, color: c.textTertiary},
   branchArrowOpen: {transform: [{rotate: '180deg'}]},
   branchList: {
     backgroundColor: c.bgPrimary,
@@ -392,9 +428,9 @@ const makeStyles = c => StyleSheet.create({
   branchOptionText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   branchOptionOn: {color: c.primary},
   levelTitle: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
-  // Число кабинетов в ветке: без него нельзя отличить корпус на два кабинета от
-  // корпуса на сорок, а решение «куда идти» принимается именно по нему
-  levelCount: {fontFamily: font.semiBold, fontSize: 13, color: c.textTertiary},
+  counts: {alignItems: 'flex-end', gap: 2},
+  count: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  countText: {fontFamily: font.medium, fontSize: 12, color: c.textTertiary, minWidth: 18, textAlign: 'right'},
 
   group: {
     flexDirection: 'row',
@@ -435,7 +471,6 @@ const makeStyles = c => StyleSheet.create({
   rowText: {flex: 1},
   rowTitle: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   rowSub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
-  rowCount: {fontFamily: font.medium, fontSize: 12, color: c.textTertiary},
   none: {
     fontFamily: font.regular,
     fontSize: 13,

@@ -1,48 +1,40 @@
 /**
- * Отзывы — главный экран раздела.
+ * Отзывы — список досок.
  *
- * Первым идёт не список досок, а то, что назначено лично тебе. Доска в вебе —
- * это канбан на пять колонок, и на телефоне она нужна редко: чаще человек
- * открывает раздел, потому что пришло уведомление «вам назначен отзыв», и
- * хочет увидеть именно его. Доски ниже — для тех случаев, когда надо посмотреть
- * общую картину.
+ * ── Что изменилось после первой версии ───────────────────────────────────────
  *
- * Модуль доступен не всем: доступ раздаётся досками, и у кого их нет, тот сюда
- * не попадёт вовсе — кнопки в колесе не будет (см. reviewsStore).
+ * Сначала сверху лежал разложенный список назначенного мне, и до досок надо было
+ * пролистать его целиком. Это неверно вдвойне: список бывает длинным, а доски —
+ * основной способ попасть в модуль. Теперь «Назначено мне» это одна строка со
+ * счётчиком, открывающая отдельный экран, и она ничего не заслоняет.
+ *
+ * Доски показываются со знаком медцентра: доска и есть медцентр, и узнают её по
+ * знаку быстрее, чем по названию среди пяти похожих.
  */
 import React, {useCallback, useState} from 'react';
-import {View, Text, FlatList, Pressable, StyleSheet, RefreshControl} from 'react-native';
+import {View, Text, Image, FlatList, Pressable, StyleSheet, RefreshControl} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {ChevronRight, LayoutGrid} from 'lucide-react-native';
+import {ChevronRight, UserCheck, LayoutGrid, Star} from 'lucide-react-native';
 
-import {reviews as reviewsApi} from '../../services/api';
+import CONFIG from '../../config';
 import LogoLoader from '../../components/LogoLoader';
-import Stars from '../../components/Stars';
-import {loadReviewBoards, setReviewsBadge} from '../../store/reviewsStore';
+import {loadReviewBoards, useReviewsBadge, refreshReviewsBadge} from '../../store/reviewsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {statusLabel, statusColor, stageAge, dateText} from './reviewsMeta';
 
 export default function ReviewsScreen({navigation}) {
   const styles = useThemedStyles(makeStyles);
   const c = useTheme();
   const tabInset = useTabBarInset();
+  const assignedCount = useReviewsBadge();
   const [boards, setBoards] = useState(null);
-  const [assigned, setAssigned] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [boardList, assignedResult] = await Promise.all([
-      loadReviewBoards({force: true}),
-      reviewsApi.assigned().catch(() => ({data: []})),
-    ]);
-    setBoards(boardList || []);
-    const mine = assignedResult.data || [];
-    setAssigned(mine);
-    // Счётчик в колесе берём отсюда: список уже запрошен, отдельный запрос за
-    // тем же числом был бы вторым источником правды.
-    setReviewsBadge(mine.length);
+    const list = await loadReviewBoards({force: true});
+    setBoards(list || []);
+    refreshReviewsBadge();
     setRefreshing(false);
   }, []);
 
@@ -50,23 +42,11 @@ export default function ReviewsScreen({navigation}) {
 
   if (!boards) return <LogoLoader />;
 
-  const openReview = id => navigation.navigate('Review', {reviewId: id});
-
-  // Список собирается заранее одним массивом: заголовки и карточки — разная
-  // разметка, а прокрутка должна быть непрерывной.
-  const items = [
-    {type: 'head', key: 'h-mine', title: 'Назначено мне', count: assigned.length},
-    ...assigned.map(review => ({type: 'review', key: `r-${review.id}`, review})),
-    ...(assigned.length ? [] : [{type: 'none', key: 'none', text: 'Ничего не назначено'}]),
-    {type: 'head', key: 'h-boards', title: 'Доски', count: boards.length},
-    ...boards.map(board => ({type: 'board', key: `b-${board.id}`, board})),
-  ];
-
   return (
     <FlatList
       style={styles.root}
-      data={items}
-      keyExtractor={item => item.key}
+      data={boards}
+      keyExtractor={item => item.id}
       contentContainerStyle={[styles.list, {paddingBottom: tabInset + 24}]}
       refreshControl={
         <RefreshControl
@@ -75,72 +55,71 @@ export default function ReviewsScreen({navigation}) {
           tintColor={c.textTertiary}
         />
       }
+      ListHeaderComponent={
+        <>
+          {/* Одна строка вместо списка: сколько на мне и куда нажать, чтобы
+              это увидеть. Ноль тоже показывается — «ничего не назначено» это
+              полезный ответ, а исчезающая строка сбивает с толку. */}
+          <Pressable
+            style={styles.mine}
+            onPress={() => navigation.navigate('ReviewsAssigned')}>
+            <View style={styles.mineIcon}>
+              <UserCheck size={19} color="#FFFFFF" />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.mineTitle}>Назначено мне</Text>
+              <Text style={styles.rowSub}>
+                {assignedCount > 0 ? `В работе: ${assignedCount}` : 'Ничего не назначено'}
+              </Text>
+            </View>
+            {assignedCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{assignedCount}</Text>
+              </View>
+            )}
+            <ChevronRight size={16} color={c.textTertiary} />
+          </Pressable>
+
+          <Text style={styles.section}>Доски</Text>
+        </>
+      }
       ListEmptyComponent={<Text style={styles.none}>Досок с отзывами нет</Text>}
       renderItem={({item}) => {
-        if (item.type === 'head') {
-          return (
-            <View style={styles.head}>
-              <Text style={styles.headText}>{item.title}</Text>
-              <Text style={styles.headCount}>{item.count}</Text>
-            </View>
-          );
-        }
-
-        if (item.type === 'none') {
-          return <Text style={styles.none}>{item.text}</Text>;
-        }
-
-        if (item.type === 'board') {
-          const {board} = item;
-          return (
-            <Pressable
-              style={styles.board}
-              onPress={() => navigation.navigate('ReviewBoard', {
-                boardId: board.id,
-                title: board.name,
-              })}>
+        const logo = item.logoUrl ? CONFIG.fileUrl(item.logoUrl) : null;
+        return (
+          <Pressable
+            style={styles.board}
+            onPress={() => navigation.navigate('ReviewBoard', {
+              boardId: item.id,
+              title: item.name,
+            })}>
+            {/* Знак на белом: логотипы нарисованы под светлую подложку и на
+                тёмной теме сливаются с фоном */}
+            {logo ? (
+              <Image source={{uri: logo}} style={styles.logo} resizeMode="contain" />
+            ) : (
               <View style={styles.boardIcon}>
                 <LayoutGrid size={19} color={c.primary} />
               </View>
-              <View style={styles.rowText}>
-                <Text style={styles.boardTitle}>{board.name}</Text>
-                <Text style={styles.rowSub}>
-                  Отзывов: {board.reviewCount}
-                  {board.avgRating ? ` · средняя ${board.avgRating}` : ''}
-                </Text>
+            )}
+            <View style={styles.rowText}>
+              <Text style={styles.boardTitle} numberOfLines={1}>{item.name}</Text>
+              <View style={styles.stats}>
+                <Text style={styles.rowSub}>{item.reviewCount || 0} отзывов</Text>
+                {Boolean(item.avgRating) && (
+                  <View style={styles.rating}>
+                    <Star size={11} color={c.warning} fill={c.warning} />
+                    <Text style={styles.ratingText}>{item.avgRating}</Text>
+                  </View>
+                )}
               </View>
-              {/* Число назначенного мне на этой доске: оно объясняет, зачем
-                  открывать именно её, раньше чем человек её откроет */}
-              {board.assignedToMeCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{board.assignedToMeCount}</Text>
-                </View>
-              )}
-              <ChevronRight size={16} color={c.textTertiary} />
-            </Pressable>
-          );
-        }
-
-        const {review} = item;
-        return (
-          <Pressable style={styles.card} onPress={() => openReview(review.id)}>
-            <View style={styles.cardHead}>
-              <Stars rating={review.rating} />
-              <Text style={styles.cardWhen}>{dateText(review.reviewDate)}</Text>
             </View>
-            <Text style={styles.cardName} numberOfLines={1}>{review.patientName}</Text>
-            <Text style={styles.cardText} numberOfLines={2}>{review.reviewText}</Text>
-            <View style={styles.cardFoot}>
-              <View style={[styles.chip, {backgroundColor: `${statusColor(review.status)}22`}]}>
-                <Text style={[styles.chipText, {color: statusColor(review.status)}]}>
-                  {statusLabel(review.status)}
-                </Text>
+            {item.assignedToMeCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{item.assignedToMeCount}</Text>
               </View>
-              <Text style={styles.cardMeta} numberOfLines={1}>
-                {[review.board?.name, stageAge(review.stageEnteredAt || review.updatedAt)]
-                  .filter(Boolean).join(' · ')}
-              </Text>
-            </View>
+            )}
+            <ChevronRight size={16} color={c.textTertiary} />
           </Pressable>
         );
       }}
@@ -151,32 +130,31 @@ export default function ReviewsScreen({navigation}) {
 const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
   list: {padding: 16},
-  head: {
+  mine: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    marginBottom: 8,
-  },
-  headText: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
-  headCount: {fontFamily: font.medium, fontSize: 13, color: c.textTertiary},
-
-  card: {
+    gap: 12,
     backgroundColor: c.bgPrimary,
     borderRadius: radius.lg,
-    padding: 14,
-    marginBottom: 8,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
-  cardHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  cardWhen: {fontFamily: font.regular, fontSize: 11, color: c.textTertiary},
-  cardName: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
-  cardText: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary, lineHeight: 18},
-  cardFoot: {flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2},
-  cardMeta: {flex: 1, fontFamily: font.regular, fontSize: 11, color: c.textTertiary},
-  chip: {paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10},
-  chipText: {fontFamily: font.semiBold, fontSize: 11},
-
+  mineIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: c.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mineTitle: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
+  section: {
+    fontFamily: font.semiBold,
+    fontSize: 15,
+    color: c.textPrimary,
+    marginTop: 22,
+    marginBottom: 8,
+  },
   board: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -187,6 +165,7 @@ const makeStyles = c => StyleSheet.create({
     paddingVertical: 13,
     marginBottom: 8,
   },
+  logo: {width: 38, height: 38, borderRadius: radius.md, backgroundColor: '#FFFFFF'},
   boardIcon: {
     width: 38,
     height: 38,
@@ -196,8 +175,11 @@ const makeStyles = c => StyleSheet.create({
     justifyContent: 'center',
   },
   boardTitle: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
+  stats: {flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2},
+  rating: {flexDirection: 'row', alignItems: 'center', gap: 3},
+  ratingText: {fontFamily: font.medium, fontSize: 12, color: c.textSecondary},
   rowText: {flex: 1},
-  rowSub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
+  rowSub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary},
   badge: {
     minWidth: 22,
     paddingHorizontal: 7,
@@ -213,6 +195,6 @@ const makeStyles = c => StyleSheet.create({
     fontSize: 13,
     color: c.textTertiary,
     textAlign: 'center',
-    paddingVertical: 20,
+    paddingVertical: 24,
   },
 });

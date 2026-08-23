@@ -12,6 +12,7 @@ const {
   ReviewPlatform,
   ReviewHistory,
   ReviewSyncConfig,
+  MedCenter,
   User
 } = require('../models');
 const reviewSyncService = require('../services/reviewSync');
@@ -375,6 +376,30 @@ router.get('/boards', authenticate, async (req, res) => {
     const assignedCountMap = {};
     assignedRows.forEach(r => { assignedCountMap[r.boardId] = parseInt(r.count); });
 
+    /**
+     * Знак медцентра для доски.
+     *
+     * Своего поля у доски нет: доска и есть медцентр, её так и называют при
+     * создании. Поэтому сопоставляем по названию — с displayName и name, без
+     * учёта регистра. Не нашли — доска просто останется без знака, это не
+     * ошибка: доску могли назвать и «Негатив 2026».
+     *
+     * Правильнее была бы ссылка на медцентр в модели доски, но это миграция и
+     * поле в форме создания; пока досок пять и названы они точно, сопоставление
+     * по имени отвечает на вопрос не хуже.
+     */
+    const medCenters = await MedCenter.findAll({
+      where: { isActive: true },
+      attributes: ['id', 'name', 'displayName', 'logoUrl', 'logoSquareUrl', 'color']
+    });
+    const logoByName = new Map();
+    for (const mc of medCenters) {
+      const logo = mc.logoSquareUrl || mc.logoUrl || null;
+      for (const title of [mc.name, mc.displayName]) {
+        if (title) logoByName.set(String(title).trim().toLowerCase(), { logo, color: mc.color });
+      }
+    }
+
     // Добавляем статистику для каждой доски (считаем ВСЕ отзывы, включая архивные)
     const boards = await Promise.all(
       Array.from(boardsMap.values()).map(async (board) => {
@@ -386,13 +411,17 @@ router.get('/boards', authenticate, async (req, res) => {
           attributes: [[Sequelize.fn('AVG', Sequelize.col('rating')), 'avgRating']]
         });
 
+        const brand = logoByName.get(String(board.name || '').trim().toLowerCase());
+
         return {
           ...board,
           reviewCount,
           avgRating: avgRating?.dataValues?.avgRating
             ? parseFloat(avgRating.dataValues.avgRating).toFixed(1)
             : null,
-          assignedToMeCount: assignedCountMap[board.id] || 0
+          assignedToMeCount: assignedCountMap[board.id] || 0,
+          logoUrl: brand?.logo || null,
+          color: brand?.color || null
         };
       })
     );

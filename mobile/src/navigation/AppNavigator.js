@@ -36,6 +36,9 @@ import WarehouseAssetScreen from '../screens/Warehouse/AssetScreen';
 import WarehouseAssetEditScreen from '../screens/Warehouse/AssetEditScreen';
 import WarehouseMaterialEditScreen from '../screens/Warehouse/MaterialEditScreen';
 import WarehouseItemCreateScreen from '../screens/Warehouse/ItemCreateScreen';
+import WarehouseAssetsScreen from '../screens/Warehouse/AssetsScreen';
+import WarehouseStockScreen from '../screens/Warehouse/StockScreen';
+import WarehouseOperationsScreen from '../screens/Warehouse/OperationsScreen';
 import WarehouseMailingsScreen from '../screens/Warehouse/MailingsScreen';
 import WarehouseRoomScreen from '../screens/Warehouse/RoomScreen';
 import WarehouseInventoryListScreen from '../screens/Warehouse/InventoryListScreen';
@@ -47,6 +50,7 @@ import WarehouseLabelPrintScreen from '../screens/Warehouse/LabelPrintScreen';
 import WarehousePrinterScreen from '../screens/Warehouse/PrinterSettingsScreen';
 import ReviewsScreen from '../screens/Reviews/ReviewsScreen';
 import ReviewBoardScreen from '../screens/Reviews/ReviewBoardScreen';
+import ReviewsAssignedScreen from '../screens/Reviews/ReviewsAssignedScreen';
 import ReviewScreen from '../screens/Reviews/ReviewScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
@@ -358,6 +362,24 @@ function WarehouseStack() {
         component={WarehouseMailingsScreen}
         options={{title: 'Отчёты и рассылки'}}
       />
+      {/* Разделы «Оборудование», «Материалы» и «Операции» — те же, что в вебе.
+          Первые два отвечают на вопрос «где у нас такое», третий ведёт журнал
+          движений и позволяет провести выдачу, приём, перемещение и списание. */}
+      <Stack.Screen
+        name="WarehouseAssets"
+        component={WarehouseAssetsScreen}
+        options={{title: 'Оборудование'}}
+      />
+      <Stack.Screen
+        name="WarehouseStock"
+        component={WarehouseStockScreen}
+        options={{title: 'Материалы'}}
+      />
+      <Stack.Screen
+        name="WarehouseOperations"
+        component={WarehouseOperationsScreen}
+        options={{title: 'Операции'}}
+      />
       <Stack.Screen
         name="WarehouseRoom"
         component={WarehouseRoomScreen}
@@ -432,6 +454,11 @@ function ReviewsStack() {
         name="ReviewsHome"
         component={ReviewsScreen}
         options={{title: 'Отзывы'}}
+      />
+      <Stack.Screen
+        name="ReviewsAssigned"
+        component={ReviewsAssignedScreen}
+        options={{title: 'Назначено мне'}}
       />
       {/* Заголовок — название доски: оно приходит из списка, поэтому шапка
           подписана сразу, ещё до того как доска догрузится */}

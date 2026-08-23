@@ -325,6 +325,8 @@ export const warehouse = {
   updateNomenclature: (id, data) => api.put(`/warehouse/catalog/nomenclature/${id}`, data),
   categories: () => api.get('/warehouse/catalog/categories'),
   nomenclature: params => api.get('/warehouse/catalog/nomenclature', {params}),
+  stock: params => api.get('/warehouse/catalog/stock', {params}),
+  documents: params => api.get('/warehouse/operations/documents', {params}),
   contractors: () => api.get('/warehouse/catalog/contractors'),
 
   // Инвентаризация
