@@ -271,6 +271,9 @@ export const chat = {
   search: (query) => api.get('/chat/search', { params: { q: query } }),
   getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
+  // Токен доступа к вложениям: подставляется в ?t= к ссылкам на файлы,
+  // потому что заголовок Authorization в <img src> не выставить
+  getFileToken: () => api.get('/chat/file-token'),
   getCommands: (chatId) => api.get(`/chat/${chatId}/commands`),
   getMentionTargets: (chatId) => api.get(`/chat/${chatId}/mention-targets`),
   createPoll: (chatId, data) => api.post(`/chat/${chatId}/polls`, data),
@@ -321,6 +324,12 @@ export const chat = {
   },
   editMessage: (chatId, messageId, content) => api.put(`/chat/${chatId}/messages/${messageId}`, { content }),
   deleteMessage: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}`),
+  getPinned: (chatId) => api.get(`/chat/${chatId}/pinned`),
+  // Галерея чата: kind = media | files | voice | links
+  getChatMedia: (chatId, kind, params) => api.get(`/chat/${chatId}/media`, { params: { kind, ...params } }),
+  pinMessage: (chatId, messageId, pin) => api.post(`/chat/${chatId}/messages/${messageId}/pin`, { pin }),
+  // Групповое удаление. scope: 'me' — спрятать у себя, 'all' — стереть у всех
+  deleteMessages: (chatId, messageIds, scope) => api.post(`/chat/${chatId}/messages/delete`, { messageIds, scope }),
   hideChat: (chatId, hidden = true) => api.patch(`/chat/${chatId}/hide`, { hidden }),
   muteChat: (chatId, muted) => api.patch(`/chat/${chatId}/mute`, { muted }),
   pinChat: (chatId, pinned) => api.patch(`/chat/${chatId}/pin`, { pinned }),

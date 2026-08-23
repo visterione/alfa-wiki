@@ -1,58 +1,74 @@
 /**
- * Всё оборудование сети — список с поиском.
+ * Всё оборудование сети — карточками, с теми же данными, что в таблице веба.
  *
- * До сих пор до карточки прибора можно было добраться только через кабинет или
- * сканированием этикетки. Оба пути предполагают, что человек знает, где вещь
- * стоит, — а спрашивают обычно наоборот: «где у нас второй тонометр». Поиск по
- * наименованию, инвентарному и серийному номеру считает сервер, поэтому ищется
- * по всей сети, а не по загруженной странице.
+ * ── Почему карточки, а не строки ─────────────────────────────────────────────
  *
- * Зона ответственности учитывается там же: человек без своих кабинетов сети не
- * увидит, и это не недоделка мобилки, а то же правило, что в вебе.
+ * В вебе это таблица на восемь колонок: инвентарный номер, наименование,
+ * серийный, размещение, МОЛ, статус, следующее ТО, стоимость. Ужать восемь
+ * колонок в ширину телефона нельзя, а выбросить половину — значит показать не
+ * тот же список. Поэтому те же поля разложены карточкой в три яруса: чем
+ * является, где стоит, в каком состоянии.
+ *
+ * ── Фильтры в листе, а не полосой ────────────────────────────────────────────
+ *
+ * Раньше здесь стоял ряд «чипов» по статусу — и статусом отбор не
+ * заканчивается: в вебе есть ещё медцентр, отделение и «ТО на подходе». Ряд из
+ * восьми кнопок съел бы верх экрана, поэтому отбор живёт в листе, а на экране
+ * остаётся одна кнопка с точкой, когда фильтр включён.
  */
-import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {View, Text, FlatList, TextInput, Pressable, StyleSheet, ActivityIndicator} from 'react-native';
-import {Search, ChevronRight} from 'lucide-react-native';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {
+  View, Text, FlatList, TextInput, Pressable, StyleSheet, ActivityIndicator,
+} from 'react-native';
+import {Search, SlidersHorizontal, Wrench, User as UserIcon, MapPin} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import BottomSheet from '../../components/BottomSheet';
+import {loadLocationTree, useWarehouseAccess} from '../../store/warehouseStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {ASSET_STATUS, statusColor, roomText} from './warehouseMeta';
+import {ASSET_STATUS, statusColor, moneyText, dateText, roomText} from './warehouseMeta';
 
 const PAGE = 50;
-
-// Статусы, по которым отбирают чаще всего. Полный список есть в карточке, а
-// здесь фильтр — это способ быстро выделить проблемное, а не справочник.
-const FILTERS = [
-  {key: '', label: 'Все'},
-  {key: 'in_use', label: 'В работе'},
-  {key: 'repair', label: 'В ремонте'},
-  {key: 'maintenance', label: 'На ТО'},
-  {key: 'storage', label: 'На хранении'},
-];
+const EMPTY = {status: '', medCenterId: '', departmentId: '', maintenanceDue: false};
 
 export default function WarehouseAssetsScreen({navigation}) {
   const styles = useThemedStyles(makeStyles);
   const c = useTheme();
   const tabInset = useTabBarInset();
+  const access = useWarehouseAccess();
+  const canSeeCosts = Boolean(access?.capabilities?.canSeeCosts);
+
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState('');
+  const [filters, setFilters] = useState(EMPTY);
+  const [sheet, setSheet] = useState(false);
+  const [tree, setTree] = useState(null);
   const [items, setItems] = useState(null);
   const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-  // Каждый ответ помечается своим номером: при быстром наборе ответы приходят
-  // не в том порядке, в каком ушли, и поздний ответ на старый запрос затирал бы
+  // Каждый ответ помечается своим номером: при быстром наборе ответы приходят не
+  // в том порядке, в каком ушли, и поздний ответ на старый запрос затирал бы
   // свежий результат.
   const request = useRef(0);
+
+  useEffect(() => { loadLocationTree().then(setTree); }, []);
 
   const load = useCallback((page = 1) => {
     const mine = request.current + 1;
     request.current = mine;
     if (page > 1) setLoadingMore(true);
 
-    return warehouseApi.assets({q: q.trim(), status, page, limit: PAGE})
+    return warehouseApi.assets({
+      q: q.trim() || undefined,
+      status: filters.status || undefined,
+      medCenterId: filters.medCenterId || undefined,
+      departmentId: filters.departmentId || undefined,
+      maintenanceDue: filters.maintenanceDue ? 'true' : undefined,
+      page,
+      limit: PAGE,
+    })
       .then(({data}) => {
         if (request.current !== mine) return;
         setTotal(data.total || 0);
@@ -60,7 +76,7 @@ export default function WarehouseAssetsScreen({navigation}) {
       })
       .catch(() => request.current === mine && setItems([]))
       .finally(() => request.current === mine && setLoadingMore(false));
-  }, [q, status]);
+  }, [q, filters]);
 
   // Поиск с задержкой: запрос на каждую букву — это запрос на каждую букву
   useEffect(() => {
@@ -68,31 +84,36 @@ export default function WarehouseAssetsScreen({navigation}) {
     return () => clearTimeout(timer);
   }, [load, q]);
 
+  const active = filters.status || filters.medCenterId
+    || filters.departmentId || filters.maintenanceDue;
+
+  const departments = useMemo(() => {
+    const all = tree?.departments || [];
+    return filters.medCenterId
+      ? all.filter(d => d.medCenterId === filters.medCenterId)
+      : all;
+  }, [tree, filters.medCenterId]);
+
   return (
     <View style={styles.root}>
-      <View style={styles.search}>
-        <Search size={15} color={c.textTertiary} />
-        <TextInput
-          style={styles.searchInput}
-          value={q}
-          onChangeText={setQ}
-          placeholder="Наименование, инв. или серийный номер"
-          placeholderTextColor={c.textTertiary}
-          autoCorrect={false}
-        />
-      </View>
-
-      <View style={styles.filters}>
-        {FILTERS.map(filter => (
-          <Pressable
-            key={filter.key || 'all'}
-            style={[styles.chip, status === filter.key && styles.chipOn]}
-            onPress={() => setStatus(filter.key)}>
-            <Text style={[styles.chipText, status === filter.key && styles.chipTextOn]}>
-              {filter.label}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={styles.tools}>
+        <View style={styles.search}>
+          <Search size={15} color={c.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            value={q}
+            onChangeText={setQ}
+            placeholder="Наименование, инв. или серийный номер"
+            placeholderTextColor={c.textTertiary}
+            autoCorrect={false}
+          />
+        </View>
+        <Pressable
+          style={[styles.filterBtn, active && styles.filterBtnOn]}
+          onPress={() => setSheet(true)}
+          accessibilityLabel="Отбор">
+          <SlidersHorizontal size={18} color={active ? '#FFFFFF' : c.textSecondary} />
+        </Pressable>
       </View>
 
       {!items ? <LogoLoader /> : (
@@ -108,39 +129,155 @@ export default function WarehouseAssetsScreen({navigation}) {
             if (loadingMore || items.length >= total) return;
             load(Math.floor(items.length / PAGE) + 1);
           }}
-          ListHeaderComponent={
-            <Text style={styles.total}>
-              Найдено: {total}
-            </Text>
-          }
+          ListHeaderComponent={<Text style={styles.total}>Найдено: {total}</Text>}
           ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
           ListFooterComponent={loadingMore
             ? <ActivityIndicator size="small" color={c.textTertiary} style={styles.more} />
             : null}
           renderItem={({item}) => (
             <Pressable
-              style={styles.row}
+              style={styles.card}
               onPress={() => navigation.navigate('WarehouseAsset', {assetId: item.id})}>
-              <View style={[styles.dot, {backgroundColor: statusColor(c, item.status)}]} />
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle} numberOfLines={2}>{item.name}</Text>
-                <Text style={styles.rowSub} numberOfLines={1}>
-                  {item.inventoryNumber} · {ASSET_STATUS[item.status] || item.status}
-                </Text>
-                <Text style={styles.rowWhere} numberOfLines={1}>{roomText(item.room)}</Text>
+              <View style={styles.cardHead}>
+                <Text style={styles.number}>{item.inventoryNumber}</Text>
+                <View style={[styles.chip, {backgroundColor: `${statusColor(c, item.status)}22`}]}>
+                  <Text style={[styles.chipText, {color: statusColor(c, item.status)}]}>
+                    {ASSET_STATUS[item.status] || item.status}
+                  </Text>
+                </View>
               </View>
-              <ChevronRight size={16} color={c.textTertiary} />
+
+              <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
+              {Boolean(item.model || item.serialNumber) && (
+                <Text style={styles.sub} numberOfLines={1}>
+                  {[item.model, item.serialNumber && `S/N ${item.serialNumber}`]
+                    .filter(Boolean).join(' · ')}
+                </Text>
+              )}
+
+              <View style={styles.meta}>
+                <MapPin size={11} color={c.textTertiary} />
+                <Text style={styles.metaText} numberOfLines={1}>{roomText(item.room)}</Text>
+              </View>
+              {Boolean(item.responsible?.displayName) && (
+                <View style={styles.meta}>
+                  <UserIcon size={11} color={c.textTertiary} />
+                  <Text style={styles.metaText} numberOfLines={1}>
+                    {item.responsible.displayName}
+                  </Text>
+                </View>
+              )}
+              {Boolean(item.nextMaintenanceDate) && (
+                <View style={styles.meta}>
+                  <Wrench size={11} color={c.textTertiary} />
+                  <Text style={styles.metaText}>
+                    След. ТО {dateText(item.nextMaintenanceDate)}
+                  </Text>
+                </View>
+              )}
+              {/* Стоимость только тем, кому её видно: право проверяет сервер, и
+                  прятать блок по догадке клиента нельзя — но и показывать
+                  пустое место, когда суммы не пришли, незачем */}
+              {canSeeCosts && Boolean(Number(item.initialCost)) && (
+                <Text style={styles.cost}>{moneyText(item.initialCost)}</Text>
+              )}
             </Pressable>
           )}
         />
       )}
+
+      <BottomSheet visible={sheet} title="Отбор" onClose={() => setSheet(false)}>
+        <View style={styles.sheet}>
+          <Text style={styles.sheetLabel}>Статус</Text>
+          <View style={styles.options}>
+            <Option
+              styles={styles}
+              label="Любой"
+              on={!filters.status}
+              onPress={() => setFilters(f => ({...f, status: ''}))}
+            />
+            {Object.entries(ASSET_STATUS).map(([key, label]) => (
+              <Option
+                key={key}
+                styles={styles}
+                label={label}
+                on={filters.status === key}
+                onPress={() => setFilters(f => ({...f, status: key}))}
+              />
+            ))}
+          </View>
+
+          <Text style={styles.sheetLabel}>Медцентр</Text>
+          <View style={styles.options}>
+            <Option
+              styles={styles}
+              label="Все"
+              on={!filters.medCenterId}
+              onPress={() => setFilters(f => ({...f, medCenterId: '', departmentId: ''}))}
+            />
+            {(tree?.medCenters || []).map(mc => (
+              <Option
+                key={mc.id}
+                styles={styles}
+                label={mc.name}
+                on={filters.medCenterId === mc.id}
+                onPress={() => setFilters(f => ({...f, medCenterId: mc.id, departmentId: ''}))}
+              />
+            ))}
+          </View>
+
+          {departments.length > 0 && (
+            <>
+              <Text style={styles.sheetLabel}>Отделение</Text>
+              <View style={styles.options}>
+                <Option
+                  styles={styles}
+                  label="Все"
+                  on={!filters.departmentId}
+                  onPress={() => setFilters(f => ({...f, departmentId: ''}))}
+                />
+                {departments.map(dep => (
+                  <Option
+                    key={dep.id}
+                    styles={styles}
+                    label={dep.name}
+                    on={filters.departmentId === dep.id}
+                    onPress={() => setFilters(f => ({...f, departmentId: dep.id}))}
+                  />
+                ))}
+              </View>
+            </>
+          )}
+
+          <Option
+            styles={styles}
+            label="Только с ТО на подходе"
+            on={filters.maintenanceDue}
+            onPress={() => setFilters(f => ({...f, maintenanceDue: !f.maintenanceDue}))}
+          />
+
+          <Pressable style={styles.reset} onPress={() => setFilters(EMPTY)}>
+            <Text style={styles.resetText}>Сбросить отбор</Text>
+          </Pressable>
+        </View>
+      </BottomSheet>
     </View>
+  );
+}
+
+function Option({styles, label, on, onPress}) {
+  return (
+    <Pressable style={[styles.option, on && styles.optionOn]} onPress={onPress}>
+      <Text style={[styles.optionText, on && styles.optionTextOn]}>{label}</Text>
+    </Pressable>
   );
 }
 
 const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
+  tools: {flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, paddingBottom: 10},
   search: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -148,38 +285,55 @@ const makeStyles = c => StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: 12,
     height: 42,
-    margin: 16,
-    marginBottom: 10,
   },
   searchInput: {flex: 1, color: c.textPrimary, fontFamily: font.regular, fontSize: 14},
-  filters: {flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingHorizontal: 16, marginBottom: 10},
-  chip: {
-    paddingHorizontal: 11,
-    height: 30,
-    borderRadius: 15,
+  filterBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.md,
     backgroundColor: c.bgPrimary,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  chipOn: {backgroundColor: c.primary},
-  chipText: {fontFamily: font.medium, fontSize: 12, color: c.textSecondary},
-  chipTextOn: {color: '#FFFFFF'},
+  filterBtnOn: {backgroundColor: c.primary},
   list: {paddingHorizontal: 16},
   total: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, marginBottom: 8},
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+
+  card: {
     backgroundColor: c.bgPrimary,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    marginBottom: 6,
+    borderRadius: radius.lg,
+    padding: 14,
+    marginBottom: 8,
+    gap: 4,
   },
-  dot: {width: 8, height: 8, borderRadius: 4},
-  rowText: {flex: 1},
-  rowTitle: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary, lineHeight: 19},
-  rowSub: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginTop: 2},
-  rowWhere: {fontFamily: font.regular, fontSize: 11, color: c.textTertiary, marginTop: 1},
+  cardHead: {flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2},
+  // Инвентарный номер — то, по чему прибор ищут и сверяют с этикеткой, поэтому
+  // он стоит первым и набран крупнее наименования
+  number: {flex: 1, fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
+  chip: {paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10},
+  chipText: {fontFamily: font.semiBold, fontSize: 11},
+  name: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary, lineHeight: 19},
+  sub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary},
+  meta: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2},
+  metaText: {flex: 1, fontFamily: font.regular, fontSize: 11, color: c.textTertiary},
+  cost: {fontFamily: font.semiBold, fontSize: 13, color: c.textSecondary, marginTop: 4},
+
+  sheet: {padding: 16, gap: 8},
+  sheetLabel: {fontFamily: font.medium, fontSize: 12, color: c.textSecondary, marginTop: 6},
+  options: {flexDirection: 'row', flexWrap: 'wrap', gap: 7},
+  option: {
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: c.bgSecondary,
+    justifyContent: 'center',
+  },
+  optionOn: {backgroundColor: c.primary},
+  optionText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary},
+  optionTextOn: {color: '#FFFFFF'},
+  reset: {alignItems: 'center', paddingVertical: 14, marginTop: 6},
+  resetText: {fontFamily: font.medium, fontSize: 14, color: c.error},
+
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, textAlign: 'center', marginTop: 30},
   more: {marginVertical: 16},
 });

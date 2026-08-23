@@ -392,7 +392,12 @@ const ChatMember = sequelize.define('ChatMember', {
   isHidden: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат скрыт у пользователя' },
   isPinned: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат закреплён у пользователя' },
   pinnedOrder: { type: DataTypes.INTEGER, allowNull: true, comment: 'Порядок среди закреплённых чатов' },
-  isReadOnly: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Участнику запрещено отправлять сообщения' }
+  isReadOnly: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Участнику запрещено отправлять сообщения' },
+  // Денормализованный счётчик (ver. 7.30). Раньше на каждый показ списка чатов
+  // делался COUNT по messages для каждого чата — самый дорогой запрос портала,
+  // растущий вместе с перепиской. Теперь значение меняется на месте, а честный
+  // пересчёт остался ремонтом: unreadService.recountChat().
+  unreadCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }
 }, {
   tableName: 'chat_members',
   timestamps: true,
@@ -425,11 +430,60 @@ const Message = sequelize.define('Message', {
   isEdited: { type: DataTypes.BOOLEAN, defaultValue: false },
   replyToId: { type: DataTypes.UUID },
   forwardedFrom: { type: DataTypes.JSONB, allowNull: true, defaultValue: null },
-  telegramMsgId: { type: DataTypes.BIGINT, allowNull: true, comment: 'ID обновления в таблице bot_updates (для Telegram Bot API совместимости)' }
+  telegramMsgId: { type: DataTypes.BIGINT, allowNull: true, comment: 'ID обновления в таблице bot_updates (для Telegram Bot API совместимости)' },
+  // Закрепление — свойство самого сообщения (ver. 7.33). pinnedAt хранит и
+  // факт, и порядок: в шапке чата показывается последнее закреплённое.
+  pinnedAt: { type: DataTypes.DATE, allowNull: true },
+  pinnedBy: { type: DataTypes.UUID, allowNull: true }
 }, { tableName: 'messages', timestamps: true });
+
+// Счётчик непрочитанных наращивается здесь, а не в маршрутах: сообщения
+// создаются в четырнадцати местах — обычная отправка, пересылка, опросы,
+// системные записи о составе группы, боты, «Ассистент». Разложить инкремент
+// по всем этим местам значило бы однажды забыть про новое.
+Message.addHook('afterCreate', async (message, options) => {
+  await sequelize.query(`
+    UPDATE chat_members
+    SET "unreadCount" = "unreadCount" + 1
+    WHERE "chatId" = :chatId AND "userId" <> :senderId
+  `, {
+    replacements: { chatId: message.chatId, senderId: message.senderId },
+    transaction: options?.transaction
+  });
+});
 
 // === MESSAGE REACTION MODEL ===
 const MessageReaction = require('./messageReaction')(sequelize, DataTypes);
+
+// === MESSAGE DELETION MODEL ===
+// «Удалено у себя»: сообщение остаётся у всех остальных, но из истории того,
+// кто его удалил, пропадает. Пара (сообщение, пользователь) — первичный ключ,
+// отдельный id таблице такого объёма только раздувал бы индекс.
+const MessageDeletion = sequelize.define('MessageDeletion', {
+  messageId: { type: DataTypes.UUID, allowNull: false, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false, primaryKey: true }
+}, {
+  tableName: 'message_deletions',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [{ fields: ['userId'] }]
+});
+
+// === CHAT FILE MODEL ===
+// Реестр вложений чатов: по имени файла отвечает, в какие чаты его отправляли.
+// Нужен раздаче файлов, чтобы пускать к вложению только участников чата —
+// подробности в services/fileAccess.js и migrations/ver. 7.27.
+const ChatFile = sequelize.define('ChatFile', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  filename: { type: DataTypes.STRING(255), allowNull: false },
+  chatId: { type: DataTypes.UUID, allowNull: true },
+  messageId: { type: DataTypes.UUID, allowNull: true },
+  uploadedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'chat_files',
+  timestamps: true,
+  indexes: [{ fields: ['filename'] }, { fields: ['chatId'] }]
+});
 
 // === ACCREDITATION MODEL ===
 const Accreditation = sequelize.define('Accreditation', {
@@ -2256,6 +2310,9 @@ Message.belongsTo(Message, { foreignKey: 'replyToId', as: 'replyTo' });
 
 // Message & MessageReaction
 Message.hasMany(MessageReaction, { foreignKey: 'messageId', as: 'reactions', onDelete: 'CASCADE' });
+MessageDeletion.belongsTo(Message, { foreignKey: 'messageId', as: 'message' });
+ChatFile.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
+ChatFile.belongsTo(Message, { foreignKey: 'messageId', as: 'message' });
 MessageReaction.belongsTo(Message, { foreignKey: 'messageId', as: 'message' });
 MessageReaction.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(MessageReaction, { foreignKey: 'userId', as: 'messageReactions' });
@@ -4033,6 +4090,8 @@ module.exports = {
   ChatMember,
   Message,
   MessageReaction,
+  ChatFile,
+  MessageDeletion,
   Accreditation,
   AccreditationFile,
   TelegramSubscriber,

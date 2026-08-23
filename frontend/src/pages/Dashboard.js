@@ -5,7 +5,8 @@ import {
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
   Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic,
-  Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2, BarChart3, PlusCircle
+  Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2, BarChart3, PlusCircle,
+  CheckCircle, Copy, Clock, AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -94,7 +95,16 @@ export default function Dashboard() {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [reactionMenu, setReactionMenu] = useState(null);
   const [reactionDetailsModal, setReactionDetailsModal] = useState(null);
-  const [forwardMode, setForwardMode] = useState(false);
+  // Токен доступа к вложениям чата. Живёт сутки, обновляется по таймеру:
+  // без него сервер отдаёт по ссылке на файл 401 (см. backend/services/fileAccess.js)
+  const [fileToken, setFileToken] = useState(null);
+  // Режим выделения. Раньше он назывался forwardMode и умел ровно одно —
+  // набрать сообщения для пересылки. Теперь это общий режим: из него можно и
+  // переслать, и скопировать, и удалить пачкой (ver. 7.29).
+  const [selectionMode, setSelectionMode] = useState(false);
+  // Якорь для выделения диапазона по Shift+клику — id последнего отмеченного
+  const [selectionAnchor, setSelectionAnchor] = useState(null);
+  const [deleteDialog, setDeleteDialog] = useState(null);
   const [selectedMessages, setSelectedMessages] = useState([]);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [forwardSearchQuery, setForwardSearchQuery] = useState('');
@@ -112,6 +122,21 @@ export default function Dashboard() {
   const [runningAction, setRunningAction] = useState(null);
 
   const messagesEndRef = useRef(null);
+  // Лента истории: до ver. 7.30 веб грузил последние 50 сообщений и на этом
+  // всё — до более старых нельзя было добраться вообще никак, хотя в мобилке
+  // подгрузка была с самого начала.
+  const messagesScrollRef = useRef(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  // Закреплённые сообщения чата (ver. 7.33). В шапке показывается одно —
+  // pinnedIndex говорит какое; по нажатию лента листает их по кругу.
+  const [pinnedMessages, setPinnedMessages] = useState([]);
+  const [pinnedIndex, setPinnedIndex] = useState(0);
+  // Галерея чата (ver. 7.35). Данные берутся с сервера, а не из загруженной
+  // ленты: раньше «медиа чата» показывало только то, что успело подгрузиться.
+  const [mediaPanel, setMediaPanel] = useState(null); // 'media' | 'files' | 'voice' | 'links'
+  const [mediaItems, setMediaItems] = useState([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(true);
   const activeChatRef = useRef(null);
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
@@ -168,6 +193,25 @@ export default function Dashboard() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [showChatMenu]);
 
+  // Превью сообщения для строки чата — тот же текст, что кладёт сервер в
+  // chats.lastMessage. Нужен, чтобы обновлять список без перезагрузки с сервера.
+  const pluralMessages = (n) => {
+    const tail = n % 100 >= 11 && n % 100 <= 14 ? 0 : n % 10;
+    if (tail === 1) return 'сообщение';
+    if (tail >= 2 && tail <= 4) return 'сообщения';
+    return 'сообщений';
+  };
+
+  const messagePreview = (msg) => {
+    const text = (msg.content || '').trim();
+    if (text) return text;
+    const atts = msg.attachments || [];
+    if (atts.length === 0) return '';
+    if (atts.length === 1 && atts[0]?.kind === 'voice') return '🎤 Голосовое сообщение';
+    const suffix = atts.length > 1 ? ` (${atts.length})` : '';
+    return atts.every(a => a.mimeType?.startsWith('image/')) ? `📷 Фото${suffix}` : `📎 Файл${suffix}`;
+  };
+
   const loadChats = useCallback(async () => {
     try {
       const { data } = await chat.list();
@@ -180,19 +224,8 @@ export default function Dashboard() {
   const loadMessages = useCallback(async (chatId, shouldScroll = false) => {
     try {
       const { data } = await chat.getMessages(chatId);
-
-      // ✅ ВРЕМЕННАЯ ОТЛАДКА - потом удали
-      console.log('=== ВСЕ СООБЩЕНИЯ ===');
-      data.forEach(msg => {
-        console.log({
-          id: msg.id,
-          type: msg.type,
-          content: msg.content.substring(0, 50),
-          senderId: msg.senderId
-        });
-      });
-
       setMessages(data);
+      setHasOlderMessages(data.length >= 50);
       if (shouldScroll) {
         setTimeout(scrollToBottom, 100);
       }
@@ -201,6 +234,92 @@ export default function Dashboard() {
       console.error('Failed to load messages:', e);
     }
   }, []);
+
+  // Подгрузка более старых сообщений. Курсор — пара (createdAt, id) самого
+  // старого загруженного: одной метки времени мало, сообщения одной
+  // миллисекунды на стыке страниц терялись.
+  const loadOlderMessages = useCallback(async () => {
+    const container = messagesScrollRef.current;
+    const oldest = messages[0];
+    if (!activeChat || !oldest || loadingOlder || !hasOlderMessages) return;
+
+    setLoadingOlder(true);
+    try {
+      const { data } = await chat.getMessages(activeChat.id, {
+        limit: 50,
+        before: oldest.createdAt,
+        beforeId: oldest.id
+      });
+      if (data.length < 50) setHasOlderMessages(false);
+      if (data.length === 0) return;
+
+      // Высоту запоминаем до вставки: без поправки лента прыгает на добавленную
+      // высоту, и человек оказывается там, откуда только что уехал
+      const previousHeight = container?.scrollHeight || 0;
+      setMessages(prev => {
+        const known = new Set(prev.map(m => m.id));
+        return [...data.filter(m => !known.has(m.id)), ...prev];
+      });
+      requestAnimationFrame(() => {
+        if (container) container.scrollTop += container.scrollHeight - previousHeight;
+      });
+    } catch (e) {
+      console.error('Failed to load older messages:', e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [activeChat, messages, loadingOlder, hasOlderMessages]);
+
+  const handleMessagesScroll = (e) => {
+    if (e.target.scrollTop < 120) loadOlderMessages();
+  };
+
+  const MEDIA_TABS = [
+    { key: 'media', label: 'Медиа' },
+    { key: 'files', label: 'Файлы' },
+    { key: 'voice', label: 'Голосовые' },
+    { key: 'links', label: 'Ссылки' },
+  ];
+
+  const openMediaPanel = async (kind) => {
+    setMediaPanel(kind);
+    setMediaLoading(true);
+    setMediaItems([]);
+    try {
+      const { data } = await chat.getChatMedia(activeChat.id, kind, { limit: 100 });
+      setMediaItems(data);
+    } catch {
+      toast.error('Не удалось загрузить');
+    } finally {
+      setMediaLoading(false);
+    }
+  };
+
+  const loadPinned = useCallback(async (chatId) => {
+    try {
+      const { data } = await chat.getPinned(chatId);
+      setPinnedMessages(data);
+      setPinnedIndex(0);
+    } catch { setPinnedMessages([]); }
+  }, []);
+
+  // Закрепить может не каждый: в группе — админ, в личной переписке — оба.
+  // Те же правила на сервере, в services/messagePermissions.js.
+  const canPinHere = () => {
+    if (!activeChat) return false;
+    if (user.isAdmin) return true;
+    if (activeChat.type === 'private') return true;
+    return isGroupAdmin;
+  };
+
+  const togglePin = async (msg, pin) => {
+    try {
+      await chat.pinMessage(activeChat.id, msg.id, pin);
+      toast.success(pin ? 'Сообщение закреплено' : 'Сообщение откреплено');
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось изменить закрепление');
+    }
+  };
 
   const refreshActiveChat = async () => {
     if (!activeChat) return;
@@ -212,6 +331,23 @@ export default function Dashboard() {
   };
 
   useEffect(() => { loadChats(); loadUsers(); loadBots(); }, [loadChats]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const { data } = await chat.getFileToken();
+        if (!cancelled) setFileToken(data.token);
+      } catch {
+        // Молча: без токена не покажутся вложения, но сам чат работает
+      }
+    };
+    refresh();
+    // Обновляем заранее, до истечения суток: вкладку мессенджера держат
+    // открытой сутками, и просроченный токен ломал бы картинки на ровном месте
+    const timer = setInterval(refresh, 6 * 60 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
 
   // Open specific chat when navigating from a native desktop notification click
   useEffect(() => {
@@ -334,15 +470,40 @@ export default function Dashboard() {
   useEffect(() => {
     if (!socket) return;
 
+    // Входящее сообщение правит состояние на месте.
+    //
+    // Раньше здесь стояли loadChats() и loadMessages(): одно сообщение в группе
+    // на полсотни человек означало полсотни полных загрузок списка чатов со
+    // всеми участниками плюс полсотни перезагрузок истории по пятьдесят
+    // сообщений. Всё это ради одной новой строки.
     const handleNewMessage = (data) => {
-      console.log('New message received in Dashboard:', data);
+      const message = data.message;
+      if (!message) return;
+      const incomingChatId = message.chatId || data.chat?.id;
+      const isActive = activeChatRef.current?.id === incomingChatId;
 
-      // Update chats list
-      loadChats();
+      setChats(prev => {
+        // Первое сообщение от нового собеседника — такого чата в списке ещё нет,
+        // и собрать его строку из payload нельзя: нет ни участников, ни аватара
+        if (!prev.some(c => c.id === incomingChatId)) {
+          loadChats();
+          return prev;
+        }
+        return prev.map(c => c.id !== incomingChatId ? c : {
+          ...c,
+          lastMessage: messagePreview(message),
+          lastMessageAt: message.createdAt,
+          // Открытый чат читается тут же — счётчик в нём наращивать незачем
+          unreadCount: isActive || message.senderId === user?.id
+            ? c.unreadCount
+            : (c.unreadCount || 0) + 1
+        });
+      });
 
-      // If the message is for the active chat, update messages
-      if (activeChatRef.current && data.message.chatId === activeChatRef.current.id) {
-        loadMessages(activeChatRef.current.id, true); // Прокручиваем при новом сообщении
+      if (isActive) {
+        setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
+        setTimeout(scrollToBottom, 50);
+        chat.markAsRead(incomingChatId).catch(() => {});
       }
       // Note: Notification is handled by SocketContext and shown in Layout
     };
@@ -351,11 +512,15 @@ export default function Dashboard() {
 
     const handleReactionUpdate = (data) => {
       if (data.chatId === activeChatRef.current?.id) {
-        // Update reactions for the specific message
+        // Сервер шлёт один общий список поставивших, «моя ли реакция» считаем
+        // здесь: раньше он персонализировал payload и рассылал его каждому
+        // участнику отдельно (см. reactionsPayload в backend/routes/chat.js)
+        const reactions = (data.reactions || []).map(r => ({
+          ...r,
+          hasReacted: (r.users || []).some(u => u.id === user?.id)
+        }));
         setMessages(prev => prev.map(msg =>
-          msg.id === data.messageId
-            ? { ...msg, reactions: data.reactions }
-            : msg
+          msg.id === data.messageId ? { ...msg, reactions } : msg
         ));
       }
     };
@@ -371,19 +536,51 @@ export default function Dashboard() {
 
     // Обычное удаление показывает заглушку; администратор убирает сообщение и
     // ссылки ответов на него целиком у всех, кто держит чат открытым.
-    const handleMessageDeleted = ({ chatId, messageId, hardDeleted }) => {
-      loadChats();
+    // Удаление всегда стирает сообщение — заглушек «Сообщение удалено» больше
+    // нет (ver. 7.29). Разница только в охвате: scope 'all' приходит всем
+    // участникам, scope 'me' — только на другие устройства того, кто удалил.
+    const handleMessagesDeleted = ({ chatId, messageIds, lastMessage, lastMessageAt }) => {
+      const ids = messageIds || [];
+      // Превью приходит вместе с событием — пересчитывать его перезагрузкой
+      // всего списка чатов не из чего
+      if (lastMessage !== undefined) {
+        setChats(prev => prev.map(c => c.id === chatId
+          ? { ...c, lastMessage, lastMessageAt }
+          : c));
+      }
       if (chatId === activeChatRef.current?.id) {
-        setMessages(prev => hardDeleted
-          ? prev
-              .filter(msg => msg.id !== messageId)
-              .map(msg => msg.replyTo?.id === messageId ? { ...msg, replyTo: null, replyToId: null } : msg)
-          : prev.map(msg => msg.id === messageId
-              ? { ...msg, content: 'Сообщение удалено', type: 'system', attachments: [] }
-              : msg));
+        setMessages(prev => prev
+          .filter(msg => !ids.includes(msg.id))
+          .map(msg => ids.includes(msg.replyTo?.id) ? { ...msg, replyTo: null, replyToId: null } : msg));
+        // Удалённое не должно остаться висеть в шапке
+        setPinnedMessages(prev => prev.filter(m => !ids.includes(m.id)));
       }
     };
-    socket.on('message_deleted', handleMessageDeleted);
+    socket.on('messages_deleted', handleMessagesDeleted);
+
+    // Правку чужого сообщения веб раньше вообще не показывал: сервер такого
+    // события не слал, а клиент его не ждал (ver. 7.28)
+    const handleMessageEdited = ({ chatId, messageId, content }) => {
+      if (chatId !== activeChatRef.current?.id) return;
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId ? { ...msg, content, isEdited: true } : msg
+      ));
+    };
+    socket.on('message_edited', handleMessageEdited);
+
+    const handlePinChanged = ({ chatId, messageId, pinned, message }) => {
+      if (chatId !== activeChatRef.current?.id) return;
+      setPinnedMessages(prev => {
+        const without = prev.filter(m => m.id !== messageId);
+        // Свежезакреплённое встаёт первым — в шапке всегда последнее закрепление
+        return pinned && message ? [message, ...without] : without;
+      });
+      setPinnedIndex(0);
+      setMessages(prev => prev.map(m => m.id === messageId
+        ? { ...m, pinnedAt: pinned ? (message?.pinnedAt || new Date().toISOString()) : null }
+        : m));
+    };
+    socket.on('message_pin_changed', handlePinChanged);
 
     const handleMessagesRead = (data) => {
       if (data.chatId === activeChatRef.current?.id && data.readBy !== user?.id) {
@@ -421,7 +618,9 @@ export default function Dashboard() {
       socket.off('new_message', handleNewMessage);
       socket.off('message_reaction_updated', handleReactionUpdate);
       socket.off('poll_updated', handlePollUpdated);
-      socket.off('message_deleted', handleMessageDeleted);
+      socket.off('messages_deleted', handleMessagesDeleted);
+      socket.off('message_edited', handleMessageEdited);
+      socket.off('message_pin_changed', handlePinChanged);
       socket.off('messages_read', handleMessagesRead);
       socket.off('group_deleted', handleGroupDeleted);
       socket.off('member_updated', handleMemberUpdated);
@@ -493,7 +692,9 @@ export default function Dashboard() {
     setNewMessage('');
     setSearchQueryForChat(searchTerm);
     setHighlightedMessageId(null);
+    setPinnedMessages([]);
     await loadMessages(chatItem.id, true); // Прокручиваем при выборе чата
+    loadPinned(chatItem.id);
   };
 
   const handleFileSelect = async (e) => {
@@ -598,18 +799,73 @@ export default function Dashboard() {
       return;
     }
     
-    setSending(true);
+    // Оптимистичная отправка (ver. 7.34): сообщение появляется в ленте сразу,
+    // с часиками вместо галочки, и подменяется ответом сервера. Раньше между
+    // нажатием и появлением строки был поход на сервер, и на плохой связи
+    // казалось, что нажатие не сработало — люди отправляли повторно.
+    const payload = {
+      content: newMessage.trim() || '',
+      attachments,
+      replyToId: replyingToMessage?.id || null,
+      mentions: selectedMentions.filter(item => newMessage.includes(`@${item.label}`)),
+    };
+    const optimistic = {
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      chatId: activeChat.id,
+      senderId: user.id,
+      content: payload.content,
+      type: payload.attachments.length > 0
+        ? (payload.attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
+        : 'text',
+      attachments: payload.attachments,
+      createdAt: new Date().toISOString(),
+      sender: { id: user.id, username: user.username, displayName: user.displayName, avatar: user.avatar, chatBadge: user.chatBadge },
+      replyTo: replyingToMessage || null,
+      replyToId: payload.replyToId,
+      reactions: [],
+      pending: true,
+      draft: payload,
+    };
+
+    setMessages(prev => [...prev, optimistic]);
+    setNewMessage('');
+    setSelectedMentions([]);
+    setAttachments([]);
+    setReplyingToMessage(null);
+    setChats(prev => prev.map(c => c.id !== activeChat.id ? c : {
+      ...c,
+      lastMessage: messagePreview(optimistic),
+      lastMessageAt: optimistic.createdAt
+    }));
+    setTimeout(scrollToBottom, 50);
+
+    await deliverMessage(activeChat.id, optimistic);
+  };
+
+  // Собственно доставка. Вынесена отдельно, потому что тем же путём идёт
+  // повторная попытка по кнопке «повторить» у неудавшегося сообщения.
+  const deliverMessage = async (chatId, optimistic) => {
+    const { content, attachments: files, replyToId, mentions } = optimistic.draft;
     try {
-      const activeMentions = selectedMentions.filter(item => newMessage.includes(`@${item.label}`));
-      await chat.sendMessage(activeChat.id, newMessage.trim() || '', attachments, replyingToMessage?.id || null, activeMentions);
-      setNewMessage('');
-      setSelectedMentions([]);
-      setAttachments([]);
-      setReplyingToMessage(null);
-      await loadMessages(activeChat.id, true); // Прокручиваем после отправки
-      await refreshActiveChat();
-    } catch (e) { toast.error('Ошибка отправки'); }
-    finally { setSending(false); }
+      const { data: sent } = await chat.sendMessage(chatId, content, files, replyToId, mentions);
+      setMessages(prev => prev.map(m => m.id === optimistic.id ? sent : m));
+      setChats(prev => prev.map(c => c.id !== chatId ? c : {
+        ...c,
+        lastMessage: messagePreview(sent),
+        lastMessageAt: sent.createdAt
+      }));
+    } catch (e) {
+      setMessages(prev => prev.map(m => m.id === optimistic.id
+        ? { ...m, pending: false, failed: true }
+        : m));
+      toast.error('Сообщение не отправлено');
+    }
+  };
+
+  const retrySend = async (msg) => {
+    if (!msg.draft) return;
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, failed: false, pending: true } : m));
+    await deliverMessage(msg.chatId, msg);
   };
 
   const createPoll = async () => {
@@ -638,35 +894,22 @@ export default function Dashboard() {
     if (!newMessage.trim()) { toast.error('Введите текст сообщения'); return; }
     setSending(true);
     try {
-      await chat.editMessage(activeChat.id, editingMessage.id, newMessage.trim());
+      const { data: edited } = await chat.editMessage(activeChat.id, editingMessage.id, newMessage.trim());
       setEditingMessage(null);
       setNewMessage('');
-      await loadMessages(activeChat.id, false); // НЕ прокручиваем после редактирования
-      await loadChats();
+      // Обновление состояния асинхронно, поэтому «было ли оно последним»
+      // спрашиваем у messages текущего рендера, а не изнутри setMessages
+      const wasLast = messages[messages.length - 1]?.id === edited.id;
+      setMessages(prev => prev.map(m => m.id === edited.id ? { ...m, ...edited } : m));
+      // Превью в списке правим, только если менялось последнее сообщение чата
+      if (wasLast) {
+        setChats(prev => prev.map(c => c.id === activeChat.id
+          ? { ...c, lastMessage: messagePreview(edited) }
+          : c));
+      }
       toast.success('Сообщение изменено');
     } catch (e) { toast.error('Ошибка редактирования'); }
     finally { setSending(false); }
-  };
-
-  const handleDeleteMessage = async (messageId, isOwnMessage = true) => {
-    // Чужое сообщение удаляет админ — предупреждаем явно, чтобы это не вышло
-    // случайным движением в чужой переписке
-    const question = isOwnMessage
-      ? 'Удалить сообщение?'
-      : 'Удалить чужое сообщение? Оно пропадёт у всех участников чата.';
-    if (!window.confirm(question)) return;
-    try {
-      const { data } = await chat.deleteMessage(activeChat.id, messageId);
-      setMessages(prev => data.hardDeleted
-        ? prev
-            .filter(msg => msg.id !== messageId)
-            .map(msg => msg.replyTo?.id === messageId ? { ...msg, replyTo: null, replyToId: null } : msg)
-        : prev.map(msg => msg.id === messageId
-            ? { ...msg, content: 'Сообщение удалено', type: 'system', attachments: [] }
-            : msg));
-      await loadChats();
-      toast.success('Сообщение удалено');
-    } catch (e) { toast.error('Ошибка удаления'); }
   };
 
   /**
@@ -712,9 +955,9 @@ export default function Dashboard() {
       messageId: msg.id,
       message: msg,
       isOwnMessage,
-      // Редактировать можно только своё, а удалять — ещё и чужое, если ты
-      // суперадминистратор: сообщения ботов и мусор в группах убирать больше некому
-      canDelete: isOwnMessage || !!user.isAdmin
+      // Удалить может каждый: как минимум «у себя». Стереть у всех разрешит
+      // или не разрешит сервер — правила в canDeleteForAll (ver. 7.29)
+      canDelete: true
     });
   };
 
@@ -927,22 +1170,95 @@ export default function Dashboard() {
     }
   };
 
-  const startForwardMode = (msg) => {
-    setForwardMode(true);
+  const startSelection = (msg) => {
+    setSelectionMode(true);
     setSelectedMessages([msg.id]);
+    setSelectionAnchor(msg.id);
     closeContextMenu();
   };
 
-  const cancelForwardMode = () => {
-    setForwardMode(false);
+  const cancelSelection = () => {
+    setSelectionMode(false);
     setSelectedMessages([]);
+    setSelectionAnchor(null);
   };
 
-  const toggleMessageSelection = (msgId) => {
-    if (!forwardMode) return;
+  const toggleMessageSelection = (msgId, extendRange = false) => {
+    if (!selectionMode) return;
+
+    // Shift+клик отмечает всё между якорем и текущим сообщением. Ради этого
+    // режим и затевался: разгрести завал поштучно — как раз то, что неудобно.
+    if (extendRange && selectionAnchor && selectionAnchor !== msgId) {
+      const from = messages.findIndex(m => m.id === selectionAnchor);
+      const to = messages.findIndex(m => m.id === msgId);
+      if (from !== -1 && to !== -1) {
+        const range = messages
+          .slice(Math.min(from, to), Math.max(from, to) + 1)
+          .map(m => m.id);
+        setSelectedMessages(prev => [...new Set([...prev, ...range])]);
+        setSelectionAnchor(msgId);
+        return;
+      }
+    }
+
     setSelectedMessages(prev =>
       prev.includes(msgId) ? prev.filter(id => id !== msgId) : [...prev, msgId]
     );
+    setSelectionAnchor(msgId);
+  };
+
+  // Те же правила, что на сервере (canDeleteForAll в backend/routes/chat.js):
+  // клиент лишь решает, показывать ли кнопку, а разрешает всё равно сервер.
+  const DELETE_FOR_ALL_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+  const canDeleteForAll = (msg) => {
+    if (!msg || msg.type === 'system') return false;
+    if (user.isAdmin) return true;
+    if (activeChat?.type === 'group' && isGroupAdmin) return true;
+    if (msg.senderId !== user.id) return false;
+    return Date.now() - new Date(msg.createdAt).getTime() <= DELETE_FOR_ALL_WINDOW_MS;
+  };
+
+  const selectedMessageObjects = () => messages.filter(m => selectedMessages.includes(m.id));
+
+  const handleCopySelected = async () => {
+    const text = selectedMessageObjects()
+      .map(m => stripFormatting(m.content || '') || '')
+      .filter(Boolean)
+      .join('\n');
+    if (!text) { toast.error('В выделенном нет текста'); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(selectedMessages.length > 1 ? 'Сообщения скопированы' : 'Сообщение скопировано');
+      cancelSelection();
+    } catch { toast.error('Буфер обмена недоступен'); }
+  };
+
+  // Диалог удаления один и тот же для пачки и для одного сообщения из
+  // контекстного меню — правила и текст не должны расходиться
+  const openDeleteDialog = (msgs) => {
+    if (msgs.length === 0) return;
+    setDeleteDialog({ ids: msgs.map(m => m.id), canAll: msgs.every(canDeleteForAll), count: msgs.length });
+  };
+
+  const handleDeleteSelected = async (scope) => {
+    const ids = deleteDialog?.ids || [];
+    if (ids.length === 0) return;
+    try {
+      await chat.deleteMessages(activeChat.id, ids, scope);
+      // Своё же удаление сокетом обратно не прилетает — убираем сразу
+      setMessages(prev => prev
+        .filter(m => !ids.includes(m.id))
+        .map(m => ids.includes(m.replyTo?.id) ? { ...m, replyTo: null, replyToId: null } : m));
+      setDeleteDialog(null);
+      cancelSelection();
+      toast.success(scope === 'all' ? 'Удалено у всех' : 'Удалено у вас');
+      // Превью в списке чатов после удаления «у всех» пересчитывает сервер и
+      // присылает сокетом; при удалении «у себя» оно не меняется
+      if (scope === 'me') await loadChats();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Ошибка удаления');
+    }
   };
 
   const handleForwardSend = async (targetChatId) => {
@@ -951,7 +1267,7 @@ export default function Dashboard() {
       await chat.forwardMessages(targetChatId, selectedMessages);
       toast.success(`Переслано в чат`);
       setShowForwardModal(false);
-      cancelForwardMode();
+      cancelSelection();
       // If forwarding to active chat, reload messages
       if (activeChat && targetChatId === activeChat.id) {
         await loadMessages(activeChat.id, true);
@@ -1316,13 +1632,20 @@ export default function Dashboard() {
     if (!avatar) return null;
     if (avatar.startsWith('http://localhost')) {
       const p = avatar.replace(/^http:\/\/localhost:\d+\//, '');
-      return `${BASE_URL}/${p}`;
+      return withFileToken(`${BASE_URL}/${p}`);
     }
-    if (avatar.startsWith('http')) return avatar;
+    if (avatar.startsWith('http')) return withFileToken(avatar);
     // Ведущий слэш срезаем: с ним получалось «//uploads/...», а такой путь мимо
     // express.static и мимо location /uploads в nginx — файл скачивался битым
-    return `${BASE_URL}/${avatar.replace(/^\/+/, '')}`;
+    return withFileToken(`${BASE_URL}/${avatar.replace(/^\/+/, '')}`);
   };
+
+  // Вложения чата отдаются только участникам, и подтверждает право токен в
+  // query. Аватарок и картинок вики это не касается — они открыты как прежде.
+  function withFileToken(url) {
+    if (!fileToken || !url.includes('/uploads/chat-attachments/')) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}t=${encodeURIComponent(fileToken)}`;
+  }
 
   const getFileIcon = (mime) => {
     if (mime?.startsWith('image/')) return <Image size={20} />;
@@ -1415,6 +1738,10 @@ export default function Dashboard() {
 
   // Статус сообщения для own-сообщений в приватных чатах
   const getMsgStatus = (msg) => {
+    // Сообщение ещё в пути или не ушло вовсе — это важнее всех остальных
+    // состояний: до ver. 7.34 его просто не было видно, пока сервер не ответит
+    if (msg.failed) return 'failed';
+    if (msg.pending) return 'pending';
     if (activeChat?.type !== 'private') return 'sent';
     if (otherLastReadAt && new Date(msg.createdAt) <= new Date(otherLastReadAt)) return 'read';
     const otherId = activeChat?.otherUser?.id;
@@ -1685,7 +2012,14 @@ export default function Dashboard() {
 
               // Обычный режим: закреплённые → разделитель → остальные
               const pinnedChats = chats.filter(c => c.isPinned).sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0));
-              const regularChats = chats.filter(c => !c.isPinned);
+              // Порядок держим здесь, а не полагаемся на ответ сервера: список
+              // теперь правится на месте по событиям сокета, и чат с новым
+              // сообщением обязан всплыть наверх без перезагрузки (ver. 7.28)
+              const regularChats = chats.filter(c => !c.isPinned).sort((a, b) => {
+                const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+                const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+                return bt - at;
+              });
 
               if (chats.length === 0) return <div className="chat-empty">Нет чатов</div>;
 
@@ -1725,8 +2059,46 @@ export default function Dashboard() {
                     }
                   </div>
                 </div>
+                <button className="btn-icon-chat" title="Медиа, файлы и ссылки" onClick={() => openMediaPanel('media')}>
+                  <Image size={20} />
+                </button>
                 {activeChat.type === 'group' && <button className="btn-icon-chat" onClick={() => setShowChatInfo(true)}><MoreVertical size={20} /></button>}
               </div>
+              {/* Шапка закреплённых. Показываем одно сообщение из списка —
+                  нажатие уводит к нему в ленте и переключает на следующее. */}
+              {pinnedMessages.length > 0 && (() => {
+                const pinned = pinnedMessages[pinnedIndex % pinnedMessages.length];
+                if (!pinned) return null;
+                return (
+                  <div className="chat-pinned-bar">
+                    <Pin size={16} className="chat-pinned-icon" />
+                    <div
+                      className="chat-pinned-content"
+                      onClick={() => {
+                        scrollToMessage(pinned.id);
+                        if (pinnedMessages.length > 1) setPinnedIndex(i => (i + 1) % pinnedMessages.length);
+                      }}
+                    >
+                      <div className="chat-pinned-title">
+                        Закреплённое
+                        {pinnedMessages.length > 1 && ` ${pinnedIndex % pinnedMessages.length + 1} из ${pinnedMessages.length}`}
+                      </div>
+                      <div className="chat-pinned-text">
+                        {stripFormatting(pinned.content) || messagePreview(pinned) || 'Вложение'}
+                      </div>
+                    </div>
+                    {canPinHere() && (
+                      <button
+                        className="btn-icon-chat"
+                        title="Открепить"
+                        onClick={() => togglePin(pinned, false)}
+                      >
+                        <PinOff size={16} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               {searchMatches.length > 0 && (
                 <div className="chat-search-bar">
                   <div className="chat-search-info">
@@ -1740,7 +2112,8 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              <div className="chat-messages">
+              <div className="chat-messages" ref={messagesScrollRef} onScroll={handleMessagesScroll}>
+                {loadingOlder && <div className="chat-messages-older"><div className="loading-spinner" /></div>}
                 {messages.length > 0 ? messages.map((msg, idx) => {
                   const isOwn = msg.senderId === user.id;
                   const showAvatar = !isOwn && (idx === 0 || messages[idx-1].senderId !== msg.senderId);
@@ -1760,16 +2133,16 @@ export default function Dashboard() {
                         <div className="message-system">{msg.content}</div>
                       ) : (
                         <div
-                          className={`message-row ${forwardMode ? 'forward-mode' : ''} ${selectedMessages.includes(msg.id) ? 'selected-for-forward' : ''}`}
-                          onClick={() => forwardMode && toggleMessageSelection(msg.id)}
+                          className={`message-row ${selectionMode ? 'selection-mode' : ''} ${selectedMessages.includes(msg.id) ? 'selected-for-action' : ''}`}
+                          onClick={(e) => selectionMode && toggleMessageSelection(msg.id, e.shiftKey)}
                         >
-                          {forwardMode && (
-                            <div className={`forward-radio ${selectedMessages.includes(msg.id) ? 'checked' : ''}`} />
+                          {selectionMode && (
+                            <div className={`selection-check ${selectedMessages.includes(msg.id) ? 'checked' : ''}`} />
                           )}
                           <div
                             id={`message-${msg.id}`}
                             className={`message ${isOwn ? 'own' : ''} ${highlightedMessageId === msg.id ? 'highlighted' : ''}`}
-                            onContextMenu={(e) => !forwardMode && handleContextMenu(e, msg)}
+                            onContextMenu={(e) => !selectionMode && handleContextMenu(e, msg)}
                           >
                             {!isOwn && showAvatar && <div className="message-avatar" style={msg.sender?.id ? { cursor: 'pointer' } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}>{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
                             <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
@@ -1801,6 +2174,21 @@ export default function Dashboard() {
                                 {msg.isEdited && <span className="message-edited">изменено</span>}
                                 {isOwn && (() => {
                                   const st = getMsgStatus(msg);
+                                  if (st === 'pending') {
+                                    return <span className="message-status message-status--pending"><Clock size={13} /></span>;
+                                  }
+                                  if (st === 'failed') {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="message-status message-status--failed"
+                                        title="Не отправлено — нажмите, чтобы повторить"
+                                        onClick={(e) => { e.stopPropagation(); retrySend(msg); }}
+                                      >
+                                        <AlertCircle size={13} /> повторить
+                                      </button>
+                                    );
+                                  }
                                   const stClass = st === 'read' ? ' message-status--read' : st === 'delivered' ? ' message-status--delivered' : '';
                                   return (
                                     <span className={`message-status${stClass}`}>
@@ -1855,14 +2243,31 @@ export default function Dashboard() {
                   <button onClick={cancelEdit}><X size={16} /></button>
                 </div>
               )}
-              {forwardMode && (
-                <div className="forward-action-bar">
-                  <div className="forward-action-info">
-                    <Send size={16} />
+              {selectionMode && (
+                <div className="selection-action-bar">
+                  <div className="selection-action-info">
+                    <CheckCircle size={16} />
                     <span>Выбрано: <strong>{selectedMessages.length}</strong></span>
+                    {/* Про Shift пишем прямо в панели: сам по себе он не находится */}
+                    <span className="selection-action-hint">Shift+клик — диапазон</span>
                   </div>
-                  <div className="forward-action-buttons">
-                    <button className="btn btn-ghost" onClick={cancelForwardMode}>Отмена</button>
+                  <div className="selection-action-buttons">
+                    <button className="btn btn-ghost" onClick={cancelSelection}>Отмена</button>
+                    <button
+                      className="btn btn-ghost"
+                      disabled={selectedMessages.length === 0}
+                      onClick={handleCopySelected}
+                      title="Скопировать текст выделенного"
+                    >
+                      <Copy size={16} /> Копировать
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      disabled={selectedMessages.length === 0}
+                      onClick={() => openDeleteDialog(selectedMessageObjects())}
+                    >
+                      <Trash2 size={16} /> Удалить
+                    </button>
                     <button
                       className="btn btn-primary"
                       disabled={selectedMessages.length === 0}
@@ -2122,7 +2527,17 @@ export default function Dashboard() {
           </button>
           {/* Переслать */}
           <div className="context-menu-divider" />
-          <button onClick={() => { startForwardMode(contextMenu.message); }}>
+          <button onClick={() => { startSelection(contextMenu.message); }}>
+            <CheckCircle size={16} />
+            Выбрать
+          </button>
+          {canPinHere() && contextMenu.message?.type !== 'system' && (
+            <button onClick={() => { togglePin(contextMenu.message, !contextMenu.message?.pinnedAt); closeContextMenu(); }}>
+              {contextMenu.message?.pinnedAt ? <PinOff size={16} /> : <Pin size={16} />}
+              {contextMenu.message?.pinnedAt ? 'Открепить' : 'Закрепить'}
+            </button>
+          )}
+          <button onClick={() => { startSelection(contextMenu.message); setForwardSearchQuery(''); setShowForwardModal(true); }}>
             <Send size={16} />
             Переслать
           </button>
@@ -2136,7 +2551,7 @@ export default function Dashboard() {
                   Редактировать
                 </button>
               )}
-              <button onClick={() => { handleDeleteMessage(contextMenu.messageId, contextMenu.isOwnMessage); closeContextMenu(); }} className="danger">
+              <button onClick={() => { openDeleteDialog([contextMenu.message]); closeContextMenu(); }} className="danger">
                 <Trash2 size={16} />
                 Удалить
               </button>
@@ -2454,6 +2869,146 @@ export default function Dashboard() {
           reactions={reactionDetailsModal.reactions}
           onClose={() => setReactionDetailsModal(null)}
         />
+      )}
+
+      {/* Галерея чата: медиа, файлы, голосовые, ссылки (ver. 7.35) */}
+      {mediaPanel && (
+        <div className="modal-overlay" onClick={() => setMediaPanel(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Медиа чата</h2>
+              <button className="modal-close" onClick={() => setMediaPanel(null)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="media-tabs">
+                {MEDIA_TABS.map(tab => (
+                  <button
+                    key={tab.key}
+                    className={`media-tab ${mediaPanel === tab.key ? 'active' : ''}`}
+                    onClick={() => openMediaPanel(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {mediaLoading && <div className="chat-loading"><div className="loading-spinner" /></div>}
+              {!mediaLoading && mediaItems.length === 0 && (
+                <div className="text-muted text-center">Здесь пока пусто</div>
+              )}
+
+              {!mediaLoading && mediaPanel === 'media' && (
+                <div className="media-grid">
+                  {mediaItems.map((item, idx) => {
+                    const att = item.attachment || {};
+                    const url = fixUrl(att.url || att.path);
+                    const thumb = fixUrl(att.thumbnailUrl || att.thumbnailPath) || url;
+                    const isVideo = att.mimeType?.startsWith('video/');
+                    return (
+                      <div
+                        key={`${item.messageId}:${idx}`}
+                        className="media-grid-item"
+                        title={format(new Date(item.createdAt), 'dd.MM.yyyy HH:mm')}
+                        onClick={() => { setMediaPanel(null); scrollToMessage(item.messageId); }}
+                      >
+                        {isVideo ? <div className="media-grid-video"><Film size={22} /></div> : <img src={thumb} alt="" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!mediaLoading && (mediaPanel === 'files' || mediaPanel === 'voice') && (
+                <div className="media-list">
+                  {mediaItems.map((item, idx) => {
+                    const att = item.attachment || {};
+                    const url = fixUrl(att.url || att.path);
+                    const name = att.kind === 'voice'
+                      ? 'Голосовое сообщение'
+                      : (att.name || att.filename || 'Файл');
+                    return (
+                      <div key={`${item.messageId}:${idx}`} className="media-list-item">
+                        <div className="media-list-icon">{getFileIcon(att.mimeType)}</div>
+                        <div className="media-list-info">
+                          <div className="media-list-name">{name}</div>
+                          <div className="media-list-meta">
+                            {item.senderName} · {format(new Date(item.createdAt), 'dd.MM.yyyy')}
+                            {att.size ? ` · ${formatFileSize(att.size)}` : ''}
+                          </div>
+                        </div>
+                        <button
+                          className="btn-icon-chat"
+                          title="Показать в переписке"
+                          onClick={() => { setMediaPanel(null); scrollToMessage(item.messageId); }}
+                        >
+                          <CornerUpLeft size={16} />
+                        </button>
+                        <a className="btn-icon-chat" href={url} target="_blank" rel="noreferrer" title="Открыть">
+                          <Download size={16} />
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!mediaLoading && mediaPanel === 'links' && (
+                <div className="media-list">
+                  {mediaItems.map(item => (
+                    <div key={item.messageId} className="media-list-item">
+                      <div className="media-list-icon"><Link2 size={20} /></div>
+                      <div className="media-list-info">
+                        {item.urls.map(url => (
+                          <a key={url} className="media-list-link" href={url} target="_blank" rel="noreferrer">{url}</a>
+                        ))}
+                        <div className="media-list-meta">
+                          {item.senderName} · {format(new Date(item.createdAt), 'dd.MM.yyyy')}
+                        </div>
+                      </div>
+                      <button
+                        className="btn-icon-chat"
+                        title="Показать в переписке"
+                        onClick={() => { setMediaPanel(null); scrollToMessage(item.messageId); }}
+                      >
+                        <CornerUpLeft size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Диалог удаления — один на пачку и на одно сообщение */}
+      {deleteDialog && (
+        <div className="modal-overlay" onClick={() => setDeleteDialog(null)}>
+          <div className="modal modal-narrow" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{deleteDialog.count > 1 ? `Удалить ${deleteDialog.count} ${pluralMessages(deleteDialog.count)}?` : 'Удалить сообщение?'}</h2>
+              <button className="modal-close" onClick={() => setDeleteDialog(null)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <p className="delete-dialog-text">
+                «У себя» — {deleteDialog.count > 1 ? 'сообщения пропадут' : 'сообщение пропадёт'} только из вашей переписки,
+                у остальных {deleteDialog.count > 1 ? 'они останутся' : 'оно останется'} на месте.
+              </p>
+              {!deleteDialog.canAll && (
+                <p className="delete-dialog-note">
+                  Удалить у всех нельзя: чужие сообщения и свои старше двух суток стирает только администратор.
+                </p>
+              )}
+              <div className="delete-dialog-actions">
+                <button className="btn btn-ghost" onClick={() => setDeleteDialog(null)}>Отмена</button>
+                <button className="btn btn-ghost" onClick={() => handleDeleteSelected('me')}>Удалить у себя</button>
+                {deleteDialog.canAll && (
+                  <button className="btn btn-danger" onClick={() => handleDeleteSelected('all')}>Удалить у всех</button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Forward Modal */}

@@ -2337,12 +2337,30 @@
 
 /* ========== FORWARD / ПЕРЕСЫЛКА ========== */
 
-/* Row wrapper — always full width, flex row in forward mode */
+/* Строка сообщения. В режиме выделения слева появляется кружок-отметка,
+   и сама строка становится кликабельной целиком (ver. 7.29) */
 .message-row {
   display: block;
+
+  /* Виртуализация лентой браузера (ver. 7.32).
+     С подгрузкой истории в ленте копятся тысячи сообщений, и до этой строки
+     браузер считал раскладку и рисовал каждое из них, включая уехавшие далеко
+     за экран. content-visibility разрешает пропускать всё, чего не видно.
+
+     Взято вместо react-window и подобных сознательно: JS-виртуализация держит
+     в DOM только видимое, а значит ломает то, что этот чат уже умеет —
+     переход к найденному сообщению, прокрутку к ответу и поиск по странице
+     средствами браузера. Здесь узлы остаются на месте, пропускается только
+     работа по их отрисовке.
+
+     auto в contain-intrinsic-size: до первой отрисовки берётся оценка в 56px,
+     дальше браузер помнит настоящую высоту — иначе полоса прокрутки дёргалась
+     бы при каждом заходе в уже просмотренную часть переписки. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
 }
 
-.message-row.forward-mode {
+.message-row.selection-mode {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -2353,22 +2371,22 @@
   transition: background var(--transition-fast);
 }
 
-.message-row.forward-mode:hover {
+.message-row.selection-mode:hover {
   background: var(--bg-secondary);
 }
 
-.message-row.selected-for-forward {
+.message-row.selected-for-action {
   background: var(--primary-light) !important;
 }
 
-/* In forward mode the message fills remaining space */
-.message-row.forward-mode .message {
+/* В режиме выделения пузырь занимает всё оставшееся место */
+.message-row.selection-mode .message {
   flex: 1;
   min-width: 0;
 }
 
-/* Radio button — always left column, same size for all messages */
-.forward-radio {
+/* Отметка выделения — всегда левой колонкой, одного размера для всех сообщений */
+.selection-check {
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -2379,12 +2397,12 @@
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
-.forward-radio.checked {
+.selection-check.checked {
   border-color: var(--primary);
   background: var(--primary);
 }
 
-.forward-radio.checked::after {
+.selection-check.checked::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -2396,8 +2414,8 @@
   background: white;
 }
 
-/* Forward action bar above input */
-.forward-action-bar {
+/* Панель действий над полем ввода: что делать с выделенным */
+.selection-action-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2407,7 +2425,7 @@
   gap: 12px;
 }
 
-.forward-action-info {
+.selection-action-info {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2415,13 +2433,13 @@
   font-size: 14px;
 }
 
-.forward-action-buttons {
+.selection-action-buttons {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.forward-action-buttons .btn {
+.selection-action-buttons .btn {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2576,3 +2594,222 @@
 .chat-poll-option:disabled { cursor: default; opacity: .8; }
 
 @media (max-width: 768px) { .chat-poll { width: min(310px, 72vw); } }
+
+/* ── Режим выделения сообщений (ver. 7.29) ─────────────────────────────── */
+
+/* Подсказка про Shift прячется на узких экранах: там его всё равно нет */
+.selection-action-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .selection-action-hint { display: none; }
+  /* Четыре кнопки в строку на телефон не помещаются — отдаём панели две
+     строки, иначе подписи схлопываются в нечитаемые огрызки */
+  .selection-action-bar { flex-wrap: wrap; }
+  .selection-action-buttons { width: 100%; justify-content: flex-end; }
+}
+
+.modal.modal-narrow {
+  max-width: 460px;
+}
+
+.delete-dialog-text {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.delete-dialog-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Индикатор подгрузки старых сообщений — над лентой (ver. 7.30) */
+.chat-messages-older {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+/* ── Шапка закреплённых сообщений (ver. 7.33) ──────────────────────────── */
+
+.chat-pinned-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chat-pinned-icon {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+/* Содержимое ужимается само: без min-width длинный текст растягивает строку
+   и выталкивает кнопку открепления за край */
+.chat-pinned-content {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.chat-pinned-title {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chat-pinned-text {
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Статусы оптимистичной отправки (ver. 7.34) ────────────────────────── */
+
+/* Часики вместо галочки, пока сервер не подтвердил приём */
+.message-status--pending {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Не ушло. Кнопка, а не значок: по ней и повторяют попытку */
+.message-status--failed {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #ffd0cc;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.message-status--failed:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+/* ── Галерея чата: медиа, файлы, голосовые, ссылки (ver. 7.35) ─────────── */
+
+.media-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.media-tab {
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  /* Подчёркивание рисуем всегда — прозрачным: иначе активная вкладка выше
+     остальных на два пикселя и строка дёргается при переключении */
+  border-bottom: 2px solid transparent;
+}
+
+.media-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 4px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.media-grid-item {
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: var(--bg-secondary);
+}
+
+.media-grid-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-grid-video {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-secondary);
+}
+
+.media-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.media-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.media-list-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* min-width нужен, чтобы длинное имя файла ужималось многоточием,
+   а не выдавливало кнопки за край */
+.media-list-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.media-list-name {
+  color: var(--text-primary);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.media-list-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.media-list-link {
+  display: block;
+  color: var(--primary);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

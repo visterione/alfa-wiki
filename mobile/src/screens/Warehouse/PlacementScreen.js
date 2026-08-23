@@ -44,15 +44,17 @@
  */
 import React, {useCallback, useMemo, useState} from 'react';
 import {
-  View, Text, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
+  View, Text, Image, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Camera, useCameraDevice, useCodeScanner} from 'react-native-vision-camera';
 import {
-  DoorOpen, ScanLine, Search, X, Check, Package, Boxes, Building2, ChevronRight, ChevronLeft,
+  DoorOpen, ScanLine, Search, X, Check, Package, Boxes, Building2,
+  ChevronRight, ChevronLeft, ChevronDown,
 } from 'lucide-react-native';
 
+import CONFIG from '../../config';
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
@@ -345,31 +347,37 @@ export default function WarehousePlacementScreen() {
  */
 function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
   const [nodeKey, setNodeKey] = useState(ROOT_KEY);
+  const [branchKey, setBranchKey] = useState(null);
+  const [branchOpen, setBranchOpen] = useState(false);
   const [q, setQ] = useState('');
 
   const nodes = useMemo(() => buildNodes(tree), [tree]);
   const node = useMemo(() => resolveNode(nodes, nodeKey), [nodes, nodeKey]);
 
-  // На экране медцентра корпус выбирается не отдельным шагом, а сразу списком
-  // этажей всех его корпусов: под корпусом обычно два-три этажа, и разбивать
-  // это на два экрана дороже, чем показать разом.
+  // Корпус выбирается выпадающим списком прямо на экране медцентра, а под ним
+  // сразу лежат этажи выбранного корпуса — ровно как в разделе «Кабинеты»
+  const branches = node?.kind === 'mc' ? node.children : null;
+  const branch = branches
+    ? (branches.find(item => item.key === branchKey) || branches[0])
+    : null;
+  const listNode = branch || node;
+
   const groups = useMemo(() => {
-    if (!node) return [];
+    if (!listNode) return [];
     const needle = q.trim().toLowerCase();
-    return leavesOf(node)
+    return leavesOf(listNode)
       .map(leaf => ({leaf, rooms: leaf.rooms.filter(room => roomMatches(room, needle))}))
       .filter(group => group.rooms.length);
-  }, [node, q]);
+  }, [listNode, q]);
 
-  // Плоский список кабинетов — когда ищут или когда дошли до этажа
-  const flat = Boolean(q.trim()) || !node?.children;
+  const flat = Boolean(q.trim()) || !listNode?.children;
 
   const items = flat
     ? groups.flatMap(({leaf, rooms}) => [
       ...(groups.length > 1 ? [{type: 'group', key: `g-${leaf.key}`, title: leaf.path || leaf.title}] : []),
       ...rooms.map(room => ({type: 'room', key: `r-${room.id}`, room})),
     ])
-    : (node?.children || []).map(child => ({type: 'node', key: `n-${child.key}`, node: child}));
+    : (listNode?.children || []).map(child => ({type: 'node', key: `n-${child.key}`, node: child}));
 
   return (
     <View style={styles.root}>
@@ -381,10 +389,53 @@ function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseSca
       {/* Возврат на уровень выше. Своей шапки у шага нет — он живёт внутри
           экрана размещения, и системная стрелка «назад» увела бы из него совсем. */}
       {nodeKey !== ROOT_KEY && (
-        <Pressable style={styles.up} onPress={() => { setNodeKey(ROOT_KEY); setQ(''); }}>
+        <Pressable
+          style={styles.up}
+          onPress={() => { setNodeKey(ROOT_KEY); setBranchKey(null); setQ(''); }}>
           <ChevronLeft size={16} color={c.primary} />
           <Text style={styles.upText}>Все медцентры</Text>
         </Pressable>
+      )}
+
+      {branches?.length > 1 && (
+        <View style={styles.branchWrap}>
+          <Pressable style={styles.branch} onPress={() => setBranchOpen(v => !v)}>
+            <Building2 size={17} color={c.primary} />
+            <View style={styles.itemText}>
+              <Text style={styles.branchTitle}>{branch.title}</Text>
+              {Boolean(branch.subtitle) && (
+                <Text style={styles.itemMeta} numberOfLines={1}>{branch.subtitle}</Text>
+              )}
+            </View>
+            <Counts styles={styles} c={c} counts={branch.counts} />
+            <ChevronDown
+              size={16}
+              color={c.textTertiary}
+              style={branchOpen ? styles.branchArrowOpen : null}
+            />
+          </Pressable>
+
+          {branchOpen && (
+            <View style={styles.branchList}>
+              {branches.map(item => (
+                <Pressable
+                  key={item.key}
+                  style={styles.branchOption}
+                  onPress={() => { setBranchKey(item.key); setBranchOpen(false); }}>
+                  <Text
+                    style={[
+                      styles.branchOptionText,
+                      item.key === branch.key && styles.branchOptionOn,
+                    ]}
+                    numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Counts styles={styles} c={c} counts={item.counts} />
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
       )}
 
       <View style={styles.stepSearch}>
@@ -393,7 +444,7 @@ function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseSca
           style={styles.searchInput}
           value={q}
           onChangeText={setQ}
-          placeholder={node?.kind === 'root' ? 'Кабинет по всей сети' : 'Кабинет'}
+          placeholder={listNode?.kind === 'root' ? 'Кабинет по всей сети' : 'Кабинет'}
           placeholderTextColor={c.textTertiary}
         />
       </View>
@@ -410,16 +461,25 @@ function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseSca
           }
 
           if (item.type === 'node') {
+            const logo = item.node.logoUrl ? CONFIG.fileUrl(item.node.logoUrl) : null;
             return (
               <Pressable style={styles.pickRow} onPress={() => setNodeKey(item.node.key)}>
-                <Building2 size={17} color={c.primary} />
+                {/* Знак медцентра вместо общей иконки — как в «Кабинетах»:
+                    их пять, они похожи по названию и различаются знаком */}
+                {logo ? (
+                  <Image source={{uri: logo}} style={styles.logo} resizeMode="contain" />
+                ) : (
+                  <View style={styles.levelIcon}>
+                    <Building2 size={18} color={c.primary} />
+                  </View>
+                )}
                 <View style={styles.itemText}>
                   <Text style={styles.itemName}>{item.node.title}</Text>
                   {Boolean(item.node.subtitle) && (
                     <Text style={styles.itemMeta} numberOfLines={1}>{item.node.subtitle}</Text>
                   )}
                 </View>
-                <Text style={styles.itemMeta}>{item.node.counts.rooms}</Text>
+                <Counts styles={styles} c={c} counts={item.node.counts} />
                 <ChevronRight size={16} color={c.textTertiary} />
               </Pressable>
             );
@@ -439,12 +499,46 @@ function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseSca
                   {[room.name, !hasStorage && 'нет мест хранения'].filter(Boolean).join(' · ')}
                 </Text>
               </View>
+              <Counts
+                styles={styles}
+                c={c}
+                counts={{
+                  assets: room.counters?.assets || 0,
+                  materials: room.counters?.positions || 0,
+                }}
+              />
             </Pressable>
           );
         }}
       />
 
       {scanning && <RoomScanner styles={styles} onClose={onCloseScan} onFound={onFound} />}
+    </View>
+  );
+}
+
+/**
+ * Пара счётчиков со значками: оборудование и материалы. Тот же вид, что в
+ * разделе «Кабинеты», — человек ходит и туда, и сюда, и разные обозначения
+ * читались бы как разные величины.
+ */
+function Counts({styles, c, counts}) {
+  if (!counts?.assets && !counts?.materials) return null;
+
+  return (
+    <View style={styles.counts}>
+      {counts.assets > 0 && (
+        <View style={styles.count}>
+          <Package size={12} color={c.textTertiary} />
+          <Text style={styles.countText}>{counts.assets}</Text>
+        </View>
+      )}
+      {counts.materials > 0 && (
+        <View style={styles.count}>
+          <Boxes size={12} color={c.textTertiary} />
+          <Text style={styles.countText}>{counts.materials}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -554,6 +648,53 @@ const makeStyles = c => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: c.bgPrimary,
   },
+  logo: {width: 34, height: 34, borderRadius: radius.md, backgroundColor: '#FFFFFF'},
+  levelIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
+    backgroundColor: c.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  counts: {alignItems: 'flex-end', gap: 2},
+  count: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  countText: {
+    fontFamily: font.medium,
+    fontSize: 12,
+    color: c.textTertiary,
+    minWidth: 18,
+    textAlign: 'right',
+  },
+  branchWrap: {paddingHorizontal: 12, marginBottom: 8},
+  branch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  branchTitle: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
+  branchArrowOpen: {transform: [{rotate: '180deg'}]},
+  branchList: {
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.md,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  branchOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+  },
+  branchOptionText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
+  branchOptionOn: {color: c.primary},
   up: {
     flexDirection: 'row',
     alignItems: 'center',

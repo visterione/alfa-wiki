@@ -5,6 +5,7 @@ import SocketService from '../services/socket';
 import PushService from '../services/push';
 import {resetWarehouseAccess} from './warehouseStore';
 import {resetReviews} from './reviewsStore';
+import {ensureFileToken, resetFileToken} from '../services/fileToken';
 
 const KEYCHAIN_OPTIONS = {service: 'alfa-wiki'};
 const AuthContext = createContext(null);
@@ -24,6 +25,10 @@ export function AuthProvider({children}) {
         const response = await authApi.me();
         const userData = response.data.user ?? response.data;
         setUser(userData);
+        // Токен на вложения берём до показа UI: экран чата строит ссылки на
+        // картинки синхронно при первом рендере, и опоздавший токен означал бы
+        // пачку битых превью до следующего открытия чата
+        await ensureFileToken();
         // Connect socket in background — don't block showing the UI
         SocketService.connect(userData.id, credentials.password).catch(() => {});
       }
@@ -43,6 +48,7 @@ export function AuthProvider({children}) {
   // параллельное подключение.
   const loginComplete = useCallback((userData) => {
     setUser(userData);
+    ensureFileToken();
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -62,6 +68,7 @@ export function AuthProvider({children}) {
     // телефоне следующий вошедший унаследовал бы чужие кнопки.
     resetWarehouseAccess();
     resetReviews();
+    resetFileToken();
     await Keychain.resetGenericPassword(KEYCHAIN_OPTIONS);
     setUser(null);
   }, []);

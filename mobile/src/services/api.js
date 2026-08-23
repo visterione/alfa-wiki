@@ -110,6 +110,9 @@ export const chat = {
   getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) =>
     api.get(`/chat/${chatId}/messages`, {params}),
+  // Токен доступа к вложениям: подставляется в ?t= к ссылкам на файлы,
+  // заголовок Authorization в <Image> и в загрузчике Android не выставить
+  getFileToken: () => api.get('/chat/file-token'),
   getMentionTargets: chatId => api.get(`/chat/${chatId}/mention-targets`),
   createPoll: (chatId, data) => api.post(`/chat/${chatId}/polls`, data),
   votePoll: (chatId, messageId, optionIds) =>
@@ -125,6 +128,15 @@ export const chat = {
     api.put(`/chat/${chatId}/messages/${messageId}`, {content}),
   deleteMessage: (chatId, messageId) =>
     api.delete(`/chat/${chatId}/messages/${messageId}`),
+  getPinned: chatId => api.get(`/chat/${chatId}/pinned`),
+  // Галерея чата: kind = media | files | voice | links
+  getChatMedia: (chatId, kind, params) =>
+    api.get(`/chat/${chatId}/media`, {params: {kind, ...params}}),
+  pinMessage: (chatId, messageId, pin) =>
+    api.post(`/chat/${chatId}/messages/${messageId}/pin`, {pin}),
+  // Групповое удаление. scope: 'me' — спрятать у себя, 'all' — стереть у всех
+  deleteMessages: (chatId, messageIds, scope) =>
+    api.post(`/chat/${chatId}/messages/delete`, {messageIds, scope}),
   hideChat: (chatId, hidden) => api.patch(`/chat/${chatId}/hide`, {hidden}),
   muteChat: (chatId, muted) => api.patch(`/chat/${chatId}/mute`, {muted}),
   pinChat: (chatId, pinned) => api.patch(`/chat/${chatId}/pin`, {pinned}),

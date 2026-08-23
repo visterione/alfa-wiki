@@ -16,6 +16,7 @@ import {
   Pressable,
   Dimensions,
   Switch,
+  Share,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
@@ -50,6 +51,12 @@ import {
   EyeOff,
   BarChart3,
   PlusCircle,
+  CheckCircle2,
+  Share2,
+  Pin,
+  PinOff,
+  Clock,
+  AlertCircle,
 } from 'lucide-react-native';
 import {chat as chatApi} from '../../services/api';
 import SocketService from '../../services/socket';
@@ -237,6 +244,10 @@ function Attachments({attachments, isOwn, onMediaPress, messageId, chatTitle, ch
  * участнику, и веб этого тоже не делает.
  */
 function getMessageStatus({message, chatType, otherLastReadAt, otherIsOnline, otherLastSeen}) {
+  // Сообщение в пути или не ушло — это важнее галочек и показывается всегда,
+  // в том числе в группе, где обычных статусов доставки нет (ver. 7.34)
+  if (message.failed) return 'failed';
+  if (message.pending) return 'pending';
   if (chatType !== 'private') return null;
   const created = new Date(message.createdAt);
   if (otherLastReadAt && created <= new Date(otherLastReadAt)) return 'read';
@@ -250,6 +261,12 @@ function MessageStatus({status}) {
   const styles = useThemedStyles(makeStyles);
 
   if (!status) return null;
+  if (status === 'pending') {
+    return <Clock size={13} color="rgba(255,255,255,0.55)" style={styles.msgStatus} />;
+  }
+  if (status === 'failed') {
+    return <AlertCircle size={13} color={c.error} style={styles.msgStatus} />;
+  }
   const Icon = status === 'read' ? CheckCheck : Check;
   // Бледная галочка = ещё не доставлено; яркая = доставлено или прочитано
   const color = status === 'sent' ? 'rgba(255,255,255,0.45)' : '#FFFFFF';
@@ -286,8 +303,25 @@ function MessageActions({actions, isOwn, runningId, onPress}) {
   );
 }
 
+const noop = () => {};
+
+const MEDIA_TABS = [
+  {key: 'media', label: 'Медиа'},
+  {key: 'files', label: 'Файлы'},
+  {key: 'voice', label: 'Голосовые'},
+  {key: 'links', label: 'Ссылки'},
+];
+
+// Склонение для «Удалить 2 сообщения?» — иначе везде было бы «сообщений»
+function pluralMessages(n) {
+  const tail = n % 100 >= 11 && n % 100 <= 14 ? 0 : n % 10;
+  if (tail === 1) return 'сообщение';
+  if (tail >= 2 && tail <= 4) return 'сообщения';
+  return 'сообщений';
+}
+
 // ── Message bubble ─────────────────────────────────────────────────────────
-function MessageBubble({message, isOwn, chatType, isHighlighted, onLongPress, onReactionTap, onMediaPress, onActionPress, onPollVote, runningAction, status, chatTitle, chatId}) {
+function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, isSelected, onSelectToggle, onLongPress, onReactionTap, onMediaPress, onActionPress, onPollVote, onRetry, runningAction, status, chatTitle, chatId}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   // Масштаб шрифта — настройка для тех, кому мелкий текст неудобен
@@ -314,8 +348,19 @@ function MessageBubble({message, isOwn, chatType, isHighlighted, onLongPress, on
 
   return (
     <Pressable
+      onPress={selectionMode ? () => onSelectToggle(message) : undefined}
       onLongPress={() => !isDeleted && onLongPress(message)}
-      style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther, isHighlighted && styles.bubbleRowHighlighted]}>
+      style={[
+        styles.bubbleRow,
+        isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther,
+        isHighlighted && styles.bubbleRowHighlighted,
+        isSelected && styles.bubbleRowSelected,
+      ]}>
+      {selectionMode && (
+        <View style={[styles.selectCheck, isSelected && styles.selectCheckOn]}>
+          {isSelected && <Check size={13} color="#FFFFFF" />}
+        </View>
+      )}
       {!isOwn && chatType === 'group' && (
         <View style={styles.bubbleAvatar}>
           <Avatar uri={message.sender?.avatar} size={28} />
@@ -324,6 +369,14 @@ function MessageBubble({message, isOwn, chatType, isHighlighted, onLongPress, on
 
       <View style={[styles.bubbleContent, isOwn ? {alignItems: 'flex-end'} : {alignItems: 'flex-start'}]}>
         {/* Forwarded label */}
+        {/* Не ушло — предлагаем повторить прямо здесь: текст из строки ввода
+            уже стёрт, и другого пути к нему у человека нет (ver. 7.34) */}
+        {message.failed && (
+          <TouchableOpacity style={styles.retryRow} onPress={() => onRetry?.(message)}>
+            <AlertCircle size={12} color={c.error} />
+            <Text style={styles.retryText}>Не отправлено · повторить</Text>
+          </TouchableOpacity>
+        )}
         {message.forwardedFrom && (
           <View style={[styles.forwardBadge, isOwn && styles.forwardBadgeOwn]}>
             <Forward size={11} color={isOwn ? 'rgba(255,255,255,0.75)' : c.textSecondary} style={{marginRight: 4}} />
@@ -577,6 +630,11 @@ export default function ChatScreen({route, navigation}) {
   });
   const {chatName, chatType, chatAvatar, otherUserId, groupMembers = []} = meta;
   const groupOnlineCount = groupMembers.filter(member => member.user?.isOnline).length;
+  // Создатель группы заводится сразу с ролью admin (см. POST /chat/group),
+  // поэтому отдельная проверка createdBy здесь не нужна
+  const isGroupAdmin = groupMembers.some(
+    member => String(member.userId) === String(user?.id) && member.role === 'admin',
+  );
 
   const [isOnline, setIsOnline] = useState(route.params.otherUserIsOnline ?? false);
 
@@ -640,8 +698,20 @@ export default function ChatScreen({route, navigation}) {
   // Modes
   const [replyTo, setReplyTo] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
-  const [forwardMode, setForwardMode] = useState(false);
-  const [selectedForForward, setSelectedForForward] = useState([]);
+  // Режим выделения (ver. 7.29). Раньше здесь лежал forwardMode, который
+  // никто не включал: выделение существовало только внутри модалки пересылки.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selected, setSelected] = useState([]);
+  // Закреплённые (ver. 7.33): в шапке одно, нажатие уводит к нему в ленте и
+  // переключает на следующее
+  const [pinnedMessages, setPinnedMessages] = useState([]);
+  const [pinnedIndex, setPinnedIndex] = useState(0);
+
+  // Галерея чата (ver. 7.35). Список приходит с сервера, а не собирается из
+  // загруженной ленты: до этого «медиа чата» показывало только подгруженное.
+  const [mediaPanel, setMediaPanel] = useState(null);
+  const [mediaItems, setMediaItems] = useState([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
 
   // Pending attachments (before sending)
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -663,17 +733,23 @@ export default function ChatScreen({route, navigation}) {
   const [recordSeconds, setRecordSeconds] = useState(0);
 
   // ── Load messages ──────────────────────────────────────────────────────────
-  const loadMessages = useCallback(async (before = null) => {
+  // cursor — самое старое из уже загруженных сообщений. Одной метки времени
+  // мало: сообщения, попавшие в одну миллисекунду, на стыке страниц терялись
+  // (ver. 7.30), поэтому вместе с ней уходит и id.
+  const loadMessages = useCallback(async (cursor = null) => {
     try {
       const params = {limit: 50};
-      if (before) params.before = before;
+      if (cursor) {
+        params.before = cursor.createdAt;
+        params.beforeId = cursor.id;
+      }
       const res = await chatApi.getMessages(chatId, params);
       const raw = Array.isArray(res.data) ? res.data : (res.data.messages ?? []);
       // Backend: ORDER DESC then .reverse() → oldest-first (ASC)
       // We need newest-first for inverted FlatList → reverse again
       const fetched = [...raw].reverse();
       if (raw.length < 50) setHasMore(false);
-      if (before) {
+      if (cursor) {
         // fetched = older messages, newest-first → append to END (visually: top)
         setMessages(prev => {
           const ids = new Set(prev.map(m => m.id));
@@ -731,15 +807,28 @@ export default function ChatScreen({route, navigation}) {
         />
       ),
       headerRight: () => (
-        <TouchableOpacity
-          style={{padding: 4, marginRight: 4}}
-          onPress={() => setSearchMode(v => !v)}>
-          {searchMode
-            ? <X size={22} color="#FFFFFF" />
-            : <Search size={22} color="#FFFFFF" />}
-        </TouchableOpacity>
+        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+          {!searchMode && (
+            <TouchableOpacity
+              style={{padding: 4}}
+              onPress={() => openMediaPanel('media')}>
+              <ImageIcon size={21} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={{padding: 4, marginRight: 4}}
+            onPress={() => setSearchMode(v => !v)}>
+            {searchMode
+              ? <X size={22} color="#FFFFFF" />
+              : <Search size={22} color="#FFFFFF" />}
+          </TouchableOpacity>
+        </View>
       ),
     });
+  // openMediaPanel в зависимости не берём намеренно: он объявлен ниже по файлу,
+  // и обращение к нему в массиве зависимостей (он считается на рендере) упало бы
+  // до инициализации. Тело эффекта выполняется позже и видит его нормально.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, chatName, chatAvatar, isOnline, otherLastSeen, isTyping, chatType, searchMode, chatId, groupMembers.length, groupOnlineCount]);
 
   // Online status + typing listeners
@@ -804,8 +893,15 @@ export default function ChatScreen({route, navigation}) {
     const handleReactionUpdate = data => {
       const incomingChatId = data.chat?.id ?? data.chatId;
       if (String(incomingChatId) !== String(chatId)) return;
+      // Сервер шлёт всем один список поставивших (ver. 7.28), «моя ли реакция»
+      // считаем на месте. Заодно вернулся users — без него после реакции по
+      // сокету пропадала аватарка на чипе с единственной реакцией.
+      const reactions = (data.reactions || []).map(r => ({
+        ...r,
+        hasReacted: (r.users || []).some(u => String(u.id) === String(user?.id)),
+      }));
       setMessages(prev =>
-        prev.map(m => m.id === data.messageId ? {...m, reactions: data.reactions} : m),
+        prev.map(m => m.id === data.messageId ? {...m, reactions} : m),
       );
     };
 
@@ -817,17 +913,17 @@ export default function ChatScreen({route, navigation}) {
       );
     };
 
-    // Сообщение удалили — своё с другого устройства или чужое, убранное админом
-    const handleMsgDeleted = data => {
+    // Сообщения удалили: у всех — кем-то из участников, «у себя» — собой же с
+    // другого устройства. Заглушек «Сообщение удалено» больше нет (ver. 7.29),
+    // поэтому и в том и в другом случае строки просто исчезают.
+    const handleMsgsDeleted = data => {
       const incomingChatId = data.chat?.id ?? data.chatId;
       if (String(incomingChatId) !== String(chatId)) return;
-      setMessages(prev => data.hardDeleted
-        ? prev
-            .filter(m => m.id !== data.messageId)
-            .map(m => m.replyTo?.id === data.messageId ? {...m, replyTo: null, replyToId: null} : m)
-        : prev.map(m => m.id === data.messageId
-            ? {...m, content: 'Сообщение удалено', type: 'system', attachments: []}
-            : m));
+      const ids = data.messageIds || [];
+      setMessages(prev => prev
+        .filter(m => !ids.includes(m.id))
+        .map(m => ids.includes(m.replyTo?.id) ? {...m, replyTo: null, replyToId: null} : m));
+      setPinnedMessages(prev => prev.filter(m => !ids.includes(m.id)));
     };
 
     const handlePollUpdated = data => {
@@ -838,8 +934,21 @@ export default function ChatScreen({route, navigation}) {
     SocketService.on('chat:new_message', 'new_message', handleNewMessage);
     SocketService.on('chat:reaction_updated', 'message_reaction_updated', handleReactionUpdate);
     SocketService.on('chat:msg_edited', 'message_edited', handleMsgEdit);
-    SocketService.on('chat:msg_deleted', 'message_deleted', handleMsgDeleted);
+    SocketService.on('chat:msg_deleted', 'messages_deleted', handleMsgsDeleted);
+    const handlePinChanged = data => {
+      if (String(data.chatId) !== String(chatId)) return;
+      setPinnedMessages(prev => {
+        const without = prev.filter(m => m.id !== data.messageId);
+        return data.pinned && data.message ? [data.message, ...without] : without;
+      });
+      setPinnedIndex(0);
+      setMessages(prev => prev.map(m => m.id === data.messageId
+        ? {...m, pinnedAt: data.pinned ? (data.message?.pinnedAt ?? new Date().toISOString()) : null}
+        : m));
+    };
+
     SocketService.on('chat:poll_updated', 'poll_updated', handlePollUpdated);
+    SocketService.on('chat:pin_changed', 'message_pin_changed', handlePinChanged);
 
     return () => {
       SocketService.off('chat:new_message');
@@ -847,8 +956,9 @@ export default function ChatScreen({route, navigation}) {
       SocketService.off('chat:msg_edited');
       SocketService.off('chat:msg_deleted');
       SocketService.off('chat:poll_updated');
+      SocketService.off('chat:pin_changed');
     };
-  }, [chatId]);
+  }, [chatId, user?.id]);
 
   // ── In-chat search ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -900,7 +1010,7 @@ export default function ChatScreen({route, navigation}) {
     if (!hasMore || loadingMore || messages.length === 0) return;
     const oldest = messages[messages.length - 1]; // oldest = last in newest-first array
     setLoadingMore(true);
-    loadMessages(oldest.createdAt).finally(() => setLoadingMore(false));
+    loadMessages(oldest).finally(() => setLoadingMore(false));
   }, [hasMore, loadingMore, messages, loadMessages]);
 
   // Есть ли что отправлять — от этого зависит, микрофон в строке ввода или самолётик
@@ -996,12 +1106,31 @@ export default function ChatScreen({route, navigation}) {
         }
       }
 
-      const res = await chatApi.sendMessage(chatId, content, attachments, replyTo?.id ?? null, savedMentions);
-      setMessages(prev => {
-        if (prev.some(m => m.id === res.data.id)) return prev;
-        return [res.data, ...prev];
-      });
+      const currentReply = replyTo;
       setReplyTo(null);
+
+      // Оптимистичная отправка (ver. 7.34): сообщение встаёт в ленту сразу, с
+      // часиками вместо галочки. Вложения так не показываем — их ещё грузить,
+      // и локальный file:// в пузыре всё равно не отобразится.
+      const optimistic = attachments.length === 0 ? {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        chatId,
+        senderId: user?.id,
+        content,
+        type: 'text',
+        attachments: [],
+        createdAt: new Date().toISOString(),
+        sender: {id: user?.id, displayName: user?.displayName, username: user?.username, avatar: user?.avatar},
+        replyTo: currentReply || null,
+        replyToId: currentReply?.id ?? null,
+        reactions: [],
+        pending: true,
+        draft: {content, attachments, replyToId: currentReply?.id ?? null, mentions: savedMentions},
+      } : null;
+
+      if (optimistic) setMessages(prev => [optimistic, ...prev]);
+
+      await deliverMessage(optimistic, {content, attachments, replyToId: currentReply?.id ?? null, mentions: savedMentions});
     } catch (err) {
       Alert.alert('Ошибка', 'Не удалось отправить сообщение');
       setText(savedText);
@@ -1011,6 +1140,33 @@ export default function ChatScreen({route, navigation}) {
       setSending(false);
     }
   };
+
+  // Доставка отдельно от handleSend: тем же путём идёт повтор по кнопке
+  // «повторить» у неудавшегося сообщения.
+  const deliverMessage = async (optimistic, draft) => {
+    try {
+      const res = await chatApi.sendMessage(chatId, draft.content, draft.attachments, draft.replyToId, draft.mentions);
+      setMessages(prev => {
+        if (optimistic) {
+          return prev.map(m => m.id === optimistic.id ? res.data : m);
+        }
+        return prev.some(m => m.id === res.data.id) ? prev : [res.data, ...prev];
+      });
+    } catch (err) {
+      if (!optimistic) throw err;
+      setMessages(prev => prev.map(m => m.id === optimistic.id
+        ? {...m, pending: false, failed: true}
+        : m));
+    }
+  };
+
+  const retrySend = useCallback(async msg => {
+    if (!msg?.draft) return;
+    setMessages(prev => prev.map(m => m.id === msg.id ? {...m, failed: false, pending: true} : m));
+    await deliverMessage(msg, msg.draft);
+  // deliverMessage замкнут на chatId, который на экране не меняется
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   // ── File/image picking ─────────────────────────────────────────────────────
   const pickFromGallery = () => {
@@ -1115,32 +1271,143 @@ export default function ChatScreen({route, navigation}) {
     setText('');
   };
 
-  const handleDelete = msg => {
+  // ── Галерея чата ───────────────────────────────────────────────────────────
+  const openMediaPanel = useCallback(async kind => {
+    setMediaPanel(kind);
+    setMediaLoading(true);
+    setMediaItems([]);
+    try {
+      const {data} = await chatApi.getChatMedia(chatId, kind, {limit: 100});
+      setMediaItems(data);
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось загрузить');
+    } finally {
+      setMediaLoading(false);
+    }
+  }, [chatId]);
+
+  // ── Закреплённые сообщения ─────────────────────────────────────────────────
+  const loadPinned = useCallback(async () => {
+    try {
+      const {data} = await chatApi.getPinned(chatId);
+      setPinnedMessages(data);
+      setPinnedIndex(0);
+    } catch {
+      setPinnedMessages([]);
+    }
+  }, [chatId]);
+
+  useEffect(() => { loadPinned(); }, [loadPinned]);
+
+  // В группе закрепляет админ, в личной переписке — любой из двоих.
+  // Те же правила на сервере, в services/messagePermissions.js.
+  const canPinHere = user?.isAdmin || chatType === 'private' || isGroupAdmin;
+
+  // Переход к сообщению в ленте. То же, что делает поиск: подсветить и
+  // прокрутить, а если сообщение ещё не подгружено — доложить страницу.
+  const jumpToMessage = useCallback(messageId => {
+    setHighlightedMsgId(messageId);
+    const listIdx = listDataRef.current.findIndex(item => item.id === messageId);
+    if (listIdx !== -1) {
+      flatListRef.current?.scrollToIndex({index: listIdx, animated: true, viewPosition: 0.5});
+    }
+  }, []);
+
+  const togglePin = async (msg, pin) => {
     setContextMenu(null);
-    const isOwn = String(msg.senderId) === String(user?.id);
+    try {
+      await chatApi.pinMessage(chatId, msg.id, pin);
+    } catch (e) {
+      Alert.alert('Ошибка', e.response?.data?.error || 'Не удалось изменить закрепление');
+    }
+  };
+
+  // ── Выделение сообщений ────────────────────────────────────────────────────
+  const startSelection = msg => {
+    setContextMenu(null);
+    setSelectionMode(true);
+    setSelected([msg.id]);
+  };
+
+  const cancelSelection = () => {
+    setSelectionMode(false);
+    setSelected([]);
+  };
+
+  const toggleSelect = useCallback(msg => {
+    setSelected(prev => prev.includes(msg.id)
+      ? prev.filter(id => id !== msg.id)
+      : [...prev, msg.id]);
+  }, []);
+
+  // Те же правила, что на сервере (canDeleteForAll в backend/routes/chat.js):
+  // здесь они решают только, показывать ли кнопку «У всех».
+  const DELETE_FOR_ALL_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+  const canDeleteForAll = msg => {
+    if (!msg || msg.type === 'system') return false;
+    if (user?.isAdmin) return true;
+    if (chatType === 'group' && isGroupAdmin) return true;
+    if (String(msg.senderId) !== String(user?.id)) return false;
+    return Date.now() - new Date(msg.createdAt).getTime() <= DELETE_FOR_ALL_WINDOW_MS;
+  };
+
+  const doDelete = async (ids, scope) => {
+    try {
+      await chatApi.deleteMessages(chatId, ids, scope);
+      // Своё удаление сокетом обратно не приходит — убираем сразу
+      setMessages(prev => prev
+        .filter(m => !ids.includes(m.id))
+        .map(m => ids.includes(m.replyTo?.id) ? {...m, replyTo: null, replyToId: null} : m));
+      cancelSelection();
+    } catch (e) {
+      Alert.alert('Ошибка', e.response?.data?.error || 'Не удалось удалить');
+    }
+  };
+
+  // Заглушек «Сообщение удалено» больше нет: удаление либо прячет сообщение у
+  // себя, либо стирает его у всех — см. ver. 7.29.
+  const confirmDelete = msgs => {
+    const list = msgs.filter(Boolean);
+    if (list.length === 0) return;
+    setContextMenu(null);
+
+    const ids = list.map(m => m.id);
+    const many = list.length > 1;
+    const buttons = [
+      {text: 'Отмена', style: 'cancel'},
+      {text: 'У себя', onPress: () => doDelete(ids, 'me')},
+    ];
+    if (list.every(canDeleteForAll)) {
+      buttons.push({text: 'У всех', style: 'destructive', onPress: () => doDelete(ids, 'all')});
+    }
+
     Alert.alert(
-      isOwn ? 'Удалить сообщение?' : 'Удалить чужое сообщение?',
-      isOwn ? '' : 'Оно пропадёт у всех участников чата.',
-      [
-        {text: 'Отмена', style: 'cancel'},
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const {data} = await chatApi.deleteMessage(chatId, msg.id);
-              setMessages(prev => data.hardDeleted
-                ? prev
-                    .filter(m => m.id !== msg.id)
-                    .map(m => m.replyTo?.id === msg.id ? {...m, replyTo: null, replyToId: null} : m)
-                : prev.map(m => m.id === msg.id ? {...m, content: 'Сообщение удалено', type: 'system', attachments: []} : m));
-            } catch {
-              Alert.alert('Ошибка', 'Не удалось удалить сообщение');
-            }
-          },
-        },
-      ],
+      many ? `Удалить ${list.length} ${pluralMessages(list.length)}?` : 'Удалить сообщение?',
+      many
+        ? '«У себя» — пропадут только из вашей переписки, у остальных останутся.'
+        : '«У себя» — пропадёт только из вашей переписки, у остальных останется.',
+      buttons,
     );
+  };
+
+  // На телефоне вместо буфера обмена — системное «Поделиться»: библиотеки
+  // Clipboard в проекте нет, а тащить нативную зависимость ради одной кнопки
+  // не стоит. Отправить текст себе в заметки через шторку даже удобнее.
+  const shareSelected = async () => {
+    const text = messages
+      .filter(m => selected.includes(m.id))
+      .map(m => stripFormatting(m.content || ''))
+      .filter(Boolean)
+      .join('\n');
+    if (!text) {
+      Alert.alert('Нечего копировать', 'В выделенном нет текста');
+      return;
+    }
+    try {
+      await Share.share({message: text});
+      cancelSelection();
+    } catch {}
   };
 
   /**
@@ -1201,26 +1468,31 @@ export default function ChatScreen({route, navigation}) {
     } catch {}
   };
 
-  const startForward = msg => {
+  const openForward = ids => {
     setContextMenu(null);
-    setSelectedForForward([msg.id]);
+    setSelected(ids);
     chatApi.list().then(r => setChatsList(r.data)).catch(() => {});
     setShowForwardModal(true);
   };
 
   const doForward = async targetChatId => {
     setShowForwardModal(false);
+    const count = selected.length;
     try {
-      await chatApi.forwardMessages(targetChatId, selectedForForward);
-      Alert.alert('Готово', 'Сообщение переслано');
+      await chatApi.forwardMessages(targetChatId, selected);
+      Alert.alert('Готово', count > 1 ? `Переслано ${count} ${pluralMessages(count)}` : 'Сообщение переслано');
     } catch {
-      Alert.alert('Ошибка', 'Не удалось переслать сообщение');
+      Alert.alert('Ошибка', 'Не удалось переслать');
     }
-    setSelectedForForward([]);
+    cancelSelection();
   };
 
   // ── Processed list with date separators ────────────────────────────────────
   const listData = useMemo(() => withSeparators(messages), [messages]);
+  // Ссылка на тот же список — чтобы переход к сообщению не зависел от порядка
+  // объявлений: jumpToMessage объявлен выше, чем считается listData
+  const listDataRef = useRef(listData);
+  useEffect(() => { listDataRef.current = listData; }, [listData]);
   const mediaGallery = useMemo(() => [...messages].reverse().flatMap(message =>
     (message.attachments || []).map((att, idx) => ({
       ...att,
@@ -1251,11 +1523,17 @@ export default function ChatScreen({route, navigation}) {
         isOwn={String(item.senderId) === String(user?.id)}
         chatType={chatType}
         isHighlighted={item.id === highlightedMsgId}
-        onLongPress={handleLongPress}
-        onReactionTap={handleReactionTap}
-        onMediaPress={openMedia}
-        onActionPress={handleActionPress}
-        onPollVote={votePoll}
+        selectionMode={selectionMode}
+        isSelected={selected.includes(item.id)}
+        onSelectToggle={toggleSelect}
+        // В режиме выделения тап по картинке или кнопке бота должен отмечать
+        // сообщение, а не открывать галерею и не запускать действие
+        onLongPress={selectionMode ? toggleSelect : handleLongPress}
+        onReactionTap={selectionMode ? noop : handleReactionTap}
+        onMediaPress={selectionMode ? noop : openMedia}
+        onActionPress={selectionMode ? noop : handleActionPress}
+        onPollVote={selectionMode ? noop : votePoll}
+        onRetry={retrySend}
         runningAction={runningAction}
         chatTitle={chatName}
         chatId={chatId}
@@ -1325,6 +1603,41 @@ export default function ChatScreen({route, navigation}) {
           )}
         </View>
       )}
+
+      {/* Шапка закреплённых. Нажатие уводит к сообщению и переключает на
+          следующее — так же, как в вебе. */}
+      {pinnedMessages.length > 0 && (() => {
+        const pinned = pinnedMessages[pinnedIndex % pinnedMessages.length];
+        if (!pinned) return null;
+        return (
+          <View style={styles.pinnedBar}>
+            <Pin size={15} color={c.primary} />
+            <TouchableOpacity
+              style={styles.pinnedContent}
+              onPress={() => {
+                jumpToMessage(pinned.id);
+                if (pinnedMessages.length > 1) {
+                  setPinnedIndex(i => (i + 1) % pinnedMessages.length);
+                }
+              }}>
+              <Text style={styles.pinnedTitle}>
+                Закреплённое
+                {pinnedMessages.length > 1
+                  ? ` ${(pinnedIndex % pinnedMessages.length) + 1} из ${pinnedMessages.length}`
+                  : ''}
+              </Text>
+              <Text style={styles.pinnedText} numberOfLines={1}>
+                {stripFormatting(pinned.content) || 'Вложение'}
+              </Text>
+            </TouchableOpacity>
+            {canPinHere && (
+              <TouchableOpacity onPress={() => togglePin(pinned, false)} style={styles.iconBtn}>
+                <PinOff size={18} color={c.textTertiary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      })()}
 
       {/* Messages list (inverted = newest at bottom) */}
       <FlatList
@@ -1437,9 +1750,36 @@ export default function ChatScreen({route, navigation}) {
       {/* Играет голосовое из другого чата — показываем полоску управления */}
       <VoiceMiniPlayer hideForChatId={chatId} />
 
-      {/* Input bar. Во время записи вся строка заменяется на индикатор:
-          места на обе раскладки нет, да и промахнуться по кнопке проще. */}
-      {recording ? (
+      {/* Панель выделения занимает место строки ввода: писать и разбирать
+          завал одновременно всё равно нельзя, а на телефоне обе строки сразу
+          съели бы половину экрана. */}
+      {selectionMode ? (
+        <View style={inputBarStyle}>
+          <TouchableOpacity style={styles.iconBtn} onPress={cancelSelection}>
+            <X size={22} color={c.textTertiary} />
+          </TouchableOpacity>
+          <Text style={styles.selectionCount}>{selected.length}</Text>
+          <View style={{flex: 1}} />
+          <TouchableOpacity
+            style={styles.iconBtn}
+            disabled={selected.length === 0}
+            onPress={shareSelected}>
+            <Share2 size={22} color={selected.length ? c.textPrimary : c.textTertiary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            disabled={selected.length === 0}
+            onPress={() => confirmDelete(messages.filter(m => selected.includes(m.id)))}>
+            <Trash2 size={22} color={selected.length ? c.error : c.textTertiary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            disabled={selected.length === 0}
+            onPress={() => openForward(selected)}>
+            <Forward size={22} color={selected.length ? c.primary : c.textTertiary} />
+          </TouchableOpacity>
+        </View>
+      ) : recording ? (
         <View style={inputBarStyle}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => finishVoiceRecording(false)}>
             <Trash2 size={22} color={c.error} />
@@ -1610,6 +1950,93 @@ export default function ChatScreen({route, navigation}) {
         </View>
       </Modal>
 
+      {/* ── Галерея чата: медиа, файлы, голосовые, ссылки (ver. 7.35) ── */}
+      <Modal
+        transparent
+        visible={!!mediaPanel}
+        animationType="slide"
+        onRequestClose={() => setMediaPanel(null)}>
+        <View style={styles.forwardModal}>
+          <View style={styles.forwardModalHeader}>
+            <Text style={styles.forwardModalTitle}>Медиа чата</Text>
+            <TouchableOpacity onPress={() => setMediaPanel(null)}>
+              <X size={22} color={c.textTertiary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.mediaTabs}>
+            {MEDIA_TABS.map(tab => (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.mediaTab, mediaPanel === tab.key && styles.mediaTabActive]}
+                onPress={() => openMediaPanel(tab.key)}>
+                <Text style={[styles.mediaTabText, mediaPanel === tab.key && styles.mediaTabTextActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {mediaLoading ? (
+            <View style={styles.center}><LogoLoader width={80} /></View>
+          ) : mediaItems.length === 0 ? (
+            <View style={styles.center}><Text style={styles.mediaEmpty}>Здесь пока пусто</Text></View>
+          ) : mediaPanel === 'media' ? (
+            <FlatList
+              data={mediaItems}
+              numColumns={3}
+              keyExtractor={(item, idx) => `${item.messageId}:${idx}`}
+              renderItem={({item}) => {
+                const att = item.attachment || {};
+                const uri = fixUrl(att.thumbnailUrl || att.thumbnailPath || att.url || att.path);
+                return (
+                  <TouchableOpacity
+                    style={styles.mediaCell}
+                    onPress={() => { setMediaPanel(null); jumpToMessage(item.messageId); }}>
+                    {att.mimeType?.startsWith('video/')
+                      ? <View style={styles.mediaCellVideo}><Play size={20} color={c.textTertiary} /></View>
+                      : <Image source={{uri}} style={styles.mediaCellImage} />}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          ) : (
+            <FlatList
+              data={mediaItems}
+              keyExtractor={(item, idx) => `${item.messageId}:${idx}`}
+              renderItem={({item}) => {
+                const att = item.attachment || {};
+                const isLink = mediaPanel === 'links';
+                const title = isLink
+                  ? (item.urls?.[0] || item.content)
+                  : att.kind === 'voice'
+                    ? 'Голосовое сообщение'
+                    : (att.name || att.filename || 'Файл');
+                return (
+                  <TouchableOpacity
+                    style={styles.mediaRow}
+                    onPress={() => {
+                      if (isLink && item.urls?.[0]) {
+                        Linking.openURL(item.urls[0]).catch(() => {});
+                        return;
+                      }
+                      setMediaPanel(null);
+                      jumpToMessage(item.messageId);
+                    }}>
+                    <Text style={[styles.mediaRowTitle, isLink && styles.mediaRowLink]} numberOfLines={1}>
+                      {title}
+                    </Text>
+                    <Text style={styles.mediaRowMeta} numberOfLines={1}>
+                      {item.senderName} · {new Date(item.createdAt).toLocaleDateString('ru-RU')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
+        </View>
+      </Modal>
+
       {/* ── Context menu modal ── */}
       <Modal transparent visible={!!contextMenu} animationType="fade" onRequestClose={() => setContextMenu(null)}>
         <Pressable style={styles.modalOverlay} onPress={() => setContextMenu(null)}>
@@ -1640,7 +2067,27 @@ export default function ChatScreen({route, navigation}) {
 
             <TouchableOpacity
               style={styles.contextItem}
-              onPress={() => startForward(contextMenu?.message)}>
+              onPress={() => startSelection(contextMenu?.message)}>
+              <CheckCircle2 size={18} color={c.textPrimary} style={styles.contextItemIcon} />
+              <Text style={styles.contextItemText}>Выбрать</Text>
+            </TouchableOpacity>
+
+            {canPinHere && contextMenu?.message?.type !== 'system' && (
+              <TouchableOpacity
+                style={styles.contextItem}
+                onPress={() => togglePin(contextMenu?.message, !contextMenu?.message?.pinnedAt)}>
+                {contextMenu?.message?.pinnedAt
+                  ? <PinOff size={18} color={c.textPrimary} style={styles.contextItemIcon} />
+                  : <Pin size={18} color={c.textPrimary} style={styles.contextItemIcon} />}
+                <Text style={styles.contextItemText}>
+                  {contextMenu?.message?.pinnedAt ? 'Открепить' : 'Закрепить'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.contextItem}
+              onPress={() => openForward([contextMenu?.message?.id])}>
               <Forward size={18} color={c.textPrimary} style={styles.contextItemIcon} />
               <Text style={styles.contextItemText}>Переслать</Text>
             </TouchableOpacity>
@@ -1655,10 +2102,12 @@ export default function ChatScreen({route, navigation}) {
                 <Text style={styles.contextItemText}>Редактировать</Text>
               </TouchableOpacity>
             )}
-            {(String(contextMenu?.message?.senderId) === String(user?.id) || user?.isAdmin) && (
+            {/* Удалить может каждый: как минимум «у себя». Стереть у всех
+                разрешит или не разрешит сервер (ver. 7.29) */}
+            {contextMenu?.message && (
               <TouchableOpacity
                 style={styles.contextItem}
-                onPress={() => handleDelete(contextMenu?.message)}>
+                onPress={() => confirmDelete([contextMenu?.message])}>
                 <Trash2 size={18} color={c.error} style={styles.contextItemIcon} />
                 <Text style={[styles.contextItemText, styles.contextItemDanger]}>Удалить</Text>
               </TouchableOpacity>
@@ -1728,6 +2177,65 @@ const makeStyles = c => StyleSheet.create({
   bubbleRowOwn: {justifyContent: 'flex-end'},
   bubbleRowOther: {justifyContent: 'flex-start'},
   bubbleRowHighlighted: {backgroundColor: 'rgba(255, 214, 0, 0.25)', borderRadius: 8},
+  // Режим выделения (ver. 7.29): подсветка строки и кружок-отметка слева
+  bubbleRowSelected: {backgroundColor: c.primaryLight, borderRadius: 8},
+  selectCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: c.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    alignSelf: 'center',
+  },
+  selectCheckOn: {backgroundColor: c.primary, borderColor: c.primary},
+  selectionCount: {color: c.textPrimary, fontSize: 16, fontWeight: '600', marginLeft: 4},
+  // Шапка закреплённых (ver. 7.33)
+  pinnedBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: c.bgSecondary,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+  },
+  // flex + minWidth: без них длинный текст растягивает строку и выталкивает
+  // кнопку открепления за край экрана
+  pinnedContent: {flex: 1, minWidth: 0},
+  pinnedTitle: {color: c.primary, fontSize: 12, fontWeight: '600'},
+  pinnedText: {color: c.textSecondary, fontSize: 13},
+  retryRow: {flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2},
+  retryText: {color: c.error, fontSize: 11},
+  // Галерея чата (ver. 7.35)
+  mediaTabs: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+  },
+  // Прозрачная подчёркивающая линия у неактивных вкладок: иначе активная
+  // выше остальных на два пикселя и строка дёргается при переключении
+  mediaTab: {paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 2, borderBottomColor: 'transparent'},
+  mediaTabActive: {borderBottomColor: c.primary},
+  mediaTabText: {color: c.textSecondary, fontSize: 14},
+  mediaTabTextActive: {color: c.primary, fontWeight: '600'},
+  mediaEmpty: {color: c.textTertiary, fontSize: 14},
+  mediaCell: {flex: 1 / 3, aspectRatio: 1, padding: 1},
+  mediaCellImage: {width: '100%', height: '100%', borderRadius: 4, backgroundColor: c.bgSecondary},
+  mediaCellVideo: {
+    width: '100%', height: '100%', borderRadius: 4,
+    backgroundColor: c.bgSecondary, alignItems: 'center', justifyContent: 'center',
+  },
+  mediaRow: {
+    paddingVertical: 10, paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border,
+  },
+  mediaRowTitle: {color: c.textPrimary, fontSize: 14},
+  mediaRowLink: {color: c.primary},
+  mediaRowMeta: {color: c.textSecondary, fontSize: 12, marginTop: 2},
   bubbleAvatar: {marginRight: 6, marginBottom: 2},
 
   bubbleContent: {maxWidth: '78%'},

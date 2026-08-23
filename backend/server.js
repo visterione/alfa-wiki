@@ -331,28 +331,38 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
+const { chatFileGuard } = require('./services/fileAccess');
+
 // Static files with proper MIME types
-const serveStatic = express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res, filePath) => {
-    // Устанавливаем правильные MIME-типы для видео
-    const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.mp4') {
-      res.setHeader('Content-Type', 'video/mp4');
-    } else if (ext === '.webm') {
-      res.setHeader('Content-Type', 'video/webm');
-    } else if (ext === '.ogg') {
-      res.setHeader('Content-Type', 'video/ogg');
-    } else if (ext === '.avi') {
-      res.setHeader('Content-Type', 'video/x-msvideo');
-    } else if (ext === '.mov') {
-      res.setHeader('Content-Type', 'video/quicktime');
-    } else if (ext === '.mkv') {
-      res.setHeader('Content-Type', 'video/x-matroska');
-    }
-    // Разрешаем частичную загрузку (Range requests) для видео
-    res.setHeader('Accept-Ranges', 'bytes');
+const setUploadHeaders = (res, filePath) => {
+  // Устанавливаем правильные MIME-типы для видео
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.mp4') {
+    res.setHeader('Content-Type', 'video/mp4');
+  } else if (ext === '.webm') {
+    res.setHeader('Content-Type', 'video/webm');
+  } else if (ext === '.ogg') {
+    res.setHeader('Content-Type', 'video/ogg');
+  } else if (ext === '.avi') {
+    res.setHeader('Content-Type', 'video/x-msvideo');
+  } else if (ext === '.mov') {
+    res.setHeader('Content-Type', 'video/quicktime');
+  } else if (ext === '.mkv') {
+    res.setHeader('Content-Type', 'video/x-matroska');
   }
-});
+  // Разрешаем частичную загрузку (Range requests) для видео
+  res.setHeader('Accept-Ranges', 'bytes');
+};
+
+const serveStatic = express.static(path.join(__dirname, 'uploads'), { setHeaders: setUploadHeaders });
+
+// Вложения чатов — единственная часть uploads, закрытая проверкой доступа:
+// это переписка сотрудников, а не картинки вики. Guard стоит перед статикой и
+// пускает только участника чата, куда файл отправляли (services/fileAccess.js).
+app.use('/uploads/chat-attachments', chatFileGuard, express.static(
+  path.join(__dirname, 'uploads/chat-attachments'),
+  { setHeaders: setUploadHeaders }
+));
 
 app.use('/uploads', serveStatic);
 app.use('/uploads/map', express.static(path.join(__dirname, 'uploads/map')));

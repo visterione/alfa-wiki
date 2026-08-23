@@ -25,10 +25,14 @@ import {
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {Plus, Search, X, Check, Trash2, ChevronRight} from 'lucide-react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import {
+  Plus, Search, X, Check, Trash2, ChevronRight, ChevronDown, Filter, CalendarDays,
+} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import BottomSheet from '../../components/BottomSheet';
 import {loadLocationTree, useWarehouseCan} from '../../store/warehouseStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {radius, font} from '../../theme';
@@ -36,26 +40,59 @@ import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {qtyText, dateText, roomText, flattenRooms} from './warehouseMeta';
 
 /**
- * Типы, доступные с телефона.
+ * Типы операций — те же восемь, что в вебе, и с теми же правилами.
  *
- * `to` — нужен ли документу приёмник (куда кладём), `from` — источник (откуда
- * берём). От этого зависит, о каком кабинете спрашивать: у выдачи и списания
- * источник, у приёма приёмник, у перемещения оба.
+ * `material` и `asset` — что вообще можно положить в строку: приход материала
+ * бывает, приход основного средства оформляется постановкой на учёт и сюда не
+ * входит. `sourceFirst` — операции, в которых сначала выбирают место, а потом
+ * объект: списание, перемещение и ремонт это всегда работа с тем, что где-то
+ * уже лежит, и общий справочник в ней помеха — из него ещё надо угадать то, что
+ * здесь действительно есть.
  */
 const TYPES = [
-  {key: 'issue', label: 'Выдача', from: true, to: false},
-  {key: 'receipt', label: 'Приём', from: false, to: true},
-  {key: 'transfer', label: 'Перемещение', from: true, to: true},
-  {key: 'writeoff', label: 'Списание', from: true, to: false},
+  {key: 'receipt', label: 'Приём', from: false, to: true, material: true, asset: false},
+  {key: 'issue', label: 'Выдача', from: true, to: false, material: true, asset: false},
+  {key: 'transfer', label: 'Перемещение', from: true, to: true, material: true, asset: true, sourceFirst: true},
+  {key: 'return', label: 'Возврат', from: false, to: true, material: true, asset: false},
+  {key: 'writeoff', label: 'Списание', from: true, to: false, material: true, asset: true, sourceFirst: true},
+  {key: 'repair_out', label: 'В ремонт', from: true, to: false, material: false, asset: true, sourceFirst: true},
+  {key: 'repair_in', label: 'Из ремонта', from: true, to: false, material: false, asset: true, sourceFirst: true},
+  {key: 'surplus', label: 'Оприходование излишков', from: false, to: true, material: true, asset: false},
 ];
 
-const TYPE_LABELS = {
-  receipt: 'Приём', issue: 'Выдача', transfer: 'Перемещение', return: 'Возврат',
-  writeoff: 'Списание', repair_out: 'В ремонт', repair_in: 'Из ремонта',
-  surplus: 'Оприходование излишков', inventory: 'Инвентаризация',
+const TYPE_BY_KEY = Object.fromEntries(TYPES.map(t => [t.key, t]));
+
+/**
+ * Подпись у выбора места своя на каждую операцию: «откуда» ничего не говорит о
+ * том, что сейчас произойдёт, а на этом шаге человек как раз выбирает область
+ * ответственности. Формулировки те же, что в вебе.
+ */
+const FROM_LABELS = {
+  issue: 'Откуда выдаём',
+  writeoff: 'Откуда списываем',
+  transfer: 'Откуда перемещаем',
+  repair_out: 'Откуда забираем в ремонт',
+  // Из ремонта: сервер размещение не меняет, он только снимает статус «в
+  // ремонте». Значит выбирается не «куда вернуть», а кабинет, за которым
+  // оборудование числится всё это время.
+  repair_in: 'Кабинет оборудования',
 };
 
+const TO_LABELS = {
+  receipt: 'Куда принимаем',
+  return: 'Куда возвращаем',
+  transfer: 'Куда перемещаем',
+  surplus: 'Куда приходуем',
+};
+
+const TYPE_LABELS = Object.fromEntries(TYPES.map(t => [t.key, t.label]));
+
 const num = value => Number(String(value ?? '').replace(',', '.')) || 0;
+
+/** Дата и время документа: до минут — секунды в журнале никому не нужны. */
+const dateTimeText = value => new Date(value).toLocaleString('ru-RU', {
+  day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+});
 
 export default function WarehouseOperationsScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -66,6 +103,7 @@ export default function WarehouseOperationsScreen() {
 
   const [documents, setDocuments] = useState(null);
   const [typeFilter, setTypeFilter] = useState('');
+  const [typeSheet, setTypeSheet] = useState(false);
   const [form, setForm] = useState(null);
 
   const load = useCallback(() => warehouseApi.documents({
@@ -81,23 +119,15 @@ export default function WarehouseOperationsScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.filters}>
-        <Pressable
-          style={[styles.chip, !typeFilter && styles.chipOn]}
-          onPress={() => setTypeFilter('')}>
-          <Text style={[styles.chipText, !typeFilter && styles.chipTextOn]}>Все</Text>
-        </Pressable>
-        {TYPES.map(type => (
-          <Pressable
-            key={type.key}
-            style={[styles.chip, typeFilter === type.key && styles.chipOn]}
-            onPress={() => setTypeFilter(type.key)}>
-            <Text style={[styles.chipText, typeFilter === type.key && styles.chipTextOn]}>
-              {type.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {/* Отбор по типу — строкой с листом, а не рядом кнопок: типов восемь, и
+          в ряд они не помещаются, а перенос съедает верх экрана */}
+      <Pressable style={styles.typeFilter} onPress={() => setTypeSheet(true)}>
+        <Filter size={15} color={c.primary} />
+        <Text style={styles.typeFilterText}>
+          {typeFilter ? TYPE_LABELS[typeFilter] : 'Все операции'}
+        </Text>
+        <ChevronDown size={16} color={c.textTertiary} />
+      </Pressable>
 
       <FlatList
         data={documents}
@@ -135,6 +165,25 @@ export default function WarehouseOperationsScreen() {
         </View>
       )}
 
+      <BottomSheet
+        visible={typeSheet}
+        title="Тип операции"
+        onClose={() => setTypeSheet(false)}>
+        <View style={styles.sheet}>
+          {[{key: '', label: 'Все операции'}, ...TYPES].map(item => (
+            <Pressable
+              key={item.key || 'all'}
+              style={[styles.sheetRow, typeFilter === item.key && styles.sheetRowOn]}
+              onPress={() => { setTypeFilter(item.key); setTypeSheet(false); }}>
+              <Text
+                style={[styles.sheetRowText, typeFilter === item.key && styles.sheetRowTextOn]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </BottomSheet>
+
       {Boolean(form) && (
         <DocumentForm
           styles={styles}
@@ -162,20 +211,36 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
   const [fromRoomId, setFromRoomId] = useState(null);
   const [toRoomId, setToRoomId] = useState(null);
   const [lines, setLines] = useState([]);
-  const [reason, setReason] = useState('');
+  // Шапка документа — те же поля, что в веб-форме: когда произошло, по какому
+  // основанию, с кем и что сказать словами.
+  const [meta, setMeta] = useState({
+    occurredAt: new Date(),
+    reasonCode: '',
+    reasonText: '',
+    comment: '',
+    contractorId: null,
+  });
+  const [contractors, setContractors] = useState([]);
   const [picker, setPicker] = useState(null);
+  const [datePicker, setDatePicker] = useState(false);
   const [sending, setSending] = useState(false);
 
-  const config = TYPES.find(t => t.key === type);
+  const config = TYPE_BY_KEY[type];
 
   useFocusEffect(useCallback(() => {
     let alive = true;
     loadLocationTree().then(tree => alive && setRooms(flattenRooms(tree)));
+    // Контрагент нужен только приходным операциям, но справочник маленький и
+    // грузится один раз — проще взять его сразу, чем сторожить смену типа
+    warehouseApi.contractors()
+      .then(({data}) => alive && setContractors(data || []))
+      .catch(() => {});
     return () => { alive = false; };
   }, []));
 
   const fromRoom = rooms?.find(r => r.id === fromRoomId);
   const toRoom = rooms?.find(r => r.id === toRoomId);
+  const withContractor = type === 'receipt' || type === 'return';
 
   const post = async () => {
     if (!lines.length) return Alert.alert('Не проведено', 'Добавьте хотя бы одну позицию.');
@@ -186,12 +251,19 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
     try {
       await warehouseApi.createDocument({
         type,
-        reasonText: reason.trim() || null,
+        // Дата задним числом законна — документ оформляют не в ту же секунду.
+        // Будущим числом сервер её не примет, и это его правило, не наше.
+        occurredAt: meta.occurredAt.toISOString(),
+        reasonCode: meta.reasonCode.trim() || null,
+        reasonText: meta.reasonText.trim() || null,
+        comment: meta.comment.trim() || null,
+        contractorId: withContractor ? meta.contractorId : null,
         fromRoomId: config.from ? fromRoomId : null,
         toRoomId: config.to ? toRoomId : null,
         lines: lines.map(line => ({
           ...(line.assetId ? {assetId: line.assetId} : {nomenclatureId: line.nomenclatureId}),
           quantity: line.quantity,
+          ...(line.unitCost ? {unitCost: line.unitCost} : {}),
           // Место хранения берём первое в кабинете: требовать выбирать полку на
           // каждую строку — работа без содержания, то же правило в разборе ОСВ.
           ...(config.from ? {fromStorageId: fromRoom?.storages?.[0]?.id} : {}),
@@ -204,6 +276,19 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
       return setSending(false);
     }
   };
+
+  const field = (label, key, extra = {}) => (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={styles.fieldInput}
+        value={meta[key]}
+        onChangeText={value => setMeta(m => ({...m, [key]: value}))}
+        placeholderTextColor={c.textTertiary}
+        {...extra}
+      />
+    </View>
+  );
 
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
@@ -225,22 +310,26 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               <View>
-                <View style={styles.filters}>
-                  {TYPES.map(item => (
-                    <Pressable
-                      key={item.key}
-                      style={[styles.chip, type === item.key && styles.chipOn]}
-                      onPress={() => { setType(item.key); setLines([]); }}>
-                      <Text style={[styles.chipText, type === item.key && styles.chipTextOn]}>
-                        {item.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+                {/* Тип — строкой с листом, а не рядом кнопок: типов восемь, и
+                    от типа зависит вся остальная форма, так что выбор должен
+                    читаться словом, а не угадываться по подсвеченному чипу */}
+                <Pressable style={styles.pick} onPress={() => setPicker('type')}>
+                  <Text style={styles.pickLabel}>Операция</Text>
+                  <Text style={styles.pickValue} numberOfLines={1}>{config.label}</Text>
+                  <ChevronDown size={16} color={c.textTertiary} />
+                </Pressable>
+
+                <Pressable style={styles.pick} onPress={() => setDatePicker(true)}>
+                  <Text style={styles.pickLabel}>Когда</Text>
+                  <Text style={styles.pickValue}>{dateTimeText(meta.occurredAt)}</Text>
+                  <CalendarDays size={16} color={c.textTertiary} />
+                </Pressable>
 
                 {config.from && (
                   <Pressable style={styles.pick} onPress={() => setPicker('from')}>
-                    <Text style={styles.pickLabel}>Откуда</Text>
+                    <Text style={styles.pickLabel} numberOfLines={2}>
+                      {FROM_LABELS[type] || 'Откуда'}
+                    </Text>
                     <Text style={[styles.pickValue, !fromRoom && styles.pickEmpty]} numberOfLines={1}>
                       {fromRoom ? fromRoom.label : 'Выберите кабинет'}
                     </Text>
@@ -250,7 +339,9 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
 
                 {config.to && (
                   <Pressable style={styles.pick} onPress={() => setPicker('to')}>
-                    <Text style={styles.pickLabel}>Куда</Text>
+                    <Text style={styles.pickLabel} numberOfLines={2}>
+                      {TO_LABELS[type] || 'Куда'}
+                    </Text>
                     <Text style={[styles.pickValue, !toRoom && styles.pickEmpty]} numberOfLines={1}>
                       {toRoom ? toRoom.label : 'Выберите кабинет'}
                     </Text>
@@ -258,17 +349,38 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
                   </Pressable>
                 )}
 
+                {/* Контрагент только у приходных операций: у выдачи и списания
+                    второй стороны нет, и пустое поле там задавало бы вопрос,
+                    на который нечего ответить */}
+                {withContractor && (
+                  <Pressable style={styles.pick} onPress={() => setPicker('contractor')}>
+                    <Text style={styles.pickLabel}>Контрагент</Text>
+                    <Text
+                      style={[styles.pickValue, !meta.contractorId && styles.pickEmpty]}
+                      numberOfLines={1}>
+                      {contractors.find(x => x.id === meta.contractorId)?.name || 'Не выбран'}
+                    </Text>
+                    <ChevronRight size={16} color={c.textTertiary} />
+                  </Pressable>
+                )}
+
+                <Text style={styles.section}>Позиции</Text>
                 <Pressable
                   style={styles.add}
-                  disabled={config.from && !fromRoomId}
+                  disabled={config.sourceFirst && !fromRoomId}
                   onPress={() => setPicker('line')}>
-                  <Plus size={16} color={config.from && !fromRoomId ? c.textTertiary : c.primary} />
+                  <Plus
+                    size={16}
+                    color={config.sourceFirst && !fromRoomId ? c.textTertiary : c.primary}
+                  />
                   <Text
                     style={[
                       styles.addText,
-                      config.from && !fromRoomId && styles.addTextOff,
+                      config.sourceFirst && !fromRoomId && styles.addTextOff,
                     ]}>
-                    {config.from && !fromRoomId ? 'Сначала выберите кабинет' : 'Добавить позицию'}
+                    {config.sourceFirst && !fromRoomId
+                      ? 'Сначала выберите кабинет'
+                      : 'Добавить позицию'}
                   </Text>
                 </Pressable>
               </View>
@@ -289,13 +401,14 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
               </View>
             )}
             ListFooterComponent={
-              <TextInput
-                style={styles.reason}
-                value={reason}
-                onChangeText={setReason}
-                placeholder="Основание — необязательно"
-                placeholderTextColor={c.textTertiary}
-              />
+              <View style={styles.footer}>
+                <Text style={styles.section}>Основание</Text>
+                <View style={styles.card}>
+                  {field('Код основания', 'reasonCode', {placeholder: 'заявка, возврат, брак…'})}
+                  {field('Причина', 'reasonText', {multiline: true})}
+                  {field('Комментарий', 'comment', {multiline: true})}
+                </View>
+              </View>
             }
           />
         )}
@@ -311,6 +424,65 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
             <Text style={styles.buttonText}>{sending ? 'Провожу…' : 'Провести'}</Text>
           </Pressable>
         </View>
+
+        {/* Системный выбор даты: на Android это отдельный диалог, поэтому
+            компонент монтируется только на время показа */}
+        {datePicker && (
+          <DateTimePicker
+            value={meta.occurredAt}
+            mode="date"
+            onChange={(event, picked) => {
+              setDatePicker(false);
+              if (event.type === 'set' && picked) setMeta(m => ({...m, occurredAt: picked}));
+            }}
+          />
+        )}
+
+        <BottomSheet
+          visible={picker === 'type' || picker === 'contractor'}
+          title={picker === 'type' ? 'Операция' : 'Контрагент'}
+          onClose={() => setPicker(null)}>
+          <View style={styles.sheet}>
+            {picker === 'type' && TYPES.map(item => (
+              <Pressable
+                key={item.key}
+                style={[styles.sheetRow, type === item.key && styles.sheetRowOn]}
+                onPress={() => {
+                  // Смена типа сбрасывает строки: у нового типа другой набор
+                  // того, что вообще можно положить в документ
+                  setType(item.key);
+                  setLines([]);
+                  setPicker(null);
+                }}>
+                <Text style={[styles.sheetRowText, type === item.key && styles.sheetRowTextOn]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+
+            {picker === 'contractor' && (
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => { setMeta(m => ({...m, contractorId: null})); setPicker(null); }}>
+                <Text style={styles.sheetRowText}>Не выбран</Text>
+              </Pressable>
+            )}
+            {picker === 'contractor' && contractors.map(item => (
+              <Pressable
+                key={item.id}
+                style={[styles.sheetRow, meta.contractorId === item.id && styles.sheetRowOn]}
+                onPress={() => { setMeta(m => ({...m, contractorId: item.id})); setPicker(null); }}>
+                <Text
+                  style={[
+                    styles.sheetRowText,
+                    meta.contractorId === item.id && styles.sheetRowTextOn,
+                  ]}>
+                  {item.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </BottomSheet>
 
         {(picker === 'from' || picker === 'to') && (
           <RoomPicker
@@ -334,7 +506,9 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
             roomId={fromRoomId}
             // У приёма источника нет: класть можно что угодно из справочника,
             // а не только то, что уже где-то лежит
-            fromStock={Boolean(config.from)}
+            material={config.material}
+            asset={config.asset}
+            fromStock={Boolean(config.sourceFirst)}
             onClose={() => setPicker(null)}
             onPick={(line) => { setLines(prev => [...prev, line]); setPicker(null); }}
           />
@@ -398,7 +572,7 @@ function RoomPicker({styles, c, insets, rooms, onClose, onPick}) {
  * там нет, значит получить отказ сервера уже после набора всего документа.
  * Приём берёт из справочника — кладут как раз то, чего ещё нет.
  */
-function LinePicker({styles, c, insets, roomId, fromStock, onClose, onPick}) {
+function LinePicker({styles, c, insets, roomId, fromStock, material, asset, onClose, onPick}) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
   const [chosen, setChosen] = useState(null);
@@ -406,10 +580,13 @@ function LinePicker({styles, c, insets, roomId, fromStock, onClose, onPick}) {
 
   useFocusEffect(useCallback(() => {
     let alive = true;
+    const nothing = Promise.resolve({data: {items: []}});
     const request = fromStock
       ? Promise.all([
-        warehouseApi.stock({roomId, includeZero: 'false'}),
-        warehouseApi.assets({roomId, limit: 200}),
+        // Что именно предлагать, решает тип операции: в ремонт уходит только
+        // оборудование, а материалы там взять неоткуда
+        material ? warehouseApi.stock({roomId, includeZero: 'false'}) : nothing,
+        asset ? warehouseApi.assets({roomId, limit: 200}) : nothing,
       ]).then(([stock, assets]) => [
         ...(Array.isArray(stock.data) ? stock.data : []).map(row => ({
           key: `s-${row.id}`,
@@ -426,7 +603,7 @@ function LinePicker({styles, c, insets, roomId, fromStock, onClose, onPick}) {
           available: 1,
         })),
       ])
-      : warehouseApi.nomenclature({limit: 300}).then(({data}) => (data?.items || []).map(row => ({
+      : (material ? warehouseApi.nomenclature({limit: 300}) : nothing).then(({data}) => (data?.items || []).map(row => ({
         key: `n-${row.id}`,
         nomenclatureId: row.id,
         name: row.name,
@@ -436,7 +613,7 @@ function LinePicker({styles, c, insets, roomId, fromStock, onClose, onPick}) {
 
     request.then(list => alive && setRows(list)).catch(() => alive && setRows([]));
     return () => { alive = false; };
-  }, [roomId, fromStock]));
+  }, [roomId, fromStock, material, asset]));
 
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -527,17 +704,6 @@ function LinePicker({styles, c, insets, roomId, fromStock, onClose, onPick}) {
 
 const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
-  filters: {flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingHorizontal: 16, paddingVertical: 12},
-  chip: {
-    paddingHorizontal: 11,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: c.bgPrimary,
-    justifyContent: 'center',
-  },
-  chipOn: {backgroundColor: c.primary},
-  chipText: {fontFamily: font.medium, fontSize: 12, color: c.textSecondary},
-  chipTextOn: {color: '#FFFFFF'},
   list: {paddingHorizontal: 16},
   row: {
     flexDirection: 'row',
@@ -631,16 +797,51 @@ const makeStyles = c => StyleSheet.create({
     paddingVertical: 11,
     marginBottom: 6,
   },
-  reason: {
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
-    paddingHorizontal: 12,
-    marginTop: 6,
-    color: c.textPrimary,
-    fontFamily: font.regular,
-    fontSize: 14,
+  section: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: c.textSecondary,
+    marginTop: 16,
+    marginBottom: 8,
   },
+  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, paddingHorizontal: 14},
+  field: {
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+  },
+  fieldLabel: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginBottom: 3},
+  fieldInput: {
+    fontFamily: font.medium,
+    fontSize: 15,
+    color: c.textPrimary,
+    padding: 0,
+    minHeight: 24,
+  },
+  footer: {marginTop: 4},
+  typeFilter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    height: 42,
+    margin: 16,
+    marginBottom: 10,
+  },
+  typeFilterText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
+  sheet: {padding: 16, gap: 6},
+  sheetRow: {
+    paddingHorizontal: 14,
+    height: 46,
+    borderRadius: radius.md,
+    backgroundColor: c.bgSecondary,
+    justifyContent: 'center',
+  },
+  sheetRowOn: {backgroundColor: c.primary},
+  sheetRowText: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
+  sheetRowTextOn: {color: '#FFFFFF'},
   qtyWrap: {padding: 16, gap: 12},
   qtyName: {fontFamily: font.semiBold, fontSize: 16, color: c.textPrimary},
   qtyInput: {

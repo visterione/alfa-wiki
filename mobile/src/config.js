@@ -26,6 +26,25 @@ const PROD_HOST = 'https://wiki.medcentralfa.ru';
 
 export const BASE_URL = __DEV__ ? DEV_HOST : PROD_HOST;
 
+// Токен доступа к вложениям чатов. Сервер отдаёт файлы из
+// /uploads/chat-attachments только участникам чата, а заголовок Authorization
+// нельзя выставить ни в <Image>, ни в системном загрузчике Android — поэтому
+// право предъявляется параметром ?t= (backend/services/fileAccess.js).
+// Живёт в config, а не в отдельном сервисе, чтобы не заводить цикл импортов:
+// его наполняет services/fileToken.js.
+let fileToken = null;
+
+export function setFileToken(token) {
+  fileToken = token || null;
+}
+
+const CHAT_ATTACHMENTS = '/uploads/chat-attachments/';
+
+function withFileToken(url) {
+  if (!fileToken || !url.includes(CHAT_ATTACHMENTS)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}t=${encodeURIComponent(fileToken)}`;
+}
+
 const CONFIG = {
   BASE_URL,
   API_URL: `${BASE_URL}/api`,
@@ -39,13 +58,13 @@ const CONFIG = {
       // вида http://localhost:9001/uploads/...) — берём только путь
       try {
         const {pathname} = new URL(pathOrUrl);
-        return `${BASE_URL}${pathname}`;
+        return withFileToken(`${BASE_URL}${pathname}`);
       } catch {
         return null;
       }
     }
     const p = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
-    return `${BASE_URL}${p}`;
+    return withFileToken(`${BASE_URL}${p}`);
   },
 };
 

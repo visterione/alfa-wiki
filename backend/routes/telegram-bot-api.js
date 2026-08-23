@@ -571,8 +571,18 @@ router.post('/deleteMessage', async (req, res) => {
   const chatId = message.chatId;
   await message.destroy();
 
+  // Событие переехало на общий для всех удалений формат (ver. 7.29): имя
+  // messages_deleted, список id и рассылка по личным комнатам участников —
+  // в комнату chat: клиент входит только пока чат открыт, поэтому у
+  // остальных сообщение оставалось на экране до перезагрузки.
   const io = req.app.get('io');
-  if (io) io.to(`chat:${chatId}`).emit('message_deleted', { messageId: message.id, chatId });
+  if (io) {
+    const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+    const rooms = members.map(m => `user:${m.userId}`);
+    if (rooms.length) {
+      io.to(rooms).emit('messages_deleted', { chatId, messageIds: [message.id], scope: 'all' });
+    }
+  }
 
   ok(res, true);
 });

@@ -7,7 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { authenticate } = require('../middleware/auth');
-const { sequelize, Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
+const { sequelize, Chat, ChatMember, Message, MessageReaction, ChatFile, MessageDeletion, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
 const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
@@ -15,7 +15,9 @@ const messageActions = require('../services/messageActions');
 const pushService = require('../services/pushService');
 const voiceService = require('../services/voiceService');
 const presence = require('../services/presence');
-const { getUnreadCounts } = require('../services/unreadService');
+const { getUnreadCounts, recountChat } = require('../services/unreadService');
+const fileAccess = require('../services/fileAccess');
+const { canDeleteForAll, canPin } = require('../services/messagePermissions');
 const { parsePagination } = require('../utils/pagination');
 const { serializePollMessage, applyVote } = require('../utils/chatPoll');
 
@@ -26,6 +28,64 @@ const { serializePollMessage, applyVote } = require('../utils/chatPoll');
  *
  * Fire-and-forget: сбой уведомления не должен ломать операцию с участником.
  */
+// Строка чата в списке: тот же текст, что кладётся в chats.lastMessage при
+// отправке. Понадобился отдельно, когда список пришлось пересобирать после
+// удаления — раньше туда попадал сырой content, и удаление сообщения с одной
+// картинкой оставляло в списке пустую строку.
+function messagePreviewOf(message) {
+  const text = (message.content || '').trim();
+  if (text) return text;
+  const atts = message.attachments || [];
+  if (atts.length === 0) return '';
+  if (atts.length === 1 && atts[0]?.kind === 'voice') return '🎤 Голосовое сообщение';
+  const suffix = atts.length > 1 ? ` (${atts.length})` : '';
+  return atts.every(a => a.mimeType?.startsWith('image/')) ? `📷 Фото${suffix}` : `📎 Файл${suffix}`;
+}
+
+// Одна рассылка вместо цикла по участникам.
+//
+// io.to() принимает список комнат и сам отбрасывает повторы, поэтому отдельный
+// emit на каждого участника — это N публикаций в Redis там, где хватает одной.
+// В группе на полсотни человек разница ровно в полсотни раз, и платит за неё
+// отправитель одного сообщения.
+function emitToMembers(io, members, event, payload, exceptUserId = null) {
+  if (!io) return;
+  const ids = (members || []).map(m => String(m.userId ?? m));
+  const rooms = [...new Set(ids)]
+    .filter(id => !exceptUserId || id !== String(exceptUserId))
+    .map(id => `user:${id}`);
+  if (rooms.length === 0) return;
+  io.to(rooms).emit(event, payload);
+}
+
+// Имя файла из того, что клиент присылает в attachments: там встречается и
+// относительный путь, и абсолютный URL со старым хостом.
+function attachmentFilename(att) {
+  const raw = att?.path || att?.url || '';
+  return String(raw).split('?')[0].split('/').pop() || null;
+}
+
+// Отметить, что файлы теперь принадлежат чату. Пока строка не создана, файл
+// доступен только загрузившему — так работает превью до отправки сообщения.
+async function registerChatFiles(attachments, chatId, messageId) {
+  const names = (Array.isArray(attachments) ? attachments : [])
+    .map(attachmentFilename)
+    .filter(Boolean);
+  if (names.length === 0) return;
+
+  try {
+    await ChatFile.bulkCreate(
+      names.map(filename => ({ filename, chatId, messageId })),
+      { ignoreDuplicates: true }
+    );
+    names.forEach(fileAccess.invalidateFile);
+  } catch (err) {
+    // Вложение важнее реестра: сообщение уже отправлено, и падать здесь значит
+    // показать пользователю ошибку там, где всё получилось
+    console.error('Failed to register chat files:', err);
+  }
+}
+
 async function notifyBotMembership({ chatId, userId, actorId, status }) {
   try {
     const user = await User.findByPk(userId, { attributes: ['id', 'isBot'] });
@@ -55,7 +115,9 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    // crypto вместо Math.random: имя файла — часть защиты вложения, угадываемое
+    // имя обесценивало бы проверку доступа в services/fileAccess.js
+    const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(12).toString('hex');
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
@@ -75,7 +137,7 @@ const avatarStorage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(12).toString('hex');
     cb(null, uniqueSuffix + '.jpg');
   }
 });
@@ -125,8 +187,10 @@ router.get('/search', authenticate, async (req, res) => {
             { [Op.iLike]: `%${searchQuery}%` }
           )
         ],
-        type: { [Op.ne]: 'system' }
+        type: { [Op.ne]: 'system' },
+        id: { [Op.notIn]: Sequelize.literal('(SELECT "messageId" FROM message_deletions WHERE "userId" = :currentUserId)') }
       },
+      replacements: { currentUserId: req.user.id, cursorAt: before || null, cursorId: beforeId || null },
       attributes: ['chatId'],
       group: ['chatId'],
       raw: true
@@ -359,6 +423,18 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// Токен доступа к вложениям чатов.
+//
+// Клиент подставляет его в ?t= к ссылкам на файлы: заголовок Authorization
+// нельзя выставить ни в <img src>, ни в системном загрузчике Android. Почему
+// это отдельный токен, а не JWT — в services/fileAccess.js.
+router.get('/file-token', authenticate, (req, res) => {
+  res.json({
+    token: fileAccess.issueToken(req.user.id),
+    expiresIn: fileAccess.TOKEN_TTL_MS
+  });
+});
+
 // Get unread messages count
 router.get('/unread/count', authenticate, async (req, res) => {
   try {
@@ -449,8 +525,10 @@ router.get('/:chatId/messages/search', authenticate, async (req, res) => {
       where: {
         chatId,
         content: { [Op.iLike]: `%${q.trim()}%` },
-        type: { [Op.ne]: 'system' }
+        type: { [Op.ne]: 'system' },
+        id: { [Op.notIn]: Sequelize.literal('(SELECT "messageId" FROM message_deletions WHERE "userId" = :currentUserId)') }
       },
+      replacements: { currentUserId: req.user.id },
       include: [{
         model: User,
         as: 'sender',
@@ -575,7 +653,7 @@ router.get('/:chatId/mention-targets', authenticate, async (req, res) => {
 router.get('/:chatId/messages', authenticate, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { before } = req.query;
+    const { before, beforeId } = req.query;
     const { limit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const membership = await ChatMember.findOne({
@@ -586,13 +664,25 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this chat' });
     }
 
+    // Курсор — пара (createdAt, id), а не одна метка времени. Бот вываливает
+    // пачку сообщений в одну миллисекунду, и на стыке страниц такие сообщения
+    // либо дублировались, либо пропадали совсем. beforeId приходит не от всех
+    // клиентов, поэтому старый вариант с одной меткой оставлен рабочим.
     const whereClause = { chatId };
-    if (before) {
+    if (before && beforeId) {
+      whereClause[Op.and] = [Sequelize.literal(
+        '("Message"."createdAt", "Message"."id") < (:cursorAt::timestamptz, :cursorId::uuid)'
+      )];
+    } else if (before) {
       whereClause.createdAt = { [Op.lt]: new Date(before) };
     }
+    // Сообщения, скрытые этим человеком «у себя» (ver. 7.29), из его истории
+    // пропадают, но у остальных участников остаются на месте
+    whereClause.id = { [Op.notIn]: Sequelize.literal('(SELECT "messageId" FROM message_deletions WHERE "userId" = :currentUserId)') };
 
     const messages = await Message.findAll({
       where: whereClause,
+      replacements: { currentUserId: req.user.id },
       include: [
         { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] },
         {
@@ -606,7 +696,9 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
           include: [{ model: User, as: 'user', attributes: ['id', 'displayName', 'username', 'avatar', 'chatBadge'] }]
         }
       ],
-      order: [['createdAt', 'DESC']],
+      // Порядок обязан совпадать с индексом messages_chat_created_id_idx,
+      // иначе база всё равно уйдёт в сортировку всей выборки
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
       limit
     });
 
@@ -676,6 +768,10 @@ router.post('/voice', authenticate, upload.single('file'), async (req, res) => {
     const duration = result.duration
       ?? (Number.isFinite(clientDuration) && clientDuration > 0 ? clientDuration : null);
 
+    // Перекодирование меняет имя файла, поэтому в реестр пишем то, что
+    // получилось на выходе, а не то, что принял multer
+    await ChatFile.create({ filename: result.path.split('/').pop(), uploadedBy: req.user.id });
+
     res.json({
       id: Date.now().toString(),
       kind: 'voice',
@@ -709,6 +805,10 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
         .jpeg({ quality: 80 })
         .toFile(thumbnailPath);
     }
+
+    // До отправки сообщения файл принадлежит только загрузившему — иначе
+    // превью в поле ввода получало бы 403 от собственной же проверки
+    await ChatFile.create({ filename: req.file.filename, uploadedBy: req.user.id });
 
     res.json({
       id: Date.now().toString(),
@@ -895,6 +995,8 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       replyToId
     });
 
+    await registerChatFiles(attachments, chatId, message.id);
+
     let lastMessagePreview = content?.trim() || '';
     if (attachments.length > 0 && !lastMessagePreview) {
       const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
@@ -932,34 +1034,26 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       }]
     });
 
-    // Emit new message event to all chat members except sender via Socket.IO
+    // Emit new message event to all chat members except sender via Socket.IO.
+    // Подпись чата у всех получателей одна и та же: в личном чате это имя
+    // отправителя (собеседник там ровно один), в группе — название группы.
     const io = req.app.get('io');
     if (io && chat) {
-      chat.members.forEach(member => {
-        if (member.userId !== req.user.id) {
-          // Get chat display name
-          let chatDisplayName = chat.name;
-          let chatAvatar = chat.avatar;
+      let chatDisplayName = chat.name;
+      let chatAvatar = chat.avatar;
 
-          if (chat.type === 'private') {
-            const otherMember = chat.members.find(m => m.userId === req.user.id);
-            if (otherMember?.user) {
-              chatDisplayName = otherMember.user.displayName || otherMember.user.username;
-              chatAvatar = otherMember.user.avatar;
-            }
-          }
-
-          io.to(`user:${member.userId}`).emit('new_message', {
-            message: fullMessage,
-            chat: {
-              id: chat.id,
-              type: chat.type,
-              displayName: chatDisplayName,
-              avatar: chatAvatar
-            }
-          });
+      if (chat.type === 'private') {
+        const senderMember = chat.members.find(m => m.userId === req.user.id);
+        if (senderMember?.user) {
+          chatDisplayName = senderMember.user.displayName || senderMember.user.username;
+          chatAvatar = senderMember.user.avatar;
         }
-      });
+      }
+
+      emitToMembers(io, chat.members, 'new_message', {
+        message: fullMessage,
+        chat: { id: chat.id, type: chat.type, displayName: chatDisplayName, avatar: chatAvatar }
+      }, req.user.id);
     }
 
     // Push на мобильные устройства (fire-and-forget).
@@ -1049,6 +1143,20 @@ router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
       ]
     });
 
+    // Событие правки не отправлялось вовсе: мобильный клиент его слушал, но
+    // никогда не получал, и отредактированный текст менялся у собеседника
+    // только после перезагрузки чата.
+    const io = req.app.get('io');
+    if (io) {
+      const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+      emitToMembers(io, members, 'message_edited', {
+        chatId,
+        messageId: message.id,
+        content: updatedMessage.content,
+        isEdited: true
+      }, req.user.id);
+    }
+
     res.json(updatedMessage);
   } catch (error) {
     console.error('Edit message error:', error);
@@ -1056,93 +1164,328 @@ router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
   }
 });
 
-// Delete message
+// Удаление сообщений: «у себя» прячет сообщение у одного человека,
+// «у всех» стирает физически. Заглушек «Сообщение удалено» больше нет.
+// Кому что разрешено — в services/messagePermissions.js.
+/**
+ * Общая механика для обоих маршрутов удаления: одиночного (совместимость со
+ * старыми сборками мобильного приложения) и группового.
+ */
+async function deleteMessages({ req, chatId, messageIds, scope }) {
+  const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+  if (!membership) {
+    return { status: 403, body: { error: 'Not a member of this chat' } };
+  }
+
+  const messages = await Message.findAll({ where: { id: { [Op.in]: messageIds }, chatId } });
+  if (messages.length === 0) {
+    return { status: 404, body: { error: 'Messages not found' } };
+  }
+
+  const ids = messages.map(m => m.id);
+
+  if (scope === 'me') {
+    // Скрытие у себя не спрашивает разрешений: это правка своего экрана, а не
+    // чужой переписки
+    await MessageDeletion.bulkCreate(
+      ids.map(messageId => ({ messageId, userId: req.user.id })),
+      { ignoreDuplicates: true }
+    );
+
+    // Спрятанное могло быть непрочитанным — иначе счётчик остался бы висеть
+    // на сообщениях, которых человек уже не видит
+    await recountChat(chatId);
+
+    const io = req.app.get('io');
+    // Только своя комната: у остальных участников ничего не изменилось, а вот
+    // второе устройство того же человека должно спрятать те же сообщения
+    emitToMembers(io, [req.user.id], 'messages_deleted', { chatId, messageIds: ids, scope: 'me' });
+
+    return { status: 200, body: { deleted: ids.length, scope: 'me', messageIds: ids } };
+  }
+
+  const chat = await Chat.findByPk(chatId);
+  const denied = messages.filter(message => !canDeleteForAll({ message, chat, membership, user: req.user }));
+  if (denied.length > 0) {
+    return {
+      status: 403,
+      body: {
+        error: denied.length === messages.length
+          ? 'Эти сообщения нельзя удалить у всех'
+          : `Часть сообщений нельзя удалить у всех: ${denied.length} из ${messages.length}`,
+        deniedIds: denied.map(m => m.id)
+      }
+    };
+  }
+
+  await sequelize.transaction(async transaction => {
+    // Ответы и реакции отвязываем сами, не полагаясь на FK конкретной базы:
+    // ON DELETE у этих связей исторически задан не везде одинаково
+    await Message.update({ replyToId: null }, { where: { replyToId: { [Op.in]: ids } }, transaction });
+    await MessageReaction.destroy({ where: { messageId: { [Op.in]: ids } }, transaction });
+    await MessageDeletion.destroy({ where: { messageId: { [Op.in]: ids } }, transaction });
+    await Message.destroy({ where: { id: { [Op.in]: ids } }, transaction });
+  });
+
+  // Реестр вложений уходит по каскаду вместе с сообщением, но кэш ответов
+  // «можно ли этому человеку этот файл» живёт ещё минуту — сбрасываем сразу
+  messages.forEach(message => (message.attachments || []).forEach(att => {
+    const filename = attachmentFilename(att);
+    if (filename) fileAccess.invalidateFile(filename);
+  }));
+
+  // Инкремент умеет только прибавлять, а тут сообщения исчезли — счётчики
+  // непрочитанных в этом чате надо пересчитать честно. Удаления редки по
+  // сравнению с отправками, так что цена пересчёта здесь допустима.
+  await recountChat(chatId);
+
+  const previous = await Message.findOne({ where: { chatId }, order: [['createdAt', 'DESC']] });
+  const lastMessage = previous ? messagePreviewOf(previous) : '';
+  const lastMessageAt = previous?.createdAt || null;
+  await Chat.update({ lastMessage, lastMessageAt }, { where: { id: chatId } });
+
+  const io = req.app.get('io');
+  const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+  emitToMembers(io, members, 'messages_deleted', {
+    chatId,
+    messageIds: ids,
+    scope: 'all',
+    lastMessage,
+    lastMessageAt
+  });
+
+  return { status: 200, body: { deleted: ids.length, scope: 'all', messageIds: ids, lastMessage, lastMessageAt } };
+}
+
+// ── Медиа, файлы, голосовые и ссылки чата (ver. 7.35) ────────────────────
 //
-// Своё сообщение удаляет автор. Чужое — только суперадминистратор (isAdmin):
-// в рабочие группы попадает мусор, который убрать больше некому — тестовые заявки
-// от ботов, ошибочные пересылки. Автор такого сообщения (бот) сам его не удалит.
+// Раньше «галерея» была тем, что успело загрузиться в ленту: последние
+// полсотни сообщений плюс то, что человек долистал. Найти фотографию
+// месячной давности было нельзя иначе, как пролистав до неё вручную.
+//
+// Каждое вложение — своя строка (jsonb_array_elements), потому что в одном
+// сообщении их бывает десяток, а в галерее они самостоятельные элементы.
+
+const MEDIA_KINDS = {
+  media: `(a->>'mimeType' LIKE 'image/%' OR a->>'mimeType' LIKE 'video/%')`,
+  voice: `a->>'kind' = 'voice'`,
+  files: `COALESCE(a->>'kind', '') <> 'voice'
+          AND COALESCE(a->>'mimeType', '') NOT LIKE 'image/%'
+          AND COALESCE(a->>'mimeType', '') NOT LIKE 'video/%'`
+};
+
+router.get('/:chatId/media', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const kind = String(req.query.kind || 'media');
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 60, maxLimit: 100 });
+
+    const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+    if (!membership) return res.status(403).json({ error: 'Not a member of this chat' });
+
+    // Ссылки живут в тексте, а не во вложениях — отдельный запрос
+    if (kind === 'links') {
+      const rows = await sequelize.query(`
+        SELECT m.id, m."createdAt", m."senderId", m.content,
+               u."displayName", u.username
+        FROM messages m
+        LEFT JOIN users u ON u.id = m."senderId"
+        WHERE m."chatId" = :chatId
+          AND m.type <> 'system'
+          AND m.content ~* 'https?://'
+          AND NOT EXISTS (
+            SELECT 1 FROM message_deletions md
+            WHERE md."messageId" = m.id AND md."userId" = :userId
+          )
+        ORDER BY m."createdAt" DESC
+        LIMIT :limit OFFSET :offset
+      `, { replacements: { chatId, userId: req.user.id, limit, offset }, type: sequelize.QueryTypes.SELECT });
+
+      return res.json(rows.map(row => ({
+        messageId: row.id,
+        createdAt: row.createdAt,
+        senderId: row.senderId,
+        senderName: row.displayName || row.username,
+        content: row.content,
+        // Адреса вытаскиваем здесь, чтобы клиенту не пришлось повторять
+        // разбор текста у себя — и одинаково в вебе и в мобилке
+        urls: (row.content.match(/https?:\/\/[^\s<>"']+/g) || []).slice(0, 10)
+      })));
+    }
+
+    const condition = MEDIA_KINDS[kind];
+    if (!condition) return res.status(400).json({ error: 'kind must be media, files, voice or links' });
+
+    const rows = await sequelize.query(`
+      SELECT m.id, m."createdAt", m."senderId", a AS attachment,
+             u."displayName", u.username
+      FROM messages m
+      CROSS JOIN LATERAL jsonb_array_elements(m.attachments) AS a
+      LEFT JOIN users u ON u.id = m."senderId"
+      WHERE m."chatId" = :chatId
+        AND jsonb_typeof(m.attachments) = 'array'
+        AND ${condition}
+        AND NOT EXISTS (
+          SELECT 1 FROM message_deletions md
+          WHERE md."messageId" = m.id AND md."userId" = :userId
+        )
+      ORDER BY m."createdAt" DESC
+      LIMIT :limit OFFSET :offset
+    `, { replacements: { chatId, userId: req.user.id, limit, offset }, type: sequelize.QueryTypes.SELECT });
+
+    res.json(rows.map(row => ({
+      messageId: row.id,
+      createdAt: row.createdAt,
+      senderId: row.senderId,
+      senderName: row.displayName || row.username,
+      attachment: row.attachment
+    })));
+  } catch (error) {
+    console.error('Get chat media error:', error);
+    res.status(500).json({ error: 'Failed to load chat media' });
+  }
+});
+
+// ── Закреплённые сообщения (ver. 7.33) ───────────────────────────────────
+//
+// Закреплённых в чате может быть несколько: в рабочей группе одинаково нужны
+// и «график на неделю», и «телефон дежурного». В шапке показывается последнее,
+// остальные листаются по нажатию.
+
+const PINNED_LIMIT = 20;
+
+function pinnedInclude() {
+  return [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] }];
+}
+
+router.get('/:chatId/pinned', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+    if (!membership) return res.status(403).json({ error: 'Not a member of this chat' });
+
+    const pinned = await Message.findAll({
+      where: {
+        chatId,
+        pinnedAt: { [Op.ne]: null },
+        // Спрятанное «у себя» не должно висеть в шапке у того, кто его спрятал
+        id: { [Op.notIn]: Sequelize.literal('(SELECT "messageId" FROM message_deletions WHERE "userId" = :currentUserId)') }
+      },
+      replacements: { currentUserId: req.user.id },
+      include: pinnedInclude(),
+      order: [['pinnedAt', 'DESC']],
+      limit: PINNED_LIMIT
+    });
+
+    res.json(pinned);
+  } catch (error) {
+    console.error('Get pinned messages error:', error);
+    res.status(500).json({ error: 'Failed to load pinned messages' });
+  }
+});
+
+router.post('/:chatId/messages/:messageId/pin', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const pin = req.body?.pin !== false;
+
+    const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
+    if (!membership) return res.status(403).json({ error: 'Not a member of this chat' });
+
+    const chat = await Chat.findByPk(chatId);
+    if (!canPin({ chat, membership, user: req.user })) {
+      return res.status(403).json({ error: 'Закреплять сообщения может только администратор группы' });
+    }
+
+    const message = await Message.findOne({ where: { id: messageId, chatId } });
+    if (!message) return res.status(404).json({ error: 'Message not found' });
+    if (message.type === 'system') {
+      return res.status(400).json({ error: 'Системные сообщения не закрепляются' });
+    }
+
+    if (pin) {
+      const alreadyPinned = await Message.count({ where: { chatId, pinnedAt: { [Op.ne]: null } } });
+      if (!message.pinnedAt && alreadyPinned >= PINNED_LIMIT) {
+        // Потолок не от базы, а от шапки: листать три десятка закреплений
+        // никто не станет, а старые всё равно никто не снимет
+        return res.status(400).json({ error: `Больше ${PINNED_LIMIT} закреплённых в одном чате быть не может` });
+      }
+      await message.update({ pinnedAt: new Date(), pinnedBy: req.user.id });
+    } else {
+      await message.update({ pinnedAt: null, pinnedBy: null });
+    }
+
+    const updated = await Message.findByPk(message.id, { include: pinnedInclude() });
+
+    const io = req.app.get('io');
+    const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+    emitToMembers(io, members, 'message_pin_changed', {
+      chatId,
+      messageId: message.id,
+      pinned: pin,
+      message: pin ? updated : null
+    });
+
+    res.json({ pinned: pin, message: updated });
+  } catch (error) {
+    console.error('Pin message error:', error);
+    res.status(500).json({ error: 'Failed to pin message' });
+  }
+});
+
+// Групповое удаление. Ради него всё и затевалось: до ver. 7.29 разобрать
+// завал в чате можно было только по одному сообщению за раз.
+router.post('/:chatId/messages/delete', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { messageIds, scope = 'all' } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds array is required' });
+    }
+    if (messageIds.length > 200) {
+      // Потолок взят не из ограничений базы, а из здравого смысла: выделить
+      // больше двух сотен сообщений руками нельзя, а вот прислать — можно
+      return res.status(400).json({ error: 'За один раз можно удалить не больше 200 сообщений' });
+    }
+    if (scope !== 'me' && scope !== 'all') {
+      return res.status(400).json({ error: 'scope must be "me" or "all"' });
+    }
+
+    const { status, body } = await deleteMessages({ req, chatId, messageIds, scope });
+    res.status(status).json(body);
+  } catch (error) {
+    console.error('Bulk delete messages error:', error);
+    res.status(500).json({ error: 'Failed to delete messages' });
+  }
+});
+
+// Одиночное удаление — прежний маршрут. Оставлен ради установленных мобильных
+// сборок: они умеют только его. Права те же, что у группового; если стереть у
+// всех уже нельзя (например, прошли сутки), сообщение прячется у себя.
 router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => {
   try {
     const { chatId, messageId } = req.params;
+    const requestedScope = req.query.scope === 'me' ? 'me' : null;
 
-    const message = await Message.findOne({
-      where: { id: messageId, chatId }
-    });
-
+    const message = await Message.findOne({ where: { id: messageId, chatId } });
     if (!message) {
       return res.status(404).json({ error: 'Message not found' });
     }
 
-    if (message.senderId !== req.user.id) {
-      if (!req.user.isAdmin) {
-        return res.status(403).json({ error: 'Can only delete own messages' });
-      }
-      // Чужое сообщение админ убирает только в чате, где он сам состоит:
-      // право «удалять» не означает доступ в переписки, куда его не звали
+    let scope = requestedScope;
+    if (!scope) {
       const membership = await ChatMember.findOne({ where: { chatId, userId: req.user.id } });
-      if (!membership) {
-        return res.status(403).json({ error: 'Not a member of this chat' });
-      }
+      const chat = await Chat.findByPk(chatId);
+      scope = canDeleteForAll({ message, chat, membership, user: req.user }) ? 'all' : 'me';
     }
 
-    if (message.type === 'system') {
-      return res.status(400).json({ error: 'Cannot delete system messages' });
-    }
+    const { status, body } = await deleteMessages({ req, chatId, messageIds: [messageId], scope });
+    if (status !== 200) return res.status(status).json(body);
 
-    const hardDeleted = !!req.user.isAdmin;
-    let responseMessage = null;
-
-    if (hardDeleted) {
-      // У системного администратора удаление означает полное сокрытие. Сначала
-      // отвязываем ответы и реакции, чтобы удаление не зависело от FK конкретной БД.
-      await Message.update({ replyToId: null }, { where: { replyToId: message.id } });
-      await MessageReaction.destroy({ where: { messageId: message.id } });
-      await message.destroy();
-
-      const previous = await Message.findOne({
-        where: { chatId },
-        order: [['createdAt', 'DESC']]
-      });
-      await Chat.update({
-        lastMessage: previous?.content || '',
-        lastMessageAt: previous?.createdAt || null
-      }, { where: { id: chatId } });
-    } else {
-      // У обычного пользователя сохраняем привычную заглушку и место сообщения
-      // в переписке.
-      await message.update({
-        content: 'Сообщение удалено',
-        attachments: [],
-        actions: [],
-        type: 'system'
-      });
-
-      const lastMessage = await Message.findOne({
-        where: { chatId },
-        order: [['createdAt', 'DESC']]
-      });
-      if (lastMessage && lastMessage.id === message.id) {
-        await Chat.update({ lastMessage: 'Сообщение удалено' }, { where: { id: chatId } });
-      }
-      responseMessage = await Message.findByPk(message.id, {
-        include: [
-          { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'chatBadge'] },
-          { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
-        ]
-      });
-    }
-
-    // Мусор, убранный админом, должен пропасть у всех сразу, а не после
-    // перезагрузки чата — иначе смысла в уборке немного
-    const io = req.app.get('io');
-    if (io) {
-      const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
-      members.forEach(m => {
-        io.to(`user:${m.userId}`).emit('message_deleted', { chatId, messageId: message.id, hardDeleted });
-      });
-    }
-
-    res.json({ message: responseMessage, hardDeleted });
+    // Старые клиенты ждут именно этих полей: hardDeleted=true означает «убери
+    // сообщение из списка», message=null — что заглушки больше нет
+    res.json({ ...body, message: null, hardDeleted: true });
   } catch (error) {
     console.error('Delete message error:', error);
     res.status(500).json({ error: 'Failed to delete message' });
@@ -1201,6 +1544,10 @@ router.post('/forward', authenticate, async (req, res) => {
           originalChatId: orig.chatId
         }
       });
+      // Пересылка копирует массив вложений, но не сам файл: в чате-получателе
+      // это то же имя, и доступ к нему нужно открыть отдельной строкой реестра
+      await registerChatFiles(orig.attachments, targetChatId, forwarded.id);
+
       createdMessages.push(forwarded);
     }
 
@@ -1246,23 +1593,19 @@ router.post('/forward', authenticate, async (req, res) => {
 
     const io = req.app.get('io');
     if (io && targetChat) {
-      targetChat.members.forEach(member => {
-        if (member.userId !== req.user.id) {
-          let chatDisplayName = targetChat.name;
-          let chatAvatar = targetChat.avatar;
-          if (targetChat.type === 'private') {
-            const senderMember = targetChat.members.find(m => m.userId === req.user.id);
-            if (senderMember?.user) {
-              chatDisplayName = senderMember.user.displayName || senderMember.user.username;
-              chatAvatar = senderMember.user.avatar;
-            }
-          }
-          io.to(`user:${member.userId}`).emit('new_message', {
-            message: fullMsg,
-            chat: { id: targetChat.id, type: targetChat.type, displayName: chatDisplayName, avatar: chatAvatar }
-          });
+      let chatDisplayName = targetChat.name;
+      let chatAvatar = targetChat.avatar;
+      if (targetChat.type === 'private') {
+        const senderMember = targetChat.members.find(m => m.userId === req.user.id);
+        if (senderMember?.user) {
+          chatDisplayName = senderMember.user.displayName || senderMember.user.username;
+          chatAvatar = senderMember.user.avatar;
         }
-      });
+      }
+      emitToMembers(io, targetChat.members, 'new_message', {
+        message: fullMsg,
+        chat: { id: targetChat.id, type: targetChat.type, displayName: chatDisplayName, avatar: chatAvatar }
+      }, req.user.id);
     }
 
     if (targetChat && fullMsg) {
@@ -1290,20 +1633,20 @@ router.post('/:chatId/read', authenticate, async (req, res) => {
     }
 
     const lastReadAt = new Date();
-    await membership.update({ lastReadAt });
+    // Счётчик обнуляем вместе с меткой: с ver. 7.30 он хранится, а не считается
+    await membership.update({ lastReadAt, unreadCount: 0 });
 
     // Notify message senders that their messages have been read
     const io = req.app.get('io');
     if (io) {
       const otherMembers = await ChatMember.findAll({
-        where: { chatId, userId: { [Op.ne]: req.user.id } }
+        where: { chatId, userId: { [Op.ne]: req.user.id } },
+        attributes: ['userId']
       });
-      otherMembers.forEach(m => {
-        io.to(`user:${m.userId}`).emit('messages_read', {
-          chatId,
-          readBy: req.user.id,
-          lastReadAt: lastReadAt.toISOString()
-        });
+      emitToMembers(io, otherMembers, 'messages_read', {
+        chatId,
+        readBy: req.user.id,
+        lastReadAt: lastReadAt.toISOString()
       });
     }
 
@@ -1853,9 +2196,7 @@ router.delete('/:chatId', authenticate, async (req, res) => {
     // Уведомляем всех участников через сокет
     const io = req.app.get('io');
     if (io) {
-      memberIds.forEach(userId => {
-        io.to(`user:${userId}`).emit('group_deleted', { chatId });
-      });
+      emitToMembers(io, memberIds, 'group_deleted', { chatId });
     }
 
     res.json({ message: 'Group deleted' });
@@ -2095,16 +2436,10 @@ router.post('/:chatId/messages/:messageId/actions/:actionId', authenticate, asyn
     const io = req.app.get('io');
     if (io && reactions) {
       const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
-      members.forEach(m => {
-        io.to(`user:${m.userId}`).emit('message_reaction_updated', {
-          chatId,
-          messageId,
-          reactions: reactions.map(({ emoji, count, users }) => ({
-            emoji,
-            count,
-            hasReacted: users.some(u => u.id === m.userId)
-          }))
-        });
+      emitToMembers(io, members, 'message_reaction_updated', {
+        chatId,
+        messageId,
+        reactions: reactionsPayload(reactions)
       });
     }
 
@@ -2133,6 +2468,17 @@ async function addThumbsUp(messageId, userId) {
 // ====================================================================
 
 // Helper: Aggregate reactions for a message
+// Реакции в рассылке.
+//
+// Раньше каждому участнику уходил свой вариант с готовым hasReacted — то есть
+// N рассылок на одну реакцию. Теперь список поставивших едет как есть, а «моя
+// ли это реакция» клиент решает сам. Заодно перестал теряться users: в прежнем
+// payload его не было, и после реакции по сокету пропадала аватарка того, кто
+// её поставил, — до перезагрузки чата.
+function reactionsPayload(aggregated) {
+  return (aggregated || []).map(({ emoji, count, users }) => ({ emoji, count, users }));
+}
+
 async function aggregateReactions(messageId, currentUserId) {
   const reactions = await MessageReaction.findAll({
     where: { messageId },
@@ -2216,23 +2562,12 @@ router.post('/:chatId/messages/:messageId/reactions', authenticate, async (req, 
     // Emit Socket.IO event to all chat members
     const io = req.app.get('io');
     if (io) {
-      const chat = await Chat.findByPk(chatId, {
-        include: [{ model: ChatMember, as: 'members' }]
+      const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+      emitToMembers(io, members, 'message_reaction_updated', {
+        chatId,
+        messageId,
+        reactions: reactionsPayload(aggregated)
       });
-
-      if (chat) {
-        chat.members.forEach(member => {
-          io.to(`user:${member.userId}`).emit('message_reaction_updated', {
-            chatId,
-            messageId,
-            reactions: aggregated.map(({ emoji, count, hasReacted, users }) => ({
-              emoji,
-              count,
-              hasReacted: users.some(u => u.id === member.userId)
-            }))
-          });
-        });
-      }
     }
 
     res.json({
@@ -2277,23 +2612,12 @@ router.delete('/:chatId/messages/:messageId/reactions', authenticate, async (req
     // Emit Socket.IO event to all chat members
     const io = req.app.get('io');
     if (io) {
-      const chat = await Chat.findByPk(chatId, {
-        include: [{ model: ChatMember, as: 'members' }]
+      const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+      emitToMembers(io, members, 'message_reaction_updated', {
+        chatId,
+        messageId,
+        reactions: reactionsPayload(aggregated)
       });
-
-      if (chat) {
-        chat.members.forEach(member => {
-          io.to(`user:${member.userId}`).emit('message_reaction_updated', {
-            chatId,
-            messageId,
-            reactions: aggregated.map(({ emoji, count, hasReacted, users }) => ({
-              emoji,
-              count,
-              hasReacted: users.some(u => u.id === member.userId)
-            }))
-          });
-        });
-      }
     }
 
     res.json({
