@@ -12,7 +12,7 @@ const { WhMailOptOut, WhMailLog, User } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
 const perms = require('../../services/warehouse/permissions');
-const { MAILINGS, recipientsFor, runMailing } = require('../../services/warehouse/mailing');
+const { MAILINGS, recipientsFor, runMailing, buildFor } = require('../../services/warehouse/mailing');
 
 /**
  * Мои рассылки: что положено по правам и что из этого выключено.
@@ -101,6 +101,55 @@ router.get('/preview/:code', authenticate, requireWarehouse(), async (req, res) 
   } catch (err) {
     console.error('GET warehouse/mailing/preview error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Свой отчёт — тот же, что приходит письмом, но по требованию (ver. 7.25).
+ *
+ * Нужен мобильному приложению: push приносит короткий текст, а сам отчёт и файл
+ * человек открывает здесь. Без format=file отдаётся сводка для экрана, с ним —
+ * готовый XLSX, тот же самый, что уходит вложением.
+ *
+ * Права не проверяются отдельно: buildFor считает их тем же кодом, что и
+ * рассылка, и отвечает null, если отчёт человеку не положен.
+ */
+router.get('/report/:code', authenticate, requireWarehouse(), async (req, res) => {
+  try {
+    const { code } = req.params;
+    if (!MAILINGS[code]) return res.status(404).json({ error: 'Такой рассылки нет' });
+
+    const letter = await buildFor(code, req.user);
+    if (!letter) {
+      // Пусто — это не ошибка: у отчёта по срокам годности «нечего сообщать»
+      // нормальное состояние, и экран должен показать именно это, а не сбой.
+      return res.json({ code, label: MAILINGS[code].label, empty: true });
+    }
+
+    if (req.query.format === 'file') {
+      const file = (letter.attachments || [])[0];
+      if (!file) return res.status(404).json({ error: 'У этого отчёта нет файла' });
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+      );
+      return res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .send(file.content);
+    }
+
+    return res.json({
+      code,
+      label: MAILINGS[code].label,
+      schedule: MAILINGS[code].schedule,
+      empty: false,
+      subject: letter.subject,
+      itemCount: letter.itemCount,
+      alert: letter.alert || null,
+      fileName: (letter.attachments || [])[0]?.filename || null,
+    });
+  } catch (err) {
+    console.error('GET warehouse/mailing/report error:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 

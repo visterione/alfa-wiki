@@ -1506,6 +1506,47 @@ router.post('/', authenticate, async (req, res) => {
  * GET /api/reviews/assigned-count
  * Количество активных отзывов, назначенных текущему пользователю
  */
+/**
+ * GET /api/reviews/assigned
+ * Назначенные мне отзывы по всем доскам сразу.
+ *
+ * Веб-версия обходится без такой ручки: там открывают доску и видят свою
+ * колонку. На телефоне доска целиком не помещается и открывать её ради двух
+ * своих отзывов незачем — там первый экран это «что висит на мне», а висеть
+ * может на разных досках. Отсюда и запрос без boardId.
+ */
+router.get('/assigned', authenticate, async (req, res) => {
+  try {
+    const reviews = await Review.findAll({
+      where: {
+        assigneeIds: { [Op.contains]: [req.user.id] },
+        status: { [Op.ne]: 'final' },
+        archived: false
+      },
+      include: [
+        { model: ReviewBoard, as: 'board', attributes: ['id', 'name'] },
+        { model: ReviewPlatform, as: 'platform' }
+      ],
+      order: [['reviewDate', 'DESC']],
+      limit: 200
+    });
+
+    // Доступ к доске проверяем и здесь: назначение могло остаться от прежней
+    // роли, а права на доску с тех пор снять — показывать такой отзыв нельзя.
+    const allowed = [];
+    for (const review of reviews) {
+      // eslint-disable-next-line no-await-in-loop
+      const access = await checkReviewBoardAccess(review.board, req.user.id);
+      if (access) allowed.push(review);
+    }
+
+    res.json(allowed);
+  } catch (error) {
+    console.error('Error fetching assigned reviews:', error);
+    res.status(500).json({ error: 'Ошибка при получении назначенных отзывов' });
+  }
+});
+
 router.get('/assigned-count', authenticate, async (req, res) => {
   try {
     const count = await Review.count({

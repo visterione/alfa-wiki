@@ -63,8 +63,11 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
         where: { isActive: true, isVirtual: false },
         // warehousePlan нужен карте: у медцентра без корпусов схема лежит здесь,
         // и без неё миниатюра общей схемы рисовалась бы по одним кабинетам, без стен.
-        attributes: ['id', 'name', 'displayName', 'code', 'color', 'logoUrl', 'city',
-          'sortOrder', 'warehousePlan'],
+        // Логотип и адрес нужны списку кабинетов в мобилке: медцентры там
+        // выбирают первым шагом, и узнают их по знаку и улице, а не по строке
+        // «Альфа на Владимирской» среди пяти похожих.
+        attributes: ['id', 'name', 'displayName', 'code', 'color', 'logoUrl',
+          'logoSquareUrl', 'address', 'city', 'sortOrder', 'warehousePlan'],
         order: [['sortOrder', 'ASC'], ['name', 'ASC']],
       }),
       WhBuilding.findAll({ where: { isActive: true }, order: [['sortOrder', 'ASC'], ['name', 'ASC']] }),
@@ -132,7 +135,8 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
         name: mc.displayName || mc.name,
         code: mc.code,
         color: mc.color,
-        logoUrl: mc.logoUrl,
+        logoUrl: mc.logoSquareUrl || mc.logoUrl,
+        address: mc.address,
         city: mc.city,
         buildings: buildingsByMc.get(mc.id) || [],
         // Только геометрия схемы: фигуры бывают тяжёлыми, а дерево грузится на

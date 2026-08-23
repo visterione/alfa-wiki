@@ -39,6 +39,28 @@ export function takePendingTask() {
   return any || id ? {taskId: id} : null;
 }
 
+// Отзыв: тап открывает конкретную карточку. Здесь, в отличие от отчётов,
+// цель известна и одна — уведомление приходит про конкретный отзыв, и открывать
+// вместо него список значило бы заставить искать его глазами.
+let pendingReviewId = null;
+
+export function takePendingReview() {
+  const id = pendingReviewId;
+  pendingReviewId = null;
+  return id;
+}
+
+// Складской отчёт: тап открывает раздел отчётов целиком, а не конкретный
+// отчёт. Их пока один, а когда станет больше, человек всё равно захочет
+// увидеть рядом и остальные — он пришёл смотреть, что там за утро накопилось.
+let pendingWarehouseReports = false;
+
+export function takePendingWarehouseReports() {
+  const flag = pendingWarehouseReports;
+  pendingWarehouseReports = false;
+  return flag;
+}
+
 // То же самое для напоминаний календаря: тап открывает вкладку календаря.
 // Экран конкретного события не открываем — событие могли уже удалить или
 // изменить, а календарь на нужную дату покажет актуальное положение дел.
@@ -251,6 +273,32 @@ const NotificationService = {
       return true;
     }
 
+    // Отзыв: назначили, сменили этап, прокомментировали. Тот же текст, что
+    // уходит сообщением от бота «Работа с негативом», но по нажатию
+    // открывается сама карточка, а не чат с ботом.
+    if (data.kind === 'review') {
+      await displayTask({
+        title: data.title || 'Отзывы',
+        body: data.body,
+        taskId: null,
+        code: data.reviewId,
+      });
+      return true;
+    }
+
+    // Складской отчёт: тот же текст, что уходит в колокольчик портала. Файл
+    // сюда не кладётся — по нажатию открывается раздел отчётов, откуда его
+    // можно скачать (см. MailingsScreen).
+    if (data.kind === 'warehouse_report') {
+      await displayTask({
+        title: data.title || 'Склад',
+        body: data.body,
+        taskId: null,
+        code: data.reportCode,
+      });
+      return true;
+    }
+
     if (data.kind !== 'new_message') return false;
 
     // Открытый чат не дёргаем: сообщение уже видно в ленте
@@ -277,6 +325,8 @@ const NotificationService = {
         const data = detail.notification?.data || {};
         if (data.chatId) pendingChatId = String(data.chatId);
         if (data.calendarEventId) pendingCalendar = true;
+        if (data.kind === 'warehouse_report') pendingWarehouseReports = true;
+        if (data.kind === 'review' && data.reviewId) pendingReviewId = String(data.reviewId);
         if (data.kind === 'task') {
           pendingTasks = true;
           if (data.taskId) pendingTaskId = String(data.taskId);
@@ -295,6 +345,8 @@ const NotificationService = {
         const data = detail.notification?.data || {};
         if (data.chatId) pendingChatId = String(data.chatId);
         if (data.calendarEventId) pendingCalendar = true;
+        if (data.kind === 'warehouse_report') pendingWarehouseReports = true;
+        if (data.kind === 'review' && data.reviewId) pendingReviewId = String(data.reviewId);
         if (data.kind === 'task') {
           pendingTasks = true;
           if (data.taskId) pendingTaskId = String(data.taskId);

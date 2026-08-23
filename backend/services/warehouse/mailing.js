@@ -32,6 +32,18 @@
  * Почта несёт регламентный отчёт с вложением по расписанию из ТЗ. Сокет несёт
  * короткий сигнал «посмотри сейчас» и живёт в колокольчике. Дублировать одно
  * другим бессмысленно: у них разный срок годности.
+ *
+ * ── Push (ver. 7.25) ─────────────────────────────────────────────────────────
+ *
+ * Третий канал того же прогона. Это не копия письма: push несёт ровно тот же
+ * короткий текст, что и колокольчик, а сам отчёт с файлом человек открывает в
+ * приложении по ссылке из уведомления. Смысл в том, что кладовщик и МОЛ утром
+ * не за компьютером, а в отделении, и письмо со сроками годности они читают в
+ * лучшем случае к обеду.
+ *
+ * Из-за push получателем стал и тот, у кого нет почтового адреса: раньше такой
+ * человек выпадал из рассылки целиком, хотя право на отчёт у него есть. Теперь
+ * получателя определяет право, а адрес — только то, уйдёт ли ему письмо.
  */
 
 const { Op } = require('sequelize');
@@ -41,6 +53,7 @@ const access = require('./access');
 const reportData = require('./reportData');
 const exportsSvc = require('./exports');
 const emailService = require('../emailService');
+const pushService = require('../pushService');
 
 /**
  * Расписание из сводной матрицы ТЗ (ВИТ.md, раздел 1.12).
@@ -74,8 +87,10 @@ const MAILINGS = {
  */
 async function recipientsFor(reportCode) {
   const [users, permissions, optOuts] = await Promise.all([
+    // Без фильтра по почте: получателя определяет право на отчёт, а адрес — лишь
+    // то, уйдёт ли ему письмо. У человека без адреса остаётся push.
     User.findAll({
-      where: { email: { [Op.ne]: null }, isActive: true },
+      where: { isActive: true },
       attributes: ['id', 'displayName', 'email', 'isAdmin', 'adminAccess'],
     }),
     WhUserPermission.findAll(),
@@ -88,7 +103,6 @@ async function recipientsFor(reportCode) {
   const out = [];
   for (const user of users) {
     if (refused.has(user.id)) continue;
-    if (!String(user.email || '').includes('@')) continue;
 
     // Доступ к модулю целиком и право на конкретный отчёт — две разные проверки,
     // и обе уже реализованы. Повторять их логику здесь значит однажды разойтись
@@ -105,7 +119,7 @@ async function recipientsFor(reportCode) {
     if (!resolved.allowed) continue;
     if (!perms.canReadReport(resolved.perms, reportCode)) continue;
 
-    out.push({ user, resolved });
+    out.push({ user, resolved, byEmail: String(user.email || '').includes('@') });
   }
   return out;
 }
@@ -281,7 +295,7 @@ async function runMailing(reportCode, options = {}) {
   report.candidates = candidates.length;
 
   for (const candidate of candidates) {
-    const { user } = candidate;
+    const { user, byEmail } = candidate;
     try {
       // Защита от повтора стоит ДО тяжёлой сборки отчёта: перезапуск воркера в
       // 07:31 не должен заново считать три тысячи строк на каждого.
@@ -313,12 +327,31 @@ async function runMailing(reportCode, options = {}) {
       }
 
       if (!options.dryRun) {
-        await emailService.sendReportEmail({
-          to: user.email,
-          subject: letter.subject || config.subject,
-          html: letter.html,
-          attachments: letter.attachments || [],
-        });
+        if (byEmail) {
+          await emailService.sendReportEmail({
+            to: user.email,
+            subject: letter.subject || config.subject,
+            html: letter.html,
+            attachments: letter.attachments || [],
+          });
+        }
+
+        // Push отправляется всегда, когда есть чему прийти: он не дублирует
+        // письмо, а заменяет собой поход к компьютеру. Файл в уведомление не
+        // кладётся — по нажатию открывается экран отчёта, откуда его можно
+        // скачать; тащить XLSX через FCM нельзя и незачем.
+        //
+        // Ошибка push не срывает рассылку: письмо уже ушло, и падать после
+        // него из-за недоступного FCM значит потерять отметку в журнале и
+        // отправить всё заново следующим прогоном.
+        await pushService.sendToUsers([user.id], {
+          kind: 'warehouse_report',
+          reportCode,
+          title: letter.alert?.title || config.label,
+          body: letter.alert?.text || letter.subject || config.subject,
+          itemCount: letter.itemCount,
+        }).catch(err => console.error('[СКЛАД-ПОЧТА] push:', err.message));
+
         await WhMailLog.create({
           reportCode, userId: user.id, runKey, status: 'sent', itemCount: letter.itemCount,
         });
@@ -327,7 +360,11 @@ async function runMailing(reportCode, options = {}) {
       if (letter.alert && options.onAlert) options.onAlert(user.id, letter.alert);
 
       report.sent += 1;
-      report.details.push({ user: user.displayName, email: user.email, items: letter.itemCount });
+      report.details.push({
+        user: user.displayName,
+        email: byEmail ? user.email : 'только push',
+        items: letter.itemCount,
+      });
     } catch (err) {
       report.failed += 1;
       report.details.push({ user: user.displayName, error: err.message });
@@ -343,4 +380,31 @@ async function runMailing(reportCode, options = {}) {
   return report;
 }
 
-module.exports = { MAILINGS, recipientsFor, runMailing };
+/**
+ * Собрать отчёт для одного человека — по его правам и его кабинетам.
+ *
+ * Тот же build, что и в рассылке, и это принципиально: экран отчёта в мобилке
+ * обязан показывать ровно то, что пришло письмом, иначе «мне пришло другое»
+ * будет неразрешимым спором. Возвращает null, когда сообщать нечего.
+ */
+async function buildFor(reportCode, user) {
+  const config = MAILINGS[reportCode];
+  if (!config) throw new Error(`Рассылка ${reportCode} не описана`);
+
+  const row = await WhUserPermission.findOne({ where: { userId: user.id } });
+  const resolved = user.isAdmin
+    ? { allowed: true, perms: perms.fullPerms(), medCenterIds: [] }
+    : {
+      allowed: Boolean(user.adminAccess?.warehouse),
+      perms: perms.normalize(row?.perms),
+      medCenterIds: Array.isArray(row?.medCenterIds) ? row.medCenterIds : [],
+    };
+  if (!resolved.allowed || !perms.canReadReport(resolved.perms, reportCode)) return null;
+
+  const scopedRoomIds = await scopeOf({ user, resolved });
+  if (Array.isArray(scopedRoomIds) && !scopedRoomIds.length) return null;
+
+  return config.build({ scopedRoomIds, displayName: user.displayName || '' });
+}
+
+module.exports = { MAILINGS, recipientsFor, runMailing, buildFor };

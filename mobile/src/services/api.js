@@ -282,6 +282,25 @@ export const courses = {
 // Сканирование, пересчёт по описи, размещение имущества по кабинетам — работа
 // глазами и руками в помещении. Настройка локаций, планы этажей, словарь
 // предметов, отчёты и закупки остаются в вебе: это работа за столом, и телефон
+/**
+ * Модуль отзывов (ver. 7.26).
+ *
+ * Доступ раздаётся досками, а не отдельным правом, поэтому проверять его
+ * заранее нечем: пустой список досок и есть ответ «модуль не для вас».
+ */
+export const reviews = {
+  boards: () => api.get('/reviews/boards'),
+  list: boardId => api.get('/reviews', {params: {boardId}}),
+  // Назначенное мне по всем доскам разом: на телефоне доска целиком не
+  // помещается, и первый экран — «что висит на мне», а висеть может где угодно
+  assigned: () => api.get('/reviews/assigned'),
+  assignedCount: () => api.get('/reviews/assigned-count'),
+  review: id => api.get(`/reviews/${id}`),
+  move: (id, data) => api.post(`/reviews/${id}/move`, data),
+  comment: (id, data) => api.post(`/reviews/${id}/comment`, data),
+  assign: (id, data) => api.post(`/reviews/${id}/assign`, data),
+};
+
 // в ней не помогает, а мешает.
 export const warehouse = {
   access: () => api.get('/warehouse/access'),
@@ -297,7 +316,12 @@ export const warehouse = {
   // Правка карточек с телефона (ver. 7.24). Кабинета, места хранения и МОЛ среди
   // полей нет и здесь: их меняет документ перемещения, иначе актив сменил бы
   // место без следа в журнале. То же ограничение действует в вебе.
+  createAsset: data => api.post('/warehouse/assets', data),
   updateAsset: (id, data) => api.put(`/warehouse/assets/${id}`, data),
+  createNomenclature: data => api.post('/warehouse/catalog/nomenclature', data),
+  // Приход: количество материала кладётся на полку документом, а не правкой
+  // остатка — иначе склад разошёлся бы с журналом молча
+  createDocument: data => api.post('/warehouse/operations/documents', data),
   updateNomenclature: (id, data) => api.put(`/warehouse/catalog/nomenclature/${id}`, data),
   categories: () => api.get('/warehouse/catalog/categories'),
   nomenclature: params => api.get('/warehouse/catalog/nomenclature', {params}),
@@ -346,6 +370,13 @@ export const warehouse = {
     `${CONFIG.API_URL}/warehouse/assets/${assetId}/label.svg?format=png`,
 
   // Размещение позиций ведомости по кабинетам (ver. 6.80)
+  // Рассылки складских отчётов: что приходит, куда и как это выключить
+  mailings: () => api.get('/warehouse/mailing/subscriptions'),
+  setMailing: (code, enabled) => api.put(`/warehouse/mailing/subscriptions/${code}`, {enabled}),
+  mailingReport: code => api.get(`/warehouse/mailing/report/${code}`),
+  mailingReportFileUrl: code =>
+    `${CONFIG.API_URL}/warehouse/mailing/report/${code}?format=file`,
+
   placementQueue: params => api.get('/warehouse/placements/queue', {params}),
   // Отмена размещения по кабинету — временный инструмент отладки для
   // администратора, см. backend/services/warehouse/osvRollback.js

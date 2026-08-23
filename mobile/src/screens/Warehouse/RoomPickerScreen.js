@@ -1,6 +1,14 @@
 /**
  * Кабинеты — медцентр → корпус → этаж → кабинеты.
  *
+ * ── Корпус выпадающим списком, а не отдельным шагом ──────────────────────────
+ *
+ * Спуск был четырёхэкранным: медцентр, корпус, этаж, кабинет. Корпус при этом
+ * почти всегда один-два, и отдельный экран под выбор из двух строк — самый
+ * дорогой способ задать самый простой вопрос. Теперь корпус выбирается прямо на
+ * экране медцентра, а под ним сразу лежат этажи выбранного корпуса. Экранов
+ * стало три, и на среднем видно и корпус, и этажи разом.
+ *
  * ── Почему не один список ────────────────────────────────────────────────────
  *
  * Первая версия показывала все доступные кабинеты подряд, разбив их подписями
@@ -26,11 +34,14 @@
  * корпус.
  */
 import React, {useCallback, useLayoutEffect, useMemo, useState} from 'react';
-import {View, Text, FlatList, Pressable, StyleSheet, TextInput} from 'react-native';
+import {View, Text, Image, FlatList, Pressable, StyleSheet, TextInput} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {Check, Search, Printer, ChevronRight, X, Building2, Layers, MapPin} from 'lucide-react-native';
+import {
+  Check, Search, Printer, ChevronRight, ChevronDown, X, Building2, Layers, MapPin,
+} from 'lucide-react-native';
 
+import CONFIG from '../../config';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
@@ -57,6 +68,10 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   const [picking, setPicking] = useState(false);
   const [checked, setChecked] = useState(() => new Set());
   const [q, setQ] = useState('');
+  // Выбранный корпус на экране медцентра. Ключ, а не индекс: дерево
+  // перечитывается по таймеру кэша, и порядок веток от этого не гарантирован.
+  const [branchKey, setBranchKey] = useState(null);
+  const [branchOpen, setBranchOpen] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -69,18 +84,34 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   // этаж» не превращаются в два экрана с одной строкой.
   const node = useMemo(() => resolveNode(nodes, nodeKey), [nodes, nodeKey]);
 
+  /**
+   * Корпуса медцентра. На его экране они не отдельный шаг, а выпадающий список
+   * сверху: под ним сразу лежат этажи выбранного корпуса.
+   *
+   * Ветка «Без корпуса» попадает сюда наравне с корпусами — это такой же вариант
+   * ответа на вопрос «где искать», и выносить его отдельной строкой значило бы
+   * спрашивать дважды.
+   */
+  const branches = node?.kind === 'mc' ? node.children : null;
+  const branch = branches
+    ? (branches.find(item => item.key === branchKey) || branches[0])
+    : null;
+  // Ниже по экрану всё считается от того узла, чьё содержимое показано: на
+  // медцентре это выбранный корпус, в остальных случаях сам узел.
+  const listNode = branch || node;
+
   const groups = useMemo(() => {
-    if (!node) return [];
+    if (!listNode) return [];
     const needle = q.trim().toLowerCase();
-    return leavesOf(node)
+    return leavesOf(listNode)
       .map(leaf => ({leaf, rooms: leaf.rooms.filter(room => roomMatches(room, needle))}))
       .filter(group => group.rooms.length);
-  }, [node, q]);
+  }, [listNode, q]);
 
-  const hasRooms = Boolean(node?.count);
+  const hasRooms = Boolean(listNode?.count);
   // Плоский список вместо спуска — когда ищут или отбирают под печать: и то и
   // другое про кабинеты, а не про то, где они лежат.
-  const flat = Boolean(q.trim()) || picking || !node?.children;
+  const flat = Boolean(q.trim()) || picking || !listNode?.children;
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -123,10 +154,55 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
         : []),
       ...rooms.map(room => ({type: 'room', key: `r-${room.id}`, room})),
     ])
-    : (node?.children || []).map(child => ({type: 'node', key: `n-${child.key}`, node: child}));
+    : (listNode?.children || []).map(child => ({type: 'node', key: `n-${child.key}`, node: child}));
 
   return (
     <View style={styles.root}>
+      {/* Корпус — выпадающим списком, а не отдельным экраном. Показывается
+          только когда есть из чего выбирать: единственный корпус мы и так
+          пропускаем (см. resolveNode). */}
+      {branches?.length > 1 && (
+        <View style={styles.branchWrap}>
+          <Pressable style={styles.branch} onPress={() => setBranchOpen(v => !v)}>
+            <Building2 size={17} color={c.primary} />
+            <View style={styles.rowText}>
+              <Text style={styles.branchTitle}>{branch.title}</Text>
+              {Boolean(branch.subtitle) && (
+                <Text style={styles.rowSub} numberOfLines={1}>{branch.subtitle}</Text>
+              )}
+            </View>
+            <Text style={styles.branchCount}>{branch.count}</Text>
+            <ChevronDown
+              size={16}
+              color={c.textTertiary}
+              style={branchOpen ? styles.branchArrowOpen : null}
+            />
+          </Pressable>
+
+          {branchOpen && (
+            <View style={styles.branchList}>
+              {branches.map(item => (
+                <Pressable
+                  key={item.key}
+                  style={styles.branchOption}
+                  onPress={() => { setBranchKey(item.key); setBranchOpen(false); }}>
+                  <Text
+                    style={[
+                      styles.branchOptionText,
+                      item.key === branch.key && styles.branchOptionOn,
+                    ]}
+                    numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.branchCount}>{item.count}</Text>
+                  {item.key === branch.key && <Check size={14} color={c.primary} />}
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
       {hasRooms && (
         <View style={styles.search}>
           <Search size={15} color={c.textTertiary} />
@@ -157,13 +233,20 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
         renderItem={({item}) => {
           if (item.type === 'node') {
             const Icon = LEVEL_ICON[item.node.kind] || Layers;
+            const logo = item.node.logoUrl ? CONFIG.fileUrl(item.node.logoUrl) : null;
             return (
               <Pressable
                 style={styles.level}
                 onPress={() => navigation.push('WarehouseRooms', {nodeKey: item.node.key})}>
-                <View style={styles.levelIcon}>
-                  <Icon size={19} color={c.primary} />
-                </View>
+                {/* Знак медцентра вместо общей иконки: их пять, они похожи по
+                    названию и различаются как раз знаком и адресом. */}
+                {logo ? (
+                  <Image source={{uri: logo}} style={styles.levelLogo} resizeMode="contain" />
+                ) : (
+                  <View style={styles.levelIcon}>
+                    <Icon size={19} color={c.primary} />
+                  </View>
+                )}
                 <View style={styles.rowText}>
                   <Text style={styles.levelTitle}>{item.node.title}</Text>
                   {Boolean(item.node.subtitle) && (
@@ -270,6 +353,44 @@ const makeStyles = c => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Знак на белом: логотипы нарисованы под светлую подложку и на тёмной теме
+  // сливаются с фоном
+  levelLogo: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: '#FFFFFF',
+  },
+  branchWrap: {paddingHorizontal: 16, marginBottom: 8},
+  branch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  branchTitle: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
+  branchCount: {fontFamily: font.medium, fontSize: 12, color: c.textTertiary},
+  branchArrowOpen: {transform: [{rotate: '180deg'}]},
+  branchList: {
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.md,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  branchOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+  },
+  branchOptionText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
+  branchOptionOn: {color: c.primary},
   levelTitle: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
   // Число кабинетов в ветке: без него нельзя отличить корпус на два кабинета от
   // корпуса на сорок, а решение «куда идти» принимается именно по нему

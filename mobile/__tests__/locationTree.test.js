@@ -16,7 +16,15 @@ const floor = (id, number, rooms) => ({id, number, name: null, rooms});
 
 const tree = ({buildings = [], rooms = [], extra = []} = {}) => ({
   medCenters: [
-    {id: 'mc1', name: 'Владимирская, 93', city: 'Тюмень', buildings, rooms},
+    {
+      id: 'mc1',
+      name: 'Владимирская, 93',
+      address: 'ул. Владимирская, 93',
+      city: 'Тюмень',
+      logoUrl: '/uploads/mc/alfa.png',
+      buildings,
+      rooms,
+    },
     ...extra,
   ],
 });
@@ -49,6 +57,17 @@ describe('buildNodes', () => {
 
     expect(nodes.has('b:empty')).toBe(false);
     expect(nodes.get('mc:mc1').children.map(n => n.key)).toEqual(['b:b1']);
+  });
+
+  it('логотип и адрес доезжают до строки медцентра', () => {
+    const nodes = buildNodes(tree({
+      buildings: [{id: 'b1', name: 'Корпус А', floors: [floor('f1', 1, [room('r1', '101')])]}],
+    }));
+
+    const mc = nodes.get('mc:mc1');
+    expect(mc.logoUrl).toBe('/uploads/mc/alfa.png');
+    // Адрес важнее города: в одном городе медцентров несколько
+    expect(mc.subtitle).toBe('ул. Владимирская, 93');
   });
 
   it('медцентр без кабинетов вовсе не показывается', () => {

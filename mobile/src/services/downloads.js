@@ -12,6 +12,10 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
  * iOS: общей папки «Загрузки» нет, поэтому файл скачивается в песочницу
  * приложения и сразу открывается системным просмотром, откуда его можно
  * отправить куда угодно через «Поделиться».
+ *
+ * `headers` понадобились для отчётов склада (ver. 7.25): они лежат не в
+ * /uploads, а за ручкой API, и без токена отдают 401. Вложения чата ходят по
+ * прямой ссылке и заголовков не требуют — поэтому параметр необязательный.
  */
 
 function fileName(item) {
@@ -25,6 +29,7 @@ export async function saveAttachment(item) {
   if (!url) return false;
 
   const name = fileName(item);
+  const headers = item.headers || undefined;
 
   try {
     if (Platform.OS === 'android') {
@@ -38,13 +43,13 @@ export async function saveAttachment(item) {
           mediaScannable: true,
           path: `${ReactNativeBlobUtil.fs.dirs.DownloadDir}/${name}`,
         },
-      }).fetch('GET', url);
+      }).fetch('GET', url, headers);
       Alert.alert('Готово', `Файл «${name}» сохранён в «Загрузки»`);
       return true;
     }
 
     const path = `${ReactNativeBlobUtil.fs.dirs.DocumentDir}/${name}`;
-    const res = await ReactNativeBlobUtil.config({path, fileCache: true}).fetch('GET', url);
+    const res = await ReactNativeBlobUtil.config({path, fileCache: true}).fetch('GET', url, headers);
     await ReactNativeBlobUtil.ios.previewDocument(res.path());
     return true;
   } catch (e) {

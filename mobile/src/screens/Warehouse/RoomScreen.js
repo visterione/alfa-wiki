@@ -33,7 +33,7 @@ import {
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {ChevronRight, Printer, Check, X, Undo2, Pencil} from 'lucide-react-native';
+import {ChevronRight, Printer, Check, X, Undo2, Pencil, Plus} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
@@ -58,6 +58,11 @@ export default function WarehouseRoomScreen({route, navigation}) {
   // печать ничего не знает, и права берутся из общего магазина.
   const canPrint = useWarehouseCan('canPrintLabels');
   const canEditMaterials = useWarehouseCan('canManageCatalog');
+  const canAddAssets = useWarehouseCan('canManageAssets');
+  const canIssue = useWarehouseCan('canIssue');
+  // Материал заводится позицией справочника плюс приходным документом:
+  // без любого из двух прав кнопка привела бы в 403 на середине формы
+  const canAddMaterials = canEditMaterials && canIssue;
   const access = useWarehouseAccess();
   const [tab, setTab] = useState('assets');
   const [picking, setPicking] = useState(false);
@@ -192,8 +197,20 @@ export default function WarehouseRoomScreen({route, navigation}) {
   const allOn = assets.length > 0 && assets.every(a => checked.has(a.id));
   const firstPicked = assets.find(a => checked.has(a.id));
 
+  const addRow = (label, itemKind) => (
+    <Pressable
+      style={styles.addRow}
+      onPress={() => navigation.navigate('WarehouseItemCreate', {roomId, kind: itemKind})}>
+      <View style={styles.addIcon}>
+        <Plus size={16} color="#FFFFFF" />
+      </View>
+      <Text style={styles.addText}>{label}</Text>
+    </Pressable>
+  );
+
   const assetsPage = (
     <View style={styles.page}>
+      {canAddAssets && !picking && addRow('Завести оборудование', 'asset')}
       {/* Строка отбора появляется только у того, кому разрешена печать: у
           материалов этикеток нет вовсе. */}
       {canPrint && assets.length > 0 && (
@@ -253,6 +270,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
 
   const stockPage = (
     <View style={styles.page}>
+      {canAddMaterials && addRow('Завести материал', 'material')}
       <View style={styles.card}>
         {stock.map((item, index) => (
           <Pressable
@@ -432,6 +450,25 @@ const makeStyles = c => StyleSheet.create({
   },
   labelButtonText: {fontFamily: font.semiBold, fontSize: 14, color: c.primary},
 
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    borderRadius: radius.md,
+    backgroundColor: c.bgPrimary,
+  },
+  addIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: c.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addText: {flex: 1, fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
   pickBar: {
     flexDirection: 'row',
     alignItems: 'center',

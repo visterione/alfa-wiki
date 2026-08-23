@@ -4,6 +4,7 @@ import {
   ArrowLeft, Package, Boxes, CalendarClock, Wrench, QrCode, Printer, RefreshCw,
   Activity, AlertTriangle, Search, FileText, X, MapPin, User as UserIcon, Check,
   Download,
+  Undo2,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 
@@ -48,6 +49,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
   const [filter, setFilter] = useState(null);   // null | 'repair' | 'maintenance' | 'expired' | 'belowMin'
   const [q, setQ] = useState('');
   const [qrModal, setQrModal] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
   // Строка остатка, которой проставляют срок годности. Держим саму строку: в
   // форме нужны название и уже стоящая серия, а перечитывать дашборд ради этого
   // незачем.
@@ -77,6 +79,42 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
 
   const canSeeCosts = access?.capabilities?.canSeeCosts;
   const canEditBatch = access?.capabilities?.canManageCatalog;
+
+  /**
+   * Отмена размещения по кабинету — временный инструмент отладки.
+   *
+   * Спрашиваем подтверждением с номером кабинета в тексте: операция стирает
+   * карточки, остатки и движения без следа, и промахнуться кабинетом здесь
+   * стоит дороже, чем разложить не туда.
+   */
+  const rollback = async () => {
+    const number = data?.room?.number;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(
+      `Отменить размещение в кабинете ${number}?\n\n`
+      + 'Оборудование и материалы, заведённые сюда разбором ведомости, будут удалены '
+      + 'вместе с движениями, а строки вернутся в очередь размещения. Отменить это будет нельзя.',
+    )) return;
+
+    setRollingBack(true);
+    try {
+      const { data: report } = await warehouseApi.rollbackRoom(roomId);
+      const parts = [
+        `снято размещений: ${report.placements}`,
+        report.assets && `удалено карточек: ${report.assets}`,
+        report.stockRows && `снято позиций с остатка: ${report.stockRows}`,
+      ].filter(Boolean);
+      toast.success(`Размещение отменено — ${parts.join(', ')}`);
+      if (report.kept?.length) {
+        toast.error(`Не тронуто ${report.kept.length}: ${report.kept[0].name} — ${report.kept[0].reason}`);
+      }
+      await load(true);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось отменить размещение');
+    } finally {
+      setRollingBack(false);
+    }
+  };
 
   const filteredAssets = useMemo(() => {
     if (!data) return [];
@@ -143,6 +181,16 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
           <button className="wh-btn wh-btn--secondary" onClick={() => setQrModal(true)}>
             <QrCode size={15} /> QR-код
           </button>
+          {/* Временный инструмент отладки — только администратору. Стирает всё,
+              что разбор ведомости завёл в этот кабинет, и возвращает строки в
+              очередь размещения. Условие, при котором это надо убрать, —
+              в backend/services/warehouse/osvRollback.js */}
+          {access?.isAdmin && (
+            <button className="wh-btn wh-btn--danger-ghost" disabled={rollingBack}
+                    onClick={rollback}>
+              <Undo2 size={15} /> {rollingBack ? 'Отменяю…' : 'Отменить размещение'}
+            </button>
+          )}
         </div>
       </div>
 

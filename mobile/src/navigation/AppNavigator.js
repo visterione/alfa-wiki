@@ -35,6 +35,8 @@ import WarehouseScannerScreen from '../screens/Warehouse/ScannerScreen';
 import WarehouseAssetScreen from '../screens/Warehouse/AssetScreen';
 import WarehouseAssetEditScreen from '../screens/Warehouse/AssetEditScreen';
 import WarehouseMaterialEditScreen from '../screens/Warehouse/MaterialEditScreen';
+import WarehouseItemCreateScreen from '../screens/Warehouse/ItemCreateScreen';
+import WarehouseMailingsScreen from '../screens/Warehouse/MailingsScreen';
 import WarehouseRoomScreen from '../screens/Warehouse/RoomScreen';
 import WarehouseInventoryListScreen from '../screens/Warehouse/InventoryListScreen';
 import WarehouseInventoryCountScreen from '../screens/Warehouse/InventoryCountScreen';
@@ -43,6 +45,9 @@ import WarehousePlacementScreen from '../screens/Warehouse/PlacementScreen';
 import WarehouseRoomPickerScreen from '../screens/Warehouse/RoomPickerScreen';
 import WarehouseLabelPrintScreen from '../screens/Warehouse/LabelPrintScreen';
 import WarehousePrinterScreen from '../screens/Warehouse/PrinterSettingsScreen';
+import ReviewsScreen from '../screens/Reviews/ReviewsScreen';
+import ReviewBoardScreen from '../screens/Reviews/ReviewBoardScreen';
+import ReviewScreen from '../screens/Reviews/ReviewScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
 import LessonScreen from '../screens/Courses/LessonScreen';
@@ -342,6 +347,17 @@ function WarehouseStack() {
         component={WarehouseMaterialEditScreen}
         options={{title: 'Материал'}}
       />
+      {/* Заголовок зависит от того, что заводят, — его ставит сам экран */}
+      <Stack.Screen
+        name="WarehouseItemCreate"
+        component={WarehouseItemCreateScreen}
+        options={{title: 'Завести'}}
+      />
+      <Stack.Screen
+        name="WarehouseMailings"
+        component={WarehouseMailingsScreen}
+        options={{title: 'Отчёты и рассылки'}}
+      />
       <Stack.Screen
         name="WarehouseRoom"
         component={WarehouseRoomScreen}
@@ -384,6 +400,51 @@ function WarehouseStack() {
         name="WarehousePrinter"
         component={WarehousePrinterScreen}
         options={{title: 'Принтер этикеток'}}
+      />
+    </Stack.Navigator>
+  );
+}
+
+/**
+ * Вкладка «Отзывы» (ver. 7.26).
+ *
+ * Работа с негативом до сих пор жила только в вебе, а уведомления по ней — в
+ * чате бота, который push не поднимает. То есть «вам назначен отзыв» человек
+ * узнавал, открыв портал за компьютером. Теперь раздел есть на телефоне, и
+ * приходит он туда уведомлением, ведущим прямо в карточку.
+ *
+ * Заведение отзыва, финализация с категорией решения, ответ на площадке и
+ * PDF-отчёт остались в вебе: это работа за столом, с документами перед глазами.
+ */
+function ReviewsStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerBackground: () => <HeaderBackground />,
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
+        headerTitleAlign: 'center',
+        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
+        ...STACK_ANIMATION,
+      }}>
+      <Stack.Screen
+        name="ReviewsHome"
+        component={ReviewsScreen}
+        options={{title: 'Отзывы'}}
+      />
+      {/* Заголовок — название доски: оно приходит из списка, поэтому шапка
+          подписана сразу, ещё до того как доска догрузится */}
+      <Stack.Screen
+        name="ReviewBoard"
+        component={ReviewBoardScreen}
+        options={({route}) => ({title: route.params?.title || 'Доска'})}
+      />
+      {/* Заголовок карточки — имя пациента, его ставит сам экран */}
+      <Stack.Screen
+        name="Review"
+        component={ReviewScreen}
+        options={{title: 'Отзыв'}}
       />
     </Stack.Navigator>
   );
@@ -490,6 +551,13 @@ function MainTabs() {
         name="WarehouseTab"
         component={WarehouseStack}
         options={{title: 'Склад'}}
+      />
+      {/* Отзывы: доступ раздаётся досками, и у кого их нет — кнопки в колесе
+          тоже нет (см. reviewsStore и AlfaTabBar) */}
+      <Tab.Screen
+        name="ReviewsTab"
+        component={ReviewsStack}
+        options={{title: 'Отзывы'}}
       />
       <Tab.Screen
         name="CoursesTab"

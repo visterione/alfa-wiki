@@ -113,9 +113,19 @@ router.get('/nomenclature', authenticate, requireWarehouse(), async (req, res) =
 router.post('/nomenclature', authenticate, requireWarehouse('canManageCatalog'), async (req, res) => {
   try {
     const b = req.body;
-    if (!b.name?.trim() || !b.code?.trim()) return res.status(400).json({ error: 'Нужны код и наименование' });
+    if (!b.name?.trim()) return res.status(400).json({ error: 'Нужно наименование' });
+
+    // Код можно не задавать (ver. 7.25). Он нужен справочнику для сверки с
+    // бухгалтерией, но человеку, заводящему позицию стоя в кабинете, придумать
+    // его неоткуда: разбор ведомости и тот выводит код из строки 1С. Поэтому
+    // при пустом коде выдаём свой — того же вида, что у позиций из ведомости,
+    // только с другой приставкой, чтобы происхождение было видно.
+    const code = b.code?.trim()
+      || `Н-${Date.now().toString(36).toUpperCase().slice(-6)}${
+        Math.floor(Math.random() * 36).toString(36).toUpperCase()}`;
+
     const row = await WhNomenclature.create({
-      code: b.code.trim(), name: b.name.trim(), categoryId: b.categoryId || null,
+      code, name: b.name.trim(), categoryId: b.categoryId || null,
       unit: b.unit || 'шт', packUnit: b.packUnit || null, packSize: b.packSize ?? null,
       isMedicine: Boolean(b.isMedicine), isSterile: Boolean(b.isSterile),
       tracksBatch: b.tracksBatch !== false, vatPercent: b.vatPercent ?? 20,

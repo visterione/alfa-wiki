@@ -15,13 +15,18 @@ import Svg, {Circle} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
-import {Settings, User, ListTodo, GraduationCap, Package} from 'lucide-react-native';
+import {
+  Settings, User, ListTodo, GraduationCap, Package, MessageCircle, Star,
+} from 'lucide-react-native';
 
 import {font} from '../theme';
 import {useTheme, useThemedStyles} from '../store/settingsStore';
 import {useUnreadTotal} from '../store/unreadStore';
 import {useInboxCount} from '../store/tasksStore';
-import {useWarehouseAccess} from '../store/warehouseStore';
+import {
+  useWarehouseAccess, useWarehouseBadge, refreshWarehouseBadge,
+} from '../store/warehouseStore';
+import {useReviewBoards, useReviewsBadge, refreshReviewsBadge} from '../store/reviewsStore';
 import {TAB_BAR_HEIGHT} from './tabBarLayout';
 
 /**
@@ -70,7 +75,7 @@ const HIDDEN_ROUTES = [
   // и выбор этикеток — потому что у них своя кнопка внизу, а два ряда органов
   // управления над жестовой полосой не помещаются.
   'WarehouseScanner', 'WarehouseAsset', 'WarehouseAssetEdit', 'WarehouseMaterialEdit',
-  'WarehouseRoom', 'WarehouseRooms',
+  'WarehouseItemCreate', 'WarehouseRoom', 'WarehouseRooms',
   'WarehouseInventoryCount', 'WarehouseInventoryNew', 'WarehousePlacement',
   'WarehouseLabelPrint', 'WarehousePrinter',
 ];
@@ -144,6 +149,17 @@ const stepFor = count => Math.min(SLOT_ANGLE, 360 / Math.max(count, 1));
 const slotAngle = (index, count) => (index - (count - 1) / 2) * stepFor(count);
 
 /**
+ * Смещение i-го гнезда от центра колеса, в точках.
+ *
+ * Одна функция на ячейку и на подложку выбранного: разойдись они хоть на
+ * градус, подсветка встала бы рядом со значком, а не под ним.
+ */
+function slotPoint(index, count) {
+  const rad = (slotAngle(index, count) * Math.PI) / 180;
+  return {x: WHEEL_R_MID * Math.sin(rad), y: -WHEEL_R_MID * Math.cos(rad)};
+}
+
+/**
  * Насколько колесо можно повернуть.
  *
  * Ровно настолько, чтобы любой раздел можно было вывести наверх, и ни градусом
@@ -151,10 +167,19 @@ const slotAngle = (index, count) => (index - (count - 1) / 2) * stepFor(count);
  */
 const maxTurn = count => Math.abs(slotAngle(0, count));
 
+/**
+ * Центральная вкладка. Знак «Альфа» ведёт в чаты коротким нажатием, но в колесе
+ * у чатов теперь есть и своя кнопка: то, что логотип — это ещё и «домой»,
+ * знаешь, только если тебе рассказали, а колесо перечисляет разделы полностью.
+ */
+const CENTER_ROUTE = 'ChatsTab';
+
 const ICONS = {
   ProfileTab: User,
+  ChatsTab: MessageCircle,
   TasksTab: ListTodo,
   WarehouseTab: Package,
+  ReviewsTab: Star,
   CoursesTab: GraduationCap,
   SettingsTab: Settings,
 };
@@ -350,14 +375,13 @@ function AlphaOrb({open, onPress, onLongPress, visible}) {
 function WheelItem({item, index, count, turn, focused, onPress}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const angle = slotAngle(index, count);
-  const rad = (angle * Math.PI) / 180;
   const Icon = item.icon;
 
   // Координаты внутри контейнера колеса: начало отсчёта в его центре, поэтому
-  // к смещению добавляется радиус, а верх это минус по оси y.
-  const left = WHEEL_R_OUT + WHEEL_R_MID * Math.sin(rad) - ITEM_WIDTH / 2;
-  const top = WHEEL_R_OUT - WHEEL_R_MID * Math.cos(rad) - ITEM_HEIGHT / 2;
+  // к смещению добавляется радиус.
+  const at = slotPoint(index, count);
+  const left = WHEEL_R_OUT + at.x - ITEM_WIDTH / 2;
+  const top = WHEEL_R_OUT + at.y - ITEM_HEIGHT / 2;
 
   return (
     <View style={[styles.wheelItem, {left, top}]}>
@@ -376,12 +400,17 @@ function WheelItem({item, index, count, turn, focused, onPress}) {
           accessibilityRole="button"
           accessibilityState={{selected: focused}}
           accessibilityLabel={item.label}>
-          <View>
+            <View>
             <Icon size={ITEM_ICON} color={focused ? c.primary : c.textSecondary} />
-            {/* Значок входящих задач. Цифру не показываем, только точку: смысл
-                у неё один — «вас кто-то ждёт», и он передаётся точкой. */}
-            {item.dot && (
-              <View style={[styles.wheelDot, {backgroundColor: c.error, borderColor: c.bgPrimary}]} />
+            {/* Число, а не точка: «вас ждут» и «вас ждут сорок раз» — разные
+                сообщения, и второе меняет решение, куда идти сначала. Свыше
+                99 счёт теряет смысл и мешает: ширина бейджа съедает подпись. */}
+            {item.badge > 0 && (
+              <View style={[styles.wheelBadge, {borderColor: c.bgPrimary}]}>
+                <Text style={styles.wheelBadgeText} numberOfLines={1}>
+                  {item.badge > 99 ? '99+' : item.badge}
+                </Text>
+              </View>
             )}
           </View>
           <Text
@@ -474,6 +503,17 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   const inboxCount = useInboxCount();
   const access = useWarehouseAccess();
 
+  const unread = useUnreadTotal();
+  const warehouseBadge = useWarehouseBadge();
+  const reviewBoards = useReviewBoards();
+  const reviewsBadge = useReviewsBadge();
+  // Куда сейчас едет подложка выбранного раздела. Значения в точках от центра
+  // колеса, ими же двигаются и сами ячейки.
+  const active = useRef(new Animated.ValueXY({x: 0, y: 0})).current;
+  // С каким поворотом открыть колесо. Считается при отрисовке, применяется в
+  // момент открытия — см. openTurnFor ниже.
+  const openTurn = useRef(0);
+
   const [open, setOpen] = useState(false);
   const menu = useRef(new Animated.Value(0)).current;
   // Угол поворота обода в градусах. Живёт вне открытия/закрытия, но сбрасывается
@@ -490,8 +530,18 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
 
   const close = useCallback(() => setOpen(false), []);
 
+  // Цифра на кнопке склада должна быть до того, как человек туда зашёл, —
+  // иначе она появляется ровно тогда, когда уже не нужна.
   useEffect(() => {
-    if (open) { setMounted(true); turn.setValue(0); }
+    if (access?.allowed) refreshWarehouseBadge();
+  }, [access?.allowed]);
+
+  useEffect(() => {
+    if (reviewBoards?.length) refreshReviewsBadge();
+  }, [reviewBoards?.length]);
+
+  useEffect(() => {
+    if (open) { setMounted(true); turn.setValue(openTurn.current); }
     const anim = Animated.spring(menu, {
       toValue: open ? 1 : 0,
       useNativeDriver: true,
@@ -563,9 +613,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     }
   };
 
-  // Центральная вкладка — та, у которой нет значка: её место занимает кнопка
-  // «Альфа», всё остальное живёт на колесе
-  const centerRoute = state.routes.find(route => !ICONS[route.name]);
+  const centerRoute = state.routes.find(route => route.name === CENTER_ROUTE);
 
   /**
    * Разделы колеса.
@@ -574,17 +622,88 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
    * Пока права не пришли (access === null), её тоже нет: показать и убрать —
    * хуже, чем показать чуть позже, потому что колесо при этом меняет шаг под
    * уже занесённым пальцем.
+   *
+   * Счётчики: непрочитанные сообщения, поставленные задачи, открытые описи. Это
+   * три разных «вас ждут», и цифра отвечает на «сколько» раньше, чем человек
+   * откроет раздел.
    */
+  const badges = {
+    ChatsTab: unread,
+    TasksTab: inboxCount,
+    WarehouseTab: warehouseBadge,
+    ReviewsTab: reviewsBadge,
+  };
+
   const items = state.routes
     .filter(route => ICONS[route.name])
     .filter(route => route.name !== 'WarehouseTab'
       || Boolean(access?.allowed))
+    // Отзывы: доступа своего у модуля нет, он раздаётся досками — пустой список
+    // и есть «модуль не для вас». Пока доски не пришли, кнопки тоже нет: колесо
+    // не должно менять шаг под уже занесённым пальцем.
+    .filter(route => route.name !== 'ReviewsTab'
+      || Boolean(reviewBoards?.length))
     .map(route => ({
       route,
       icon: ICONS[route.name],
       label: descriptors[route.key].options.title ?? route.name,
-      dot: route.name === 'TasksTab' && inboxCount > 0,
+      badge: badges[route.name] || 0,
     }));
+
+  const activeIndex = items.findIndex(item => state.routes.indexOf(item.route) === state.index);
+  const activeAt = activeIndex >= 0 ? slotPoint(activeIndex, items.length) : null;
+
+  /**
+   * Поворот, с которым открывается колесо.
+   *
+   * По умолчанию нулевой: набор разделов центрирован относительно верха, и
+   * каждый раз одно и то же положение — это то, из-за чего до нужной кнопки
+   * дотягиваются не глядя.
+   *
+   * Но разделов стало семь, и при шаге 34° крайние оказываются на 102° от
+   * верха, то есть ниже горизонта и за краем экрана. Открыть колесо так, чтобы
+   * текущий раздел был не виден, нельзя — человек не поймёт, где он. Поэтому
+   * если активный ушёл за 80°, колесо открывается подвёрнутым ровно настолько,
+   * чтобы вывести его на 60°, и не больше: остальные разделы при этом остаются
+   * близко к привычным местам.
+   *
+   * Доворот кратен шагу — иначе разделы встали бы между гнёздами.
+   */
+  const step = stepFor(items.length);
+  const activeAngle = activeIndex >= 0 ? slotAngle(activeIndex, items.length) : 0;
+  openTurn.current = Math.abs(activeAngle) <= 80
+    ? 0
+    : Math.max(
+      -maxTurn(items.length),
+      Math.min(
+        maxTurn(items.length),
+        Math.round((-activeAngle + Math.sign(activeAngle) * 60) / step) * step,
+      ),
+    );
+
+  /**
+   * Подложка выбранного раздела.
+   *
+   * На открытии встаёт на место без анимации: колесо и так разворачивается, и
+   * ещё одна поездка в этот момент читалась бы как сбой. Дальше, если раздел
+   * сменили при открытом колесе, едет пружиной — по движению видно, откуда и
+   * куда переключились.
+   */
+  useEffect(() => {
+    if (!activeAt) return undefined;
+    if (!mounted) { active.setValue(activeAt); return undefined; }
+    const anim = Animated.spring(active, {
+      toValue: activeAt,
+      useNativeDriver: false,
+      speed: 14,
+      bounciness: 6,
+    });
+    anim.start();
+    return () => anim.stop();
+    // Точка считается из индекса и числа разделов — сравниваем по координатам,
+    // иначе объект, новый на каждом рендере, перезапускал бы пружину впустую.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAt?.x, activeAt?.y, mounted]);
 
   // Центр колеса в координатах экрана — от него PanResponder считает угол пальца
   const wheelPan = useWheelTurn(turn, items.length, width / 2, height - orbCenter);
@@ -706,6 +825,28 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
                 />
               </Svg>
 
+              {/* Подложка выбранного — под значками: она ездит, они стоят */}
+              {Boolean(activeAt) && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.wheelActive,
+                    {
+                      transform: [
+                        {translateX: active.x},
+                        {translateY: active.y},
+                        {
+                          rotate: turn.interpolate({
+                            inputRange: [-360, 360],
+                            outputRange: ['360deg', '-360deg'],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              )}
+
               {items.map((item, index) => (
                 <WheelItem
                   key={item.route.key}
@@ -789,14 +930,43 @@ const makeStyles = c => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  wheelDot: {
+  wheelBadge: {
     position: 'absolute',
-    top: -2,
-    right: -4,
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
+    top: -6,
+    right: -12,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: c.error,
     borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelBadgeText: {
+    fontFamily: font.semiBold,
+    fontSize: 10,
+    lineHeight: 13,
+    color: '#FFFFFF',
+  },
+  /**
+   * Подложка выбранного раздела.
+   *
+   * Ездит между гнёздами пружиной, а не появляется на новом месте: по движению
+   * видно, откуда и куда переключились, — на колесе, где соседний раздел стоит
+   * под углом, это единственное, что связывает старое положение с новым.
+   *
+   * Лежит под значками отдельным слоем: рисовать фон внутри ячейки значило бы
+   * перекрашивать две ячейки на каждом переходе и потерять само движение.
+   */
+  wheelActive: {
+    position: 'absolute',
+    left: WHEEL_R_OUT - (ITEM_WIDTH + 10) / 2,
+    top: WHEEL_R_OUT - (ITEM_HEIGHT + 12) / 2,
+    width: ITEM_WIDTH + 10,
+    height: ITEM_HEIGHT + 12,
+    borderRadius: 16,
+    backgroundColor: c.primaryLight,
   },
   wheelLabel: {
     fontFamily: font.medium,

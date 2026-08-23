@@ -15,6 +15,8 @@ import NotificationService, {
   takePendingChat,
   takePendingCalendar,
   takePendingTask,
+  takePendingWarehouseReports,
+  takePendingReview,
 } from './src/services/notifications';
 import PushService from './src/services/push';
 import {setForeground} from './src/services/activeChat';
@@ -45,6 +47,30 @@ function AppInner() {
   openCalendarRef.current = () => {
     if (!navigationRef.isReady()) return;
     (navigationRef.navigate as (name: string, params?: object) => void)('CalendarTab');
+  };
+
+  // Тап по уведомлению отзыва — сразу карточка: уведомление приходит про
+  // конкретный отзыв, и открывать вместо него список значило бы заставить
+  // искать его глазами.
+  const openReviewRef = useRef<(reviewId: string) => void>(() => {});
+  openReviewRef.current = (reviewId: string) => {
+    if (!navigationRef.isReady()) return;
+    (navigationRef.navigate as (name: string, params?: object) => void)(
+      'ReviewsTab',
+      {screen: 'Review', params: {reviewId}, initial: false},
+    );
+  };
+
+  // Тап по уведомлению складского отчёта — раздел отчётов внутри склада.
+  // Конкретный отчёт не открываем: их пока один, а когда станет больше, человек
+  // всё равно захочет увидеть рядом и остальные.
+  const openWarehouseReportsRef = useRef<() => void>(() => {});
+  openWarehouseReportsRef.current = () => {
+    if (!navigationRef.isReady()) return;
+    (navigationRef.navigate as (name: string, params?: object) => void)(
+      'WarehouseTab',
+      {screen: 'WarehouseMailings', initial: false},
+    );
   };
 
   // Тап по уведомлению задачи. Известен id — открываем карточку, нет (например,
@@ -92,12 +118,16 @@ function AppInner() {
       unsubscribeOpened = onNotificationOpenedApp(messaging, remoteMessage => {
         const data = remoteMessage?.data || {};
         if (data.kind === 'task') openTaskRef.current(data.taskId ? String(data.taskId) : null);
+        else if (data.kind === 'warehouse_report') openWarehouseReportsRef.current();
+        else if (data.kind === 'review' && data.reviewId) openReviewRef.current(String(data.reviewId));
         else if (data.chatId) openChatRef.current(String(data.chatId));
       });
       // Холодный старт из уведомления
       getInitialNotification(messaging).then(remoteMessage => {
         const data = remoteMessage?.data || {};
         if (data.kind === 'task') openTaskRef.current(data.taskId ? String(data.taskId) : null);
+        else if (data.kind === 'warehouse_report') openWarehouseReportsRef.current();
+        else if (data.kind === 'review' && data.reviewId) openReviewRef.current(String(data.reviewId));
         else if (data.chatId) openChatRef.current(String(data.chatId));
       });
     }
@@ -116,6 +146,9 @@ function AppInner() {
         if (takePendingCalendar()) openCalendarRef.current();
         const task = takePendingTask();
         if (task) openTaskRef.current(task.taskId);
+        if (takePendingWarehouseReports()) openWarehouseReportsRef.current();
+        const reviewId = takePendingReview();
+        if (reviewId) openReviewRef.current(reviewId);
         // Возврат в приложение — хороший момент подтянуть изменения календаря:
         // расписание уведомлений могло устареть, пока приложение было свёрнуто
         syncCalendarReminders();

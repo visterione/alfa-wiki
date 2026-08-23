@@ -19,13 +19,16 @@ import {View, Text, ScrollView, Pressable, StyleSheet, RefreshControl} from 'rea
 import {useFocusEffect} from '@react-navigation/native';
 import {
   ScanLine, ClipboardCheck, DoorOpen, ChevronRight, Lock, PackagePlus, Settings2,
+  BellRing,
 } from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {useWarehouseAccess, loadWarehouseAccess} from '../../store/warehouseStore';
+import {
+  useWarehouseAccess, loadWarehouseAccess, setWarehouseBadge,
+} from '../../store/warehouseStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {qtyText} from './warehouseMeta';
 
@@ -72,7 +75,15 @@ export default function WarehouseScreen({navigation}) {
         warehouseApi.inventorySessions(),
       ]);
       if (queueResult.status === 'fulfilled') setQueue(queueResult.value.data);
-      if (sessionsResult.status === 'fulfilled') setSessions(sessionsResult.value.data || []);
+      if (sessionsResult.status === 'fulfilled') {
+        const list = sessionsResult.value.data || [];
+        setSessions(list);
+        // Тот же счётчик, что на кнопке склада в колесе: раз описи уже
+        // запрошены, второй запрос ради цифры не нужен.
+        setWarehouseBadge(
+          list.filter(s => s.status !== 'closed' && s.status !== 'cancelled').length,
+        );
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -120,6 +131,14 @@ export default function WarehouseScreen({navigation}) {
       title: 'Инвентаризация',
       badge: openSessions.length || null,
       route: 'WarehouseInventoryList',
+    },
+    // Регламентные отчёты (ver. 7.25). Раньше они уходили только почтой в 07:30,
+    // а её читают за компьютером — то есть не тогда, когда отчёт нужен.
+    {
+      key: 'mailings',
+      icon: BellRing,
+      title: 'Отчёты',
+      route: 'WarehouseMailings',
     },
   ];
 

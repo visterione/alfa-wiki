@@ -185,10 +185,56 @@ async function sendMessageToUser(userId, messageText, metadata = {}) {
 }
 
 /**
- * Отправка сообщения в чат с ботом "Работа с негативом"
+ * Короткий заголовок и текст для push из сообщения бота.
+ *
+ * Сообщение бота свёрстано под чат: первая строка — что случилось, дальше поля,
+ * в конце markdown-ссылка «Открыть отзыв». В шторке уведомления ссылка не
+ * нажимается и только занимает место, а поля читаются подряд одной строкой.
+ * Поэтому первая строка идёт заголовком, остальные — телом, ссылка отбрасывается.
+ */
+function pushTextFrom(messageText) {
+  const lines = String(messageText || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !line.startsWith('[')); // markdown-ссылка в конце
+
+  return {
+    title: lines[0] || 'Отзывы',
+    body: lines.slice(1).join(' · ').slice(0, 200),
+  };
+}
+
+/**
+ * Отправка сообщения в чат с ботом "Работа с негативом".
+ *
+ * Помимо сообщения уходит push (ver. 7.26). Раньше уведомления модуля отзывов
+ * жили только в чате бота, а сообщения от ботов push не поднимают
+ * (sendMessageFromBot его не шлёт) — то есть на телефон они не приходили вовсе.
+ * Push несёт reviewId, поэтому по нажатию открывается сам отзыв, а не чат с
+ * ботом, из которого до отзыва ещё надо дойти.
+ *
+ * Падение push не должно ронять уведомление: сообщение в чате уже создано, и
+ * оно здесь главное.
  */
 async function sendReviewsBotMessage(userId, messageText, metadata = {}) {
-  return sendMessageFromBot(userId, messageText, metadata, REVIEWS_BOT_ID, getOrCreateReviewsChat);
+  const message = await sendMessageFromBot(
+    userId, messageText, metadata, REVIEWS_BOT_ID, getOrCreateReviewsChat,
+  );
+
+  if (metadata.reviewId) {
+    const {title, body} = pushTextFrom(messageText);
+    require('./pushService').sendToUsers([userId], {
+      kind: 'review',
+      reviewId: metadata.reviewId,
+      boardId: metadata.boardId || '',
+      reviewType: metadata.type || '',
+      title,
+      body,
+    }).catch(err => console.error('[reviews] push:', err.message));
+  }
+
+  return message;
 }
 
 /**

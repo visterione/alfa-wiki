@@ -75,7 +75,10 @@ export function buildNodes(tree) {
       key: `mc:${mc.id}`,
       kind: 'mc',
       title: mc.name,
-      subtitle: mc.city,
+      // Адрес, а не город: медцентров в одном городе несколько, и различают их
+      // по улице. Город остаётся запасным вариантом, когда адрес не заполнен.
+      subtitle: mc.address || mc.city,
+      logoUrl: mc.logoUrl || null,
       children,
     });
     node.count = countOf(node);

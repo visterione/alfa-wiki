@@ -102,6 +102,7 @@ export function loadLocationTree({force = false} = {}) {
 export function resetWarehouseAccess() {
   access = null;
   pending = null;
+  setWarehouseBadge(0);
   locations = null;
   locationsAt = 0;
   locationsPending = null;
@@ -126,6 +127,57 @@ export function useWarehouseAccess() {
   }, []);
 
   return value;
+}
+
+/**
+ * Счётчик на кнопке склада в колесе.
+ *
+ * Считаются открытые описи — единственное в модуле, что прямо ждёт действия
+ * человека и имеет однозначное число. Очередь размещения сюда не входит
+ * намеренно: она измеряется в позициях ведомости, счёт там идёт на тысячи, и
+ * рядом с «2» от чатов такое число читалось бы как авария.
+ *
+ * Значение публикуется тем же способом, что непрочитанные сообщения: магазин вне
+ * React, потому что подписчик (панель навигации) и источник (экран склада) живут
+ * в разных ветках дерева.
+ */
+let badge = 0;
+const badgeListeners = new Set();
+
+export function setWarehouseBadge(value) {
+  const next = Math.max(0, Math.trunc(value) || 0);
+  if (next === badge) return;
+  badge = next;
+  badgeListeners.forEach(fn => fn(badge));
+}
+
+export function useWarehouseBadge() {
+  const [value, setValue] = useState(badge);
+
+  useEffect(() => {
+    setValue(badge);
+    badgeListeners.add(setValue);
+    return () => { badgeListeners.delete(setValue); };
+  }, []);
+
+  return value;
+}
+
+/**
+ * Обновить счётчик, не открывая раздел.
+ *
+ * Панель навигации зовёт это, как только приходят права: иначе цифра появлялась
+ * бы только после того, как человек хотя бы раз заглянул на склад, — то есть
+ * ровно тогда, когда она уже не нужна.
+ */
+export function refreshWarehouseBadge() {
+  return warehouseApi.inventorySessions()
+    .then(({data}) => {
+      const open = (data || []).filter(s => s.status !== 'closed' && s.status !== 'cancelled');
+      setWarehouseBadge(open.length);
+      return open.length;
+    })
+    .catch(() => badge);
 }
 
 /** Короткая проверка возможности: `useWarehouseCan('canIssue')`. */

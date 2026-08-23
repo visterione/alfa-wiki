@@ -76,6 +76,9 @@ export function flattenRooms(tree) {
       name: room.name || '',
       label: roomText(room),
       hasStorage: Boolean((room.storages || []).length),
+      // Места хранения нужны там, где имущество кладут на полку: заведение
+      // позиции и приход требуют storageId, а отдельной ручки под него нет
+      storages: room.storages || [],
       medCenterId: mc.id,
       medCenterName: mc.name,
       groupKey,

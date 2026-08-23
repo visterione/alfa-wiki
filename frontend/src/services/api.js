@@ -1104,6 +1104,9 @@ export const warehouseApi = {
   misRoomSuggestions: (params)    => api.get('/warehouse/locations/rooms/mis-suggestions', { params }),
   updatePlacement: (id, data)     => api.patch(`/warehouse/placements/${id}`, data),
   deletePlacement: (id)           => api.delete(`/warehouse/placements/${id}`),
+  // Отмена размещения по кабинету — временный инструмент отладки для
+  // администратора, см. backend/services/warehouse/osvRollback.js
+  rollbackRoom:    (roomId)       => api.post(`/warehouse/placements/room/${roomId}/rollback`),
 
   // Отчёты
   turnover:        (params)       => api.get('/warehouse/reports/turnover', { params }),
