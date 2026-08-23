@@ -49,14 +49,17 @@ import {
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Camera, useCameraDevice, useCodeScanner} from 'react-native-vision-camera';
-import {DoorOpen, ScanLine, Search, X, Check, Package, Boxes} from 'lucide-react-native';
+import {
+  DoorOpen, ScanLine, Search, X, Check, Package, Boxes, Building2, ChevronRight, ChevronLeft,
+} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {loadLocationTree} from '../../store/warehouseStore';
-import {qtyText, moneyText, flattenRooms} from './warehouseMeta';
+import {qtyText, moneyText, flattenRooms, roomMatches} from './warehouseMeta';
+import {ROOT_KEY, buildNodes, leavesOf, resolveNode} from './locationTree';
 
 export default function WarehousePlacementScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -66,7 +69,9 @@ export default function WarehousePlacementScreen() {
   // запаса последняя позиция оказывалась бы под ней.
   const listStyle = {paddingHorizontal: 12, paddingBottom: insets.bottom + 90};
 
-  const [rooms, setRooms] = useState([]);
+  // Дерево локаций целиком: шаг выбора кабинета спускается по нему, а плоский
+  // список нужен только для подписи уже выбранного кабинета
+  const [tree, setTree] = useState(null);
   const [queue, setQueue] = useState(null);
   const [roomId, setRoomId] = useState(null);
   const [picked, setPicked] = useState(new Map());
@@ -78,15 +83,18 @@ export default function WarehousePlacementScreen() {
   const [sending, setSending] = useState(false);
   const [scanning, setScanning] = useState(false);
 
-  const room = rooms.find(r => r.id === roomId);
+  const room = useMemo(
+    () => flattenRooms(tree).find(item => item.id === roomId),
+    [tree, roomId],
+  );
 
   const load = useCallback(async () => {
     try {
-      const [tree, queueResult] = await Promise.all([
+      const [treeData, queueResult] = await Promise.all([
         loadLocationTree(),
         warehouseApi.placementQueue({limit: 200, mode: 'all'}),
       ]);
-      setRooms(flattenRooms(tree));
+      setTree(treeData);
       setQueue(queueResult.data);
     } catch {
       setQueue(null);
@@ -187,7 +195,7 @@ export default function WarehousePlacementScreen() {
   if (!roomId) {
     return (
       <RoomStep
-        rooms={rooms}
+        tree={tree}
         styles={styles}
         c={c}
         insets={insets}
@@ -320,61 +328,120 @@ export default function WarehousePlacementScreen() {
 }
 
 /**
- * Шаг выбора кабинета.
+ * Шаг выбора кабинета: медцентр → корпус → этаж → кабинет.
  *
- * Сканирование стоит первым и во всю ширину, потому что человек уже стоит перед
- * дверью: код на ней быстрее и надёжнее, чем поиск номера в списке на сотню
- * строк. Список — для случая, когда наклейки на двери ещё нет.
+ * Плоский список на сотню строк здесь не работал по той же причине, что и в
+ * разделе «Кабинеты»: номер 305 есть в каждом здании, и найти нужный можно было
+ * только прокруткой мимо всех остальных. Дерево то же самое (locationTree), и
+ * ведёт себя так же — уровень без выбора пропускается, пустые ветки не
+ * показываются, поиск идёт по тому поддереву, в котором стоишь.
+ *
+ * Спуск здесь внутренний, а не переходами по стеку: размещение — это один
+ * экран, и уводить человека из него на три экрана вглубь, чтобы вернуть
+ * обратно, значит потерять уже отмеченное.
  *
  * Кабинеты без мест хранения выключены: разбор кладёт остаток на полку, и без
  * неё раскладка сорвалась бы уже после того, как человек всё отметил.
  */
-function RoomStep({rooms, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
+function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
+  const [nodeKey, setNodeKey] = useState(ROOT_KEY);
   const [q, setQ] = useState('');
-  const needle = q.trim().toLowerCase();
-  const list = rooms.filter(r => !needle
-    || r.label.toLowerCase().includes(needle)
-    || r.where.toLowerCase().includes(needle));
+
+  const nodes = useMemo(() => buildNodes(tree), [tree]);
+  const node = useMemo(() => resolveNode(nodes, nodeKey), [nodes, nodeKey]);
+
+  // На экране медцентра корпус выбирается не отдельным шагом, а сразу списком
+  // этажей всех его корпусов: под корпусом обычно два-три этажа, и разбивать
+  // это на два экрана дороже, чем показать разом.
+  const groups = useMemo(() => {
+    if (!node) return [];
+    const needle = q.trim().toLowerCase();
+    return leavesOf(node)
+      .map(leaf => ({leaf, rooms: leaf.rooms.filter(room => roomMatches(room, needle))}))
+      .filter(group => group.rooms.length);
+  }, [node, q]);
+
+  // Плоский список кабинетов — когда ищут или когда дошли до этажа
+  const flat = Boolean(q.trim()) || !node?.children;
+
+  const items = flat
+    ? groups.flatMap(({leaf, rooms}) => [
+      ...(groups.length > 1 ? [{type: 'group', key: `g-${leaf.key}`, title: leaf.path || leaf.title}] : []),
+      ...rooms.map(room => ({type: 'room', key: `r-${room.id}`, room})),
+    ])
+    : (node?.children || []).map(child => ({type: 'node', key: `n-${child.key}`, node: child}));
 
   return (
     <View style={styles.root}>
       <Pressable style={styles.scanWide} onPress={onScan}>
         <ScanLine size={20} color="#FFFFFF" />
-        <Text style={styles.scanWideText}>Сканировать QR на двери</Text>
+        <Text style={styles.scanWideText}>QR-код</Text>
       </Pressable>
 
-      <View style={styles.search}>
+      {/* Возврат на уровень выше. Своей шапки у шага нет — он живёт внутри
+          экрана размещения, и системная стрелка «назад» увела бы из него совсем. */}
+      {nodeKey !== ROOT_KEY && (
+        <Pressable style={styles.up} onPress={() => { setNodeKey(ROOT_KEY); setQ(''); }}>
+          <ChevronLeft size={16} color={c.primary} />
+          <Text style={styles.upText}>Все медцентры</Text>
+        </Pressable>
+      )}
+
+      <View style={styles.stepSearch}>
         <Search size={15} color={c.textTertiary} />
         <TextInput
           style={styles.searchInput}
           value={q}
           onChangeText={setQ}
-          placeholder="Номер или корпус"
+          placeholder={node?.kind === 'root' ? 'Кабинет по всей сети' : 'Кабинет'}
           placeholderTextColor={c.textTertiary}
         />
       </View>
 
       <FlatList
-        data={list}
-        keyExtractor={item => item.id}
+        data={items}
+        keyExtractor={item => item.key}
         contentContainerStyle={{paddingHorizontal: 12, paddingBottom: insets.bottom + 24}}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
-        renderItem={({item}) => (
-          <Pressable
-            style={[styles.pickRow, !item.hasStorage && styles.pickRowOff]}
-            disabled={!item.hasStorage}
-            onPress={() => onPick(item.id)}>
-            <DoorOpen size={17} color={c.primary} />
-            <View style={styles.itemText}>
-              <Text style={styles.itemName}>{item.label}</Text>
-              <Text style={styles.itemMeta}>
-                {item.where}
-                {!item.hasStorage && ' · нет мест хранения'}
-              </Text>
-            </View>
-          </Pressable>
-        )}
+        renderItem={({item}) => {
+          if (item.type === 'group') {
+            return <Text style={styles.groupTitle}>{item.title}</Text>;
+          }
+
+          if (item.type === 'node') {
+            return (
+              <Pressable style={styles.pickRow} onPress={() => setNodeKey(item.node.key)}>
+                <Building2 size={17} color={c.primary} />
+                <View style={styles.itemText}>
+                  <Text style={styles.itemName}>{item.node.title}</Text>
+                  {Boolean(item.node.subtitle) && (
+                    <Text style={styles.itemMeta} numberOfLines={1}>{item.node.subtitle}</Text>
+                  )}
+                </View>
+                <Text style={styles.itemMeta}>{item.node.counts.rooms}</Text>
+                <ChevronRight size={16} color={c.textTertiary} />
+              </Pressable>
+            );
+          }
+
+          const {room} = item;
+          const hasStorage = Boolean(room.storages?.length);
+          return (
+            <Pressable
+              style={[styles.pickRow, !hasStorage && styles.pickRowOff]}
+              disabled={!hasStorage}
+              onPress={() => onPick(room.id)}>
+              <DoorOpen size={17} color={c.primary} />
+              <View style={styles.itemText}>
+                <Text style={styles.itemName}>Кабинет {room.number}</Text>
+                <Text style={styles.itemMeta} numberOfLines={1}>
+                  {[room.name, !hasStorage && 'нет мест хранения'].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        }}
       />
 
       {scanning && <RoomScanner styles={styles} onClose={onCloseScan} onFound={onFound} />}
@@ -457,6 +524,8 @@ const makeStyles = c => StyleSheet.create({
   },
   scanWideText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
   tools: {flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12},
+  // Поиск в строке инструментов списка ведомости: делит её с переключателями
+  // вида, поэтому flex
   search: {
     flex: 1,
     flexDirection: 'row',
@@ -471,6 +540,35 @@ const makeStyles = c => StyleSheet.create({
   },
   // Переключатель вида: значок плюс сколько таких позиций в очереди. Число
   // здесь отвечает «а есть ли там вообще материалы» до нажатия.
+  // Поиск на шаге выбора кабинета. Отдельно от предыдущего: там строка делится
+  // с переключателями и растягивается по ширине, а здесь она стоит в колонке —
+  // и flex растянул бы её на всю высоту, оставив от поля одну лупу.
+  stepSearch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: c.bgPrimary,
+  },
+  up: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  upText: {fontFamily: font.medium, fontSize: 13, color: c.primary},
+  groupTitle: {
+    fontFamily: font.medium,
+    fontSize: 12,
+    color: c.textSecondary,
+    marginTop: 10,
+    marginBottom: 4,
+  },
   kindToggle: {
     flexDirection: 'row',
     alignItems: 'center',

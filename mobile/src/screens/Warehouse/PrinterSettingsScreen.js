@@ -20,7 +20,7 @@ import {Printer, Check} from 'lucide-react-native';
 
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {usePrinter, DIRECT_MODE_HOST} from '../../store/printerStore';
+import {usePrinter} from '../../store/printerStore';
 import {checkPrinter, PRINTER_PORT} from '../../services/ptouchPrint';
 import LogoLoader from '../../components/LogoLoader';
 
@@ -69,12 +69,6 @@ export default function WarehousePrinterScreen() {
           autoCorrect={false}
         />
       </View>
-      {/* Кнопка, а не подсказка: адрес принтера в его собственной сети всегда
-          один и тот же, и набирать его руками незачем. */}
-      <Pressable style={styles.hintRow} onPress={() => commit(DIRECT_MODE_HOST)}>
-        <Text style={styles.hint}>Подставить {DIRECT_MODE_HOST}</Text>
-      </Pressable>
-
       <Pressable
         style={[styles.button, (!value.trim() || checking) && styles.buttonOff]}
         disabled={!value.trim() || checking}
@@ -144,8 +138,6 @@ const makeStyles = c => StyleSheet.create({
     fontFamily: font.regular,
     fontSize: 15,
   },
-  hintRow: {paddingVertical: 8, paddingHorizontal: 2},
-  hint: {fontFamily: font.regular, fontSize: 12, color: c.primary, lineHeight: 17},
   button: {
     flexDirection: 'row',
     alignItems: 'center',

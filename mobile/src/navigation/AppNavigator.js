@@ -2,7 +2,6 @@ import React, {useState, useEffect, useMemo} from 'react';
 import {
   StyleSheet,
   Image,
-  Pressable,
 } from 'react-native';
 import {
   NavigationContainer,
@@ -13,7 +12,6 @@ import {
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import LinearGradient from 'react-native-linear-gradient';
-import {SquarePen} from 'lucide-react-native';
 
 import {useAuth} from '../store/authStore';
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -165,26 +163,17 @@ function ChatsStack() {
         headerBackTitleVisible: false,
         ...STACK_ANIMATION,
       }}>
-      {/* «+» вернулся в шапку. Какое-то время создание чата висело на долгом
-          нажатии центральной кнопки, но с переходом навигации на дугу разделов
-          (ver. 7.22) это нажатие занято меню, а прятать создание чата третьим
-          уровнем внутрь дуги — значит убрать его из виду совсем. */}
+      {/* «Плюса» в шапке снова нет: создание чата переехало в колесо действий
+          на долгое нажатие знака «Альфа» (ver. 7.27). Там оно лежит под большим
+          пальцем и не занимает угол шапки, а главное — стоит рядом с такими же
+          действиями других разделов, а не по-своему в каждом. */}
       <Stack.Screen
         name="ChatList"
         component={ChatListScreen}
-        options={({navigation}) => ({
+        options={{
           title: 'Альфа Вики',
           headerTitleAlign: 'center',
-          headerRight: () => (
-            <Pressable
-              onPress={() => navigation.navigate('NewChat', {initialMode: 'private'})}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Новый чат">
-              <SquarePen size={21} color="#FFFFFF" />
-            </Pressable>
-          ),
-        })}
+        }}
       />
       <Stack.Screen
         name="Chat"

@@ -31,6 +31,7 @@ import BottomSheet from '../../components/BottomSheet';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useSettings, useTheme, useThemedStyles} from '../../store/settingsStore';
+import {useQuickAction} from '../../store/quickActions';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {useAuth} from '../../store/authStore';
 import {setInboxCount, useInboxCount} from '../../store/tasksStore';
@@ -60,6 +61,11 @@ export default function TasksScreen({navigation}) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCursor, setPickerCursor] = useState(today);
   const [quickOpen, setQuickOpen] = useState(false);
+
+  // Быстрое создание задачи вызывается из колеса действий (ver. 7.27): раньше
+  // здесь висела плавающая кнопка в углу, теперь она под большим пальцем и не
+  // отбирает у календаря нижний правый угол.
+  useQuickAction('new-task', useCallback(() => setQuickOpen(true), []));
   const [quickText, setQuickText] = useState('');
   const [quickBusy, setQuickBusy] = useState(false);
   const [people, setPeople] = useState([]);
@@ -408,13 +414,6 @@ export default function TasksScreen({navigation}) {
         />
       )}
     </ScrollView>
-
-      <Pressable
-        style={[styles.fab, {bottom: tabInset + 14}]}
-        onPress={() => setQuickOpen(true)}
-        accessibilityLabel="Быстро создать задачу">
-        <Plus size={27} color="#FFFFFF" />
-      </Pressable>
 
       {/* Выбор даты: год стрелками, месяц из двенадцати, день из сетки. До любой
           даты — три нажатия, а не полсотни листаний. Повторяет виджет веба. */}
@@ -1234,21 +1233,6 @@ const makeStyles = c =>
     summaryLabel: {fontFamily: font.regular, fontSize: 13.5, color: c.textSecondary},
     summaryValue: {fontFamily: font.semiBold, fontSize: 13.5, color: c.textPrimary},
 
-    fab: {
-      position: 'absolute',
-      right: 18,
-      width: 54,
-      height: 54,
-      borderRadius: 27,
-      backgroundColor: c.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: c.primary,
-      shadowOpacity: 0.32,
-      shadowRadius: 10,
-      shadowOffset: {width: 0, height: 5},
-      elevation: 7,
-    },
     quickBody: {paddingHorizontal: 20, paddingBottom: 18},
     quickInput: {
       minHeight: 82,

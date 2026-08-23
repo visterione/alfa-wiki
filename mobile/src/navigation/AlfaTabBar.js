@@ -3,6 +3,7 @@ import {
   View,
   Text,
   Image,
+  Alert,
   Pressable,
   Animated,
   BackHandler,
@@ -17,6 +18,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
 import {
   Settings, User, ListTodo, GraduationCap, Package, MessageCircle, Star,
+  SquarePen, Plus, LogOut,
 } from 'lucide-react-native';
 
 import {font} from '../theme';
@@ -27,6 +29,8 @@ import {
   useWarehouseAccess, useWarehouseBadge, refreshWarehouseBadge,
 } from '../store/warehouseStore';
 import {useReviewBoards, useReviewsBadge, refreshReviewsBadge} from '../store/reviewsStore';
+import {runQuickAction} from '../store/quickActions';
+import {useAuth} from '../store/authStore';
 import {TAB_BAR_HEIGHT} from './tabBarLayout';
 
 /**
@@ -43,9 +47,15 @@ import {TAB_BAR_HEIGHT} from './tabBarLayout';
  *
  * ── Как это работает ─────────────────────────────────────────────────────────
  *
- * Короткое нажатие — чаты, они же домашняя. Долгое — дуга разделов вокруг
- * кнопки, там же, где лежит большой палец. Нажатие мимо дуги, «назад» на
- * Android и повторное нажатие на знак её закрывают.
+ * Короткое нажатие открывает колесо разделов. Долгое — второе колесо, с
+ * действиями текущего раздела: в чатах это новый чат, в задачах — быстрое
+ * создание, в профиле — выход. Нажатие мимо колеса, «назад» на Android и
+ * повторное нажатие на знак закрывают его.
+ *
+ * Раньше короткое нажатие уводило в чаты, а колесо открывалось долгим. Так у
+ * знака было два разных смысла — «домой» и «меню», — и первый узнавался только
+ * от кого-то. Теперь у чатов есть своя кнопка в колесе, а знак делает одно:
+ * открывает то, что под ним.
  *
  * ── Почему кнопка теперь плавает, а не сидит в вырезе панели ─────────────────
  *
@@ -78,6 +88,11 @@ const HIDDEN_ROUTES = [
   'WarehouseItemCreate', 'WarehouseRoom', 'WarehouseRooms',
   'WarehouseInventoryCount', 'WarehouseInventoryNew', 'WarehousePlacement',
   'WarehouseLabelPrint', 'WarehousePrinter',
+  // Списки и журналы склада: у каждого своя кнопка «назад» в шапке, а знак
+  // поверх длинного списка только отнимает у него нижнюю строку. Кнопка нужна
+  // на главной раздела — туда и возвращаются, чтобы уйти в другой модуль.
+  'WarehouseAssets', 'WarehouseStock', 'WarehouseOperations',
+  'WarehouseInventoryList', 'WarehouseMailings',
   // Отзывы (ver. 7.26). Карточка держит внизу поле комментария, доска —
   // колонки во всю высоту: знак «Альфа» лёг бы прямо на них.
   'Review', 'ReviewBoard', 'ReviewsAssigned',
@@ -201,11 +216,44 @@ function sectorPath(count) {
 const maxTurn = count => Math.abs(slotAngle(0, count));
 
 /**
- * Центральная вкладка. Знак «Альфа» ведёт в чаты коротким нажатием, но в колесе
- * у чатов теперь есть и своя кнопка: то, что логотип — это ещё и «домой»,
- * знаешь, только если тебе рассказали, а колесо перечисляет разделы полностью.
+ * Контекстное колесо: что можно сделать в текущем разделе.
+ *
+ * Здесь только то, что раньше занимало угол экрана: «плюс» в шапке чатов и
+ * плавающая кнопка в задачах. Обе теперь живут под большим пальцем и не
+ * отбирают место у содержимого. Разделы, у которых такого действия нет, на
+ * долгое нажатие не отзываются вовсе — пустое колесо хуже, чем никакого.
+ *
+ * `run` получает навигацию и выход из аккаунта: первое нужно чату, второе —
+ * профилю, и тащить ради них в панель по магазину на каждое действие незачем.
  */
-const CENTER_ROUTE = 'ChatsTab';
+const TAB_ACTIONS = {
+  ChatsTab: [{
+    key: 'new-chat',
+    icon: SquarePen,
+    label: 'Новый чат',
+    run: ({navigation}) => navigation.navigate('ChatsTab', {
+      screen: 'NewChat', params: {initialMode: 'private'},
+    }),
+  }],
+  TasksTab: [{
+    key: 'new-task',
+    icon: Plus,
+    label: 'Новая задача',
+    // Лист быстрого создания живёт внутри экрана задач, переходом его не
+    // открыть — просьба уходит через quickActions
+    run: () => runQuickAction('new-task'),
+  }],
+  ProfileTab: [{
+    key: 'logout',
+    icon: LogOut,
+    label: 'Выйти',
+    danger: true,
+    run: ({logout}) => Alert.alert('Выйти из аккаунта?', '', [
+      {text: 'Отмена', style: 'cancel'},
+      {text: 'Выйти', style: 'destructive', onPress: logout},
+    ]),
+  }],
+};
 
 const ICONS = {
   ProfileTab: User,
@@ -311,7 +359,7 @@ function AlphaOrb({open, onPress, onLongPress, visible}) {
       accessibilityRole="button"
       accessibilityState={{expanded: open}}
       accessibilityLabel="Альфа"
-      accessibilityHint="Открывает чаты. Долгое нажатие — разделы приложения">
+      accessibilityHint="Открывает разделы. Долгое нажатие — действия текущего раздела">
       {/* Знак выглядит одинаково при любом открытом разделе: это фирменный
           логотип, и приглушать его — что серым, что полупрозрачным — значит
           показывать сломанным. */}
@@ -434,7 +482,10 @@ function WheelItem({item, index, count, turn, focused, onPress}) {
           accessibilityState={{selected: focused}}
           accessibilityLabel={item.label}>
             <View>
-            <Icon size={ITEM_ICON} color={focused ? c.primary : c.textSecondary} />
+            <Icon
+              size={ITEM_ICON}
+              color={item.danger ? c.error : (focused ? c.primary : c.textSecondary)}
+            />
             {/* Число, а не точка: «вас ждут» и «вас ждут сорок раз» — разные
                 сообщения, и второе меняет решение, куда идти сначала. Свыше
                 99 счёт теряет смысл и мешает: ширина бейджа съедает подпись. */}
@@ -447,7 +498,11 @@ function WheelItem({item, index, count, turn, focused, onPress}) {
             )}
           </View>
           <Text
-            style={[styles.wheelLabel, focused && {color: c.primary}]}
+            style={[
+              styles.wheelLabel,
+              focused && {color: c.primary},
+              item.danger && {color: c.error},
+            ]}
             numberOfLines={1}>
             {item.label}
           </Text>
@@ -547,6 +602,9 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   // момент открытия — см. openTurnFor ниже.
   const openTurn = useRef(0);
 
+  const {logout} = useAuth();
+  // 'sections' — разделы приложения, 'actions' — действия текущего раздела
+  const [mode, setMode] = useState('sections');
   const [open, setOpen] = useState(false);
   const menu = useRef(new Animated.Value(0)).current;
   // Угол поворота обода в градусах. Живёт вне открытия/закрытия, но сбрасывается
@@ -646,8 +704,6 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     }
   };
 
-  const centerRoute = state.routes.find(route => route.name === CENTER_ROUTE);
-
   /**
    * Разделы колеса.
    *
@@ -667,7 +723,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     ReviewsTab: reviewsBadge,
   };
 
-  const items = state.routes
+  const sections = state.routes
     .filter(route => ICONS[route.name])
     .filter(route => route.name !== 'WarehouseTab'
       || Boolean(access?.allowed))
@@ -677,14 +733,52 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     .filter(route => route.name !== 'ReviewsTab'
       || Boolean(reviewBoards?.length))
     .map(route => ({
+      key: route.key,
       route,
       icon: ICONS[route.name],
       label: descriptors[route.key].options.title ?? route.name,
       badge: badges[route.name] || 0,
     }));
 
-  const activeIndex = items.findIndex(item => state.routes.indexOf(item.route) === state.index);
+  // Действия текущего раздела — второе колесо, на долгое нажатие
+  const actions = (TAB_ACTIONS[current.name] || []).map(action => ({
+    key: action.key,
+    icon: action.icon,
+    label: action.label,
+    badge: 0,
+    danger: action.danger,
+    onPress: () => { close(); action.run({navigation, logout}); },
+  }));
+
+  const items = mode === 'actions' ? actions : sections;
+
+  // Подсветка — только у разделов: среди действий «текущего» не бывает, и
+  // сектор под одним из них означал бы выбор, которого никто не делал.
+  const activeIndex = mode === 'actions'
+    ? -1
+    : items.findIndex(item => state.routes.indexOf(item.route) === state.index);
   const activeAt = activeIndex >= 0 ? slotAngle(activeIndex, items.length) : null;
+
+  /**
+   * Подсветка выбранного раздела.
+   *
+   * На открытии встаёт на место без анимации: колесо и так разворачивается, и
+   * ещё одна поездка в этот момент читалась бы как сбой. Дальше, если раздел
+   * сменили при открытом колесе, едет пружиной — по движению видно, откуда и
+   * куда переключились.
+   */
+  useEffect(() => {
+    if (activeAt === null) return undefined;
+    if (!mounted) { active.setValue(activeAt); return undefined; }
+    const anim = Animated.spring(active, {
+      toValue: activeAt,
+      useNativeDriver: false,
+      speed: 14,
+      bounciness: 6,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [activeAt, mounted, active]);
 
   /**
    * Поворот, с которым открывается колесо.
@@ -862,13 +956,13 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
 
               {items.map((item, index) => (
                 <WheelItem
-                  key={item.route.key}
+                  key={item.key}
                   item={item}
                   index={index}
                   count={items.length}
                   turn={turn}
-                  focused={state.routes.indexOf(item.route) === state.index}
-                  onPress={() => go(item.route)}
+                  focused={index === activeIndex}
+                  onPress={() => (item.onPress ? item.onPress() : go(item.route))}
                 />
               ))}
             </Animated.View>
@@ -887,9 +981,17 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
           visible={!hidden}
           onPress={() => {
             if (open) { close(); return; }
-            if (centerRoute) go(centerRoute);
+            setMode('sections');
+            setOpen(true);
           }}
-          onLongPress={() => setOpen(true)}
+          onLongPress={() => {
+            if (open) return;
+            // Раздел без действий на долгое нажатие не отзывается: пустое
+            // колесо сообщает только о том, что мы ничего не придумали
+            if (!(TAB_ACTIONS[current.name] || []).length) return;
+            setMode('actions');
+            setOpen(true);
+          }}
         />
       </Animated.View>
     </View>

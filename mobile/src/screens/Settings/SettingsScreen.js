@@ -17,15 +17,9 @@ import {
   Check,
   Volume2,
   Droplet,
-  Info,
   ChevronRight,
-  Smartphone,
-  Trash2,
   Timer,
 } from 'lucide-react-native';
-import {version as appVersion} from '../../../package.json';
-import CONFIG from '../../config';
-import PushService from '../../services/push';
 import {radius, font, ACCENTS} from '../../theme';
 import {
   useTheme, useThemedStyles, useSettings,
@@ -150,7 +144,6 @@ function FontPreview({scale}) {
 }
 
 function Section({title, children}) {
-  const c = useTheme();
   const styles = useThemedStyles(makeStyles);
 
   return (
@@ -214,18 +207,6 @@ export default function SettingsScreen({navigation}) {
     }
   };
 
-  const reRegisterPush = () => {
-    PushService.register()
-      .then(token =>
-        Alert.alert(
-          token ? 'Готово' : 'Не удалось',
-          token
-            ? 'Устройство заново зарегистрировано для уведомлений'
-            : 'Проверьте разрешение на уведомления в настройках системы',
-        ),
-      )
-      .catch(() => Alert.alert('Ошибка', 'Не удалось обновить регистрацию'));
-  };
 
   return (
     <ScrollView
@@ -244,13 +225,6 @@ export default function SettingsScreen({navigation}) {
           }
           onPress={openSystemNotificationSettings}
         />
-        <View style={styles.divider} />
-        <Row
-          icon={Smartphone}
-          title="Перерегистрировать устройство"
-          subtitle="Если уведомления перестали приходить"
-          onPress={reRegisterPush}
-        />
       </Section>
 
       {/* Рабочее расписание живёт здесь, а не в самом модуле «Задачи»: его
@@ -261,13 +235,12 @@ export default function SettingsScreen({navigation}) {
         <Row
           icon={Timer}
           title="Рабочее расписание"
-          subtitle="Рабочие дни и продолжительность смен"
           onPress={() => navigation.navigate('TasksNorm')}
         />
       </Section>
 
       <Section title="Тема оформления">
-        <Row icon={Palette} title="Тема" subtitle="Применяется сразу, без перезапуска" />
+        <Row icon={Palette} title="Тема" />
         <View style={styles.divider} />
         {THEME_OPTIONS.map((opt, i) => (
           <React.Fragment key={opt.key}>
@@ -285,7 +258,6 @@ export default function SettingsScreen({navigation}) {
         <Row
           icon={Droplet}
           title="Цвет"
-          subtitle="Кнопки, свои сообщения, активные элементы"
         />
         <View style={styles.divider} />
         <View style={styles.accentGrid}>
@@ -319,7 +291,7 @@ export default function SettingsScreen({navigation}) {
       </Section>
 
       <Section title="Фон переписки">
-        <Row icon={ImageIcon} title="Узор" subtitle="Намеренно бледный, чтобы не мешал читать" />
+        <Row icon={ImageIcon} title="Узор" />
         <View style={styles.divider} />
         {/* Сеткой, а не списком: узоров стало больше десятка, и строками они
             растянулись бы на два экрана, а сравнить их между собой — главное,
@@ -337,7 +309,7 @@ export default function SettingsScreen({navigation}) {
       </Section>
 
       <Section title="Размер текста в чате">
-        <Row icon={Type} title="Шрифт" subtitle="Влияет на текст сообщений" />
+        <Row icon={Type} title="Шрифт" />
         <FontPreview scale={settings.scale} />
         <View style={styles.divider} />
         {Object.values(fontScales).map((fs, i) => (
@@ -356,7 +328,6 @@ export default function SettingsScreen({navigation}) {
         <Row
           icon={Volume2}
           title="Мелодия"
-          subtitle="Нажмите на вариант — он выберется и прозвучит"
         />
         <View style={styles.divider} />
         {SOUND_OPTIONS.map((snd, i) => (
@@ -376,24 +347,6 @@ export default function SettingsScreen({navigation}) {
         ))}
       </Section>
 
-      <Section title="О приложении">
-        <Row icon={Info} title="Версия" right={<Text style={styles.value}>{appVersion}</Text>} />
-        <View style={styles.divider} />
-        <Row icon={Info} title="Сервер" right={<Text style={styles.value} numberOfLines={1}>{CONFIG.BASE_URL.replace(/^https?:\/\//, '')}</Text>} />
-      </Section>
-
-      <Section title="Данные">
-        <Row
-          icon={Trash2}
-          title="Очистить уведомления"
-          subtitle="Убрать все уведомления приложения из шторки"
-          danger
-          onPress={() => {
-            notifee.cancelAllNotifications().catch(() => {});
-            Alert.alert('Готово', 'Уведомления очищены');
-          }}
-        />
-      </Section>
     </ScrollView>
   );
 }
@@ -520,15 +473,4 @@ const makeStyles = c => StyleSheet.create({
   choiceLabel: {flex: 1, fontSize: 15, fontFamily: font.regular, color: c.textPrimary},
   choiceLabelActive: {fontFamily: font.semiBold, color: c.primary},
 
-  value: {fontSize: 14, fontFamily: font.medium, color: c.textSecondary, maxWidth: 170},
-  soon: {
-    fontSize: 12,
-    fontFamily: font.medium,
-    color: c.textTertiary,
-    backgroundColor: c.bgTertiary,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
 });
