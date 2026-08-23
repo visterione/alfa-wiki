@@ -104,3 +104,46 @@ test('дробное количество размещается как есть
   assert.equal(targets[0].quantity, 2.02);
   assert.equal(targets[1].quantity, 10.48);
 });
+
+/**
+ * Сужение разбора до кабинета (ver. 7.23).
+ *
+ * Телефон разбирает кабинет сразу после того, как его разложили, — иначе
+ * раскладка на ногах заканчивалась ничем до общего прогона из веба. Сужение
+ * обязано отсекать чужие назначения: одна строка ведомости лежит в нескольких
+ * кабинетах, и разбор кабинета 305 не должен заводить карточки в 307, куда
+ * никто ещё не заходил.
+ */
+test('прогон по кабинету берёт только его назначения', () => {
+  const targets = targetsOf({
+    line: line(),
+    roomId: null,
+    placements: [
+      { id: 'p1', roomId: 'room-305', storageId: null, quantity: 1 },
+      { id: 'p2', roomId: 'room-307', storageId: null, quantity: 2 },
+    ],
+  }, new Set(['room-305']));
+
+  assert.equal(targets.length, 1);
+  assert.equal(targets[0].roomId, 'room-305');
+  assert.equal(targets[0].quantity, 1);
+});
+
+test('строка, которой в этом кабинете нет, из прогона выпадает целиком', () => {
+  const targets = targetsOf({
+    line: line(),
+    roomId: null,
+    placements: [{ id: 'p1', roomId: 'room-307', storageId: null, quantity: 3 }],
+  }, new Set(['room-305']));
+
+  assert.deepEqual(targets, []);
+});
+
+test('запасной путь через кабинет ветки тоже сужается', () => {
+  // Иначе прогон по одному кабинету протащил бы за собой все строки, которые
+  // держатся на кабинете своей ветки, — то есть половину ведомости
+  const item = { line: line(), roomId: 'branch-room', storageId: null, placements: [] };
+
+  assert.deepEqual(targetsOf(item, new Set(['room-305'])), []);
+  assert.equal(targetsOf(item, new Set(['branch-room'])).length, 1);
+});

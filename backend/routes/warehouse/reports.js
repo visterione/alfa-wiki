@@ -1039,6 +1039,9 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         id: room.id, number: room.number, name: room.name, kind: room.kind,
         department: room.department, responsible: room.responsible,
         floor: room.floor?.number, building: room.floor?.building?.name,
+        // Идентификатор этажа, а не только его номер: по нему мобильный дашборд
+        // подтягивает схему этажа, чтобы показать, где кабинет находится.
+        floorId: room.floorId,
         medCenter: room.medCenter?.displayName || room.medCenter?.name
           || room.floor?.building?.medCenter?.displayName || room.floor?.building?.medCenter?.name,
         path: await roomPath(room.id),

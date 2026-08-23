@@ -2,6 +2,7 @@ import React, {useState, useEffect, useMemo} from 'react';
 import {
   StyleSheet,
   Image,
+  Pressable,
 } from 'react-native';
 import {
   NavigationContainer,
@@ -12,6 +13,7 @@ import {
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import LinearGradient from 'react-native-linear-gradient';
+import {SquarePen} from 'lucide-react-native';
 
 import {useAuth} from '../store/authStore';
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -34,8 +36,9 @@ import WarehouseAssetScreen from '../screens/Warehouse/AssetScreen';
 import WarehouseRoomScreen from '../screens/Warehouse/RoomScreen';
 import WarehouseInventoryListScreen from '../screens/Warehouse/InventoryListScreen';
 import WarehouseInventoryCountScreen from '../screens/Warehouse/InventoryCountScreen';
+import WarehouseInventoryNewScreen from '../screens/Warehouse/InventoryNewScreen';
 import WarehousePlacementScreen from '../screens/Warehouse/PlacementScreen';
-import WarehouseRoomLabelsScreen from '../screens/Warehouse/RoomLabelsScreen';
+import WarehouseRoomPickerScreen from '../screens/Warehouse/RoomPickerScreen';
 import WarehouseLabelPrintScreen from '../screens/Warehouse/LabelPrintScreen';
 import WarehousePrinterScreen from '../screens/Warehouse/PrinterSettingsScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
@@ -151,16 +154,26 @@ function ChatsStack() {
         headerBackTitleVisible: false,
         ...STACK_ANIMATION,
       }}>
-      {/* Кнопки «+» в шапке больше нет: создание чата переехало на долгое
-          нажатие центральной кнопки панели (см. AlfaTabBar). Так действие
-          доступно с любой вкладки и не занимает угол шапки. */}
+      {/* «+» вернулся в шапку. Какое-то время создание чата висело на долгом
+          нажатии центральной кнопки, но с переходом навигации на дугу разделов
+          (ver. 7.22) это нажатие занято меню, а прятать создание чата третьим
+          уровнем внутрь дуги — значит убрать его из виду совсем. */}
       <Stack.Screen
         name="ChatList"
         component={ChatListScreen}
-        options={{
+        options={({navigation}) => ({
           title: 'Альфа Вики',
           headerTitleAlign: 'center',
-        }}
+          headerRight: () => (
+            <Pressable
+              onPress={() => navigation.navigate('NewChat', {initialMode: 'private'})}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Новый чат">
+              <SquarePen size={21} color="#FFFFFF" />
+            </Pressable>
+          ),
+        })}
       />
       <Stack.Screen
         name="Chat"
@@ -331,14 +344,22 @@ function WarehouseStack() {
         options={{title: 'Пересчёт'}}
       />
       <Stack.Screen
+        name="WarehouseInventoryNew"
+        component={WarehouseInventoryNewScreen}
+        options={{title: 'Новая опись'}}
+      />
+      <Stack.Screen
         name="WarehousePlacement"
         component={WarehousePlacementScreen}
         options={{title: 'Размещение'}}
       />
+      {/* Заголовок и кнопка принтера в шапке — на самом экране: список кабинетов
+          переключается между просмотром и отбором под печать, и шапка меняется
+          вместе с ним */}
       <Stack.Screen
-        name="WarehouseRoomLabels"
-        component={WarehouseRoomLabelsScreen}
-        options={{title: 'Этикетки на двери'}}
+        name="WarehouseRooms"
+        component={WarehouseRoomPickerScreen}
+        options={{title: 'Кабинеты'}}
       />
       <Stack.Screen
         name="WarehouseLabelPrint"

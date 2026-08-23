@@ -18,6 +18,29 @@
  * В девяти случаях из десяти позиция целиком лежит там, где на неё смотрят.
  * Пустое поле означает «весь нераспределённый остаток», и это снимает ввод
  * цифры с большинства строк.
+ *
+ * ── Сначала кабинет, потом ведомость (ver. 7.23) ─────────────────────────────
+ *
+ * Раньше экран открывался списком из трёх тысяч позиций, над которым висела
+ * строка «выберите кабинет». Читать этот список до выбора кабинета незачем — он
+ * всё равно один и тот же для всей сети, — а промахнуться и разложить в чужой
+ * кабинет было легко. Теперь кабинет это первый шаг, и до него ведомость не
+ * показывается вовсе.
+ *
+ * ── Почему раскладка сразу же заводит карточки ───────────────────────────────
+ *
+ * До ver. 7.23 размещение только фиксировало за кабинетом намерение: карточки
+ * оборудования и остатки материалов появлялись позже, общим прогоном разбора из
+ * веба. То есть человек обходил этаж с телефоном, а баланс кабинета оставался
+ * нулевым, пока кто-то не сядет за компьютер и не нажмёт «Проверить и создать».
+ * Мобильная раскладка была работой, которую всё равно надо было доделывать за
+ * столом, — и смысла в ней не оставалось.
+ *
+ * Теперь запрос несёт флаг materialize, и сервер сразу разбирает ровно тот
+ * кабинет, который разложили. Это безопасно: разбор идемпотентен и считает уже
+ * созданное, поэтому повторный прогон ничего не задваивает, а сужение до одного
+ * кабинета не трогает остальную ведомость. Общий разбор в вебе никуда не делся —
+ * он про проверку решений словаря по всей ведомости целиком.
  */
 import React, {useCallback, useMemo, useState} from 'react';
 import {
@@ -26,40 +49,14 @@ import {
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Camera, useCameraDevice, useCodeScanner} from 'react-native-vision-camera';
-import {DoorOpen, ScanLine, Search, X, Check} from 'lucide-react-native';
+import {DoorOpen, ScanLine, Search, X, Check, Package, Boxes} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {qtyText, moneyText} from './warehouseMeta';
-
-function flattenRooms(tree) {
-  const out = [];
-  for (const mc of tree?.medCenters || []) {
-    for (const r of mc.rooms || []) {
-      out.push({
-        id: r.id,
-        hasStorage: Boolean((r.storages || []).length),
-        label: `Каб. ${r.number}${r.name && r.name !== r.number ? ` — ${r.name}` : ''}`,
-        where: mc.name,
-      });
-    }
-    for (const b of mc.buildings || []) {
-      for (const f of b.floors || []) {
-        for (const r of f.rooms || []) {
-          out.push({
-            id: r.id,
-            hasStorage: Boolean((r.storages || []).length),
-            label: `Каб. ${r.number}${r.name && r.name !== r.number ? ` — ${r.name}` : ''}`,
-            where: `${b.name} · ${f.number} эт.`,
-          });
-        }
-      }
-    }
-  }
-  return out;
-}
+import {loadLocationTree} from '../../store/warehouseStore';
+import {qtyText, moneyText, flattenRooms} from './warehouseMeta';
 
 export default function WarehousePlacementScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -74,19 +71,22 @@ export default function WarehousePlacementScreen() {
   const [roomId, setRoomId] = useState(null);
   const [picked, setPicked] = useState(new Map());
   const [q, setQ] = useState('');
+  // Фильтр вида: у оборудования и материалов разный вопрос — «сколько штук
+  // стоит» против «сколько осталось», — и в кабинете их разбирают порознь.
+  const [kind, setKind] = useState('all');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [picker, setPicker] = useState(null);
+  const [scanning, setScanning] = useState(false);
 
   const room = rooms.find(r => r.id === roomId);
 
   const load = useCallback(async () => {
     try {
-      const [treeResult, queueResult] = await Promise.all([
-        warehouseApi.tree(),
+      const [tree, queueResult] = await Promise.all([
+        loadLocationTree(),
         warehouseApi.placementQueue({limit: 200, mode: 'all'}),
       ]);
-      setRooms(flattenRooms(treeResult.data));
+      setRooms(flattenRooms(tree));
       setQueue(queueResult.data);
     } catch {
       setQueue(null);
@@ -107,24 +107,44 @@ export default function WarehousePlacementScreen() {
   };
 
   const send = async () => {
-    if (!roomId) return Alert.alert('Кабинет не выбран', 'Сначала выберите кабинет — или отсканируйте QR на его двери.');
-    if (!picked.size) return;
+    if (!roomId || !picked.size) return;
     setSending(true);
     try {
       const {data} = await warehouseApi.placeItems({
         roomId,
+        // Разбираем кабинет тут же: без этого раскладка остаётся намерением, а
+        // баланс кабинета — нулевым до общего прогона из веба.
+        materialize: true,
         items: [...picked.entries()].map(([lineKey, quantity]) => ({
           lineKey, quantity: quantity === '' ? null : Number(quantity),
         })),
       });
       setPicked(new Map());
       await load();
-      if (data.rejected?.length) {
-        Alert.alert(
-          'Размещено с оговорками',
-          `Разложено позиций: ${data.saved}. Пропущено ${data.rejected.length}: ${data.rejected[0].reason}`,
-        );
-      }
+
+      const made = data.materialized;
+      const lines = [
+        `Разложено позиций: ${data.saved}.`,
+        made?.failed
+          // Размещение сохранено, а разбор не прошёл — молчать об этом нельзя:
+          // человек уйдёт из кабинета, считая, что имущество заведено.
+          ? `Разбор не прошёл: ${made.failed}. Запустите разбор в веб-версии.`
+          : made && (made.assetsCreated || made.stockReceipts)
+            ? [
+              made.assetsCreated && `заведено карточек: ${made.assetsCreated}`,
+              made.stockReceipts && `позиций материалов: ${made.stockReceipts}`,
+            ].filter(Boolean).join(', ')
+            : null,
+        data.rejected?.length
+          ? `Пропущено ${data.rejected.length}: ${data.rejected[0].reason}`
+          : null,
+        made?.problems?.length ? made.problems[0].reason : null,
+      ].filter(Boolean);
+
+      Alert.alert(
+        data.rejected?.length || made?.failed ? 'Размещено с оговорками' : 'Готово',
+        lines.join('\n'),
+      );
     } catch (e) {
       Alert.alert('Не размещено', e?.response?.data?.error || 'Попробуйте ещё раз.');
     } finally {
@@ -133,53 +153,94 @@ export default function WarehousePlacementScreen() {
   };
 
   const items = useMemo(() => {
-    const list = queue?.items || [];
     const needle = q.trim().toLowerCase();
-    if (!needle) return list;
-    return list.filter(i => i.name.toLowerCase().includes(needle)
-      || String(i.pathText || '').toLowerCase().includes(needle));
-  }, [queue, q]);
+    return (queue?.items || [])
+      .filter(i => kind === 'all' || i.kind === kind)
+      .filter(i => !needle || i.name.toLowerCase().includes(needle)
+        || String(i.pathText || '').toLowerCase().includes(needle));
+  }, [queue, q, kind]);
+
+  // Счётчики на чипах считаются по всей очереди, а не по видимому списку: чип
+  // «Материалы (0)» отвечает на вопрос раньше, чем по нему нажмут.
+  const counts = useMemo(() => {
+    const list = queue?.items || [];
+    return {
+      all: list.length,
+      asset: list.filter(i => i.kind === 'asset').length,
+      material: list.filter(i => i.kind === 'material').length,
+    };
+  }, [queue]);
 
   if (loading) return <LogoLoader />;
 
   if (!queue?.import) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>
-          Нет принятого снимка ведомости. Загрузите его в веб-версии на вкладке
-          «Ведомость 1С».
-        </Text>
+        <Text style={styles.emptyText}>Нет принятого снимка ведомости</Text>
       </View>
+    );
+  }
+
+  // Шаг первый: пока кабинет не выбран, ведомость не показывается. Она одна и
+  // та же для всей сети, читать её до выбора кабинета нечего, а промахнуться
+  // кабинетом легко — и разложенное не туда потом снимать вручную.
+  if (!roomId) {
+    return (
+      <RoomStep
+        rooms={rooms}
+        styles={styles}
+        c={c}
+        insets={insets}
+        onScan={() => setScanning(true)}
+        onPick={setRoomId}
+        scanning={scanning}
+        onCloseScan={() => setScanning(false)}
+        onFound={(id) => { setScanning(false); setRoomId(id); }}
+      />
     );
   }
 
   return (
     <View style={styles.root}>
-      <Pressable style={styles.roomBar} onPress={() => setPicker('list')}>
+      <Pressable style={styles.roomBar} onPress={() => { setRoomId(null); setPicked(new Map()); }}>
         <DoorOpen size={18} color={c.primary} />
         <View style={styles.roomText}>
-          <Text style={styles.roomName}>{room ? room.label : 'Выберите кабинет'}</Text>
-          <Text style={styles.roomWhere}>
-            {room ? room.where : 'или отсканируйте QR на двери'}
-          </Text>
+          <Text style={styles.roomName}>{room ? room.label : 'Кабинет'}</Text>
+          <Text style={styles.roomWhere}>{room ? room.where : 'сменить'}</Text>
         </View>
-        <Pressable
-          style={styles.scanChip}
-          onPress={() => setPicker('scan')}
-          hitSlop={8}>
-          <ScanLine size={16} color={c.primary} />
-        </Pressable>
+        <Text style={styles.roomChange}>сменить</Text>
       </Pressable>
 
-      <View style={styles.search}>
-        <Search size={15} color={c.textTertiary} />
-        <TextInput
-          style={styles.searchInput}
-          value={q}
-          onChangeText={setQ}
-          placeholder="Что перед вами? Название или ветка"
-          placeholderTextColor={c.textTertiary}
-        />
+      <View style={styles.tools}>
+        <View style={styles.search}>
+          <Search size={15} color={c.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            value={q}
+            onChangeText={setQ}
+            placeholder="Поиск по ведомости"
+            placeholderTextColor={c.textTertiary}
+          />
+        </View>
+
+        {/* Оборудование учитывается карточкой с инвентарным номером, материал —
+            количеством на остатке. В кабинете их разбирают порознь, поэтому
+            фильтр стоит прямо у поиска. Повторное нажатие снимает фильтр —
+            отдельная кнопка «Всё» съела бы место у самого поиска. */}
+        {[['asset', Package], ['material', Boxes]].map(([key, Icon]) => (
+          <Pressable
+            key={key}
+            style={[styles.kindToggle, kind === key && styles.kindToggleOn]}
+            onPress={() => setKind(prev => (prev === key ? 'all' : key))}
+            accessibilityRole="button"
+            accessibilityState={{selected: kind === key}}
+            accessibilityLabel={key === 'asset' ? 'Только оборудование' : 'Только материалы'}>
+            <Icon size={17} color={kind === key ? '#FFFFFF' : c.textSecondary} />
+            <Text style={[styles.kindCount, kind === key && styles.kindCountOn]}>
+              {counts[key]}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       <FlatList
@@ -195,6 +256,13 @@ export default function WarehousePlacementScreen() {
               onPress={() => toggle(item)}>
               <View style={[styles.check, checked && styles.checkOn]}>
                 {checked && <Check size={13} color="#FFFFFF" />}
+              </View>
+              {/* Значок вида, а не подпись словом: строка и так несёт название,
+                  остаток и цену, и четвёртая надпись в ней уже не читается */}
+              <View style={styles.kindIcon}>
+                {item.kind === 'asset'
+                  ? <Package size={15} color={c.primary} />
+                  : <Boxes size={15} color={c.textSecondary} />}
               </View>
               <View style={styles.itemText}>
                 <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
@@ -247,74 +315,70 @@ export default function WarehousePlacementScreen() {
         </View>
       )}
 
-      {picker === 'list' && (
-        <RoomPicker
-          rooms={rooms}
-          styles={styles}
-          c={c}
-          onClose={() => setPicker(null)}
-          onPick={(id) => { setRoomId(id); setPicker(null); }}
-        />
-      )}
-
-      {picker === 'scan' && (
-        <RoomScanner
-          styles={styles}
-          onClose={() => setPicker(null)}
-          onFound={(id) => { setRoomId(id); setPicker(null); }}
-        />
-      )}
     </View>
   );
 }
 
-/** Выбор кабинета списком: кабинетов около сотни, поэтому с поиском. */
-function RoomPicker({rooms, styles, c, onClose, onPick}) {
+/**
+ * Шаг выбора кабинета.
+ *
+ * Сканирование стоит первым и во всю ширину, потому что человек уже стоит перед
+ * дверью: код на ней быстрее и надёжнее, чем поиск номера в списке на сотню
+ * строк. Список — для случая, когда наклейки на двери ещё нет.
+ *
+ * Кабинеты без мест хранения выключены: разбор кладёт остаток на полку, и без
+ * неё раскладка сорвалась бы уже после того, как человек всё отметил.
+ */
+function RoomStep({rooms, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
   const [q, setQ] = useState('');
-  const list = rooms.filter(r => !q
-    || r.label.toLowerCase().includes(q.toLowerCase())
-    || r.where.toLowerCase().includes(q.toLowerCase()));
+  const needle = q.trim().toLowerCase();
+  const list = rooms.filter(r => !needle
+    || r.label.toLowerCase().includes(needle)
+    || r.where.toLowerCase().includes(needle));
 
   return (
-    <Modal animationType="slide" transparent={false} onRequestClose={onClose}>
-      <View style={styles.modal}>
-        <View style={styles.modalHead}>
-          <Text style={styles.modalTitle}>Кабинет</Text>
-          <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.textPrimary} /></Pressable>
-        </View>
-        <View style={styles.search}>
-          <Search size={15} color={c.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            value={q}
-            onChangeText={setQ}
-            placeholder="Номер или корпус"
-            placeholderTextColor={c.textTertiary}
-            autoFocus
-          />
-        </View>
-        <FlatList
-          data={list}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.pickList}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({item}) => (
-            <Pressable
-              style={[styles.pickRow, !item.hasStorage && styles.pickRowOff]}
-              disabled={!item.hasStorage}
-              onPress={() => onPick(item.id)}>
-              <View style={styles.itemText}>
-                <Text style={styles.itemName}>{item.label}</Text>
-                <Text style={styles.itemMeta}>
-                  {item.where}
-                  {!item.hasStorage && ' · нет мест хранения'}
-                </Text>
-              </View>
-            </Pressable>
-          )}
+    <View style={styles.root}>
+      <Pressable style={styles.scanWide} onPress={onScan}>
+        <ScanLine size={20} color="#FFFFFF" />
+        <Text style={styles.scanWideText}>Сканировать QR на двери</Text>
+      </Pressable>
+
+      <View style={styles.search}>
+        <Search size={15} color={c.textTertiary} />
+        <TextInput
+          style={styles.searchInput}
+          value={q}
+          onChangeText={setQ}
+          placeholder="Номер или корпус"
+          placeholderTextColor={c.textTertiary}
         />
       </View>
-    </Modal>
+
+      <FlatList
+        data={list}
+        keyExtractor={item => item.id}
+        contentContainerStyle={{paddingHorizontal: 12, paddingBottom: insets.bottom + 24}}
+        keyboardShouldPersistTaps="handled"
+        ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
+        renderItem={({item}) => (
+          <Pressable
+            style={[styles.pickRow, !item.hasStorage && styles.pickRowOff]}
+            disabled={!item.hasStorage}
+            onPress={() => onPick(item.id)}>
+            <DoorOpen size={17} color={c.primary} />
+            <View style={styles.itemText}>
+              <Text style={styles.itemName}>{item.label}</Text>
+              <Text style={styles.itemMeta}>
+                {item.where}
+                {!item.hasStorage && ' · нет мест хранения'}
+              </Text>
+            </View>
+          </Pressable>
+        )}
+      />
+
+      {scanning && <RoomScanner styles={styles} onClose={onCloseScan} onFound={onFound} />}
+    </View>
   );
 }
 
@@ -355,9 +419,6 @@ function RoomScanner({styles, onClose, onFound}) {
         {device && (
           <Camera style={StyleSheet.absoluteFill} device={device} isActive codeScanner={codeScanner} />
         )}
-        <View style={styles.scanHint} pointerEvents="none">
-          <Text style={styles.scanHintText}>QR на двери кабинета</Text>
-        </View>
         <Pressable style={styles.scanClose} onPress={onClose} hitSlop={10}>
           <X size={22} color="#FFFFFF" />
         </Pressable>
@@ -382,11 +443,22 @@ const makeStyles = c => StyleSheet.create({
   roomText: {flex: 1},
   roomName: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
   roomWhere: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
-  scanChip: {
-    width: 38, height: 38, borderRadius: radius.md,
-    backgroundColor: c.primaryLight, alignItems: 'center', justifyContent: 'center',
+  roomChange: {fontFamily: font.medium, fontSize: 12, color: c.primary},
+  scanWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 52,
+    margin: 12,
+    marginBottom: 10,
+    borderRadius: radius.lg,
+    backgroundColor: c.primary,
   },
+  scanWideText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
+  tools: {flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12},
   search: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -396,6 +468,29 @@ const makeStyles = c => StyleSheet.create({
     height: 40,
     borderRadius: radius.md,
     backgroundColor: c.bgPrimary,
+  },
+  // Переключатель вида: значок плюс сколько таких позиций в очереди. Число
+  // здесь отвечает «а есть ли там вообще материалы» до нажатия.
+  kindToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    height: 40,
+    marginBottom: 8,
+    borderRadius: radius.md,
+    backgroundColor: c.bgPrimary,
+  },
+  kindToggleOn: {backgroundColor: c.primary},
+  kindCount: {fontFamily: font.semiBold, fontSize: 12, color: c.textSecondary},
+  kindCountOn: {color: '#FFFFFF'},
+  kindIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.sm,
+    backgroundColor: c.bgSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchInput: {flex: 1, color: c.textPrimary, fontFamily: font.regular, fontSize: 14, padding: 0},
   item: {
@@ -439,21 +534,13 @@ const makeStyles = c => StyleSheet.create({
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, textAlign: 'center', padding: 24, lineHeight: 19},
   empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary, textAlign: 'center', lineHeight: 20},
-  modal: {flex: 1, backgroundColor: c.bgSecondary, paddingTop: 52},
-  modalHead: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingBottom: 12,
-  },
-  modalTitle: {fontFamily: font.semiBold, fontSize: 18, color: c.textPrimary},
-  pickList: {padding: 12},
   pickRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 11,
     backgroundColor: c.bgPrimary, borderRadius: radius.md,
     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8,
   },
   pickRowOff: {opacity: 0.45},
   scanModal: {flex: 1, backgroundColor: '#000000'},
-  scanHint: {position: 'absolute', left: 0, right: 0, bottom: 60, alignItems: 'center'},
-  scanHintText: {fontFamily: font.regular, fontSize: 14, color: 'rgba(255,255,255,0.85)'},
   scanClose: {
     position: 'absolute', top: 52, left: 16,
     width: 38, height: 38, borderRadius: 19,

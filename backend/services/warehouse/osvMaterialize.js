@@ -223,9 +223,16 @@ async function planMaterialization(importId, account) {
       if (item.rule && item.mapping?.kind === 'auto') totals.byDictionary += 1;
       else totals.byMapping += 1;
       if (item.categoryId) totals.withCategory += 1;
-      if (item.placements.length) totals.linesWithPlacement += 1;
-      totals.placedUnits += item.placedQty;
-      totals.unplacedUnits += item.unplacedQty;
+
+      // Размещение считается только по тому, что вообще едет в портал. Строки
+      // с решением «не учитывать» раскладывать некуда, и пока они попадали в
+      // сумму, счётчик «ещё не разложено» показывал работу, которой нет: на
+      // МЦ.04 это несколько тысяч единиц расходников поверх реальной очереди.
+      if (item.kind === 'asset' || item.kind === 'material') {
+        if (item.placements.length) totals.linesWithPlacement += 1;
+        totals.placedUnits += item.placedQty;
+        totals.unplacedUnits += item.unplacedQty;
+      }
     }
   }
 
@@ -327,6 +334,11 @@ const codeFor = lineKey => `ОСВ-${lineKey.slice(0, 10).toUpperCase()}`;
 /**
  * Куда именно едет строка и в каком количестве.
  *
+ * `only` — набор кабинетов, которыми ограничен прогон (ver. 7.23). Назначения в
+ * прочие кабинеты отбрасываются: разбор одного кабинета не должен создавать
+ * карточки в соседних только потому, что та же строка ведомости разложена и
+ * туда.
+ *
  * Основной путь — размещения (ver. 6.80): «из этой строки три стула стоят в 305,
  * два в 307». Одна строка раскладывается на сколько угодно кабинетов, и то, что
  * не разложено, разбор не трогает — карточки на неразмещённое не создаются, и
@@ -337,22 +349,24 @@ const codeFor = lineKey => `ОСВ-${lineKey.slice(0, 10).toUpperCase()}`;
  * карточки, созданные раньше, во-вторых, потому что ветка, честно равная одному
  * кабинету, бывает — и раскладывать её поштучно было бы работой без содержания.
  */
-function targetsOf(item) {
+function targetsOf(item, only = null) {
+  const keep = list => (only ? list.filter(target => only.has(target.roomId)) : list);
+
   if (item.placements?.length) {
-    return item.placements.map(p => ({
+    return keep(item.placements.map(p => ({
       placementId: p.id,
       roomId: p.roomId,
       storageId: p.storageId || null,
       quantity: Number(p.quantity) || 0,
-    }));
+    })));
   }
   if (!item.roomId) return [];
-  return [{
+  return keep([{
     placementId: null,
     roomId: item.roomId,
     storageId: item.storageId || null,
     quantity: Number(item.line.closingQty) || 0,
-  }];
+  }]);
 }
 
 /**
@@ -367,8 +381,23 @@ const countKey = (placementId, lineKey) => placementId || `line:${lineKey}`;
  * @param {string} account   счёт (МЦ.04)
  * @param {object} user      кто запустил
  * @param {boolean} dryRun   только посчитать
+ * @param {string[]} [roomIds] разбирать только эти кабинеты
+ *
+ * ── Почему разбор можно запускать по одному кабинету ─────────────────────────
+ *
+ * Разбор идемпотентен: у оборудования он сверяет число уже созданных карточек с
+ * нужным (countKey), у материала — сравнивает остаток с количеством размещения.
+ * Повторный прогон создаёт только недостающее, поэтому «разобрать кабинет 305»
+ * это не отдельный режим, а тот же прогон с суженным списком назначений.
+ *
+ * Понадобилось это для телефона (ver. 7.23). Раскладка по кабинетам — работа на
+ * ногах, и до сих пор она заканчивалась ничем: размещение фиксировало намерение,
+ * а карточки и остатки появлялись только после общего прогона из веба. Человек
+ * обходил этаж, а баланс кабинета оставался нулевым до тех пор, пока кто-то не
+ * сядет за компьютер. Сузив прогон до кабинета, который только что разложили,
+ * мы замыкаем работу там же, где она делается, и не трогаем остальную ведомость.
  */
-async function materializeOsv({ importId, account, user, dryRun = false }) {
+async function materializeOsv({ importId, account, user, dryRun = false, roomIds = null }) {
   const { plan, totals, brokenRules } = await planMaterialization(importId, account);
 
   const report = {
@@ -392,21 +421,29 @@ async function materializeOsv({ importId, account, user, dryRun = false }) {
     brokenRules,
   };
 
-  const work = plan.filter(item => item.kind === 'asset' || item.kind === 'material');
+  // Сужение до кабинетов: назначения в чужие кабинеты отбрасываются, а строки,
+  // от которых после этого не осталось ни одного назначения, выпадают из работы
+  // целиком — иначе они попали бы в skippedUnplaced и отчёт по одному кабинету
+  // рапортовал бы о трёх тысячах «не размещено».
+  const only = Array.isArray(roomIds) && roomIds.length ? new Set(roomIds) : null;
+
+  let work = plan.filter(item => item.kind === 'asset' || item.kind === 'material');
+  const targets = new Map();
+  for (const item of work) targets.set(item.line.lineKey, targetsOf(item, only));
+  if (only) work = work.filter(item => targets.get(item.line.lineKey).length);
   if (!work.length) return report;
 
-  const targets = new Map(work.map(item => [item.line.lineKey, targetsOf(item)]));
   const allTargets = [...targets.values()].flat();
 
   // Место хранения обязательно и у карточки, и у остатка. Когда назначение
   // указывает только кабинет, берём первое место хранения этого кабинета:
   // требовать выбирать полку для каждой из тысяч позиций — работа без содержания.
-  const roomIds = [...new Set(allTargets.map(x => x.roomId).filter(Boolean))];
+  const targetRoomIds = [...new Set(allTargets.map(x => x.roomId).filter(Boolean))];
   const categoryIds = [...new Set(work.map(i => i.categoryId).filter(Boolean))];
   const [storages, rooms, categories] = await Promise.all([
-    WhStorage.findAll({ where: { roomId: { [Op.in]: roomIds }, isActive: true },
+    WhStorage.findAll({ where: { roomId: { [Op.in]: targetRoomIds }, isActive: true },
       order: [['sortOrder', 'ASC'], ['name', 'ASC']] }),
-    WhRoom.findAll({ where: { id: { [Op.in]: roomIds } },
+    WhRoom.findAll({ where: { id: { [Op.in]: targetRoomIds } },
       include: [{ model: WhDepartment, as: 'department' }] }),
     WhCategory.findAll({ where: { id: { [Op.in]: categoryIds } } }),
   ]);

@@ -73,7 +73,7 @@ export default function WarehouseLabelPrintScreen({route, navigation}) {
         port: printer.port || PRINTER_PORT,
         onProgress: setProgress,
       });
-      setDone({count: job.labels.length, problems: result.problems || [], answered: result.answered});
+      setDone({count: job.labels.length, problems: result.problems || []});
       // Отметку о печати ставим только для оборудования: по ней в вебе видно,
       // какие карточки промаркированы. У кабинетов такой отметки нет.
       if (kind !== 'room') warehouseApi.markLabelsPrinted(ids).catch(() => {});
@@ -100,7 +100,7 @@ export default function WarehouseLabelPrintScreen({route, navigation}) {
             {hasPrinter ? printer.host : 'Принтер не выбран'}
           </Text>
           <Text style={styles.rowSub}>
-            {hasPrinter ? 'Нажмите, чтобы сменить адрес или калибровку' : 'Укажите адрес принтера'}
+            {hasPrinter ? `порт ${printer.port || PRINTER_PORT}` : 'Укажите адрес'}
           </Text>
         </View>
       </Pressable>
@@ -123,10 +123,10 @@ export default function WarehouseLabelPrintScreen({route, navigation}) {
         <>
           <View style={styles.ready}>
             <Check size={16} color={c.success} />
+            {/* Число и вес задания, а не пояснение: важно, что оно уже в
+                телефоне и переключение сети его не потеряет. */}
             <Text style={styles.readyText}>
-              Задание готово и лежит в телефоне: {job.labels.length}{' '}
-              {job.labels.length === 1 ? 'этикетка' : 'этикеток'}, {Math.round(job.bytes / 1024)} КБ.
-              Если принтер раздаёт свой вайфай — переключайтесь на него сейчас.
+              Задание готово · {job.labels.length} шт · {Math.round(job.bytes / 1024)} КБ
             </Text>
           </View>
 
@@ -147,13 +147,12 @@ export default function WarehouseLabelPrintScreen({route, navigation}) {
       {Boolean(done) && (
         <View style={styles.ready}>
           <Check size={16} color={c.success} />
-          {/* Молчание принтера — норма: PT-E550W статусы не шлёт (см.
-              services/ptouchPrint.js). Поэтому обычная формулировка нейтральная,
-              а «подтвердил» появляется только если он и правда ответил. */}
+          {/* «Отправлено», а не «напечатано»: PT-E550W статусы не шлёт (см.
+              services/ptouchPrint.js), и обещать печать телефон не вправе.
+              Жалобы принтера показываем, только если он их прислал. */}
           <Text style={styles.readyText}>
-            {done.count === 1 ? 'Этикетка отправлена в принтер.' : `Отправлено этикеток: ${done.count}.`}
-            {done.answered ? ' Принтер подтвердил печать.' : ''}
-            {done.problems.length ? ` Принтер жаловался: ${done.problems.join(', ')}.` : ''}
+            {done.count === 1 ? 'Отправлено в принтер' : `Отправлено: ${done.count}`}
+            {done.problems.length ? ` · ${done.problems.join(', ')}` : ''}
           </Text>
         </View>
       )}

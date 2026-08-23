@@ -16,8 +16,10 @@ import {DoorOpen, ChevronRight, Printer} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import LabelPreview from '../../components/LabelPreview';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
+import {useWarehouseCan} from '../../store/warehouseStore';
 import {ASSET_STATUS, statusColor, moneyText, dateText, roomText} from './warehouseMeta';
 
 const MOVEMENT_LABELS = {
@@ -31,17 +33,14 @@ export default function WarehouseAssetScreen({route, navigation}) {
   const c = useTheme();
   const {assetId} = route.params || {};
   const [data, setData] = useState(null);
-  const [canPrint, setCanPrint] = useState(false);
+  // Право на этикетки отдельное от права вести учёт: печатают их не те, кто
+  // заполняет карточки. Без него кнопка печати не показывается вовсе — иначе
+  // человек упрётся в 403 уже после того, как подошёл к принтеру.
+  const canPrint = useWarehouseCan('canPrintLabels');
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
-    // Право на этикетки отдельное от права вести учёт: печатают их не те, кто
-    // заполняет карточки. Без него кнопка печати не показывается вовсе — иначе
-    // человек упрётся в 403 уже после того, как подошёл к принтеру.
-    warehouseApi.access()
-      .then(({data: access}) => alive && setCanPrint(Boolean(access?.capabilities?.canPrintLabels)))
-      .catch(() => {});
     warehouseApi.asset(assetId)
       .then(({data: payload}) => {
         if (!alive) return;
@@ -60,7 +59,7 @@ export default function WarehouseAssetScreen({route, navigation}) {
   if (!data) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>Карточка не открылась. Возможно, актив архивирован.</Text>
+        <Text style={styles.emptyText}>Карточка не открылась</Text>
       </View>
     );
   }
@@ -98,20 +97,25 @@ export default function WarehouseAssetScreen({route, navigation}) {
         </Pressable>
       )}
 
+      {/* Этикетка показывается как есть, а не строкой «напечатать». Стоя перед
+          прибором, человек сверяет наклейку на нём с той, что в портале: у
+          старого имущества номер на ленте затёрт, а иногда и вовсе не тот. */}
       {canPrint && (
-        <Pressable
-          style={styles.printRow}
-          onPress={() => navigation.navigate('WarehouseLabelPrint', {
-            kind: 'asset',
-            ids: [asset.id],
-            title: asset.inventoryNumber,
-          })}>
-          <Printer size={18} color={c.primary} />
-          <Text style={styles.printText}>
-            {asset.labelPrintedAt ? 'Напечатать этикетку заново' : 'Напечатать этикетку'}
-          </Text>
-          <ChevronRight size={16} color={c.textTertiary} />
-        </Pressable>
+        <View style={styles.labelCard}>
+          <LabelPreview url={warehouseApi.assetLabelUrl(asset.id)} />
+          <Pressable
+            style={styles.labelButton}
+            onPress={() => navigation.navigate('WarehouseLabelPrint', {
+              kind: 'asset',
+              ids: [asset.id],
+              title: asset.inventoryNumber,
+            })}>
+            <Printer size={16} color={c.primary} />
+            <Text style={styles.labelButtonText}>
+              {asset.labelPrintedAt ? 'Напечатать заново' : 'Напечатать'}
+            </Text>
+          </Pressable>
+        </View>
       )}
 
       {Boolean(rows.length) && (
@@ -177,9 +181,6 @@ export default function WarehouseAssetScreen({route, navigation}) {
         </>
       )}
 
-      <Text style={styles.note}>
-        Правка карточки, документы и амортизация — в веб-версии портала.
-      </Text>
     </ScrollView>
   );
 }
@@ -203,17 +204,23 @@ const makeStyles = c => StyleSheet.create({
     marginBottom: 14,
   },
   roomText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
-  printRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  labelCard: {
     backgroundColor: c.bgPrimary,
     borderRadius: radius.lg,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    padding: 12,
+    gap: 10,
     marginBottom: 14,
   },
-  printText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
+  labelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 42,
+    borderRadius: radius.md,
+    backgroundColor: c.primaryLight,
+  },
+  labelButtonText: {fontFamily: font.semiBold, fontSize: 14, color: c.primary},
   card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, overflow: 'hidden'},
   row: {
     flexDirection: 'row',
@@ -252,7 +259,6 @@ const makeStyles = c => StyleSheet.create({
   moveWhen: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary},
   moveWhere: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
   moveReason: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, marginTop: 2},
-  note: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, marginTop: 20, lineHeight: 18},
   empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary, textAlign: 'center'},
 });

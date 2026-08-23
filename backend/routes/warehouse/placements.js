@@ -36,7 +36,7 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
-const { planMaterialization } = require('../../services/warehouse/osvMaterialize');
+const { planMaterialization, materializeOsv } = require('../../services/warehouse/osvMaterialize');
 
 const roomInclude = [
   { model: WhStorage, as: 'storages', attributes: ['id', 'name'], required: false },
@@ -389,7 +389,53 @@ router.post('/', authenticate, requireWarehouse('canImportOsv'), async (req, res
       }
     });
 
-    res.status(201).json({ saved: saved.length, rejected, room: { id: room.id, number: room.number } });
+    /**
+     * Разбор разложенного — сразу и только по этому кабинету.
+     *
+     * Без него размещение не размещало ничего: оно фиксировало за кабинетом
+     * намерение, а карточки и остатки появлялись лишь после общего прогона из
+     * веба. Человек обходил этаж с телефоном, а баланс кабинета оставался
+     * нулевым, пока кто-то не сядет за компьютер, — то есть мобильная раскладка
+     * была работой, которую всё равно приходилось завершать за столом.
+     *
+     * Прав на это не нужно добавлять: и размещение, и разбор просят один и тот
+     * же canImportOsv. Прогон идемпотентен и сужен до одного кабинета, поэтому
+     * чужой ведомости он не касается и повтор ничего не задваивает.
+     *
+     * Флагом, а не всегда: экран разбора в вебе — это проверка решений словаря
+     * по всей ведомости целиком, и тому, кто раскладывает за столом, полезно
+     * сперва посмотреть на неё, а не получить карточки по факту раскладки.
+     * Телефон флаг шлёт всегда: смотреть там не на что и некогда.
+     *
+     * Ошибка разбора не отменяет размещение: оно уже сохранено и верно само по
+     * себе. Поэтому не 500, а поле problems в ответе.
+     */
+    let materialized = null;
+    if (req.body?.materialize && saved.length) {
+      try {
+        materialized = await materializeOsv({
+          importId: snapshot.id,
+          account: snapshot.account,
+          user: req.user,
+          roomIds: [room.id],
+        });
+      } catch (err) {
+        console.error('POST warehouse/placements materialize error:', err);
+        materialized = { failed: err.message };
+      }
+    }
+
+    res.status(201).json({
+      saved: saved.length,
+      rejected,
+      room: { id: room.id, number: room.number },
+      materialized: materialized && !materialized.failed ? {
+        assetsCreated: materialized.assetsCreated,
+        stockReceipts: materialized.stockReceipts,
+        alreadyDone: materialized.alreadyDone,
+        problems: materialized.problems,
+      } : materialized,
+    });
   } catch (err) {
     console.error('POST warehouse/placements error:', err);
     res.status(500).json({ error: err.message });

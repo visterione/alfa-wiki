@@ -512,9 +512,19 @@ router.get('/:id/label.svg', authenticate, requireWarehouse(), async (req, res) 
   try {
     const asset = await WhAsset.findByPk(req.params.id, { include: assetInclude });
     if (!asset) return res.status(404).json({ error: 'Актив не найден' });
-    const svg = await qr.assetLabelSvg(asset, {
-      size: EQUIPMENT_LABEL_SIZES.includes(req.query.size) ? req.query.size : '80x24',
-    });
+    const size = EQUIPMENT_LABEL_SIZES.includes(req.query.size) ? req.query.size : '80x24';
+    const svg = await qr.assetLabelSvg(asset, { size });
+
+    // PNG нужен предпросмотру в мобильном приложении: телефон рисует SVG своим
+    // движком и своими шрифтами, а подгонка кеглей на этикетке считана по
+    // метрикам Arial на сервере. Показывать «примерно так» там, где человек
+    // решает, печатать или нет, нельзя — предпросмотр обязан быть тем же
+    // растром, который уйдёт в принтер. Ровно как у карточки кабинета.
+    if (req.query.format === 'png') {
+      const rotate = [90, 180, 270].includes(Number(req.query.rotate)) ? Number(req.query.rotate) : 0;
+      const png = await qr.labelPng(svg, size, { rotate });
+      return res.type('image/png').send(png);
+    }
     res.type('image/svg+xml').send(svg);
   } catch (err) {
     console.error('GET label.svg error:', err);

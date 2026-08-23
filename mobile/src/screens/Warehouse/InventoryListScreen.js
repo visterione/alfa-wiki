@@ -1,10 +1,12 @@
 /**
  * Инвентаризации: список описей.
  *
- * Открытие новой описи оставлено в вебе намеренно. Это распорядительное
- * действие: у описи есть основание (приказ), председатель комиссии и область, и
- * заполняют это, глядя в документ, а не стоя в коридоре. С телефона делают
- * следующий шаг — сам пересчёт.
+ * Открытие новой описи до ver. 7.22 было доступно только в вебе — считалось, что
+ * это распорядительное действие «за столом». На деле получалось иначе: человек
+ * приходил в кабинет считать и упирался в пустой список, потому что завести
+ * опись должен был кто-то другой. Теперь кнопка есть и здесь, а всё
+ * распорядительное (председатель, комиссия, область шире кабинета) по-прежнему
+ * заполняется в вебе — см. InventoryNewScreen.
  *
  * Закрытые описи в списке тоже показываются: к ним возвращаются, чтобы свериться
  * с прошлым разом.
@@ -12,12 +14,13 @@
 import React, {useCallback, useState} from 'react';
 import {View, Text, FlatList, Pressable, StyleSheet, RefreshControl} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {ChevronRight} from 'lucide-react-native';
+import {ChevronRight, Plus} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
+import {useWarehouseCan} from '../../store/warehouseStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {INVENTORY_STATUS, dateText, roomText} from './warehouseMeta';
 
@@ -26,6 +29,9 @@ export default function WarehouseInventoryListScreen({navigation}) {
   const c = useTheme();
   const tabInset = useTabBarInset();
   const contentStyle = {padding: 16, paddingBottom: tabInset + 24};
+  // Открыть опись может тот же, кто проводит операции: право одно на оба
+  // действия, и разделять их сервер не станет.
+  const canStart = useWarehouseCan('canIssue');
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,15 +62,21 @@ export default function WarehouseInventoryListScreen({navigation}) {
         />
       }
       ListHeaderComponent={
-        open.length ? null : (
-          <Text style={styles.note}>
-            Открытых описей нет. Новую инвентаризацию открывают в веб-версии — там
-            указывают основание и председателя комиссии.
-          </Text>
-        )
+        // Кнопка строкой в начале списка, а не полосой внизу: снизу лежит
+        // плавающая кнопка «Альфа», и они перекрыли бы друг друга.
+        canStart ? (
+          <Pressable
+            style={styles.start}
+            onPress={() => navigation.navigate('WarehouseInventoryNew')}>
+            <View style={styles.startIcon}>
+              <Plus size={18} color="#FFFFFF" />
+            </View>
+            <Text style={styles.startText}>Начать инвентаризацию</Text>
+          </Pressable>
+        ) : null
       }
       ListEmptyComponent={
-        <Text style={styles.note}>Инвентаризаций ещё не было.</Text>
+        <Text style={styles.none}>Инвентаризаций ещё не было</Text>
       }
       renderItem={({item}) => {
         const isOpen = item.status !== 'closed' && item.status !== 'cancelled';
@@ -111,11 +123,30 @@ const makeStyles = c => StyleSheet.create({
   number: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
   where: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary, marginTop: 2},
   meta: {fontFamily: font.regular, fontSize: 11, color: c.textTertiary, marginTop: 3},
-  note: {
+  start: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  startIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: c.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startText: {flex: 1, fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
+  none: {
     fontFamily: font.regular,
     fontSize: 13,
-    color: c.textSecondary,
-    lineHeight: 19,
-    marginBottom: 16,
+    color: c.textTertiary,
+    textAlign: 'center',
+    marginTop: 30,
   },
 });

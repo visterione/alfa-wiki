@@ -18,6 +18,22 @@ export function clearCachedToken() {
   _token = null;
 }
 
+/**
+ * Заголовок авторизации для запросов, которые уходят мимо axios.
+ *
+ * Такой запрос ровно один — картинка в <Image>: её грузит нативный загрузчик
+ * платформы, а не JS, и токен ему надо передать руками. Гонять картинку через
+ * axios нельзя: в JS она приезжает массивом байтов, а Image принимает только
+ * строку, и перекладывание через Buffer на устройстве ломается (см. LabelPreview).
+ */
+export async function authHeader() {
+  if (!_token) {
+    const credentials = await Keychain.getGenericPassword(KEYCHAIN_OPTIONS);
+    _token = credentials?.password ?? null;
+  }
+  return _token ? {Authorization: `Bearer ${_token}`} : {};
+}
+
 const api = axios.create({
   baseURL: CONFIG.API_URL,
   timeout: 30000,
@@ -281,6 +297,9 @@ export const warehouse = {
   // Инвентаризация
   inventorySessions: () => api.get('/warehouse/operations/inventory'),
   inventory: id => api.get(`/warehouse/operations/inventory/${id}`),
+  // Открытие описи с телефона (ver. 7.22). Раньше её заводили только в вебе, и
+  // человек, пришедший считать кабинет, упирался в пустой список.
+  createInventory: data => api.post('/warehouse/operations/inventory', data),
   countInventory: (id, data) =>
     api.post(`/warehouse/operations/inventory/${id}/count`, data),
   closeInventory: (id, data) =>
@@ -298,6 +317,24 @@ export const warehouse = {
   // Отметку «напечатано» ставит телефон после того, как принтер принял задание,
   // а не сервер при его подготовке: подготовка ещё не печать.
   markLabelsPrinted: ids => api.post('/warehouse/assets/labels/printed', {ids}),
+
+  // Схема этажа — только чтение: мобильный дашборд кабинета показывает, где он
+  // на плане. Редактор планов остался в вебе.
+  floorPlan: floorId => api.get(`/warehouse/locations/floors/${floorId}/plan`),
+
+  /**
+   * Адреса предпросмотра этикеток. Именно адреса, а не запросы: картинку тянет
+   * нативный загрузчик <Image> (см. LabelPreview), поэтому здесь только ссылка.
+   *
+   * PNG, а не SVG. Телефон нарисовал бы SVG своими шрифтами, а кегли на этикетке
+   * подогнаны по метрикам Arial на сервере: предпросмотр разошёлся бы с тем, что
+   * уходит в принтер, ровно в том месте, где человек решает, печатать или нет.
+   * PNG приходит из того же растеризатора, что готовит задание печати.
+   */
+  doorCardUrl: roomId =>
+    `${CONFIG.API_URL}/warehouse/locations/rooms/${roomId}/door-card.svg?format=png`,
+  assetLabelUrl: assetId =>
+    `${CONFIG.API_URL}/warehouse/assets/${assetId}/label.svg?format=png`,
 
   // Размещение позиций ведомости по кабинетам (ver. 6.80)
   placementQueue: params => api.get('/warehouse/placements/queue', {params}),

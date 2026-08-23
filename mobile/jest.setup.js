@@ -23,6 +23,16 @@ jest.mock('@react-native-firebase/messaging', () => ({
   AuthorizationStatus: {NOT_DETERMINED: -1, DENIED: 0, AUTHORIZED: 1, PROVISIONAL: 2},
 }));
 
+// Сокет к принтеру этикеток тоже нативный: библиотека заводит NativeEventEmitter
+// прямо на импорте, и без заглушки падает любой тест, куда доезжает
+// App.tsx → навигация → экран печати. Свои тесты отправки мокают её по-своему,
+// подменяя весь модуль (см. __tests__/ptouchPrint.test.js).
+jest.mock('react-native-tcp-socket', () => ({
+  createConnection: jest.fn(() => ({
+    write: jest.fn(), on: jest.fn(), end: jest.fn(), destroy: jest.fn(),
+  })),
+}));
+
 jest.mock('@notifee/react-native', () => ({
   __esModule: true,
   default: {

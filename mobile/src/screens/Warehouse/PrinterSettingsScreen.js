@@ -16,7 +16,7 @@ import React, {useState} from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Switch, ActivityIndicator,
 } from 'react-native';
-import {Printer, Check, RotateCcw} from 'lucide-react-native';
+import {Printer, Check} from 'lucide-react-native';
 
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
@@ -69,14 +69,10 @@ export default function WarehousePrinterScreen() {
           autoCorrect={false}
         />
       </View>
-      <Text style={styles.where}>
-        Адрес написан в самом принтере: Menu → WLAN → Network Status → тот режим,
-        в котором он работает.
-      </Text>
+      {/* Кнопка, а не подсказка: адрес принтера в его собственной сети всегда
+          один и тот же, и набирать его руками незачем. */}
       <Pressable style={styles.hintRow} onPress={() => commit(DIRECT_MODE_HOST)}>
-        <Text style={styles.hint}>
-          Подставить {DIRECT_MODE_HOST} — обычный адрес принтера в его собственной сети
-        </Text>
+        <Text style={styles.hint}>Подставить {DIRECT_MODE_HOST}</Text>
       </Pressable>
 
       <Pressable
@@ -125,22 +121,6 @@ export default function WarehousePrinterScreen() {
           />
         </View>
       </View>
-
-      <View style={styles.note}>
-        <RotateCcw size={15} color={c.textTertiary} />
-        <Text style={styles.noteText}>
-          Эти два переключателя подбираются один раз, на первой напечатанной
-          этикетке. Печатается всегда одна и та же картинка — меняется только то,
-          какой стороной она ложится на 24-миллиметровую ленту.
-        </Text>
-      </View>
-
-      <Text style={styles.footer}>
-        Принтер должен быть в той же сети, что и телефон. Если он раздаёт
-        собственный вайфай, задание сначала готовится на рабочей сети, и только
-        потом телефон переключается к принтеру: экран печати это учитывает и
-        держит готовое задание у себя.
-      </Text>
     </ScrollView>
   );
 }
@@ -163,14 +143,6 @@ const makeStyles = c => StyleSheet.create({
     color: c.textPrimary,
     fontFamily: font.regular,
     fontSize: 15,
-  },
-  where: {
-    fontFamily: font.regular,
-    fontSize: 12,
-    color: c.textSecondary,
-    lineHeight: 18,
-    marginTop: 10,
-    paddingHorizontal: 2,
   },
   hintRow: {paddingVertical: 8, paddingHorizontal: 2},
   hint: {fontFamily: font.regular, fontSize: 12, color: c.primary, lineHeight: 17},
@@ -210,14 +182,4 @@ const makeStyles = c => StyleSheet.create({
   rowText: {flex: 1},
   rowTitle: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   rowSub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
-  note: {flexDirection: 'row', gap: 9, marginTop: 16, paddingHorizontal: 2},
-  noteText: {flex: 1, fontFamily: font.regular, fontSize: 12, color: c.textTertiary, lineHeight: 18},
-  footer: {
-    fontFamily: font.regular,
-    fontSize: 12,
-    color: c.textTertiary,
-    lineHeight: 18,
-    marginTop: 16,
-    paddingHorizontal: 2,
-  },
 });

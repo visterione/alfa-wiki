@@ -111,7 +111,7 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
   if (!data) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>Опись не открылась.</Text>
+        <Text style={styles.emptyText}>Опись не открылась</Text>
       </View>
     );
   }
@@ -132,11 +132,6 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
             isActive
             codeScanner={codeScanner}
           />
-          <View style={styles.cameraHint} pointerEvents="none">
-            <Text style={styles.cameraHintText}>
-              Наводите на этикетки одну за другой — отмеченное сразу видно в списке
-            </Text>
-          </View>
         </View>
       )}
 
@@ -149,8 +144,7 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
       {closed ? (
         <View style={styles.closed}>
           <Text style={styles.closedText}>
-            Опись {INVENTORY_STATUS[session.status]?.toLowerCase()}. Расхождения
-            оформляются в веб-версии.
+            {INVENTORY_STATUS[session.status]}
           </Text>
         </View>
       ) : (
@@ -203,7 +197,7 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
             onSave={saveQty}
           />
         )}
-        ListEmptyComponent={<Text style={styles.none}>В описи ничего не нашлось</Text>}
+        ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
       />
     </View>
   );
@@ -269,8 +263,6 @@ const makeStyles = c => StyleSheet.create({
   // Треть экрана: достаточно, чтобы прицелиться, и достаточно мало, чтобы под
   // кадром помещалось несколько строк описи.
   camera: {height: 220, backgroundColor: '#000000'},
-  cameraHint: {position: 'absolute', left: 0, right: 0, bottom: 0, padding: 10, backgroundColor: 'rgba(0,0,0,0.45)'},
-  cameraHintText: {fontFamily: font.regular, fontSize: 11, color: 'rgba(255,255,255,0.85)', textAlign: 'center'},
   stats: {flexDirection: 'row', gap: 8, padding: 12},
   stat: {flex: 1, backgroundColor: c.bgPrimary, borderRadius: radius.md, paddingVertical: 11, alignItems: 'center'},
   statValue: {fontFamily: font.semiBold, fontSize: 17, color: c.textPrimary},
@@ -343,7 +335,7 @@ const makeStyles = c => StyleSheet.create({
   qtyInputSaving: {opacity: 0.5},
   qtyStatic: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary, width: 60, textAlign: 'center'},
   closed: {marginHorizontal: 12, marginBottom: 10, padding: 12, borderRadius: radius.md, backgroundColor: c.bgTertiary},
-  closedText: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, lineHeight: 18},
+  closedText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary, textAlign: 'center'},
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, textAlign: 'center', padding: 24},
   empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary},

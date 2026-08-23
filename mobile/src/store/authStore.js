@@ -3,6 +3,7 @@ import * as Keychain from 'react-native-keychain';
 import {auth as authApi, setCachedToken, clearCachedToken} from '../services/api';
 import SocketService from '../services/socket';
 import PushService from '../services/push';
+import {resetWarehouseAccess} from './warehouseStore';
 
 const KEYCHAIN_OPTIONS = {service: 'alfa-wiki'};
 const AuthContext = createContext(null);
@@ -56,6 +57,9 @@ export function AuthProvider({children}) {
   const clearSession = useCallback(async () => {
     SocketService.disconnect();
     clearCachedToken();
+    // Права склада кэшируются на всю сессию (warehouseStore) — на общем
+    // телефоне следующий вошедший унаследовал бы чужие кнопки.
+    resetWarehouseAccess();
     await Keychain.resetGenericPassword(KEYCHAIN_OPTIONS);
     setUser(null);
   }, []);

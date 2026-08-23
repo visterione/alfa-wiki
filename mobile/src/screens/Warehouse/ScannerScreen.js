@@ -119,9 +119,6 @@ export default function WarehouseScannerScreen({navigation}) {
       {cameraReady && (
         <View style={styles.frameWrap} pointerEvents="none">
           <View style={styles.frame} />
-          <Text style={styles.hint}>
-            Наведите на QR — на этикетке оборудования или на двери кабинета
-          </Text>
         </View>
       )}
 
@@ -163,9 +160,6 @@ export default function WarehouseScannerScreen({navigation}) {
             <CornerDownLeft size={18} color="#FFFFFF" />
           </Pressable>
         </View>
-        <Text style={styles.manualHint}>
-          Принимается номер с этикетки или ссылка из QR
-        </Text>
       </View>
     </View>
   );
@@ -190,15 +184,6 @@ const makeStyles = c => StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.9)',
-  },
-  hint: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    textAlign: 'center',
-    marginTop: 18,
-    paddingHorizontal: 40,
-    lineHeight: 19,
   },
   close: {
     position: 'absolute',
@@ -245,11 +230,4 @@ const makeStyles = c => StyleSheet.create({
     justifyContent: 'center',
   },
   goOff: {opacity: 0.4},
-  manualHint: {
-    fontFamily: font.regular,
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 8,
-    textAlign: 'center',
-  },
 });

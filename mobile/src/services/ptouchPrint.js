@@ -137,7 +137,15 @@ export function sendPrintJob(job, {host, port = PRINTER_PORT, onProgress, timeou
         const chunk = payload.subarray(sent, sent + CHUNK_BYTES);
         sent += chunk.length;
         onProgress?.(Math.min(1, sent / payload.length));
-        socket.write(chunk.toString('base64'), 'base64', (err) => {
+        // Отдаём именно байты, а не строку. Здесь стояло
+        // `chunk.toString('base64')` с указанием кодировки — и это тихо ломало
+        // всю печать: на устройстве subarray возвращает обычный Uint8Array, а не
+        // Buffer, у которого toString аргумент игнорирует и отдаёт десятичные
+        // значения через запятую («0,0,0,…»). Библиотека разбирала эту строку
+        // как base64, выбрасывала запятые, и в принтер уходил шум. В Node тот же
+        // код работает — там subarray отдаёт Buffer, — поэтому с компьютера
+        // печаталось, а с телефона нет.
+        socket.write(chunk, null, (err) => {
           if (err) return finish(new Error(`Обрыв при отправке: ${err.message}`));
           writeNext();
         });

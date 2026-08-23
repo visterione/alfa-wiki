@@ -1,15 +1,17 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   Text,
   Image,
   Pressable,
   Animated,
+  BackHandler,
   Easing,
+  PanResponder,
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
-import Svg, {Path} from 'react-native-svg';
+import Svg, {Circle} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
@@ -19,22 +21,43 @@ import {font} from '../theme';
 import {useTheme, useThemedStyles} from '../store/settingsStore';
 import {useUnreadTotal} from '../store/unreadStore';
 import {useInboxCount} from '../store/tasksStore';
+import {useWarehouseAccess} from '../store/warehouseStore';
 import {TAB_BAR_HEIGHT} from './tabBarLayout';
 
 /**
- * Нижняя панель с вырезом под кнопку «Альфа».
+ * Навигация приложения — одна кнопка «Альфа» и дуга разделов под пальцем.
  *
- * Раньше кнопка просто наезжала на панель сверху и читалась как случайно
- * приклеенная. Здесь панель рисуется не прямоугольником, а фигурой с плавной
- * выемкой посередине, и логотип лежит в этой выемке — как в гнезде.
+ * ── Почему не ряд вкладок ────────────────────────────────────────────────────
  *
- * Из-за выемки фон панели нельзя задать через backgroundColor: форму даёт
- * SVG-контур. Верхний край обводится отдельным контуром, иначе граница панели
- * обрывалась бы на подходе к вырезу.
+ * Разделов стало шесть, и в панели они превратились в шесть подписей по 11pt,
+ * которые не читаются на ходу и не попадают под палец. Хуже другое: часть
+ * разделов доступна не всем (склад — отдельным правом), и панель либо показывала
+ * бы кнопку, ведущую в «нет доступа», либо разъезжалась разной шириной ячеек у
+ * разных людей. Дуга обе беды снимает: она рисуется от центра по числу
+ * доступных разделов, и лишней кнопки в ней просто нет.
+ *
+ * ── Как это работает ─────────────────────────────────────────────────────────
+ *
+ * Короткое нажатие — чаты, они же домашняя. Долгое — дуга разделов вокруг
+ * кнопки, там же, где лежит большой палец. Нажатие мимо дуги, «назад» на
+ * Android и повторное нажатие на знак её закрывают.
+ *
+ * ── Почему кнопка теперь плавает, а не сидит в вырезе панели ─────────────────
+ *
+ * Панели больше нет, и рисовать вырез не в чем. Вместо неё снизу лежит короткий
+ * градиент в цвет фона: без него содержимое списка уезжало бы под знак и
+ * читалось сквозь него. Градиент не перехватывает касания — прокрутка под
+ * кнопкой работает как раньше.
+ *
+ * Кнопка (как и панель до неё) НЕ участвует в раскладке: styles.wrap
+ * позиционирован absolute, а высоту под неё экраны резервируют сами через
+ * useTabBarInset() из ./tabBarLayout. Иначе её появление и уход меняли бы
+ * высоту всех смонтированных вкладок разом, и содержимое дёргалось бы на каждом
+ * переходе.
  */
 
-// Экраны, на которых панель не нужна: у них своя навигация назад.
-// Урок и тест вдобавок держат внизу собственную кнопку — рядом с панелью она
+// Экраны, на которых кнопка не нужна: у них своя навигация назад.
+// Урок и тест вдобавок держат внизу собственную кнопку — рядом со знаком она
 // оказалась бы вторым рядом органов управления над жестовой полосой.
 const HIDDEN_ROUTES = [
   'Chat', 'NewChat', 'ChatInfo', 'CalendarEvent', 'CalendarEventEdit',
@@ -43,40 +66,89 @@ const HIDDEN_ROUTES = [
   // «назад» в шапке, и панель под ними только отнимала бы высоту у списка.
   'TaskCard', 'TasksNorm',
   // Склад (ver. 6.81). Сканер — потому что кадр камеры занимает экран целиком и
-  // панель поверх него читалась бы как часть видоискателя. Пересчёт и
-  // размещение — потому что у них своя кнопка внизу, а два ряда органов
+  // кнопка поверх него читалась бы как часть видоискателя. Пересчёт, размещение
+  // и выбор этикеток — потому что у них своя кнопка внизу, а два ряда органов
   // управления над жестовой полосой не помещаются.
-  'WarehouseScanner', 'WarehouseAsset', 'WarehouseRoom',
-  'WarehouseInventoryCount', 'WarehousePlacement',
+  'WarehouseScanner', 'WarehouseAsset', 'WarehouseRoom', 'WarehouseRooms',
+  'WarehouseInventoryCount', 'WarehouseInventoryNew', 'WarehousePlacement',
+  'WarehouseLabelPrint', 'WarehousePrinter',
 ];
 
-const BAR_HEIGHT = TAB_BAR_HEIGHT;
-const ORB_SIZE = 54;
+const ORB_SIZE = 58;
+// Просвет между знаком и жестовой полосой
+const ORB_BOTTOM = 10;
 // Столько же длится переход между экранами стека (STACK_ANIMATION в
-// AppNavigator): панель обязана уезжать вместе с экраном, а не вдогонку ему
+// AppNavigator): кнопка обязана уезжать вместе с экраном, а не вдогонку ему
 const SLIDE_DURATION = 220;
-// Радиус выреза на 6pt больше радиуса кнопки: по всему обводу остаётся
-// одинаковый просвет, из-за которого кнопка читается вложенной в панель,
-// а не залепившей отверстие.
-const NOTCH_RADIUS = ORB_SIZE / 2 + 6;
-// Радиус скруглений на переходе от прямого края к вырезу
-const SHOULDER_RADIUS = 10;
 // Припуск внешнего кольца ореола непрочитанных. Вынесен в константу, потому что
-// от него зависит не только вид кнопки, но и то, на сколько уезжает панель.
+// от него зависит не только вид кнопки, но и то, на сколько она уезжает.
 const AURA_SPREAD = 34;
+// Высота градиента-подложки. Заметно больше самой кнопки: короткий градиент
+// читается полосой, а длинный — тем, чем он и является, затуханием списка.
+const SCRIM_HEIGHT = TAB_BAR_HEIGHT + 44;
 
 /**
- * На сколько панель уезжает ниже собственной высоты, чтобы скрыться целиком.
+ * Геометрия колеса.
  *
- * Кнопка лежит не внутри панели, а в вырезе, и выступает над её краем: центр
- * кнопки поднят на ORB_SIZE/2, тогда как край панели начинается лишь на
- * SHOULDER_RADIUS. Сверху к этому добавляются кольцо ореола и тень.
+ * ── Почему колесо, а не дуга ─────────────────────────────────────────────────
  *
- * Пока здесь стояло «высота плюс немного», из-за нижней границы экрана
- * оставалась торчать макушка логотипа — ровно на разницу, которую этот расчёт
- * и закрывает.
+ * Дуга обрывалась в воздухе двумя срезами по бокам: у неё есть начало и конец,
+ * и оба видно. Кольцо концов не имеет — оно уходит за нижний край экрана и там
+ * же появляется обратно, а срез ему делает сам край устройства.
+ *
+ * Второе, и более важное: у дуги мест ровно столько, сколько влезает в её
+ * охват. Разделов в портале будет больше, и рано или поздно они перестали бы
+ * помещаться. Колесо крутится: видна та часть, что сверху, остальное подводят
+ * поворотом, и число разделов упирается только в длину окружности.
+ *
+ * ── Размеры ──────────────────────────────────────────────────────────────────
+ *
+ * Центр колеса совпадает с центром знака, то есть лежит у самого низа экрана.
+ * Наверх кольцо уходит на 174pt, вниз — за край, и нижняя его часть просто не
+ * видна. Внешний радиус 174 помещается по ширине на экранах от 360pt.
+ *
+ * Полоса толщиной 88pt нужна не для красоты. Значок с подписью занимает 39pt по
+ * высоте и 66 по ширине, а стоит он вертикально при любом угле поворота: у
+ * колеса подписи не наклоняются вместе с ним, иначе сбоку их пришлось бы
+ * читать, повернув голову. Прямоугольник, стоящий поперёк радиуса, занимает по
+ * радиусу до |w·sinα| + |h·cosα| — на краю видимого сектора это около 77pt,
+ * отсюда и толщина с запасом.
  */
-const HIDE_OVERHANG = ORB_SIZE / 2 - SHOULDER_RADIUS + AURA_SPREAD / 2 + 10;
+const WHEEL_R_MID = 130;
+const WHEEL_BAND = 88;
+const WHEEL_R_IN = WHEEL_R_MID - WHEEL_BAND / 2;
+const WHEEL_R_OUT = WHEEL_R_MID + WHEEL_BAND / 2;
+
+const ITEM_ICON = 22;
+const ITEM_GAP = 4;
+const ITEM_LABEL = 13;
+const ITEM_HEIGHT = ITEM_ICON + ITEM_GAP + ITEM_LABEL;
+const ITEM_WIDTH = 66;
+
+/**
+ * Шаг между разделами по окружности.
+ *
+ * 34° — это 77pt по средней линии, то есть ячейка шириной 66 плюс просвет. Пока
+ * разделов десять и меньше, шаг держится этим; дальше он сжимается ровно
+ * настолько, чтобы всё уместилось в оборот и колесо замкнулось само на себя.
+ */
+const SLOT_ANGLE = 34;
+const stepFor = count => Math.min(SLOT_ANGLE, 360 / Math.max(count, 1));
+
+/**
+ * Точка i-го раздела на средней линии, в градусах от верха по часовой стрелке.
+ * Набор разделов центрируется относительно верха: при пяти разделах третий
+ * стоит ровно над знаком, и поворачивать колесо не приходится вовсе.
+ */
+const slotAngle = (index, count) => (index - (count - 1) / 2) * stepFor(count);
+
+/**
+ * Насколько колесо можно повернуть.
+ *
+ * Ровно настолько, чтобы любой раздел можно было вывести наверх, и ни градусом
+ * больше: колесо, проворачивающееся в пустоту, читается как сломанное.
+ */
+const maxTurn = count => Math.abs(slotAngle(0, count));
 
 const ICONS = {
   ProfileTab: User,
@@ -85,39 +157,6 @@ const ICONS = {
   CoursesTab: GraduationCap,
   SettingsTab: Settings,
 };
-
-/**
- * Контур верхнего края панели с вырезом посередине.
- *
- * Вырез — не приблизительная кривая, а ровная окружность того же центра, что и
- * кнопка: только так просвет вокруг неё одинаков по всему обводу. Дуга сама по
- * себе упирается в прямой край вертикально, углом, поэтому по бокам к ней
- * добавлены скругления обратной кривизны.
- *
- * Скругление радиуса f, касающееся прямой y=0, имеет центр на высоте f. Чтобы
- * оно перешло в вырез без излома, окружность выреза должна касаться его
- * снаружи — а это выполняется ровно тогда, когда её центр лежит на той же
- * высоте f. Отсюда и глубина выреза: f + R.
- */
-function notchPath(width, height) {
-  const cx = width / 2;
-  const r = NOTCH_RADIUS;
-  const f = SHOULDER_RADIUS;
-
-  // Дуги выреза нужны и сами по себе — их обводят акцентным цветом, тогда как
-  // прямые участки края обычной границей. Но в общий контур они обязаны войти
-  // без команды M: та начала бы новый подпуть, и заливка замкнулась бы по
-  // диагонали через всю панель.
-  const arcs =
-    `A${f} ${f} 0 0 1 ${cx - r} ${f} ` +
-    `A${r} ${r} 0 0 0 ${cx + r} ${f} ` +
-    `A${f} ${f} 0 0 1 ${cx + r + f} 0`;
-
-  const notch = `M${cx - r - f} 0 ${arcs}`;
-  const top = `M0 0 H${cx - r - f} ${arcs} H${width}`;
-
-  return {top, notch, fill: `${top} V${height} H0 Z`};
-}
 
 /**
  * Медленное свечение кнопки, пока есть непрочитанные сообщения.
@@ -179,17 +218,18 @@ function useGlow(active) {
 }
 
 /**
- * Кнопка «Альфа» — круглый логотип в выемке панели.
+ * Кнопка «Альфа» — круглый логотип, единственный постоянный орган управления.
  *
- * Долгое нажатие открывает создание чата: раньше для этого в шапке списка
- * висел «+», который занимал угол и работал только на самой вкладке чатов.
+ * Знак не поворачивается и не подменяется крестиком при открытой дуге: это
+ * фирменная марка, а не иконка состояния, и крутить её ради подсказки, которую
+ * и так даёт развернувшаяся на пол-экрана полоса, незачем.
  */
-function AlphaOrb({focused, onPress, onLongPress, label, visible}) {
+function AlphaOrb({open, onPress, onLongPress, visible}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   const scale = useRef(new Animated.Value(1)).current;
   const hasUnread = useUnreadTotal() > 0;
-  // Панель больше не размонтируется на скрытых экранах, поэтому свечение
+  // Кнопка больше не размонтируется на скрытых экранах, поэтому свечение
   // некому остановить: без этой оговорки оно крутилось бы всё время, пока
   // человек сидит в чате, и никто бы его не видел
   const {pulse, spin} = useGlow(hasUnread && visible);
@@ -204,26 +244,19 @@ function AlphaOrb({focused, onPress, onLongPress, label, visible}) {
 
   return (
     <Pressable
-      style={styles.orbHit}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={350}
+      delayLongPress={280}
       onPressIn={() => spring(0.9)}
       onPressOut={() => spring(1)}
       accessibilityRole="button"
-      accessibilityState={{selected: focused}}
-      accessibilityLabel={label}
-      accessibilityHint="Долгое нажатие — новый чат">
-      {/* Знак выглядит одинаково при любой открытой вкладке: это фирменный
+      accessibilityState={{expanded: open}}
+      accessibilityLabel="Альфа"
+      accessibilityHint="Открывает чаты. Долгое нажатие — разделы приложения">
+      {/* Знак выглядит одинаково при любом открытом разделе: это фирменный
           логотип, и приглушать его — что серым, что полупрозрачным — значит
-          показывать сломанным. Состояние передаёт только свечение: на чужой
-          вкладке кнопка лежит в гнезде плоско. */}
-      <Animated.View
-        style={[
-          styles.orbShadow,
-          {transform: [{scale}]},
-          !focused && styles.orbShadowIdle,
-        ]}>
+          показывать сломанным. */}
+      <Animated.View style={[styles.orbShadow, {transform: [{scale}]}]}>
         {hasUnread && (
           // Ореол собран из трёх вложенных кругов с падающей плотностью:
           // размытия в React Native нет, а один круг с чёткой границей читался
@@ -300,37 +333,193 @@ function AlphaOrb({focused, onPress, onLongPress, label, visible}) {
   );
 }
 
+/**
+ * Раздел на колесе — значок и подпись, без кружка-подложки.
+ *
+ * Кружки были нужны, пока подпись лежала прямо на содержимом экрана. Под всеми
+ * разделами теперь сплошная полоса колеса, и кружок стал бы вторым фоном поверх
+ * первого — россыпью пуговиц вместо цельного обода. Выбранный раздел отличается
+ * цветом значка и подписи: выбранный всегда один, и этого хватает.
+ *
+ * Ячейка стоит на своём месте обода неподвижно, а вращение делает контейнер
+ * колеса. Внутри ячейка получает обратный поворот на тот же угол — иначе
+ * подписи наклонялись бы вместе с ободом и сбоку их пришлось бы читать,
+ * склонив голову.
+ */
+function WheelItem({item, index, count, turn, focused, onPress}) {
+  const c = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const angle = slotAngle(index, count);
+  const rad = (angle * Math.PI) / 180;
+  const Icon = item.icon;
+
+  // Координаты внутри контейнера колеса: начало отсчёта в его центре, поэтому
+  // к смещению добавляется радиус, а верх это минус по оси y.
+  const left = WHEEL_R_OUT + WHEEL_R_MID * Math.sin(rad) - ITEM_WIDTH / 2;
+  const top = WHEEL_R_OUT - WHEEL_R_MID * Math.cos(rad) - ITEM_HEIGHT / 2;
+
+  return (
+    <View style={[styles.wheelItem, {left, top}]}>
+      <Animated.View
+        style={{
+          transform: [{
+            rotate: turn.interpolate({
+              inputRange: [-360, 360],
+              outputRange: ['360deg', '-360deg'],
+            }),
+          }],
+        }}>
+        <Pressable
+          style={styles.wheelHit}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityState={{selected: focused}}
+          accessibilityLabel={item.label}>
+          <View>
+            <Icon size={ITEM_ICON} color={focused ? c.primary : c.textSecondary} />
+            {/* Значок входящих задач. Цифру не показываем, только точку: смысл
+                у неё один — «вас кто-то ждёт», и он передаётся точкой. */}
+            {item.dot && (
+              <View style={[styles.wheelDot, {backgroundColor: c.error, borderColor: c.bgPrimary}]} />
+            )}
+          </View>
+          <Text
+            style={[styles.wheelLabel, focused && {color: c.primary}]}
+            numberOfLines={1}>
+            {item.label}
+          </Text>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * Вращение колеса пальцем.
+ *
+ * Угол считается не по горизонтальному сдвигу, а по настоящему углу пальца
+ * относительно центра колеса: тянут его по дуге, и линейный пересчёт «сколько
+ * пикселей вправо» разъезжался бы с ободом тем сильнее, чем ближе палец к
+ * центру.
+ *
+ * Захват — только после порога в 8pt, и через capture-обработчик. Так нажатие
+ * на раздел остаётся нажатием, а движение поверх него забирает себе колесо:
+ * то же соглашение, по которому список забирает касание у кнопки внутри себя.
+ *
+ * На отпускании угол доводится пружиной до ближайшего гнезда. Без доводки обод
+ * замирает между разделами, и половина подписей оказывается срезана краем
+ * экрана.
+ */
+function useWheelTurn(turn, count, centerX, centerY) {
+  const from = useRef(0);
+  const base = useRef(0);
+
+  // Пределы и шаг зависят от числа разделов, а оно меняется вместе с правами
+  const limit = maxTurn(count);
+  const step = stepFor(count);
+
+  const angleAt = (pageX, pageY) => (
+    (Math.atan2(pageY - centerY, pageX - centerX) * 180) / Math.PI
+  );
+
+  return useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponderCapture: (event, gesture) => (
+      Math.hypot(gesture.dx, gesture.dy) > 8
+    ),
+    onPanResponderGrant: (event) => {
+      turn.stopAnimation((value) => { base.current = value; });
+      from.current = angleAt(event.nativeEvent.pageX, event.nativeEvent.pageY);
+    },
+    onPanResponderMove: (event) => {
+      const now = angleAt(event.nativeEvent.pageX, event.nativeEvent.pageY);
+      let delta = now - from.current;
+      // atan2 рвётся на ±180°: без этой поправки один кадр давал бы прыжок
+      // почти на полный оборот
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      turn.setValue(Math.max(-limit, Math.min(limit, base.current + delta)));
+    },
+    onPanResponderRelease: () => {
+      turn.stopAnimation((value) => {
+        const snapped = Math.max(-limit, Math.min(limit, Math.round(value / step) * step));
+        Animated.spring(turn, {
+          toValue: snapped,
+          useNativeDriver: false,
+          speed: 14,
+          bounciness: 4,
+        }).start();
+      });
+    },
+    // Отобрали жест (пришёл системный свайп) — обод не бросаем на полпути
+    onPanResponderTerminate: () => {
+      turn.stopAnimation((value) => {
+        Animated.spring(turn, {
+          toValue: Math.round(value / step) * step,
+          useNativeDriver: false,
+          speed: 14,
+          bounciness: 0,
+        }).start();
+      });
+    },
+  }), [turn, limit, step, centerX, centerY]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 export default function AlfaTabBar({state, descriptors, navigation}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
-  const {width} = useWindowDimensions();
-  // Значок «вам поставили задачу» на вкладке «Задачи»
+  const {width, height} = useWindowDimensions();
   const inboxCount = useInboxCount();
+  const access = useWarehouseAccess();
+
+  const [open, setOpen] = useState(false);
+  const menu = useRef(new Animated.Value(0)).current;
+  // Угол поворота обода в градусах. Живёт вне открытия/закрытия, но сбрасывается
+  // на каждом открытии: колесо должно открываться в исходном положении, а не
+  // там, где его оставили в прошлый раз.
+  const turn = useRef(new Animated.Value(0)).current;
+  // Дуга остаётся смонтированной, пока кнопки летят обратно к центру: снять её
+  // в момент нажатия значило бы оборвать анимацию закрытия на первом кадре.
+  const [mounted, setMounted] = useState(false);
 
   const current = state.routes[state.index];
   const nested = getFocusedRouteNameFromRoute(current) ?? '';
   const hidden = HIDDEN_ROUTES.includes(nested);
 
-  const height = BAR_HEIGHT + insets.bottom;
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (open) { setMounted(true); turn.setValue(0); }
+    const anim = Animated.spring(menu, {
+      toValue: open ? 1 : 0,
+      useNativeDriver: true,
+      speed: open ? 13 : 20,
+      bounciness: open ? 7 : 0,
+    });
+    anim.start(({finished}) => {
+      if (finished && !open) setMounted(false);
+    });
+    return () => anim.stop();
+  }, [open, menu, turn]);
+
+  // Кнопка «назад» на Android закрывает колесо, а не уводит с экрана: открытое
+  // меню — это состояние, и выход из него ожидается первым же «назад».
+  useEffect(() => {
+    if (!open) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      close();
+      return true;
+    });
+    return () => sub.remove();
+  }, [open, close]);
+
+  // Ушли с экрана (переход в чат, чужая вкладка) — колесо закрывается само:
+  // иначе оно осталось бы висеть поверх уже сменившегося содержимого.
+  useEffect(() => { close(); }, [state.index, hidden, close]);
 
   /**
-   * Уход и возврат панели.
-   *
-   * Панель НЕ размонтируется на скрытых экранах и вообще никогда не участвует в
-   * раскладке: styles.wrap позиционирован absolute. Это принципиально.
-   *
-   * Навигатор вкладок кладёт контейнер экранов и панель соседними элементами
-   * колонки (BottomTabView, styles.screens: flex 1). Пока панель в потоке, её
-   * высота вычитается из высоты экранов — и любое её появление или исчезновение
-   * в тот же кадр меняет высоту всех смонтированных вкладок разом. Именно
-   * поэтому раньше содержимое дёргалось вверх-вниз при каждом переходе: панель
-   * возвращала null, контейнер экранов подрастал рывком, а stack-переход в этот
-   * момент только начинал свои 220 мс.
-   *
-   * Вынутая из потока панель этой связи не имеет: скрытие — чистый translateY,
-   * раскладка экранов не пересчитывается ни разу. Плата за это — высоту под
-   * панель резервируют сами экраны (useTabBarInset из ./tabBarLayout).
+   * Уход и возврат кнопки.
    *
    * Анимируются обе стороны, одной длительностью с переходом экрана. Раньше
    * уход был мгновенным, а возврат — плавным, и эта несимметричность читалась
@@ -350,16 +539,19 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     return () => anim.stop();
   }, [hidden, enter]);
 
+  // Центр знака над нижним краем экрана — он же центр колеса
+  const orbCenter = insets.bottom + ORB_BOTTOM + ORB_SIZE / 2;
+
   const translateY = enter.interpolate({
     inputRange: [0, 1],
-    // Не просто на свою высоту: кнопка выступает над панелью, и уезжать надо
-    // вместе с её выносом — см. HIDE_OVERHANG
-    outputRange: [height + HIDE_OVERHANG, 0],
+    // Уезжает вместе с ореолом и тенью, иначе из-за нижней границы экрана
+    // осталась бы торчать макушка знака
+    outputRange: [ORB_SIZE + ORB_BOTTOM + insets.bottom + AURA_SPREAD, 0],
   });
 
-  const path = notchPath(width, height);
-
-  const press = (route, focused) => {
+  const go = (route) => {
+    close();
+    const focused = state.routes.indexOf(route) === state.index;
     const event = navigation.emit({
       type: 'tabPress',
       target: route.key,
@@ -370,173 +562,250 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     }
   };
 
-  /**
-   * Долгое нажатие на центральную кнопку — сразу экран создания чата.
-   *
-   * Раньше это был «+» в шапке списка чатов, а до этого — промежуточная
-   * модалка «личный чат / группа». Модалку убрали: тот же выбор уже стоит
-   * вкладками в шапке самого экрана, и спрашивать о нём дважды незачем.
-   *
-   * Экран NewChat лежит внутри стека ChatsTab, поэтому переход обязательно
-   * вложенный: navigate('NewChat') с уровня вкладок такого маршрута не найдёт.
-   */
-  const openNewChat = () => {
-    navigation.navigate('ChatsTab', {screen: 'NewChat', params: {initialMode: 'private'}});
-  };
-
   // Центральная вкладка — та, у которой нет значка: её место занимает кнопка
-  // «Альфа», лежащая в вырезе поверх панели
-  const centerIndex = state.routes.findIndex(route => !ICONS[route.name]);
-  const leftRoutes = state.routes.slice(0, centerIndex);
-  const rightRoutes = state.routes.slice(centerIndex + 1);
+  // «Альфа», всё остальное живёт на колесе
+  const centerRoute = state.routes.find(route => !ICONS[route.name]);
 
-  const renderCell = route => {
-    const index = state.routes.indexOf(route);
-    const focused = state.index === index;
-    const label = descriptors[route.key].options.title ?? route.name;
-    const Icon = ICONS[route.name];
+  /**
+   * Разделы колеса.
+   *
+   * Склад закрыт отдельным правом, и человеку без него кнопка не рисуется вовсе.
+   * Пока права не пришли (access === null), её тоже нет: показать и убрать —
+   * хуже, чем показать чуть позже, потому что колесо при этом меняет шаг под
+   * уже занесённым пальцем.
+   */
+  const items = state.routes
+    .filter(route => ICONS[route.name])
+    .filter(route => route.name !== 'WarehouseTab'
+      || Boolean(access?.allowed))
+    .map(route => ({
+      route,
+      icon: ICONS[route.name],
+      label: descriptors[route.key].options.title ?? route.name,
+      dot: route.name === 'TasksTab' && inboxCount > 0,
+    }));
 
-    return (
-      <Pressable
-        key={route.key}
-        style={styles.cell}
-        onPress={() => press(route, focused)}
-        accessibilityRole="button"
-        accessibilityState={{selected: focused}}
-        accessibilityLabel={label}>
-        <View>
-          <Icon size={24} color={focused ? c.primary : c.textTertiary} />
-          {/* Значок входящих задач. Цифру не показываем, только точку: в
-              ячейке шириной под подпись «Задачи» число налезает на значок, а
-              смысл у него один — «вас кто-то ждёт», и он передаётся точкой. */}
-          {route.name === 'TasksTab' && inboxCount > 0 && (
-            <View style={[styles.badgeDot, {backgroundColor: c.error, borderColor: c.bgPrimary}]} />
-          )}
-        </View>
-        {/* Строго одна строка: с пятью вкладками ячейка узкая, и перенос
-            подписи сдвинул бы значок соседней вверх */}
-        <Text
-          style={[styles.label, {color: focused ? c.primary : c.textTertiary}]}
-          numberOfLines={1}>
-          {label}
-        </Text>
-      </Pressable>
-    );
-  };
+  // Центр колеса в координатах экрана — от него PanResponder считает угол пальца
+  const wheelPan = useWheelTurn(turn, items.length, width / 2, height - orbCenter);
 
   return (
-    // Кнопка выступает над панелью, поэтому обрезать содержимое нельзя.
-    // pointerEvents на время скрытия снимаем целиком: уехавшая вниз панель
-    // осталась в дереве и иначе перехватывала бы касания у экрана чата.
-    <Animated.View
-      style={[styles.wrap, {height, transform: [{translateY}]}]}
-      pointerEvents={hidden ? 'none' : 'box-none'}>
-      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-        <Path d={path.fill} fill={c.bgPrimary} />
-        <Path d={path.top} stroke={c.borderLight} strokeWidth={1} fill="none" />
-        <Path
-          d={path.notch}
-          stroke={c.primary}
-          strokeOpacity={0.5}
-          strokeWidth={1.5}
-          fill="none"
+    // Пока колесо закрыто, обёртка стоит только под кнопкой: box-none
+    // пропускает касания мимо неё, но на Android касание за пределами родителя
+    // до потомка не доходит, поэтому под открытое меню обёртка разворачивается
+    // на весь экран — иначе нажатие «мимо колеса» было бы некуда принять.
+    <View
+      style={[
+        styles.wrap,
+        mounted ? StyleSheet.absoluteFill : {height: TAB_BAR_HEIGHT + insets.bottom},
+      ]}
+      pointerEvents="box-none">
+      {/* Затемнение под колесом — только фон. Нажатие «мимо» ловит слой самого
+          колеса: он лежит выше и касания до этого слоя не пропускает. */}
+      {mounted && (
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.backdrop, {opacity: menu}]}
         />
-      </Svg>
+      )}
 
-      {/* Высота строки — вся панель целиком, а жестовая полоса вычитается
-          отступом: иначе содержимое центрируется по остатку и прижимается
-          к верхнему краю */}
-      <View style={[styles.row, {height, paddingBottom: insets.bottom}]}>
-        {/* Вкладки разложены двумя группами по бокам от выемки, а не сплошным
-            рядом ячеек. Раньше вкладок было три и центральная приходилась ровно
-            на вырез, но с добавлением календаря их стало чётное число, и
-            ячейка соседа полезла бы под кнопку «Альфа».
+      {/* Затухание содержимого под кнопкой. Без него список уезжает под знак и
+          просвечивает сквозь него. Касания не перехватывает: прокрутка в этой
+          полосе должна работать. */}
+      {!mounted && (
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', c.bgSecondary]}
+          style={[styles.scrim, {height: SCRIM_HEIGHT + insets.bottom}]}
+        />
+      )}
 
-            С появлением склада (ver. 6.81) группы стали разными: слева две
-            вкладки, справа три. Половины панели при этом остаются одинаковыми —
-            и это сознательно. Кнопка «Альфа» позиционируется от центра панели и
-            лежит в вырезе, центр которого тоже посчитан от середины; сделать
-            ячейки равными по ширине можно только сдвинув вырез, то есть уведя
-            логотип из центра экрана. Неодинаковые интервалы между значками —
-            меньшая цена, чем несимметричная марка. */}
-        <View style={styles.side}>{leftRoutes.map(renderCell)}</View>
-        <View style={styles.notchGap} />
-        <View style={styles.side}>{rightRoutes.map(renderCell)}</View>
-      </View>
+      {/* Колесо лежит в полноэкранном слое, а не внутри кнопки, хотя вращается
+          вокруг неё. На Android касание, пришедшее за пределы родителя, до
+          потомка не доходит вовсе, а разделы уезжают от знака на полторы сотни
+          точек — вложи их в него, и нажимались бы они только на iOS.
 
-      <View style={styles.orbSlot} pointerEvents="box-none">
-        {state.routes.map((route, index) =>
-          ICONS[route.name] ? null : (
-            <AlphaOrb
-              key={route.key}
-              focused={state.index === index}
-              visible={!hidden}
-              label={descriptors[route.key].options.title ?? route.name}
-              onPress={() => press(route, state.index === index)}
-              onLongPress={openNewChat}
-            />
-          ),
-        )}
-      </View>
-    </Animated.View>
+          Слой ловит касания сам (не box-none): вращать обод надо откуда угодно,
+          а не только попав пальцем ровно в 88-точечную полосу. */}
+      {mounted && (
+        <View style={StyleSheet.absoluteFill} {...wheelPan.panHandlers}>
+          {/* Слой колеса перехватывает касания, и до затемнения под ним они уже
+              не доходят — закрывать по нажатию мимо приходится здесь. Лежит
+              первым, поэтому разделы поверх него и забирают нажатие себе. */}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={close}
+            accessibilityLabel="Закрыть меню разделов"
+          />
+
+          {/* Открытие: колесо разворачивается из-под знака. Прозрачность
+              зажата, потому что пружина перелетает единицу, а масштаб пусть
+              перелетает — это и даёт ободу упругость. */}
+          <Animated.View
+            style={[
+              styles.wheel,
+              {
+                bottom: orbCenter - WHEEL_R_OUT,
+                opacity: menu.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                  extrapolate: 'clamp',
+                }),
+                transform: [{scale: menu}],
+              },
+            ]}
+            pointerEvents="box-none">
+            {/* Обод и его вращение разнесены по разным слоям намеренно: масштаб
+                открытия крутится на нативном драйвере, а угол приходит из
+                PanResponder, то есть из JS. В одном transform они бы не ужились. */}
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  transform: [{
+                    rotate: turn.interpolate({
+                      inputRange: [-360, 360],
+                      outputRange: ['-360deg', '360deg'],
+                    }),
+                  }],
+                },
+              ]}
+              pointerEvents="box-none">
+              {/* Кольцо — окружность с толстой обводкой: отдельный контур с
+                  двумя дугами дал бы ровно ту же фигуру и лишний повод в ней
+                  ошибиться. Края у неё нет — она уходит за нижний край экрана
+                  и там же возвращается. */}
+              <Svg
+                width={WHEEL_R_OUT * 2}
+                height={WHEEL_R_OUT * 2}
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}>
+                <Circle
+                  cx={WHEEL_R_OUT}
+                  cy={WHEEL_R_OUT}
+                  r={WHEEL_R_MID}
+                  fill="none"
+                  stroke={c.bgPrimary}
+                  strokeWidth={WHEEL_BAND}
+                />
+                <Circle
+                  cx={WHEEL_R_OUT}
+                  cy={WHEEL_R_OUT}
+                  r={WHEEL_R_OUT - 0.5}
+                  fill="none"
+                  stroke={c.borderLight}
+                  strokeWidth={1}
+                />
+                <Circle
+                  cx={WHEEL_R_OUT}
+                  cy={WHEEL_R_OUT}
+                  r={WHEEL_R_IN + 0.5}
+                  fill="none"
+                  stroke={c.borderLight}
+                  strokeWidth={1}
+                />
+              </Svg>
+
+              {items.map((item, index) => (
+                <WheelItem
+                  key={item.route.key}
+                  item={item}
+                  index={index}
+                  count={items.length}
+                  turn={turn}
+                  focused={state.routes.indexOf(item.route) === state.index}
+                  onPress={() => go(item.route)}
+                />
+              ))}
+            </Animated.View>
+          </Animated.View>
+        </View>
+      )}
+
+      <Animated.View
+        style={[
+          styles.dock,
+          {bottom: insets.bottom + ORB_BOTTOM, transform: [{translateY}]},
+        ]}
+        pointerEvents={hidden ? 'none' : 'box-none'}>
+        <AlphaOrb
+          open={open}
+          visible={!hidden}
+          onPress={() => {
+            if (open) { close(); return; }
+            if (centerRoute) go(centerRoute);
+          }}
+          onLongPress={() => setOpen(true)}
+        />
+      </Animated.View>
+    </View>
   );
 }
 
 const makeStyles = c => StyleSheet.create({
+  // Кнопка висит поверх экранов и не занимает места в раскладке — иначе её
+  // появление и уход меняли бы высоту всех вкладок разом (см. комментарий
+  // к анимации выше)
   wrap: {
-    // Панель висит поверх экранов и не занимает места в раскладке — иначе её
-    // появление и уход меняли бы высоту всех вкладок разом (см. комментарий
-    // к анимации выше)
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    overflow: 'visible',
-    // Подложка видна только в вырезе: всё остальное закрывает фигура панели.
-    // Без неё сквозь вырез просвечивает фон окна — он светлый независимо от
-    // темы, и вокруг кнопки появлялся белый ободок.
-    backgroundColor: c.bgSecondary,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  // Половины по бокам от выреза. Ширина одинаковая, поэтому вырез (а с ним и
-  // кнопка) остаётся ровно посередине независимо от числа вкладок в группах.
-  side: {flex: 1, flexDirection: 'row'},
-  notchGap: {width: (NOTCH_RADIUS + SHOULDER_RADIUS) * 2},
-  cell: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  label: {fontFamily: font.medium, fontSize: 11},
-  // Точка над значком вкладки. Обводка цветом панели, чтобы на светлом фоне
-  // она не сливалась с самим значком.
-  badgeDot: {
-    position: 'absolute',
-    top: -2,
-    right: -3,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1.5,
-  },
+  backdrop: {backgroundColor: 'rgba(0,0,0,0.45)'},
+  scrim: {position: 'absolute', left: 0, right: 0, bottom: 0},
 
-  // Кнопка позиционируется от центра панели: так она держится в выемке
-  // независимо от ширины экрана
-  orbSlot: {
+  // Знак позиционируется от центра экрана: так он держится посередине
+  // независимо от ширины устройства
+  dock: {
     position: 'absolute',
     left: 0,
     right: 0,
-    // Центр кнопки совпадает с центром окружности выреза, иначе просвет
-    // вокруг неё окажется неровным
-    top: SHOULDER_RADIUS - ORB_SIZE / 2,
     alignItems: 'center',
   },
-  // Без отступов вокруг: 56pt сами по себе крупнее минимальной цели касания
-  orbHit: {},
+  // Колесо. Квадрат со стороной в диаметр обода, центрированный по знаку:
+  // только так масштаб открытия растит его именно из-под кнопки, а не из угла.
+  // Тени у контейнера нет намеренно — он прямоугольный и прозрачный, а обе
+  // платформы рисуют тень по рамке слоя, а не по фигуре внутри него: под
+  // колесом висел бы прямоугольник. Обод отделяют от экрана затемнение позади
+  // и собственная обводка.
+  wheel: {
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -WHEEL_R_OUT,
+    width: WHEEL_R_OUT * 2,
+    height: WHEEL_R_OUT * 2,
+  },
+  wheelItem: {
+    position: 'absolute',
+    width: ITEM_WIDTH,
+    height: ITEM_HEIGHT,
+  },
+  // Область касания — вся ячейка целиком: без кружка попадать стало бы не во
+  // что, а 66 × 39 сопоставимы с минимальной целью
+  wheelHit: {
+    width: ITEM_WIDTH,
+    height: ITEM_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    borderWidth: 1.5,
+  },
+  wheelLabel: {
+    fontFamily: font.medium,
+    fontSize: 10,
+    lineHeight: ITEM_LABEL,
+    color: c.textSecondary,
+    marginTop: ITEM_GAP,
+    textAlign: 'center',
+  },
+
   orbShadow: {
     borderRadius: ORB_SIZE / 2,
     shadowColor: c.primary,
@@ -545,7 +814,6 @@ const makeStyles = c => StyleSheet.create({
     shadowOffset: {width: 0, height: 5},
     elevation: 8,
   },
-  orbShadowIdle: {shadowOpacity: 0.18, shadowRadius: 6, elevation: 3},
   orb: {
     width: ORB_SIZE,
     height: ORB_SIZE,
@@ -560,7 +828,7 @@ const makeStyles = c => StyleSheet.create({
     width: ORB_SIZE * 1.5,
     height: ORB_SIZE * 1.5,
   },
-  orbLogo: {width: 30, height: 30},
+  orbLogo: {width: 32, height: 32},
 
   // Ореол непрочитанных
   aura: {
