@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Услуги: цены, врачи, длительность</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="svcmx-app">
+
+<style>
+#svcmx-app {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  padding: 16px 20px 40px;
+  color: #111827;
+}
+
+/* Шапка */
+.svcmx-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.svcmx-title { font-size: 20px; font-weight: 700; margin: 0; flex: 1; min-width: 220px; }
+.svcmx-meta { font-size: 12px; color: #6b7280; }
+
+.svcmx-btn {
+  padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff;
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; color: #374151;
+  font-family: inherit;
+}
+.svcmx-btn:hover { border-color: #3b82f6; color: #1d4ed8; }
+.svcmx-btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.svcmx-btn.primary:hover { background: #1d4ed8; }
+.svcmx-btn.danger { color: #b91c1c; border-color: #fecaca; }
+.svcmx-btn.danger:hover { background: #fef2f2; border-color: #f87171; }
+.svcmx-btn:disabled { opacity: .5; cursor: default; }
+.svcmx-btn.small { padding: 4px 9px; font-size: 12px; }
+
+.svcmx-select, .svcmx-input {
+  padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px;
+  background: #fff; font-family: inherit; color: #111827;
+}
+.svcmx-select:focus, .svcmx-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+
+/* Панель фильтров */
+.svcmx-controls {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 14px;
+}
+.svcmx-clinic-toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+.svcmx-clinic-toggle {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px;
+  border: 1.5px solid #e5e7eb; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+  color: #9ca3af; transition: all .15s; user-select: none;
+}
+.svcmx-clinic-toggle.on { color: #fff; border-color: transparent; }
+.svcmx-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .55; }
+.svcmx-clinic-toggle.on .svcmx-dot { background: rgba(255,255,255,.85); opacity: 1; }
+
+.svcmx-switch { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: #374151; cursor: pointer; user-select: none; }
+.svcmx-switch input { width: 15px; height: 15px; accent-color: #2563eb; cursor: pointer; }
+
+.svcmx-viewtabs { display: inline-flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+.svcmx-viewtab { padding: 7px 14px; font-size: 13px; background: #fff; border: none; cursor: pointer; color: #6b7280; font-family: inherit; }
+.svcmx-viewtab.active { background: #2563eb; color: #fff; font-weight: 600; }
+
+/* Таблица */
+.svcmx-scroll { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; }
+.svcmx-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+.svcmx-table th, .svcmx-table td { border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
+.svcmx-table thead th {
+  position: sticky; top: 0; z-index: 3; background: #f9fafb; font-weight: 600; font-size: 12px;
+  color: #374151; padding: 9px 10px; border-bottom: 1px solid #d1d5db; white-space: nowrap;
+}
+.svcmx-table thead tr.svcmx-head-clinics th { text-align: center; color: #fff; padding: 8px 10px; }
+/* Заголовок первой колонки живёт в цветной строке филиалов, но фон у него белый */
+.svcmx-table thead tr.svcmx-head-clinics th.svcmx-col-service { color: #374151; text-align: left; }
+.svcmx-table thead tr.svcmx-head-sub th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #6b7280; }
+
+/* Первая колонка липкая: без неё на шести филиалах непонятно, чью строку читаешь */
+.svcmx-col-service { position: sticky; left: 0; z-index: 2; background: #fff; min-width: 260px; max-width: 340px; padding: 10px 12px; }
+.svcmx-table thead .svcmx-col-service { z-index: 4; background: #f9fafb; }
+.svcmx-table tbody tr:hover .svcmx-col-service { background: #f8fafc; }
+.svcmx-code { font-size: 11px; color: #6b7280; font-family: 'SF Mono', Menlo, monospace; }
+.svcmx-name { font-weight: 500; line-height: 1.35; margin-top: 2px; }
+
+/* Ячейка филиала: три подстолбца — цена, врач, длительность. Цена одна на
+   ячейку, поэтому тянется на всю высоту списка врачей. */
+.svcmx-cell { padding: 0; border-left: 1px solid #e5e7eb; min-width: 340px; }
+.svcmx-cell-grid { display: grid; grid-template-columns: 84px 1fr 84px; align-items: stretch; }
+.svcmx-price {
+  grid-row: 1 / -1; grid-column: 1; display: flex; align-items: flex-start; justify-content: flex-end;
+  padding: 9px 10px; font-weight: 600; color: #15803d; background: #f0fdf4; border-right: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+.svcmx-price.empty { color: #9ca3af; background: #fafafa; font-weight: 400; }
+.svcmx-doc { grid-column: 2; padding: 6px 10px; border-top: 1px solid #f3f4f6; line-height: 1.3; }
+.svcmx-dur { grid-column: 3; padding: 6px 10px; border-top: 1px solid #f3f4f6; text-align: right; white-space: nowrap; }
+/* Первая пара «врач + длительность» идёт сразу под шапкой ячейки, разделитель ей не нужен */
+.svcmx-cell-grid > *:nth-child(2), .svcmx-cell-grid > *:nth-child(3) { border-top: none; }
+.svcmx-doc a { color: #1d4ed8; text-decoration: none; }
+.svcmx-doc a:hover { text-decoration: underline; }
+.svcmx-doc.facility { color: #6b7280; font-style: italic; }
+.svcmx-note { display: block; font-size: 11px; color: #b45309; font-style: italic; margin-top: 2px; }
+.svcmx-empty-cell { grid-column: 2 / -1; padding: 9px 10px; color: #9ca3af; font-size: 12px; }
+
+/* Источник длительности виден сразу: дефолт услуги легко принять за настройку врача */
+.svcmx-dur .val { font-weight: 600; }
+.svcmx-dur.src-doctor .val { color: #111827; }
+.svcmx-dur.src-card .val { color: #1d4ed8; }
+.svcmx-dur.src-service .val { color: #9ca3af; font-weight: 500; }
+.svcmx-dur.src-none .val { color: #d1d5db; }
+.svcmx-src { display: block; font-size: 10px; color: #9ca3af; }
+
+.svcmx-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #6b7280; margin-top: 10px; }
+.svcmx-legend b { font-weight: 600; }
+
+/* Плоский список */
+.svcmx-flat td { padding: 8px 12px; }
+.svcmx-flat tbody tr:hover { background: #f8fafc; }
+.svcmx-clinic-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #fff; }
+
+.svcmx-state { padding: 40px; text-align: center; color: #6b7280; font-size: 14px; }
+
+/* Модалка настройки подборки */
+.svcmx-modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 9999; align-items: center; justify-content: center; padding: 20px; }
+.svcmx-modal.open { display: flex; }
+.svcmx-modal-box { background: #fff; border-radius: 14px; width: 100%; max-width: 780px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+.svcmx-modal-head { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; }
+.svcmx-modal-head h3 { margin: 0; font-size: 16px; flex: 1; }
+.svcmx-modal-body { padding: 16px 20px; overflow-y: auto; }
+.svcmx-modal-foot { padding: 14px 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 10px; justify-content: flex-end; }
+.svcmx-field { margin-bottom: 16px; }
+.svcmx-field label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.svcmx-search-results { border: 1px solid #e5e7eb; border-radius: 8px; max-height: 240px; overflow-y: auto; margin-top: 8px; }
+.svcmx-search-row { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; cursor: pointer; font-size: 13px; }
+.svcmx-search-row:hover { background: #eff6ff; }
+.svcmx-search-row.added { opacity: .45; cursor: default; }
+.svcmx-picked { border: 1px solid #e5e7eb; border-radius: 8px; max-height: 300px; overflow-y: auto; }
+.svcmx-picked-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
+.svcmx-picked-row:last-child { border-bottom: none; }
+.svcmx-picked-row .grow { flex: 1; min-width: 0; }
+.svcmx-picked-row .grow div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.svcmx-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: 11px 18px; border-radius: 10px; font-size: 13px; z-index: 10000; }
+.svcmx-toast.error { background: #b91c1c; }
+
+@media (max-width: 768px) {
+  #svcmx-app { padding: 12px 10px 30px; }
+  .svcmx-col-service { min-width: 180px; }
+  .svcmx-cell { min-width: 290px; }
+}
+</style>
+
+<div class="svcmx-top">
+  <h2 class="svcmx-title">Услуги: цена, врачи и длительность по филиалам</h2>
+  <select id="svcmx-preset" class="svcmx-select"></select>
+  <button type="button" id="svcmx-edit" class="svcmx-btn" style="display:none">Настроить подборку</button>
+  <button type="button" id="svcmx-reload" class="svcmx-btn">Обновить</button>
+</div>
+
+<div class="svcmx-controls">
+  <div class="svcmx-clinic-toggles" id="svcmx-clinics"></div>
+  <div class="svcmx-viewtabs">
+    <button type="button" class="svcmx-viewtab active" data-view="matrix">Матрица</button>
+    <button type="button" class="svcmx-viewtab" data-view="flat">Список</button>
+  </div>
+  <input type="search" id="svcmx-filter" class="svcmx-input" placeholder="Фильтр по услуге или врачу" style="min-width:220px">
+  <label class="svcmx-switch"><input type="checkbox" id="svcmx-facilities"> Кабинеты и стационары</label>
+  <span class="svcmx-meta" id="svcmx-meta"></span>
+</div>
+
+<div id="svcmx-content"><div class="svcmx-state">Загрузка…</div></div>
+
+<div class="svcmx-legend">
+  <span><b style="color:#111827">30</b> — своя длительность врача по филиалу</span>
+  <span><b style="color:#1d4ed8">30</b> — из карточки врача, общая для всех филиалов</span>
+  <span><b style="color:#9ca3af">30</b> — длительность самой услуги, за врачом не закреплена</span>
+</div>
+
+<div class="svcmx-modal" id="svcmx-modal">
+  <div class="svcmx-modal-box">
+    <div class="svcmx-modal-head">
+      <h3>Настройка подборки</h3>
+      <button type="button" class="svcmx-btn small" id="svcmx-preset-new">Новая подборка</button>
+      <button type="button" class="svcmx-btn small danger" id="svcmx-preset-del">Удалить</button>
+    </div>
+    <div class="svcmx-modal-body">
+      <div class="svcmx-field">
+        <label>Название подборки</label>
+        <input type="text" id="svcmx-preset-name" class="svcmx-input" style="width:100%">
+      </div>
+      <div class="svcmx-field">
+        <label>Филиалы по умолчанию</label>
+        <div class="svcmx-clinic-toggles" id="svcmx-preset-clinics"></div>
+      </div>
+      <div class="svcmx-field">
+        <label>Добавить услугу — поиск по прейскуранту (название, артикул, код 804н)</label>
+        <input type="search" id="svcmx-service-search" class="svcmx-input" style="width:100%" placeholder="например: гинеколог первичный">
+        <div class="svcmx-search-results" id="svcmx-search-results" style="display:none"></div>
+      </div>
+      <div class="svcmx-field">
+        <label>Услуги в подборке (<span id="svcmx-picked-count">0</span>) — порядок в таблице сверху вниз</label>
+        <div class="svcmx-picked" id="svcmx-picked"></div>
+      </div>
+    </div>
+    <div class="svcmx-modal-foot">
+      <button type="button" class="svcmx-btn" id="svcmx-modal-cancel">Отмена</button>
+      <button type="button" class="svcmx-btn primary" id="svcmx-modal-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+window.serviceMatrixApp = (function() {
+  var ORIGIN = window.location.port === '9000'
+    ? window.location.protocol + '//' + window.location.hostname + ':9001'
+    : window.location.origin;
+  var API = ORIGIN + '/api/service-matrix';
+
+  var state = {
+    presets: [], clinics: [], canEdit: false,
+    presetId: null, activeClinics: [], view: 'matrix',
+    showFacilities: false, filter: '', matrix: null, draft: null
+  };
+
+  function getToken() { return localStorage.getItem('token'); }
+
+  function fetchAPI(url, options) {
+    options = options || {};
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: options.body
+    }).then(function(r) {
+      if (!r.ok) return r.json().catch(function() { return {}; }).then(function(e) { throw new Error(e.message || e.error || 'Ошибка запроса'); });
+      return r.json();
+    });
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function toast(msg, isError) {
+    var el = document.createElement('div');
+    el.className = 'svcmx-toast' + (isError ? ' error' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 3000);
+  }
+
+  function money(v) {
+    if (v == null) return '—';
+    return Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+  }
+
+  function clinicById(id) {
+    for (var i = 0; i < state.clinics.length; i++) if (state.clinics[i].id === Number(id)) return state.clinics[i];
+    return { id: id, name: 'Клиника ' + id, color: '#94a3b8' };
+  }
+
+  function currentPreset() {
+    for (var i = 0; i < state.presets.length; i++) if (state.presets[i].id === state.presetId) return state.presets[i];
+    return null;
+  }
+
+  // === ЗАГРУЗКА ===
+  function loadConfig() {
+    return fetchAPI(API + '/config').then(function(cfg) {
+      state.presets = cfg.presets || [];
+      state.clinics = cfg.clinics || [];
+      state.canEdit = Boolean(cfg.canEdit);
+      document.getElementById('svcmx-edit').style.display = state.canEdit ? '' : 'none';
+
+      var saved = localStorage.getItem('svcmx-preset');
+      var exists = state.presets.some(function(p) { return p.id === saved; });
+      state.presetId = exists ? saved : (state.presets[0] ? state.presets[0].id : null);
+
+      renderPresetSelect();
+      applyPresetClinics();
+      renderClinicToggles();
+    });
+  }
+
+  function applyPresetClinics() {
+    var preset = currentPreset();
+    var wanted = preset && preset.clinicIds && preset.clinicIds.length ? preset.clinicIds : state.clinics.map(function(c) { return c.id; });
+    state.activeClinics = state.clinics.filter(function(c) { return wanted.indexOf(c.id) !== -1; }).map(function(c) { return c.id; });
+  }
+
+  function loadMatrix() {
+    var preset = currentPreset();
+    var content = document.getElementById('svcmx-content');
+    if (!preset || !preset.serviceIds.length) {
+      state.matrix = null;
+      content.innerHTML = '<div class="svcmx-state">' +
+        (state.presets.length ? 'В подборке пока нет услуг.' : 'Подборок ещё нет.') +
+        (state.canEdit ? ' Нажмите «Настроить подборку».' : ' Обратитесь к администратору портала.') + '</div>';
+      return Promise.resolve();
+    }
+    content.innerHTML = '<div class="svcmx-state">Собираем данные по филиалам…</div>';
+    return fetchAPI(API + '/data', {
+      method: 'POST',
+      body: JSON.stringify({ serviceIds: preset.serviceIds, clinicIds: state.activeClinics })
+    }).then(function(data) {
+      state.matrix = data;
+      renderMeta();
+      render();
+    }).catch(function(err) {
+      content.innerHTML = '<div class="svcmx-state">Не удалось загрузить: ' + esc(err.message) + '</div>';
+    });
+  }
+
+  // === ШАПКА И ФИЛЬТРЫ ===
+  function renderPresetSelect() {
+    var select = document.getElementById('svcmx-preset');
+    select.innerHTML = state.presets.map(function(p) {
+      return '<option value="' + esc(p.id) + '"' + (p.id === state.presetId ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+    }).join('') || '<option value="">Подборок нет</option>';
+  }
+
+  function renderClinicToggles() {
+    document.getElementById('svcmx-clinics').innerHTML = state.clinics.map(function(c) {
+      var on = state.activeClinics.indexOf(c.id) !== -1;
+      return '<button type="button" class="svcmx-clinic-toggle' + (on ? ' on' : '') + '" data-clinic="' + c.id + '"' +
+        (on ? ' style="background:' + esc(c.color) + '"' : '') + '><span class="svcmx-dot"></span>' + esc(c.name) + '</button>';
+    }).join('');
+  }
+
+  function renderMeta() {
+    var parts = [];
+    if (state.matrix && state.matrix.syncedAt) {
+      parts.push('прейскурант от ' + new Date(state.matrix.syncedAt).toLocaleDateString('ru-RU'));
+    }
+    if (state.matrix && state.matrix.services) parts.push(state.matrix.services.length + ' услуг');
+    document.getElementById('svcmx-meta').textContent = parts.join(' · ');
+  }
+
+  // === ОТБОР СТРОК ПОД ФИЛЬТР ===
+  function visibleDoctors(cell) {
+    return (cell.doctors || []).filter(function(d) { return state.showFacilities || !d.isFacility; });
+  }
+
+  function matchesFilter(service) {
+    var q = state.filter.trim().toLowerCase();
+    if (!q) return true;
+    if ((service.title || '').toLowerCase().indexOf(q) !== -1) return true;
+    if ((service.code || '').toLowerCase().indexOf(q) !== -1) return true;
+    var clinics = state.matrix.clinics;
+    for (var i = 0; i < clinics.length; i++) {
+      var docs = visibleDoctors(service.cells[clinics[i].id] || {});
+      for (var j = 0; j < docs.length; j++) if (docs[j].name.toLowerCase().indexOf(q) !== -1) return true;
+    }
+    return false;
+  }
+
+  function durationCell(doc) {
+    var text = doc.duration != null ? doc.duration + ' мин' : '—';
+    var label = { doctor: 'по филиалу', card: 'из карточки', service: 'услуги', none: 'не задана' }[doc.durationSource] || '';
+    return '<div class="svcmx-dur src-' + doc.durationSource + '"><span class="val">' + text + '</span>' +
+      '<span class="svcmx-src">' + label + '</span></div>';
+  }
+
+  function doctorCell(doc) {
+    var name = doc.profileUrl
+      ? '<a href="' + esc(doc.profileUrl) + '">' + esc(doc.name) + '</a>'
+      : esc(doc.name);
+    return '<div class="svcmx-doc' + (doc.isFacility ? ' facility' : '') + '">' + name +
+      (doc.durationNote ? '<span class="svcmx-note">' + esc(doc.durationNote) + '</span>' : '') + '</div>';
+  }
+
+  // === ВИД: МАТРИЦА ===
+  function renderMatrix(services) {
+    var clinics = state.matrix.clinics;
+    var head =
+      '<thead><tr class="svcmx-head-clinics">' +
+        '<th class="svcmx-col-service" rowspan="2">Услуга</th>' +
+        clinics.map(function(c) { return '<th colspan="3" style="background:' + esc(c.color) + '">' + esc(c.name) + '</th>'; }).join('') +
+      '</tr><tr class="svcmx-head-sub">' +
+        clinics.map(function() { return '<th colspan="3" style="padding:0"><div class="svcmx-cell-grid">' +
+          '<div style="padding:6px 10px;text-align:right">Цена</div><div style="padding:6px 10px">Врач</div><div style="padding:6px 10px;text-align:right">Длит.</div></div></th>'; }).join('') +
+      '</tr></thead>';
+
+    var body = services.map(function(s) {
+      var row = '<td class="svcmx-col-service">' +
+        (s.code ? '<div class="svcmx-code">' + esc(s.code) + (s.subCode ? ' · ' + esc(s.subCode) : '') + '</div>' : '') +
+        '<div class="svcmx-name">' + esc(s.title) + '</div></td>';
+
+      row += clinics.map(function(c) {
+        var cell = s.cells[c.id] || { doctors: [] };
+        var docs = visibleDoctors(cell);
+        var inner = '<div class="svcmx-price' + (cell.price == null ? ' empty' : '') + '">' +
+          (cell.exists ? money(cell.price) : '—') + '</div>';
+        if (!docs.length) {
+          inner += '<div class="svcmx-empty-cell">' + (cell.exists ? 'нет исполнителей' : 'услуги нет в филиале') + '</div>';
+        } else {
+          inner += docs.map(function(d) { return doctorCell(d) + durationCell(d); }).join('');
+        }
+        return '<td class="svcmx-cell" colspan="3"><div class="svcmx-cell-grid">' + inner + '</div></td>';
+      }).join('');
+
+      return '<tr>' + row + '</tr>';
+    }).join('');
+
+    return '<div class="svcmx-scroll"><table class="svcmx-table">' + head + '<tbody>' + body + '</tbody></table></div>';
+  }
+
+  // === ВИД: ПЛОСКИЙ СПИСОК ===
+  function renderFlat(services) {
+    var clinics = state.matrix.clinics;
+    var rows = [];
+    services.forEach(function(s) {
+      clinics.forEach(function(c) {
+        var cell = s.cells[c.id] || { doctors: [] };
+        if (!cell.exists) return;
+        var docs = visibleDoctors(cell);
+        if (!docs.length) {
+          rows.push('<tr><td class="svcmx-code">' + esc(s.code || '') + '</td><td>' + esc(s.title) + '</td>' +
+            '<td><span class="svcmx-clinic-chip" style="background:' + esc(c.color) + '">' + esc(c.name) + '</span></td>' +
+            '<td>' + money(cell.price) + '</td><td colspan="2" style="color:#9ca3af">нет исполнителей</td></tr>');
+          return;
+        }
+        docs.forEach(function(d) {
+          rows.push('<tr><td class="svcmx-code">' + esc(s.code || '') + '</td><td>' + esc(s.title) + '</td>' +
+            '<td><span class="svcmx-clinic-chip" style="background:' + esc(c.color) + '">' + esc(c.name) + '</span></td>' +
+            '<td>' + money(cell.price) + '</td><td style="padding:0">' + doctorCell(d) + '</td>' +
+            '<td style="padding:0;width:110px">' + durationCell(d) + '</td></tr>');
+        });
+      });
+    });
+
+    return '<div class="svcmx-scroll"><table class="svcmx-table svcmx-flat">' +
+      '<thead><tr><th>Код</th><th>Услуга</th><th>Филиал</th><th>Цена</th><th>Врач</th><th style="text-align:right">Длительность</th></tr></thead>' +
+      '<tbody>' + (rows.join('') || '<tr><td colspan="6" style="padding:24px;text-align:center;color:#9ca3af">Ничего не найдено</td></tr>') + '</tbody></table></div>';
+  }
+
+  function render() {
+    if (!state.matrix) return;
+    var services = state.matrix.services.filter(matchesFilter);
+    var content = document.getElementById('svcmx-content');
+    if (!services.length) {
+      content.innerHTML = '<div class="svcmx-state">Под фильтр ничего не подошло.</div>';
+      return;
+    }
+    content.innerHTML = state.view === 'matrix' ? renderMatrix(services) : renderFlat(services);
+  }
+
+  // === НАСТРОЙКА ПОДБОРКИ ===
+  function openEditor() {
+    var preset = currentPreset();
+    state.draft = preset
+      ? JSON.parse(JSON.stringify(preset))
+      : { id: 'preset-' + Date.now(), name: 'Новая подборка', serviceIds: [], clinicIds: [] };
+    // Названия услуг в подборке знаем из уже загруженной матрицы; для новой
+    // подборки их подставит поиск по мере добавления.
+    state.draftTitles = {};
+    if (state.matrix) {
+      state.matrix.services.forEach(function(s) { state.draftTitles[s.serviceId] = { title: s.title, code: s.code }; });
+    }
+    renderDraft();
+    document.getElementById('svcmx-modal').classList.add('open');
+  }
+
+  function renderDraft() {
+    document.getElementById('svcmx-preset-name').value = state.draft.name;
+    document.getElementById('svcmx-preset-clinics').innerHTML = state.clinics.map(function(c) {
+      var on = !state.draft.clinicIds.length || state.draft.clinicIds.indexOf(c.id) !== -1;
+      return '<button type="button" class="svcmx-clinic-toggle' + (on ? ' on' : '') + '" data-draft-clinic="' + c.id + '"' +
+        (on ? ' style="background:' + esc(c.color) + '"' : '') + '><span class="svcmx-dot"></span>' + esc(c.name) + '</button>';
+    }).join('');
+
+    document.getElementById('svcmx-picked-count').textContent = state.draft.serviceIds.length;
+    document.getElementById('svcmx-picked').innerHTML = state.draft.serviceIds.map(function(id, i) {
+      var info = state.draftTitles[id] || {};
+      return '<div class="svcmx-picked-row">' +
+        '<button type="button" class="svcmx-btn small" data-move="' + i + '" data-dir="-1"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<button type="button" class="svcmx-btn small" data-move="' + i + '" data-dir="1"' + (i === state.draft.serviceIds.length - 1 ? ' disabled' : '') + '>↓</button>' +
+        '<div class="grow"><div>' + esc(info.title || ('Услуга ' + id)) + '</div>' +
+        '<div class="svcmx-code">' + esc(info.code || '') + ' · id ' + esc(id) + '</div></div>' +
+        '<button type="button" class="svcmx-btn small danger" data-remove="' + esc(id) + '">Убрать</button></div>';
+    }).join('') || '<div style="padding:14px;color:#9ca3af;font-size:13px">Пусто — найдите услуги поиском выше</div>';
+  }
+
+  var searchTimer = null;
+  function runSearch(query) {
+    var box = document.getElementById('svcmx-search-results');
+    if (query.trim().length < 2) { box.style.display = 'none'; return; }
+    fetchAPI(API + '/services/search?q=' + encodeURIComponent(query)).then(function(rows) {
+      box.style.display = '';
+      box.innerHTML = rows.map(function(r) {
+        state.draftTitles[r.serviceId] = { title: r.title, code: r.code };
+        var added = state.draft.serviceIds.indexOf(r.serviceId) !== -1;
+        var where = (r.clinicIds || []).map(function(id) { return clinicById(id).name; }).join(', ');
+        return '<div class="svcmx-search-row' + (added ? ' added' : '') + '"' + (added ? '' : ' data-add="' + esc(r.serviceId) + '"') + '>' +
+          esc(r.title) + '<div class="svcmx-code">' + esc(r.code || '') + (where ? ' · ' + esc(where) : '') + '</div></div>';
+      }).join('') || '<div class="svcmx-search-row added">Ничего не найдено</div>';
+    }).catch(function(err) { toast(err.message, true); });
+  }
+
+  function saveDraft() {
+    state.draft.name = document.getElementById('svcmx-preset-name').value.trim() || 'Без названия';
+    var presets = state.presets.slice();
+    var index = -1;
+    for (var i = 0; i < presets.length; i++) if (presets[i].id === state.draft.id) index = i;
+    if (index === -1) presets.push(state.draft); else presets[index] = state.draft;
+
+    fetchAPI(API + '/config', { method: 'PUT', body: JSON.stringify({ presets: presets }) })
+      .then(function(res) {
+        state.presets = res.presets;
+        state.presetId = state.draft.id;
+        localStorage.setItem('svcmx-preset', state.presetId);
+        document.getElementById('svcmx-modal').classList.remove('open');
+        renderPresetSelect();
+        applyPresetClinics();
+        renderClinicToggles();
+        toast('Подборка сохранена');
+        loadMatrix();
+      })
+      .catch(function(err) { toast(err.message, true); });
+  }
+
+  function deletePreset() {
+    if (!confirm('Удалить подборку «' + state.draft.name + '»?')) return;
+    var presets = state.presets.filter(function(p) { return p.id !== state.draft.id; });
+    fetchAPI(API + '/config', { method: 'PUT', body: JSON.stringify({ presets: presets }) })
+      .then(function(res) {
+        state.presets = res.presets;
+        state.presetId = state.presets[0] ? state.presets[0].id : null;
+        localStorage.setItem('svcmx-preset', state.presetId || '');
+        document.getElementById('svcmx-modal').classList.remove('open');
+        renderPresetSelect();
+        applyPresetClinics();
+        renderClinicToggles();
+        loadMatrix();
+      })
+      .catch(function(err) { toast(err.message, true); });
+  }
+
+  // === СОБЫТИЯ ===
+  function bind() {
+    document.getElementById('svcmx-preset').addEventListener('change', function() {
+      state.presetId = this.value;
+      localStorage.setItem('svcmx-preset', state.presetId);
+      applyPresetClinics();
+      renderClinicToggles();
+      loadMatrix();
+    });
+
+    document.getElementById('svcmx-reload').addEventListener('click', function() { loadMatrix(); });
+    document.getElementById('svcmx-edit').addEventListener('click', openEditor);
+
+    document.getElementById('svcmx-clinics').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-clinic]');
+      if (!btn) return;
+      var id = Number(btn.dataset.clinic);
+      var at = state.activeClinics.indexOf(id);
+      if (at === -1) state.activeClinics.push(id); else state.activeClinics.splice(at, 1);
+      renderClinicToggles();
+      loadMatrix();
+    });
+
+    document.querySelectorAll('.svcmx-viewtab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        document.querySelectorAll('.svcmx-viewtab').forEach(function(t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        state.view = tab.dataset.view;
+        render();
+      });
+    });
+
+    document.getElementById('svcmx-filter').addEventListener('input', function() {
+      state.filter = this.value;
+      render();
+    });
+
+    document.getElementById('svcmx-facilities').addEventListener('change', function() {
+      state.showFacilities = this.checked;
+      render();
+    });
+
+    var modal = document.getElementById('svcmx-modal');
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.classList.remove('open'); });
+    document.getElementById('svcmx-modal-cancel').addEventListener('click', function() { modal.classList.remove('open'); });
+    document.getElementById('svcmx-modal-save').addEventListener('click', saveDraft);
+    document.getElementById('svcmx-preset-del').addEventListener('click', deletePreset);
+    document.getElementById('svcmx-preset-new').addEventListener('click', function() {
+      state.draft = { id: 'preset-' + Date.now(), name: 'Новая подборка', serviceIds: [], clinicIds: [] };
+      renderDraft();
+    });
+
+    document.getElementById('svcmx-preset-clinics').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-draft-clinic]');
+      if (!btn) return;
+      var id = Number(btn.dataset.draftClinic);
+      if (!state.draft.clinicIds.length) state.draft.clinicIds = state.clinics.map(function(c) { return c.id; });
+      var at = state.draft.clinicIds.indexOf(id);
+      if (at === -1) state.draft.clinicIds.push(id); else state.draft.clinicIds.splice(at, 1);
+      renderDraft();
+    });
+
+    document.getElementById('svcmx-service-search').addEventListener('input', function() {
+      var value = this.value;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function() { runSearch(value); }, 300);
+    });
+
+    document.getElementById('svcmx-search-results').addEventListener('click', function(e) {
+      var row = e.target.closest('[data-add]');
+      if (!row) return;
+      state.draft.serviceIds.push(row.dataset.add);
+      renderDraft();
+      runSearch(document.getElementById('svcmx-service-search').value);
+    });
+
+    document.getElementById('svcmx-picked').addEventListener('click', function(e) {
+      var remove = e.target.closest('[data-remove]');
+      if (remove) {
+        state.draft.serviceIds = state.draft.serviceIds.filter(function(id) { return id !== remove.dataset.remove; });
+        renderDraft();
+        return;
+      }
+      var move = e.target.closest('[data-move]');
+      if (move) {
+        var from = Number(move.dataset.move);
+        var to = from + Number(move.dataset.dir);
+        var ids = state.draft.serviceIds;
+        if (to < 0 || to >= ids.length) return;
+        var tmp = ids[from]; ids[from] = ids[to]; ids[to] = tmp;
+        renderDraft();
+      }
+    });
+  }
+
+  function init() {
+    bind();
+    loadConfig().then(loadMatrix).catch(function(err) {
+      document.getElementById('svcmx-content').innerHTML =
+        '<div class="svcmx-state">Не удалось загрузить настройки: ' + esc(err.message) + '</div>';
+    });
+  }
+
+  init();
+  return { reload: loadMatrix, state: state };
+})();
+</script>
