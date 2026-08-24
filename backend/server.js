@@ -333,6 +333,7 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const { chatFileGuard } = require('./services/fileAccess');
+const { onboardingFileGuard } = require('./services/onboarding/files');
 
 // Static files with proper MIME types
 const setUploadHeaders = (res, filePath) => {
@@ -362,6 +363,14 @@ const serveStatic = express.static(path.join(__dirname, 'uploads'), { setHeaders
 // пускает только участника чата, куда файл отправляли (services/fileAccess.js).
 app.use('/uploads/chat-attachments', chatFileGuard, express.static(
   path.join(__dirname, 'uploads/chat-attachments'),
+  { setHeaders: setUploadHeaders }
+));
+
+// Файлы анкет онбординга — вторая часть uploads за проверкой доступа. Причина
+// та же, что у вложений чата: там лежат сканы диплома, СНИЛС и ИНН врача, а
+// express.static отдаёт файл любому, кто знает его имя.
+app.use('/uploads/onboarding', onboardingFileGuard, express.static(
+  path.join(__dirname, 'uploads/onboarding'),
   { setHeaders: setUploadHeaders }
 ));
 
@@ -427,6 +436,7 @@ app.use('/api/rb-excel-sources',    rbExcelSourcesRoutes);
 app.use('/api/mis-appointments',    misAppointmentsRoutes);
 app.use('/api/mis-payments',        misPaymentsRoutes);
 app.use('/api/directories',         directoriesRoutes);
+app.use('/api/onboarding',          require('./routes/onboarding'));
 app.use('/api/ambulance-reports',   ambulanceReportsRoutes);
 app.use('/api/certificate-registry', certificateRegistryRoutes);
 app.use('/api/doctor-day-report',   doctorDayReportRoutes);
@@ -573,6 +583,7 @@ async function startServer() {
       require('./cron/misPaymentsSyncCron');
       require('./cron/submissionsRetryCron');
       require('./cron/competitorPricesCron');
+      require('./cron/onboardingSlaCron');
 
       const { initMissedCallsBot } = require('./services/notificationService');
       await initMissedCallsBot();

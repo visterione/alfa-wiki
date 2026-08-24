@@ -1,0 +1,280 @@
+/**
+ * Публичная анкета врача.
+ *
+ * Стоит на токенах дизайн-системы портала — тех же, что модуль «Задачи». Своя
+ * палитра здесь была ошибкой: index.css задаёт цвет заголовкам и телу глобально,
+ * и собственная тёмная тема анкеты с ними разошлась — заголовки оказались тёмными
+ * на тёмном. Вторая палитра в приложении с одной темой не нужна.
+ *
+ * Своё здесь только одно: размер шрифта в полях. 16px, иначе Safari на телефоне
+ * зумит страницу при фокусе, а анкету заполняют именно с телефона.
+ */
+
+.ank {
+  min-height: 100vh;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 28px 16px 72px;
+}
+
+.ank__wrap { max-width: 720px; margin: 0 auto; }
+
+.ank__head { margin-bottom: 20px; }
+.ank__head h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+.ank__head p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+
+.ank__card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 10px;
+}
+
+.ank__card h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-primary);
+  margin: 0 0 3px;
+}
+.ank__hint { margin: 0 0 14px; color: var(--text-secondary); font-size: 12.5px; }
+.ank__card h2 + .ank__field,
+.ank__card h2 + .ank__check { margin-top: 14px; }
+
+/* ── Поля ──────────────────────────────────────────────────────────────── */
+
+.ank__field { margin-bottom: 13px; }
+.ank__field:last-child { margin-bottom: 0; }
+.ank__field label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+
+.ank__field input,
+.ank__field select,
+.ank__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 16px;
+  transition: border-color var(--transition-fast);
+}
+.ank__field textarea { min-height: 100px; resize: vertical; }
+.ank__field input[type="file"] { padding: 8px; font-size: 13px; }
+
+.ank__field input:focus,
+.ank__field select:focus,
+.ank__field textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.ank__field--bad input,
+.ank__field--bad select,
+.ank__field--bad textarea { border-color: var(--error); }
+.ank__err { color: var(--error); font-size: 12px; margin-top: 5px; }
+
+.ank__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+/* ── Повторяемые блоки ─────────────────────────────────────────────────── */
+
+.ank__repeat-item {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px 14px 4px;
+  margin-bottom: 9px;
+  position: relative;
+}
+.ank__repeat-del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+}
+.ank__repeat-del:hover { color: var(--error); background: var(--bg-secondary); }
+
+/* ── Кнопки ────────────────────────────────────────────────────────────── */
+
+.ank__btn {
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: 11px 20px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-decoration: none;
+  transition: background var(--transition-fast);
+}
+.ank__btn:hover { background: var(--primary-hover); }
+.ank__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ank__btn--ghost {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.ank__btn--ghost:hover { background: var(--bg-secondary); }
+.ank__btn--wide { width: 100%; }
+
+.ank__actions { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+
+/* ── Сообщения ─────────────────────────────────────────────────────────── */
+
+.ank__note {
+  border-radius: var(--radius-md);
+  padding: 13px 15px;
+  margin-bottom: 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.ank__note--warn { background: rgba(255, 149, 0, 0.12); color: #8a5300; }
+.ank__note--bad { background: rgba(255, 59, 48, 0.11); color: #a8231b; }
+.ank__note--ok { background: rgba(52, 199, 89, 0.12); color: #1d7a3a; }
+
+/* ── Файлы и согласия ──────────────────────────────────────────────────── */
+
+.ank__files { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.ank__file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.ank__file button {
+  border: 0; background: none; color: var(--text-tertiary);
+  cursor: pointer; font-size: 12px;
+}
+.ank__file button:hover { color: var(--error); }
+
+.ank__check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  margin-bottom: 11px;
+  cursor: pointer;
+}
+.ank__check:last-child { margin-bottom: 0; }
+.ank__check input { margin-top: 2px; width: 17px; height: 17px; flex: none; }
+
+.ank__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.ank__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--primary-light);
+  color: var(--primary-hover);
+  border-radius: 20px;
+  padding: 4px 6px 4px 11px;
+  font-size: 12.5px;
+}
+.ank__chip button {
+  border: 0; background: none; cursor: pointer; color: inherit;
+  padding: 0 3px; font-size: 14px; line-height: 1;
+}
+
+/* ── Страница услуг ────────────────────────────────────────────────────── */
+
+.ank__group {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  margin-bottom: 8px;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+.ank__group-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.ank__group-head:hover { background: var(--bg-secondary); }
+.ank__group-head b { flex: 1; font-size: 13.5px; font-weight: 500; }
+.ank__group-head input[type="checkbox"] { width: 17px; height: 17px; flex: none; }
+.ank__group-count { color: var(--text-tertiary); font-size: 12px; }
+
+.ank__srv {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 90px 84px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border-light);
+}
+.ank__srv input[type="checkbox"] { width: 17px; height: 17px; }
+.ank__srv-title { font-size: 13.5px; }
+.ank__srv-code { color: var(--text-tertiary); font-size: 11.5px; }
+.ank__srv-price { color: var(--text-secondary); font-size: 13px; text-align: right; }
+.ank__srv input[type="number"],
+.ank__srv-comment input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+.ank__srv-comment { grid-column: 2 / -1; }
+
+/* ── Нижняя панель ─────────────────────────────────────────────────────── */
+
+.ank__bar {
+  position: sticky;
+  bottom: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 11px 15px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  box-shadow: var(--shadow-md);
+}
+.ank__bar span { flex: 1; font-size: 13px; color: var(--text-secondary); }
+
+@media (max-width: 560px) {
+  .ank { padding: 18px 12px 60px; }
+  .ank__srv { grid-template-columns: 22px minmax(0, 1fr) 76px; }
+  .ank__srv-price { grid-column: 2 / -1; text-align: left; }
+}

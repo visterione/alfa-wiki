@@ -77,6 +77,47 @@ async function canonicalClinicMap() {
 }
 
 /**
+ * Филиалы в карточках врачей хранятся старыми идентификаторами: редактор
+ * карточки конвертирует их при сохранении (convertNewClinicIdsToOld в
+ * doctor-card.html), поэтому в metadata.clinics лежит 1..6 из прежней нумерации.
+ * Сукко (11) и Нео (12) в ту нумерацию не попали и хранятся как есть.
+ */
+const LEGACY_CLINIC_IDS = { 1: 2, 2: 3, 3: 1, 4: 6, 5: 4, 6: 7 };
+
+/**
+ * Сводка по врачу из всех его карточек: филиалы и то, какие услуги в карточках
+ * показаны, а какие спрятаны «глазиком».
+ *
+ * Карточек у врача может быть несколько — по специальностям (аллерголог,
+ * пульмонолог, педиатр), и одна и та же услуга бывает скрыта в одной и показана
+ * в другой: на карточке аллерголога прячут педиатрический приём. Поэтому услуга
+ * считается видимой, если её показывает хотя бы одна карточка — правило «скрыта,
+ * если скрыта где-нибудь» отняло бы у врача его же профильные услуги.
+ */
+function buildCardIndex(cards) {
+  const index = new Map();
+  for (const card of cards) {
+    const misUserId = String(card.metadata?.misUserId || '');
+    if (!misUserId) continue;
+
+    let info = index.get(misUserId);
+    if (!info) {
+      info = { card, clinicIds: new Set(), visible: new Set(), hidden: new Set() };
+      index.set(misUserId, info);
+    }
+
+    for (const raw of card.metadata?.clinics || []) {
+      const clinicId = LEGACY_CLINIC_IDS[raw] ?? Number(raw);
+      if (Number.isInteger(clinicId)) info.clinicIds.add(clinicId);
+    }
+    for (const [serviceId, override] of Object.entries(card.metadata?.serviceOverrides || {})) {
+      (override?.isHidden ? info.hidden : info.visible).add(String(serviceId));
+    }
+  }
+  return index;
+}
+
+/**
  * Какая длительность попадёт в ячейку и откуда она взялась.
  * Порядок именно такой: своё время врача по филиалу важнее общего значения из
  * карточки, а дефолт услуги — последнее, что можно показать вместо прочерка.
@@ -247,11 +288,7 @@ async function buildMatrix(input = {}) {
 
     // Карточка даёт человеческое ФИО, специальность и ссылку. Врач без карточки в
     // матрице всё равно нужен — иначе регистратура решит, что услугу не делают.
-    const cardByMisId = new Map();
-    for (const card of cards) {
-      const misUserId = String(card.metadata?.misUserId || '');
-      if (misUserId && !cardByMisId.has(misUserId)) cardByMisId.set(misUserId, card);
-    }
+    const cardIndex = buildCardIndex(cards);
 
     // До ver. 6.56 длительность жила в карточке одним полем на услугу, без
     // разбивки по филиалам, и текстом: «40 мин», «30 мин (Альфа) / 20 мин (Кидс)».
@@ -290,9 +327,21 @@ async function buildMatrix(input = {}) {
       for (const clinic of visibleClinics) {
         const price = priceByKey.get(`${clinic.id}:${serviceId}`);
         const doctors = roster
-          .filter(person => person.clinicIds.includes(clinic.id) && person.serviceIds.has(serviceId))
+          .filter(person => {
+            if (!person.serviceIds.has(serviceId)) return false;
+            const info = cardIndex.get(person.misUserId);
+            // Явно спрятанное «глазиком» не показываем никогда — это решение
+            // человека о том, что врач услугу не оказывает, и оно важнее МИС,
+            // где услуги подтянуты пачкой и у половины исполнителей лишние.
+            if (info && !info.visible.has(serviceId) && info.hidden.has(serviceId)) return false;
+            // Филиалы у карточки проставлены руками и точнее: в МИС врач часто
+            // числится там, где давно не принимает. Пустой список — берём МИС.
+            const clinicIds = info && info.clinicIds.size ? [...info.clinicIds] : person.clinicIds;
+            return clinicIds.includes(clinic.id);
+          })
           .map(person => {
-            const card = cardByMisId.get(person.misUserId);
+            const info = cardIndex.get(person.misUserId);
+            const card = info?.card || null;
             const own = durationByKey.get(`${person.misUserId}:${clinic.id}:${serviceId}`);
             const legacy = legacyByKey.get(`${person.misUserId}:${serviceId}`) || null;
             const resolved = pickDuration({ own, legacy: legacy?.minutes, serviceDefault: price?.duration });
@@ -304,6 +353,10 @@ async function buildMatrix(input = {}) {
               // Ссылка на карточку: у вики-страницы есть подсветка по id карточки.
               profileUrl: card ? (card.profileUrl || `/page/${card.pageSlug}?highlight=${card.id}`) : null,
               isFacility: person.isFacility,
+              // Подтверждённый исполнитель — тот, у кого есть карточка и в ней
+              // эта услуга показана. Остальных страница по умолчанию прячет:
+              // это либо кабинеты, либо связки, которые в карточке не проверяли.
+              confirmed: Boolean(info && info.visible.has(serviceId)),
               duration: resolved.duration,
               // Дефолт услуги нельзя показывать как персональную настройку: по
               // нему записывают, но за ним никто не следил. Значение из карточки —
@@ -312,7 +365,7 @@ async function buildMatrix(input = {}) {
               durationNote: legacy?.note || null
             };
           })
-          .sort((a, b) => Number(a.isFacility) - Number(b.isFacility) || a.name.localeCompare(b.name, 'ru'));
+          .sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || a.name.localeCompare(b.name, 'ru'));
 
         cells[clinic.id] = {
           price: price?.price != null ? Number(price.price) : null,
@@ -352,4 +405,5 @@ router.post('/data', authenticate, async (req, res) => {
 module.exports = router;
 module.exports.buildMatrix = buildMatrix;
 module.exports.looksLikePerson = looksLikePerson;
+module.exports.buildCardIndex = buildCardIndex;
 module.exports.pickDuration = pickDuration;

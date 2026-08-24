@@ -413,7 +413,9 @@ const ReviewBoard = () => {
       })
     );
     try {
-      await reviews.moveReview(draggableId, newStatus, newSortOrder, comment || undefined);
+      // Комментарий в диалоге относится к передаче исполнителю. Если отправить его
+      // ещё и со сменой статуса, оба endpoint-а создадут одинаковую запись истории.
+      await reviews.moveReview(draggableId, newStatus, newSortOrder);
       if (chosenAssigneeId) {
         await reviews.assignReview(draggableId, chosenAssigneeId, comment || undefined);
       }

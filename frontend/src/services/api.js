@@ -1172,4 +1172,61 @@ export const warehouseApi = {
   publicAsset:     (token)        => publicApi.get(`/a/${token}`),
 };
 
+// ── Онбординг врача (ver. 7.30) ───────────────────────────────────────────
+
+export const onboarding = {
+  overview:      ()                 => api.get('/onboarding/overview'),
+
+  // Материалы для рассылки: постоянная ссылка на анкету и QR к ней.
+  materials:     ()                 => api.get('/onboarding/materials'),
+
+  // Настройки: кто отвечает за шаг. Ролей под этот процесс не заводили —
+  // назначение всегда на конкретного человека.
+  settings:      ()                 => api.get('/onboarding/settings'),
+  saveStep:      (stepKey, data)    => api.put(`/onboarding/settings/${stepKey}`, data),
+  broken:        ()                 => api.get('/onboarding/settings/broken'),
+
+  applications:  (params)           => api.get('/onboarding/applications', { params }),
+  application:   (id)               => api.get(`/onboarding/applications/${id}`),
+  approve:       (id)               => api.post(`/onboarding/applications/${id}/approve`),
+  revision:      (id, data)         => api.post(`/onboarding/applications/${id}/revision`, data),
+  reject:        (id, data)         => api.post(`/onboarding/applications/${id}/reject`, data),
+  cancel:        (id, data)         => api.post(`/onboarding/applications/${id}/cancel`, data),
+  changeMedCenter: (id, data)       => api.put(`/onboarding/applications/${id}/med-center`, data),
+  services:      (id)               => api.get(`/onboarding/applications/${id}/services`),
+  export:        (id)               => api.get(`/onboarding/applications/${id}/export`),
+
+  myTasks:       ()                 => api.get('/onboarding/tasks/my'),
+  claimTask:     (taskId)           => api.post(`/onboarding/tasks/${taskId}/claim`),
+  verifyTask:    (taskId, data)     => api.post(`/onboarding/tasks/${taskId}/verify`, data),
+  completeTask:  (taskId, data)     => api.post(`/onboarding/tasks/${taskId}/complete`, data),
+};
+
+// Публичный контур анкеты. Отдельный клиент без Authorization: её заполняет
+// человек, у которого нет аккаунта в портале, и подставлять сюда чужой токен
+// (например, если в браузере залогинен сотрудник) нельзя.
+const anketaApi = axios.create({
+  baseURL: `${BASE_URL}/api/public/v1/onboarding`,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+export const anketa = {
+  meta:          ()                 => anketaApi.get('/meta'),
+  requestCode:   (data)             => anketaApi.post('/request-code', data),
+  verifyCode:    (data)             => anketaApi.post('/verify-code', data),
+
+  load:          (token)            => anketaApi.get(`/${token}`),
+  saveDraft:     (token, data)      => anketaApi.put(`/${token}`, data),
+  setConsents:   (token, data)      => anketaApi.post(`/${token}/consents`, data),
+  submit:        (token)            => anketaApi.post(`/${token}/submit`),
+  deleteFile:    (token, fileId)    => anketaApi.delete(`/${token}/files/${fileId}`),
+  uploadFile:    (token, formData)  => anketaApi.post(`/${token}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+
+  servicesList:  (token)            => anketaApi.get(`/${token}/services`),
+  saveServices:  (token, data)      => anketaApi.post(`/${token}/services`, data),
+  submitServices:(token)            => anketaApi.post(`/${token}/services/submit`),
+};
+
 export default api;

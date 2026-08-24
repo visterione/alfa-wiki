@@ -47,3 +47,38 @@ test('длительность берём в порядке: своя по фи�
     { duration: null, source: 'none' }
   );
 });
+
+// Карточек у врача бывает несколько — по специальностям, и одна и та же услуга
+// в них помечена по-разному. Правило «видима, если показана хотя бы в одной»
+// защищает педиатрический приём, спрятанный на карточке аллерголога.
+test('видимость услуги собирается по всем карточкам врача', () => {
+  const { buildCardIndex } = require('../routes/service-matrix');
+
+  const index = buildCardIndex([
+    {
+      fullName: 'Иванова Мария Петровна',
+      metadata: {
+        misUserId: '77',
+        clinics: [1, 4],
+        serviceOverrides: { '100': { isHidden: true }, '200': {} }
+      }
+    },
+    {
+      fullName: 'Иванова Мария Петровна',
+      metadata: {
+        misUserId: '77',
+        clinics: [11],
+        serviceOverrides: { '100': {}, '300': { isHidden: true } }
+      }
+    }
+  ]);
+
+  const info = index.get('77');
+  assert.equal(info.visible.has('100'), true, 'вторая карточка показывает услугу');
+  assert.equal(info.visible.has('200'), true);
+  assert.equal(info.visible.has('300'), false);
+  assert.equal(info.hidden.has('300'), true);
+  // Старые идентификаторы филиалов из карточки приводим к нынешним; Сукко (11)
+  // в прежнюю нумерацию не входил и остаётся собой.
+  assert.deepEqual([...info.clinicIds].sort((a, b) => a - b), [2, 6, 11]);
+});

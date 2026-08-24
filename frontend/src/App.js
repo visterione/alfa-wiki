@@ -14,6 +14,12 @@ const PageEditor = lazy(() => import('./pages/PageEditor'));
 const Profile = lazy(() => import('./pages/Profile'));
 const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Favorites = lazy(() => import('./pages/Favorites'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+// Публичные страницы анкеты: их открывает врач, у которого нет и не будет
+// аккаунта в портале.
+const AnketaStart = lazy(() => import('./pages/Anketa/AnketaStart'));
+const AnketaForm = lazy(() => import('./pages/Anketa/AnketaForm'));
+const AnketaServices = lazy(() => import('./pages/Anketa/AnketaServices'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminBots = lazy(() => import('./pages/admin/AdminBots'));
 const AdminIntegrations = lazy(() => import('./pages/admin/AdminIntegrations'));
@@ -119,6 +125,14 @@ function AppRoutes() {
           Кабинеты сюда не входят: их код висит на двери в общем коридоре и ведёт
           на /warehouse?room=<id>, то есть внутрь портала, за авторизацию. */}
       <Route path="/p/a/:token" element={<PublicAssetCard kind="asset" />} />
+
+      {/* Анкета врача. Вне ProtectedRoute по замыслу: ссылка одна и постоянная,
+          её рассылают кандидатам и вешают в вакансию, а заполняют с телефона,
+          на котором портал не залогинен. Право на конкретную заявку
+          предъявляется её токеном, а не сессией. */}
+      <Route path="/anketa" element={<AnketaStart />} />
+      <Route path="/anketa/:token" element={<AnketaForm />} />
+      <Route path="/anketa/:token/services" element={<AnketaServices />} />
       
       <Route path="/" element={
         <ProtectedRoute>
@@ -147,6 +161,14 @@ function AppRoutes() {
             терялось при переходе между ними. */}
         <Route path="tasks" element={
           <ProtectedRoute requireAdminAccess="tasks"><Tasks /></ProtectedRoute>
+        } />
+
+        {/* Онбординг врача (ver. 7.30). Флаг тот же гранулярный, что у склада и
+            «Задач»: он решает только видимость раздела. Кто какой шаг выполняет
+            и чьи заявки ему видны — считают назначения на бэкенде, отдельных
+            ролей под этот процесс намеренно не заводили. */}
+        <Route path="onboarding" element={
+          <ProtectedRoute requireAdminAccess="onboarding"><Onboarding /></ProtectedRoute>
         } />
 
         {/* Reviews module */}

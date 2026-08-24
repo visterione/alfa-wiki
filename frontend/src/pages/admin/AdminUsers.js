@@ -244,7 +244,8 @@ export default function AdminUsers() {
       journal: false,
       reviews: false,
       parser: false,
-      medCenters: false
+      medCenters: false,
+      onboarding: false
     },
     salaryPerm: { ...SALARY_PERM_DEFAULT },
     statisticsTabs: {
@@ -536,7 +537,7 @@ export default function AdminUsers() {
         adminAccess: user.adminAccess || {
           pages: false, sidebar: false, users: false, roles: false, media: false,
           backup: false, settings: false, courses: false, journal: false, reviews: false,
-          parser: false, medCenters: false
+          parser: false, medCenters: false, onboarding: false
         },
         salaryPerm,
         statisticsTabs: user.statisticsTabs ? {
@@ -1399,13 +1400,16 @@ export default function AdminUsers() {
                         { key: 'promotions',  label: 'Акции',           checked: form.isAdmin || !!form.canManagePromotions,    onChange: v => { if (!form.isAdmin) setForm({...form, canManagePromotions: v}); } },
                         { key: 'releaseNotes', label: 'Нововведения',   checked: form.isAdmin || !!form.adminAccess.releaseNotes, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, releaseNotes: v}}); } },
                         { key: 'medCenters',  label: 'Медцентры',       checked: form.isAdmin || !!form.adminAccess.medCenters, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, medCenters: v}}); } },
+                        // Онбординг врача: флаг открывает раздел, но заявки человек
+                        // увидит только там, где назначен исполнителем шага.
+                        { key: 'onboarding',  label: 'Онбординг врача', checked: form.isAdmin || !!form.adminAccess.onboarding, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, onboarding: v}}); } },
                       ],
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         setForm({...form,
                           canEditServices: newVal, canEditDoctorCards: newVal,
                           canEditAnalyses: newVal, canManagePromotions: newVal,
-                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal}
+                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal}
                         });
                       },
                     },

@@ -63,6 +63,8 @@
     "migrate:7.11:check": "node scripts/migrateWarehouseSavedReports.js --check",
     "migrate:7.13": "node scripts/migrateWarehouseItemDictionary.js",
     "migrate:7.13:check": "node scripts/migrateWarehouseItemDictionary.js --check",
+    "migrate:7.30": "node scripts/migrateDoctorOnboarding.js",
+    "migrate:7.30:check": "node scripts/migrateDoctorOnboarding.js --check",
     "warehouse:nomenclature": "node scripts/seedWarehouseNomenclature.js",
     "warehouse:nomenclature:check": "node scripts/seedWarehouseNomenclature.js --check",
     "warehouse:reset": "node scripts/resetWarehouseTestData.js",

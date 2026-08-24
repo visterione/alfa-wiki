@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -372,6 +372,7 @@ function QuickAccessButtons({ onClose }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [assignedReviewsCount, setAssignedReviewsCount] = useState(0);
   const [tasksCount, setTasksCount] = useState(0);
+  const [onboardingCount, setOnboardingCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
   const canAccessSalary = isAdmin || user?.canAccessSalary === true;
   // Складской учёт закрыт тем же гранулярным флагом, что «Отзывы»: раздел
@@ -383,6 +384,9 @@ function QuickAccessButtons({ onClose }) {
   // отзывы. Кто чью загрузку видит внутри модуля — решают команды, а не этот
   // переключатель: он отвечает только за то, виден ли раздел вообще.
   const canAccessTasks = isAdmin || user?.adminAccess?.tasks === true;
+  // Онбординг врача (ver. 7.30) — тот же гранулярный флаг. Внутри модуля
+  // человек видит только заявки тех филиалов, где он назначен исполнителем.
+  const canAccessOnboarding = isAdmin || user?.adminAccess?.onboarding === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -446,6 +450,25 @@ function QuickAccessButtons({ onClose }) {
     };
   }, [canAccessTasks]);
 
+  /**
+   * Бейдж онбординга — незакрытые задачи самого человека. Процесс идёт неделями
+   * и напоминает о себе редко: без счётчика шаг обнаруживают по просрочке.
+   */
+  useEffect(() => {
+    if (!canAccessOnboarding) return undefined;
+    const load = async () => {
+      try {
+        const { data } = await onboardingApi.overview();
+        setOnboardingCount(data.myTasksCount || 0);
+      } catch {
+        // Молча: бейдж не тот повод, чтобы шуметь на каждой странице портала.
+      }
+    };
+    load();
+    const interval = setInterval(load, 120000);
+    return () => clearInterval(interval);
+  }, [canAccessOnboarding]);
+
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/explorer' || location.pathname.startsWith('/explorer/');
@@ -455,6 +478,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnSalary = location.pathname.startsWith('/referral-bonuses');
   const isOnStatistics = location.pathname.startsWith('/statistics');
   const isOnTasks = location.pathname.startsWith('/tasks');
+  const isOnOnboarding = location.pathname.startsWith('/onboarding');
 
   const handleClick = (path) => {
     navigate(path);
@@ -568,6 +592,20 @@ function QuickAccessButtons({ onClose }) {
         {canAccessTasks && tasksCount > 0 && (
           <span className="quick-access-badge">
             {tasksCount > 99 ? '99+' : tasksCount}
+          </span>
+        )}
+      </button>
+
+      <button
+        className={`quick-access-btn onboarding ${isOnOnboarding ? 'active' : ''} ${!canAccessOnboarding ? 'locked' : ''}`}
+        onClick={() => canAccessOnboarding ? handleClick('/onboarding') : toast.error('Нет доступа к разделу «Онбординг врача»')}
+        title={canAccessOnboarding ? 'Онбординг врача' : 'Онбординг врача (нет доступа)'}
+      >
+        <ClipboardList size={20} />
+        {!canAccessOnboarding && <Lock size={10} className="quick-access-lock" />}
+        {canAccessOnboarding && onboardingCount > 0 && (
+          <span className="quick-access-badge">
+            {onboardingCount > 99 ? '99+' : onboardingCount}
           </span>
         )}
       </button>

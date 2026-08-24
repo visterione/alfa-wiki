@@ -111,7 +111,11 @@ const User = sequelize.define('User', {
       // зав. отделением, наблюдатель) — они выводятся из ролей и из того, где
       // человек назначен ответственным, см. services/warehouse/access.js.
       // Этот флаг решает только одно: видит ли он раздел вообще.
-      warehouse: false
+      warehouse: false,
+      // Онбординг врача (ver. 7.30). Как и выше — только видимость раздела.
+      // Кто какой шаг выполняет, задают назначения (OnbAssignment), а не роль:
+      // отдельных ролей под этот процесс намеренно не заводили.
+      onboarding: false
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -4072,10 +4076,21 @@ const {
 
 associateWarehouse({ User, MedCenter, StructuralDivision });
 
+// === ОНБОРДИНГ ВРАЧА (ver. 7.30) ===
+// Тем же способом, что склад: отдельный файл с фабрикой, ассоциации здесь —
+// им нужны уже определённые User и MedCenter.
+const {
+  models: onboardingModels,
+  associateOnboarding,
+} = require('./onboarding')(sequelize, DataTypes);
+
+associateOnboarding({ User, MedCenter });
+
 module.exports = {
   sequelize,
   Sequelize,
   ...warehouseModels,
+  ...onboardingModels,
   Role,
   User,
   Folder,
