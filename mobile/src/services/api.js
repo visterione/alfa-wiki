@@ -103,6 +103,14 @@ export const media = {
   },
 };
 
+// ── Сотрудники ──────────────────────────────────────────────────────────────
+// Лёгкий список для полей «кто»: председатель комиссии, МОЛ. Именно /users/list,
+// а не /chat/users: тот исключает самого себя (в переписке с собой смысла нет),
+// а МОЛ человек назначает и себя тоже.
+export const users = {
+  listBasic: () => api.get('/users/list'),
+};
+
 // ── Chat ────────────────────────────────────────────────────────────────────
 export const chat = {
   list: () => api.get('/chat'),
@@ -351,6 +359,11 @@ export const warehouse = {
     api.post(`/warehouse/operations/inventory/${id}/count`, data),
   closeInventory: (id, data) =>
     api.patch(`/warehouse/operations/inventory/${id}/close`, data),
+  // Отмена, а не закрытие: опись, заведённую по ошибке, закрывать нельзя —
+  // непересчитанные строки станут недостачей на весь кабинет. Отмена ничего не
+  // проводит, поэтому её и можно нажать с телефона.
+  cancelInventory: (id, reason) =>
+    api.patch(`/warehouse/operations/inventory/${id}/cancel`, {reason}),
 
   // Этикетки для Brother P-touch.
   //

@@ -19,7 +19,9 @@ const {
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport, roomPath } = require('../../services/warehouse/access');
 const { createDocument } = require('../../services/warehouse/stock');
-const { assertNotCounting, openCountByRoom } = require('../../services/warehouse/inventory');
+const {
+  assertNotCounting, openCountByRoom, sessionRooms, roomsBySession, inventoryScopeOf,
+} = require('../../services/warehouse/inventory');
 const alerts = require('../../services/warehouse/alerts');
 const {
   generateMaintenanceNumber, generateRepairNumber, generateRfqNumber, generateDocumentNumber,
@@ -548,7 +550,12 @@ router.get('/inventory', authenticate, requireWarehouse(), async (req, res) => {
     order: [['createdAt', 'DESC']],
     limit: 100,
   });
-  res.json(rows);
+
+  // Кабинеты описи по номерам — одним запросом на весь список, а не по запросу
+  // на строку: область («каб. 305, 307 и ещё 3») читают в таблице у каждой описи,
+  // и без этого сотня описей превратилась бы в сотню запросов.
+  const byId = await roomsBySession(rows, {});
+  res.json(rows.map(row => ({ ...row.toJSON(), rooms: byId.get(row.id) || [] })));
 });
 
 /**
@@ -592,37 +599,67 @@ router.post('/inventory', authenticate, requireWarehouse('canIssue'), async (req
   const t = await sequelize.transaction();
   try {
     const { roomId, departmentId, basis, chairmanUserId, members, responsibleUserId } = req.body;
-    if (!roomId && !departmentId) {
+    // Кабинетов может быть несколько (ver. 7.36): в приказе перечисляют «305,
+    // 307 и 310», а не «один кабинет» или «всё отделение». Одиночный roomId
+    // остаётся в запросах старых клиентов и в ссылках, поэтому принимается тоже.
+    const wantedRooms = [...new Set([
+      ...(Array.isArray(req.body.roomIds) ? req.body.roomIds : []),
+      ...(roomId ? [roomId] : []),
+    ].filter(Boolean))];
+
+    if (!wantedRooms.length && !departmentId) {
       await t.rollback();
       return res.status(400).json({ error: 'Нужен кабинет или отделение' });
     }
+    // Отделение и перечисленные кабинеты вместе — это две разные области в одной
+    // описи: непонятно, что замораживать и что попадёт в ИНВ-1.
+    if (wantedRooms.length && departmentId) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Опись бывает либо по кабинетам, либо по отделению' });
+    }
 
     const scoped = await req.warehouse.scopedRoomIds();
-    if (scoped !== null && roomId && !scoped.includes(roomId)) {
-      await t.rollback();
-      return res.status(403).json({ error: 'Кабинет не в вашей зоне ответственности' });
+    if (scoped !== null) {
+      const outside = wantedRooms.filter(id => !scoped.includes(id));
+      if (outside.length) {
+        await t.rollback();
+        return res.status(403).json({
+          error: outside.length === wantedRooms.length
+            ? 'Кабинет не в вашей зоне ответственности'
+            : `Не в вашей зоне ответственности кабинетов: ${outside.length}`,
+        });
+      }
     }
+
+    // Кабинеты области считаем до создания описи: по ним же проверяется, не
+    // пересчитывает ли их кто-то уже, и из них же собираются строки.
+    const roomIds = wantedRooms.length
+      ? wantedRooms
+      : (await WhRoom.findAll({ where: { departmentId, isActive: true }, attributes: ['id'], transaction: t })).map(r => r.id);
 
     // Две открытые описи на один кабинет — это два снимка ожидаемых количеств,
     // снятые в разные моменты, и обе разницы потом проводятся поверх одного и
-    // того же остатка.
-    const already = await WhInventorySession.findOne({
-      where: {
-        status: 'counting',
-        ...(roomId ? { roomId } : { departmentId }),
-      },
-      transaction: t,
-    });
-    if (already) {
+    // того же остатка. Проверять поэтому надо пересечение областей, а не
+    // совпадение полей: описи по кабинету 305 и по его отделению конфликтуют,
+    // хотя записаны по-разному.
+    const busy = await openCountByRoom(roomIds, { transaction: t });
+    if (busy.size) {
+      const numbers = [...new Set([...busy.values()].map(session => session.number))];
       await t.rollback();
-      return res.status(409).json({ error: `Здесь уже идёт инвентаризация ${already.number}` });
+      return res.status(409).json({
+        error: busy.size === 1 || numbers.length === 1
+          ? `Здесь уже идёт инвентаризация ${numbers[0]}`
+          : `Кабинеты уже пересчитывают: ${numbers.join(', ')}`,
+      });
     }
 
     const number = await generateDocumentNumber({ type: 'inventory', transaction: t });
     const session = await WhInventorySession.create({
       number,
-      scope: roomId ? 'room' : 'department',
-      roomId: roomId || null, departmentId: departmentId || null,
+      // Как область раскладывается по полям записи — в одном месте, в
+      // services/warehouse/inventory.js: от этого зависят и заморозка, и подпись
+      // в журнале, и шапка ИНВ-1.
+      ...inventoryScopeOf(roomIds, departmentId),
       basis: basis || null,
       status: 'counting',
       chairmanUserId: chairmanUserId || req.user.id,
@@ -631,10 +668,6 @@ router.post('/inventory', authenticate, requireWarehouse('canIssue'), async (req
       startedAt: new Date(),
       createdBy: req.user.id,
     }, { transaction: t });
-
-    const roomIds = roomId
-      ? [roomId]
-      : (await WhRoom.findAll({ where: { departmentId, isActive: true }, attributes: ['id'], transaction: t })).map(r => r.id);
 
     const assets = await WhAsset.findAll({
       where: { roomId: { [Op.in]: roomIds }, isArchived: false },
@@ -685,8 +718,11 @@ router.get('/inventory/:id', authenticate, requireWarehouse(), async (req, res) 
 
   const items = session.items || [];
   const counted = items.filter(i => i.actualQty !== null);
+  const rooms = await sessionRooms(session);
   res.json({
-    session,
+    // Кабинеты области отдаём отдельным полем, а не строкой: телефон и веб
+    // показывают их по-разному — чипами и одной строкой в таблице.
+    session: { ...session.toJSON(), rooms },
     stats: {
       total: items.length,
       counted: counted.length,
@@ -694,7 +730,10 @@ router.get('/inventory/:id', authenticate, requireWarehouse(), async (req, res) 
       manual: counted.filter(i => i.scanMethod === 'manual').length,
       shortage: items.filter(i => i.actualQty !== null && Number(i.actualQty) < Number(i.expectedQty)).length,
       surplus: items.filter(i => i.actualQty !== null && Number(i.actualQty) > Number(i.expectedQty)).length,
-      locationPath: session.roomId ? await roomPath(session.roomId) : null,
+      // Полный путь показывается, только когда кабинет один: у описи на восемь
+      // кабинетов восемь путей в одну строку не влезают, там область читают по
+      // номерам из session.rooms.
+      locationPath: rooms.length === 1 ? await roomPath(rooms[0].id) : null,
     },
   });
 });
@@ -708,6 +747,7 @@ router.post('/inventory/:id/count', authenticate, requireWarehouse('canIssue'), 
     const session = await WhInventorySession.findByPk(req.params.id);
     if (!session) return res.status(404).json({ error: 'Опись не найдена' });
     if (session.status === 'closed') return res.status(409).json({ error: 'Опись уже закрыта' });
+    if (session.status === 'cancelled') return res.status(409).json({ error: 'Опись отменена' });
 
     const { code, assetId, itemId, actualQty, scanMethod, note } = req.body;
 
@@ -812,6 +852,46 @@ router.patch('/inventory/:id/close', authenticate, requireWarehouse('canIssue'),
     res.json({ ok: true, session });
   } catch (err) {
     await t.rollback();
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Отмена описи — не то же самое, что закрытие (ver. 7.36).
+ *
+ * Закрытие превращает непересчитанные строки в недостачу: это итог работы
+ * комиссии. Опись, заведённую по ошибке — не тот кабинет, не то отделение, —
+ * закрывать нельзя, иначе в учёте появляется недостача на весь кабинет, которую
+ * потом кто-то будет объяснять. До сих пор единственным выходом было закрыть её
+ * из веба, потому что с телефона не было ни того, ни другого.
+ *
+ * Отмена ничего не проводит: строки остаются как есть, документов не рождается,
+ * освобождается только сам кабинет — проверка «здесь уже идёт инвентаризация»
+ * смотрит на статус counting. Поэтому её не страшно отдать на телефон.
+ *
+ * Закрытую опись отменять нельзя: по ней уже могли пройти расхождения, и
+ * снимать с неё статус — это переписывать историю пересчёта.
+ */
+router.patch('/inventory/:id/cancel', authenticate, requireWarehouse('canIssue'), async (req, res) => {
+  try {
+    const session = await WhInventorySession.findByPk(req.params.id);
+    if (!session) return res.status(404).json({ error: 'Опись не найдена' });
+    if (session.status === 'closed') {
+      return res.status(409).json({ error: `Опись ${session.number} уже закрыта — отменять нечего` });
+    }
+    if (session.status === 'cancelled') return res.json({ ok: true, session });
+
+    await session.update({
+      status: 'cancelled',
+      finishedAt: new Date(),
+      // Причина пишется в основание: через месяц «почему опись брошена» уже
+      // никто не вспомнит, а список описей по кабинету читают именно так.
+      basis: [session.basis, req.body?.reason && `Отменена: ${req.body.reason}`]
+        .filter(Boolean).join('. ').slice(0, 255) || null,
+    });
+    res.json({ ok: true, session });
+  } catch (err) {
+    console.error('PATCH warehouse/inventory/cancel error:', err);
     res.status(500).json({ error: err.message });
   }
 });

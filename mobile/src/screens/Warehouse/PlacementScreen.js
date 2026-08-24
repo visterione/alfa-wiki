@@ -41,17 +41,30 @@
  * созданное, поэтому повторный прогон ничего не задваивает, а сужение до одного
  * кабинета не трогает остальную ведомость. Общий разбор в вебе никуда не делся —
  * он про проверку решений словаря по всей ведомости целиком.
+ *
+ * ── Почему этикетки печатаются отсюда же (ver. 7.36) ─────────────────────────
+ *
+ * Раскладка заводит карточки оборудования, а карточка без наклейки на корпусе
+ * не находится ни сканером, ни глазами. Чтобы напечатать этикетки на только что
+ * разложенное, надо было выйти из размещения, открыть вкладку кабинетов, найти
+ * тот же кабинет и отметить в нём те же вещи заново — на первичном разносе,
+ * когда за день обходят десятки кабинетов, это удваивает работу.
+ *
+ * Поэтому сервер возвращает id заведённых карточек, а экран держит их, пока не
+ * сменили кабинет: предложением сразу после «Готово» и полосой над списком, если
+ * предложение отклонили. Печать остаётся отдельным шагом — принтер бывает не с
+ * собой, а этикетки нужны не всегда.
  */
 import React, {useCallback, useMemo, useState} from 'react';
 import {
   View, Text, Image, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
 } from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Camera, useCameraDevice, useCodeScanner} from 'react-native-vision-camera';
 import {
   DoorOpen, ScanLine, Search, X, Check, Package, Boxes, Building2,
-  ChevronRight, ChevronLeft, ChevronDown,
+  ChevronRight, ChevronLeft, ChevronDown, Printer,
 } from 'lucide-react-native';
 
 import CONFIG from '../../config';
@@ -59,7 +72,7 @@ import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {loadLocationTree} from '../../store/warehouseStore';
+import {loadLocationTree, useWarehouseCan} from '../../store/warehouseStore';
 import {qtyText, moneyText, flattenRooms, roomMatches} from './warehouseMeta';
 import {ROOT_KEY, buildNodes, leavesOf, resolveNode} from './locationTree';
 
@@ -67,6 +80,8 @@ export default function WarehousePlacementScreen() {
   const styles = useThemedStyles(makeStyles);
   const c = useTheme();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const canPrint = useWarehouseCan('canPrintLabels');
   // Место под нижнюю кнопку «Положить сюда»: она лежит поверх списка, и без
   // запаса последняя позиция оказывалась бы под ней.
   const listStyle = {paddingHorizontal: 12, paddingBottom: insets.bottom + 90};
@@ -84,6 +99,9 @@ export default function WarehousePlacementScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [scanning, setScanning] = useState(false);
+  // Карточки, заведённые в этом кабинете, — только чтобы предложить этикетки.
+  // Сбрасываются сменой кабинета: в новом кабинете печатать нужно уже другое.
+  const [fresh, setFresh] = useState(null);
 
   const room = useMemo(
     () => flattenRooms(tree).find(item => item.id === roomId),
@@ -115,6 +133,12 @@ export default function WarehousePlacementScreen() {
       return next;
     });
   };
+
+  const printLabels = (ids, roomLabel) => navigation.navigate('WarehouseLabelPrint', {
+    kind: 'asset',
+    ids,
+    title: roomLabel || 'Этикетки оборудования',
+  });
 
   const send = async () => {
     if (!roomId || !picked.size) return;
@@ -151,10 +175,34 @@ export default function WarehousePlacementScreen() {
         made?.problems?.length ? made.problems[0].reason : null,
       ].filter(Boolean);
 
-      Alert.alert(
-        data.rejected?.length || made?.failed ? 'Размещено с оговорками' : 'Готово',
-        lines.join('\n'),
-      );
+      // Этикетки — только на карточки, заведённые здесь и сейчас: их номеров ещё
+      // нет на корпусах, и наклеить их проще всего не выходя из кабинета.
+      //
+      // Пачки за кабинет складываются, а не заменяют друг друга: оборудование и
+      // материалы отбирают порознь через фильтр вида, то есть один кабинет почти
+      // всегда раскладывается в два-три захода. Если бы вторая пачка вытесняла
+      // первую, часть карточек снова пришлось бы искать во вкладке кабинетов —
+      // ровно от этого экран и избавляет.
+      const ids = canPrint ? (made?.assetIds || []) : [];
+      if (ids.length) {
+        setFresh(prev => ({
+          ids: [...new Set([...(prev?.ids || []), ...ids])],
+          roomLabel: room?.label,
+        }));
+      }
+
+      const title = data.rejected?.length || made?.failed
+        ? 'Размещено с оговорками' : 'Готово';
+      if (ids.length) {
+        Alert.alert(title, lines.join('\n'), [
+          // «Потом» не теряет карточки: полоса над списком висит до смены
+          // кабинета, и напечатать их можно, дойдя до принтера.
+          {text: 'Потом', style: 'cancel'},
+          {text: `Этикетки · ${ids.length}`, onPress: () => printLabels(ids, room?.label)},
+        ]);
+      } else {
+        Alert.alert(title, lines.join('\n'));
+      }
     } catch (e) {
       Alert.alert('Не размещено', e?.response?.data?.error || 'Попробуйте ещё раз.');
     } finally {
@@ -212,7 +260,9 @@ export default function WarehousePlacementScreen() {
 
   return (
     <View style={styles.root}>
-      <Pressable style={styles.roomBar} onPress={() => { setRoomId(null); setPicked(new Map()); }}>
+      <Pressable
+        style={styles.roomBar}
+        onPress={() => { setRoomId(null); setPicked(new Map()); setFresh(null); }}>
         <DoorOpen size={18} color={c.primary} />
         <View style={styles.roomText}>
           <Text style={styles.roomName}>{room ? room.label : 'Кабинет'}</Text>
@@ -220,6 +270,19 @@ export default function WarehousePlacementScreen() {
         </View>
         <Text style={styles.roomChange}>сменить</Text>
       </Pressable>
+
+      {/* Полоса, а не только всплывающее предложение: принтер в отделении может
+          раздавать свой вайфай, и до печати человек успевает уйти в настройки
+          сети — задание должно ждать его на экране, а не в закрытом окне. */}
+      {Boolean(fresh) && (
+        <Pressable style={styles.freshBar} onPress={() => printLabels(fresh.ids, fresh.roomLabel)}>
+          <Printer size={17} color={c.primary} />
+          <Text style={styles.freshText}>
+            Заведено карточек: {fresh.ids.length} — напечатать этикетки
+          </Text>
+          <ChevronRight size={16} color={c.textTertiary} />
+        </Pressable>
+      )}
 
       <View style={styles.tools}>
         <View style={styles.search}>
@@ -605,6 +668,18 @@ const makeStyles = c => StyleSheet.create({
   roomName: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
   roomWhere: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
   roomChange: {fontFamily: font.medium, fontSize: 12, color: c.primary},
+  freshBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: c.primaryLight,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: radius.md,
+  },
+  freshText: {flex: 1, fontFamily: font.medium, fontSize: 13, color: c.primary, lineHeight: 18},
   scanWide: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -509,7 +509,11 @@ router.post('/imports/:id/materialize', authenticate, requireWarehouse('canImpor
       user: req.user,
       dryRun: req.body?.dryRun === true,
     });
-    res.json(report);
+    // Список заведённых карточек нужен только мобильной раскладке (там он
+    // короткий и идёт сразу в печать этикеток). Общий прогон по всей ведомости
+    // создаёт их тысячами, и в ответе вебу это лишние сотни килобайт.
+    const { createdAssetIds, ...forWeb } = report;
+    res.json(forWeb);
   } catch (err) {
     console.error('POST warehouse/osv/materialize error:', err);
     res.status(500).json({ error: err.message });

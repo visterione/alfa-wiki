@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { Check, ClipboardCheck, Plus, RefreshCw, ScanLine, Search, X } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
 import Combobox from './components/Combobox';
+import inventoryScopeText from './components/inventoryScope';
 import LocationPicker from './components/LocationPicker';
 
 export default function WarehouseInventory({ access, tree }) {
@@ -45,7 +46,7 @@ export default function WarehouseInventory({ access, tree }) {
           {loading && <tr><td colSpan={7} className="wh-table__loading"><div className="loading-spinner" /></td></tr>}
           {!loading && sessions.map(s => <tr key={s.id} className="wh-table__row" onClick={() => open(s.id)}>
             <td className="wh-mono"><b>{s.number}</b></td><td>{inventoryStatus(s.status)}</td>
-            <td>{s.room ? `Каб. ${s.room.number}` : s.department?.name || '—'}</td><td>{s.basis || '—'}</td>
+            <td>{inventoryScopeText(s)}</td><td>{s.basis || '—'}</td>
             <td>{fmtDateTime(s.startedAt)}</td><td>{fmtDateTime(s.finishedAt)}</td><td>{s.chairman?.displayName || '—'}</td>
           </tr>)}
           {!loading && !sessions.length && <tr><td colSpan={7} className="wh-empty">Инвентаризаций ещё нет</td></tr>}
@@ -59,10 +60,24 @@ export default function WarehouseInventory({ access, tree }) {
   );
 }
 
+/**
+ * Форма новой описи.
+ *
+ * ── Почему кабинетов несколько (ver. 7.36) ───────────────────────────────────
+ *
+ * Область была из двух крайностей: один кабинет или всё отделение. В приказе же
+ * почти всегда перечислено несколько кабинетов — «305, 307 и 310», три из восьми.
+ * Такую опись приходилось заводить тремя отдельными: комиссия по одному приказу
+ * подписывала три документа, а расхождения считались порознь по каждому.
+ *
+ * Отделение осталось отдельной областью, а не превратилось в «отметить все его
+ * кабинеты»: опись по отделению накрывает и те кабинеты, которые в нём появятся
+ * после её открытия, — именно этого от неё и ждут.
+ */
 function CreateInventory({ tree, onClose, onCreated }) {
   const [users, setUsers] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ scope: 'room', roomId: '', departmentId: '', basis: '', chairmanUserId: '', responsibleUserId: '' });
+  const [form, setForm] = useState({ scope: 'rooms', roomIds: [], departmentId: '', basis: '', chairmanUserId: '', responsibleUserId: '' });
   useEffect(() => { usersApi.listBasic().then(({ data }) => setUsers(data)).catch(() => {}); }, []);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -77,12 +92,19 @@ function CreateInventory({ tree, onClose, onCreated }) {
     [tree]
   );
 
+  // Кабинет добавляется и убирается одним и тем же нажатием по строке дерева:
+  // панель в мультирежиме не закрывается, и промах исправляется на месте.
+  const toggleRoom = id => setForm(f => ({
+    ...f,
+    roomIds: f.roomIds.includes(id) ? f.roomIds.filter(x => x !== id) : [...f.roomIds, id],
+  }));
+
   const submit = async () => {
-    if (form.scope === 'room' ? !form.roomId : !form.departmentId) return toast.error('Выберите область инвентаризации');
+    if (form.scope === 'rooms' ? !form.roomIds.length : !form.departmentId) return toast.error('Выберите область инвентаризации');
     setSaving(true);
     try {
       const { data } = await warehouseApi.createInventory({
-        roomId: form.scope === 'room' ? form.roomId : null,
+        roomIds: form.scope === 'rooms' ? form.roomIds : [],
         departmentId: form.scope === 'department' ? form.departmentId : null,
         basis: form.basis || null, chairmanUserId: form.chairmanUserId || null,
         responsibleUserId: form.responsibleUserId || null,
@@ -105,15 +127,28 @@ function CreateInventory({ tree, onClose, onCreated }) {
         <Combobox value={form.scope} options={SCOPE_OPTIONS} allowClear={false}
                   onChange={v => set('scope', v)} />
       </label>
-      {form.scope === 'room' ? <label>
-        <span className="wh-form__cap">Кабинет <b className="wh-req">*</b></span>
+      {form.scope === 'rooms' ? <label>
+        <span className="wh-form__cap">Кабинеты <b className="wh-req">*</b></span>
         {/* То же дерево локаций, что в приёме и перемещении: медцентр → корпус →
-            этаж → кабинет, с поиском по номеру. */}
+            этаж → кабинет, с поиском по номеру. Здесь оно отмечает несколько
+            кабинетов и не закрывается после каждого. */}
         <LocationPicker
-          tree={tree} mode="room" roomId={form.roomId}
-          placeholder="Выберите кабинет"
-          onPick={({ roomId }) => set('roomId', roomId)}
+          tree={tree} mode="room" multi pickedRoomIds={form.roomIds}
+          placeholder="Отметьте кабинеты"
+          onPick={({ roomId }) => roomId && toggleRoom(roomId)}
         />
+        {/* Отмеченное перечислено под полем: в самом поле стоит только счётчик,
+            а комиссии важно видеть список — по нему сверяют опись с приказом. */}
+        {form.roomIds.length > 0 && (
+          <div className="wh-chiplist wh-form__chips">
+            {form.roomIds.map(id => (
+              <button type="button" key={id} className="wh-chip wh-chip--removable"
+                      title="Убрать кабинет" onClick={() => toggleRoom(id)}>
+                {roomLabel(tree, id)} <X size={12} />
+              </button>
+            ))}
+          </div>
+        )}
       </label> : <label>
         <span className="wh-form__cap">Отделение <b className="wh-req">*</b></span>
         <Combobox value={form.departmentId} options={departmentOptions}
@@ -142,9 +177,27 @@ function CreateInventory({ tree, onClose, onCreated }) {
 }
 
 const SCOPE_OPTIONS = [
-  { id: 'room', label: 'Один кабинет' },
+  { id: 'rooms', label: 'Кабинеты' },
   { id: 'department', label: 'Всё отделение' },
 ];
+
+/**
+ * Подпись кабинета для чипа. Дерево локаций приходит вложенным (медцентр →
+ * корпус → этаж → кабинет), а здесь нужен один кабинет по id, поэтому обход —
+ * по всем трём уровням сразу, включая кабинеты, висящие прямо на медцентре
+ * (в маленьких центрах корпуса и этажа нет).
+ */
+function roomLabel(tree, roomId) {
+  for (const mc of tree?.medCenters || []) {
+    const own = [
+      ...(mc.rooms || []),
+      ...(mc.buildings || []).flatMap(b => (b.floors || []).flatMap(f => f.rooms || [])),
+    ];
+    const room = own.find(r => r.id === roomId);
+    if (room) return `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`;
+  }
+  return 'Кабинет';
+}
 
 function InventoryCounting({ data, canEdit, onClose, onReload }) {
   const { session, stats } = data;
@@ -153,6 +206,7 @@ function InventoryCounting({ data, canEdit, onClose, onReload }) {
   const [code, setCode] = useState('');
   const [savingId, setSavingId] = useState(null);
   const [closing, setClosing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [posting, setPosting] = useState(false);
   const [scanning, setScanning] = useState(false);
   const videoRef = useRef(null);
@@ -213,6 +267,24 @@ function InventoryCounting({ data, canEdit, onClose, onReload }) {
     finally { setClosing(false); }
   };
 
+  /**
+   * Отмена описи — то, чего до ver. 7.36 не было ни здесь, ни в мобильной
+   * версии. Опись, заведённую по ошибке (не тот кабинет, не то отделение),
+   * закрывали «Завершить инвентаризацией» — и получали недостачу на весь
+   * кабинет, потому что закрытие считает непересчитанные строки ненайденными.
+   * Отмена не проводит ничего: строки остаются как есть, кабинет освобождается.
+   */
+  const cancel = async () => {
+    const counted = stats.counted;
+    if (!window.confirm(counted
+      ? `Отменить опись ${session.number}? Пересчёт (${counted} строк) не попадёт в учёт: ни недостач, ни излишков не появится. Чтобы провести итоги, опись нужно завершить, а не отменять.`
+      : `Отменить опись ${session.number}? Итогов не будет, кабинеты освободятся для новой описи.`)) return;
+    setCancelling(true);
+    try { await warehouseApi.cancelInventory(session.id, {}); toast.success('Опись отменена'); await onReload(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Не удалось отменить опись'); }
+    finally { setCancelling(false); }
+  };
+
   const postDifferences = async () => {
     if (!window.confirm('Создать и провести документы оприходования излишков и списания недостач материалов?')) return;
     setPosting(true);
@@ -229,10 +301,13 @@ function InventoryCounting({ data, canEdit, onClose, onReload }) {
   };
 
   const visible = items.filter(i => !q || itemName(i).toLowerCase().includes(q.toLowerCase()));
-  const closed = session.status === 'closed';
+  // Закрытая и отменённая опись равно не редактируются, но итоги бывают только у
+  // закрытой: у отменённой их нет по определению, оформлять там нечего.
+  const closed = session.status === 'closed' || session.status === 'cancelled';
+  const posted = session.status === 'closed';
   const left = Math.max(0, stats.total - stats.counted);
   return <div className="wh-modal" onClick={onClose}><div className="wh-modal__box wh-modal__box--wide" onClick={e => e.stopPropagation()}>
-    <div className="wh-modal__head"><div><div className="wh-modal__title">{session.number}</div><div className="wh-modal__sub">{stats.locationPath || session.department?.name || '—'} · {inventoryStatus(session.status)}</div></div><button className="wh-icon-btn" onClick={onClose}><X size={18} /></button></div>
+    <div className="wh-modal__head"><div><div className="wh-modal__title">{session.number}</div><div className="wh-modal__sub">{stats.locationPath || inventoryScopeText(session)} · {inventoryStatus(session.status)}</div></div><button className="wh-icon-btn" onClick={onClose}><X size={18} /></button></div>
     <div className="wh-modal__body">
       {/* Пять чисел, по которым читается ход пересчёта. Подписи под каждым
           отвечают на «из скольких» и «сколько осталось» — иначе «Пересчитано 75»
@@ -282,7 +357,12 @@ function InventoryCounting({ data, canEdit, onClose, onReload }) {
     </div>
     <div className="wh-modal__foot">
       <button className="wh-btn wh-btn--secondary" onClick={onClose}>Закрыть окно</button>
-      {closed && canEdit && !session.differencesPostedAt && (stats.shortage > 0 || stats.surplus > 0) && (
+      {!closed && canEdit && (
+        <button className="wh-btn wh-btn--ghost" onClick={cancel} disabled={cancelling}>
+          <X size={14} /> {cancelling ? 'Отменяю…' : 'Отменить опись'}
+        </button>
+      )}
+      {posted && canEdit && !session.differencesPostedAt && (stats.shortage > 0 || stats.surplus > 0) && (
         <button className="wh-btn wh-btn--primary" onClick={postDifferences} disabled={posting}>
           <ClipboardCheck size={14} /> {posting ? 'Оформляю…' : 'Оформить расхождения'}
         </button>
@@ -310,6 +390,7 @@ function InventoryRow({ item, editable, saving, onSave }) {
 
 const itemName = i => i.asset ? `${i.asset.inventoryNumber} · ${i.asset.name}` : `${i.nomenclature?.code || ''} · ${i.nomenclature?.name || ''}`;
 const inventoryStatus = s => ({ open: 'Открыта', counting: 'Идёт пересчёт', closed: 'Закрыта', cancelled: 'Отменена' }[s] || s);
+
 const fmtDateTime = d => d ? new Date(d).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 /**
  * Плитка сводки. Раньше здесь стоял класс wh-summary__card, который не был описан

@@ -22,7 +22,7 @@ import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan} from '../../store/warehouseStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {INVENTORY_STATUS, dateText, roomText} from './warehouseMeta';
+import {INVENTORY_STATUS, dateText, inventoryScopeText} from './warehouseMeta';
 
 export default function WarehouseInventoryListScreen({navigation}) {
   const styles = useThemedStyles(makeStyles);
@@ -87,7 +87,7 @@ export default function WarehouseInventoryListScreen({navigation}) {
             <View style={styles.rowText}>
               <Text style={styles.number}>{item.number}</Text>
               <Text style={styles.where}>
-                {item.room ? roomText(item.room) : item.department?.name || 'вся сеть'}
+                {inventoryScopeText(item)}
               </Text>
               <Text style={styles.meta}>
                 {INVENTORY_STATUS[item.status] || item.status}

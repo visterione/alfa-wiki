@@ -8,6 +8,7 @@ import {
 import { warehouseApi } from '../../services/api';
 import { ReportTable, exportRow, format, maintType } from './components/reportTable';
 import ReportsNav from './components/ReportsNav';
+import inventoryScopeText from './components/inventoryScope';
 import ActionMenu from './components/ActionMenu';
 
 /**
@@ -857,7 +858,7 @@ function InventoryPanel() {
             {(sessions || []).map(s => (
               <tr key={s.id} className="wh-table__row" onClick={() => open(s.id)}>
                 <td className="wh-mono">{s.number}</td>
-                <td>{s.room ? `Каб. ${s.room.number}` : s.department?.name || '—'}</td>
+                <td>{inventoryScopeText(s)}</td>
                 <td className="wh-cell-sub">{s.basis || '—'}</td>
                 <td><span className={`wh-status wh-status--${s.status}`}>{
                   { open: 'Открыта', counting: 'Пересчёт', closed: 'Закрыта', cancelled: 'Отменена' }[s.status]

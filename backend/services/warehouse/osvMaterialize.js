@@ -404,6 +404,11 @@ async function materializeOsv({ importId, account, user, dryRun = false, roomIds
     totals,
     nomenclatureCreated: 0,
     assetsCreated: 0,
+    // Идентификаторы заведённых карточек, а не только их число: телефон сразу
+    // после раскладки предлагает напечатать этикетки ровно на то, что только что
+    // появилось в кабинете, — иначе человеку пришлось бы выходить из размещения
+    // и искать эти же карточки во вкладке кабинетов.
+    createdAssetIds: [],
     stockReceipts: 0,
     stockQty: 0,
     alreadyDone: 0,
@@ -576,6 +581,7 @@ async function materializeOsv({ importId, account, user, dryRun = false, roomIds
             }, { transaction: t });
 
             report.assetsCreated += 1;
+            report.createdAssetIds.push(asset.id);
           }
           continue;
         }

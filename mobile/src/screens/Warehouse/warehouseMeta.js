@@ -51,6 +51,25 @@ export const moneyText = value =>
 export const dateText = value =>
   (value ? new Date(value).toLocaleDateString('ru-RU') : '—');
 
+/**
+ * Область описи одной строкой: «Каб. 305, 307 и ещё 3» либо название отделения.
+ *
+ * Номера, а не полные пути: в строке списка помещается три-четыре, и различают
+ * описи как раз номера. Общая функция, потому что область читают три места —
+ * список описей, шапка пересчёта и веб, — и разные формулировки выглядели бы как
+ * разные описи.
+ */
+export const inventoryScopeText = (session) => {
+  const rooms = session?.rooms?.length
+    ? session.rooms
+    : (session?.room ? [session.room] : []);
+  if (rooms.length > 3) {
+    return `Каб. ${rooms.slice(0, 3).map(r => r.number).join(', ')} и ещё ${rooms.length - 3}`;
+  }
+  if (rooms.length) return `Каб. ${rooms.map(r => r.number).join(', ')}`;
+  return session?.department?.name || 'вся сеть';
+};
+
 /** Подпись кабинета одинаково во всех списках: номер плюс название, если оно есть. */
 export const roomText = room => (room
   ? `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`
@@ -81,6 +100,10 @@ export function flattenRooms(tree) {
       storages: room.storages || [],
       medCenterId: mc.id,
       medCenterName: mc.name,
+      // Отделение кабинета: по нему опись по отделению понимает, какие кабинеты
+      // она накрывает, — иначе с телефона нельзя было бы показать, что кабинет
+      // уже пересчитывают в рамках описи всего отделения.
+      departmentId: room.departmentId || null,
       groupKey,
       groupTitle,
       where: groupTitle || mc.name,

@@ -395,6 +395,9 @@
    в колоночном флексе <b> со звёздочкой вставал отдельной строкой, поле
    становилось выше соседнего, и ряд формы разъезжался по высоте. */
 .wh-form__cap { display: flex; align-items: center; gap: 4px; }
+/* Перечень выбранного под полем формы (кабинеты описи). Отступ сверху — чтобы
+   чипы не прилипали к полю, из которого их набирают. */
+.wh-form__chips { margin-top: 7px; }
 .wh-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .wh-modal--nested { z-index: 10020; }
 .wh-inventory-stats { margin-bottom: 14px; }
@@ -1776,9 +1779,16 @@
 .wh-combo__placeholder { color: var(--wh-text-secondary); }
 .wh-combo__clear { display: inline-flex; padding: 2px; border-radius: 4px; }
 .wh-combo__clear:hover { background: var(--wh-border); }
+/* Слой выше модалок (ver. 7.36). Панель рисуется порталом в конец body — то есть
+   в корневом контексте наложения, рядом с .wh-modal (z-index: 1000) и вложенной
+   модалкой (10020), а не внутри них. С z-index: 30 она честно уходила ПОД
+   затемнение модалки: в форме новой инвентаризации выпадающие списки было видно
+   размытыми где-то на фоне страницы, а нажатия по ним попадали в подложку и
+   закрывали всю форму. Абсолютные координаты в правиле оставлены как запасные —
+   инлайновый dropStyle всё равно перебивает их фиксированными. */
 .wh-combo__drop,
 .wh-menu__drop {
-  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+  position: absolute; z-index: 10050; top: calc(100% + 4px); left: 0; right: 0;
   min-width: 260px;
   background: var(--wh-card-bg); border: 1px solid var(--wh-border);
   border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .12); overflow: hidden;

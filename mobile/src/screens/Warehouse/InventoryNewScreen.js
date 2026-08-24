@@ -7,30 +7,46 @@
  * возвращаться — ровно та работа, ради отказа от которой модуль и живёт в
  * телефоне.
  *
- * Область — только кабинет. Опись по отделению осталась в вебе: она охватывает
- * помещения, которых человек сейчас не видит, и замораживает по ним операции —
- * такое решение принимают, глядя в приказ, а не стоя в коридоре.
+ * ── Почему область та же, что в вебе (ver. 7.36) ──────────────────────────────
  *
- * Кабинеты, где опись уже идёт, из работы не выбывают: нажатие на такой
- * открывает существующий пересчёт. Это тот же самый случай — человек пришёл
+ * До ver. 7.36 здесь можно было выбрать ровно один кабинет и ничего больше: ни
+ * несколько кабинетов, ни отделение, ни председателя с МОЛ. То есть опись,
+ * заведённая с телефона, отличалась от такой же из веба — и человек, которому
+ * нужен был приказ на три кабинета, всё равно шёл к компьютеру. Разница в
+ * функциях между экраном в кабинете и экраном за столом — это и есть причина
+ * возвращаться за стол, поэтому её здесь не осталось: кабинеты отмечаются
+ * пачкой, отделение выбирается целиком, комиссия и основание — в шторке
+ * параметров.
+ *
+ * Порядок при этом обратный вебовскому: там сначала форма, потом область, здесь
+ * сначала область, потом — если надо — параметры. В кабинете человек уже знает,
+ * что считает, а председателя и основание заполняет один раз на приказ.
+ *
+ * Кабинеты, где опись уже идёт, из работы не выбывают: по такому предлагается
+ * открыть существующий пересчёт. Это тот же самый случай — человек пришёл
  * считать, — и упереться здесь в «тут уже идёт инвентаризация» было бы
  * издевательством.
  */
-import React, {useCallback, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Camera, useCameraDevice, useCodeScanner} from 'react-native-vision-camera';
-import {ScanLine, Search, X, ClipboardCheck} from 'lucide-react-native';
+import {
+  ScanLine, Search, X, ClipboardCheck, Check, ChevronRight, Users,
+} from 'lucide-react-native';
 
-import {warehouse as warehouseApi} from '../../services/api';
+import {warehouse as warehouseApi, users as usersApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import BottomSheet from '../../components/BottomSheet';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {loadLocationTree} from '../../store/warehouseStore';
 import {flattenRooms, roomMatches} from './warehouseMeta';
+
+const personName = person => person?.displayName || person?.username || 'Сотрудник';
 
 export default function WarehouseInventoryNewScreen({navigation}) {
   const styles = useThemedStyles(makeStyles);
@@ -38,10 +54,24 @@ export default function WarehouseInventoryNewScreen({navigation}) {
   const insets = useSafeAreaInsets();
   const device = useCameraDevice('back');
 
+  const [tree, setTree] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [busyRooms, setBusyRooms] = useState(new Map());
-  const [roomId, setRoomId] = useState(null);
+  // Область: кабинеты пачкой или отделение целиком. Отделение осталось
+  // отдельной областью, а не «отметить все его кабинеты»: оно накрывает и те
+  // кабинеты, которые в нём появятся после открытия описи.
+  const [scope, setScope] = useState('rooms');
+  const [picked, setPicked] = useState(() => new Set());
+  const [departmentId, setDepartmentId] = useState(null);
   const [basis, setBasis] = useState('');
+  const [chairmanUserId, setChairmanUserId] = useState('');
+  const [responsibleUserId, setResponsibleUserId] = useState('');
+  const [people, setPeople] = useState([]);
+  // Шторка параметров и списки людей живут в одной шторке, сменяя её содержимое:
+  // вложенные модалки на обеих платформах ведут себя по-разному, а «назад» из
+  // списка людей должен возвращать к параметрам, а не закрывать всё.
+  const [sheet, setSheet] = useState(null);
+  const [personQ, setPersonQ] = useState('');
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -50,15 +80,31 @@ export default function WarehouseInventoryNewScreen({navigation}) {
 
   const load = useCallback(async () => {
     try {
-      const [tree, sessionsResult] = await Promise.all([
+      const [treeData, sessionsResult] = await Promise.all([
         loadLocationTree(),
         warehouseApi.inventorySessions(),
       ]);
-      setRooms(flattenRooms(tree));
+      setTree(treeData);
+      const flat = flattenRooms(treeData);
+      setRooms(flat);
+
+      // Занятые кабинеты: и перечисленные в описи, и накрытые описью по
+      // отделению. Второе раньше не учитывалось — кабинет выглядел свободным, а
+      // сервер отвечал 409 уже после нажатия «Считать».
       const busy = new Map();
       for (const session of sessionsResult.data || []) {
         if (session.status === 'closed' || session.status === 'cancelled') continue;
-        if (session.roomId) busy.set(session.roomId, session);
+        const own = session.rooms?.length
+          ? session.rooms.map(room => room.id)
+          : (session.roomId ? [session.roomId] : []);
+        for (const id of own) busy.set(id, session);
+        if (session.departmentId) {
+          for (const room of flat) {
+            if (room.departmentId === session.departmentId && !busy.has(room.id)) {
+              busy.set(room.id, session);
+            }
+          }
+        }
       }
       setBusyRooms(busy);
     } catch {
@@ -69,6 +115,15 @@ export default function WarehouseInventoryNewScreen({navigation}) {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Сотрудники нужны только когда открыли список председателя или МОЛ: под сотню
+  // строк, и тянуть их ради экрана, на котором чаще всего просто отмечают
+  // кабинеты, незачем.
+  useEffect(() => {
+    if (sheet !== 'chairman' && sheet !== 'responsible') return;
+    if (people.length) return;
+    usersApi.listBasic().then(({data}) => setPeople(data || [])).catch(() => setPeople([]));
+  }, [sheet, people.length]);
 
   // Список с заголовками медцентра и этажа: выбирают в нём кабинет, но узнают
   // его по месту — номер 305 есть в каждом здании сети.
@@ -93,14 +148,51 @@ export default function WarehouseInventoryNewScreen({navigation}) {
     return out;
   }, [rooms, q]);
 
+  // Отделения — с подписью медцентра и числом кабинетов: одноимённые «Хирургия»
+  // есть в нескольких центрах, а число отвечает на «сколько я сейчас заморожу».
+  const departments = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const centerName = new Map((tree?.medCenters || []).map(m => [m.id, m.name]));
+    const roomCount = new Map();
+    for (const room of rooms) {
+      if (!room.departmentId) continue;
+      roomCount.set(room.departmentId, (roomCount.get(room.departmentId) || 0) + 1);
+    }
+    return (tree?.departments || [])
+      .map(d => ({
+        id: d.id,
+        name: d.name,
+        where: centerName.get(d.medCenterId) || '',
+        rooms: roomCount.get(d.id) || 0,
+      }))
+      .filter(d => !needle || `${d.name} ${d.where}`.toLowerCase().includes(needle))
+      .sort((a, b) => a.where.localeCompare(b.where, 'ru') || a.name.localeCompare(b.name, 'ru'));
+  }, [tree, rooms, q]);
+
   const openExisting = session => navigation.replace('WarehouseInventoryCount', {
     sessionId: session.id,
   });
 
-  const pick = (room) => {
+  const toggleRoom = (room) => {
     const busy = busyRooms.get(room.id);
-    if (busy) return openExisting(busy);
-    return setRoomId(prev => (prev === room.id ? null : room.id));
+    if (busy) {
+      // Не уводим молча: если человек в этот момент набирает список из восьми
+      // кабинетов, прыжок в чужую опись стёр бы всё отмеченное.
+      return Alert.alert(
+        `Каб. ${room.number} уже пересчитывают`,
+        `Опись ${busy.number}. Открыть её?`,
+        [
+          {text: 'Оставить', style: 'cancel'},
+          {text: 'Открыть', onPress: () => openExisting(busy)},
+        ],
+      );
+    }
+    return setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(room.id)) next.delete(room.id);
+      else next.add(room.id);
+      return next;
+    });
   };
 
   const onScan = useCallback(async (code) => {
@@ -111,7 +203,11 @@ export default function WarehouseInventoryNewScreen({navigation}) {
         return Alert.alert('Это не кабинет', 'Отсканируйте QR с двери.');
       }
       const busy = busyRooms.get(data.room.id);
-      return busy ? openExisting(busy) : setRoomId(data.room.id);
+      if (busy) return openExisting(busy);
+      // Сканирование добавляет к отмеченному, а не заменяет его: обход кабинетов
+      // с камерой — самый быстрый способ набрать область из приказа.
+      setScope('rooms');
+      return setPicked(prev => new Set(prev).add(data.room.id));
     } catch {
       return Alert.alert('Не найдено', 'По этому коду кабинета нет.');
     }
@@ -131,12 +227,16 @@ export default function WarehouseInventoryNewScreen({navigation}) {
   });
 
   const start = async () => {
-    if (!roomId) return;
+    const roomIds = [...picked];
+    if (scope === 'rooms' ? !roomIds.length : !departmentId) return;
     setStarting(true);
     try {
       const {data} = await warehouseApi.createInventory({
-        roomId,
+        roomIds: scope === 'rooms' ? roomIds : [],
+        departmentId: scope === 'department' ? departmentId : null,
         basis: basis.trim() || null,
+        chairmanUserId: chairmanUserId || null,
+        responsibleUserId: responsibleUserId || null,
       });
       // Сразу в пересчёт, без возврата в список: опись открывают ровно затем,
       // чтобы начать считать, и лишний экран между этими двумя действиями
@@ -150,10 +250,34 @@ export default function WarehouseInventoryNewScreen({navigation}) {
 
   if (loading) return <LogoLoader />;
 
-  const selected = rooms.find(r => r.id === roomId);
+  const chairman = people.find(p => p.id === chairmanUserId);
+  const responsible = people.find(p => p.id === responsibleUserId);
+  const ready = scope === 'rooms' ? picked.size > 0 : Boolean(departmentId);
+  const department = departments.find(d => d.id === departmentId);
+  // Параметры одной строкой: заполненное показываем, незаполненное не называем —
+  // это подпись под кнопкой, а не список полей.
+  const paramsText = [
+    basis.trim(),
+    chairmanUserId ? `председатель ${personName(chairman)}` : null,
+    responsibleUserId ? `МОЛ ${personName(responsible)}` : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <View style={styles.root}>
+      {/* Область — первым делом: от неё зависит, что показывает список ниже. */}
+      <View style={styles.scopeRow}>
+        {[['rooms', 'Кабинеты'], ['department', 'Отделение']].map(([key, label]) => (
+          <Pressable
+            key={key}
+            style={[styles.scopeTab, scope === key && styles.scopeTabOn]}
+            onPress={() => setScope(key)}
+            accessibilityRole="button"
+            accessibilityState={{selected: scope === key}}>
+            <Text style={[styles.scopeText, scope === key && styles.scopeTextOn]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       <View style={styles.tools}>
         <View style={styles.search}>
           <Search size={15} color={c.textTertiary} />
@@ -161,72 +285,208 @@ export default function WarehouseInventoryNewScreen({navigation}) {
             style={styles.searchInput}
             value={q}
             onChangeText={setQ}
-            placeholder="Кабинет"
+            placeholder={scope === 'rooms' ? 'Кабинет' : 'Отделение'}
             placeholderTextColor={c.textTertiary}
             autoCorrect={false}
           />
         </View>
-        <Pressable style={styles.scanChip} onPress={() => setScanning(true)} hitSlop={6}>
-          <ScanLine size={18} color={c.primary} />
-        </Pressable>
+        {scope === 'rooms' && (
+          <Pressable style={styles.scanChip} onPress={() => setScanning(true)} hitSlop={6}>
+            <ScanLine size={18} color={c.primary} />
+          </Pressable>
+        )}
       </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={item => item.key}
-        contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + (roomId ? 160 : 24)}}
-        keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
-        renderItem={({item}) => {
-          if (item.type === 'mc') return <Text style={styles.mc}>{item.title}</Text>;
-          if (item.type === 'group') return <Text style={styles.group}>{item.title}</Text>;
+      {scope === 'rooms' ? (
+        <FlatList
+          data={items}
+          keyExtractor={item => item.key}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: insets.bottom + (ready ? 200 : 24),
+          }}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
+          renderItem={({item}) => {
+            if (item.type === 'mc') return <Text style={styles.mc}>{item.title}</Text>;
+            if (item.type === 'group') return <Text style={styles.group}>{item.title}</Text>;
 
-          const busy = busyRooms.get(item.room.id);
-          const on = item.room.id === roomId;
-          return (
-            <Pressable
-              style={[styles.row, on && styles.rowOn]}
-              onPress={() => pick(item.room)}>
-              <View style={styles.rowText}>
-                <Text style={[styles.rowTitle, on && styles.rowTitleOn]}>
-                  Кабинет {item.room.number}
-                </Text>
-                {Boolean(item.room.name) && (
-                  <Text style={[styles.rowSub, on && styles.rowSubOn]} numberOfLines={1}>
-                    {item.room.name}
-                  </Text>
-                )}
-              </View>
-              {Boolean(busy) && (
-                <View style={styles.chip}>
-                  <Text style={styles.chipText}>{busy.number}</Text>
+            const busy = busyRooms.get(item.room.id);
+            const on = picked.has(item.room.id);
+            return (
+              <Pressable
+                style={[styles.row, on && styles.rowOn]}
+                onPress={() => toggleRoom(item.room)}>
+                {/* Квадрат отметки, а не подсветка строки: кабинетов в области
+                    бывает восемь, и «сколько я уже отметил» должно читаться
+                    списком, а не перечитыванием цветов. */}
+                <View style={[styles.check, on && styles.checkOn]}>
+                  {on && <Check size={13} color="#FFFFFF" />}
                 </View>
-              )}
-            </Pressable>
-          );
-        }}
-      />
+                <View style={styles.rowText}>
+                  <Text style={[styles.rowTitle, on && styles.rowTitleOn]}>
+                    Кабинет {item.room.number}
+                  </Text>
+                  {Boolean(item.room.name) && (
+                    <Text style={[styles.rowSub, on && styles.rowSubOn]} numberOfLines={1}>
+                      {item.room.name}
+                    </Text>
+                  )}
+                </View>
+                {Boolean(busy) && (
+                  <View style={styles.chip}>
+                    <Text style={styles.chipText}>{busy.number}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          }}
+        />
+      ) : (
+        <FlatList
+          data={departments}
+          keyExtractor={item => item.id}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: insets.bottom + (ready ? 200 : 24),
+          }}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={<Text style={styles.none}>Отделений нет</Text>}
+          renderItem={({item}) => {
+            const on = item.id === departmentId;
+            return (
+              <Pressable
+                style={[styles.row, on && styles.rowOn]}
+                onPress={() => setDepartmentId(prev => (prev === item.id ? null : item.id))}>
+                <View style={styles.rowText}>
+                  <Text style={[styles.rowTitle, on && styles.rowTitleOn]}>{item.name}</Text>
+                  <Text style={[styles.rowSub, on && styles.rowSubOn]} numberOfLines={1}>
+                    {[item.where, item.rooms ? `кабинетов: ${item.rooms}` : 'кабинетов нет']
+                      .filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+                {on && <Check size={16} color="#FFFFFF" />}
+              </Pressable>
+            );
+          }}
+        />
+      )}
 
-      {Boolean(selected) && (
+      {ready && (
         <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
-          <TextInput
-            style={styles.basis}
-            value={basis}
-            onChangeText={setBasis}
-            placeholder="Основание — необязательно"
-            placeholderTextColor={c.textTertiary}
-          />
+          <Pressable style={styles.params} onPress={() => setSheet('params')}>
+            <Users size={17} color={c.primary} />
+            <View style={styles.rowText}>
+              <Text style={styles.paramsTitle}>Основание и комиссия</Text>
+              <Text style={styles.paramsSub} numberOfLines={1}>
+                {paramsText || 'не заданы — председателем станете вы'}
+              </Text>
+            </View>
+            <ChevronRight size={16} color={c.textTertiary} />
+          </Pressable>
           <Pressable
             style={[styles.button, starting && styles.buttonOff]}
             disabled={starting}
             onPress={start}>
             <ClipboardCheck size={17} color="#FFFFFF" />
             <Text style={styles.buttonText}>
-              {starting ? 'Открываю…' : `Считать каб. ${selected.number}`}
+              {starting
+                ? 'Открываю…'
+                : scope === 'rooms'
+                  ? `Считать · кабинетов ${picked.size}`
+                  : `Считать ${department ? department.name.toLowerCase() : 'отделение'}`}
             </Text>
           </Pressable>
         </View>
       )}
+
+      <BottomSheet
+        visible={sheet !== null}
+        title={sheet === 'chairman' ? 'Председатель комиссии'
+          : sheet === 'responsible' ? 'Материально ответственный'
+            : 'Основание и комиссия'}
+        onClose={() => { setSheet(null); setPersonQ(''); }}>
+        {sheet === 'params' ? (
+          <View style={styles.sheetBody}>
+            <Text style={styles.sheetCap}>Основание</Text>
+            <TextInput
+              style={styles.sheetInput}
+              value={basis}
+              onChangeText={setBasis}
+              placeholder="Приказ №…, плановая проверка"
+              placeholderTextColor={c.textTertiary}
+            />
+            <SheetRow
+              styles={styles}
+              c={c}
+              label="Председатель комиссии"
+              value={chairmanUserId ? personName(chairman) : 'вы'}
+              onPress={() => setSheet('chairman')}
+            />
+            <SheetRow
+              styles={styles}
+              c={c}
+              label="МОЛ"
+              value={responsibleUserId ? personName(responsible) : 'не назначен'}
+              onPress={() => setSheet('responsible')}
+            />
+            <Pressable style={styles.sheetDone} onPress={() => setSheet(null)}>
+              <Text style={styles.sheetDoneText}>Готово</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.sheetBody}>
+            <View style={styles.search}>
+              <Search size={15} color={c.textTertiary} />
+              <TextInput
+                style={styles.searchInput}
+                value={personQ}
+                onChangeText={setPersonQ}
+                placeholder="Фамилия или логин"
+                placeholderTextColor={c.textTertiary}
+                autoCorrect={false}
+              />
+            </View>
+            <FlatList
+              style={styles.sheetList}
+              data={[
+                // Пустой выбор — тоже выбор: председателем по умолчанию
+                // становится тот, кто открывает опись, а МОЛ может быть не
+                // назначен вовсе.
+                {id: '', displayName: sheet === 'chairman' ? 'Вы' : 'Не назначен'},
+                ...people.filter(person => {
+                  const needle = personQ.trim().toLowerCase();
+                  return !needle
+                    || `${person.displayName || ''} ${person.username || ''}`
+                      .toLowerCase().includes(needle);
+                }),
+              ]}
+              keyExtractor={item => item.id || 'none'}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({item}) => {
+                const current = sheet === 'chairman' ? chairmanUserId : responsibleUserId;
+                const on = item.id === current;
+                return (
+                  <Pressable
+                    style={styles.personRow}
+                    onPress={() => {
+                      if (sheet === 'chairman') setChairmanUserId(item.id);
+                      else setResponsibleUserId(item.id);
+                      setPersonQ('');
+                      setSheet('params');
+                    }}>
+                    <Text style={styles.personName} numberOfLines={1}>
+                      {personName(item)}
+                    </Text>
+                    {on && <Check size={16} color={c.primary} />}
+                  </Pressable>
+                );
+              }}
+              ListEmptyComponent={<Text style={styles.none}>Никого не нашлось</Text>}
+            />
+          </View>
+        )}
+      </BottomSheet>
 
       <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
         <View style={styles.camera}>
@@ -251,9 +511,32 @@ export default function WarehouseInventoryNewScreen({navigation}) {
   );
 }
 
+/** Строка шторки параметров: подпись слева, выбранное справа. */
+function SheetRow({styles, c, label, value, onPress}) {
+  return (
+    <Pressable style={styles.sheetRow} onPress={onPress}>
+      <Text style={styles.sheetRowLabel}>{label}</Text>
+      <Text style={styles.sheetRowValue} numberOfLines={1}>{value}</Text>
+      <ChevronRight size={15} color={c.textTertiary} />
+    </Pressable>
+  );
+}
+
 const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
-  tools: {flexDirection: 'row', alignItems: 'center', gap: 8, margin: 16, marginBottom: 10},
+  scopeRow: {flexDirection: 'row', gap: 8, marginHorizontal: 16, marginTop: 14},
+  scopeTab: {
+    flex: 1,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: c.bgPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scopeTabOn: {backgroundColor: c.primary},
+  scopeText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary},
+  scopeTextOn: {color: '#FFFFFF'},
+  tools: {flexDirection: 'row', alignItems: 'center', gap: 8, margin: 16, marginTop: 10, marginBottom: 10},
   search: {
     flex: 1,
     flexDirection: 'row',
@@ -286,6 +569,16 @@ const makeStyles = c => StyleSheet.create({
     marginBottom: 6,
   },
   rowOn: {backgroundColor: c.primary},
+  check: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    borderColor: c.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkOn: {backgroundColor: 'rgba(255,255,255,0.25)', borderColor: '#FFFFFF'},
   rowText: {flex: 1},
   rowTitle: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   rowTitleOn: {color: '#FFFFFF'},
@@ -315,15 +608,17 @@ const makeStyles = c => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: c.border,
   },
-  basis: {
-    height: 44,
-    borderRadius: radius.md,
+  params: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: c.bgPrimary,
+    borderRadius: radius.md,
     paddingHorizontal: 12,
-    color: c.textPrimary,
-    fontFamily: font.regular,
-    fontSize: 14,
+    paddingVertical: 10,
   },
+  paramsTitle: {fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
+  paramsSub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
   button: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -335,6 +630,54 @@ const makeStyles = c => StyleSheet.create({
   },
   buttonOff: {opacity: 0.5},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
+  sheetBody: {paddingHorizontal: 20, paddingBottom: 12, gap: 10},
+  sheetCap: {fontFamily: font.medium, fontSize: 12, color: c.textSecondary},
+  sheetInput: {
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: c.bgSecondary,
+    paddingHorizontal: 12,
+    color: c.textPrimary,
+    fontFamily: font.regular,
+    fontSize: 14,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: c.bgSecondary,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    height: 46,
+  },
+  sheetRowLabel: {flex: 1, fontFamily: font.regular, fontSize: 14, color: c.textPrimary},
+  sheetRowValue: {
+    maxWidth: '45%',
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: c.textSecondary,
+  },
+  sheetDone: {
+    height: 46,
+    borderRadius: radius.md,
+    backgroundColor: c.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  sheetDoneText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
+  // Высота списка людей фиксирована: шторка иначе прыгает от каждой буквы в
+  // поиске — то в половину экрана, то в три строки.
+  sheetList: {height: 320},
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+  },
+  personName: {flex: 1, fontFamily: font.regular, fontSize: 14, color: c.textPrimary},
   camera: {flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center'},
   cameraClose: {
     position: 'absolute',

@@ -1074,6 +1074,9 @@ export const warehouseApi = {
   inventory:       (id)           => api.get(`/warehouse/operations/inventory/${id}`),
   countInventory:  (id, data)     => api.post(`/warehouse/operations/inventory/${id}/count`, data),
   closeInventory:  (id, data)     => api.patch(`/warehouse/operations/inventory/${id}/close`, data),
+  // Отмена, а не закрытие: закрытие превращает непересчитанные строки в
+  // недостачу, и описи, заведённой по ошибке, оно не подходит.
+  cancelInventory: (id, data)     => api.patch(`/warehouse/operations/inventory/${id}/cancel`, data),
   postInventoryDifferences: (id, data) => api.post(`/warehouse/operations/inventory/${id}/post-differences`, data),
   rfqList:         ()             => api.get('/warehouse/operations/rfq'),
   createRfq:       (data)         => api.post('/warehouse/operations/rfq', data),

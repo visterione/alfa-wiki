@@ -22,6 +22,7 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport, roomPath } = require('../../services/warehouse/access');
+const { sessionRooms } = require('../../services/warehouse/inventory');
 const { reconcileStock } = require('../../services/warehouse/stock');
 const utilization = require('../../services/warehouse/utilization');
 const exports_ = require('../../services/warehouse/exports');
@@ -1094,6 +1095,14 @@ function fmt(d) {
   return new Date(d).toLocaleDateString('ru-RU');
 }
 
+/** Область описи одной строкой: кабинет путём, несколько кабинетов — номерами. */
+async function inventoryLocation(session) {
+  const rooms = await sessionRooms(session);
+  if (rooms.length === 1) return roomPath(rooms[0].id);
+  if (rooms.length) return `Кабинеты: ${rooms.map(r => r.number).join(', ')}`;
+  return session.department?.name || '';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // RPT-INVENTORY — Инвентаризационная опись (ИНВ-1)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1146,7 +1155,10 @@ router.get('/inventory/:id', authenticate, requireWarehouse(), requireReport('RP
       }),
       session: {
         number: session.number, basis: session.basis, status: session.status,
-        location: session.room ? await roomPath(session.room.id) : session.department?.name,
+        // Область описи в шапке ИНВ-1: у описи по одному кабинету — полный путь,
+        // как было; у описи по нескольким (ver. 7.36) — перечень номеров, потому
+        // что восемь полных путей в шапку документа не поместятся.
+        location: await inventoryLocation(session),
         responsible: session.responsible, chairman: session.chairman, members: session.members,
         startedAt: session.startedAt, finishedAt: session.finishedAt,
         durationMinutes: session.durationMinutes,

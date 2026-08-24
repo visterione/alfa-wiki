@@ -382,6 +382,15 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     number:            { type: DataTypes.STRING(40), allowNull: false, unique: true },
     scope:             { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'room' },
     roomId:            { type: DataTypes.UUID },
+    // Кабинеты описи списком (ver. 7.36). Область описи бывает не только «один
+    // кабинет» и «всё отделение»: в приказе обычно перечислено несколько
+    // кабинетов. Для описи по одному кабинету здесь тот же один id, что и в
+    // roomId, — чтобы код спрашивал «какие кабинеты накрыты» одним способом, а
+    // roomId остался тем, что показывают в списке и в ИНВ-1.
+    //
+    // У описи по отделению список пуст намеренно: отделение накрывает и те
+    // кабинеты, которые в нём появятся после открытия описи.
+    roomIds:           { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
     departmentId:      { type: DataTypes.UUID },
     basis:             { type: DataTypes.STRING(255) },
     periodFrom:        { type: DataTypes.DATEONLY },

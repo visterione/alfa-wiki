@@ -15,13 +15,23 @@
  * когда остановиться. Поэтому кадр занимает верхнюю треть, а под ним живёт
  * список — отсканировал, увидел, как строка позеленела, пошёл дальше.
  *
- * ── Почему закрытие описи не отсюда ──────────────────────────────────────────
+ * ── Почему закрытие описи не отсюда, а отмена — отсюда (ver. 7.36) ───────────
  *
  * Закрытие превращает непересчитанные строки в недостачу и оформляется решением
  * комиссии. Нажать такое случайно, держа телефон одной рукой в кабинете, слишком
  * легко, поэтому кнопка осталась в вебе.
+ *
+ * Но у описи есть второй исход: она заведена по ошибке — не тот кабинет, не то
+ * отделение, — и считать по ней нечего. Такую надо убрать, а не закрыть: закрытие
+ * повесило бы на кабинет недостачу целиком. Отмены не было вовсе, ни здесь, ни в
+ * вебе, и человек, ошибившийся кабинетом с телефона, шёл к компьютеру закрывать
+ * опись «правильным» способом — то есть делал ровно то, чего делать не следовало.
+ *
+ * Отмена ничего не проводит: строки остаются как есть, документов не появляется,
+ * освобождается только кабинет для новой описи. Поэтому она и живёт в шапке
+ * экрана, за подтверждением, а закрытие — по-прежнему в вебе.
  */
-import React, {useCallback, useRef, useState} from 'react';
+import React, {useCallback, useLayoutEffect, useRef, useState} from 'react';
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet, Alert, Vibration,
 } from 'react-native';
@@ -33,7 +43,8 @@ import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {qtyText, INVENTORY_STATUS} from './warehouseMeta';
+import {useWarehouseCan} from '../../store/warehouseStore';
+import {qtyText, INVENTORY_STATUS, inventoryScopeText} from './warehouseMeta';
 
 const itemName = item => (item.asset
   ? `${item.asset.inventoryNumber} · ${item.asset.name}`
@@ -44,6 +55,7 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
   const c = useTheme();
   const {sessionId} = route.params || {};
   const device = useCameraDevice('back');
+  const canIssue = useWarehouseCan('canIssue');
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +63,7 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
   const [manual, setManual] = useState('');
   const [q, setQ] = useState('');
   const [savingId, setSavingId] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
   const lastCode = useRef({value: null, at: 0});
 
   const load = useCallback(() => warehouseApi.inventory(sessionId)
@@ -107,6 +120,57 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
     }
   };
 
+  const cancel = useCallback(async () => {
+    setCancelling(true);
+    try {
+      await warehouseApi.cancelInventory(sessionId);
+      // Возврат в список, а не перерисовка экрана: считать по отменённой описи
+      // нечего, и оставлять человека на ней незачем.
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert('Не отменено', e?.response?.data?.error || 'Попробуйте ещё раз.');
+      setCancelling(false);
+    }
+  }, [sessionId, navigation]);
+
+  const askCancel = useCallback(() => {
+    const counted = data?.stats?.counted || 0;
+    Alert.alert(
+      'Отменить опись?',
+      counted
+        // Про уже отмеченное надо сказать прямо: человек мог считать полдня и
+        // нажать «Отменить» в поисках «Завершить».
+        ? `Пересчёт не сохранится в учёте — отмечено позиций: ${counted}. Недостач и излишков не появится, кабинет освободится для новой описи. Чтобы провести итоги, опись закрывают в веб-версии.`
+        : 'Итогов не будет: недостач не появится, кабинет освободится для новой описи.',
+      [
+        {text: 'Оставить', style: 'cancel'},
+        {text: 'Отменить опись', style: 'destructive', onPress: cancel},
+      ],
+    );
+  }, [data, cancel]);
+
+  // Отмена в шапке, за подтверждением: рядом с полем ввода инвентарного номера
+  // ей делать нечего, а закрытие описи по-прежнему остаётся в вебе.
+  const canCancel = canIssue && Boolean(data)
+    && data.session.status !== 'closed' && data.session.status !== 'cancelled';
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: canCancel ? () => (
+        <Pressable
+          onPress={askCancel}
+          disabled={cancelling}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Отменить опись">
+          <Text style={styles.headerAction}>
+            {cancelling ? 'Отменяю…' : 'Отменить'}
+          </Text>
+        </Pressable>
+      ) : undefined,
+    });
+  }, [navigation, canCancel, cancelling, askCancel, styles]);
+
   if (loading) return <LogoLoader />;
   if (!data) {
     return (
@@ -134,6 +198,11 @@ export default function WarehouseInventoryCountScreen({route, navigation}) {
           />
         </View>
       )}
+
+      {/* Область описи под шапкой: в заголовке стоит номер, а считают теперь и
+          по нескольким кабинетам сразу — без этой строки непонятно, что именно
+          перед тобой опись на три кабинета, а не на этот один. */}
+      <Text style={styles.where} numberOfLines={1}>{inventoryScopeText(session)}</Text>
 
       <View style={styles.stats}>
         <Stat styles={styles} value={stats.counted} total={stats.total} label="пересчитано" />
@@ -260,9 +329,17 @@ function Stat({styles, value, total, label, tone}) {
 
 const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
+  headerAction: {fontFamily: font.medium, fontSize: 14, color: '#FFFFFF'},
   // Треть экрана: достаточно, чтобы прицелиться, и достаточно мало, чтобы под
   // кадром помещалось несколько строк описи.
   camera: {height: 220, backgroundColor: '#000000'},
+  where: {
+    fontFamily: font.medium,
+    fontSize: 12.5,
+    color: c.textSecondary,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+  },
   stats: {flexDirection: 'row', gap: 8, padding: 12},
   stat: {flex: 1, backgroundColor: c.bgPrimary, borderRadius: radius.md, paddingVertical: 11, alignItems: 'center'},
   statValue: {fontFamily: font.semiBold, fontSize: 17, color: c.textPrimary},

@@ -435,6 +435,11 @@ router.post('/', authenticate, requireWarehouse('canImportOsv'), async (req, res
         stockReceipts: materialized.stockReceipts,
         alreadyDone: materialized.alreadyDone,
         problems: materialized.problems,
+        // Карточки, заведённые этой раскладкой, — чтобы телефон предложил
+        // напечатать этикетки не выходя из размещения. Прогон сужен до одного
+        // кабинета, поэтому список короткий: это ровно то, что человек только
+        // что отметил вокруг себя.
+        assetIds: materialized.createdAssetIds || [],
       } : materialized,
     });
   } catch (err) {

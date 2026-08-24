@@ -38,6 +38,11 @@ import { dropStyle, useAnchoredDrop, usePortalHost } from './dropdownPortal';
  * mode='storage'  — выбирается место хранения; кабинет остаётся веткой дерева.
  * allowRoom       — в режиме мест хранения кабинет тоже можно выбрать целиком
  *                   (там, где сервер сам подставит первое место в кабинете).
+ * multi           — выбирается несколько кабинетов (ver. 7.36): панель после
+ *                   нажатия не закрывается, отмеченные помечены галочкой, а
+ *                   pickedRoomIds говорит, что уже выбрано. Нужен инвентаризации:
+ *                   в приказе перечисляют кабинеты, и восемь открытий одного и
+ *                   того же дерева — это восемь раз найти в нём нужный этаж.
  *
  * Наружу всегда отдаётся пара {roomId, storageId}: вызывающему коду не нужно
  * догадываться, чем именно оказался выбранный узел, а формы, которые хранят оба
@@ -49,6 +54,8 @@ export default function LocationPicker({
   allowRoom = false,
   roomId = '',
   storageId = '',
+  multi = false,
+  pickedRoomIds = [],
   onPick,
   placeholder = 'Не выбрано',
   disabled = false,
@@ -162,7 +169,10 @@ export default function LocationPicker({
   const choose = (node) => {
     if (!node.pickable) return toggle(node.key);
     onPick({ roomId: node.roomId, storageId: node.storageId || '', node });
-    setOpen(false);
+    // В мультирежиме панель остаётся открытой: кабинеты отмечают подряд, и
+    // закрытие после каждого возвращало бы к поиску того же этажа заново.
+    if (!multi) setOpen(false);
+    return undefined;
   };
 
   const onKeyDown = (event) => {
@@ -191,10 +201,14 @@ export default function LocationPicker({
       <button type="button" className="wh-combo__value" disabled={disabled}
               title={selected ? selected.fullPath : undefined}
               onClick={() => setOpen(v => !v)}>
-        <span className={selected ? 'wh-locpick__value' : 'wh-combo__placeholder'}>
-          {selected ? shortLabel(selected, manyCenters) : placeholder}
+        <span className={(multi ? pickedRoomIds.length : selected) ? 'wh-locpick__value' : 'wh-combo__placeholder'}>
+          {multi
+            // Сколько выбрано, а не что именно: перечень стоит чипами под полем,
+            // и дублировать его в одну строку поля незачем.
+            ? (pickedRoomIds.length ? `Выбрано кабинетов: ${pickedRoomIds.length}` : placeholder)
+            : (selected ? shortLabel(selected, manyCenters) : placeholder)}
         </span>
-        {selected && !disabled ? (
+        {selected && !multi && !disabled ? (
           <span className="wh-combo__clear" role="button" tabIndex={-1}
                 onClick={(e) => { e.stopPropagation(); onPick({ roomId: '', storageId: '', node: null }); }}>
             <X size={13} />
@@ -217,9 +231,10 @@ export default function LocationPicker({
                style={{ maxHeight: place.maxHeight }}>
             {rows.map((row, index) => {
               const isOpen = expanded.has(row.key);
-              const isPicked = row.pickable
-                && (row.storageId ? row.storageId === storageId
-                  : row.type === 'room' && !storageId && row.roomId === roomId);
+              const isPicked = row.pickable && (multi
+                ? row.type === 'room' && pickedRoomIds.includes(row.roomId)
+                : (row.storageId ? row.storageId === storageId
+                  : row.type === 'room' && !storageId && row.roomId === roomId));
               return (
                 <button type="button" key={row.key}
                         className={[
