@@ -470,7 +470,34 @@ async function servicesStageReady(app) {
   return servicesStageDecision({ status: app.status });
 }
 
-router.get('/:token/services', loadApplication, async (req, res) => {
+/**
+ * В старых письмах могла остаться ссылка на предыдущую закрытую заявку того же
+ * врача. В самой анкете кнопка уже использует новый токен, поэтому получалось:
+ * кнопка работает, письмо говорит «заявка закрыта». Для экранов услуг безопасно
+ * подхватываем единственную активную заявку подтверждённого e-mail.
+ */
+async function resolveCurrentServicesApplication(req, res, next) {
+  const app = req.application;
+  if (servicesStageDecision({ status: app.status })) return next();
+
+  try {
+    const current = await OnbApplication.findOne({
+      where: {
+        email: normalizeEmail(app.email),
+        emailVerifiedAt: { [Op.ne]: null },
+        status: { [Op.in]: proc.ACTIVE_STATUSES }
+      },
+      order: [['createdAt', 'DESC']]
+    });
+    if (current) req.application = current;
+    next();
+  } catch (error) {
+    console.error('[onboarding/public] resolve services application:', error);
+    fail(res, 500, 'server_error', 'Не удалось открыть список услуг');
+  }
+}
+
+router.get('/:token/services', loadApplication, resolveCurrentServicesApplication, async (req, res) => {
   const app = req.application;
   if (!(await servicesStageReady(app))) {
     return fail(res, 409, 'not_available', 'Эта заявка закрыта, выбор услуг недоступен');
@@ -517,7 +544,7 @@ async function isServicesStepDone(app) {
  * пачками, и десятки мелких запросов на одном экране — это гарантированные
  * гонки между ними.
  */
-router.post('/:token/services', loadApplication, async (req, res) => {
+router.post('/:token/services', loadApplication, resolveCurrentServicesApplication, async (req, res) => {
   const app = req.application;
   if (!(await servicesStageReady(app))) {
     return fail(res, 409, 'not_ready', 'Выбор услуг сейчас недоступен');
@@ -566,7 +593,7 @@ router.post('/:token/services', loadApplication, async (req, res) => {
   }
 });
 
-router.post('/:token/services/submit', loadApplication, async (req, res) => {
+router.post('/:token/services/submit', loadApplication, resolveCurrentServicesApplication, async (req, res) => {
   const app = req.application;
   if (!(await servicesStageReady(app))) {
     return fail(res, 409, 'not_ready', 'Выбор услуг сейчас недоступен');
