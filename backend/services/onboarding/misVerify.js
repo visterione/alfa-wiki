@@ -65,7 +65,7 @@ async function findDoctor(app) {
   // проставлена одна, в такую выдачу не попадает — и сверка объявляет, что его
   // нет, хотя он есть. Ищем по ФИО в пределах филиала, а специальности
   // используем ниже, чтобы разобрать однофамильцев.
-  const params = {};
+  const params = { show_all: 1 };
   if (clinicIds.length) params.clinic_id = clinicIds.join(',');
 
   let rows;
@@ -151,10 +151,12 @@ async function professionNames() {
  */
 async function searchDoctors(app, query = '') {
   const clinicIds = await clinicIdsFor(app.medCenterId);
-  // Без клиники спрашиваем всю сеть: пустой список здесь бесполезнее длинного,
-  // а искать всё равно будут по фамилии.
-  const params = {};
-  if (clinicIds.length) params.clinic_id = clinicIds.join(',');
+  const needle = normalizeName(query);
+  // getUsers без show_all возвращает неполный ростер. Пока строка поиска пуста,
+  // оставляем список в пределах филиала; фамилию же ищем по всей сети — ручной
+  // выбор нужен как раз тогда, когда сотрудника ошибочно привязали не туда.
+  const params = { show_all: 1 };
+  if (!needle && clinicIds.length) params.clinic_id = clinicIds.join(',');
 
   let rows;
   try {
@@ -165,18 +167,17 @@ async function searchDoctors(app, query = '') {
   if (!rows) return { ok: true, users: [] };
 
   const names = await professionNames();
-  const needle = normalizeName(query);
   const users = rows
     .filter(row => !needle || normalizeName(row.name).includes(needle))
     .map(row => ({
       id: String(row.id),
-      name: row.name,
+      name: String(row.name || '').trim(),
       professions: (row.profession || [])
         .map(p => names.get(String(p?.id ?? p)) || null)
         .filter(Boolean)
     }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-    .slice(0, 60);
+    .filter(user => user.name)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
   return { ok: true, users };
 }
@@ -278,28 +279,46 @@ async function servicesForApplication(app) {
     const params = { profession_id: String(professionId) };
     if (clinicIds.length) params.clinic_id = clinicIds[0];
     try {
-      responses.push(misData(await misRequest('getServices', params)) || []);
+      responses.push({
+        profession: (app.professions || []).find(p => String(p.id) === String(professionId)) || {
+          id: String(professionId), name: `Специальность ${professionId}`
+        },
+        rows: misData(await misRequest('getServices', params)) || []
+      });
     } catch (error) {
       return { ok: false, reason: `МИС не ответила: ${error.message}` };
     }
   }
 
-  const rows = responses.flat();
+  const rows = responses.flatMap(response => response.rows);
   if (!rows.length) return { ok: true, services: [] };
 
   // Одна услуга приходит по нескольким специальностям — схлопываем по service_id.
   const seen = new Map();
-  for (const row of rows) {
-    const id = String(row.service_id ?? row.id);
-    if (!id || seen.has(id)) continue;
-    seen.set(id, {
-      serviceId: id,
-      code: row.code || row.sub_code || null,
-      title: row.title || row.name || 'Без названия',
-      category: row.category_title || row.category || null,
-      price: row.price != null ? Number(row.price) : null,
-      duration: row.duration != null ? Number(row.duration) : null
-    });
+  for (const response of responses) {
+    for (const row of response.rows) {
+      const id = String(row.service_id ?? row.id);
+      if (!id) continue;
+      let service = seen.get(id);
+      if (!service) {
+        service = {
+          serviceId: id,
+          code: row.code || row.sub_code || null,
+          title: row.title || row.name || 'Без названия',
+          category: row.category_title || row.category || null,
+          price: row.price != null ? Number(row.price) : null,
+          duration: row.duration != null ? Number(row.duration) : null,
+          specialties: []
+        };
+        seen.set(id, service);
+      }
+      if (!service.specialties.some(p => String(p.id) === String(response.profession.id))) {
+        service.specialties.push({
+          id: String(response.profession.id),
+          name: String(response.profession.name || `Специальность ${response.profession.id}`)
+        });
+      }
+    }
   }
 
   return { ok: true, services: [...seen.values()] };

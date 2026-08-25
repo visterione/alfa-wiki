@@ -364,19 +364,33 @@ function MisPicker({ applicationId, reason, candidates, busy, onPick, onClose })
   const [list, setList] = useState(candidates || null);
   const [loading, setLoading] = useState(false);
 
-  const search = async (value) => {
-    setLoading(true);
-    try {
-      const { data } = await api.misUsers(applicationId, value);
-      setList(data);
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'МИС не ответила');
-    } finally {
+  // Поле ищет на сервере, а не только внутри первых загруженных строк. Без
+  // этого сотрудника за пределами начальной шестидесятки нельзя было выбрать.
+  useEffect(() => {
+    if (!query.trim() && candidates) {
+      setList(candidates);
       setLoading(false);
+      return undefined;
     }
-  };
 
-  useEffect(() => { if (!candidates) search(''); /* eslint-disable-next-line */ }, []);
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      try {
+        const { data } = await api.misUsers(applicationId, query.trim());
+        if (!cancelled) setList(data);
+      } catch (error) {
+        if (!cancelled) toast.error(error.response?.data?.error || 'МИС не ответила');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, query.trim() ? 250 : 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [applicationId, candidates, query]);
 
   const shown = (list || []).filter(user =>
     !query || user.name.toLowerCase().includes(query.toLowerCase()));

@@ -41,14 +41,32 @@ export default function AnketaServices() {
     })();
   }, [token]);
 
-  const groups = useMemo(() => {
+  const specialties = useMemo(() => {
     const map = new Map();
     for (const service of services) {
-      const key = service.category || 'Прочее';
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(service);
+      const serviceSpecialties = service.specialties?.length
+        ? service.specialties
+        : [{ id: 'other', name: 'Без специальности' }];
+
+      for (const specialty of serviceSpecialties) {
+        const specialtyKey = String(specialty.id || specialty.name);
+        if (!map.has(specialtyKey)) {
+          map.set(specialtyKey, { key: specialtyKey, name: specialty.name, categories: new Map() });
+        }
+        const category = service.category || 'Прочее';
+        const categories = map.get(specialtyKey).categories;
+        if (!categories.has(category)) categories.set(category, []);
+        categories.get(category).push(service);
+      }
     }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ru'));
+    return [...map.values()]
+      .map(specialty => ({
+        ...specialty,
+        categories: [...specialty.categories.entries()]
+          .map(([name, items]) => ({ name, items }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [services]);
 
   const chosenCount = services.filter(s => s.chosen).length + custom.length;
@@ -57,8 +75,8 @@ export default function AnketaServices() {
     setServices(prev => prev.map(s => (s.serviceId === serviceId ? { ...s, ...changes } : s)));
   };
 
-  const toggleGroup = (name, value) => {
-    const ids = new Set(groups.find(g => g[0] === name)[1].map(s => s.serviceId));
+  const toggleGroup = (items, value) => {
+    const ids = new Set(items.map(s => s.serviceId));
     setServices(prev => prev.map(s => (ids.has(s.serviceId) ? { ...s, chosen: value } : s)));
   };
 
@@ -123,68 +141,45 @@ export default function AnketaServices() {
           </div>
         )}
 
-        {groups.map(([name, items]) => {
-          const allChosen = items.every(s => s.chosen);
-          const chosen = items.filter(s => s.chosen).length;
-          const isOpen = open[name] ?? false;
+        {specialties.map(specialty => {
+          const specialtyItems = specialty.categories.flatMap(category => category.items);
+          const specialtyChosen = new Set(specialtyItems.filter(s => s.chosen).map(s => s.serviceId)).size;
 
           return (
-            <div className="ank__group" key={name}>
-              <div className="ank__group-head" onClick={() => setOpen(prev => ({ ...prev, [name]: !isOpen }))}>
-                <input
-                  type="checkbox"
-                  checked={allChosen}
-                  onChange={(e) => { e.stopPropagation(); toggleGroup(name, e.target.checked); }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <b>{name}</b>
-                <span className="ank__group-count">{chosen} из {items.length}</span>
-                <span className="ank__group-count">{isOpen ? '▲' : '▼'}</span>
+            <section className="ank__specialty" key={specialty.key}>
+              <div className="ank__specialty-head">
+                <h2>{specialty.name}</h2>
+                <span>{specialtyChosen} из {new Set(specialtyItems.map(s => s.serviceId)).size}</span>
               </div>
 
-              {isOpen && items.map(service => (
-                <React.Fragment key={service.serviceId}>
-                  <div className="ank__srv">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(service.chosen)}
-                      onChange={(e) => patch(service.serviceId, { chosen: e.target.checked })}
-                    />
-                    <div>
-                      <div className="ank__srv-title">{service.title}</div>
-                      {service.code && <div className="ank__srv-code">{service.code}</div>}
+              {specialty.categories.map(category => {
+                const groupKey = `${specialty.key}:${category.name}`;
+                const allChosen = category.items.every(s => s.chosen);
+                const chosen = category.items.filter(s => s.chosen).length;
+                const isOpen = open[groupKey] ?? false;
+
+                return (
+                  <div className="ank__group" key={groupKey}>
+                    <div className="ank__group-head" onClick={() => setOpen(prev => ({ ...prev, [groupKey]: !isOpen }))}>
+                      <input
+                        type="checkbox"
+                        checked={allChosen}
+                        onChange={(e) => { e.stopPropagation(); toggleGroup(category.items, e.target.checked); }}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Выбрать все услуги в разделе ${category.name}`}
+                      />
+                      <b>{category.name}</b>
+                      <span className="ank__group-count">{chosen} из {category.items.length}</span>
+                      <span className="ank__group-count" aria-hidden="true">{isOpen ? '▲' : '▼'}</span>
                     </div>
-                    <div className="ank__srv-price">
-                      {service.price != null ? `${service.price.toLocaleString('ru-RU')} ₽` : '—'}
-                    </div>
-                    <input
-                      type="number"
-                      min={5}
-                      max={240}
-                      placeholder={service.duration ? String(service.duration) : 'мин'}
-                      value={service.doctorDuration ?? ''}
-                      disabled={!service.chosen}
-                      onChange={(e) => patch(service.serviceId, {
-                        doctorDuration: e.target.value === '' ? null : Number(e.target.value)
-                      })}
-                    />
+
+                    {isOpen && category.items.map(service => (
+                      <ServiceCard key={service.serviceId} service={service} patch={patch} />
+                    ))}
                   </div>
-                  {service.chosen && (
-                    <div className="ank__srv">
-                      <span />
-                      <div className="ank__srv-comment">
-                        <input
-                          type="text"
-                          placeholder="Комментарий: условия, оборудование, ограничения"
-                          value={service.comment || ''}
-                          onChange={(e) => patch(service.serviceId, { comment: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
+                );
+              })}
+            </section>
           );
         })}
 
@@ -217,5 +212,58 @@ export default function AnketaServices() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ServiceCard({ service, patch }) {
+  const price = service.price != null ? `${service.price.toLocaleString('ru-RU')} ₽` : null;
+  const duration = service.duration ? `${service.duration} мин` : null;
+
+  return (
+    <article className={`ank__srv${service.chosen ? ' is-chosen' : ''}`}>
+      <label className="ank__srv-top">
+        <input
+          type="checkbox"
+          checked={Boolean(service.chosen)}
+          onChange={(e) => patch(service.serviceId, { chosen: e.target.checked })}
+        />
+        <span className="ank__srv-main">
+          <span className="ank__srv-title">{service.title}</span>
+          {(service.code || price || duration) && (
+            <span className="ank__srv-meta">
+              {[service.code, price, duration].filter(Boolean).join(' · ')}
+            </span>
+          )}
+        </span>
+      </label>
+
+      {service.chosen && (
+        <div className="ank__srv-extra">
+          <label>
+            <span>Длительность, мин</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={5}
+              max={240}
+              placeholder={service.duration ? String(service.duration) : 'мин'}
+              value={service.doctorDuration ?? ''}
+              onChange={(e) => patch(service.serviceId, {
+                doctorDuration: e.target.value === '' ? null : Number(e.target.value)
+              })}
+            />
+          </label>
+          <label className="ank__srv-comment">
+            <span>Комментарий</span>
+            <textarea
+              rows={3}
+              placeholder="Условия, оборудование, ограничения"
+              value={service.comment || ''}
+              onChange={(e) => patch(service.serviceId, { comment: e.target.value })}
+            />
+          </label>
+        </div>
+      )}
+    </article>
   );
 }

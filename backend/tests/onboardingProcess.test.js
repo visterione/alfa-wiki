@@ -194,6 +194,11 @@ test('услуги запрашиваются по каждой специаль
 
   assert.deepEqual(professionParams, ['2', '37'], 'по одному запросу на специальность');
   assert.equal(result.services.length, 3, 'общая услуга не задвоилась');
+  assert.deepEqual(
+    result.services.find(service => service.serviceId === '9').specialties.map(item => item.id),
+    ['2', '37'],
+    'общая услуга сохраняет обе специальности для группировки в анкете'
+  );
 });
 
 // В справочнике медцентров у АУП стоит «aup», у ИП Микаелян — «ip». МИС на
@@ -207,6 +212,38 @@ test('нечисловые id клиник в запрос к МИС не ухо
 
   assert.ok(call, 'запрос к МИС всё же уходит');
   assert.equal('clinic_id' in call.params, false, 'clinic_id со значением «aup» не передаётся');
+});
+
+test('ручной поиск сотрудника запрашивает полный ростер всей сети', async () => {
+  const calls = [];
+  const misVerify = withMisStub(calls, (method) => method === 'getUsers'
+    ? [{ id: 77, name: 'Бакшеева Ольга Михайловна', profession: [] }]
+    : [], { misClinicIds: ['2'] });
+
+  const result = await misVerify.searchDoctors({ medCenterId: 'mc' }, 'Бакшеева');
+  const call = calls.find(c => c.method === 'getUsers');
+
+  assert.equal(call.params.show_all, 1);
+  assert.equal('clinic_id' in call.params, false, 'по фамилии ищем и за пределами выбранного филиала');
+  assert.equal(result.users[0].name, 'Бакшеева Ольга Михайловна');
+});
+
+test('автоматическая сверка по ФИО тоже запрашивает полный ростер', async () => {
+  const calls = [];
+  const misVerify = withMisStub(calls, (method) => method === 'getUsers'
+    ? [{ id: 77, name: 'Бакшеева Ольга Михайловна', profession: [] }]
+    : [], { misClinicIds: ['2'] });
+
+  const result = await misVerify.findDoctor({
+    medCenterId: 'mc',
+    fullName: 'Бакшеева Ольга Михайловна',
+    professions: []
+  });
+  const call = calls.find(c => c.method === 'getUsers');
+
+  assert.equal(call.params.show_all, 1);
+  assert.equal(result.ok, true);
+  assert.equal(result.misUserId, '77');
 });
 
 /**

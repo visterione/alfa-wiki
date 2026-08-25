@@ -326,10 +326,22 @@
 
 /* ── Страница услуг ────────────────────────────────────────────────────── */
 
+.ank__specialty { margin: 0 0 24px; }
+.ank__specialty-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 9px;
+  border-bottom: 2px solid var(--text-primary);
+}
+.ank__specialty-head h2 { margin: 0; font-size: 18px; line-height: 1.3; }
+.ank__specialty-head span { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; }
+
 .ank__group {
   border: 1px solid var(--border-light);
   border-radius: 14px;
-  margin-bottom: 9px;
+  margin-top: 10px;
   overflow: hidden;
   background: var(--bg-primary);
 }
@@ -345,13 +357,34 @@
 .ank__group-head input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: var(--primary); }
 .ank__group-count { color: var(--text-tertiary); font-size: 12px; flex: none; }
 
-.ank__srv { padding: 11px 14px; border-top: 1px solid var(--border-light); }
+.ank__srv {
+  padding: 13px 14px;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-primary);
+}
+.ank__srv.is-chosen { background: color-mix(in srgb, var(--primary-light) 32%, var(--bg-primary)); }
 .ank__srv-top { display: flex; align-items: flex-start; gap: 12px; }
 .ank__srv-top input[type="checkbox"] { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--primary); }
-.ank__srv-title { font-size: 14px; line-height: 1.35; }
-.ank__srv-meta { color: var(--text-tertiary); font-size: 12px; margin-top: 3px; }
-.ank__srv-extra { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; margin: 10px 0 0 32px; }
-.ank__srv-extra input {
+.ank__srv-main { display: block; min-width: 0; }
+.ank__srv-title { display: block; font-size: 14px; line-height: 1.4; }
+.ank__srv-meta { display: block; color: var(--text-tertiary); font-size: 12px; margin-top: 4px; }
+.ank__srv-extra {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin: 12px 0 0 32px;
+}
+.ank__srv-extra label { display: block; min-width: 0; }
+.ank__srv-extra label > span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ank__srv-extra input,
+.ank__srv-extra textarea {
   width: 100%;
   box-sizing: border-box;
   min-height: 40px;
@@ -362,6 +395,24 @@
   color: var(--text-primary);
   font-family: inherit;
   font-size: 16px;
+}
+.ank__srv-extra textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.4;
+}
+.ank__srv-extra input:focus,
+.ank__srv-extra textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  border-color: var(--primary);
+}
+
+@media (max-width: 520px) {
+  .ank__specialty-head h2 { font-size: 17px; }
+  .ank__group-head { gap: 9px; padding: 12px; }
+  .ank__srv { padding: 13px 12px; }
+  .ank__srv-extra { grid-template-columns: 1fr; margin-left: 32px; }
+  .ank__srv-extra textarea { min-height: 112px; }
 }
 
 /* ── Нижняя панель ─────────────────────────────────────────────────────── */
