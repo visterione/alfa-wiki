@@ -8,7 +8,7 @@
  *   GET  /api/public/v1/onboarding/:token         — черновик
  *   PUT  /api/public/v1/onboarding/:token         — автосохранение
  *   POST /api/public/v1/onboarding/:token/submit  — отправка на согласование
- *   GET/POST .../:token/services                  — выбор услуг после МИС
+ *   GET/POST .../:token/services                  — выбор услуг после согласования
  *
  * Без авторизации и без API-ключа: анкету заполняет человек, у которого нет и не
  * будет аккаунта в портале. Право предъявляется токеном заявки — он же
@@ -28,7 +28,7 @@ const { Op } = require('sequelize');
 const router = express.Router();
 
 const {
-  OnbApplication, OnbFile, OnbServiceChoice, OnbEmailCode, OnbTask, OnbEvent, MedCenter
+  OnbApplication, OnbFile, OnbServiceChoice, OnbEmailCode, OnbTask, MedCenter
 } = require('../../../models');
 const proc = require('../../../services/onboarding/process');
 const schema = require('../../../services/onboarding/formSchema');
@@ -458,69 +458,40 @@ router.post('/:token/submit', loadApplication, async (req, res) => {
 // ── Выбор услуг ───────────────────────────────────────────────────────────
 
 /**
- * Открыт ли врачу выбор услуг — по фактам, а не по стадии.
- *
- * Отделено от запросов к базе намеренно: именно это условие однажды разошлось с
- * карточкой сотрудника (задача закрыта и сверена, а врач видит «вас ещё не
- * завели»), и проверять его тестом надо без живой БД.
- *
- * @param {{ status: string, misUserId: ?string, hasVerifiedAccountTask: boolean }} facts
+ * Открыт ли врачу выбор услуг. Каталог строится только по специальностям из
+ * анкеты, поэтому наличие doctor_id и состояние учётки в МИС здесь не участвуют.
+ * Задача врача создаётся при согласовании; проверка статуса оставлена как
+ * страховка для заявок, согласованных до появления этого перехода.
  */
-function servicesStageDecision({ status, misUserId, hasVerifiedAccountTask }) {
+function servicesStageDecision({ status, professions, hasServicesTask }) {
   if ([proc.STATUS.REJECTED, proc.STATUS.CANCELLED].includes(status)) return false;
-  return Boolean(misUserId) || Boolean(hasVerifiedAccountTask);
+  if (!Array.isArray(professions) || professions.length === 0) return false;
+  return Boolean(hasServicesTask) || [
+    proc.STATUS.APPROVED,
+    proc.STATUS.MIS_CREATED,
+    proc.STATUS.LAUNCHED
+  ].includes(status);
 }
 
 async function servicesStageReady(app) {
-  if ([proc.STATUS.REJECTED, proc.STATUS.CANCELLED].includes(app.status)) return false;
-  if (app.misUserId) return true;
-
-  // Источник, который видит сотрудник в карточке заявки: завершённая и
-  // проверенная задача «Создать пользователя». Если она закрыта, публичная
-  // ссылка не должна спорить с карточкой только из-за старого поля заявки.
   const task = await OnbTask.findOne({
     where: {
       applicationId: app.id,
-      stepKey: 'mis_account',
-      completedAt: { [Op.ne]: null },
-      verifiedByMis: true
+      stepKey: proc.DOCTOR_STEP
     },
     attributes: ['id']
   });
-  if (!servicesStageDecision({
+  return servicesStageDecision({
     status: app.status,
-    misUserId: app.misUserId,
-    hasVerifiedAccountTask: Boolean(task)
-  })) return false;
-
-  // У старых или частично завершившихся переходов doctor_id обычно остался в
-  // журнале. Восстанавливаем заявку один раз, чтобы следующие шаги (проверка
-  // услуг и расписания) тоже работали, а не только открывалась страница.
-  const event = await OnbEvent.findOne({
-    where: { applicationId: app.id, action: 'mis_created' },
-    attributes: ['payload'],
-    order: [['createdAt', 'DESC']]
+    professions: app.professions,
+    hasServicesTask: Boolean(task)
   });
-  let misUserId = event?.payload?.misUserId;
-
-  // Если журнал когда-то не записался, повторяем безопасную сверку чтением.
-  if (!misUserId) {
-    const check = await misVerify.findDoctor(app);
-    if (check.ok) misUserId = check.misUserId;
-  }
-
-  const patch = {};
-  if (misUserId) patch.misUserId = String(misUserId);
-  if (app.status !== proc.STATUS.LAUNCHED) patch.status = proc.STATUS.MIS_CREATED;
-  if (Object.keys(patch).length) await app.update(patch);
-
-  return true;
 }
 
 router.get('/:token/services', loadApplication, async (req, res) => {
   const app = req.application;
   if (!(await servicesStageReady(app))) {
-    return fail(res, 409, 'not_ready', 'Список услуг станет доступен после того, как вас заведут в системе клиники');
+    return fail(res, 409, 'not_ready', 'Выбор услуг станет доступен после согласования анкеты');
   }
 
   try {
@@ -626,6 +597,13 @@ router.post('/:token/services/submit', loadApplication, async (req, res) => {
   if (!count) return fail(res, 422, 'nothing_chosen', 'Отметьте хотя бы одну услугу');
 
   try {
+    // Страховка для старых согласованных заявок, в которых задача врача ещё не
+    // была создана. Письмо повторно не отправляем: врач уже пришёл по ссылке.
+    const task = await OnbTask.findOne({
+      where: { applicationId: app.id, stepKey: proc.DOCTOR_STEP }
+    });
+    if (!task) await engine.openDoctorServicesTask(app, { notifyDoctor: false });
+
     await engine.onServicesPicked(app);
     res.json({ ok: true });
   } catch (error) {
@@ -635,7 +613,5 @@ router.post('/:token/services/submit', loadApplication, async (req, res) => {
 });
 
 module.exports = router;
-// Для тестов: условие доступа к выбору услуг — то место, где заявка и карточка
-// сотрудника однажды разошлись, и врач видел «вас ещё не завели» при закрытой и
-// сверенной задаче.
+// Для тестов: доступ к каталогу не должен снова начать зависеть от МИС.
 module.exports.servicesStageDecision = servicesStageDecision;

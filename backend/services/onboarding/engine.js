@@ -97,7 +97,7 @@ async function openTask(app, stepKey) {
 }
 
 /** Задача врача на выбор услуг. Исполнителя в клинике у неё нет — только письмо. */
-async function openDoctorServicesTask(app) {
+async function openDoctorServicesTask(app, { notifyDoctor = true } = {}) {
   const dueAt = await sla.dueAfterWorkingHours(proc.DOCTOR_STEP_SLA_HOURS);
   const [task, created] = await OnbTask.findOrCreate({
     where: { applicationId: app.id, stepKey: proc.DOCTOR_STEP },
@@ -107,8 +107,10 @@ async function openDoctorServicesTask(app) {
     await task.update({ dueAt, completedAt: null, completedBy: null });
   }
 
-  const sent = await mailer.sendServicesInvite(app);
-  await log(app.id, 'doctor_services_invited', { mail: sent.success, reason: sent.reason || null });
+  if (notifyDoctor) {
+    const sent = await mailer.sendServicesInvite(app);
+    await log(app.id, 'doctor_services_invited', { mail: sent.success, reason: sent.reason || null });
+  }
   return task;
 }
 
@@ -136,8 +138,8 @@ async function submit(app) {
 }
 
 /**
- * Согласование. Учётку в МИС создаёт человек руками — API это не умеет, — но
- * задача и срок ставятся сразу.
+ * Согласование запускает две независимые ветки: создание учётки в МИС и выбор
+ * услуг врачом. Для показа каталога doctor_id не нужен.
  */
 async function approve(app, user) {
   await app.update({
@@ -149,6 +151,7 @@ async function approve(app, user) {
   });
   await log(app.id, 'approved', {}, user.id);
   await openTask(app, 'mis_account');
+  await openDoctorServicesTask(app);
   return app;
 }
 
@@ -179,8 +182,8 @@ async function reject(app, user, reason) {
 }
 
 /**
- * Учётка создана — запускается параллельный шаг: бейдж, сайт, расписание и
- * письмо врачу со ссылкой на услуги. Никто никого не ждёт.
+ * Учётка создана — запускаются зависимые от неё внутренние задачи. Если врач
+ * уже успел выбрать услуги, теперь можно открыть задачу бухгалтеру.
  */
 async function onMisAccountCreated(app, misUserId) {
   await app.update({ status: proc.STATUS.MIS_CREATED, misUserId: String(misUserId) });
@@ -189,12 +192,16 @@ async function onMisAccountCreated(app, misUserId) {
   for (const step of proc.stepsAfter('mis_account')) {
     await openTask(app, step.key);
   }
-  await openDoctorServicesTask(app);
+  const servicesTask = await OnbTask.findOne({
+    where: { applicationId: app.id, stepKey: proc.DOCTOR_STEP }
+  });
+  if (servicesTask?.completedAt) await openTask(app, 'services_mis');
   return app;
 }
 
 /**
- * Врач отметил услуги. Дальше их вносит бухгалтер — тоже руками в МИС.
+ * Врач отметил услуги. Бухгалтер получает задачу сразу, если учётка уже есть;
+ * иначе выбор спокойно ждёт завершения шага создания пользователя.
  */
 async function onServicesPicked(app) {
   const task = await OnbTask.findOne({ where: { applicationId: app.id, stepKey: proc.DOCTOR_STEP } });
@@ -202,7 +209,12 @@ async function onServicesPicked(app) {
     await task.update({ completedAt: new Date() });
   }
   await log(app.id, 'services_picked', {});
-  await openTask(app, 'services_mis');
+
+  // Учётка могла появиться одновременно с отправкой формы. Перечитываем
+  // заявку, чтобы обе стороны гонки гарантированно увидели результат другой:
+  // либо этот переход откроет задачу бухгалтеру, либо onMisAccountCreated.
+  await app.reload();
+  if (app.misUserId) await openTask(app, 'services_mis');
   return app;
 }
 

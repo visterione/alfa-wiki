@@ -41,11 +41,11 @@ test('чек-лист включает выбор услуг врачом и н�
   assert.equal(proc.isReadyToLaunch(missingBadge), false);
 });
 
-test('параллельный запуск стартует четырьмя ветками после учётки в МИС', () => {
+test('после учётки в МИС стартуют три внутренние ветки', () => {
   const next = proc.stepsAfter('mis_account').map(s => s.key).sort();
   assert.deepEqual(next, ['badge', 'schedule', 'website']);
-  // Четвёртая ветка — врач, у неё нет исполнителя внутри клиники, поэтому в
-  // STEPS её нет и открывает её движок отдельно.
+  // Ветка врача независима от учётки: у неё нет исполнителя внутри клиники,
+  // поэтому в STEPS её нет и движок открывает её уже при согласовании.
   assert.equal(proc.DOCTOR_STEP, 'services_pick');
 });
 
@@ -311,40 +311,43 @@ function withMisStub(calls, handler, medCenter = { misClinicIds: [] }) {
 }
 
 
-// Выбор услуг открывался по статусу заявки, и на этом ломался: задача «Создать
-// пользователя» закрыта и сверена с МИС, в карточке галочка стоит, а врач по
-// своей ссылке видит «вас ещё не завели в системе клиники». Условие должно
-// смотреть на факт — есть ли учётка, — а не на то, куда уехал статус.
-test('выбор услуг открыт, когда учётка есть — даже если статус отстал', () => {
+// Каталог строится по специальностям анкеты. Привязка этого экрана к doctor_id
+// создавала ложную ошибку «вас ещё не завели» и не давала врачу сделать свою
+// часть работы параллельно с созданием учётки.
+test('выбор услуг после согласования не зависит от учётки в МИС', () => {
   const { servicesStageDecision } = require('../routes/public/v1/onboarding');
+  const professions = [{ id: '2', name: 'Терапевт' }];
 
-  // Ровно сообщённый случай: статус остался на «согласована», doctor_id в
-  // заявке не сохранился, но задача закрыта и сверена с МИС.
   assert.equal(servicesStageDecision({
-    status: 'approved', misUserId: null, hasVerifiedAccountTask: true
+    status: 'approved', professions, hasServicesTask: true
   }), true);
 
-  // Обычный ход: doctor_id на месте.
+  // Старая согласованная заявка без задачи тоже должна открыться.
   assert.equal(servicesStageDecision({
-    status: 'mis_created', misUserId: '133', hasVerifiedAccountTask: false
+    status: 'approved', professions, hasServicesTask: false
   }), true);
 
-  // Врач уже запущен — своей ссылкой он всё ещё может воспользоваться.
+  // Наличие или отсутствие doctor_id вообще не входит в условие.
   assert.equal(servicesStageDecision({
-    status: 'launched', misUserId: '133', hasVerifiedAccountTask: true
+    status: 'mis_created', professions, hasServicesTask: true
   }), true);
 });
 
-test('до создания учётки и после остановки процесса выбор услуг закрыт', () => {
+test('до согласования, без специальности и после остановки выбор услуг закрыт', () => {
   const { servicesStageDecision } = require('../routes/public/v1/onboarding');
+  const professions = [{ id: '2', name: 'Терапевт' }];
 
   assert.equal(servicesStageDecision({
-    status: 'submitted', misUserId: null, hasVerifiedAccountTask: false
+    status: 'submitted', professions, hasServicesTask: false
   }), false, 'анкета ещё на согласовании');
+
+  assert.equal(servicesStageDecision({
+    status: 'approved', professions: [], hasServicesTask: true
+  }), false, 'в анкете нет специальности для построения каталога');
 
   for (const status of ['rejected', 'cancelled']) {
     assert.equal(servicesStageDecision({
-      status, misUserId: '133', hasVerifiedAccountTask: true
+      status, professions, hasServicesTask: true
     }), false, status);
   }
 });
