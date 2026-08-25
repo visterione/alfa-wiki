@@ -630,6 +630,35 @@ function serialiseChoice(choice) {
 }
 
 /**
+ * Анкета файлом.
+ *
+ * Собирается на сервере, а не печатью из браузера: в файл попадает тот же срез,
+ * что и в карточку, — маркетолог не выгрузит СНИЛС, даже открыв ссылку
+ * напрямую. И у файла осмысленное имя, а печать давала «Альфа Вики.pdf».
+ */
+router.get('/applications/:id/cv.pdf', loadApplication, async (req, res) => {
+  try {
+    const app = req.application;
+    const files = await OnbFile.findAll({ where: { applicationId: app.id } });
+    const visible = projection.canSeeDocuments(req.viewKey)
+      ? files
+      : files.filter(f => f.kind === 'photo');
+
+    const projected = projection.project(app, req.viewKey, visible);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    // filename* с UTF-8: без него кириллица в имени превращается в вопросы.
+    const name = encodeURIComponent(cvPdf.fileName(app));
+    res.setHeader('Content-Disposition', `attachment; filename="cv.pdf"; filename*=UTF-8''${name}`);
+
+    cvPdf.buildCv(app, projected, app.medCenter).pipe(res);
+  } catch (error) {
+    console.error('[onboarding] cv.pdf:', error);
+    res.status(500).json({ error: 'Не удалось собрать файл' });
+  }
+});
+
+/**
  * Сотрудники филиала из МИС — для ручного выбора, когда сверка по ФИО не нашла
  * врача. Иначе шаг «создать учётку» становится тупиком: задача открыта, МИС
  * говорит «нет такого», и сделать с этим нечего.

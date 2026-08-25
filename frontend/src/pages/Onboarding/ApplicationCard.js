@@ -432,50 +432,106 @@ function MisPicker({ applicationId, reason, candidates, busy, onPick, onClose })
  * Бухгалтеру важен не весь список, а расхождения: где врач изменил длительность
  * или оставил комментарий. Их немного, и разбирать нужно только их.
  */
+/**
+ * Услуги, отмеченные врачом.
+ *
+ * Показываем весь список, а не только расхождения. Сначала здесь стояла сводка
+ * «отмечено 60, врач ничего не менял» — и это отвечало не на тот вопрос:
+ * бухгалтеру эти шестьдесят позиций вносить в «Реновацию» руками, ему нужен
+ * сам перечень, а расхождения — лишь пометки внутри него.
+ */
 function ServicesTab({ data: services }) {
+  const [onlyDiff, setOnlyDiff] = useState(false);
+
   if (!services) return <div className="onb-sub">Загружаем…</div>;
   if (services.error) return <div className="onb-empty">Не удалось загрузить услуги</div>;
   if (!services.total && !services.custom.length) {
     return <div className="onb-empty">Врач ещё не отмечал услуги</div>;
   }
 
+  const changed = (item) =>
+    Boolean((item.doctorDuration && item.doctorDuration !== item.misDuration) || item.comment);
+
+  const rows = onlyDiff ? services.services.filter(changed) : services.services;
+  const diffCount = services.differences.length;
+
   return (
     <>
-      <div className="onb-kv" style={{ marginBottom: 14 }}>
-        <dt>Отмечено услуг</dt><dd>{services.total}</dd>
+      <div className="onb-srv-top">
+        <div className="onb-srv-counts">
+          <b>{services.total}</b> услуг отмечено
+          {Boolean(diffCount) && <span className="onb-srv-diffnote">· {diffCount} с правками</span>}
+        </div>
+
+        {Boolean(diffCount) && (
+          <button
+            className={`onb-btn is-sm${onlyDiff ? ' is-primary' : ''}`}
+            onClick={() => setOnlyDiff(value => !value)}
+          >
+            {onlyDiff ? 'Показать все' : 'Только правки'}
+          </button>
+        )}
       </div>
 
-      {Boolean(services.differences.length) && (
-        <>
-          <div className="onb-sect">Расхождения</div>
-          <ul className="onb-log">
-            {services.differences.map(item => (
-              <li key={item.id}>
-                <span>
-                  {item.title}
-                  {item.doctorDuration && item.doctorDuration !== item.misDuration
-                    ? ` · ${item.misDuration ?? '—'} → ${item.doctorDuration} мин`
-                    : ''}
-                  {item.comment ? ` · ${item.comment}` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <table className="onb-srv-table">
+        <thead>
+          <tr>
+            <th>Код</th>
+            <th>Услуга</th>
+            <th>Цена</th>
+            <th>Длительность</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(item => (
+            <tr key={item.id} className={changed(item) ? 'is-changed' : ''}>
+              <td className="onb-srv-code">{item.code || '—'}</td>
+              <td>
+                {item.title}
+                {item.comment && <div className="onb-srv-comment">{item.comment}</div>}
+              </td>
+              <td className="onb-srv-num">
+                {item.price != null ? `${item.price.toLocaleString('ru-RU')} ₽` : '—'}
+              </td>
+              <td className="onb-srv-num">
+                {item.doctorDuration && item.doctorDuration !== item.misDuration ? (
+                  /* Было и стало рядом: бухгалтер вносит второе, но обязан
+                     видеть первое, чтобы понять, что это правка врача. */
+                  <span className="onb-srv-change">
+                    <s>{item.misDuration ?? '—'}</s> {item.doctorDuration} мин
+                  </span>
+                ) : (
+                  item.misDuration ? `${item.misDuration} мин` : '—'
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {!rows.length && <div className="onb-sub">В этом фильтре пусто</div>}
 
       {Boolean(services.custom.length) && (
         <>
           <div className="onb-sect">Нет в справочнике</div>
-          <ul className="onb-log">
-            {services.custom.map(item => <li key={item.id}><span>{item.title}</span></li>)}
-          </ul>
+          <p className="onb-sub" style={{ marginBottom: 10 }}>
+            Врач вписал их текстом. Заведение позиции в прайс идёт своим порядком и запуск не держит.
+          </p>
+          <table className="onb-srv-table">
+            <tbody>
+              {services.custom.map(item => (
+                <tr key={item.id}>
+                  <td>
+                    {item.title}
+                    {item.comment && <div className="onb-srv-comment">{item.comment}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </>
-      )}
-
-      {!services.differences.length && !services.custom.length && (
-        <div className="onb-sub">Врач ничего не менял — список совпадает с прайсом.</div>
       )}
     </>
   );
 }
+

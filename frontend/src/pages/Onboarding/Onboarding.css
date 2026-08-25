@@ -1266,3 +1266,60 @@
   .onb-journal-row { grid-template-columns: 40px 10px minmax(0, 1fr); gap: 8px; }
   .onb-journal-step { display: inline-block; margin: 4px 0 0; white-space: normal; }
 }
+
+/* ── Вкладка «Услуги» ──────────────────────────────────────────────────────
+   Список целиком, а не одни расхождения: эти позиции бухгалтеру вносить в
+   «Реновацию» руками, ему нужен сам перечень. */
+
+.onb-srv-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.onb-srv-counts { flex: 1; font-size: 13.5px; color: var(--text-secondary); }
+.onb-srv-counts b { font-size: 15px; color: var(--text-primary); font-weight: 600; }
+.onb-srv-diffnote { margin-left: 4px; }
+
+.onb-srv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.onb-srv-table th {
+  position: sticky;
+  top: -20px;
+  z-index: 1;
+  text-align: left;
+  font-weight: 500;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+.onb-srv-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: top;
+}
+.onb-srv-table tr:last-child td { border-bottom: none; }
+
+/* Правка врача помечается полосой у края строки, а не заливкой: строк бывает
+   под сотню, и залитые вперемешку с обычными читаются хуже обеих. */
+.onb-srv-table tr.is-changed td:first-child { box-shadow: inset 2px 0 0 var(--warning); }
+
+.onb-srv-code {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.onb-srv-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.onb-srv-change s { color: var(--text-tertiary); margin-right: 4px; }
+.onb-srv-comment {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.onb-srv-table th:first-child, .onb-srv-table td:first-child { width: 15%; }
+.onb-srv-table th:nth-child(3), .onb-srv-table td:nth-child(3) { width: 14%; }
+.onb-srv-table th:last-child, .onb-srv-table td:last-child { width: 18%; }

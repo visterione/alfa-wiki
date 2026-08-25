@@ -1198,6 +1198,8 @@ export const onboarding = {
   // Сотрудники филиала из МИС — для ручного выбора, когда сверка по ФИО не нашла врача.
   misUsers:      (id, q)            => api.get(`/onboarding/applications/${id}/mis-users`, { params: { q } }),
   export:        (id)               => api.get(`/onboarding/applications/${id}/export`),
+  // Анкета файлом. Забираем в память, а не ссылкой: обычный <a href> не унесёт
+  // заголовок авторизации, а класть токен в адрес ради скачивания незачем.
   // PDF идёт как двоичные данные: без responseType axios разберёт его как текст
   // и файл окажется битым.
   cvPdf:         (id)               => api.get(`/onboarding/applications/${id}/cv.pdf`, { responseType: 'arraybuffer' }),
