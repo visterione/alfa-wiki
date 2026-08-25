@@ -457,6 +457,20 @@ router.post('/:token/submit', loadApplication, async (req, res) => {
 
 // ── Выбор услуг ───────────────────────────────────────────────────────────
 
+/**
+ * Открыт ли врачу выбор услуг — по фактам, а не по стадии.
+ *
+ * Отделено от запросов к базе намеренно: именно это условие однажды разошлось с
+ * карточкой сотрудника (задача закрыта и сверена, а врач видит «вас ещё не
+ * завели»), и проверять его тестом надо без живой БД.
+ *
+ * @param {{ status: string, misUserId: ?string, hasVerifiedAccountTask: boolean }} facts
+ */
+function servicesStageDecision({ status, misUserId, hasVerifiedAccountTask }) {
+  if ([proc.STATUS.REJECTED, proc.STATUS.CANCELLED].includes(status)) return false;
+  return Boolean(misUserId) || Boolean(hasVerifiedAccountTask);
+}
+
 async function servicesStageReady(app) {
   if ([proc.STATUS.REJECTED, proc.STATUS.CANCELLED].includes(app.status)) return false;
   if (app.misUserId) return true;
@@ -473,7 +487,11 @@ async function servicesStageReady(app) {
     },
     attributes: ['id']
   });
-  if (!task) return false;
+  if (!servicesStageDecision({
+    status: app.status,
+    misUserId: app.misUserId,
+    hasVerifiedAccountTask: Boolean(task)
+  })) return false;
 
   // У старых или частично завершившихся переходов doctor_id обычно остался в
   // журнале. Восстанавливаем заявку один раз, чтобы следующие шаги (проверка
@@ -617,3 +635,7 @@ router.post('/:token/services/submit', loadApplication, async (req, res) => {
 });
 
 module.exports = router;
+// Для тестов: условие доступа к выбору услуг — то место, где заявка и карточка
+// сотрудника однажды разошлись, и врач видел «вас ещё не завели» при закрытой и
+// сверенной задаче.
+module.exports.servicesStageDecision = servicesStageDecision;

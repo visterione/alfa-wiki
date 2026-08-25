@@ -309,3 +309,42 @@ function withMisStub(calls, handler, medCenter = { misClinicIds: [] }) {
 
   return misVerify;
 }
+
+
+// Выбор услуг открывался по статусу заявки, и на этом ломался: задача «Создать
+// пользователя» закрыта и сверена с МИС, в карточке галочка стоит, а врач по
+// своей ссылке видит «вас ещё не завели в системе клиники». Условие должно
+// смотреть на факт — есть ли учётка, — а не на то, куда уехал статус.
+test('выбор услуг открыт, когда учётка есть — даже если статус отстал', () => {
+  const { servicesStageDecision } = require('../routes/public/v1/onboarding');
+
+  // Ровно сообщённый случай: статус остался на «согласована», doctor_id в
+  // заявке не сохранился, но задача закрыта и сверена с МИС.
+  assert.equal(servicesStageDecision({
+    status: 'approved', misUserId: null, hasVerifiedAccountTask: true
+  }), true);
+
+  // Обычный ход: doctor_id на месте.
+  assert.equal(servicesStageDecision({
+    status: 'mis_created', misUserId: '133', hasVerifiedAccountTask: false
+  }), true);
+
+  // Врач уже запущен — своей ссылкой он всё ещё может воспользоваться.
+  assert.equal(servicesStageDecision({
+    status: 'launched', misUserId: '133', hasVerifiedAccountTask: true
+  }), true);
+});
+
+test('до создания учётки и после остановки процесса выбор услуг закрыт', () => {
+  const { servicesStageDecision } = require('../routes/public/v1/onboarding');
+
+  assert.equal(servicesStageDecision({
+    status: 'submitted', misUserId: null, hasVerifiedAccountTask: false
+  }), false, 'анкета ещё на согласовании');
+
+  for (const status of ['rejected', 'cancelled']) {
+    assert.equal(servicesStageDecision({
+      status, misUserId: '133', hasVerifiedAccountTask: true
+    }), false, status);
+  }
+});
