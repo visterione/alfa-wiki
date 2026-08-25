@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { dateTime } from './bits';
+import { dateTime, UserAvatar } from './bits';
 
 // Точки красим по смыслу события, а не по типу: человек ищет в журнале «где
 // что-то пошло не так», и красное должно бросаться в глаза.
@@ -75,7 +75,12 @@ export default function JournalTab({ events = [], tasks = [] }) {
                   <span className="onb-journal-step">{stepTitle(event.payload.stepKey)}</span>
                 )}
                 {details(event) && <div className="onb-journal-note">{details(event)}</div>}
-                {event.author && <div className="onb-journal-who">{event.author.displayName}</div>}
+                {event.author && (
+                  <div className="onb-journal-who">
+                    <UserAvatar user={event.author} />
+                    <span>{event.author.displayName || event.author.username}</span>
+                  </div>
+                )}
               </div>
             </div>
           ))}

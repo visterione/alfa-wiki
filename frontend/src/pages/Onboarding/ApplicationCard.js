@@ -262,25 +262,28 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
 
                     {!task.completedAt && task.mine && (
                       <div className="onb-acts">
-                        {task.mode === 'race' && !task.claimedBy && (
+                        {task.requiresClaim && !task.claimedBy ? (
                           <button className="onb-btn is-sm" disabled={busy}
                             onClick={() => act(() => api.claimTask(task.id), 'Задача за вами')}>
                             Взять
                           </button>
+                        ) : (
+                          <>
+                            {task.verify === 'mis' && (
+                              <button className="onb-btn is-sm" disabled={busy}
+                                onClick={async () => {
+                                  const { data: res } = await api.verifyTask(task.id, {});
+                                  if (res.ok) toast.success('Найдено в МИС');
+                                  else toast.error(res.reason);
+                                }}>
+                                Сверить с МИС
+                              </button>
+                            )}
+                            <button className="onb-btn is-sm is-primary" disabled={busy} onClick={() => complete(task)}>
+                              Готово
+                            </button>
+                          </>
                         )}
-                        {task.verify === 'mis' && (
-                          <button className="onb-btn is-sm" disabled={busy}
-                            onClick={async () => {
-                              const { data: res } = await api.verifyTask(task.id, {});
-                              if (res.ok) toast.success('Найдено в МИС');
-                              else toast.error(res.reason);
-                            }}>
-                            Сверить с МИС
-                          </button>
-                        )}
-                        <button className="onb-btn is-sm is-primary" disabled={busy} onClick={() => complete(task)}>
-                          Готово
-                        </button>
                       </div>
                     )}
 
@@ -552,4 +555,3 @@ function ServicesTab({ data: services, busy, onDownload }) {
     </>
   );
 }
-

@@ -48,6 +48,19 @@ async function notify(userIds, text, metadata = {}) {
   }
 }
 
+/**
+ * Мгновенно сообщает открытым вкладкам, что состав задач изменился.
+ * Сообщение Ассистента и этот сигнал решают разные задачи: первое остаётся в
+ * истории и приходит пушем, второй беззвучно синхронизирует список и бейдж.
+ */
+function signalChanged(userIds, payload = {}) {
+  const socket = notificationService.getIo();
+  if (!socket) return;
+  for (const userId of [...new Set((userIds || []).filter(Boolean))]) {
+    socket.to(`user:${userId}`).emit('onboarding:changed', payload);
+  }
+}
+
 // ── Создание задач ─────────────────────────────────────────────────────────
 
 /**
@@ -86,7 +99,10 @@ async function openTask(app, stepKey) {
     // исполнителей: на доске она подсвечена, админ переназначит вручную.
     await log(app.id, 'task_unassigned', { stepKey });
   } else {
-    const who = step.mode === 'race' ? 'Задача одна на всех, кто первый взял — за тем и закрепится.' : '';
+    // Список должен обновиться раньше, чем пользователь увидит уведомление от
+    // Ассистента и успеет перейти в «Мои задачи».
+    signalChanged(assignees, { reason: 'task_opened', applicationId: app.id, stepKey });
+    const who = assignees.length > 1 ? 'Задача общая: кто первым возьмёт, за тем она и закрепится.' : '';
     await notify(assignees,
       `🩺 Онбординг врача — ${app.fullName || 'без имени'}\n${step.title}\n${who}`,
       { type: 'onboarding_task', applicationId: app.id, stepKey });
@@ -263,6 +279,9 @@ async function completeTask(app, task, user, { note, misUserId } = {}) {
   }
 
   await log(app.id, 'task_completed', { stepKey: task.stepKey, verified: task.verifiedByMis }, user.id);
+  signalChanged(task.assigneeIds, {
+    reason: 'task_completed', applicationId: app.id, stepKey: task.stepKey
+  });
 
   // Услуги внесены — их фактические длительности становятся настройкой врача, а
   // следом уходит выгрузка колл-центру.
@@ -417,6 +436,7 @@ async function changeMedCenter(app, user, medCenterId) {
 module.exports = {
   log,
   notify,
+  signalChanged,
   openTask,
   openDoctorServicesTask,
   submit,

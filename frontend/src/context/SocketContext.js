@@ -301,6 +301,9 @@ export function SocketProvider({ children }) {
       console.log('Socket.IO connected');
       setIsConnected(true);
       socket.emit('join', user.id);
+      // Событие могло произойти, пока соединение восстанавливалось. Один
+      // запрос после reconnect закрывает это окно без частого polling.
+      window.dispatchEvent(new Event('onboarding-changed'));
       handlePresenceVisibility();
     });
 
@@ -376,6 +379,10 @@ export function SocketProvider({ children }) {
         { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...data },
       ]);
       playNotificationSound();
+    });
+
+    socket.on('onboarding:changed', (data) => {
+      window.dispatchEvent(new CustomEvent('onboarding-changed', { detail: data }));
     });
 
     /**

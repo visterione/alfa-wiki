@@ -51,8 +51,6 @@ const ACTIVE_STATUSES = [
 // scope   — 'branch': исполнитель свой в каждом филиале; 'network': один на сеть.
 //           Хранится одинаково (филиал в назначении либо NULL), различие только
 //           в том, что предлагает интерфейс настроек.
-// mode    — 'single': один исполнитель; 'race': назначено несколько, берёт любой,
-//           и после взятия задача исчезает у остальных (шаг 6 из ТЗ).
 // after   — шаг, после закрытия которого задача появляется. NULL — стартует от
 //           согласования главврача.
 // blocking — запирает ли неудачная сверка шаг. По умолчанию да; false означает
@@ -69,7 +67,6 @@ const STEPS = [
     title: 'Создать пользователя в «Реновации»',
     hint: 'Только создание учётной записи. От неё зависят расписание и внесение выбранных услуг в МИС.',
     scope: 'network',
-    mode: 'single',
     after: null,
     verify: 'mis',
     slaHours: 4,
@@ -80,7 +77,6 @@ const STEPS = [
     title: 'Бейдж и карточка на кабинет',
     hint: 'ФИО для бейджа, специальность, фото.',
     scope: 'branch',
-    mode: 'single',
     after: 'mis_account',
     verify: 'manual',
     slaHours: 16,
@@ -91,7 +87,6 @@ const STEPS = [
     title: 'Карточка врача на сайте',
     hint: 'Био, образование, квалификация, труды, навыки, ссылки, фото.',
     scope: 'branch',
-    mode: 'single',
     after: 'mis_account',
     verify: 'manual',
     slaHours: 24,
@@ -102,7 +97,6 @@ const STEPS = [
     title: 'Расписание в «Реновации»',
     hint: 'Филиал, кабинет, дни и время приёма, длительность, ограничение по возрасту.',
     scope: 'branch',
-    mode: 'single',
     after: 'mis_account',
     verify: 'mis',
     slaHours: 16,
@@ -113,7 +107,6 @@ const STEPS = [
     title: 'Внести услуги врача в «Реновацию»',
     hint: 'Список отмеченных врачом услуг, расхождения по длительности и новые позиции.',
     scope: 'branch',
-    mode: 'single',
     after: 'services_pick',
     verify: 'mis',
     // Сверка здесь советующая, а не запирающая. Отмеченное врачом — это заявка
@@ -128,9 +121,8 @@ const STEPS = [
   {
     key: 'callcenter',
     title: 'Принять выгрузку данных врача',
-    hint: 'Задача одна на двоих: кто первым взял, за тем и закрепляется.',
+    hint: 'Принимает подготовленные данные врача для работы колл-центра.',
     scope: 'network',
-    mode: 'race',
     after: 'services_mis',
     verify: 'manual',
     slaHours: 8,
@@ -154,6 +146,12 @@ function getStep(key) {
 /** Шаги, которые запускаются сразу после закрытия указанного (или после согласования). */
 function stepsAfter(key) {
   return STEPS.filter(s => s.after === key);
+}
+
+/** Несколько назначенных исполнителей всегда работают по правилу «кто первый». */
+function requiresClaim(task) {
+  const ids = Array.isArray(task?.assigneeIds) ? task.assigneeIds.filter(Boolean) : [];
+  return new Set(ids).size > 1;
 }
 
 /**
@@ -260,6 +258,7 @@ module.exports = {
   DOCTOR_STEP_SLA_HOURS,
   getStep,
   stepsAfter,
+  requiresClaim,
   stageOf,
   timeline,
   checklistOf,

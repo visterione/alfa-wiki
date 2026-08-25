@@ -56,8 +56,8 @@ export default function Onboarding() {
     setParams(next, { replace: true });
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const [overview, my, active, old] = await Promise.all([
         api.overview(),
@@ -72,11 +72,27 @@ export default function Onboarding() {
     } catch (error) {
       toast.error(error.response?.data?.error || 'Не удалось загрузить раздел');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Новая задача, её захват коллегой или завершение шага отражаются на уже
+  // открытом экране без перезагрузки. Небольшой debounce схлопывает несколько
+  // событий одного перехода процесса в один запрос.
+  useEffect(() => {
+    let timer;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => load({ silent: true }), 80);
+    };
+    window.addEventListener('onboarding-changed', refresh);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('onboarding-changed', refresh);
+    };
+  }, [load]);
 
   /**
    * Подсветка активного пункта — отдельный слой под кнопками, и её положение
@@ -211,7 +227,9 @@ function TaskTable({ tasks, onOpen }) {
             </td>
             <td className="onb-sub">{professionsText(task.professions)}</td>
             <td>
-              {task.mode === 'race' && !task.claimedBy && <Badge tone="info">одна на двоих</Badge>}
+              {task.requiresClaim && !task.claimedBy && (
+                <span className="onb-shared-note">Общая · нужно взять</span>
+              )}
             </td>
             <td className={`onb-when${task.overdue ? ' is-late' : ''}`}>{dueText(task)}</td>
           </tr>

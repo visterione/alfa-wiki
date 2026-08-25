@@ -453,6 +453,7 @@ function QuickAccessButtons({ onClose }) {
   /**
    * Бейдж онбординга — незакрытые задачи самого человека. Процесс идёт неделями
    * и напоминает о себе редко: без счётчика шаг обнаруживают по просрочке.
+   * По сокету обновляется сразу, интервал нужен только как страховка.
    */
   useEffect(() => {
     if (!canAccessOnboarding) return undefined;
@@ -466,7 +467,11 @@ function QuickAccessButtons({ onClose }) {
     };
     load();
     const interval = setInterval(load, 120000);
-    return () => clearInterval(interval);
+    window.addEventListener('onboarding-changed', load);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('onboarding-changed', load);
+    };
   }, [canAccessOnboarding]);
 
   const isOnChat = location.pathname === '/';

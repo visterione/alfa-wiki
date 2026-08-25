@@ -49,6 +49,13 @@ test('после учётки в МИС стартуют три внутренн
   assert.equal(proc.DOCTOR_STEP, 'services_pick');
 });
 
+test('любая задача с несколькими исполнителями требует взятия в работу', () => {
+  assert.equal(proc.requiresClaim({ assigneeIds: ['one'] }), false);
+  assert.equal(proc.requiresClaim({ assigneeIds: ['one', 'two'] }), true);
+  assert.equal(proc.requiresClaim({ assigneeIds: ['one', 'one'] }), false, 'дубли не создают общую задачу');
+  assert.equal(proc.requiresClaim({ assigneeIds: [] }), false);
+});
+
 // Форма публичная: в JSONB не должно попадать ничего, чего нет в схеме.
 test('черновик очищается по схеме и отбрасывает посторонние ключи', () => {
   const form = validation.sanitize({

@@ -184,6 +184,28 @@ router.put('/settings/:stepKey', async (req, res) => {
     if (userIds.length) {
       await OnbAssignment.bulkCreate(userIds.map(userId => ({ stepKey, medCenterId, userId })));
     }
+
+    // Настройка должна действовать и на уже открытые задачи, а не только на
+    // следующих врачей. Пересчитываем эффективных исполнителей с учётом
+    // филиального приоритета над сетевым назначением.
+    const openTasks = await OnbTask.findAll({
+      where: { stepKey, completedAt: null },
+      include: [{ model: OnbApplication, as: 'application', attributes: ['id', 'medCenterId'] }]
+    });
+    const affectedUsers = new Set();
+    for (const task of openTasks) {
+      if (!task.application) continue;
+      (task.assigneeIds || []).forEach(id => affectedUsers.add(id));
+      const effectiveIds = await assignments.resolveAssignees(stepKey, task.application.medCenterId);
+      effectiveIds.forEach(id => affectedUsers.add(id));
+      const claimStillValid = !task.claimedBy || effectiveIds.includes(task.claimedBy);
+      await task.update({
+        assigneeIds: effectiveIds,
+        ...(claimStillValid ? {} : { claimedBy: null, claimedAt: null })
+      });
+    }
+    engine.signalChanged([...affectedUsers], { reason: 'assignments_changed', stepKey });
+
     res.json({ ok: true, stepKey, medCenterId, userIds });
   } catch (error) {
     console.error('[onboarding] save settings:', error);
@@ -316,10 +338,11 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
           id: task.id,
           stepKey: task.stepKey,
           title: step?.title || (task.stepKey === proc.DOCTOR_STEP ? 'Врач выбирает услуги' : task.stepKey),
-          mode: step?.mode || 'single',
           verify: step?.verify || 'manual',
           assigneeIds: task.assigneeIds || [],
-          mine: (task.assigneeIds || []).includes(req.user.id),
+          requiresClaim: proc.requiresClaim(task),
+          mine: (task.assigneeIds || []).includes(req.user.id)
+            && (!task.claimedBy || task.claimedBy === req.user.id),
           claimedBy: task.claimedBy,
           claimer: task.claimer,
           completedAt: task.completedAt,
@@ -499,7 +522,7 @@ router.get('/tasks/my', async (req, res) => {
         professions: app.professions || [],
         stepKey: task.stepKey,
         title: step?.title || task.stepKey,
-        mode: step?.mode || 'single',
+        requiresClaim: proc.requiresClaim(task),
         claimedBy: task.claimedBy,
         dueAt: task.dueAt,
         overdue: task.dueAt ? task.dueAt < now : false,
@@ -536,24 +559,45 @@ async function loadTask(req, res, next) {
 }
 
 /**
- * Взять задачу-гонку. После этого она пропадает у остальных, а в карточке
+ * Взять общую задачу. После этого она пропадает у остальных, а в карточке
  * навсегда остаётся, кто именно её выполнил — ровно чтобы не было ситуации
  * «думали, сделал другой».
  */
 router.post('/tasks/:taskId/claim', loadTask, async (req, res) => {
   const task = req.task;
   if (task.completedAt) return res.status(409).json({ error: 'Задача уже закрыта' });
-  if (task.claimedBy && task.claimedBy !== req.user.id) {
+  if (!proc.requiresClaim(task)) {
+    return res.status(409).json({ error: 'У этой задачи один исполнитель, брать её отдельно не нужно' });
+  }
+
+  // Условный UPDATE не даёт двум одновременным кликам перезаписать друг друга:
+  // победит только тот запрос, который первым увидел claimedBy = NULL.
+  const [claimed] = await OnbTask.update(
+    { claimedBy: req.user.id, claimedAt: new Date() },
+    {
+      where: {
+        id: task.id,
+        completedAt: null,
+        [Op.or]: [{ claimedBy: null }, { claimedBy: req.user.id }]
+      }
+    }
+  );
+  if (!claimed) {
     return res.status(409).json({ error: 'Задачу уже взял другой сотрудник' });
   }
 
-  await task.update({ claimedBy: req.user.id, claimedAt: new Date() });
   await engine.log(task.applicationId, 'task_claimed', { stepKey: task.stepKey }, req.user.id);
+  engine.signalChanged(task.assigneeIds, {
+    reason: 'task_claimed', applicationId: task.applicationId, stepKey: task.stepKey
+  });
   res.json({ ok: true });
 });
 
 /** Проверить шаг в МИС, не закрывая задачу. */
 router.post('/tasks/:taskId/verify', loadTask, async (req, res) => {
+  if (proc.requiresClaim(req.task) && req.task.claimedBy !== req.user.id) {
+    return res.status(409).json({ error: req.task.claimedBy ? 'Задачу взял другой сотрудник' : 'Сначала возьмите задачу в работу' });
+  }
   try {
     const result = await engine.verifyStep(req.application, req.task.stepKey, req.body?.misUserId);
     res.json(result);
@@ -567,9 +611,8 @@ router.post('/tasks/:taskId/complete', loadTask, async (req, res) => {
   const task = req.task;
   if (task.completedAt) return res.status(409).json({ error: 'Задача уже закрыта' });
 
-  const step = proc.getStep(task.stepKey);
-  if (step?.mode === 'race' && task.claimedBy && task.claimedBy !== req.user.id) {
-    return res.status(409).json({ error: 'Задачу взял другой сотрудник' });
+  if (proc.requiresClaim(task) && task.claimedBy !== req.user.id) {
+    return res.status(409).json({ error: task.claimedBy ? 'Задачу взял другой сотрудник' : 'Сначала возьмите задачу в работу' });
   }
 
   try {

@@ -80,21 +80,21 @@ function configurableSteps() {
       title: 'Согласование анкеты',
       hint: 'Главврач филиала. Единственная точка, где процесс может встать целиком.',
       scope: 'branch',
-      mode: 'single'
+      multiplePolicy: 'first_action'
     },
     ...process_.STEPS.map(s => ({
       key: s.key,
       title: s.title,
       hint: s.hint,
       scope: s.scope,
-      mode: s.mode
+      multiplePolicy: 'claim'
     })),
     {
       key: ESCALATION_STEP,
       title: 'Эскалация просрочек',
       hint: 'Кому уходит уведомление, когда исполнитель не уложился в срок.',
       scope: 'branch',
-      mode: 'single'
+      multiplePolicy: 'notify_all'
     }
   ];
 }

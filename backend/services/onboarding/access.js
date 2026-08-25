@@ -155,7 +155,8 @@ async function myTasks(user) {
   return rows.filter(task => {
     const ids = task.assigneeIds || [];
     if (!ids.includes(user.id)) return false;
-    // Шаг-гонка: после того как задачу взяли, у остальных она пропадает.
+    // Любое множественное назначение эксклюзивно: после взятия задача у
+    // остальных исполнителей пропадает независимо от типа шага.
     if (task.claimedBy && task.claimedBy !== user.id) return false;
     return true;
   });

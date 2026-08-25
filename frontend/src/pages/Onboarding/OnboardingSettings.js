@@ -14,11 +14,11 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { X, Building2, Globe, AlertTriangle, UserPlus } from 'lucide-react';
+import { X, Building2, AlertTriangle, UserPlus } from 'lucide-react';
 
 import { onboarding as api } from '../../services/api';
 import OnbSelect from './OnbSelect';
-import { Badge } from './bits';
+import { UserAvatar } from './bits';
 import './Onboarding.css';
 
 export default function OnboardingSettings() {
@@ -42,7 +42,6 @@ export default function OnboardingSettings() {
   if (!data) return <div className="onb-empty">Загружаем…</div>;
 
   const currentBranch = branch || data.medCenters[0]?.id || '';
-  const branchName = data.medCenters.find(mc => mc.id === currentBranch)?.name || '';
 
   const assigneesFor = (stepKey, medCenterId) => data.assignments
     .filter(a => a.stepKey === stepKey && (a.medCenterId || null) === (medCenterId || null));
@@ -74,11 +73,12 @@ export default function OnboardingSettings() {
           <AlertTriangle size={16} />
           <div>
             <b>Эти назначения не сработают</b>
-            <div className="onb-people">
+            <div className="onb-broken-list">
               {broken.map((item, index) => (
-                <span className="onb-person is-gone" key={index}>
-                  {item.user.displayName || item.user.username} · {item.reason}
-                </span>
+                <div key={index}>
+                  <span>{item.user.displayName || item.user.username}</span>
+                  <small>{item.reason}</small>
+                </div>
               ))}
             </div>
           </div>
@@ -94,7 +94,7 @@ export default function OnboardingSettings() {
 
       <div className="onb-branchbar">
         <Building2 size={15} />
-        <span>Настраиваем филиал</span>
+        <span>Филиал</span>
         <OnbSelect
           value={currentBranch}
           onChange={setBranch}
@@ -112,43 +112,44 @@ export default function OnboardingSettings() {
 
           return (
             <section className="onb-stepcard" key={step.key}>
-              <header>
+              <header className="onb-stepcard-head">
                 <b>{step.title}</b>
-                {network
-                  ? <Badge tone="muted"><Globe size={11} /> вся сеть</Badge>
-                  : <Badge tone="muted"><Building2 size={11} /> {branchName}</Badge>}
-                {step.mode === 'race' && <Badge tone="info">кто первый</Badge>}
               </header>
 
-              <div className="onb-people">
+              <div className="onb-assignee-list">
                 {current.map(item => (
-                  <span className="onb-person" key={item.userId}>
-                    {item.user?.displayName || item.user?.username}
+                  <div className="onb-assignee-row" key={item.userId}>
+                    <UserAvatar user={item.user} />
+                    <div>
+                      <b>{item.user?.displayName || item.user?.username}</b>
+                      {item.user?.position && <small>{item.user.position}</small>}
+                    </div>
                     <button
                       type="button"
-                      aria-label="Убрать"
+                      aria-label={`Убрать ${item.user?.displayName || item.user?.username}`}
                       onClick={() => save(step.key, medCenterId, currentIds.filter(id => id !== item.userId))}
                     >
-                      <X size={12} />
+                      <X size={15} />
                     </button>
-                  </span>
+                  </div>
                 ))}
 
                 <OnbSelect
-                  className="is-add"
+                  className="onb-assignee-add"
                   value=""
-                  placeholder={current.length ? 'Ещё' : 'Назначить'}
+                  placeholder={current.length ? 'Добавить исполнителя' : 'Назначить исполнителя'}
                   disabled={busy || !data.users.length}
                   options={userOptions(currentIds)}
                   onChange={(userId) => save(step.key, medCenterId, [...currentIds, userId])}
                 />
 
                 {!current.length && (
-                  <span className="onb-nobody">
-                    <UserPlus size={13} /> некому — заявки встанут на этом шаге
-                  </span>
+                  <div className="onb-nobody">
+                    <UserPlus size={14} /> Назначьте исполнителя — без него заявки остановятся на этом шаге.
+                  </div>
                 )}
               </div>
+
             </section>
           );
         })}

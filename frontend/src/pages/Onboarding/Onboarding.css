@@ -641,25 +641,18 @@
 .onb-branchbar > span { margin-right: 2px; }
 .onb-branchbar .onb-cs { min-width: 200px; }
 
-.onb-steps { display: flex; flex-direction: column; gap: 9px; }
+.onb-steps {
+  border-top: 1px solid var(--border-light);
+}
 
 .onb-stepcard {
-  border: 1px solid color-mix(in srgb, var(--border-light) 76%, rgba(255,255,255,.38));
-  border-radius: 14px;
-  padding: 14px 16px;
-  background: linear-gradient(145deg,
-    color-mix(in srgb, var(--bg-primary) 96%, rgba(255,255,255,.12)),
-    color-mix(in srgb, var(--bg-primary) 84%, transparent));
-  box-shadow: 0 9px 24px rgba(20,29,45,.045), inset 0 1px 0 rgba(255,255,255,.5);
+  padding: 18px 2px;
+  border-bottom: 1px solid var(--border-light);
 }
-.onb-stepcard header {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex-wrap: wrap;
-  margin-bottom: 11px;
+.onb-stepcard-head {
+  margin-bottom: 13px;
 }
-.onb-stepcard header b { font-size: 14px; font-weight: 550; }
+.onb-stepcard-head b { display: block; font-size: 14px; font-weight: 600; }
 
 .onb-alert {
   display: flex;
@@ -675,37 +668,97 @@
 .onb-alert svg { flex: none; color: var(--error); margin-top: 1px; }
 .onb-alert b { display: block; margin-bottom: 7px; }
 
+.onb-broken-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(255, 59, 48, .14);
+}
+.onb-broken-list span { text-decoration: line-through; }
+.onb-broken-list small { color: var(--error); font-size: 11.5px; }
+
 .onb-nobody {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
+  padding: 9px 0 1px;
   font-size: 12.5px;
   color: var(--text-tertiary);
 }
 
-.onb-people { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-
-.onb-person {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-tertiary);
-  border-radius: 20px;
-  padding: 3px 5px 3px 10px;
-  font-size: 12px;
+.onb-assignee-list {
+  width: 100%;
+  border-top: 1px solid var(--border-light);
 }
-.onb-person button {
+.onb-assignee-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border-light);
+}
+.onb-assignee-row b { display: block; font-size: 13px; font-weight: 500; }
+.onb-assignee-row small { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: 11.5px; }
+.onb-assignee-row button {
+  width: 30px;
+  height: 30px;
   border: 0;
   background: none;
   color: var(--text-tertiary);
   cursor: pointer;
-  padding: 2px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 8px;
 }
-.onb-person button:hover { color: var(--error); }
-.onb-person.is-gone { opacity: 0.55; text-decoration: line-through; }
+.onb-assignee-row button:hover { background: var(--bg-secondary); color: var(--error); }
+
+.onb-cs.onb-assignee-add {
+  display: flex;
+  width: 100%;
+  margin-top: 9px;
+}
+.onb-cs.onb-assignee-add .onb-cs-trigger {
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 7px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--primary);
+}
+.onb-cs.onb-assignee-add .onb-cs-trigger > span { flex: none; }
+
+.onb-shared-note {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.onb-user-avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+.onb-user-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
 /* ── Выпадающий список ─────────────────────────────────────────────────── */
 
@@ -742,19 +795,6 @@
 .onb-cs-trigger > span.is-placeholder { color: var(--text-tertiary); }
 .onb-cs-trigger svg { flex: none; color: var(--text-tertiary); transition: transform 200ms ease; }
 .onb-cs.is-open .onb-cs-trigger svg { transform: rotate(180deg); }
-
-/* Добавляющий список стоит в одном ряду с фишками людей и подстраивается под
-   них по высоте. */
-.onb-cs.is-add .onb-cs-trigger {
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border-style: dashed;
-  font-size: 12px;
-  color: var(--primary);
-  box-shadow: none;
-  background: none;
-}
 
 .onb-cs-menu {
   position: fixed;
@@ -1245,7 +1285,15 @@
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
-.onb-journal-who { margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+.onb-journal-who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.onb-journal-who .onb-user-avatar { width: 24px; height: 24px; font-size: 8px; }
 
 @media (max-width: 620px) {
   .onb-mask { padding: 8px; }
