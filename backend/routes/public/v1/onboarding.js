@@ -99,7 +99,10 @@ async function loadProfessions() {
 router.get('/meta', async (req, res) => {
   try {
     const centers = await MedCenter.findAll({
-      where: { isActive: true },
+      // Публичная анкета предлагает только настоящие работающие филиалы.
+      // Состав управляется флагами справочника в админке, без списка названий
+      // в коде: АУП, Направители и ИП Микаелян отмечены там как служебные.
+      where: { isActive: true, isVirtual: false },
       attributes: ['id', 'name', 'displayName', 'city', 'address'],
       order: [['name', 'ASC']]
     });
@@ -264,7 +267,7 @@ router.get('/:token', loadApplication, async (req, res) => {
       revisionAt: app.status === proc.STATUS.REVISION ? app.decidedAt : null,
       revisionBy: decidedBy,
       editable: editable(app),
-      servicesReady: app.status === proc.STATUS.MIS_CREATED
+      servicesReady: canChooseServices(app)
     },
     files: appFiles.map(f => ({
       id: f.id, kind: f.kind, originalName: f.originalName, size: f.size,
@@ -292,7 +295,14 @@ router.put('/:token', loadApplication, async (req, res) => {
 
     if (req.body?.medCenterId !== undefined) {
       const mc = req.body.medCenterId
-        ? await MedCenter.findByPk(String(req.body.medCenterId), { attributes: ['id'] })
+        ? await MedCenter.findOne({
+            where: {
+              id: String(req.body.medCenterId),
+              isActive: true,
+              isVirtual: false
+            },
+            attributes: ['id']
+          })
         : null;
       patch.medCenterId = mc ? mc.id : null;
     }
@@ -418,7 +428,17 @@ router.post('/:token/submit', loadApplication, async (req, res) => {
   try {
     const appFiles = await OnbFile.findAll({ where: { applicationId: app.id } });
     const check = validation.validateForSubmit(app, app.form || {}, appFiles);
-    if (!check.ok) {
+    const selectedCenter = app.medCenterId
+      ? await MedCenter.findOne({
+          where: { id: app.medCenterId, isActive: true, isVirtual: false },
+          attributes: ['id']
+        })
+      : null;
+    if (app.medCenterId && !selectedCenter && !check.errors.some(item => item.field === 'medCenterId')) {
+      check.errors.push({ field: 'medCenterId', message: 'Выберите действующий филиал' });
+    }
+
+    if (check.errors.length) {
       res.locals.errorCode = 'validation_failed';
       return res.status(422).json({
         ok: false, error: 'validation_failed',
@@ -436,9 +456,19 @@ router.post('/:token/submit', loadApplication, async (req, res) => {
 
 // ── Выбор услуг ───────────────────────────────────────────────────────────
 
+function canChooseServices(app) {
+  return Boolean(app.misUserId) && ![
+    proc.STATUS.DRAFT,
+    proc.STATUS.SUBMITTED,
+    proc.STATUS.REVISION,
+    proc.STATUS.REJECTED,
+    proc.STATUS.CANCELLED
+  ].includes(app.status);
+}
+
 router.get('/:token/services', loadApplication, async (req, res) => {
   const app = req.application;
-  if (app.status !== proc.STATUS.MIS_CREATED) {
+  if (!canChooseServices(app)) {
     return fail(res, 409, 'not_ready', 'Список услуг станет доступен после того, как вас заведут в системе клиники');
   }
 
@@ -486,7 +516,7 @@ async function isServicesStepDone(app) {
  */
 router.post('/:token/services', loadApplication, async (req, res) => {
   const app = req.application;
-  if (app.status !== proc.STATUS.MIS_CREATED) {
+  if (!canChooseServices(app)) {
     return fail(res, 409, 'not_ready', 'Выбор услуг сейчас недоступен');
   }
   if (await isServicesStepDone(app)) {
@@ -535,7 +565,7 @@ router.post('/:token/services', loadApplication, async (req, res) => {
 
 router.post('/:token/services/submit', loadApplication, async (req, res) => {
   const app = req.application;
-  if (app.status !== proc.STATUS.MIS_CREATED) {
+  if (!canChooseServices(app)) {
     return fail(res, 409, 'not_ready', 'Выбор услуг сейчас недоступен');
   }
   if (await isServicesStepDone(app)) {

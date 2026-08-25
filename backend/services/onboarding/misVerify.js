@@ -276,14 +276,33 @@ async function servicesForApplication(app) {
   // видел «услуг не нашлось» там, где их десятки.
   const responses = [];
   for (const professionId of professionIds) {
-    const params = { profession_id: String(professionId) };
-    if (clinicIds.length) params.clinic_id = clinicIds[0];
     try {
+      let rows = [];
+
+      // У медцентра бывает несколько clinic_id. Собираем услуги со всех, а не
+      // только с первого; в Сукко, например, рабочими могут быть и 11, и 12.
+      for (const clinicId of clinicIds) {
+        const part = misData(await misRequest('getServices', {
+          profession_id: String(professionId), clinic_id: clinicId
+        })) || [];
+        rows.push(...part);
+      }
+
+      // В МИС часть специальностей заведена на уровне сети, но не привязана к
+      // конкретному филиалу. Пустой филиальный ответ не означает, что услуг
+      // нет: повторяем запрос без clinic_id и даём врачу выбрать их для
+      // последующего внесения в выбранный филиал.
+      if (!rows.length) {
+        rows = misData(await misRequest('getServices', {
+          profession_id: String(professionId)
+        })) || [];
+      }
+
       responses.push({
         profession: (app.professions || []).find(p => String(p.id) === String(professionId)) || {
           id: String(professionId), name: `Специальность ${professionId}`
         },
-        rows: misData(await misRequest('getServices', params)) || []
+        rows
       });
     } catch (error) {
       return { ok: false, reason: `МИС не ответила: ${error.message}` };

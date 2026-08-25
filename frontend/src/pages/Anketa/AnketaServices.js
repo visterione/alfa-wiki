@@ -135,7 +135,7 @@ export default function AnketaServices() {
 
         {state.error && <div className="ank__note ank__note--bad">{state.error}</div>}
 
-        {!services.length && (
+        {!state.error && !services.length && (
           <div className="ank__note ank__note--warn">
             По вашей специальности услуг не нашлось — впишите нужные ниже.
           </div>

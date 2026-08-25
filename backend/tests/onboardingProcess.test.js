@@ -201,6 +201,27 @@ test('услуги запрашиваются по каждой специаль
   );
 });
 
+test('пустой каталог филиала повторно запрашивается по сети', async () => {
+  const calls = [];
+  const misVerify = withMisStub(calls, (method, params) => {
+    if (method !== 'getServices') return [];
+    if (params.clinic_id) return [];
+    return [{ service_id: 15, title: 'Сетевая услуга', category_title: 'Приёмы' }];
+  }, { misClinicIds: ['6'] });
+
+  const result = await misVerify.servicesForApplication({
+    medCenterId: 'mc',
+    professions: [{ id: '2', name: 'Аллерголог' }]
+  });
+
+  const serviceCalls = calls.filter(call => call.method === 'getServices');
+  assert.deepEqual(serviceCalls.map(call => call.params), [
+    { profession_id: '2', clinic_id: '6' },
+    { profession_id: '2' }
+  ]);
+  assert.equal(result.services[0].title, 'Сетевая услуга');
+});
+
 // В справочнике медцентров у АУП стоит «aup», у ИП Микаелян — «ip». МИС на
 // такой clinic_id отвечает ошибкой, а мы разбирали её как «никого не нашлось».
 test('нечисловые id клиник в запрос к МИС не уходят', async () => {
