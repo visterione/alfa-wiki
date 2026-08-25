@@ -221,13 +221,28 @@ async function completeTask(app, task, user, { note, misUserId } = {}) {
 
   if (step.verify === 'mis') {
     const check = await verifyStep(app, task.stepKey, misUserId);
-    if (!check.ok) return check;
 
-    if (task.stepKey === 'mis_account') {
+    // Шаг с blocking:false закрывается и при расхождении: решение о том, какие
+    // услуги клиника берёт, принимает она, а не сверка. Расхождение при этом не
+    // теряется — оно уходит в журнал, чтобы потом не гадать, почему в МИС не всё.
+    if (!check.ok && step.blocking !== false) return check;
+
+    if (check.ok && task.stepKey === 'mis_account') {
       await onMisAccountCreated(app, check.misUserId);
     }
+    if (!check.ok) {
+      await log(app.id, 'closed_unverified', {
+        stepKey: task.stepKey,
+        reason: check.reason,
+        missing: (check.missing || []).map(item => item.title)
+      }, user.id);
+    }
+
     await task.update({
-      completedAt: new Date(), completedBy: user.id, verifiedByMis: true, note: note || null
+      completedAt: new Date(),
+      completedBy: user.id,
+      verifiedByMis: check.ok,
+      note: note || null
     });
   } else {
     await task.update({

@@ -410,7 +410,6 @@
 .onb-timeline {
   display: flex;
   align-items: center;
-  gap: 4px;
   padding: 12px 22px;
   border-bottom: 1px solid var(--border-light);
   overflow-x: auto;
@@ -427,14 +426,17 @@
   color: var(--text-tertiary);
   white-space: nowrap;
 }
-/* Соединительная черта рисуется точкой, а не отдельным элементом: так лента
-   переживает и пять этапов, и три. */
+/* Черта тянется, а точки — нет: лента занимает всю ширину модалки и делит её
+   поровну между этапами. Фиксированные 22 px собирали её в левый угол, а справа
+   оставалось полполосы пустоты. */
+.onb-tl-point + .onb-tl-point { flex: 1; }
 .onb-tl-point + .onb-tl-point::before {
   content: '';
-  width: 22px;
+  flex: 1;
+  min-width: 14px;
   height: 1px;
+  margin: 0 9px;
   background: var(--border);
-  flex: none;
 }
 .onb-tl-point i {
   width: 8px;

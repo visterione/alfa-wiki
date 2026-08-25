@@ -173,10 +173,139 @@ function buildCv(app, projected, medCenter) {
   return doc;
 }
 
+/**
+ * Список услуг, отмеченных врачом, — распечатать и идти по листку.
+ *
+ * Расхождения и позиции, вписанные текстом, выделены отдельными разделами:
+ * бухгалтеру в МИС нужно разобрать именно их, а остальные строки он вносит
+ * пачкой, не вчитываясь.
+ */
+function buildServices(app, choices = [], medCenter) {
+  const doc = new PDFDocument({ size: 'A4', margin: PAGE_MARGIN, bufferPages: true });
+  doc.registerFont('sans', path.join(FONTS_DIR, 'DejaVuSans.ttf'));
+  doc.registerFont('sans-bold', path.join(FONTS_DIR, 'DejaVuSans-Bold.ttf'));
+
+  const width = doc.page.width - PAGE_MARGIN * 2;
+  const regular = choices.filter(c => !c.isCustom);
+  const custom = choices.filter(c => c.isCustom);
+  const changed = regular.filter(c =>
+    (c.doctorDuration && Number(c.doctorDuration) !== Number(c.misDuration)) || c.comment);
+
+  doc.font('sans-bold').fontSize(16).fillColor(INK).text('Услуги врача');
+  doc.moveDown(0.3);
+  doc.font('sans').fontSize(10.5).fillColor(INK_2)
+    .text([app.fullName, medCenter?.name].filter(Boolean).join(' · '));
+  doc.font('sans').fontSize(9).fillColor(INK_3)
+    .text(`Отмечено услуг: ${regular.length}${custom.length ? `, вписано вручную: ${custom.length}` : ''}`);
+
+  let y = doc.y + 12;
+  doc.moveTo(PAGE_MARGIN, y).lineTo(PAGE_MARGIN + width, y).lineWidth(1).strokeColor(INK).stroke();
+  y += 12;
+
+  // Колонки: код, название, цена, длительность. Название забирает остаток —
+  // именно по нему бухгалтер ищет позицию в справочнике МИС.
+  const cols = { code: 78, price: 62, mins: 52 };
+  const titleWidth = width - cols.code - cols.price - cols.mins - 18;
+
+  const header = () => {
+    doc.font('sans-bold').fontSize(7.5).fillColor(INK_3);
+    doc.text('КОД', PAGE_MARGIN, y, { width: cols.code });
+    doc.text('УСЛУГА', PAGE_MARGIN + cols.code + 6, y, { width: titleWidth });
+    doc.text('ЦЕНА', PAGE_MARGIN + cols.code + titleWidth + 12, y, { width: cols.price, align: 'right' });
+    doc.text('МИН', PAGE_MARGIN + cols.code + titleWidth + cols.price + 18, y, { width: cols.mins, align: 'right' });
+    y = doc.y + 6;
+  };
+
+  const row = (choice) => {
+    if (y > doc.page.height - PAGE_MARGIN - 26) {
+      doc.addPage();
+      y = PAGE_MARGIN;
+      header();
+    }
+    doc.font('sans').fontSize(8).fillColor(INK_3)
+      .text(choice.code || '—', PAGE_MARGIN, y + 1, { width: cols.code });
+    const codeBottom = doc.y;
+
+    doc.font('sans').fontSize(9).fillColor(INK)
+      .text(choice.title, PAGE_MARGIN + cols.code + 6, y, { width: titleWidth });
+    const titleBottom = doc.y;
+
+    doc.font('sans').fontSize(9).fillColor(INK)
+      .text(choice.price != null ? `${Number(choice.price).toLocaleString('ru-RU')} ₽` : '—',
+        PAGE_MARGIN + cols.code + titleWidth + 12, y, { width: cols.price, align: 'right' });
+
+    const minutes = choice.doctorDuration || choice.misDuration;
+    doc.font('sans').fontSize(9).fillColor(INK)
+      .text(minutes ? String(minutes) : '—',
+        PAGE_MARGIN + cols.code + titleWidth + cols.price + 18, y, { width: cols.mins, align: 'right' });
+
+    y = Math.max(codeBottom, titleBottom) + 3;
+
+    if (choice.comment) {
+      doc.font('sans').fontSize(8).fillColor(INK_2)
+        .text(choice.comment, PAGE_MARGIN + cols.code + 6, y, { width: titleWidth });
+      y = doc.y + 3;
+    }
+
+    y += 2;
+    doc.moveTo(PAGE_MARGIN, y).lineTo(PAGE_MARGIN + width, y).lineWidth(0.4).strokeColor(RULE).stroke();
+    y += 6;
+  };
+
+  const section = (title, rows) => {
+    if (!rows.length) return;
+    if (y > doc.page.height - PAGE_MARGIN - 60) {
+      doc.addPage();
+      y = PAGE_MARGIN;
+    }
+    doc.font('sans-bold').fontSize(8).fillColor(INK_3)
+      .text(title.toUpperCase(), PAGE_MARGIN, y, { characterSpacing: 1.1 });
+    y = doc.y + 8;
+    header();
+    rows.forEach(row);
+    y += 8;
+  };
+
+  section('Все отмеченные услуги', regular);
+  section('Из них с правками врача', changed);
+
+  if (custom.length) {
+    if (y > doc.page.height - PAGE_MARGIN - 60) {
+      doc.addPage();
+      y = PAGE_MARGIN;
+    }
+    doc.font('sans-bold').fontSize(8).fillColor(INK_3)
+      .text('НЕТ В СПРАВОЧНИКЕ', PAGE_MARGIN, y, { characterSpacing: 1.1 });
+    y = doc.y + 8;
+    for (const choice of custom) {
+      if (y > doc.page.height - PAGE_MARGIN - 26) {
+        doc.addPage();
+        y = PAGE_MARGIN;
+      }
+      doc.font('sans').fontSize(9).fillColor(INK).text(`• ${choice.title}`, PAGE_MARGIN, y, { width });
+      y = doc.y + 2;
+      if (choice.comment) {
+        doc.font('sans').fontSize(8).fillColor(INK_2)
+          .text(choice.comment, PAGE_MARGIN + 12, y, { width: width - 12 });
+        y = doc.y + 2;
+      }
+      y += 4;
+    }
+  }
+
+  doc.end();
+  return doc;
+}
+
 /** Имя файла: по нему документ находят в загрузках спустя месяц. */
 function fileName(app) {
   const name = String(app.fullName || 'без имени').replace(/[\\/:*?"<>|]/g, ' ').trim();
   return `Анкета врача — ${name}.pdf`;
 }
 
-module.exports = { buildCv, fileName };
+function servicesFileName(app) {
+  const name = String(app.fullName || 'без имени').replace(/[\\/:*?"<>|]/g, ' ').trim();
+  return `Услуги врача — ${name}.pdf`;
+}
+
+module.exports = { buildCv, buildServices, fileName, servicesFileName };

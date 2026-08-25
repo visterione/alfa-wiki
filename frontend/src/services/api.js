@@ -1203,6 +1203,7 @@ export const onboarding = {
   // PDF идёт как двоичные данные: без responseType axios разберёт его как текст
   // и файл окажется битым.
   cvPdf:         (id)               => api.get(`/onboarding/applications/${id}/cv.pdf`, { responseType: 'arraybuffer' }),
+  servicesPdf:   (id)               => api.get(`/onboarding/applications/${id}/services.pdf`, { responseType: 'arraybuffer' }),
 
   myTasks:       ()                 => api.get('/onboarding/tasks/my'),
   claimTask:     (taskId)           => api.post(`/onboarding/tasks/${taskId}/claim`),

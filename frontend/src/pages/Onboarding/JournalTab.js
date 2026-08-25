@@ -25,6 +25,7 @@ const TONE = {
   approved: 'ok',
   launched: 'ok',
   task_completed: 'ok',
+  closed_unverified: 'warn',
   mis_created: 'ok',
   services_picked: 'ok',
 };
@@ -39,6 +40,7 @@ const LABELS = {
   task_opened: 'Задача поставлена',
   task_claimed: 'Задача взята в работу',
   task_completed: 'Задача закрыта',
+  closed_unverified: 'Закрыта без подтверждения из МИС',
   task_unassigned: 'Задача без исполнителя',
   chief_unassigned: 'Не назначен главврач филиала',
   doctor_services_invited: 'Врачу отправлен список услуг',

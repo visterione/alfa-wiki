@@ -659,6 +659,30 @@ router.get('/applications/:id/cv.pdf', loadApplication, async (req, res) => {
 });
 
 /**
+ * Список услуг файлом — распечатать и вносить по листку.
+ *
+ * Тем же порядком, что анкета: собирает сервер, имя файла осмысленное.
+ */
+router.get('/applications/:id/services.pdf', loadApplication, async (req, res) => {
+  try {
+    const app = req.application;
+    const choices = await OnbServiceChoice.findAll({
+      where: { applicationId: app.id },
+      order: [['isCustom', 'ASC'], ['title', 'ASC']]
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    const name = encodeURIComponent(cvPdf.servicesFileName(app));
+    res.setHeader('Content-Disposition', `attachment; filename="services.pdf"; filename*=UTF-8''${name}`);
+
+    cvPdf.buildServices(app, choices, app.medCenter).pipe(res);
+  } catch (error) {
+    console.error('[onboarding] services.pdf:', error);
+    res.status(500).json({ error: 'Не удалось собрать файл' });
+  }
+});
+
+/**
  * Сотрудники филиала из МИС — для ручного выбора, когда сверка по ФИО не нашла
  * врача. Иначе шаг «создать учётку» становится тупиком: задача открыта, МИС
  * говорит «нет такого», и сделать с этим нечего.

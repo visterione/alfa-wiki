@@ -64,17 +64,17 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
   }, [tab, services, applicationId]);
 
   /**
-   * Скачивание анкеты. Идём за файлом с токеном сессии и сохраняем из памяти:
+   * Скачивание файла. Идём за ним с токеном сессии и сохраняем из памяти:
    * обычная ссылка ушла бы без заголовка Authorization и вернула 401.
    */
-  const download = async () => {
+  const download = async (request, name) => {
     setBusy(true);
     try {
-      const response = await api.cvPdf(applicationId);
+      const response = await request(applicationId);
       const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Анкета врача — ${data.application.fullName || 'без имени'}.pdf`;
+      link.download = name;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -131,6 +131,7 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
 
   const app = data.application;
   const fileHref = (file) => `${BASE_URL}${file.url}${data.fileToken ? `?t=${data.fileToken}` : ''}`;
+  const who = app.fullName || 'без имени';
   const openTasks = data.tasks.filter(t => !t.completedAt).length;
   const doneChecks = data.checklist.filter(item => item.done).length;
 
@@ -177,7 +178,11 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
             {tab === 'cv' && (
               <>
                 <div className="onb-toolbar">
-                  <button className="onb-btn is-sm" onClick={download} disabled={busy}>
+                  <button
+                    className="onb-btn is-sm"
+                    disabled={busy}
+                    onClick={() => download(api.cvPdf, `Анкета врача — ${who}.pdf`)}
+                  >
                     <Download size={13} /> Скачать
                   </button>
                 </div>
@@ -297,7 +302,13 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
 
             {tab === 'files' && <FilesTab files={app.files} fileHref={fileHref} />}
 
-            {tab === 'services' && <ServicesTab data={services} />}
+            {tab === 'services' && (
+              <ServicesTab
+                data={services}
+                busy={busy}
+                onDownload={() => download(api.servicesPdf, `Услуги врача — ${who}.pdf`)}
+              />
+            )}
 
             {tab === 'checklist' && (
               <>
@@ -440,7 +451,7 @@ function MisPicker({ applicationId, reason, candidates, busy, onPick, onClose })
  * бухгалтеру эти шестьдесят позиций вносить в «Реновацию» руками, ему нужен
  * сам перечень, а расхождения — лишь пометки внутри него.
  */
-function ServicesTab({ data: services }) {
+function ServicesTab({ data: services, busy, onDownload }) {
   const [onlyDiff, setOnlyDiff] = useState(false);
 
   if (!services) return <div className="onb-sub">Загружаем…</div>;
@@ -463,14 +474,21 @@ function ServicesTab({ data: services }) {
           {Boolean(diffCount) && <span className="onb-srv-diffnote">· {diffCount} с правками</span>}
         </div>
 
-        {Boolean(diffCount) && (
-          <button
-            className={`onb-btn is-sm${onlyDiff ? ' is-primary' : ''}`}
-            onClick={() => setOnlyDiff(value => !value)}
-          >
-            {onlyDiff ? 'Показать все' : 'Только правки'}
+        <div className="onb-acts" style={{ marginTop: 0 }}>
+          {Boolean(diffCount) && (
+            <button
+              className={`onb-btn is-sm${onlyDiff ? ' is-primary' : ''}`}
+              onClick={() => setOnlyDiff(value => !value)}
+            >
+              {onlyDiff ? 'Показать все' : 'Только правки'}
+            </button>
+          )}
+          {/* Список печатают и вносят в МИС по бумаге: так не теряется место,
+              на котором прервались. */}
+          <button className="onb-btn is-sm" disabled={busy} onClick={onDownload}>
+            <Download size={13} /> Скачать
           </button>
-        )}
+        </div>
       </div>
 
       <table className="onb-srv-table">
