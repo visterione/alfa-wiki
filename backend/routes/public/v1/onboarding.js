@@ -458,40 +458,22 @@ router.post('/:token/submit', loadApplication, async (req, res) => {
 // ── Выбор услуг ───────────────────────────────────────────────────────────
 
 /**
- * Открыт ли врачу выбор услуг. Каталог строится только по специальностям из
- * анкеты, поэтому наличие doctor_id и состояние учётки в МИС здесь не участвуют.
- * Задача врача создаётся при согласовании; проверка статуса оставлена как
- * страховка для заявок, согласованных до появления этого перехода.
+ * Персональная ссылка сама является правом на экран услуг. Ни этап процесса,
+ * ни doctor_id, ни полнота старых колонок заявки не должны её блокировать.
+ * Закрываем только окончательно остановленные заявки.
  */
-function servicesStageDecision({ status, professions, hasServicesTask }) {
-  if ([proc.STATUS.REJECTED, proc.STATUS.CANCELLED].includes(status)) return false;
-  if (!Array.isArray(professions) || professions.length === 0) return false;
-  return Boolean(hasServicesTask) || [
-    proc.STATUS.APPROVED,
-    proc.STATUS.MIS_CREATED,
-    proc.STATUS.LAUNCHED
-  ].includes(status);
+function servicesStageDecision({ status }) {
+  return ![proc.STATUS.REJECTED, proc.STATUS.CANCELLED].includes(status);
 }
 
 async function servicesStageReady(app) {
-  const task = await OnbTask.findOne({
-    where: {
-      applicationId: app.id,
-      stepKey: proc.DOCTOR_STEP
-    },
-    attributes: ['id']
-  });
-  return servicesStageDecision({
-    status: app.status,
-    professions: app.professions,
-    hasServicesTask: Boolean(task)
-  });
+  return servicesStageDecision({ status: app.status });
 }
 
 router.get('/:token/services', loadApplication, async (req, res) => {
   const app = req.application;
   if (!(await servicesStageReady(app))) {
-    return fail(res, 409, 'not_ready', 'Выбор услуг станет доступен после согласования анкеты');
+    return fail(res, 409, 'not_available', 'Эта заявка закрыта, выбор услуг недоступен');
   }
 
   try {

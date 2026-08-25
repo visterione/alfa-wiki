@@ -314,41 +314,32 @@ function withMisStub(calls, handler, medCenter = { misClinicIds: [] }) {
 // Каталог строится по специальностям анкеты. Привязка этого экрана к doctor_id
 // создавала ложную ошибку «вас ещё не завели» и не давала врачу сделать свою
 // часть работы параллельно с созданием учётки.
-test('выбор услуг после согласования не зависит от учётки в МИС', () => {
+test('персональная ссылка на услуги не зависит от этапа, задачи и учётки в МИС', () => {
   const { servicesStageDecision } = require('../routes/public/v1/onboarding');
-  const professions = [{ id: '2', name: 'Терапевт' }];
 
   assert.equal(servicesStageDecision({
-    status: 'approved', professions, hasServicesTask: true
+    status: 'submitted'
   }), true);
 
-  // Старая согласованная заявка без задачи тоже должна открыться.
   assert.equal(servicesStageDecision({
-    status: 'approved', professions, hasServicesTask: false
+    status: 'approved'
   }), true);
 
-  // Наличие или отсутствие doctor_id вообще не входит в условие.
   assert.equal(servicesStageDecision({
-    status: 'mis_created', professions, hasServicesTask: true
+    status: 'mis_created'
+  }), true);
+
+  // Ровно защита от прежней регрессии: дополнительные поля не участвуют.
+  assert.equal(servicesStageDecision({
+    status: 'launched', professions: [], hasServicesTask: false, misUserId: null
   }), true);
 });
 
-test('до согласования, без специальности и после остановки выбор услуг закрыт', () => {
+test('после остановки процесса выбор услуг закрыт', () => {
   const { servicesStageDecision } = require('../routes/public/v1/onboarding');
-  const professions = [{ id: '2', name: 'Терапевт' }];
-
-  assert.equal(servicesStageDecision({
-    status: 'submitted', professions, hasServicesTask: false
-  }), false, 'анкета ещё на согласовании');
-
-  assert.equal(servicesStageDecision({
-    status: 'approved', professions: [], hasServicesTask: true
-  }), false, 'в анкете нет специальности для построения каталога');
 
   for (const status of ['rejected', 'cancelled']) {
-    assert.equal(servicesStageDecision({
-      status, professions, hasServicesTask: true
-    }), false, status);
+    assert.equal(servicesStageDecision({ status }), false, status);
   }
 });
 
