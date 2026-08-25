@@ -23,6 +23,114 @@
 
 .ank__wrap { max-width: 680px; margin: 0 auto; padding: 0 14px; }
 
+/* Старт — короткий самостоятельный экран. Ему не нужен нижний запас длинной
+   анкеты под липкую панель, иначе на телефоне форма занимает только верхнюю
+   половину экрана. */
+.ank--start {
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 0;
+  display: grid;
+  background:
+    radial-gradient(circle at 50% 0, color-mix(in srgb, var(--primary) 10%, transparent), transparent 42%),
+    var(--bg-secondary);
+}
+
+.ank__start-wrap {
+  width: 100%;
+  max-width: 430px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: max(28px, env(safe-area-inset-top));
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+
+.ank__start-head {
+  margin-bottom: 18px;
+  text-align: center;
+}
+.ank__brand {
+  display: inline-block;
+  margin-bottom: 7px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 1.8px;
+}
+.ank__start-head h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(26px, 8vw, 34px);
+  font-weight: 680;
+  letter-spacing: -.8px;
+}
+.ank__start-head p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ank--start .ank__card {
+  padding: 20px;
+  border-radius: 20px;
+  box-shadow: 0 16px 44px color-mix(in srgb, #000 9%, transparent);
+}
+.ank--start .ank__card-head { margin-bottom: 18px; }
+.ank--start .ank__card h2 { font-size: 18px; }
+.ank--start .ank__note { margin-bottom: 10px; }
+
+.ank__code-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+  margin: 2px 0 20px;
+}
+.ank__code-grid input {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  outline: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: clamp(22px, 7vw, 28px);
+  font-weight: 650;
+  text-align: center;
+  caret-color: var(--primary);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.ank__code-grid input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 13%, transparent);
+  transform: translateY(-1px);
+}
+.ank__code-grid input:disabled { opacity: .55; }
+.ank__start-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+.ank__start-link {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ank__start-link:disabled { color: var(--text-tertiary); cursor: default; }
+
+@media (max-height: 560px) {
+  .ank__start-wrap { justify-content: flex-start; }
+}
+
 /* ── Шапка ─────────────────────────────────────────────────────────────── */
 
 .ank__head {
