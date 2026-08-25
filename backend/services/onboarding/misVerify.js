@@ -26,11 +26,19 @@ function normalizeName(value) {
     .replace(/ё/g, 'е');
 }
 
-/** clinic_id филиала. Медцентру в портале может соответствовать несколько клиник МИС. */
+/**
+ * clinic_id филиала. Медцентру в портале может соответствовать несколько клиник МИС.
+ *
+ * Нечисловые значения отсеиваем. В справочнике медцентров у АУП стоит «aup», у
+ * ИП Микаелян — «ip»: это не клиники «Реновации», а пометки для внутренних
+ * подразделений. МИС на такой clinic_id отвечает ошибкой «Неверное значение
+ * параметра id клиники», а мы разбирали её как «ничего не нашлось» — и поиск
+ * сотрудников молча отдавал пустой список.
+ */
 async function clinicIdsFor(medCenterId) {
   if (!medCenterId) return [];
   const mc = await MedCenter.findByPk(medCenterId, { attributes: ['misClinicIds'] });
-  return (mc?.misClinicIds || []).filter(Boolean);
+  return (mc?.misClinicIds || []).filter(value => /^\d+$/.test(String(value)));
 }
 
 function misData(response) {
@@ -51,11 +59,14 @@ function misData(response) {
  */
 async function findDoctor(app) {
   const clinicIds = await clinicIdsFor(app.medCenterId);
-  const professionIds = (app.professions || []).map(p => p.id).filter(Boolean);
 
+  // По специальности не фильтруем. Несколько profession_id через запятую МИС
+  // понимает как «И»: врач, у которого в анкете две специальности, а в МИС
+  // проставлена одна, в такую выдачу не попадает — и сверка объявляет, что его
+  // нет, хотя он есть. Ищем по ФИО в пределах филиала, а специальности
+  // используем ниже, чтобы разобрать однофамильцев.
   const params = {};
   if (clinicIds.length) params.clinic_id = clinicIds.join(',');
-  if (professionIds.length) params.profession_id = professionIds.join(',');
 
   let rows;
   try {
@@ -66,21 +77,39 @@ async function findDoctor(app) {
   if (!rows) return { ok: false, reason: 'МИС вернула пустой ответ' };
 
   const wanted = normalizeName(app.fullName);
-  const matches = rows.filter(row => normalizeName(row.name) === wanted);
+  let matches = rows.filter(row => normalizeName(row.name) === wanted);
+
+  // Однофамильцы в одном филиале — редкость, но если попались, специальность
+  // из анкеты обычно разводит их однозначно.
+  if (matches.length > 1) {
+    const wantedProfessions = new Set((app.professions || []).map(p => String(p.id)));
+    const bySpecialty = matches.filter(row =>
+      (row.profession || []).some(p => wantedProfessions.has(String(p?.id ?? p))));
+    if (bySpecialty.length === 1) matches = bySpecialty;
+  }
 
   if (matches.length === 1) {
     return { ok: true, misUserId: String(matches[0].id) };
   }
   if (matches.length > 1) {
+    const names = await professionNames();
     return {
       ok: false,
       reason: 'В МИС нашлось несколько сотрудников с таким ФИО — выберите нужного вручную',
-      candidates: matches.map(m => ({ id: String(m.id), name: m.name, professions: m.profession || [] }))
+      candidates: matches.map(m => ({
+        id: String(m.id),
+        name: m.name,
+        professions: (m.profession || [])
+          .map(p => names.get(String(p?.id ?? p)) || null)
+          .filter(Boolean)
+      }))
     };
   }
   return {
     ok: false,
-    reason: 'В МИС не нашлось сотрудника с таким ФИО в этом филиале и специальности'
+    reason: clinicIds.length
+      ? 'В МИС не нашлось сотрудника с таким ФИО в этом филиале'
+      : 'У филиала не задан id клиники в МИС — сверить некого'
   };
 }
 
@@ -122,6 +151,8 @@ async function professionNames() {
  */
 async function searchDoctors(app, query = '') {
   const clinicIds = await clinicIdsFor(app.medCenterId);
+  // Без клиники спрашиваем всю сеть: пустой список здесь бесполезнее длинного,
+  // а искать всё равно будут по фамилии.
   const params = {};
   if (clinicIds.length) params.clinic_id = clinicIds.join(',');
 
@@ -238,19 +269,25 @@ async function servicesForApplication(app) {
   const professionIds = (app.professions || []).map(p => p.id).filter(Boolean);
   if (!professionIds.length) return { ok: false, reason: 'В анкете не выбрана специальность' };
 
-  const params = { profession_id: professionIds.join(',') };
-  if (clinicIds.length) params.clinic_id = clinicIds[0];
-
-  let rows;
-  try {
-    rows = misData(await misRequest('getServices', params));
-  } catch (error) {
-    return { ok: false, reason: `МИС не ответила: ${error.message}` };
+  // Запрос на каждую специальность отдельно. Несколько profession_id через
+  // запятую МИС понимает как «И»: на двух специальностях вместо объединения
+  // возвращались услуги, отмеченные сразу обеими, — а таких почти нет, и врач
+  // видел «услуг не нашлось» там, где их десятки.
+  const responses = [];
+  for (const professionId of professionIds) {
+    const params = { profession_id: String(professionId) };
+    if (clinicIds.length) params.clinic_id = clinicIds[0];
+    try {
+      responses.push(misData(await misRequest('getServices', params)) || []);
+    } catch (error) {
+      return { ok: false, reason: `МИС не ответила: ${error.message}` };
+    }
   }
-  if (!rows) return { ok: true, services: [] };
 
-  // Специальностей может быть несколько, и одна услуга попадает в выдачу по
-  // каждой из них — схлопываем по service_id.
+  const rows = responses.flat();
+  if (!rows.length) return { ok: true, services: [] };
+
+  // Одна услуга приходит по нескольким специальностям — схлопываем по service_id.
   const seen = new Map();
   for (const row of rows) {
     const id = String(row.service_id ?? row.id);

@@ -167,3 +167,87 @@ test('каждый блок анкеты попадает ровно в один
   assert.deepEqual([...used].sort(), [...known].sort());
   assert.equal(new Set(used).size, used.length, 'блок не должен встречаться дважды');
 });
+
+// МИС понимает несколько profession_id через запятую как «И», а не «ИЛИ». На
+// враче с двумя специальностями это давало «услуг не нашлось» там, где их
+// десятки, поэтому запрос обязан идти по одной специальности за раз.
+test('услуги запрашиваются по каждой специальности отдельно и схлопываются', async () => {
+  const calls = [];
+  const misVerify = withMisStub(calls, (method, params) => {
+    if (method === 'getServices') {
+      const id = params.profession_id;
+      return id === '2'
+        ? [{ service_id: 1, title: 'Приём аллерголога' }, { service_id: 9, title: 'Общая' }]
+        : [{ service_id: 5, title: 'Спирография' }, { service_id: 9, title: 'Общая' }];
+    }
+    return [];
+  });
+
+  const result = await misVerify.servicesForApplication({
+    medCenterId: null,
+    professions: [{ id: '2' }, { id: '37' }]
+  });
+
+  const professionParams = calls
+    .filter(call => call.method === 'getServices')
+    .map(call => call.params.profession_id);
+
+  assert.deepEqual(professionParams, ['2', '37'], 'по одному запросу на специальность');
+  assert.equal(result.services.length, 3, 'общая услуга не задвоилась');
+});
+
+// В справочнике медцентров у АУП стоит «aup», у ИП Микаелян — «ip». МИС на
+// такой clinic_id отвечает ошибкой, а мы разбирали её как «никого не нашлось».
+test('нечисловые id клиник в запрос к МИС не уходят', async () => {
+  const calls = [];
+  const misVerify = withMisStub(calls, () => [], { misClinicIds: ['aup'] });
+
+  await misVerify.searchDoctors({ medCenterId: 'mc' }, '');
+  const call = calls.find(c => c.method === 'getUsers');
+
+  assert.ok(call, 'запрос к МИС всё же уходит');
+  assert.equal('clinic_id' in call.params, false, 'clinic_id со значением «aup» не передаётся');
+});
+
+/**
+ * Подменяет misClient и модели, чтобы проверить, что именно уходит в МИС.
+ * Своего http сюда не пускаем: тест про формирование параметров, а не про сеть.
+ */
+function withMisStub(calls, handler, medCenter = { misClinicIds: [] }) {
+  const clientPath = require.resolve('../services/misClient');
+  const modelsPath = require.resolve('../models');
+  const verifyPath = require.resolve('../services/onboarding/misVerify');
+
+  const originals = { client: require.cache[clientPath], models: require.cache[modelsPath] };
+
+  require.cache[clientPath] = {
+    id: clientPath,
+    filename: clientPath,
+    loaded: true,
+    exports: {
+      misRequest: async (method, params) => {
+        calls.push({ method, params });
+        return { error: 0, data: handler(method, params) };
+      }
+    }
+  };
+  require.cache[modelsPath] = {
+    id: modelsPath,
+    filename: modelsPath,
+    loaded: true,
+    exports: { MedCenter: { findByPk: async () => medCenter } }
+  };
+  delete require.cache[verifyPath];
+
+  const misVerify = require('../services/onboarding/misVerify');
+
+  // Возвращаем кэш на место сразу: модуль уже захватил подменённые зависимости,
+  // а остальным тестам нужны настоящие.
+  delete require.cache[verifyPath];
+  if (originals.client) require.cache[clientPath] = originals.client;
+  else delete require.cache[clientPath];
+  if (originals.models) require.cache[modelsPath] = originals.models;
+  else delete require.cache[modelsPath];
+
+  return misVerify;
+}

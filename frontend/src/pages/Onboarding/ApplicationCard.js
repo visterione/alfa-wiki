@@ -13,15 +13,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
-import { X, Check, Circle, Paperclip, Printer, Search } from 'lucide-react';
+import { X, Check, Circle, Download, Search } from 'lucide-react';
 
 import { onboarding as api, BASE_URL } from '../../services/api';
 import ApplicationCV from './ApplicationCV';
+import FilesTab from './FilesTab';
+import JournalTab from './JournalTab';
 import { Badge, dateTime, professionsText } from './bits';
 import './Onboarding.css';
 
 const TABS = [
   { key: 'cv', label: 'Анкета' },
+  { key: 'files', label: 'Файлы' },
   { key: 'tasks', label: 'Задачи' },
   { key: 'services', label: 'Услуги' },
   { key: 'checklist', label: 'Чек-лист' },
@@ -49,25 +52,40 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
 
   useEffect(() => { load(); }, [load]);
 
-  /**
-   * Имя файла при печати браузер берёт из заголовка вкладки, и без этого все
-   * анкеты сохранялись как «Альфа Вики.pdf». Меняем на время печати и
-   * возвращаем обратно: на события печати браузер зовёт нас и при Ctrl+P.
-   */
+  // Услуги грузим при переходе на вкладку, а не по кнопке: кнопка «показать»
+  // была лишним нажатием перед единственным, что вкладка умеет.
   useEffect(() => {
-    const name = data?.application?.fullName;
-    if (!name) return undefined;
-    const original = document.title;
-    const before = () => { document.title = `Анкета врача — ${name}`; };
-    const after = () => { document.title = original; };
-    window.addEventListener('beforeprint', before);
-    window.addEventListener('afterprint', after);
-    return () => {
-      window.removeEventListener('beforeprint', before);
-      window.removeEventListener('afterprint', after);
-      document.title = original;
-    };
-  }, [data?.application?.fullName]);
+    if (tab !== 'services' || services) return;
+    let cancelled = false;
+    api.services(applicationId)
+      .then(({ data: res }) => { if (!cancelled) setServices(res); })
+      .catch(() => { if (!cancelled) setServices({ error: true }); });
+    return () => { cancelled = true; };
+  }, [tab, services, applicationId]);
+
+  /**
+   * Скачивание анкеты. Идём за файлом с токеном сессии и сохраняем из памяти:
+   * обычная ссылка ушла бы без заголовка Authorization и вернула 401.
+   */
+  const download = async () => {
+    setBusy(true);
+    try {
+      const response = await api.cvPdf(applicationId);
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Анкета врача — ${data.application.fullName || 'без имени'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Safari успевает забрать blob только после возврата управления браузеру.
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      toast.error('Не удалось собрать файл');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const act = async (fn, successText) => {
     setBusy(true);
@@ -117,6 +135,7 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
   const doneChecks = data.checklist.filter(item => item.done).length;
 
   const counters = {
+    files: app.files?.length || null,
     tasks: openTasks || null,
     checklist: `${doneChecks}/${data.checklist.length}`,
   };
@@ -158,25 +177,12 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
             {tab === 'cv' && (
               <>
                 <div className="onb-toolbar">
-                  <button className="onb-btn is-sm" onClick={() => window.print()}>
-                    <Printer size={13} /> Печать
+                  <button className="onb-btn is-sm" onClick={download} disabled={busy}>
+                    <Download size={13} /> Скачать
                   </button>
                 </div>
 
                 <ApplicationCV data={data} fileHref={fileHref} />
-
-                {Boolean(app.files?.length) && (
-                  <>
-                    <div className="onb-sect">Файлы</div>
-                    <div className="onb-files">
-                      {app.files.map(file => (
-                        <a key={file.id} href={fileHref(file)} target="_blank" rel="noreferrer">
-                          <Paperclip size={13} /> {file.originalName || file.filename}
-                        </a>
-                      ))}
-                    </div>
-                  </>
-                )}
 
                 {data.permissions.canDecide && (
                   <>
@@ -289,13 +295,9 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
               </>
             )}
 
-            {tab === 'services' && (
-              <ServicesTab
-                applicationId={app.id}
-                services={services}
-                onLoad={setServices}
-              />
-            )}
+            {tab === 'files' && <FilesTab files={app.files} fileHref={fileHref} />}
+
+            {tab === 'services' && <ServicesTab data={services} />}
 
             {tab === 'checklist' && (
               <>
@@ -324,29 +326,11 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
               </>
             )}
 
-            {tab === 'log' && (
-              <ul className="onb-log">
-                {data.events.map(event => (
-                  <li key={event.id}>
-                    <time>{dateTime(event.createdAt)}</time>
-                    <span>
-                      {eventLabel(event, data.tasks)}
-                      {event.author ? ` — ${event.author.displayName}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {tab === 'log' && <JournalTab events={data.events} tasks={data.tasks} />}
           </div>
         </div>
       </div>
 
-      {/* Печатный слой — соседом маски, а не внутри неё: при печати всё, кроме
-          него, скрывается правилом `body > *:not(.onb-print-root)`, и вложенный
-          документ пропадал бы вместе с модалкой. */}
-      <div className="onb-print-root">
-        <ApplicationCV data={data} fileHref={fileHref} />
-      </div>
     </>,
     document.body
   );
@@ -434,21 +418,11 @@ function MisPicker({ applicationId, reason, candidates, busy, onPick, onClose })
  * Бухгалтеру важен не весь список, а расхождения: где врач изменил длительность
  * или оставил комментарий. Их немного, и разбирать нужно только их.
  */
-function ServicesTab({ applicationId, services, onLoad }) {
-  if (!services) {
-    return (
-      <button className="onb-btn is-sm"
-        onClick={async () => {
-          try {
-            const { data: res } = await api.services(applicationId);
-            onLoad(res);
-          } catch {
-            toast.error('Не удалось загрузить услуги');
-          }
-        }}>
-        Показать выбор врача
-      </button>
-    );
+function ServicesTab({ data: services }) {
+  if (!services) return <div className="onb-sub">Загружаем…</div>;
+  if (services.error) return <div className="onb-empty">Не удалось загрузить услуги</div>;
+  if (!services.total && !services.custom.length) {
+    return <div className="onb-empty">Врач ещё не отмечал услуги</div>;
   }
 
   return (
@@ -490,34 +464,4 @@ function ServicesTab({ applicationId, services, onLoad }) {
       )}
     </>
   );
-}
-
-const EVENTS = {
-  created: 'Заявка создана',
-  submitted: 'Отправлена на согласование',
-  approved: 'Согласована',
-  revision: 'Возвращена на доработку',
-  rejected: 'Отклонена',
-  mis_created: 'Пользователь создан в «Реновации»',
-  task_opened: 'Задача поставлена',
-  task_claimed: 'Задача взята',
-  task_completed: 'Задача закрыта',
-  task_unassigned: 'Задача без исполнителя',
-  chief_unassigned: 'Не назначен главврач филиала',
-  doctor_services_invited: 'Врачу отправлен список услуг',
-  services_picked: 'Врач отметил услуги',
-  durations_applied: 'Длительности перенесены в настройки врача',
-  launched: 'Врач запущен',
-  cancelled: 'Процесс отменён',
-  medcenter_changed: 'Сменён филиал',
-  sla_reminded: 'Напоминание о просрочке',
-  sla_escalated: 'Эскалация просрочки',
-};
-
-function eventLabel(event, tasks = []) {
-  const base = EVENTS[event.action] || event.action;
-  const step = event.payload?.stepKey;
-  if (!step) return base;
-  const title = tasks.find(task => task.stepKey === step)?.title || step;
-  return `${base}: ${title}`;
 }

@@ -147,6 +147,9 @@ function fileInfo(file) {
     filename: file.filename,
     originalName: file.originalName,
     size: file.size,
+    // Тип нужен, чтобы решить, рисовать превью картинкой или страницей PDF:
+    // по расширению в имени это гадание, оно приходит от клиента.
+    mimeType: file.mimeType || null,
     url: `/uploads/onboarding/${file.filename}`
   };
 }

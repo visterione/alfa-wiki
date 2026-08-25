@@ -1198,6 +1198,9 @@ export const onboarding = {
   // Сотрудники филиала из МИС — для ручного выбора, когда сверка по ФИО не нашла врача.
   misUsers:      (id, q)            => api.get(`/onboarding/applications/${id}/mis-users`, { params: { q } }),
   export:        (id)               => api.get(`/onboarding/applications/${id}/export`),
+  // PDF идёт как двоичные данные: без responseType axios разберёт его как текст
+  // и файл окажется битым.
+  cvPdf:         (id)               => api.get(`/onboarding/applications/${id}/cv.pdf`, { responseType: 'arraybuffer' }),
 
   myTasks:       ()                 => api.get('/onboarding/tasks/my'),
   claimTask:     (taskId)           => api.post(`/onboarding/tasks/${taskId}/claim`),

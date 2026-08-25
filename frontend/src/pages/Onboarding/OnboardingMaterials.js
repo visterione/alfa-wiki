@@ -86,23 +86,6 @@ export default function OnboardingMaterials() {
         </div>
       )}
 
-      <div className="onb-vcard">
-        <div className="onb-vcard-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
-        <div className="onb-vcard-body">
-          <div className="onb-vcard-kicker">Сеть медицинских центров «Альфа»</div>
-          <h2>Анкета врача</h2>
-          <p>Наведите камеру или откройте ссылку — анкета заполняется с телефона и сохраняется по ходу.</p>
-          <div className="onb-vcard-url">{data.url}</div>
-        </div>
-      </div>
-
-      <div className="onb-acts" style={{ marginTop: 14 }}>
-        <button className="onb-btn is-sm" onClick={copy}><Copy size={13} /> Копировать ссылку</button>
-        <button className="onb-btn is-sm" onClick={print}><Printer size={13} /> Печать</button>
-        <button className="onb-btn is-sm" onClick={() => download('svg')}><Download size={13} /> SVG</button>
-        <button className="onb-btn is-sm" onClick={() => download('png')}><Download size={13} /> PNG</button>
-      </div>
-
       <form className="onb-invite" onSubmit={invite}>
         <div className="onb-sect">Отправить кандидату</div>
         <div className="onb-invite-row">
@@ -118,19 +101,29 @@ export default function OnboardingMaterials() {
             <Send size={13} /> {sending ? 'Отправляем…' : 'Отправить'}
           </button>
         </div>
-        <div className="onb-sub">
-          Письмо со ссылкой на анкету. Заявка появится, когда врач подтвердит адрес и начнёт заполнять.
-        </div>
       </form>
+
+      <div className="onb-vcard">
+        <div className="onb-vcard-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
+        <div className="onb-vcard-body">
+          <h2>Анкета врача</h2>
+          <div className="onb-vcard-url">{data.url}</div>
+        </div>
+      </div>
+
+      <div className="onb-acts" style={{ marginTop: 14 }}>
+        <button className="onb-btn is-sm" onClick={copy}><Copy size={13} /> Копировать ссылку</button>
+        <button className="onb-btn is-sm" onClick={print}><Printer size={13} /> Печать</button>
+        <button className="onb-btn is-sm" onClick={() => download('svg')}><Download size={13} /> SVG</button>
+        <button className="onb-btn is-sm" onClick={() => download('png')}><Download size={13} /> PNG</button>
+      </div>
 
       {/* Печатается только визитка — тем же слоем, что и документ-анкета. */}
       <div className="onb-print-root">
         <div className="onb-vcard is-print">
           <div className="onb-vcard-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
           <div className="onb-vcard-body">
-            <div className="onb-vcard-kicker">Сеть медицинских центров «Альфа»</div>
             <h2>Анкета врача</h2>
-            <p>Наведите камеру телефона на код или откройте ссылку.</p>
             <div className="onb-vcard-url">{data.url}</div>
           </div>
         </div>
