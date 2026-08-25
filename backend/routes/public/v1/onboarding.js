@@ -106,7 +106,7 @@ router.get('/meta', async (req, res) => {
 
     const professions = await loadProfessions();
 
-    res.json({ ok: true, blocks: schema.BLOCKS, medCenters: centers, professions });
+    res.json({ ok: true, blocks: schema.BLOCKS, steps: schema.STEPS, medCenters: centers, professions });
   } catch (error) {
     console.error('[onboarding/public] meta:', error);
     fail(res, 500, 'server_error', 'Не удалось загрузить справочники');
@@ -229,6 +229,24 @@ router.get('/:token', loadApplication, async (req, res) => {
   const app = req.application;
   const appFiles = await OnbFile.findAll({ where: { applicationId: app.id } });
 
+  // Кто вернул анкету на доработку. Врачу это показывается облачком с аватаркой:
+  // безымянное «нужно поправить» выглядит отпиской системы, а замечание от
+  // конкретного главврача читают и выполняют.
+  let decidedBy = null;
+  if (app.status === proc.STATUS.REVISION && app.decidedBy) {
+    const { User } = require('../../../models');
+    const decider = await User.findByPk(app.decidedBy, {
+      attributes: ['displayName', 'username', 'avatar', 'position']
+    });
+    if (decider) {
+      decidedBy = {
+        name: decider.displayName || decider.username,
+        position: decider.position || 'Главврач',
+        avatar: decider.avatar || null
+      };
+    }
+  }
+
   res.json({
     ok: true,
     application: {
@@ -244,6 +262,8 @@ router.get('/:token', loadApplication, async (req, res) => {
       // (кто согласовал, внутренние комментарии) его не касается.
       revisionNote: app.status === proc.STATUS.REVISION ? app.decisionNote : null,
       revisionFields: app.status === proc.STATUS.REVISION ? (app.revisionFields || []) : [],
+      revisionAt: app.status === proc.STATUS.REVISION ? app.decidedAt : null,
+      revisionBy: decidedBy,
       editable: editable(app),
       servicesReady: app.status === proc.STATUS.MIS_CREATED
     },
@@ -252,6 +272,7 @@ router.get('/:token', loadApplication, async (req, res) => {
       url: `/uploads/onboarding/${f.filename}?app=${app.accessToken}`
     })),
     blocks: schema.BLOCKS,
+    steps: schema.STEPS,
     consentVersion: schema.CONSENT_VERSION
   });
 });

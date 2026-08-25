@@ -28,6 +28,7 @@ const engine = require('../services/onboarding/engine');
 const misVerify = require('../services/onboarding/misVerify');
 const sla = require('../services/onboarding/sla');
 const links = require('../services/onboarding/links');
+const mailer = require('../services/onboarding/mailer');
 const fileAccess = require('../services/fileAccess');
 
 const USER_FIELDS = ['id', 'displayName', 'username', 'avatar', 'position', 'isActive'];
@@ -87,6 +88,34 @@ router.get('/materials', async (req, res) => {
   } catch (error) {
     console.error('[onboarding] materials:', error);
     res.status(500).json({ error: 'Не удалось собрать материалы' });
+  }
+});
+
+/**
+ * Отправить кандидату приглашение с ссылкой на анкету.
+ *
+ * Письмо не создаёт заявку и ничего не резервирует: ссылка постоянная и одна на
+ * всех, заявка появится, когда врач подтвердит адрес и начнёт заполнять. Это
+ * просто способ не копировать адрес в мессенджер руками.
+ */
+router.post('/materials/invite', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return res.status(400).json({ error: 'Укажите корректный адрес электронной почты' });
+  }
+
+  try {
+    const sent = await mailer.sendAnketaInvite(email, {
+      fromName: req.user.displayName || req.user.username,
+      note: String(req.body?.note || '').trim().slice(0, 500) || null
+    });
+    if (!sent.success) {
+      return res.status(502).json({ error: 'Письмо не ушло. Проверьте адрес и повторите позже' });
+    }
+    res.json({ ok: true, email });
+  } catch (error) {
+    console.error('[onboarding] invite:', error);
+    res.status(500).json({ error: 'Не удалось отправить приглашение' });
   }
 });
 
@@ -274,6 +303,8 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
       // Подписи полей — из той же схемы, по которой рисуется анкета: иначе в
       // карточке стояли бы «fullName» и «experienceSpecialty».
       labels: formSchema.labelMap(),
+      // Разделы документа-карточки врача — из той же схемы, что и форма.
+      sections: formSchema.sections(),
       medCenter: app.medCenter,
       stage: proc.stageOf(app, tasks),
       statusLabel: proc.STATUS_LABELS[app.status] || app.status,

@@ -10,7 +10,7 @@
  * уже урезанной под этот шаг.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { FileText, Inbox, Archive, SlidersHorizontal, QrCode } from 'lucide-react';
@@ -45,6 +45,8 @@ export default function Onboarding() {
   const [archive, setArchive] = useState([]);
   const [canConfigure, setCanConfigure] = useState(false);
   const [loading, setLoading] = useState(true);
+  const navRef = useRef(null);
+  const [navIndicator, setNavIndicator] = useState({ top: 0, height: 36, ready: false });
   // Карточка открывается и по адресу: ?app=<id>. Уведомление об онбординге ведёт
   // на конкретную заявку, и человек должен попадать сразу в неё, а не в список.
   const openId = params.get('app');
@@ -76,6 +78,35 @@ export default function Onboarding() {
 
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * Подсветка активного пункта — отдельный слой под кнопками, и её положение
+   * приходится измерять.
+   *
+   * Зависимость от loading не для красоты: пока раздел грузится, «Настройки» в
+   * меню ещё нет (право приходит вместе с данными), и панель после загрузки
+   * становится выше. Без пересчёта подложка осталась бы на месте, посчитанном
+   * по короткому меню.
+   */
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (loading || !nav) return undefined;
+    const update = () => {
+      const active = nav.querySelector('button.is-on');
+      if (!active) return;
+      setNavIndicator({ top: active.offsetTop, height: active.offsetHeight, ready: true });
+    };
+    update();
+    const observer = typeof window.ResizeObserver === 'undefined'
+      ? null
+      : new window.ResizeObserver(update);
+    observer?.observe(nav);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [screen, loading, canConfigure]);
+
   const go = (key) => setParams(key === 'tasks' ? {} : { screen: key }, { replace: true });
   const isAdmin = canConfigure || user?.isAdmin;
 
@@ -83,9 +114,13 @@ export default function Onboarding() {
     <div className="onb">
       <div className="onb-shell">
         <aside className="onb-side">
-          <div className="onb-side-brand">Онбординг</div>
+          <div className="onb-side-brand"><span>Онбординг</span></div>
 
-          <nav className="onb-nav">
+          <nav
+            className={`onb-nav ${navIndicator.ready ? 'is-ready' : ''}`}
+            ref={navRef}
+            style={{ '--onb-nav-top': `${navIndicator.top}px`, '--onb-nav-height': `${navIndicator.height}px` }}
+          >
             {SCREENS.map((item, index) => {
               if (item.group) return <div className="onb-nav-group" key={`g${index}`}>{item.group}</div>;
               if (item.adminOnly && !isAdmin) return null;
@@ -97,7 +132,7 @@ export default function Onboarding() {
                   className={screen === item.key ? 'is-on' : ''}
                   onClick={() => go(item.key)}
                 >
-                  <Icon size={15} strokeWidth={1.8} />
+                  <Icon size={16} />
                   {item.label}
                   {count > 0 && <span className="onb-nav-count">{count}</span>}
                 </button>

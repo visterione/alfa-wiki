@@ -72,9 +72,9 @@ test('пустые строки повторяемого блока не сох�
 test('отправка без диплома и согласий не проходит', () => {
   const app = { medCenterId: 'mc', professions: [{ id: '1', name: 'Терапевт' }], consents: {} };
   const form = validation.sanitize({
-    fullName: 'Иванов Иван', birthDate: '1980-01-01', phone: '+79000000000',
+    fullName: 'Иванов Иван', birthDate: '1980-01-01', phone: '+7 (900) 000-00-00',
     startDate: '2026-09-01', experienceTotal: 10, experienceSpecialty: 8,
-    scheduleDays: 'пн-пт', scheduleTime: '09:00-18:00', appointmentMinutes: 30,
+    scheduleDays: [1, 3, 5], scheduleTime: { from: '09:00', to: '18:00' }, appointmentMinutes: 30,
     education: [{ year: 2005, institution: 'МГУ', specialty: 'Лечебное дело' }]
   });
 
@@ -117,4 +117,53 @@ test('сканы документов доступны только тому, к
   assert.equal(projection.canSeeDocuments('*'), true);
   assert.equal(projection.canSeeDocuments('badge'), false);
   assert.equal(projection.canSeeDocuments('mis_account'), false);
+});
+
+// Дни приёма и время перестали быть свободным текстом: расписание по ним строит
+// старший регистратор, и «пн-пт кроме второй среды» превращалось в переписку с
+// врачом вместо работы.
+test('дни недели и интервал приёма нормализуются, мусор отбрасывается', () => {
+  const form = validation.sanitize({
+    scheduleDays: [5, 1, 3, 1, 99],
+    scheduleTime: { from: '09:00', to: '15:30' }
+  });
+
+  assert.deepEqual(form.scheduleDays, [1, 3, 5], 'дубли и лишние номера убираются, порядок по неделе');
+  assert.deepEqual(form.scheduleTime, { from: '09:00', to: '15:30' });
+
+  assert.equal(validation.sanitize({ scheduleTime: { from: '25:00', to: '15:00' } }).scheduleTime, null);
+  assert.equal(validation.sanitize({ scheduleDays: 'пн-пт' }).scheduleDays, null);
+});
+
+// Один и тот же номер врачи пишут пятью способами. Сравнивать и звонить нужно
+// по одному виду, поэтому в анкете лежат цифры, а маску рисует форма.
+test('телефон приводится к 11 цифрам с семёркой', () => {
+  const variants = ['8 (900) 111-22-33', '+7 900 111 22 33', '79001112233', '9001112233'];
+  for (const value of variants) {
+    assert.equal(validation.sanitize({ phone: value }).phone, '79001112233', value);
+  }
+});
+
+test('неполный телефон не пропускается при отправке', () => {
+  const app = {
+    medCenterId: 'mc',
+    professions: [{ id: '1', name: 'Терапевт' }],
+    consents: { pd: { acceptedAt: 'now' }, image: { acceptedAt: 'now' } }
+  };
+  const errors = validation
+    .validateForSubmit(app, validation.sanitize({ phone: '900111' }), [{ kind: 'diploma' }])
+    .errors;
+
+  assert.ok(errors.some(e => e.field === 'phone' && /не полностью/.test(e.message)));
+});
+
+// Шаги анкеты обязаны покрывать все блоки: забытый в группировке блок просто
+// исчезает из формы, и человек не может её отправить, не понимая почему.
+test('каждый блок анкеты попадает ровно в один шаг', () => {
+  const schema = require('../services/onboarding/formSchema');
+  const used = schema.STEPS.flatMap(step => step.blocks);
+  const known = schema.BLOCKS.map(block => block.key);
+
+  assert.deepEqual([...used].sort(), [...known].sort());
+  assert.equal(new Set(used).size, used.length, 'блок не должен встречаться дважды');
 });

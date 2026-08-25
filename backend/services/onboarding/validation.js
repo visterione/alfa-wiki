@@ -28,6 +28,34 @@ function coerce(field, raw) {
     const value = String(raw).slice(0, 10);
     return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
   }
+
+  // Дни недели — массив номеров 1..7, где 1 это понедельник. Номерами, а не
+  // подписями: расписание по ним строит регистратор, и «пн» против «Пн» против
+  // «понедельник» из трёх анкет пришлось бы сводить руками.
+  if (field.type === 'weekdays') {
+    if (!Array.isArray(raw)) return null;
+    const days = [...new Set(raw.map(Number).filter(n => n >= 1 && n <= 7))].sort();
+    return days.length ? days : null;
+  }
+
+  // Интервал приёма: { from, to } в формате ЧЧ:ММ.
+  if (field.type === 'timerange') {
+    const time = value => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || '')) ? String(value) : null);
+    const from = time(raw?.from);
+    const to = time(raw?.to);
+    return from && to ? { from, to } : null;
+  }
+
+  // Телефон приводим к 11 цифрам с семёркой: врач вписывает его то с восьмёркой,
+  // то со скобками, а сравнивать и звонить нужно по одному виду. Маску рисует
+  // форма, в анкете лежат цифры.
+  if (field.type === 'phone') {
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+    if (digits.length === 10) digits = `7${digits}`;
+    return digits ? digits.slice(0, 11) : null;
+  }
+
   // В text-полях схлопываем двойные пробелы: ФИО отсюда уезжает в сопоставление
   // с МИС, и «Иванов  Иван» против «Иванов Иван» — это ненайденный сотрудник.
   // Многострочные поля не трогаем: там пробелы несут абзацы.
@@ -114,8 +142,15 @@ function validateForSubmit(app, form, files = []) {
       }
 
       const value = form[field.key];
-      if (value == null || value === '' || value === false) {
-        add(field.key, `${field.label}: обязательное поле`);
+      const empty = value == null
+        || value === ''
+        || value === false
+        || (Array.isArray(value) && !value.length);
+      if (empty) add(field.key, `${field.label}: обязательное поле`);
+
+      // Телефон из десяти цифр — это опечатка, а не номер: по такому не позвонят.
+      if (field.type === 'phone' && value && String(value).length !== 11) {
+        add(field.key, 'Телефон указан не полностью');
       }
     }
   }

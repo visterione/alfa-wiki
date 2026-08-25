@@ -52,6 +52,7 @@
    padding снимается — иначе поля сложились бы вдвое. */
 .content-wrapper:has(.wh-app),
 .content-wrapper:has(.tsk),
+.content-wrapper:has(.onb),
 .content-wrapper:has(.rb-app) {
   max-width: 100%;
   padding: 0;

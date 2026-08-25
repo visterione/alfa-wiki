@@ -1,74 +1,161 @@
 /**
- * Онбординг врача (ver. 7.30).
+ * Онбординг врача.
  *
- * Геометрия и язык элементов — те же, что в модуле «Задачи»: навигация слева,
- * рабочая область справа, цвета и радиусы из дизайн-системы Alfa Wiki. Второй
- * визуальный язык в портале заводить незачем, а процесс здесь по сути такой же:
- * список того, что ждёт решения, и карточка с подробностями.
+ * Оформление — то же, что в модуле «Задачи»: две отдельные стеклянные панели с
+ * зазором до фона страницы, подсветка активного пункта отдельным слоем под
+ * кнопками, мягкие тени и градиенты на контролах. Второй визуальный язык в
+ * портале заводить незачем, а процессы здесь родственные: список того, что ждёт
+ * решения, и карточка с подробностями.
  *
- * Своё здесь одно — полоса чек-листа запуска. Семь пунктов, и человеку нужно
- * одним взглядом понять, сколько осталось, не открывая карточку.
+ * Значения намеренно повторяют Tasks.css один в один — радиусы, размытие,
+ * тени. Приблизительный перенос («примерно такой же радиус») читается как
+ * другой модуль, даже когда отличия по отдельности незаметны.
  */
 
 .onb {
-  padding: 14px 18px 28px;
-  margin: 0 auto;
+  position: relative;
+  isolation: isolate;
+  padding: 18px 22px 32px;
 }
 
+/* Оболочка сама ничего не рисует: зазор между панелями — настоящий вырез до
+   фона страницы, а не полоса другого цвета. */
 .onb-shell {
-  min-height: calc(100vh - 118px);
+  position: relative;
   display: grid;
-  grid-template-columns: 196px minmax(0, 1fr);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  min-height: calc(100vh - 126px);
+  border: 0;
+  border-radius: 30px;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
 }
 
-.onb-side {
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-light);
-  padding: 17px 10px;
+.onb-side,
+.onb-main {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-light) 70%, rgba(255,255,255,.38));
+  border-radius: 26px;
+  background:
+    linear-gradient(145deg,
+      color-mix(in srgb, var(--bg-primary) 88%, rgba(255,255,255,.18)),
+      color-mix(in srgb, var(--bg-primary) 68%, transparent));
+  -webkit-backdrop-filter: blur(26px) saturate(145%);
+  backdrop-filter: blur(26px) saturate(145%);
+  box-shadow:
+    0 18px 44px rgba(19, 28, 45, .08),
+    0 2px 8px rgba(19, 28, 45, .05),
+    inset 0 1px 0 rgba(255,255,255,.58);
 }
+
+.onb-side { padding: 18px 12px; }
+.onb-main { display: flex; flex-direction: column; overflow: visible; }
+
+/* Блик, медленно проходящий по боковой панели. Единственное фоновое движение
+   в модуле — как в «Задачах». */
+.onb-side::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: -35%;
+  left: -90%;
+  width: 72%;
+  height: 170%;
+  pointer-events: none;
+  transform: rotate(13deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent);
+  animation: onb-glass-flow 10s cubic-bezier(.2,.7,.2,1) infinite;
+}
+.onb-side > * { position: relative; z-index: 1; }
 
 .onb-side-brand {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: baseline;
-  padding: 0 10px 15px;
-  font-size: 15px;
-  font-weight: 600;
+  padding: 2px 12px 18px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -.45px;
 }
-.onb-side-brand small { color: var(--text-tertiary); font-size: 10px; font-weight: 400; }
 
-.onb-nav { display: flex; flex-direction: column; gap: 2px; }
+/* ── Навигация ─────────────────────────────────────────────────────────── */
+
+.onb-nav {
+  --onb-nav-top: 0px;
+  --onb-nav-height: 36px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Подсветка активного пункта — отдельный слой под кнопками: так она едет между
+   разделами, а не перерисовывается скачком. Положение измеряет index.js. */
+.onb-nav::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: 3px;
+  right: 3px;
+  top: 0;
+  height: var(--onb-nav-height);
+  opacity: 0;
+  transform: translate3d(0, var(--onb-nav-top), 0);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, rgba(255,255,255,.5));
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--primary-light) 74%, rgba(255,255,255,.5)),
+      color-mix(in srgb, var(--bg-primary) 78%, transparent));
+  box-shadow:
+    0 7px 18px color-mix(in srgb, var(--primary) 12%, transparent),
+    inset 0 1px 0 rgba(255,255,255,.7),
+    inset 0 -1px 0 color-mix(in srgb, var(--primary) 8%, transparent);
+  transition:
+    transform 520ms cubic-bezier(.22, 1, .36, 1),
+    height 360ms cubic-bezier(.22, 1, .36, 1),
+    opacity 180ms ease;
+}
+.onb-nav.is-ready::before { opacity: 1; }
+
+.onb-nav button,
+.onb-nav-group { position: relative; z-index: 1; }
 
 .onb-nav button {
-  background: none;
-  border: 0;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 14px;
-  padding: 8px 10px;
-  cursor: pointer;
   width: 100%;
+  min-height: 36px;
   display: flex;
   align-items: center;
   gap: 7px;
-  transition: color var(--transition-fast);
-  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 220ms ease, transform 220ms ease;
 }
-.onb-nav button:hover { color: var(--text-primary); background: var(--bg-tertiary); }
-.onb-nav button.is-on { color: var(--primary); background: var(--primary-light); font-weight: 500; }
+.onb-nav button:hover { color: var(--text-primary); background: transparent; transform: translateX(2px); }
+.onb-nav button.is-on { color: var(--primary); background: transparent; font-weight: 550; }
+.onb-nav button.is-on svg {
+  filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--primary) 28%, transparent));
+}
 
 .onb-nav-group {
   align-self: stretch;
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  padding: 15px 12px 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text-tertiary);
-  padding: 13px 10px 5px;
 }
 
 .onb-nav-count {
@@ -85,18 +172,21 @@
   margin-left: auto;
 }
 
-.onb-main { min-width: 0; display: flex; flex-direction: column; }
+/* ── Шапка и полотно ───────────────────────────────────────────────────── */
 
 .onb-top {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
   flex-wrap: wrap;
-  padding: 16px 20px 14px;
-  border-bottom: 1px solid var(--border-light);
+  min-height: 72px;
+  padding: 15px 20px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-light) 72%, transparent);
+  background: linear-gradient(180deg, rgba(255,255,255,.1), transparent);
 }
-.onb-title { font-size: 19px; font-weight: 600; letter-spacing: -0.2px; }
+
+.onb-title { font-size: 22px; font-weight: 650; letter-spacing: -.5px; }
 
 .onb-content {
   flex: 1;
@@ -104,67 +194,74 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 18px 20px 34px;
+  padding: 22px 22px 38px;
 }
 .onb-content > * { flex: 0 0 auto; }
 
-/* ── Кнопки, поля ──────────────────────────────────────────────────────── */
+/* ── Контролы ──────────────────────────────────────────────────────────── */
 
 .onb-btn {
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 13px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  padding: 7px 13px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, rgba(255,255,255,.3));
+  border-radius: 11px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-primary) 94%, rgba(255,255,255,.18)),
+    color-mix(in srgb, var(--bg-secondary) 76%, transparent));
+  box-shadow: 0 3px 9px rgba(24,35,54,.055), inset 0 1px 0 rgba(255,255,255,.55);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
-.onb-btn:hover { background: var(--bg-secondary); }
-.onb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.onb-btn.is-primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 500; }
-.onb-btn.is-primary:hover { background: var(--primary-hover); }
-.onb-btn.is-danger { color: var(--error); border-color: var(--border); }
+.onb-btn:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
+  box-shadow: 0 7px 16px rgba(24,35,54,.09), inset 0 1px 0 rgba(255,255,255,.65);
+}
+.onb-btn:active { transform: translateY(1px) scale(.985); box-shadow: inset 0 2px 5px rgba(24,35,54,.1); }
+.onb-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.onb-btn.is-primary {
+  border-color: color-mix(in srgb, var(--primary) 76%, white);
+  color: #fff;
+  font-weight: 500;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 84%, white), var(--primary));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 24%, transparent), inset 0 1px 0 rgba(255,255,255,.42);
+}
+.onb-btn.is-danger { color: var(--error); }
 .onb-btn.is-sm { padding: 5px 10px; font-size: 12px; }
 
 .onb-select,
-.onb-input {
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
+.onb-input,
+.onb-textarea {
   color: var(--text-primary);
   font: inherit;
   font-size: 13px;
   padding: 6px 10px;
-  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--border) 68%, rgba(255,255,255,.3));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
+  box-shadow: inset 0 1px 2px rgba(19,28,45,.04), 0 1px 0 rgba(255,255,255,.36);
 }
 .onb-select { cursor: pointer; }
-
 .onb-textarea {
   width: 100%;
   box-sizing: border-box;
   min-height: 76px;
   resize: vertical;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  border-radius: var(--radius-md);
   padding: 9px 11px;
-  font: inherit;
-  font-size: 13px;
 }
 
 /* ── Общие блоки ───────────────────────────────────────────────────────── */
 
 .onb-sect {
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: -.08px;
+  color: var(--text-secondary);
   margin: 22px 0 10px;
 }
 .onb-sect:first-child { margin-top: 0; }
@@ -174,17 +271,15 @@
   font-size: 14px;
   text-align: center;
   padding: 28px 16px;
-  background: var(--bg-primary);
-  border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
   line-height: 1.6;
+  border: 1px solid color-mix(in srgb, var(--border-light) 76%, rgba(255,255,255,.38));
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--bg-primary) 96%, rgba(255,255,255,.12)),
+    color-mix(in srgb, var(--bg-primary) 84%, transparent));
+  box-shadow: 0 9px 24px rgba(20,29,45,.055), inset 0 1px 0 rgba(255,255,255,.5);
 }
-.onb-empty.is-compact {
-  padding: 14px;
-  font-size: 13px;
-  border-style: solid;
-  border-color: var(--border-light);
-}
+.onb-empty.is-compact { padding: 14px; font-size: 13px; }
 .onb-empty.is-left { text-align: left; }
 
 .onb-badge {
@@ -203,9 +298,7 @@
 .onb-badge-bad { background: rgba(255, 59, 48, 0.13); color: #c1271d; }
 .onb-badge-info { background: var(--primary-light); color: var(--primary-hover); }
 
-/* ── Списки ────────────────────────────────────────────────────────────────
-   Таблица, а не карточки: в «Задачах» списки сделаны так же, и колонки здесь
-   читаются столбиком — филиал под филиалом, срок под сроком. */
+/* ── Списки ────────────────────────────────────────────────────────────── */
 
 .onb-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .onb-table th {
@@ -218,8 +311,8 @@
 .onb-table td { padding: 11px 10px; border-top: 1px solid var(--border-light); vertical-align: middle; }
 .onb-table tr.is-clickable { cursor: pointer; }
 .onb-table tr.is-clickable:hover td { background: var(--bg-secondary); }
-/* Просрочка — засечка у левого края строки, а не заливка: заливкой строка
-   спорила бы с бейджем стадии в той же строке. */
+/* Просрочка — засечка у левого края строки: заливкой строка спорила бы с
+   бейджем стадии в той же строке. */
 .onb-table tr.is-late td:first-child { box-shadow: inset 2px 0 0 var(--error); }
 
 .onb-table th:first-child, .onb-table td:first-child { width: 8%; }
@@ -227,8 +320,7 @@
 .onb-table th:nth-child(4), .onb-table td:nth-child(4) { width: 18%; }
 .onb-table th:last-child, .onb-table td:last-child { width: 14%; }
 
-/* Номер заявки — служебная пометка, как код задачи в «Задачах»: приглушённый,
-   мельче названия и моноширинными цифрами, чтобы номера читались колонкой. */
+/* Номер заявки — служебная пометка, как код задачи в «Задачах». */
 .onb-code {
   color: var(--text-tertiary);
   font-size: 11.5px;
@@ -243,8 +335,8 @@
 .onb-when { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
 .onb-when.is-late { color: var(--error); }
 
-/* Чек-лист запуска в строке списка: семь делений, закрытые — цветом темы.
-   Полоса, а не «3 из 7»: взгляд считывает заполненность быстрее числа. */
+/* Чек-лист запуска в строке списка: семь делений вместо «3 из 7» — взгляд
+   считывает заполненность быстрее числа. */
 .onb-dots { display: flex; gap: 3px; }
 .onb-dots i {
   width: 14px;
@@ -255,30 +347,36 @@
 }
 .onb-dots i.is-done { background: var(--success); box-shadow: none; }
 
-/* ── Модальное окно карточки ───────────────────────────────────────────── */
+/* ── Карточка заявки ───────────────────────────────────────────────────── */
 
 .onb-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
   z-index: 200;
+  background: rgba(14, 20, 31, .34);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
 }
 
 .onb-modal {
-  background: var(--bg-primary);
-  border-radius: var(--radius-xl);
-  width: 900px;
+  /* Шире, чем окна «Задач»: слева документ-анкета, справа чек-лист и задачи.
+     На 900 px подписи документа переносились по два слова в строку. */
+  width: 1040px;
   max-width: 100%;
   height: min(680px, calc(100vh - 48px));
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-xl);
   overflow: hidden;
+  border: 1px solid rgba(255,255,255,.42);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  backdrop-filter: blur(30px) saturate(150%);
+  box-shadow: 0 30px 80px rgba(8,14,24,.24), inset 0 1px 0 rgba(255,255,255,.62);
 }
 
 .onb-modal-head {
@@ -287,9 +385,9 @@
   align-items: center;
   gap: 14px;
   padding: 18px 22px;
-  border-bottom: 1px solid var(--border-light);
-  flex: 0 0 auto;
   min-height: 58px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-light) 72%, transparent);
 }
 .onb-modal-title { font-size: 17px; font-weight: 600; }
 .onb-modal-head .onb-sub { margin-top: 2px; }
@@ -317,13 +415,10 @@
 
 .onb-cols {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 26px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 30px;
   align-items: start;
 }
-@media (max-width: 900px) { .onb-cols { grid-template-columns: 1fr; } }
-
-/* ── Содержимое карточки ───────────────────────────────────────────────── */
 
 .onb-kv {
   display: grid;
@@ -348,25 +443,24 @@
 .onb-check svg { flex: none; }
 
 .onb-task {
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
   padding: 10px 12px;
   margin-bottom: 7px;
+  border: 1px solid color-mix(in srgb, var(--border-light) 76%, rgba(255,255,255,.38));
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--bg-primary) 96%, rgba(255,255,255,.12)),
+    color-mix(in srgb, var(--bg-primary) 84%, transparent));
+  box-shadow: 0 9px 24px rgba(20,29,45,.055), inset 0 1px 0 rgba(255,255,255,.5);
 }
 .onb-task.is-late { border-color: rgba(255, 59, 48, 0.4); }
-.onb-task.is-done { opacity: 0.62; }
+.onb-task.is-done { opacity: 0.62; box-shadow: none; }
 .onb-task-head { display: flex; align-items: center; gap: 9px; font-size: 13px; }
 .onb-task-head b { flex: 1; font-weight: 500; min-width: 0; }
 
 .onb-acts { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
 
 .onb-log { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
-.onb-log li {
-  display: flex;
-  gap: 10px;
-  padding: 5px 0;
-  color: var(--text-secondary);
-}
+.onb-log li { display: flex; gap: 10px; padding: 5px 0; color: var(--text-secondary); }
 .onb-log time { color: var(--text-tertiary); flex: none; font-variant-numeric: tabular-nums; }
 
 .onb-files { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
@@ -375,22 +469,69 @@
 
 /* ── Настройки ─────────────────────────────────────────────────────────── */
 
-.onb-step {
-  border-bottom: 1px solid var(--border-light);
-  padding: 15px 0;
-}
-.onb-step:last-child { border-bottom: none; }
-.onb-step-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
-.onb-step-head b { font-size: 14px; font-weight: 500; }
-
-.onb-assign {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 132px;
-  gap: 10px;
+/* Выбор филиала стоит над списком шагов и остаётся на виду при прокрутке:
+   иначе, дойдя до седьмого шага, человек уже не помнит, какой медцентр
+   настраивает. */
+.onb-branchbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
   align-items: center;
-  padding: 5px 0;
+  gap: 10px;
+  margin: -4px 0 14px;
+  padding: 10px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-primary) 92%, transparent) 70%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
-@media (max-width: 760px) { .onb-assign { grid-template-columns: 1fr; } }
+.onb-branchbar > span { margin-right: 2px; }
+.onb-branchbar .onb-cs { min-width: 200px; }
+
+.onb-steps { display: flex; flex-direction: column; gap: 9px; }
+
+.onb-stepcard {
+  border: 1px solid color-mix(in srgb, var(--border-light) 76%, rgba(255,255,255,.38));
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--bg-primary) 96%, rgba(255,255,255,.12)),
+    color-mix(in srgb, var(--bg-primary) 84%, transparent));
+  box-shadow: 0 9px 24px rgba(20,29,45,.045), inset 0 1px 0 rgba(255,255,255,.5);
+}
+.onb-stepcard header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 11px;
+}
+.onb-stepcard header b { font-size: 14px; font-weight: 550; }
+
+.onb-alert {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 13px 15px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 59, 48, .28);
+  background: rgba(255, 59, 48, .07);
+  font-size: 13px;
+}
+.onb-alert svg { flex: none; color: var(--error); margin-top: 1px; }
+.onb-alert b { display: block; margin-bottom: 7px; }
+
+.onb-nobody {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
 
 .onb-people { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
@@ -416,42 +557,357 @@
 .onb-person button:hover { color: var(--error); }
 .onb-person.is-gone { opacity: 0.55; text-decoration: line-through; }
 
-@media (max-width: 820px) {
-  .onb-shell { grid-template-columns: 1fr; }
-  .onb-side { border-right: 0; border-bottom: 1px solid var(--border-light); }
-  .onb-nav { flex-direction: row; flex-wrap: wrap; }
-  .onb-nav button { width: auto; }
-  .onb-nav-group { display: none; }
+/* ── Выпадающий список ─────────────────────────────────────────────────── */
+
+.onb-cs { position: relative; display: inline-flex; min-width: 0; }
+
+.onb-cs-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 11px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, rgba(255,255,255,.3));
+  border-radius: 11px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-primary) 94%, rgba(255,255,255,.18)),
+    color-mix(in srgb, var(--bg-secondary) 76%, transparent));
+  box-shadow: 0 3px 9px rgba(24,35,54,.055), inset 0 1px 0 rgba(255,255,255,.55);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.onb-cs-trigger:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.onb-cs-trigger:disabled { opacity: .45; cursor: not-allowed; }
+.onb-cs-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.onb-cs-trigger > span.is-placeholder { color: var(--text-tertiary); }
+.onb-cs-trigger svg { flex: none; color: var(--text-tertiary); transition: transform 200ms ease; }
+.onb-cs.is-open .onb-cs-trigger svg { transform: rotate(180deg); }
+
+/* Добавляющий список стоит в одном ряду с фишками людей и подстраивается под
+   них по высоте. */
+.onb-cs.is-add .onb-cs-trigger {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border-style: dashed;
+  font-size: 12px;
+  color: var(--primary);
+  box-shadow: none;
+  background: none;
+}
+
+.onb-cs-menu {
+  position: fixed;
+  z-index: 400;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: 0 20px 46px rgba(8,14,24,.18), inset 0 1px 0 rgba(255,255,255,.6);
+  animation: onb-menu-in 160ms cubic-bezier(.22,1,.36,1);
+}
+
+.onb-cs-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.onb-cs-menu button:hover { background: var(--bg-secondary); }
+.onb-cs-menu button.is-selected { color: var(--primary); }
+.onb-cs-menu button > span { min-width: 0; }
+.onb-cs-menu small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.onb-cs-menu svg { flex: none; }
+.onb-cs-empty { padding: 12px; font-size: 12.5px; color: var(--text-tertiary); text-align: center; }
+
+@keyframes onb-menu-in {
+  from { opacity: 0; transform: translateY(-5px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Материалы: визитка ────────────────────────────────────────────────────
+   Ссылка, QR и подпись собраны в один предмет, который показывают целиком — с
+   экрана, с распечатки или в письме. Разложенные по трём блокам, они требовали
+   объяснения, как связаны между собой. */
+
+.onb-vcard {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  max-width: 620px;
+  padding: 26px 28px;
+  border: 1px solid color-mix(in srgb, var(--border-light) 76%, rgba(255,255,255,.38));
+  border-radius: 20px;
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--bg-primary) 97%, rgba(255,255,255,.14)),
+    color-mix(in srgb, var(--bg-primary) 86%, transparent));
+  box-shadow: 0 14px 34px rgba(20,29,45,.07), inset 0 1px 0 rgba(255,255,255,.55);
+}
+
+.onb-vcard-qr {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  line-height: 0;
+}
+/* QR приходит готовым SVG с зашитыми width/height в пикселях — без этого он
+   вылезает за колонку на свои 512 px. */
+.onb-vcard-qr svg { width: 100%; height: auto; display: block; }
+
+.onb-vcard-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.onb-vcard-body h2 {
+  margin: 6px 0 8px;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -.6px;
+  color: var(--text-primary);
+}
+.onb-vcard-body p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.onb-vcard-url {
+  display: inline-block;
+  padding: 7px 12px;
+  border-radius: 9px;
+  background: var(--bg-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .onb-vcard { grid-template-columns: 1fr; gap: 18px; padding: 20px; }
+  .onb-vcard-qr { max-width: 200px; }
+}
+
+/* ── Приглашение ───────────────────────────────────────────────────────── */
+
+.onb-invite { max-width: 620px; margin-top: 26px; }
+.onb-invite-row { display: flex; gap: 9px; align-items: center; }
+.onb-invite-row .onb-input { flex: 1; min-width: 0; min-height: 34px; }
+.onb-invite .onb-sub { margin-top: 8px; }
+
+/* ── Движение ──────────────────────────────────────────────────────────── */
+
+@keyframes onb-glass-flow {
+  0%, 24% { transform: translateX(0) rotate(13deg); opacity: 0; }
+  36% { opacity: .8; }
+  58%, 100% { transform: translateX(420%) rotate(13deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-side::after { animation: none; display: none; }
+  .onb-nav::before, .onb-btn { transition-duration: 1ms; }
+}
+
+/* ── Раскладка на узком экране ─────────────────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .onb-shell { grid-template-columns: 190px minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .onb { padding: 14px 14px 32px; }
+  .onb-shell { display: block; min-height: 0; overflow: visible; background: transparent; }
+  .onb-side { margin-bottom: 10px; border: 1px solid var(--border-light); padding: 10px; }
+  .onb-main { border-radius: 22px; }
+  .onb-side-brand { display: none; }
+  .onb-nav { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+  .onb-nav::before { display: none; }
+  .onb-nav::-webkit-scrollbar { display: none; }
+  .onb-nav button { white-space: nowrap; width: auto; }
+  .onb-nav button.is-on { background: var(--primary-light); }
+  .onb-cols { grid-template-columns: 1fr; }
+  .onb-mat { grid-template-columns: 1fr; }
+  .onb-branchbar { position: static; }
   .onb-table th:nth-child(3), .onb-table td:nth-child(3),
   .onb-table th:nth-child(4), .onb-table td:nth-child(4) { display: none; }
 }
 
-/* ── Материалы ─────────────────────────────────────────────────────────── */
+/* ── Документ-карточка врача ───────────────────────────────────────────────
+   Анкета читается как документ, а не как список настроек: имя крупно, разделы
+   тонкими линейками, годы отдельной колонкой. Строго и без украшений — его и
+   печатают, и показывают главврачу на согласовании. */
 
-.onb-mat { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 22px; align-items: start; }
-@media (max-width: 700px) { .onb-mat { grid-template-columns: 1fr; } }
+.onb-cv {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
 
-.onb-qr {
-  background: #fff;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: 14px;
+.onb-cv-head {
   display: grid;
-  place-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--text-primary);
 }
-/* QR приходит готовым SVG с зашитыми width/height в пикселях — без этого он
-   вылезает за колонку на свои 512 px. */
-.onb-qr img,
-.onb-qr svg { width: 100%; height: auto; display: block; }
 
-.onb-link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 9px 12px;
-  font-size: 13.5px;
-  background: var(--bg-secondary);
+.onb-cv-photo {
+  width: 78px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
 }
-.onb-link span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.onb-cv-ident h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -.45px;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+.onb-cv-prof {
+  margin-top: 4px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.onb-cv-meta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 14px;
+  margin: 12px 0 0;
+  font-size: 12.5px;
+}
+.onb-cv-meta dt { color: var(--text-tertiary); }
+.onb-cv-meta dd { margin: 0; overflow-wrap: anywhere; }
+
+.onb-cv-stamp {
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.onb-cv-stamp span { display: block; margin-top: 2px; }
+
+.onb-cv-sect { padding: 14px 0; border-bottom: 1px solid var(--border-light); }
+.onb-cv-sect:last-child { border-bottom: none; }
+
+.onb-cv-sect h2 {
+  margin: 0 0 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.onb-cv-pairs {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) minmax(0, 1fr);
+  gap: 5px 16px;
+  margin: 0;
+}
+.onb-cv-pairs dt { color: var(--text-secondary); }
+.onb-cv-pairs dd { margin: 0; overflow-wrap: anywhere; }
+
+.onb-cv-list { list-style: none; margin: 0; padding: 0; }
+.onb-cv-list li {
+  display: grid;
+  grid-template-columns: minmax(64px, 92px) minmax(0, 1fr);
+  gap: 5px 16px;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+.onb-cv-list b { font-weight: 550; }
+.onb-cv-list a { color: var(--primary); text-decoration: none; }
+.onb-cv-list a:hover { text-decoration: underline; }
+
+/* Годы отдельной колонкой моноширинными цифрами: список образования читается
+   сверху вниз по датам, а не по разной длины названиям вузов. */
+.onb-cv-year {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}
+
+.onb-cv-empty { color: var(--text-secondary); font-size: 13px; }
+
+/* Кнопка печати живёт в заголовке раздела. */
+.onb-sect { display: flex; align-items: center; gap: 10px; }
+.onb-sect .onb-btn { margin-left: auto; }
+
+/* ── Печать ────────────────────────────────────────────────────────────────
+   Печатается отдельная копия документа, лежащая прямо в body: у модалки своя
+   прокрутка, размытие и фиксированная высота, и на бумаге всё это пришлось бы
+   отменять по одному правилу на свойство. */
+
+.onb-print-root { display: none; }
+
+@media print {
+  /* Условие :has обязательно. Файл стилей остаётся загруженным и после ухода из
+     раздела, и безусловное правило гасило бы содержимое любой печатаемой
+     страницы портала — печать вики выходила бы пустым листом. */
+  body:has(.onb-print-root) > *:not(.onb-print-root) { display: none !important; }
+
+  .onb-print-root {
+    display: block !important;
+    position: static;
+    padding: 0;
+  }
+  .onb-print-root .onb-cv { font-size: 11pt; line-height: 1.45; }
+  .onb-print-root .onb-cv-ident h1 { font-size: 20pt; }
+  .onb-print-root .onb-cv-sect { break-inside: avoid; }
+  .onb-print-root .onb-cv-head { break-inside: avoid; }
+  .onb-print-root .onb-cv-list a { color: inherit; text-decoration: none; }
+
+  /* Визитка на бумаге: без теней и подложек, QR крупнее — его сканируют с
+     распечатки, а не с экрана. */
+  .onb-print-root .onb-vcard {
+    max-width: none;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    grid-template-columns: 46mm minmax(0, 1fr);
+    gap: 12mm;
+    padding: 12mm;
+    break-inside: avoid;
+  }
+  .onb-print-root .onb-vcard-qr { padding: 0; }
+  .onb-print-root .onb-vcard-body h2 { font-size: 22pt; }
+  .onb-print-root .onb-vcard-url { background: none; padding: 0; font-size: 11pt; }
+}

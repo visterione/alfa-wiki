@@ -4,15 +4,20 @@
  * Ролей под этот процесс не заводили: исполнитель — конкретный человек, а
  * настройка сводится к таблице «шаг + филиал → люди».
  *
- * В выборе только те, у кого есть доступ к разделу: назначить человека, который
+ * Экран устроен по филиалам, а не по шагам целиком: филиалов одиннадцать, шагов
+ * с филиальным исполнителем шесть, и всё сразу — это семь десятков строк.
+ * Настраивают их тоже по одному: врача нанимают в конкретный медцентр.
+ *
+ * В выборе только те, у кого есть доступ к разделу. Назначить человека, который
  * раздел не откроет, значит поставить задачу, которую он никогда не увидит.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { X, Building2, Network, AlertTriangle } from 'lucide-react';
+import { X, Building2, Globe, AlertTriangle, UserPlus } from 'lucide-react';
 
 import { onboarding as api } from '../../services/api';
+import OnbSelect from './OnbSelect';
 import { Badge } from './bits';
 import './Onboarding.css';
 
@@ -20,9 +25,6 @@ export default function OnboardingSettings() {
   const [data, setData] = useState(null);
   const [broken, setBroken] = useState([]);
   const [saving, setSaving] = useState('');
-  // Филиалов одиннадцать, шагов с филиальным исполнителем шесть — показывать всё
-  // сразу значит выкатить экран на семь десятков строк. Врача нанимают в один
-  // филиал, и настраивают его тоже по одному.
   const [branch, setBranch] = useState('');
 
   const load = useCallback(async () => {
@@ -57,20 +59,28 @@ export default function OnboardingSettings() {
     }
   };
 
+  const userOptions = (exclude) => data.users
+    .filter(user => !exclude.includes(user.id))
+    .map(user => ({
+      value: user.id,
+      label: user.displayName || user.username,
+      hint: user.position || undefined,
+    }));
+
   return (
     <>
       {Boolean(broken.length) && (
-        <div className="onb-empty" style={{ textAlign: 'left', borderStyle: 'solid' }}>
-          <div className="onb-task-head" style={{ marginBottom: 8 }}>
-            <AlertTriangle size={15} color="var(--error)" />
+        <div className="onb-alert">
+          <AlertTriangle size={16} />
+          <div>
             <b>Эти назначения не сработают</b>
-          </div>
-          <div className="onb-people">
-            {broken.map((item, index) => (
-              <span className="onb-person is-gone" key={index}>
-                {item.user.displayName || item.user.username} · {item.reason}
-              </span>
-            ))}
+            <div className="onb-people">
+              {broken.map((item, index) => (
+                <span className="onb-person is-gone" key={index}>
+                  {item.user.displayName || item.user.username} · {item.reason}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -82,82 +92,67 @@ export default function OnboardingSettings() {
         </div>
       )}
 
-      <div className="onb-step-head" style={{ paddingBottom: 4 }}>
-        <Building2 size={14} color="var(--text-tertiary)" />
-        <b>Филиал</b>
-        <select
-          className="onb-select"
+      <div className="onb-branchbar">
+        <Building2 size={15} />
+        <span>Настраиваем филиал</span>
+        <OnbSelect
           value={currentBranch}
-          onChange={(e) => setBranch(e.target.value)}
-        >
-          {data.medCenters.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
-        </select>
+          onChange={setBranch}
+          options={data.medCenters.map(mc => ({ value: mc.id, label: mc.name }))}
+        />
       </div>
 
-      {data.steps.map(step => (
-        <div className="onb-step" key={step.key}>
-          <div className="onb-step-head">
-            {step.scope === 'network'
-              ? <Network size={14} color="var(--text-tertiary)" />
-              : <Building2 size={14} color="var(--text-tertiary)" />}
-            <b>{step.title}</b>
-            {step.mode === 'race' && <Badge tone="info">кто первый</Badge>}
-          </div>
+      <div className="onb-steps">
+        {data.steps.map(step => {
+          const network = step.scope === 'network';
+          const medCenterId = network ? null : currentBranch;
+          const current = assigneesFor(step.key, medCenterId);
+          const currentIds = current.map(a => a.userId);
+          const busy = saving === `${step.key}:${medCenterId || 'net'}`;
 
-          {step.scope === 'network' ? (
-            <AssignRow
-              label="Все филиалы"
-              users={data.users}
-              current={assigneesFor(step.key, null)}
-              saving={saving === `${step.key}:net`}
-              onSave={(ids) => save(step.key, null, ids)}
-            />
-          ) : (
-            <AssignRow
-              label={branchName}
-              users={data.users}
-              current={assigneesFor(step.key, currentBranch)}
-              saving={saving === `${step.key}:${currentBranch}`}
-              onSave={(ids) => save(step.key, currentBranch, ids)}
-            />
-          )}
-        </div>
-      ))}
+          return (
+            <section className="onb-stepcard" key={step.key}>
+              <header>
+                <b>{step.title}</b>
+                {network
+                  ? <Badge tone="muted"><Globe size={11} /> вся сеть</Badge>
+                  : <Badge tone="muted"><Building2 size={11} /> {branchName}</Badge>}
+                {step.mode === 'race' && <Badge tone="info">кто первый</Badge>}
+              </header>
+
+              <div className="onb-people">
+                {current.map(item => (
+                  <span className="onb-person" key={item.userId}>
+                    {item.user?.displayName || item.user?.username}
+                    <button
+                      type="button"
+                      aria-label="Убрать"
+                      onClick={() => save(step.key, medCenterId, currentIds.filter(id => id !== item.userId))}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+
+                <OnbSelect
+                  className="is-add"
+                  value=""
+                  placeholder={current.length ? 'Ещё' : 'Назначить'}
+                  disabled={busy || !data.users.length}
+                  options={userOptions(currentIds)}
+                  onChange={(userId) => save(step.key, medCenterId, [...currentIds, userId])}
+                />
+
+                {!current.length && (
+                  <span className="onb-nobody">
+                    <UserPlus size={13} /> некому — заявки встанут на этом шаге
+                  </span>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </>
-  );
-}
-
-function AssignRow({ label, users, current, saving, onSave }) {
-  const currentIds = current.map(a => a.userId);
-
-  return (
-    <div className="onb-assign">
-      <div className="onb-sub">{label}</div>
-
-      <div className="onb-people">
-        {current.length
-          ? current.map(item => (
-              <span className="onb-person" key={item.userId}>
-                {item.user?.displayName || item.user?.username}
-                <button type="button" onClick={() => onSave(currentIds.filter(id => id !== item.userId))} aria-label="Убрать">
-                  <X size={12} />
-                </button>
-              </span>
-            ))
-          : <span className="onb-sub">—</span>}
-      </div>
-
-      <select
-        className="onb-select"
-        value=""
-        disabled={saving || !users.length}
-        onChange={(e) => e.target.value && onSave([...currentIds, e.target.value])}
-      >
-        <option value="">Добавить</option>
-        {users
-          .filter(u => !currentIds.includes(u.id))
-          .map(u => <option key={u.id} value={u.id}>{u.displayName || u.username}</option>)}
-      </select>
-    </div>
   );
 }

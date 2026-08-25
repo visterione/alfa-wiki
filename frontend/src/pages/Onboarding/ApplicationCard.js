@@ -8,10 +8,12 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
-import { X, Check, Circle, Paperclip } from 'lucide-react';
+import { X, Check, Circle, Paperclip, Printer } from 'lucide-react';
 
 import { onboarding as api, BASE_URL } from '../../services/api';
+import ApplicationCV from './ApplicationCV';
 import { Badge, dateTime, professionsText } from './bits';
 import './Onboarding.css';
 
@@ -75,13 +77,15 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
   if (!data) return null;
 
   const app = data.application;
-  const labels = data.labels || {};
   // «Задача закрыта» три раза подряд ничего не говорит — нужно, какая именно.
   // Названия шагов уже пришли вместе с задачами, второго справочника не заводим.
   const stepTitles = Object.fromEntries(data.tasks.map(t => [t.stepKey, t.title]));
   const fileHref = (file) => `${BASE_URL}${file.url}${data.fileToken ? `?t=${data.fileToken}` : ''}`;
 
-  return (
+  // Через портал в body: у .onb стоит isolation: isolate (как в «Задачах»), и
+  // внутри него position: fixed считается от нового слоя — затемнение не
+  // накрывало бы шапку и меню портала, а висело бы только над рабочей областью.
+  return createPortal(
     <div className="onb-mask" onClick={onClose}>
       <div className="onb-modal" onClick={(e) => e.stopPropagation()}>
         <div className="onb-modal-head">
@@ -102,19 +106,14 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
         <div className="onb-modal-body">
           <div className="onb-cols">
             <div>
-              <div className="onb-sect">Анкета</div>
-              {Object.keys(app.form || {}).length ? (
-                <dl className="onb-kv">
-                  {Object.entries(app.form).map(([key, value]) => (
-                    <React.Fragment key={key}>
-                      <dt>{labels[key] || key}</dt>
-                      <dd>{renderValue(value)}</dd>
-                    </React.Fragment>
-                  ))}
-                </dl>
-              ) : (
-                <div className="onb-empty">Для вашего шага данных из анкеты не требуется</div>
-              )}
+              <div className="onb-sect">
+                Анкета
+                <button className="onb-btn is-sm" onClick={() => window.print()}>
+                  <Printer size={13} /> Печать
+                </button>
+              </div>
+
+              <ApplicationCV data={data} fileHref={fileHref} />
 
               {Boolean(app.files?.length) && (
                 <>
@@ -293,7 +292,14 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
           </div>
         </div>
       </div>
-    </div>
+      {/* Печатный слой. Отдельная копия документа прямо в body: печатать саму
+          модалку значило бы бороться с её прокруткой, размытием и фиксированной
+          высотой. На экране слой скрыт, при печати скрыто всё остальное. */}
+      <div className="onb-print-root">
+        <ApplicationCV data={data} fileHref={fileHref} />
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -337,17 +343,6 @@ function ServiceSummary({ services }) {
       )}
     </div>
   );
-}
-
-function renderValue(value) {
-  if (value == null || value === '') return '—';
-  if (Array.isArray(value)) {
-    return value.map((row, index) => (
-      <div key={index}>{Object.values(row).filter(Boolean).join(' · ')}</div>
-    ));
-  }
-  if (typeof value === 'boolean') return value ? 'да' : 'нет';
-  return String(value);
 }
 
 const EVENTS = {

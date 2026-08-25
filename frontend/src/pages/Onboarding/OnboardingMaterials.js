@@ -5,19 +5,21 @@
  * вешают в вакансию и показывают по QR на собеседовании. Нигде в базе она не
  * лежит: это просто адрес, и собирает его бэкенд из PUBLIC_BASE_URL.
  *
- * Экран нужен ровно потому, что иначе этот адрес приходится узнавать у
- * разработчика, а QR — рисовать в стороннем сервисе.
+ * Всё собрано в одну визитку, а не разложено по блокам «ссылка», «QR» и
+ * «инструкция»: показывают её целиком — с экрана, с распечатки или в письме.
  */
 
 import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, Download, Printer, AlertTriangle } from 'lucide-react';
+import { Copy, Download, Printer, Send, AlertTriangle } from 'lucide-react';
 
 import { onboarding as api } from '../../services/api';
 import './Onboarding.css';
 
 export default function OnboardingMaterials() {
   const [data, setData] = useState(null);
+  const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     api.materials()
@@ -32,90 +34,105 @@ export default function OnboardingMaterials() {
       await navigator.clipboard.writeText(data.url);
       toast.success('Ссылка скопирована');
     } catch {
-      toast.error('Браузер не дал скопировать — выделите вручную');
+      toast.error('Браузер не дал скопировать — выделите адрес вручную');
     }
   };
 
-  const downloadSvg = () => {
-    const blob = new Blob([data.qrSvg], { type: 'image/svg+xml' });
-    const href = URL.createObjectURL(blob);
+  const download = (kind) => {
     const link = document.createElement('a');
-    link.href = href;
-    link.download = 'anketa-qr.svg';
-    link.click();
-    URL.revokeObjectURL(href);
-  };
-
-  const downloadPng = () => {
-    const link = document.createElement('a');
+    if (kind === 'svg') {
+      const blob = new Blob([data.qrSvg], { type: 'image/svg+xml' });
+      link.href = URL.createObjectURL(blob);
+      link.download = 'anketa-qr.svg';
+      link.click();
+      URL.revokeObjectURL(link.href);
+      return;
+    }
     link.href = data.qrPng;
     link.download = 'anketa-qr.png';
     link.click();
   };
 
   /**
-   * Печать — отдельным окном с одним QR и адресом. Печатать раздел целиком
-   * бессмысленно: на лист уедут навигация и меню портала.
+   * Печатается только визитка. Печатать раздел целиком бессмысленно: на лист
+   * уедут навигация и меню портала.
    */
-  const print = () => {
-    const win = window.open('', '_blank', 'width=600,height=800');
-    if (!win) return toast.error('Браузер заблокировал окно печати');
-    win.document.write(`<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
-      <title>Анкета врача</title>
-      <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-               text-align: center; padding: 48px 24px; }
-        h1 { font-size: 24px; margin: 0 0 6px; }
-        p { color: #555; margin: 0 0 32px; font-size: 15px; }
-        svg { width: 320px; height: 320px; }
-        .url { margin-top: 24px; font-size: 15px; word-break: break-all; }
-      </style></head><body>
-      <h1>Анкета врача</h1>
-      <p>Сеть медицинских центров «Альфа»</p>
-      ${data.qrSvg}
-      <div class="url">${data.url}</div>
-      </body></html>`);
-    win.document.close();
-    win.focus();
-    win.print();
+  const print = () => window.print();
+
+  const invite = async (event) => {
+    event.preventDefault();
+    setSending(true);
+    try {
+      await api.invite({ email: email.trim() });
+      toast.success(`Приглашение отправлено на ${email.trim()}`);
+      setEmail('');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Не удалось отправить приглашение');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <>
       {!data.baseConfigured && (
-        <div className="onb-empty is-compact is-left">
-          <div className="onb-step-head">
-            <AlertTriangle size={15} color="var(--error)" />
+        <div className="onb-alert">
+          <AlertTriangle size={16} />
+          <div>
             <b>Адрес портала не задан</b>
+            Ссылка собрана из умолчания. Пока в <code>.env</code> не прописан PUBLIC_BASE_URL,
+            печатать QR рано — сначала проверьте, что адрес открывается снаружи.
           </div>
-          Ссылка собрана из умолчания. Пока в <code>.env</code> не прописан
-          PUBLIC_BASE_URL, печатать QR рано — проверьте, что адрес ниже открывается снаружи.
         </div>
       )}
 
-      <div className="onb-mat">
-        <div className="onb-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
+      <div className="onb-vcard">
+        <div className="onb-vcard-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
+        <div className="onb-vcard-body">
+          <div className="onb-vcard-kicker">Сеть медицинских центров «Альфа»</div>
+          <h2>Анкета врача</h2>
+          <p>Наведите камеру или откройте ссылку — анкета заполняется с телефона и сохраняется по ходу.</p>
+          <div className="onb-vcard-url">{data.url}</div>
+        </div>
+      </div>
 
-        <div>
-          <div className="onb-sect">Ссылка на анкету</div>
-          <div className="onb-link">
-            <span>{data.url}</span>
-            <button className="onb-btn is-sm" onClick={copy}><Copy size={13} /> Копировать</button>
+      <div className="onb-acts" style={{ marginTop: 14 }}>
+        <button className="onb-btn is-sm" onClick={copy}><Copy size={13} /> Копировать ссылку</button>
+        <button className="onb-btn is-sm" onClick={print}><Printer size={13} /> Печать</button>
+        <button className="onb-btn is-sm" onClick={() => download('svg')}><Download size={13} /> SVG</button>
+        <button className="onb-btn is-sm" onClick={() => download('png')}><Download size={13} /> PNG</button>
+      </div>
+
+      <form className="onb-invite" onSubmit={invite}>
+        <div className="onb-sect">Отправить кандидату</div>
+        <div className="onb-invite-row">
+          <input
+            className="onb-input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="doctor@example.com"
+            required
+          />
+          <button className="onb-btn is-primary is-sm" type="submit" disabled={sending || !email.trim()}>
+            <Send size={13} /> {sending ? 'Отправляем…' : 'Отправить'}
+          </button>
+        </div>
+        <div className="onb-sub">
+          Письмо со ссылкой на анкету. Заявка появится, когда врач подтвердит адрес и начнёт заполнять.
+        </div>
+      </form>
+
+      {/* Печатается только визитка — тем же слоем, что и документ-анкета. */}
+      <div className="onb-print-root">
+        <div className="onb-vcard is-print">
+          <div className="onb-vcard-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
+          <div className="onb-vcard-body">
+            <div className="onb-vcard-kicker">Сеть медицинских центров «Альфа»</div>
+            <h2>Анкета врача</h2>
+            <p>Наведите камеру телефона на код или откройте ссылку.</p>
+            <div className="onb-vcard-url">{data.url}</div>
           </div>
-
-          <div className="onb-sect">QR-код</div>
-          <div className="onb-acts">
-            <button className="onb-btn is-sm" onClick={print}><Printer size={13} /> Печать</button>
-            <button className="onb-btn is-sm" onClick={downloadSvg}><Download size={13} /> SVG</button>
-            <button className="onb-btn is-sm" onClick={downloadPng}><Download size={13} /> PNG</button>
-          </div>
-
-          <div className="onb-sect">Как это работает</div>
-          <ul className="onb-check">
-            <li className="is-done">Ссылка одна и постоянная — её можно отправить сразу нескольким врачам</li>
-            <li className="is-done">Каждое заполнение формы создаёт отдельную заявку</li>
-            <li className="is-done">Повторная анкета на тот же адрес продолжает начатую, а не заводит вторую</li>
-          </ul>
         </div>
       </div>
     </>

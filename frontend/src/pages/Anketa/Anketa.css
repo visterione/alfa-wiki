@@ -1,149 +1,236 @@
 /**
  * Публичная анкета врача.
  *
- * Стоит на токенах дизайн-системы портала — тех же, что модуль «Задачи». Своя
- * палитра здесь была ошибкой: index.css задаёт цвет заголовкам и телу глобально,
- * и собственная тёмная тема анкеты с ними разошлась — заголовки оказались тёмными
- * на тёмном. Вторая палитра в приложении с одной темой не нужна.
+ * Проектировалась под телефон, а не под монитор: ссылку присылают в мессенджере,
+ * и заполняют её стоя, между делом, с экрана шириной 360–390 px. Отсюда всё
+ * остальное — крупные поля, одна колонка, липкая шапка с прогрессом и панель
+ * действий, прижатая к безопасной зоне.
  *
- * Своё здесь только одно: размер шрифта в полях. 16px, иначе Safari на телефоне
- * зумит страницу при фокусе, а анкету заполняют именно с телефона.
+ * Стоит на токенах портала: index.css красит заголовки и тело глобально, и
+ * собственная палитра здесь однажды уже разошлась с ними до нечитаемого текста.
+ *
+ * Размер шрифта в полях — 16 px и не меньше: на 15 px Safari зумит страницу при
+ * фокусе, и человек проваливается в горизонтальную прокрутку посреди анкеты.
  */
 
 .ank {
   min-height: 100vh;
   background: var(--bg-secondary);
   color: var(--text-primary);
-  padding: 28px 16px 72px;
+  padding: 0 0 132px;
+  overflow-x: hidden;
 }
 
-.ank__wrap { max-width: 720px; margin: 0 auto; }
+.ank__wrap { max-width: 680px; margin: 0 auto; padding: 0 14px; }
 
-.ank__head { margin-bottom: 20px; }
+/* ── Шапка ─────────────────────────────────────────────────────────────── */
+
+.ank__head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -14px 14px;
+  padding: 16px 20px 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-light) 70%, transparent);
+}
+
 .ank__head h1 {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.3px;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -.35px;
   color: var(--text-primary);
-  margin: 0 0 4px;
 }
-.ank__head p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.ank__head p { margin: 2px 0 0; color: var(--text-secondary); font-size: 12.5px; }
+
+/* Полоса заполненности. Анкета длинная, и на телефоне без неё непонятно, треть
+   пройдена или девять десятых — а это единственное, что удерживает от «доделаю
+   потом». */
+.ank__progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 11px;
+}
+.ank__progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.ank__progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--primary);
+  transition: width 420ms cubic-bezier(.22,1,.36,1);
+}
+.ank__progress span { font-size: 11.5px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* ── Карточка блока ────────────────────────────────────────────────────── */
 
 .ank__card {
   background: var(--bg-primary);
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  border-radius: 16px;
+  padding: 16px;
   margin-bottom: 10px;
 }
 
+.ank__card-head { margin-bottom: 14px; }
 .ank__card h2 {
+  margin: 0;
   font-size: 15px;
   font-weight: 600;
-  letter-spacing: 0;
+  letter-spacing: -.1px;
   color: var(--text-primary);
-  margin: 0 0 3px;
 }
-.ank__hint { margin: 0 0 14px; color: var(--text-secondary); font-size: 12.5px; }
-.ank__card h2 + .ank__field,
-.ank__card h2 + .ank__check { margin-top: 14px; }
+.ank__hint { margin: 3px 0 0; color: var(--text-secondary); font-size: 12.5px; }
 
 /* ── Поля ──────────────────────────────────────────────────────────────── */
 
-.ank__field { margin-bottom: 13px; }
+.ank__field { margin-bottom: 12px; }
 .ank__field:last-child { margin-bottom: 0; }
+
 .ank__field label {
   display: block;
   font-size: 12.5px;
+  font-weight: 500;
   color: var(--text-secondary);
-  margin-bottom: 5px;
+  margin-bottom: 6px;
 }
+/* Звёздочка у обязательного — единственный способ на телефоне понять, что
+   именно не даст отправить анкету, не долистывая до ошибок. */
+.ank__req { color: var(--primary); margin-left: 3px; }
 
 .ank__field input,
 .ank__field select,
 .ank__field textarea {
   width: 100%;
   box-sizing: border-box;
-  padding: 10px 12px;
+  min-height: 46px;
+  padding: 11px 13px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 16px;
-  transition: border-color var(--transition-fast);
+  line-height: 1.35;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+  -webkit-appearance: none;
+  appearance: none;
 }
-.ank__field textarea { min-height: 100px; resize: vertical; }
-.ank__field input[type="file"] { padding: 8px; font-size: 13px; }
+
+/* Своя стрелка: у нативной на Android другой цвет и размер, и селект переставал
+   быть похож на остальные поля. */
+.ank__field select {
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+}
+
+.ank__field textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 
 .ank__field input:focus,
 .ank__field select:focus,
 .ank__field textarea:focus {
   outline: none;
   border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .ank__field--bad input,
 .ank__field--bad select,
 .ank__field--bad textarea { border-color: var(--error); }
-.ank__err { color: var(--error); font-size: 12px; margin-top: 5px; }
+.ank__err { color: var(--error); font-size: 12px; margin-top: 6px; }
 
-.ank__row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
+/* Две колонки — только там, где хватает ширины. На телефоне всё в одну: пара
+   узких полей рядом читается хуже, чем два широких подряд. */
+.ank__row { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 560px) {
+  .ank__row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ank__row .ank__field { margin-bottom: 0; }
 }
 
 /* ── Повторяемые блоки ─────────────────────────────────────────────────── */
 
 .ank__repeat-item {
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  padding: 14px 14px 4px;
+  border-radius: 13px;
+  padding: 12px;
   margin-bottom: 9px;
-  position: relative;
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
 }
+
+/* Заголовок записи отдельной строкой, а не кнопкой поверх поля: абсолютно
+   спозиционированное «Удалить» на телефоне ложилось прямо на подпись первого
+   поля. */
+.ank__repeat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ank__repeat-num { font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
 .ank__repeat-del {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   border: 0;
   background: none;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 12px;
-  padding: 3px 6px;
-  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  margin: -6px -8px -6px 0;
+  border-radius: 8px;
 }
-.ank__repeat-del:hover { color: var(--error); background: var(--bg-secondary); }
+.ank__repeat-del:active { background: var(--bg-tertiary); color: var(--error); }
+
+.ank__add {
+  width: 100%;
+  min-height: 44px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ank__add:active { background: var(--bg-secondary); }
 
 /* ── Кнопки ────────────────────────────────────────────────────────────── */
 
 .ank__btn {
+  min-height: 46px;
   border: 1px solid var(--primary);
-  border-radius: var(--radius-md);
-  padding: 11px 20px;
+  border-radius: 12px;
+  padding: 12px 20px;
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 550;
   cursor: pointer;
   background: var(--primary);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
   text-decoration: none;
-  transition: background var(--transition-fast);
+  transition: background 160ms ease, transform 120ms ease;
 }
-.ank__btn:hover { background: var(--primary-hover); }
-.ank__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ank__btn:active { transform: scale(.985); }
+.ank__btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .ank__btn--ghost {
   background: var(--bg-primary);
   color: var(--text-primary);
   border-color: var(--border);
 }
-.ank__btn--ghost:hover { background: var(--bg-secondary); }
 .ank__btn--wide { width: 100%; }
 
 .ank__actions { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
@@ -151,130 +238,307 @@
 /* ── Сообщения ─────────────────────────────────────────────────────────── */
 
 .ank__note {
-  border-radius: var(--radius-md);
+  border-radius: 13px;
   padding: 13px 15px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   font-size: 13.5px;
   line-height: 1.5;
 }
-.ank__note--warn { background: rgba(255, 149, 0, 0.12); color: #8a5300; }
-.ank__note--bad { background: rgba(255, 59, 48, 0.11); color: #a8231b; }
-.ank__note--ok { background: rgba(52, 199, 89, 0.12); color: #1d7a3a; }
+.ank__note b { display: block; margin-bottom: 3px; }
+.ank__note--warn { background: rgba(255, 149, 0, .12); color: #8a5300; }
+.ank__note--bad { background: rgba(255, 59, 48, .11); color: #a8231b; }
+.ank__note--ok { background: rgba(52, 199, 89, .12); color: #1d7a3a; }
 
 /* ── Файлы и согласия ──────────────────────────────────────────────────── */
 
-.ank__files { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.ank__files { display: flex; flex-direction: column; gap: 7px; margin-bottom: 9px; }
 .ank__file {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
+  border-radius: 11px;
+  padding: 10px 12px;
   font-size: 13px;
+  background: var(--bg-secondary);
 }
+.ank__file span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ank__file button {
   border: 0; background: none; color: var(--text-tertiary);
-  cursor: pointer; font-size: 12px;
+  cursor: pointer; font-size: 12.5px; flex: none; padding: 4px;
 }
-.ank__file button:hover { color: var(--error); }
+
+/* Нативный «Выберите файл» на Android выглядит как чужеродная серая кнопка,
+   поэтому поле спрятано, а роль кнопки играет подпись вокруг него. */
+/* Специфичность выше правила `.ank__field label`: иначе подпись-кнопка
+   наследует от него блочный серый текст 12.5 px и перестаёт быть кнопкой. */
+.ank__field label.ank__upload,
+.ank__upload {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ank__upload:active { background: var(--bg-secondary); }
+.ank__field label.ank__upload { margin-bottom: 0; }
+.ank__upload input { display: none; }
 
 .ank__check {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
   font-size: 13.5px;
-  margin-bottom: 11px;
+  line-height: 1.45;
+  padding: 9px 0;
   cursor: pointer;
 }
-.ank__check:last-child { margin-bottom: 0; }
-.ank__check input { margin-top: 2px; width: 17px; height: 17px; flex: none; }
+.ank__check input {
+  margin: 1px 0 0;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--primary);
+}
 
-.ank__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.ank__chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .ank__chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   background: var(--primary-light);
   color: var(--primary-hover);
   border-radius: 20px;
-  padding: 4px 6px 4px 11px;
-  font-size: 12.5px;
+  padding: 6px 8px 6px 13px;
+  font-size: 13px;
 }
 .ank__chip button {
   border: 0; background: none; cursor: pointer; color: inherit;
-  padding: 0 3px; font-size: 14px; line-height: 1;
+  padding: 0 2px; font-size: 15px; line-height: 1;
 }
 
 /* ── Страница услуг ────────────────────────────────────────────────────── */
 
 .ank__group {
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  margin-bottom: 8px;
+  border-radius: 14px;
+  margin-bottom: 9px;
   overflow: hidden;
   background: var(--bg-primary);
 }
 .ank__group-head {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 11px 14px;
+  gap: 12px;
+  padding: 13px 14px;
   cursor: pointer;
   user-select: none;
 }
-.ank__group-head:hover { background: var(--bg-secondary); }
-.ank__group-head b { flex: 1; font-size: 13.5px; font-weight: 500; }
-.ank__group-head input[type="checkbox"] { width: 17px; height: 17px; flex: none; }
-.ank__group-count { color: var(--text-tertiary); font-size: 12px; }
+.ank__group-head b { flex: 1; font-size: 14px; font-weight: 550; line-height: 1.3; }
+.ank__group-head input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: var(--primary); }
+.ank__group-count { color: var(--text-tertiary); font-size: 12px; flex: none; }
 
-.ank__srv {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 90px 84px;
-  gap: 10px;
-  align-items: center;
-  padding: 9px 14px;
-  border-top: 1px solid var(--border-light);
-}
-.ank__srv input[type="checkbox"] { width: 17px; height: 17px; }
-.ank__srv-title { font-size: 13.5px; }
-.ank__srv-code { color: var(--text-tertiary); font-size: 11.5px; }
-.ank__srv-price { color: var(--text-secondary); font-size: 13px; text-align: right; }
-.ank__srv input[type="number"],
-.ank__srv-comment input {
+.ank__srv { padding: 11px 14px; border-top: 1px solid var(--border-light); }
+.ank__srv-top { display: flex; align-items: flex-start; gap: 12px; }
+.ank__srv-top input[type="checkbox"] { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--primary); }
+.ank__srv-title { font-size: 14px; line-height: 1.35; }
+.ank__srv-meta { color: var(--text-tertiary); font-size: 12px; margin-top: 3px; }
+.ank__srv-extra { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; margin: 10px 0 0 32px; }
+.ank__srv-extra input {
   width: 100%;
   box-sizing: border-box;
-  padding: 6px 9px;
+  min-height: 40px;
+  padding: 8px 11px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 16px;
 }
-.ank__srv-comment { grid-column: 2 / -1; }
 
 /* ── Нижняя панель ─────────────────────────────────────────────────────── */
 
 .ank__bar {
-  position: sticky;
-  bottom: 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: 11px 15px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
-  gap: 11px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-  box-shadow: var(--shadow-md);
+  gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  border-top: 1px solid var(--border-light);
 }
-.ank__bar span { flex: 1; font-size: 13px; color: var(--text-secondary); }
+.ank__bar-inner {
+  max-width: 680px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ank__bar-state { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-tertiary); }
+.ank__bar .ank__btn { flex: none; }
 
-@media (max-width: 560px) {
-  .ank { padding: 18px 12px 60px; }
-  .ank__srv { grid-template-columns: 22px minmax(0, 1fr) 76px; }
-  .ank__srv-price { grid-column: 2 / -1; text-align: left; }
+@media (max-width: 460px) {
+  /* На узком экране подпись о сохранении уступает место кнопке: она
+     информативна, но не важнее действия. */
+  .ank__bar-state { display: none; }
+  .ank__bar .ank__btn { flex: 1; }
+}
+
+/* ── Загрузка ──────────────────────────────────────────────────────────── */
+
+.ank__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+@media (min-width: 560px) {
+  .ank { padding-bottom: 120px; }
+  .ank__wrap { padding: 0 20px; }
+  .ank__head { margin: 0 -20px 16px; padding: 22px 26px 14px; }
+  .ank__head h1 { font-size: 22px; }
+  .ank__card { padding: 20px; border-radius: 18px; }
+}
+
+/* ── Вкладки шагов ─────────────────────────────────────────────────────────
+   Лента прокручивается вбок: шести вкладок на 360 px в ряд не помещается, а
+   переносить их в две строки — значит съесть треть первого экрана. */
+
+.ank__tabs {
+  display: flex;
+  gap: 6px;
+  margin: 0 -14px 12px;
+  padding: 0 14px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.ank__tabs::-webkit-scrollbar { display: none; }
+
+.ank__tabs button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.ank__tabs button.is-on {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Точка — «обязательное на вкладке заполнено». На активной вкладке она белая,
+   иначе теряется на синем. */
+.ank__tabs button.is-done::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.ank__tabs button.is-done.is-on::before { background: #fff; }
+
+/* ── Дни недели ────────────────────────────────────────────────────────── */
+
+.ank__days { display: flex; gap: 6px; }
+.ank__days button {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+.ank__days button.is-on {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.ank__days button:active { transform: scale(.96); }
+
+/* ── Интервал времени ──────────────────────────────────────────────────── */
+
+.ank__timerange { display: flex; align-items: center; gap: 10px; }
+.ank__timerange input { flex: 1; min-width: 0; text-align: center; }
+.ank__timerange span { color: var(--text-tertiary); flex: none; }
+
+/* ── Замечание главврача ───────────────────────────────────────────────── */
+
+.ank__msg { display: flex; gap: 10px; margin-bottom: 14px; }
+
+.ank__msg-av {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--primary-light);
+  color: var(--primary-hover);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ank__msg-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.ank__msg-body { min-width: 0; }
+.ank__msg-who { font-size: 12.5px; font-weight: 600; margin-bottom: 5px; }
+.ank__msg-who small {
+  font-weight: 400;
+  color: var(--text-tertiary);
+  margin-left: 6px;
+}
+
+/* Уголок слева вверху — как у входящего сообщения в мессенджере. */
+.ank__msg-bubble {
+  position: relative;
+  padding: 11px 14px;
+  border-radius: 4px 16px 16px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ank__msg-time {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
 }

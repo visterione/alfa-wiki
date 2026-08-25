@@ -147,6 +147,26 @@ async function sendWelcome(app, medCenterName) {
   `));
 }
 
+/**
+ * Приглашение заполнить анкету — то, что сотрудник отправляет кандидату прямо
+ * из раздела «Материалы».
+ *
+ * Ссылка тут та же самая, постоянная: письмо не создаёт заявку и ничего не
+ * резервирует, оно просто избавляет от копирования адреса в мессенджер.
+ */
+async function sendAnketaInvite(to, { fromName, note } = {}) {
+  const { anketaUrl } = require('./links');
+  return send(to, 'Анкета врача — сеть медцентров «Альфа»', layout('Анкета врача', `
+    <p>Здравствуйте! Чтобы начать оформление, заполните анкету — она откроется с телефона и сохраняется по ходу.</p>
+    ${note ? `<p style="background:#f5f5f7;border-radius:10px;padding:16px;">${escapeHtml(note)}</p>` : ''}
+    ${button(anketaUrl(), 'Заполнить анкету')}
+    <p style="color:#86868B;font-size:13px;">
+      Сначала попросим подтвердить адрес кодом — он придёт на эту же почту.
+      ${fromName ? `<br>Отправитель: ${escapeHtml(fromName)}.` : ''}
+    </p>
+  `));
+}
+
 /** Заявка отклонена. Пишем без причин: они внутренние. */
 async function sendRejected(app) {
   return send(app.email, `Анкета №${app.number}`, layout('Анкета рассмотрена', `
@@ -162,6 +182,7 @@ function escapeHtml(value) {
 
 module.exports = {
   sendVerificationCode,
+  sendAnketaInvite,
   sendDraftLink,
   sendRevision,
   sendServicesInvite,

@@ -1179,6 +1179,7 @@ export const onboarding = {
 
   // Материалы для рассылки: постоянная ссылка на анкету и QR к ней.
   materials:     ()                 => api.get('/onboarding/materials'),
+  invite:        (data)             => api.post('/onboarding/materials/invite', data),
 
   // Настройки: кто отвечает за шаг. Ролей под этот процесс не заводили —
   // назначение всегда на конкретного человека.

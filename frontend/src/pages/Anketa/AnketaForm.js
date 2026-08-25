@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { anketa } from '../../services/api';
+import { PhoneInput, WeekdayPicker, TimeRange } from './fields';
+import RevisionNote from './RevisionNote';
 import './Anketa.css';
 
 /**
@@ -17,6 +19,57 @@ import './Anketa.css';
 
 const AUTOSAVE_MS = 1500;
 
+/**
+ * Доля заполненного среди обязательного. Считаем по той же схеме, по которой
+ * рисуются поля, — второй список обязательных разошёлся бы с первым на первой
+ * же правке анкеты.
+ */
+function progressOf(blocks, form, state, files) {
+  let total = 0;
+  let filled = 0;
+
+  for (const block of blocks) {
+    if (block.repeat) {
+      if (block.key !== 'education') continue;
+      total += 1;
+      if ((form.education || []).length) filled += 1;
+      continue;
+    }
+    for (const field of block.fields) {
+      if (field.type === 'checkbox') {
+        total += 1;
+        if (state.consents?.[field.key]) filled += 1;
+        continue;
+      }
+      if (field.type === 'medcenter') {
+        total += 1;
+        if (state.medCenterId) filled += 1;
+        continue;
+      }
+      if (field.type === 'professions') {
+        total += 1;
+        if ((state.professions || []).length) filled += 1;
+        continue;
+      }
+      if (field.key === 'diploma') {
+        total += 1;
+        if (files.some(f => f.kind === 'diploma')) filled += 1;
+        continue;
+      }
+      if (!field.required) continue;
+      total += 1;
+      const value = form[field.key];
+      const empty = value === undefined
+        || value === null
+        || value === ''
+        || (Array.isArray(value) && !value.length);
+      if (!empty) filled += 1;
+    }
+  }
+
+  return total ? Math.round((filled / total) * 100) : 0;
+}
+
 export default function AnketaForm() {
   const { token } = useParams();
 
@@ -30,6 +83,7 @@ export default function AnketaForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  const [step, setStep] = useState(0);
   const saveTimer = useRef(null);
   // Первую отрисовку автосохранение пропускает: иначе открытие ссылки само по
   // себе писало бы черновик и сбивало отметку «сохранено».
@@ -162,6 +216,13 @@ export default function AnketaForm() {
         for (const item of payload.errors) map[item.field] = item.message;
         setErrors(map);
         setSubmitError('Анкета заполнена не полностью — посмотрите отмеченные поля.');
+        // Уводим на вкладку с первой ошибкой: иначе человек стоит на последней
+        // и не видит, что именно не заполнено.
+        const failed = payload.errors[0]?.field;
+        const target = (meta.steps || []).findIndex(item =>
+          meta.blocks.some(block => item.blocks.includes(block.key)
+            && (block.key === failed || block.fields?.some(f => f.key === failed))));
+        if (target >= 0) setStep(target);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         setSubmitError(payload?.message || 'Не удалось отправить анкету');
@@ -179,8 +240,25 @@ export default function AnketaForm() {
     );
   }
   if (!meta || !state) {
-    return <div className="ank"><div className="ank__wrap"><p>Загружаем анкету…</p></div></div>;
+    return <div className="ank"><div className="ank__loading">Загружаем анкету…</div></div>;
   }
+
+  const progress = progressOf(meta.blocks, form, state, files);
+
+  const steps = meta.steps || [{ key: 'all', title: 'Анкета', blocks: meta.blocks.map(b => b.key) }];
+  const blocksOf = (keys) => meta.blocks.filter(block => keys.includes(block.key));
+  const visibleBlocks = blocksOf(steps[step]?.blocks || []);
+
+  // Галочка на вкладке — не «человек там был», а «обязательное на ней
+  // заполнено»: иначе отметка появляется от одного перехода и ничего не значит.
+  const stepDone = steps.map(item =>
+    progressOf(blocksOf(item.blocks), form, state, files) === 100);
+
+  const goStep = (next) => {
+    setStep(next);
+    // Наверх — иначе следующая вкладка открывается с середины предыдущей.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (!state.editable) {
     return (
@@ -207,17 +285,39 @@ export default function AnketaForm() {
       <div className="ank__wrap">
         <div className="ank__head">
           <h1>Анкета врача</h1>
-          <p>Заявка №{state.number}</p>
+          <p>Заявка №{state.number} · сеть медцентров «Альфа»</p>
+          <div className="ank__progress">
+            <div className="ank__progress-track">
+              <div className="ank__progress-fill" style={{ width: `${progress}%` }} />
+            </div>
+            <span>{progress}%</span>
+          </div>
         </div>
 
         {state.revisionNote && (
-          <div className="ank__note ank__note--warn">
-            <b>Нужно поправить:</b> {state.revisionNote}
-          </div>
+          <RevisionNote
+            note={state.revisionNote}
+            author={state.revisionBy}
+            at={state.revisionAt}
+          />
         )}
         {submitError && <div className="ank__note ank__note--bad">{submitError}</div>}
 
-        {meta.blocks.map(block => (
+        <div className="ank__tabs" role="tablist">
+          {steps.map((item, index) => (
+            <button
+              key={item.key}
+              role="tab"
+              aria-selected={index === step}
+              className={`${index === step ? 'is-on' : ''} ${stepDone[index] ? 'is-done' : ''}`}
+              onClick={() => setStep(index)}
+            >
+              {item.title}
+            </button>
+          ))}
+        </div>
+
+        {visibleBlocks.map(block => (
           <Block
             key={block.key}
             block={block}
@@ -237,11 +337,25 @@ export default function AnketaForm() {
           />
         ))}
 
-        <div className="ank__bar">
-          <span>{savedAt ? 'Сохранено' : 'Сохраняется автоматически'}</span>
-          <button className="ank__btn" onClick={submit} disabled={submitting}>
-            {submitting ? 'Отправляем…' : 'Отправить на согласование'}
-          </button>
+      </div>
+
+      <div className="ank__bar">
+        <div className="ank__bar-inner">
+          {step > 0 && (
+            <button className="ank__btn ank__btn--ghost" onClick={() => goStep(step - 1)}>
+              Назад
+            </button>
+          )}
+          <span className="ank__bar-state">
+            {savedAt ? 'Черновик сохранён' : 'Сохраняется автоматически'}
+          </span>
+          {step < steps.length - 1 ? (
+            <button className="ank__btn" onClick={() => goStep(step + 1)}>Далее</button>
+          ) : (
+            <button className="ank__btn" onClick={submit} disabled={submitting}>
+              {submitting ? 'Отправляем…' : 'Отправить'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -253,10 +367,19 @@ export default function AnketaForm() {
 function Block(props) {
   const { block, form, state, meta, files, errors, revisionFields } = props;
 
+  // Когда в блоке одно поле и называется оно так же, как сам блок («Филиал» →
+  // «Филиал»), подпись не повторяем: на телефоне это две одинаковые строки
+  // подряд, съедающие пол-экрана.
+  const soloLabel = !block.repeat
+    && block.fields.length === 1
+    && block.fields[0].label.toLowerCase().startsWith(block.title.toLowerCase());
+
   return (
     <div className="ank__card">
-      <h2>{block.title}</h2>
-      {block.hint && <p className="ank__hint">{block.hint}</p>}
+      <div className="ank__card-head">
+        <h2>{block.title}</h2>
+        {block.hint && <p className="ank__hint">{block.hint}</p>}
+      </div>
 
       {block.repeat
         ? <RepeatBlock block={block} rows={form[block.key] || []} error={errors[block.key]} onChange={rows => props.onRepeat(block.key, rows)} />
@@ -276,6 +399,7 @@ function Block(props) {
               onUpload={props.onUpload}
               onRemoveFile={props.onRemoveFile}
               onConsent={props.onConsent}
+              hideLabel={soloLabel}
             />
           ))}
     </div>
@@ -283,13 +407,20 @@ function Block(props) {
 }
 
 function Field(props) {
-  const { field, value, state, meta, files, error, flagged } = props;
+  const { field, value, state, meta, files, error, flagged, hideLabel } = props;
   const cls = `ank__field${error || flagged ? ' ank__field--bad' : ''}`;
+
+  const label = hideLabel ? null : (
+    <label>
+      {field.label}
+      {field.required && <span className="ank__req">*</span>}
+    </label>
+  );
 
   if (field.type === 'medcenter') {
     return (
       <div className={cls}>
-        <label>{field.label}</label>
+        {label}
         <select value={state.medCenterId || ''} onChange={(e) => props.onMedCenter(e.target.value || null)}>
           <option value="">— выберите —</option>
           {meta.medCenters.map(mc => (
@@ -305,7 +436,7 @@ function Field(props) {
     const chosen = state.professions || [];
     return (
       <div className={cls}>
-        <label>{field.label}</label>
+        {label}
         <select
           value=""
           onChange={(e) => {
@@ -339,24 +470,29 @@ function Field(props) {
     const mine = files.filter(f => f.kind === kind);
     return (
       <div className={cls}>
-        <label>{field.label}</label>
-        <div className="ank__files">
-          {mine.map(file => (
-            <div className="ank__file" key={file.id}>
-              <span>{file.originalName}</span>
-              <button type="button" onClick={() => props.onRemoveFile(file.id)}>Удалить</button>
-            </div>
-          ))}
-        </div>
-        <input
-          type="file"
-          accept={field.accept === 'image' ? 'image/*' : 'image/*,application/pdf'}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) props.onUpload(kind, file);
-            e.target.value = '';
-          }}
-        />
+        {label}
+        {Boolean(mine.length) && (
+          <div className="ank__files">
+            {mine.map(file => (
+              <div className="ank__file" key={file.id}>
+                <span>{file.originalName}</span>
+                <button type="button" onClick={() => props.onRemoveFile(file.id)}>Удалить</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="ank__upload">
+          {mine.length ? 'Добавить ещё' : 'Выбрать файл'}
+          <input
+            type="file"
+            accept={field.accept === 'image' ? 'image/*' : 'image/*,application/pdf'}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) props.onUpload(kind, file);
+              e.target.value = '';
+            }}
+          />
+        </label>
         {error && <div className="ank__err">{error}</div>}
       </div>
     );
@@ -372,10 +508,44 @@ function Field(props) {
     );
   }
 
+  if (field.type === 'phone') {
+    return (
+      <div className={cls}>
+        {label}
+        <PhoneInput
+          value={value}
+          invalid={Boolean(error)}
+          onChange={(digits) => props.onField(field.key, digits)}
+        />
+        {error && <div className="ank__err">{error}</div>}
+      </div>
+    );
+  }
+
+  if (field.type === 'weekdays') {
+    return (
+      <div className={cls}>
+        {label}
+        <WeekdayPicker value={value} onChange={(days) => props.onField(field.key, days)} />
+        {error && <div className="ank__err">{error}</div>}
+      </div>
+    );
+  }
+
+  if (field.type === 'timerange') {
+    return (
+      <div className={cls}>
+        {label}
+        <TimeRange value={value} onChange={(range) => props.onField(field.key, range)} />
+        {error && <div className="ank__err">{error}</div>}
+      </div>
+    );
+  }
+
   if (field.type === 'textarea') {
     return (
       <div className={cls}>
-        <label>{field.label}</label>
+        {label}
         <textarea
           value={value || ''}
           maxLength={field.max}
@@ -386,10 +556,10 @@ function Field(props) {
     );
   }
 
-  const inputType = { number: 'number', date: 'date', phone: 'tel' }[field.type] || 'text';
+  const inputType = { number: 'number', date: 'date' }[field.type] || 'text';
   return (
     <div className={cls}>
-      <label>{field.label}</label>
+      {label}
       <input
         type={inputType}
         value={value ?? ''}
@@ -419,13 +589,20 @@ function RepeatBlock({ block, rows, error, onChange }) {
     <>
       {rows.map((row, index) => (
         <div className="ank__repeat-item" key={index}>
-          <button className="ank__repeat-del" type="button" onClick={() => remove(index)}>Удалить</button>
+          <div className="ank__repeat-head">
+            <span className="ank__repeat-num">Запись {index + 1}</span>
+            <button className="ank__repeat-del" type="button" onClick={() => remove(index)}>Удалить</button>
+          </div>
           <div className="ank__row">
             {block.fields.map(field => (
               <div className="ank__field" key={field.key}>
-                <label>{field.label}</label>
+                <label>
+                  {field.label}
+                  {field.required && <span className="ank__req">*</span>}
+                </label>
                 <input
                   type={field.type === 'number' ? 'number' : 'text'}
+                  inputMode={field.type === 'number' ? 'numeric' : undefined}
                   value={row[field.key] ?? ''}
                   onChange={(e) => update(index, field.key, e.target.value)}
                 />
@@ -435,7 +612,9 @@ function RepeatBlock({ block, rows, error, onChange }) {
         </div>
       ))}
       {error && <div className="ank__err">{error}</div>}
-      <button className="ank__btn ank__btn--ghost" type="button" onClick={add}>Добавить ещё</button>
+      <button className="ank__add" type="button" onClick={add}>
+        {rows.length ? 'Добавить ещё' : 'Добавить запись'}
+      </button>
     </>
   );
 }

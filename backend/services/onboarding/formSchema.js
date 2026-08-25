@@ -13,8 +13,8 @@
  * неизвестно, какому главврачу отправлять анкету на согласование.
  */
 
-// type: text | textarea | date | number | phone | select | professions |
-//       medcenter | file | files | repeat | checkbox
+// type: text | textarea | date | number | phone | weekdays | timerange |
+//       professions | medcenter | file | files | repeat | checkbox
 const BLOCKS = [
   {
     key: 'branch',
@@ -60,8 +60,11 @@ const BLOCKS = [
     title: 'Приём',
     fields: [
       { key: 'childrenFrom',       label: 'Принимаю детей с возраста, лет', type: 'number', min: 0, max: 18 },
-      { key: 'scheduleDays',       label: 'Дни приёма',                      type: 'text', required: true, max: 255 },
-      { key: 'scheduleTime',       label: 'Время приёма',                    type: 'text', required: true, max: 255 },
+      // Дни и время — виджеты, а не свободный текст. Расписание по этим полям
+      // строит старший регистратор, и «пн-пт кроме второй среды» из текстового
+      // поля превращалось в переписку с врачом вместо работы.
+      { key: 'scheduleDays',       label: 'Дни приёма',                      type: 'weekdays',  required: true },
+      { key: 'scheduleTime',       label: 'Время приёма',                    type: 'timerange', required: true },
       { key: 'appointmentMinutes', label: 'Продолжительность приёма, минут', type: 'number', required: true, min: 5, max: 240 }
     ]
   },
@@ -166,6 +169,26 @@ const BLOCKS = [
   }
 ];
 
+/**
+ * Шаги анкеты.
+ *
+ * Одним полотном она получалась на полтора десятка блоков и на телефоне
+ * прокручивалась минуту — до конца доходили не все. Шагами человек видит, где
+ * находится и сколько осталось, а сохранение идёт по-прежнему на каждом
+ * изменении, поэтому уйти можно с любого места.
+ *
+ * Группировка смысловая, а не «по пять блоков»: за один заход заполняют то, что
+ * помнят без документов, а сканы и согласия оставляют напоследок.
+ */
+const STEPS = [
+  { key: 'about',    title: 'О себе',       blocks: ['branch', 'main', 'specialty', 'experience'] },
+  { key: 'work',     title: 'Приём',        blocks: ['reception', 'skills'] },
+  { key: 'edu',      title: 'Образование',  blocks: ['education', 'qualification', 'certificates'] },
+  { key: 'science',  title: 'Наука',        blocks: ['papers', 'conferences'] },
+  { key: 'site',     title: 'Для сайта',    blocks: ['public', 'resources'] },
+  { key: 'docs',     title: 'Документы',    blocks: ['documents', 'consents'] },
+];
+
 // Версия текста согласий. Меняется вместе с текстом: в заявке фиксируется та,
 // на которую человек согласился, иначе через год будет непонятно, под чем
 // именно стоит его галочка.
@@ -207,8 +230,38 @@ function labelMap() {
   return map;
 }
 
+/**
+ * Разделы для документа-карточки врача.
+ *
+ * Филиал, основное и специальность в список не входят — они уходят в шапку
+ * документа. Согласия тоже: это служебный факт, а не часть анкеты.
+ *
+ * Список строится из тех же блоков, что и форма: раздел, добавленный в анкету,
+ * появляется в документе сам, без второго перечня.
+ */
+const HEADER_BLOCKS = ['branch', 'main', 'specialty', 'consents'];
+
+function sections() {
+  return BLOCKS
+    .filter(block => !HEADER_BLOCKS.includes(block.key))
+    .map(block => ({
+      key: block.key,
+      title: block.title,
+      repeat: Boolean(block.repeat),
+      // У повторяемого блока значение лежит под ключом самого блока, у обычного
+      // — под ключами полей. Тип нужен документу: дни недели и интервал времени
+      // без него печатались бы как «1,3,5» и «[object Object]».
+      fields: block.repeat
+        ? [{ key: block.key, type: 'repeat' }]
+        : block.fields.map(f => ({ key: f.key, type: f.type }))
+    }));
+}
+
 module.exports = {
   BLOCKS,
+  STEPS,
+  HEADER_BLOCKS,
+  sections,
   labelMap,
   REPEAT_BLOCKS,
   FILE_FIELDS,
