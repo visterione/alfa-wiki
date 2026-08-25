@@ -28,7 +28,7 @@ const { Op } = require('sequelize');
 const router = express.Router();
 
 const {
-  OnbApplication, OnbFile, OnbServiceChoice, OnbEmailCode, MedCenter
+  OnbApplication, OnbFile, OnbServiceChoice, OnbEmailCode, OnbTask, OnbEvent, MedCenter
 } = require('../../../models');
 const proc = require('../../../services/onboarding/process');
 const schema = require('../../../services/onboarding/formSchema');
@@ -231,6 +231,7 @@ function editable(app) {
 router.get('/:token', loadApplication, async (req, res) => {
   const app = req.application;
   const appFiles = await OnbFile.findAll({ where: { applicationId: app.id } });
+  const servicesReady = await servicesStageReady(app);
 
   // Кто вернул анкету на доработку. Врачу это показывается облачком с аватаркой:
   // безымянное «нужно поправить» выглядит отпиской системы, а замечание от
@@ -267,7 +268,7 @@ router.get('/:token', loadApplication, async (req, res) => {
       revisionAt: app.status === proc.STATUS.REVISION ? app.decidedAt : null,
       revisionBy: decidedBy,
       editable: editable(app),
-      servicesReady: canChooseServices(app)
+      servicesReady
     },
     files: appFiles.map(f => ({
       id: f.id, kind: f.kind, originalName: f.originalName, size: f.size,
@@ -456,19 +457,51 @@ router.post('/:token/submit', loadApplication, async (req, res) => {
 
 // ── Выбор услуг ───────────────────────────────────────────────────────────
 
-function canChooseServices(app) {
-  return Boolean(app.misUserId) && ![
-    proc.STATUS.DRAFT,
-    proc.STATUS.SUBMITTED,
-    proc.STATUS.REVISION,
-    proc.STATUS.REJECTED,
-    proc.STATUS.CANCELLED
-  ].includes(app.status);
+async function servicesStageReady(app) {
+  if ([proc.STATUS.REJECTED, proc.STATUS.CANCELLED].includes(app.status)) return false;
+  if (app.misUserId) return true;
+
+  // Источник, который видит сотрудник в карточке заявки: завершённая и
+  // проверенная задача «Создать пользователя». Если она закрыта, публичная
+  // ссылка не должна спорить с карточкой только из-за старого поля заявки.
+  const task = await OnbTask.findOne({
+    where: {
+      applicationId: app.id,
+      stepKey: 'mis_account',
+      completedAt: { [Op.ne]: null },
+      verifiedByMis: true
+    },
+    attributes: ['id']
+  });
+  if (!task) return false;
+
+  // У старых или частично завершившихся переходов doctor_id обычно остался в
+  // журнале. Восстанавливаем заявку один раз, чтобы следующие шаги (проверка
+  // услуг и расписания) тоже работали, а не только открывалась страница.
+  const event = await OnbEvent.findOne({
+    where: { applicationId: app.id, action: 'mis_created' },
+    attributes: ['payload'],
+    order: [['createdAt', 'DESC']]
+  });
+  let misUserId = event?.payload?.misUserId;
+
+  // Если журнал когда-то не записался, повторяем безопасную сверку чтением.
+  if (!misUserId) {
+    const check = await misVerify.findDoctor(app);
+    if (check.ok) misUserId = check.misUserId;
+  }
+
+  const patch = {};
+  if (misUserId) patch.misUserId = String(misUserId);
+  if (app.status !== proc.STATUS.LAUNCHED) patch.status = proc.STATUS.MIS_CREATED;
+  if (Object.keys(patch).length) await app.update(patch);
+
+  return true;
 }
 
 router.get('/:token/services', loadApplication, async (req, res) => {
   const app = req.application;
-  if (!canChooseServices(app)) {
+  if (!(await servicesStageReady(app))) {
     return fail(res, 409, 'not_ready', 'Список услуг станет доступен после того, как вас заведут в системе клиники');
   }
 
@@ -502,7 +535,6 @@ router.get('/:token/services', loadApplication, async (req, res) => {
 });
 
 async function isServicesStepDone(app) {
-  const { OnbTask } = require('../../../models');
   const task = await OnbTask.findOne({
     where: { applicationId: app.id, stepKey: proc.DOCTOR_STEP }
   });
@@ -516,7 +548,7 @@ async function isServicesStepDone(app) {
  */
 router.post('/:token/services', loadApplication, async (req, res) => {
   const app = req.application;
-  if (!canChooseServices(app)) {
+  if (!(await servicesStageReady(app))) {
     return fail(res, 409, 'not_ready', 'Выбор услуг сейчас недоступен');
   }
   if (await isServicesStepDone(app)) {
@@ -565,7 +597,7 @@ router.post('/:token/services', loadApplication, async (req, res) => {
 
 router.post('/:token/services/submit', loadApplication, async (req, res) => {
   const app = req.application;
-  if (!canChooseServices(app)) {
+  if (!(await servicesStageReady(app))) {
     return fail(res, 409, 'not_ready', 'Выбор услуг сейчас недоступен');
   }
   if (await isServicesStepDone(app)) {
