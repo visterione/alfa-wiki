@@ -88,7 +88,7 @@ async function openTask(app, stepKey) {
   } else {
     const who = step.mode === 'race' ? 'Задача одна на всех, кто первый взял — за тем и закрепится.' : '';
     await notify(assignees,
-      `🩺 Онбординг врача №${app.number} — ${app.fullName || 'без имени'}\n${step.title}\n${who}`,
+      `🩺 Онбординг врача — ${app.fullName || 'без имени'}\n${step.title}\n${who}`,
       { type: 'onboarding_task', applicationId: app.id, stepKey });
   }
 
@@ -125,7 +125,7 @@ async function submit(app) {
   const chiefs = await assignments.resolveChiefs(app.medCenterId);
   if (chiefs.length) {
     await notify(chiefs,
-      `🩺 Новая анкета врача №${app.number} — ${app.fullName || 'без имени'}\nНужно согласование.`,
+      `🩺 Новая анкета врача — ${app.fullName || 'без имени'}\nНужно согласование.`,
       { type: 'onboarding_approval', applicationId: app.id });
   } else {
     await log(app.id, 'chief_unassigned', {});
@@ -323,7 +323,7 @@ async function tryLaunch(app) {
 
   const participants = [...new Set(tasks.flatMap(t => [t.completedBy, t.claimedBy]).filter(Boolean))];
   await notify(participants,
-    `✅ Врач ${app.fullName || `по заявке №${app.number}`} запущен. Все пункты чек-листа закрыты.`,
+    `✅ Врач ${app.fullName || 'по заявке без имени'} запущен. Все пункты чек-листа закрыты.`,
     { type: 'onboarding_launched', applicationId: app.id });
 
   await log(app.id, 'launched', {});
@@ -357,7 +357,7 @@ async function cancel(app, user, reason) {
   if (app.misUserId) {
     const admins = await assignments.resolveAssignees('mis_account', app.medCenterId);
     await notify(admins,
-      `⚠️ Онбординг №${app.number} (${app.fullName || 'без имени'}) отменён, ` +
+      `⚠️ Онбординг врача ${app.fullName || 'без имени'} отменён, ` +
       `но учётная запись в «Реновации» уже создана (id ${app.misUserId}). Её нужно деактивировать вручную.`,
       { type: 'onboarding_cancelled', applicationId: app.id });
   }

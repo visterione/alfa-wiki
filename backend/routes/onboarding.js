@@ -233,7 +233,6 @@ router.get('/applications', async (req, res) => {
       const appTasks = tasksByApp.get(app.id) || [];
       return {
         id: app.id,
-        number: app.number,
         fullName: app.fullName,
         professions: app.professions || [],
         medCenter: app.medCenter,
@@ -307,6 +306,7 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
       sections: formSchema.sections(),
       medCenter: app.medCenter,
       stage: proc.stageOf(app, tasks),
+      timeline: proc.timeline(app, tasks),
       statusLabel: proc.STATUS_LABELS[app.status] || app.status,
       checklist: proc.checklistOf(tasks),
       tasks: tasks.map(task => {
@@ -452,7 +452,6 @@ router.get('/tasks/my', async (req, res) => {
       result.push({
         id: task.id,
         applicationId: app.id,
-        number: app.number,
         fullName: app.fullName,
         professions: app.professions || [],
         stepKey: task.stepKey,
@@ -586,6 +585,22 @@ function serialiseChoice(choice) {
     isCustom: choice.isCustom
   };
 }
+
+/**
+ * Сотрудники филиала из МИС — для ручного выбора, когда сверка по ФИО не нашла
+ * врача. Иначе шаг «создать учётку» становится тупиком: задача открыта, МИС
+ * говорит «нет такого», и сделать с этим нечего.
+ */
+router.get('/applications/:id/mis-users', loadApplication, async (req, res) => {
+  try {
+    const result = await misVerify.searchDoctors(req.application, String(req.query.q || ''));
+    if (!result.ok) return res.status(502).json({ error: result.reason });
+    res.json(result.users);
+  } catch (error) {
+    console.error('[onboarding] mis-users:', error);
+    res.status(500).json({ error: 'Не удалось получить список сотрудников МИС' });
+  }
+});
 
 /** Выгрузка карточки врача из МИС — то, ради чего существует шаг колл-центра. */
 router.get('/applications/:id/export', loadApplication, async (req, res) => {

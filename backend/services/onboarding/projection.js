@@ -95,7 +95,6 @@ function project(app, viewKey, files = []) {
   const form = app.form || {};
   const base = {
     id: app.id,
-    number: app.number,
     status: app.status,
     medCenterId: app.medCenterId,
     professions: app.professions || [],

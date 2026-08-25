@@ -192,7 +192,6 @@ function TaskTable({ tasks, onOpen }) {
     <table className="onb-table">
       <thead>
         <tr>
-          <th>№</th>
           <th>Что сделать</th>
           <th>Специальность</th>
           <th />
@@ -206,7 +205,6 @@ function TaskTable({ tasks, onOpen }) {
             className={`is-clickable${task.overdue ? ' is-late' : ''}`}
             onClick={() => onOpen(task.applicationId)}
           >
-            <td><span className="onb-code">№{task.number}</span></td>
             <td>
               <div className="onb-name">{task.title}</div>
               <div className="onb-sub">{task.fullName || 'без имени'}</div>
@@ -228,7 +226,6 @@ function AppTable({ apps, onOpen }) {
     <table className="onb-table">
       <thead>
         <tr>
-          <th>№</th>
           <th>Врач</th>
           <th>Филиал</th>
           <th>Стадия</th>
@@ -242,7 +239,6 @@ function AppTable({ apps, onOpen }) {
             className={`is-clickable${app.overdue ? ' is-late' : ''}`}
             onClick={() => onOpen(app.id)}
           >
-            <td><span className="onb-code">№{app.number}</span></td>
             <td>
               <div className="onb-name">{app.fullName || 'без имени'}</div>
               <div className="onb-sub">{professionsText(app.professions)}</div>

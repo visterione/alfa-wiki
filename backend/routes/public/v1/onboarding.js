@@ -250,7 +250,6 @@ router.get('/:token', loadApplication, async (req, res) => {
   res.json({
     ok: true,
     application: {
-      number: app.number,
       status: app.status,
       statusLabel: proc.STATUS_LABELS[app.status] || app.status,
       email: app.email,
@@ -428,7 +427,7 @@ router.post('/:token/submit', loadApplication, async (req, res) => {
     }
 
     await engine.submit(app);
-    res.json({ ok: true, status: app.status, number: app.number });
+    res.json({ ok: true, status: app.status });
   } catch (error) {
     console.error('[onboarding/public] submit:', error);
     fail(res, 500, 'server_error', 'Не удалось отправить анкету');

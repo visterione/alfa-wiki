@@ -107,7 +107,7 @@ async function sendVerificationCode(email, code) {
 
 /** Черновик сохранён — персональная ссылка, чтобы вернуться и дозаполнить. */
 async function sendDraftLink(app) {
-  return send(app.email, `Анкета врача №${app.number} — ссылка для возврата`, layout('Анкета сохранена', `
+  return send(app.email, 'Анкета врача — ссылка для возврата', layout('Анкета сохранена', `
     <p>Анкета сохранена как черновик. Вернуться к ней и дозаполнить можно по личной ссылке — она не меняется.</p>
     ${button(applicationLink(app), 'Продолжить заполнение')}
     <p style="color:#86868B;font-size:13px;">Ссылку никому не передавайте: по ней открывается ваша анкета.</p>
@@ -119,7 +119,7 @@ async function sendRevision(app, note, fields = []) {
   const list = fields.length
     ? `<ul style="margin:16px 0;padding-left:20px;">${fields.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
     : '';
-  return send(app.email, `Анкета №${app.number} — нужно поправить`, layout('Анкета возвращена на доработку', `
+  return send(app.email, 'Анкета врача — нужно поправить', layout('Анкета возвращена на доработку', `
     <p>Главврач посмотрел анкету и попросил уточнить несколько пунктов.</p>
     ${note ? `<p style="background:#f5f5f7;border-radius:10px;padding:16px;">${escapeHtml(note)}</p>` : ''}
     ${list}
@@ -130,7 +130,7 @@ async function sendRevision(app, note, fields = []) {
 
 /** Учётка в МИС создана — врачу уходит ссылка на выбор услуг. */
 async function sendServicesInvite(app) {
-  return send(app.email, `Анкета №${app.number} — выберите услуги`, layout('Выберите услуги', `
+  return send(app.email, 'Анкета врача — выберите услуги', layout('Выберите услуги', `
     <p>Вы заведены в системе клиники. Остался последний шаг с вашей стороны — отметить услуги, которые вы будете оказывать.</p>
     <p>Список уже подтянут по вашей специальности и филиалу. Отмечать можно разделами целиком, длительность приёма по каждой услуге при необходимости меняется.</p>
     ${button(servicesLink(app), 'Открыть список услуг')}
@@ -169,7 +169,7 @@ async function sendAnketaInvite(to, { fromName, note } = {}) {
 
 /** Заявка отклонена. Пишем без причин: они внутренние. */
 async function sendRejected(app) {
-  return send(app.email, `Анкета №${app.number}`, layout('Анкета рассмотрена', `
+  return send(app.email, 'Анкета врача', layout('Анкета рассмотрена', `
     <p>Спасибо, что заполнили анкету. К сожалению, продолжить оформление сейчас мы не готовы.</p>
   `));
 }

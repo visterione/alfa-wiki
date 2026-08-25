@@ -25,19 +25,6 @@ module.exports = function defineOnboardingModels(sequelize, DataTypes) {
   // уникальность.
   const OnbApplication = sequelize.define('OnbApplication', {
     id:     { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    // Человеческий номер заявки. Выдаётся последовательностью в базе: заявки
-    // создаёт публичный контур, где двое могут отправить форму в одну секунду.
-    //
-    // defaultValue именно литералом: без него Sequelize подставляет в INSERT
-    // явный NULL по объявленному, но незаполненному полю, и умолчание из схемы
-    // до базы не доходит.
-    number: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      unique: true,
-      defaultValue: sequelize.literal("nextval('onb_application_number_seq')")
-    },
-
     status: {
       type: DataTypes.STRING(20),
       allowNull: false,

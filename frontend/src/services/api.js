@@ -1195,6 +1195,8 @@ export const onboarding = {
   cancel:        (id, data)         => api.post(`/onboarding/applications/${id}/cancel`, data),
   changeMedCenter: (id, data)       => api.put(`/onboarding/applications/${id}/med-center`, data),
   services:      (id)               => api.get(`/onboarding/applications/${id}/services`),
+  // Сотрудники филиала из МИС — для ручного выбора, когда сверка по ФИО не нашла врача.
+  misUsers:      (id, q)            => api.get(`/onboarding/applications/${id}/mis-users`, { params: { q } }),
   export:        (id)               => api.get(`/onboarding/applications/${id}/export`),
 
   myTasks:       ()                 => api.get('/onboarding/tasks/my'),

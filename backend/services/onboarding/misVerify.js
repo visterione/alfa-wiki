@@ -84,6 +84,72 @@ async function findDoctor(app) {
   };
 }
 
+// Справочник специальностей меняется раз в год, а нужен на каждый список
+// сотрудников: getUsers отдаёт специальности идентификаторами, и без перевода
+// в списке выбора стояло бы «37, 2».
+const PROFESSIONS_TTL_MS = 30 * 60 * 1000;
+let professionsCache = { at: 0, map: new Map() };
+
+async function professionNames() {
+  if (Date.now() - professionsCache.at < PROFESSIONS_TTL_MS && professionsCache.map.size) {
+    return professionsCache.map;
+  }
+  try {
+    const rows = misData(await misRequest('getProfessions', { without_doctors: true }));
+    if (rows) {
+      professionsCache = {
+        at: Date.now(),
+        map: new Map(rows.map(row => [String(row.id), row.name]))
+      };
+    }
+  } catch (error) {
+    console.warn('[onboarding/mis] Справочник специальностей недоступен:', error.message);
+  }
+  return professionsCache.map;
+}
+
+/**
+ * Сотрудники филиала из МИС — чтобы выбрать врача руками, когда автоматическая
+ * сверка его не нашла.
+ *
+ * Без этого шаг «создать учётку» превращался в тупик: МИС отвечает «не нашлось»,
+ * задача остаётся открытой, и сделать с ней нечего. А не находится она сплошь и
+ * рядом по бытовым причинам — фамилия записана с другой буквой, специальность
+ * поставили не ту, сотрудник заведён в соседнюю клинику.
+ *
+ * Специальностью не фильтруем: если админ МИС ошибся именно в ней, фильтр
+ * спрячет нужного человека ровно тогда, когда он нужнее всего.
+ */
+async function searchDoctors(app, query = '') {
+  const clinicIds = await clinicIdsFor(app.medCenterId);
+  const params = {};
+  if (clinicIds.length) params.clinic_id = clinicIds.join(',');
+
+  let rows;
+  try {
+    rows = misData(await misRequest('getUsers', params));
+  } catch (error) {
+    return { ok: false, reason: `МИС не ответила: ${error.message}` };
+  }
+  if (!rows) return { ok: true, users: [] };
+
+  const names = await professionNames();
+  const needle = normalizeName(query);
+  const users = rows
+    .filter(row => !needle || normalizeName(row.name).includes(needle))
+    .map(row => ({
+      id: String(row.id),
+      name: row.name,
+      professions: (row.profession || [])
+        .map(p => names.get(String(p?.id ?? p)) || null)
+        .filter(Boolean)
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    .slice(0, 60);
+
+  return { ok: true, users };
+}
+
 /**
  * Сверяет услуги врача в МИС с тем, что он отметил в анкете.
  *
@@ -257,6 +323,7 @@ async function doctorExport(app) {
 
 module.exports = {
   findDoctor,
+  searchDoctors,
   doctorExport,
   verifyServices,
   verifySchedule,

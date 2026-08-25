@@ -54,10 +54,7 @@ export default function ApplicationCV({ data, fileHref }) {
             {app.email && <><dt>Почта</dt><dd>{app.email}</dd></>}
           </dl>
         </div>
-        <div className="onb-cv-stamp">
-          Заявка №{app.number}
-          <span>{dateRu(app.submittedAt || app.createdAt)}</span>
-        </div>
+        <div className="onb-cv-stamp">{dateRu(app.submittedAt || app.createdAt)}</div>
       </header>
 
       {sections.map(section => (

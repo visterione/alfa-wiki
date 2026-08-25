@@ -264,7 +264,7 @@ export default function AnketaForm() {
     return (
       <div className="ank"><div className="ank__wrap">
         <div className="ank__head">
-          <h1>Анкета №{state.number}</h1>
+          <h1>Анкета врача</h1>
           <p>{state.statusLabel}</p>
         </div>
         <div className="ank__note ank__note--ok">
@@ -285,7 +285,7 @@ export default function AnketaForm() {
       <div className="ank__wrap">
         <div className="ank__head">
           <h1>Анкета врача</h1>
-          <p>Заявка №{state.number} · сеть медцентров «Альфа»</p>
+          <p>Сеть медицинских центров «Альфа»</p>
           <div className="ank__progress">
             <div className="ank__progress-track">
               <div className="ank__progress-fill" style={{ width: `${progress}%` }} />

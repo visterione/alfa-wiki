@@ -56,7 +56,7 @@ async function run() {
         if (targets.length) {
           await engine.notify(targets,
             `⏰ Просрочен шаг онбординга: ${label}\n` +
-            `Заявка №${app.number}, ${app.fullName || 'без имени'}. Просрочка ${hours} раб. ч.`,
+            `${app.fullName || 'без имени'}. Просрочка ${hours} раб. ч.`,
             { type: 'onboarding_overdue', applicationId: app.id, stepKey: task.stepKey });
         }
         await task.update({ remindedAt: now });
@@ -72,7 +72,7 @@ async function run() {
         if (targets.length) {
           await engine.notify(targets,
             `🚨 Онбординг стоит: ${label}\n` +
-            `Заявка №${app.number}, ${app.fullName || 'без имени'}. Просрочка ${hours} раб. ч.`,
+            `${app.fullName || 'без имени'}. Просрочка ${hours} раб. ч.`,
             { type: 'onboarding_escalated', applicationId: app.id, stepKey: task.stepKey });
         }
         await task.update({ escalatedAt: now });

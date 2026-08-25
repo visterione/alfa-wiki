@@ -192,6 +192,52 @@ function checklistOf(tasks = []) {
   return items;
 }
 
+/**
+ * Лента процесса для карточки: где заявка сейчас и что уже позади.
+ *
+ * Пять точек, а не восемь статусов: «Доработка», «Отклонён» и «Отменён» — это не
+ * этапы, а сходы с пути, и место в ленте им выделять незачем. Первый из них
+ * подсвечивает текущую точку красным, остальные две останавливают ленту совсем.
+ *
+ * @returns {Array<{ key, label, state: 'done'|'current'|'todo'|'stopped' }>}
+ */
+function timeline(app, tasks = []) {
+  const done = new Set(tasks.filter(t => t.completedAt).map(t => t.stepKey));
+  const points = [
+    { key: 'form', label: 'Анкета' },
+    { key: 'approval', label: 'Согласование' },
+    { key: 'mis', label: 'Учётка в МИС' },
+    { key: 'launch', label: 'Запуск' },
+    { key: 'done', label: 'Запущен' }
+  ];
+
+  // Насколько далеко ушла заявка. Ветки параллельного шага сюда не попадают:
+  // лента отвечает на «где мы», а не «сколько задач закрыто» — это чек-лист.
+  const reached = {
+    [STATUS.DRAFT]: 0,
+    [STATUS.REVISION]: 0,
+    [STATUS.SUBMITTED]: 1,
+    [STATUS.APPROVED]: 2,
+    [STATUS.MIS_CREATED]: done.has('mis_account') ? 3 : 2,
+    [STATUS.LAUNCHED]: 4,
+    [STATUS.REJECTED]: 1,
+    [STATUS.CANCELLED]: -1
+  }[app.status] ?? 0;
+
+  const stopped = [STATUS.REJECTED, STATUS.CANCELLED].includes(app.status);
+
+  return points.map((point, index) => {
+    if (stopped) {
+      return { ...point, state: index < Math.max(reached, 0) ? 'done' : 'stopped' };
+    }
+    if (index < reached) return { ...point, state: 'done' };
+    if (index === reached) {
+      return { ...point, state: app.status === STATUS.LAUNCHED ? 'done' : 'current' };
+    }
+    return { ...point, state: 'todo' };
+  });
+}
+
 /** Все ли пункты чек-листа закрыты — условие перевода в «Запущен». */
 function isReadyToLaunch(tasks = []) {
   return checklistOf(tasks).every(item => item.done);
@@ -207,6 +253,7 @@ module.exports = {
   getStep,
   stepsAfter,
   stageOf,
+  timeline,
   checklistOf,
   isReadyToLaunch
 };

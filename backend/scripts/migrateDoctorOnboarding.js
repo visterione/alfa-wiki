@@ -14,9 +14,10 @@
  *     активная заявка на адрес». Публичная ссылка одна на всех, и две
  *     одновременные отправки формы обязаны разойтись на уровне базы, а не в
  *     приложении;
- *   • последовательность onb_application_number_seq — из неё берётся номер
- *     заявки. Без неё вставка упадёт на NOT NULL, и человек с улицы получит
- *     500 вместо анкеты.
+ *   • отсутствие колонки number — её завела 7.30 и убрала 7.31 (см. ниже).
+ *
+ * Ставит обе миграции сразу: 7.31 вышла следом и только снимает лишнее, так что
+ * разделять их в запуске незачем.
  *
  * Запуск из backend/:
  *   npm run migrate:7.30
@@ -33,8 +34,11 @@ const { sequelize } = require('../models');
 
 sequelize.options.logging = false;
 
-const MIGRATION_FILE = 'ver. 7.30 doctor-onboarding.sql';
-const MIGRATION_PATH = path.join(__dirname, '..', 'migrations', MIGRATION_FILE);
+const MIGRATION_FILES = [
+  'ver. 7.30 doctor-onboarding.sql',
+  'ver. 7.31 onboarding-drop-number.sql',
+];
+const migrationPath = file => path.join(__dirname, '..', 'migrations', file);
 
 const TABLES = [
   'onb_applications',
@@ -71,12 +75,13 @@ async function indexExists(indexName) {
   return Boolean(row.present);
 }
 
-async function sequenceExists(sequenceName) {
+async function columnExists(tableName, columnName) {
   const [[row]] = await sequelize.query(`
     SELECT EXISTS (
-      SELECT 1 FROM pg_sequences WHERE schemaname = 'public' AND sequencename = :sequenceName
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = :tableName AND column_name = :columnName
     ) AS present
-  `, { replacements: { sequenceName } });
+  `, { replacements: { tableName, columnName } });
   return Boolean(row.present);
 }
 
@@ -97,18 +102,21 @@ async function getState() {
   const indexes = {};
   for (const index of INDEXES) indexes[index] = await indexExists(index);
 
-  const sequence = await sequenceExists('onb_application_number_seq');
+  // Колонку number завела 7.30 и убрала 7.31 — схема готова, когда её нет.
+  const numberDropped = tables.onb_applications
+    ? !(await columnExists('onb_applications', 'number'))
+    : false;
   // Флаг считаем только когда таблицы уже есть: до миграции этот вопрос
   // бессмысленный, а лишний запрос по users на большой базе не бесплатный.
   const usersMissingFlag = tables.onb_applications ? await countUsersWithoutFlag() : null;
 
-  return { tables, indexes, sequence, usersMissingFlag };
+  return { tables, indexes, numberDropped, usersMissingFlag };
 }
 
 function stateIsComplete(state) {
   return TABLES.every(t => state.tables[t])
     && INDEXES.every(i => state.indexes[i])
-    && state.sequence
+    && state.numberDropped
     && state.usersMissingFlag === 0;
 }
 
@@ -119,7 +127,7 @@ function printState(state) {
     if (!state.tables[table]) console.log(`       ✗ нет ${table}`);
   }
 
-  console.log(`   ${state.sequence ? '✓' : '✗'} последовательность onb_application_number_seq (номера заявок)`);
+  console.log(`   ${state.numberDropped ? '✓' : '✗'} колонка number снята (ver. 7.31)`);
 
   for (const index of INDEXES) {
     console.log(`   ${state.indexes[index] ? '✓' : '✗'} индекс ${index}`);
@@ -135,9 +143,11 @@ function printState(state) {
 async function main() {
   const checkOnly = process.argv.includes('--check');
 
-  console.log('\n▶ Миграция ver. 7.30 — онбординг врача\n');
-  if (!fs.existsSync(MIGRATION_PATH)) {
-    throw new Error(`не найден файл миграции: ${MIGRATION_PATH}`);
+  console.log('\n▶ Миграция ver. 7.30–7.31 — онбординг врача\n');
+  for (const file of MIGRATION_FILES) {
+    if (!fs.existsSync(migrationPath(file))) {
+      throw new Error(`не найден файл миграции: ${migrationPath(file)}`);
+    }
   }
 
   await sequelize.authenticate();
@@ -149,7 +159,7 @@ async function main() {
 
   if (checkOnly) {
     console.log(stateIsComplete(before)
-      ? '\n✅ Миграция 7.30 применена\n'
+      ? '\n✅ Миграции 7.30–7.31 применены\n'
       : '\n⚠️  Схема не готова — запустите npm run migrate:7.30\n');
     return;
   }
@@ -160,9 +170,12 @@ async function main() {
   }
 
   console.log('\n   Применяю SQL:');
-  console.log(`   → ${MIGRATION_FILE}`);
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf8');
-  await sequelize.transaction(transaction => sequelize.query(sql, { transaction }));
+  await sequelize.transaction(async (transaction) => {
+    for (const file of MIGRATION_FILES) {
+      console.log(`   → ${file}`);
+      await sequelize.query(fs.readFileSync(migrationPath(file), 'utf8'), { transaction });
+    }
+  });
 
   console.log('\n   Состояние после:');
   const after = await getState();
@@ -171,7 +184,7 @@ async function main() {
     throw new Error('итоговая проверка не пройдена: схема модуля собрана не полностью');
   }
 
-  console.log('\n✅ Миграция 7.30 успешно применена');
+  console.log('\n✅ Миграции 7.30–7.31 успешно применены');
   console.log('   Дальше:');
   console.log('   1) задайте PUBLIC_BASE_URL в .env — из него строятся ссылки в письмах врачу;');
   console.log('   2) перезапустите backend после выкладки нового кода;');
