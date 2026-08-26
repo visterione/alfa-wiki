@@ -14,7 +14,7 @@
  * вебе, и подпись под каждой строкой; на телефоне, который держат одной рукой в
  * коридоре, это не читают, а объём текста мешает найти нужную кнопку.
  */
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useLayoutEffect, useState} from 'react';
 import {View, Text, ScrollView, Pressable, StyleSheet, RefreshControl} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {
@@ -30,6 +30,7 @@ import {
   useWarehouseAccess, loadWarehouseAccess, setWarehouseBadge,
 } from '../../store/warehouseStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
+import MedCenterSwitch from './MedCenterSwitch';
 import {qtyText} from './warehouseMeta';
 
 /** «Открытых описей: 2» без подстановки чисел в чужие падежи. */
@@ -91,6 +92,13 @@ export default function WarehouseScreen({navigation}) {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Выбранный медцентр — в шапке раздела, а не на самом экране: он относится ко
+  // всему складу, а не к этой странице, и с началом списка не соседствует.
+  // Сам переключатель прячется, когда выбирать не из чего (см. MedCenterSwitch).
+  useLayoutEffect(() => {
+    navigation.setOptions({headerRight: () => <MedCenterSwitch />});
+  }, [navigation]);
 
   if (loading) return <LogoLoader />;
 
