@@ -22,7 +22,7 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport, roomPath } = require('../../services/warehouse/access');
-const { sessionRooms } = require('../../services/warehouse/inventory');
+const { sessionRooms, openCountByRoom } = require('../../services/warehouse/inventory');
 const { reconcileStock } = require('../../services/warehouse/stock');
 const utilization = require('../../services/warehouse/utilization');
 const exports_ = require('../../services/warehouse/exports');
@@ -187,9 +187,10 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
         UNION SELECT "nomenclatureId", "storageId" FROM warehouse_stock WHERE quantity > 0
       )
       SELECT
-        mc.name AS "medCenterName", bld.name AS "buildingName", f.number AS "floorNumber",
+        mc.name AS "medCenterName", f.id AS "floorId", f.number AS "floorNumber", f.name AS "floorName",
         d.id AS "departmentId", d.name AS "departmentName", d.color AS "departmentColor",
         r.id AS "roomId", r.number AS "roomNumber", r.name AS "roomName",
+        r."isService" AS "roomIsService",
         st.id AS "storageId", st.name AS "storageName",
         n.id AS "nomenclatureId", n.code, n.name AS "nomenclatureName", n.unit,
         COALESCE(o.qty, 0)      AS "openQty",
@@ -209,7 +210,6 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
       JOIN warehouse_storages st    ON st.id = k.storage
       JOIN warehouse_rooms r        ON r.id = st."roomId"
       LEFT JOIN warehouse_floors f       ON f.id = r."floorId"
-      LEFT JOIN warehouse_buildings bld  ON bld.id = f."buildingId"
       JOIN med_centers mc                ON mc.id = r."medCenterId"
       LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
       LEFT JOIN opening o  ON o."nomenclatureId" = k."nomenclatureId" AND o.storage = k.storage
@@ -219,7 +219,7 @@ router.get('/turnover', authenticate, requireWarehouse(), requireReport('RPT-TUR
         AND (:departmentId::uuid IS NULL OR r."departmentId" = :departmentId::uuid)
         AND (:roomId::uuid       IS NULL OR r.id = :roomId::uuid)
         AND (:scoped IS NULL OR r.id = ANY(:scoped::uuid[]))
-      ORDER BY mc.name, bld.name, f.number, d.name NULLS LAST, r.number, st.name, n.name
+      ORDER BY mc.name, f.number, f.name, d.name NULLS LAST, r.number, st.name, n.name
     `, {
       replacements: {
         from, to,
@@ -427,7 +427,6 @@ router.get('/consumption', authenticate, requireWarehouse(), async (req, res) =>
       JOIN warehouse_nomenclature n ON n.id = c."nomenclatureId"
       JOIN warehouse_rooms r        ON r.id = c."roomId"
       LEFT JOIN warehouse_floors f       ON f.id = r."floorId"
-      LEFT JOIN warehouse_buildings bld  ON bld.id = f."buildingId"
       JOIN med_centers mc                ON mc.id = r."medCenterId"
       LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
       LEFT JOIN prev p   ON p."roomId" = c."roomId" AND p."nomenclatureId" = c."nomenclatureId"
@@ -556,7 +555,6 @@ async function abcXyz({ req, from, to, medCenterId, departmentId, scoped }) {
     JOIN warehouse_nomenclature n ON n.id = m."nomenclatureId"
     LEFT JOIN warehouse_rooms r   ON r.id = m."fromRoomId"
     LEFT JOIN warehouse_floors f  ON f.id = r."floorId"
-    LEFT JOIN warehouse_buildings bld ON bld.id = f."buildingId"
     WHERE m.type IN ('issue', 'writeoff')
       AND m."occurredAt" >= :from AND m."occurredAt" < (:to::date + 1)
       AND (:medCenterId::uuid  IS NULL OR r."medCenterId" = :medCenterId::uuid)
@@ -696,14 +694,13 @@ router.get('/depreciation', authenticate, requireWarehouse(), requireReport('RPT
              a."initialCost" - a."accumulatedDepreciation" AS residual,
              a.status, a."fundingSource",
              r.number AS "roomNumber", r.name AS "roomName",
-             d.name AS "departmentName", bld.name AS "buildingName", mc.name AS "medCenterName",
+             d.name AS "departmentName", f.name AS "floorName", f.number AS "floorNumber", mc.name AS "medCenterName",
              u."displayName" AS "responsibleName",
              c.name AS "categoryName"
       FROM warehouse_assets a
       LEFT JOIN warehouse_rooms r      ON r.id = a."roomId"
       LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
       LEFT JOIN warehouse_floors f     ON f.id = r."floorId"
-      LEFT JOIN warehouse_buildings bld ON bld.id = f."buildingId"
       LEFT JOIN med_centers mc         ON mc.id = r."medCenterId"
       LEFT JOIN users u                ON u.id = a."responsibleUserId"
       LEFT JOIN warehouse_categories c  ON c.id = a."categoryId"
@@ -1034,10 +1031,25 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
       attention.push({ level: 'orange', kind: 'expiring', text: `${s.name}, серия ${s.batchNumber} — истекает ${fmt(s.expiryDate)}` });
     }
 
+    // Открытая опись — первое, что должен увидеть зашедший в кабинет: пока она
+    // идёт, здесь не сработает ни одна операция, и узнать об этом по нажатой
+    // кнопке (ver. 7.45) означало впустую сходить в кабинет. Отдаём и строкой
+    // для человека, и полем для экрана, который на нём гасит кнопки.
+    const counting = (await openCountByRoom([room.id])).get(room.id) || null;
+    if (counting) {
+      attention.unshift({
+        level: 'red',
+        kind: 'counting',
+        text: `Идёт инвентаризация ${counting.number} — операции по кабинету закрыты до её закрытия`,
+      });
+    }
+
     res.json({
       header: await reportHeader({ req, code: 'RPT-ROOM-DASH', title: `Кабинет ${room.number}`, filters: {} }),
       room: {
         id: room.id, number: room.number, name: room.name, kind: room.kind,
+        // Склад подписывается названием, а не «Каб. Склад», и на плане его нет.
+        isService: room.isService, serviceKind: room.serviceKind,
         department: room.department, responsible: room.responsible,
         floor: room.floor?.number, building: room.floor?.building?.name,
         // Идентификатор этажа, а не только его номер: по нему мобильный дашборд
@@ -1046,6 +1058,8 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         medCenter: room.medCenter?.displayName || room.medCenter?.name
           || room.floor?.building?.medCenter?.displayName || room.floor?.building?.medCenter?.name,
         path: await roomPath(room.id),
+        // Опись, которой кабинет закрыт прямо сейчас, или null.
+        counting: counting && { id: counting.id, number: counting.number },
       },
       cards: {
         assets: {

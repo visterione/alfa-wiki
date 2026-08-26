@@ -22,6 +22,8 @@ const { createDocument } = require('../../services/warehouse/stock');
 const {
   assertNotCounting, openCountByRoom, sessionRooms, roomsBySession, inventoryScopeOf,
 } = require('../../services/warehouse/inventory');
+const { ensureServicePlace, lastRoomBefore } = require('../../services/warehouse/servicePlaces');
+const { reverseDocument, documentRoomIds } = require('../../services/warehouse/reversal');
 const alerts = require('../../services/warehouse/alerts');
 const {
   generateMaintenanceNumber, generateRepairNumber, generateRfqNumber, generateDocumentNumber,
@@ -63,9 +65,13 @@ router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
       include: [
         { model: User, as: 'author', attributes: userAttrs },
         { model: User, as: 'signer', attributes: userAttrs },
-        { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name'] },
-        { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name'] },
+        { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name', 'isService'] },
+        { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name', 'isService'] },
         { model: WhContractor, as: 'contractor', attributes: ['id', 'name'] },
+        // Сторно и то, чем документ отменён: список должен показывать это сразу,
+        // иначе исправленная ошибка выглядит как две настоящие операции подряд.
+        { model: WhDocument, as: 'reversalOf', attributes: ['id', 'number', 'type'] },
+        { model: WhDocument, as: 'reversedBy', attributes: ['id', 'number'] },
       ],
       order: [['date', 'DESC']],
       limit: Math.min(Number(limit) || 50, 200),
@@ -88,9 +94,11 @@ router.get('/documents/:id', authenticate, requireWarehouse(), async (req, res) 
     include: [
       { model: User, as: 'author', attributes: userAttrs },
       { model: User, as: 'signer', attributes: userAttrs },
-      { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name'] },
-      { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name'] },
+      { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name', 'isService'] },
+      { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name', 'isService'] },
       { model: WhContractor, as: 'contractor', attributes: ['id', 'name'] },
+      { model: WhDocument, as: 'reversalOf', attributes: ['id', 'number', 'type'] },
+      { model: WhDocument, as: 'reversedBy', attributes: ['id', 'number'] },
       {
         model: WhMovement, as: 'movements',
         include: [
@@ -106,6 +114,66 @@ router.get('/documents/:id', authenticate, requireWarehouse(), async (req, res) 
   });
   if (!doc) return res.status(404).json({ error: 'Документ не найден' });
   res.json(doc);
+});
+
+/**
+ * Отмена операции встречным документом (ver. 7.50).
+ *
+ * ── Почему это отдельный маршрут, а не «оформите обратный документ» ──────────
+ *
+ * Потому что «оформите обратный документ» — это ровно та работа, из-за которой
+ * ошибки не исправляли: вкладка «Операции», четыре поля, снова выбор кабинета
+ * из сотни. Здесь вопрос один — «этот документ», — а что именно вернуть и
+ * куда, сервер знает из его же движений.
+ *
+ * ── Кто может ────────────────────────────────────────────────────────────────
+ *
+ * Тот, кто вправе провести такую операцию (canIssue) и в чьей зоне лежат оба
+ * конца. Автором быть не обязательно: ошибку замечает не всегда тот, кто её
+ * сделал, а прибор к утру уже стоит не там, где ищут. След в журнале при этом
+ * остаётся — видно и что отменили, и кто.
+ *
+ * Что именно отменяется, а что нет и почему — в services/warehouse/reversal.js.
+ */
+router.post('/documents/:id/reverse', authenticate, requireWarehouse('canIssue'), async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const document = await WhDocument.findByPk(req.params.id, {
+      include: [{ model: WhMovement, as: 'movements' }],
+      transaction: t,
+    });
+    if (!document) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Документ не найден' });
+    }
+
+    const scoped = await req.warehouse.scopedRoomIds();
+    if (scoped !== null) {
+      const foreign = documentRoomIds(document).find(id => !scoped.includes(id));
+      if (foreign) {
+        await t.rollback();
+        return res.status(403).json({ error: 'В документе есть кабинет не из вашей зоны ответственности' });
+      }
+    }
+
+    const result = await reverseDocument({
+      document,
+      user: req.user,
+      device: req.headers['user-agent']?.slice(0, 250) || null,
+    }, { transaction: t });
+
+    await t.commit();
+    res.status(201).json({
+      ok: true,
+      document: { id: result.document.id, number: result.document.number, type: result.document.type },
+      reversed: { id: document.id, number: document.number },
+    });
+  } catch (err) {
+    await t.rollback();
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('POST warehouse/documents/reverse error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
@@ -239,11 +307,11 @@ router.get('/movements', authenticate, requireWarehouse(), requireReport('RPT-MO
         { model: WhNomenclature, as: 'nomenclature', attributes: ['id', 'code', 'name', 'unit'] },
         { model: WhBatch, as: 'batch', attributes: ['id', 'batchNumber', 'expiryDate'] },
         {
-          model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name'],
+          model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name', 'isService'],
           include: [{ model: WhDepartment, as: 'department', attributes: ['id', 'name'] }],
         },
         {
-          model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name'],
+          model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name', 'isService'],
           include: [{ model: WhDepartment, as: 'department', attributes: ['id', 'name'] }],
         },
         { model: User, as: 'fromResponsible', attributes: userAttrs },
@@ -313,7 +381,7 @@ router.get('/maintenance', authenticate, requireWarehouse(), requireReport('RPT-
           model: WhAsset, as: 'asset',
           attributes: ['id', 'inventoryNumber', 'name', 'model', 'status', 'roomId'],
           include: [{
-            model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'],
+            model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'],
             include: [{ model: WhDepartment, as: 'department', attributes: ['id', 'name'] }],
           }],
         },
@@ -439,6 +507,129 @@ router.patch('/maintenance/:id/close', authenticate, requireWarehouse('canMainte
   }
 });
 
+/**
+ * Быстрый переезд оборудования: на склад и обратно в кабинет (ver. 7.47).
+ *
+ * ── Зачем отдельный маршрут ──────────────────────────────────────────────────
+ *
+ * Через общую форму документа это уже возможно: перемещение, выбрать кабинет из
+ * сотни, выбрать место хранения, указать причину. Но «убрать в резерв» и
+ * «вернуть на место» — не редкие операции учёта, а ежедневные движения руками, и
+ * заставлять человека проходить форму из четырёх полей ради них значит, что он
+ * их просто не оформит: прибор уедет на склад, а в портале останется в кабинете.
+ *
+ * Поэтому здесь ровно два вопроса — что и куда, — а остальное выводится:
+ * медцентр берётся из текущего кабинета актива, склад ищется по виду, место
+ * хранения берётся первое в складе. Документ создаётся тот же самый и попадает
+ * в те же отчёты: это сокращённый ввод, а не обход учёта.
+ *
+ * ── Возврат ──────────────────────────────────────────────────────────────────
+ *
+ * Куда возвращать, знает движение, которым актив на склад приехал. Отдельного
+ * поля «откуда взяли» нет намеренно: копия исходного кабинета разошлась бы с
+ * действительностью при первом же ручном перемещении, а движение — это факт.
+ */
+router.post('/assets/:assetId/place', authenticate, requireWarehouse('canIssue'), async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { serviceKind, roomId: wantedRoom } = req.body || {};
+
+    const asset = await WhAsset.findByPk(req.params.assetId, { transaction: t });
+    if (!asset) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Актив не найден' });
+    }
+    if (!asset.roomId) {
+      await t.rollback();
+      return res.status(409).json({ error: 'Актив не привязан к кабинету — перемещать его неоткуда' });
+    }
+
+    const from = await WhRoom.findByPk(asset.roomId, {
+      attributes: ['id', 'medCenterId', 'number', 'name', 'isService'], transaction: t,
+    });
+    if (!from) {
+      await t.rollback();
+      return res.status(409).json({ error: 'Кабинет, в котором числится актив, не найден' });
+    }
+
+    // Куда: либо склад по виду, либо кабинет, откуда актив сюда приехал.
+    let target = null;
+    if (serviceKind) {
+      target = await ensureServicePlace(from.medCenterId, serviceKind, { transaction: t });
+      if (!target) {
+        await t.rollback();
+        return res.status(400).json({ error: 'Неизвестный вид склада' });
+      }
+    } else if (wantedRoom) {
+      target = await WhRoom.findByPk(wantedRoom, { transaction: t });
+    } else {
+      const back = await lastRoomBefore(asset.id, asset.roomId, { transaction: t });
+      target = back && await WhRoom.findByPk(back, { transaction: t });
+      if (!target) {
+        await t.rollback();
+        return res.status(409).json({
+          error: 'Не видно, откуда актив сюда приехал — выберите кабинет вручную',
+        });
+      }
+    }
+    if (!target || !target.isActive) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Место назначения не найдено' });
+    }
+    if (target.id === asset.roomId) {
+      await t.rollback();
+      return res.status(409).json({ error: 'Актив уже здесь' });
+    }
+
+    // Зона ответственности проверяется на обоих концах — как и у обычного
+    // документа: короткая кнопка не должна давать того, чего не даёт форма.
+    const scoped = await req.warehouse.scopedRoomIds();
+    if (scoped !== null && (!scoped.includes(asset.roomId) || !scoped.includes(target.id))) {
+      await t.rollback();
+      return res.status(403).json({ error: 'Кабинет не из вашей зоны ответственности' });
+    }
+
+    await assertNotCounting([asset.roomId, target.id], { transaction: t });
+
+    const storage = await WhStorage.findOne({
+      where: { roomId: target.id, isActive: true },
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      transaction: t,
+    });
+    if (!storage) {
+      await t.rollback();
+      return res.status(409).json({
+        error: `В «${target.name || target.number}» нет ни одного места хранения — положить актив некуда`,
+      });
+    }
+
+    const result = await createDocument({
+      type: 'transfer',
+      lines: [{ assetId: asset.id, toRoomId: target.id, toStorageId: storage.id }],
+      user: req.user,
+      reasonCode: target.isService ? 'to_service' : 'from_service',
+      reasonText: target.isService
+        ? `На «${target.name || target.number}»`
+        : `Возврат в каб. ${target.number}`,
+      fromRoomId: from.id,
+      toRoomId: target.id,
+      device: req.headers['user-agent']?.slice(0, 250) || null,
+    }, { transaction: t });
+
+    await t.commit();
+    res.status(201).json({
+      ok: true,
+      document: { id: result.document.id, number: result.document.number },
+      room: { id: target.id, number: target.number, name: target.name, isService: target.isService },
+    });
+  } catch (err) {
+    await t.rollback();
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('POST warehouse/assets/place error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Ремонты ──────────────────────────────────────────────────────────────────
 router.post('/repairs', authenticate, requireWarehouse('canMaintenance'), async (req, res) => {
   const t = await sequelize.transaction();
@@ -472,12 +663,60 @@ router.post('/repairs', authenticate, requireWarehouse('canMaintenance'), async 
       cost: b.cost || 0, createdBy: req.user.id,
     }, { transaction: t });
 
-    await asset.update({ status: 'repair', lastActivityAt: new Date() }, { transaction: t });
+    /**
+     * Уход в ремонт — это переезд, а не только смена статуса (ver. 7.47).
+     *
+     * До этого прибор в ремонте продолжал числиться в своём кабинете: МОЛ
+     * отвечал за то, чего у него физически нет, а опись кабинета выводила его
+     * недостачей. Теперь актив перемещается в склад «Ремонт» своего медцентра
+     * документом — переезд без документа оставил бы отчёт № 2 без следа.
+     *
+     * Склад заводится по требованию: отказать в открытии ремонта из-за того,
+     * что кто-то погасил «Ремонт» в локациях, значило бы наказать не того.
+     *
+     * Актив без кабинета не переезжает: везти его неоткуда и некуда, а медцентр
+     * у склада берётся именно из кабинета.
+     */
+    const room = asset.roomId
+      ? await WhRoom.findByPk(asset.roomId, { attributes: ['id', 'medCenterId'], transaction: t })
+      : null;
+
+    if (room?.medCenterId) {
+      // Пока по кабинету идёт пересчёт, вещь из него не уезжает: комиссия
+      // считает то, что стоит на месте (services/warehouse/inventory.js).
+      await assertNotCounting([room.id], { transaction: t });
+
+      const repairRoom = await ensureServicePlace(room.medCenterId, 'repair', { transaction: t });
+      const repairStorage = repairRoom && await WhStorage.findOne({
+        where: { roomId: repairRoom.id, isActive: true },
+        order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+        transaction: t,
+      });
+
+      await createDocument({
+        type: 'repair_out',
+        lines: [{
+          assetId: asset.id,
+          toRoomId: repairRoom.id,
+          toStorageId: repairStorage?.id || null,
+        }],
+        user: req.user,
+        reasonCode: 'repair',
+        reasonText: `В ремонт, акт ${row.number}`,
+        fromRoomId: room.id,
+        toRoomId: repairRoom.id,
+        comment: b.description || null,
+      }, { transaction: t });
+    } else {
+      await asset.update({ status: 'repair', lastActivityAt: new Date() }, { transaction: t });
+    }
 
     await t.commit();
     res.status(201).json(row);
   } catch (err) {
     await t.rollback();
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('POST warehouse/repairs error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -512,7 +751,12 @@ router.patch('/repairs/:id/close', authenticate, requireWarehouse('canMaintenanc
     // Раньше здесь стоял прямой UPDATE карточки: актив уходил с баланса, а в
     // журнале движений его выбытия не было вовсе — отчёт № 2 переставал быть
     // аудиторским ровно на тех активах, судьба которых интереснее всего.
+    const asset = await WhAsset.findByPk(row.assetId, { transaction: t });
+
     if (result === 'written_off') {
+      // Выбытие с полки, которую в эту минуту считает комиссия, — то же самое
+      // движение, что и любое другое (services/warehouse/inventory.js).
+      if (asset?.roomId) await assertNotCounting([asset.roomId], { transaction: t });
       await createDocument({
         type: 'writeoff',
         lines: [{ assetId: row.assetId }],
@@ -522,10 +766,44 @@ router.patch('/repairs/:id/close', authenticate, requireWarehouse('canMaintenanc
         comment: row.description || null,
       }, { transaction: t });
     } else {
-      await WhAsset.update(
-        { status: 'in_use', lastActivityAt: new Date() },
-        { where: { id: row.assetId }, transaction: t }
-      );
+      /**
+       * Возврат из ремонта — туда, откуда забрали (ver. 7.47).
+       *
+       * Исходный кабинет не хранится отдельным полем: его знает движение,
+       * которым актив уехал на склад «Ремонт», и брать ответ оттуда честнее,
+       * чем держать копию, которая разойдётся при первом ручном перемещении.
+       *
+       * Не нашлось — актив просто возвращается в строй там, где стоит: так
+       * ведут себя ремонты, открытые до 7.47, когда переезда не было вовсе.
+       */
+      const back = asset?.roomId
+        ? await lastRoomBefore(asset.id, asset.roomId, { transaction: t })
+        : null;
+      const backStorage = back && await WhStorage.findOne({
+        where: { roomId: back, isActive: true },
+        order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+        transaction: t,
+      });
+
+      if (back && backStorage) {
+        // Кабинет под описью не принимает возврат: вещь, появившаяся на полке
+        // во время пересчёта, станет излишком поверх уже посчитанного.
+        await assertNotCounting([back], { transaction: t });
+        await createDocument({
+          type: 'repair_in',
+          lines: [{ assetId: asset.id, toRoomId: back, toStorageId: backStorage.id }],
+          user: req.user,
+          reasonCode: 'repair',
+          reasonText: `Из ремонта, акт ${row.number}`,
+          fromRoomId: asset.roomId,
+          toRoomId: back,
+        }, { transaction: t });
+      } else {
+        await WhAsset.update(
+          { status: 'in_use', lastActivityAt: new Date() },
+          { where: { id: row.assetId }, transaction: t }
+        );
+      }
     }
 
     await t.commit();
@@ -542,7 +820,7 @@ router.patch('/repairs/:id/close', authenticate, requireWarehouse('canMaintenanc
 router.get('/inventory', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhInventorySession.findAll({
     include: [
-      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
+      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'] },
       { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
       { model: User, as: 'chairman', attributes: userAttrs },
       { model: User, as: 'responsible', attributes: userAttrs },
@@ -699,7 +977,7 @@ router.post('/inventory', authenticate, requireWarehouse('canIssue'), async (req
 router.get('/inventory/:id', authenticate, requireWarehouse(), async (req, res) => {
   const session = await WhInventorySession.findByPk(req.params.id, {
     include: [
-      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
+      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'] },
       { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
       { model: User, as: 'chairman', attributes: userAttrs },
       { model: User, as: 'responsible', attributes: userAttrs },
@@ -994,7 +1272,7 @@ router.post('/inventory/:id/post-differences', authenticate, requireWarehouse('c
 router.get('/rfq', authenticate, requireWarehouse(), async (req, res) => {
   const rows = await WhRfq.findAll({
     include: [
-      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
+      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'] },
       { model: WhContractor, as: 'decidedContractor', attributes: ['id', 'name'] },
       { model: WhRfqItem, as: 'items', include: [{ model: WhNomenclature, as: 'nomenclature', attributes: ['id', 'code', 'name', 'unit'] }] },
       { model: WhRfqQuote, as: 'quotes', include: [{ model: WhContractor, as: 'contractor' }] },
@@ -1060,7 +1338,7 @@ router.get('/rfq/:id/comparison', authenticate, requireWarehouse(), requireRepor
       include: [
         { model: WhRfqItem, as: 'items', include: [{ model: WhNomenclature, as: 'nomenclature' }] },
         { model: WhRfqQuote, as: 'quotes', include: [{ model: WhContractor, as: 'contractor' }] },
-        { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
+        { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'] },
       ],
     });
     if (!rfq) return res.status(404).json({ error: 'Запрос не найден' });

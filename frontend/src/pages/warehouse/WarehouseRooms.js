@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Search, X, ChevronRight, ChevronDown, Maximize2, Minimize2,
-  Settings2, Layers, Building2, Check, Printer, FileText, Network,
+  Settings2, Layers, Building2, Check, Printer, FileText, Network, Boxes,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import RoomSettings from '../../components/warehouse/RoomSettings';
@@ -42,6 +42,7 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [settingsRoom, setSettingsRoom] = useState(null);
   const [departmentsOpen, setDepartmentsOpen] = useState(false);
+  const [serviceOpen, setServiceOpen] = useState(false);
   const [fromMis, setFromMis] = useState(null);
   const [checked, setChecked] = useState(() => new Set());
   const [labelSize, setLabelSize] = useState('80x24');
@@ -98,20 +99,17 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
       // Небольшой медцентр может не иметь ни корпусов, ни этажей.
       for (const r of mc.rooms || []) addRoom(mcNode, r, 1);
 
-      for (const b of mc.buildings || []) {
-        const bNode = group(`b:${b.id}`, 1, b.name, mc.color, b.address);
+      // Этажи лежат прямо под медцентром (ver. 7.48): уровень корпуса убран, и
+      // дерево стало на ступень мельче. Два одноимённых этажа, оставшиеся после
+      // отказа от корпусов, различаются собственным названием — оно и стоит в
+      // заголовке ветки.
+      for (const f of (mc.floors || []).slice().sort((x, z) => x.number - z.number)) {
+        const title = f.name ? `${f.number} этаж — ${f.name}` : `${f.number} этаж`;
+        const fNode = group(`f:${f.id}`, 1, title, mc.color);
 
-        for (const f of (b.floors || []).slice().sort((x, z) => x.number - z.number)) {
-          const fNode = group(`f:${f.id}`, 2, f.name || `${f.number} этаж`, mc.color);
+        for (const r of f.rooms || []) addRoom(fNode, r, 2, [f.name]);
 
-          for (const r of f.rooms || []) {
-            addRoom(fNode, r, 3, [b.name, f.name]);
-          }
-
-          if (fNode.children.length) { rollup(fNode); bNode.children.push(fNode); }
-        }
-
-        if (bNode.children.length) { rollup(bNode); mcNode.children.push(bNode); }
+        if (fNode.children.length) { rollup(fNode); mcNode.children.push(fNode); }
       }
 
       if (mcNode.children.length) { rollup(mcNode); out.push(mcNode); }
@@ -252,6 +250,15 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
             <Network size={15} />
           </button>
         )}
+        {/* Склад заводится отсюда, а не из редактора планов: помещения за ним
+            нет, рисовать его негде, и попасть в редактор ради него значило бы
+            выбрать медцентр и этаж, которых у склада не бывает (ver. 7.47). */}
+        {canEditStructure && (
+          <button className="wh-icon-btn" title="Завести склад"
+                  onClick={() => setServiceOpen(true)}>
+            <Boxes size={15} />
+          </button>
+        )}
 
         {/* Свёртка дерева стоит рядом с фильтрами: это такая же настройка вида
             списка, как медцентр или отделение. Отдельная полоса «Иерархия» под
@@ -263,12 +270,14 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
                   onClick={() => setCollapsed(new Set())}>
             <Maximize2 size={15} />
           </button>
+          {/* Уровней стало на один меньше (ver. 7.48): медцентр и этаж.
+              Кнопка «до корпусов» ушла вместе с самими корпусами. */}
           <button className="wh-icon-btn" title="Свернуть до этажей"
-                  onClick={() => collapseTo(2)}>
+                  onClick={() => collapseTo(1)}>
             <Layers size={15} />
           </button>
-          <button className="wh-icon-btn" title="Свернуть до корпусов"
-                  onClick={() => collapseTo(1)}>
+          <button className="wh-icon-btn" title="Свернуть до медцентров"
+                  onClick={() => collapseTo(0)}>
             <Building2 size={15} />
           </button>
           <button className="wh-icon-btn" title="Свернуть всё"
@@ -422,6 +431,14 @@ export default function WarehouseRooms({ tree, onOpenRoom, access, onReloadTree 
                             onChanged={onReloadTree} />
       )}
 
+      {serviceOpen && (
+        <NewServicePlace
+          tree={tree}
+          onClose={() => setServiceOpen(false)}
+          onCreated={async () => { setServiceOpen(false); await onReloadTree?.(); }}
+        />
+      )}
+
       {/* Кнопка «Завести из МИС» убрана из полосы фильтров по просьбе, и открыть
           эту модалку сейчас неоткуда. Сам поток (RoomsFromMis ниже) не удалён:
           если вход понадобится вернуть — в полосу или в редактор планов, — хватит
@@ -466,10 +483,8 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
   const floors = useMemo(() => {
     const mc = (tree?.medCenters || []).find(m => m.id === mcId);
     const out = [];
-    for (const b of mc?.buildings || []) {
-      for (const f of b.floors || []) {
-        out.push({ id: f.id, label: `${b.name} · ${f.name || `${f.number} этаж`}` });
-      }
+    for (const f of mc?.floors || []) {
+      out.push({ id: f.id, label: f.name ? `${f.number} этаж — ${f.name}` : `${f.number} этаж` });
     }
     return out;
   }, [tree, mcId]);
@@ -612,6 +627,77 @@ function RoomsFromMis({ tree, departments, onClose, onCreated }) {
   );
 }
 
+/**
+ * Новый склад медцентра (ver. 7.47).
+ *
+ * Полей два — медцентр и название, — и больше их быть не может: этажа у склада
+ * нет, отделения нет, часов приёма нет. Место хранения заводится вместе с ним
+ * на сервере: без него в склад нельзя положить ни материал, ни карточку, а
+ * заставлять человека помнить про этот второй шаг — способ получить склад,
+ * который ничего не принимает.
+ */
+function NewServicePlace({ tree, onClose, onCreated }) {
+  const centers = tree?.medCenters || [];
+  const [mcId, setMcId] = useState(centers.length === 1 ? centers[0].id : '');
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    const clean = name.trim();
+    if (!mcId) return toast.error('Выберите медцентр');
+    if (!clean) return toast.error('Нужно название');
+    setSaving(true);
+    try {
+      // Номер и название одинаковые: у склада номера нет, а поле обязательное —
+      // и подпись везде собирается из названия.
+      await warehouseApi.createRoom({
+        medCenterId: mcId, number: clean, name: clean, isService: true, kind: 'storage',
+      });
+      toast.success(`Склад «${clean}» заведён`);
+      await onCreated?.();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось завести склад');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="wh-modal" onClick={onClose}>
+      <div className="wh-modal__box" onClick={e => e.stopPropagation()}>
+        <div className="wh-modal__head">
+          <div className="wh-modal__title">Новый склад</div>
+          <button className="wh-icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="wh-modal__body">
+          <div className="wh-form">
+            <label>Медцентр
+              <select value={mcId} onChange={e => setMcId(e.target.value)}>
+                <option value="">Выберите…</option>
+                {centers.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
+              </select>
+            </label>
+            <label>Название
+              <input value={name} maxLength={60} placeholder="Резерв, Списание, Архив…"
+                     onChange={e => setName(e.target.value)} />
+            </label>
+            <div className="wh-muted">
+              Склад общий на весь медцентр: этажа и отделения у него нет. Между
+              медцентрами склады не общие.
+            </div>
+          </div>
+        </div>
+        <div className="wh-modal__foot">
+          <button className="wh-btn wh-btn--secondary" onClick={onClose}>Отмена</button>
+          <button className="wh-btn wh-btn--primary" onClick={submit} disabled={saving}>
+            <Check size={15} /> {saving ? 'Завожу…' : 'Завести'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Вспомогательное ──────────────────────────────────────────────────────────
 
 /**
@@ -651,6 +737,8 @@ function rollup(node) {
  */
 function roomTitle(room) {
   const num = String(room.number ?? '').trim();
+  // У склада приставки нет никогда: «Каб. Склад» читается как ошибка ввода.
+  if (room.isService) return room.name || num;
   if (room.name && room.name !== room.number) return room.name;
   return num.length <= 5 ? `Каб. ${num}` : num;
 }

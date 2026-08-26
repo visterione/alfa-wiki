@@ -90,7 +90,6 @@ async function expiring({
     JOIN warehouse_storages st     ON st.id = s."storageId"
     JOIN warehouse_rooms r         ON r.id = st."roomId"
     LEFT JOIN warehouse_floors f        ON f.id = r."floorId"
-    LEFT JOIN warehouse_buildings bld   ON bld.id = f."buildingId"
     JOIN med_centers mc                 ON mc.id = r."medCenterId"
     LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
     LEFT JOIN users u              ON u.id = r."responsibleUserId"

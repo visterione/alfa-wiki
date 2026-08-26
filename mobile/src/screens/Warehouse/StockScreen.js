@@ -43,24 +43,41 @@ export default function WarehouseStockScreen({navigation}) {
   const [sheet, setSheet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => warehouseApi.stock({includeZero: 'false'})
+  /**
+   * Поиск считает сервер (ver. 7.49).
+   *
+   * Раньше сюда приходили первые две тысячи строк остатка, а искал по ним
+   * фильтр на экране: на реальной базе строк больше, и «компьютер» находил
+   * только те совпадения, что попали в загруженный кусок. Позиции пропадали без
+   * всякой причины — ни опечатки, ни фильтра.
+   */
+  const load = useCallback(() => warehouseApi.stock({
+    includeZero: 'false',
+    q: q.trim() || undefined,
+  })
     .then(({data}) => setRows(Array.isArray(data) ? data : (data?.items || [])))
     .catch(() => setRows([]))
-    .finally(() => setRefreshing(false)), []);
+    .finally(() => setRefreshing(false)), [q]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  /**
+   * Один эффект на оба повода перечитать список: возврат на экран и набор в
+   * поиске. Двумя эффектами они дублировали бы запрос при открытии, а поиск,
+   * висящий на возврате фокуса, стрелял бы на каждую букву — load зависит от
+   * строки запроса.
+   */
+  useFocusEffect(useCallback(() => {
+    const timer = setTimeout(load, q ? 350 : 0);
+    return () => clearTimeout(timer);
+  }, [load, q]));
 
-  const items = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return (rows || [])
-      .filter(row => (!filters.expired || row.expired))
-      .filter(row => (!filters.expiring || row.expiringSoon))
-      .filter(row => (!filters.below || row.stockStatus === 'below'))
-      .filter(row => (!filters.medicine || row.nomenclature?.isMedicine))
-      .filter(row => !needle
-        || String(row.nomenclature?.name || '').toLowerCase().includes(needle)
-        || String(row.nomenclature?.code || '').toLowerCase().includes(needle));
-  }, [rows, q, filters]);
+  // Поиск уже применил сервер — здесь остаются только признаки, которых в базе
+  // нет: они считаются на строке (просрочка, ниже минимума).
+  const items = useMemo(() => (rows || [])
+    .filter(row => (!filters.expired || row.expired))
+    .filter(row => (!filters.expiring || row.expiringSoon))
+    .filter(row => (!filters.below || row.stockStatus === 'below'))
+    .filter(row => (!filters.medicine || row.nomenclature?.isMedicine)),
+  [rows, filters]);
 
   const active = Object.values(filters).some(Boolean);
 

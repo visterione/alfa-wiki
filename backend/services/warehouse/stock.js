@@ -402,10 +402,26 @@ async function createDocument({
           patch.roomId = line.toRoomId || toRoomId;
           patch.storageId = line.toStorageId;
           if (line.toResponsibleId) patch.responsibleUserId = line.toResponsibleId;
-        } else if (type === 'repair_out') {
-          patch.status = 'repair';
-        } else if (type === 'repair_in') {
-          patch.status = 'in_use';
+        } else if (type === 'repair_out' || type === 'repair_in') {
+          patch.status = type === 'repair_out' ? 'repair' : 'in_use';
+          /**
+           * Ремонт не только меняет статус, но и увозит вещь (ver. 7.47).
+           *
+           * До этого прибор в ремонте продолжал числиться в своём кабинете:
+           * МОЛ отвечал за то, чего у него нет, а в описи кабинета он выходил
+           * недостачей. Теперь уход в ремонт перемещает актив в склад «Ремонт»
+           * своего медцентра, а возврат — обратно в кабинет, откуда забрали;
+           * куда именно, знает движение (services/warehouse/servicePlaces.js).
+           *
+           * Кабинет назначения необязателен: тем же типом операции пользуются
+           * старые формы, где ремонт был только статусом. Без него поведение
+           * прежнее — статус меняется, вещь остаётся на месте.
+           */
+          const repairRoomId = line.toRoomId || toRoomId;
+          if (repairRoomId) {
+            patch.roomId = repairRoomId;
+            if (line.toStorageId) patch.storageId = line.toStorageId;
+          }
         } else if (type === 'writeoff') {
           patch.status = 'written_off';
           patch.isArchived = true;

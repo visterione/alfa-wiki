@@ -27,6 +27,7 @@ const {
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
 const { parseOsv, diffSnapshots, OsvParseError } = require('../../services/warehouse/osv');
+const { searchWhere } = require('../../services/warehouse/search');
 const {
   materializeOsv, planMaterialization, reviewGroups, decisionOf,
 } = require('../../services/warehouse/osvMaterialize');
@@ -249,7 +250,11 @@ router.get('/imports/:id', authenticate, requireWarehouse(), requireReport('RPT-
     // Поиск отдаёт плоский список найденных позиций без групп: дерево, из
     // которого вырезали часть веток, читается хуже плоского списка с путём.
     if (q?.trim()) {
-      where.name = { [Op.iLike]: `%${q.trim()}%` };
+      // По словам в любом порядке и без разницы «ё»/«е»: в ведомости 1С слова
+      // стоят как придётся («Блок системный HP»), а ищут их как придётся тоже
+      // (services/warehouse/search.js).
+      const found = searchWhere(q, ['WhOsvLine.name', 'WhOsvLine.pathText']);
+      if (found) Object.assign(where, found);
       where.isGroup = false;
     }
 

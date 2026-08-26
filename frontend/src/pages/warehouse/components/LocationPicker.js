@@ -299,7 +299,11 @@ function buildBranches(tree, { mode, allowRoom, filterRoom, filterStorage }) {
 
   const makeRoom = (room, path, ancestors) => {
     if (filterRoom && !filterRoom(room)) return null;
-    const label = `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`;
+    // У склада подпись — название, а не номер: «Каб. Склад» получалось бы само
+    // собой везде, где строку собирают из номера кабинета (ver. 7.47).
+    const label = room.isService
+      ? (room.name || room.number)
+      : `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`;
     const key = `room:${room.id}`;
     const node = {
       key, type: 'room', roomId: room.id, storageId: '', room,
@@ -333,6 +337,18 @@ function buildBranches(tree, { mode, allowRoom, filterRoom, filterStorage }) {
       children: [], pickable: false, sort: order++,
     };
 
+    // Склады — отдельной веткой и первой (ver. 7.47): их два-три на медцентр,
+    // ищут их постоянно, и стоять они должны там, где видно без раскрытия
+    // этажей. Внутрь корпусов их класть нельзя — помещения за ними нет.
+    const services = (mc.services || []).map(room => makeRoom(room, [mc.name, 'Склады'], [mcKey, `svc:${mc.id}`]))
+      .filter(Boolean);
+    if (services.length) {
+      mcNode.children.push({
+        key: `svc:${mc.id}`, type: 'group', label: 'Склады', path: [mc.name],
+        ancestors: [mcKey], children: services, pickable: false, sort: order++,
+      });
+    }
+
     // Кабинеты без этажа висят прямо на медцентре — так их отдаёт дерево, и
     // выдумывать им корпус здесь нельзя.
     for (const room of mc.rooms || []) {
@@ -340,26 +356,21 @@ function buildBranches(tree, { mode, allowRoom, filterRoom, filterStorage }) {
       if (node) mcNode.children.push(node);
     }
 
-    for (const building of mc.buildings || []) {
-      const bKey = `bld:${building.id}`;
-      const bNode = {
-        key: bKey, type: 'group', label: building.name, path: [mc.name],
+    // Этажи лежат прямо под медцентром (ver. 7.48): уровень корпуса убран из
+    // спуска, и дерево стало на ступень мельче. Одноимённые этажи, оставшиеся
+    // после отказа от корпусов, различаются собственным названием.
+    for (const floor of mc.floors || []) {
+      const fKey = `fl:${floor.id}`;
+      const fLabel = `${floor.number} этаж${floor.name ? ` — ${floor.name}` : ''}`;
+      const fNode = {
+        key: fKey, type: 'group', label: fLabel, path: [mc.name],
         ancestors: [mcKey], children: [], pickable: false, sort: order++,
       };
-      for (const floor of building.floors || []) {
-        const fKey = `fl:${floor.id}`;
-        const fLabel = `${floor.number} этаж${floor.name ? ` — ${floor.name}` : ''}`;
-        const fNode = {
-          key: fKey, type: 'group', label: fLabel, path: [mc.name, building.name],
-          ancestors: [mcKey, bKey], children: [], pickable: false, sort: order++,
-        };
-        for (const room of floor.rooms || []) {
-          const node = makeRoom(room, [mc.name, building.name, fLabel], [mcKey, bKey, fKey]);
-          if (node) fNode.children.push(node);
-        }
-        if (fNode.children.length) bNode.children.push(fNode);
+      for (const room of floor.rooms || []) {
+        const node = makeRoom(room, [mc.name, fLabel], [mcKey, fKey]);
+        if (node) fNode.children.push(node);
       }
-      if (bNode.children.length) mcNode.children.push(bNode);
+      if (fNode.children.length) mcNode.children.push(fNode);
     }
 
     if (mcNode.children.length) roots.push(mcNode);

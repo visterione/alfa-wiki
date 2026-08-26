@@ -1952,6 +1952,34 @@
 .wh-place__room label select { width: 100%; min-width: 0; }
 .wh-place__room > button { margin-left: auto; }
 
+/* Кабинет под открытой описью. Полосой под выбором кабинета, а не тостом на
+   кнопке: причина должна лежать рядом с тем, что её вызвало, и не исчезать
+   через пять секунд. */
+.wh-place__frozen {
+  display: flex; align-items: center; gap: 8px;
+  margin: -4px 0 12px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--wh-danger);
+  border-radius: 8px;
+  background: var(--wh-card-bg);
+  font-size: var(--wh-fs-base); color: var(--wh-text);
+}
+.wh-place__frozen svg { color: var(--wh-danger); flex: none; }
+
+/* Та же полоса в шапке кабинета — узкой строкой под МОЛ. */
+.wh-room__counting {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 6px; padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--wh-card-bg);
+  border-left: 3px solid var(--wh-danger);
+  font-size: var(--wh-fs-small); color: var(--wh-text);
+}
+.wh-room__counting svg { color: var(--wh-danger); flex: none; }
+
+/* Быстрый переезд на складе — второй строкой под ссылкой на дашборд. */
+.wh-assetcard__tile-move { margin-top: 6px; gap: 6px; }
+
 /* Очередь и склад кабинета идут один под другим. Две широкие
    таблицы в колонках конкурировали за ширину: правая не помещалась
    и выталкивала весь экран. Теперь прокрутка остаётся внутри каждой таблицы. */

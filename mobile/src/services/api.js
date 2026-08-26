@@ -364,6 +364,18 @@ export const warehouse = {
   // проводит, поэтому её и можно нажать с телефона.
   cancelInventory: (id, reason) =>
     api.patch(`/warehouse/operations/inventory/${id}/cancel`, {reason}),
+  // Кабинеты, закрытые сейчас пересчётом (ver. 7.46). Экраны спрашивают это до
+  // того, как человек начнёт собирать операцию: запрет, срабатывающий на кнопке
+  // «Готово», узнаёшь, уже обойдя кабинет.
+  frozenRooms: () => api.get('/warehouse/operations/inventory/frozen-rooms'),
+
+  // Быстрый переезд оборудования (ver. 7.47): {serviceKind} — на склад этого
+  // вида, пустое тело — обратно в кабинет, откуда актив приехал.
+  placeAsset: (assetId, body) => api.post(`/warehouse/operations/assets/${assetId}/place`, body || {}),
+  // Отмена проведённой операции встречным документом (ver. 7.50).
+  reverseDocument: id => api.post(`/warehouse/operations/documents/${id}/reverse`),
+  createRepair: data => api.post('/warehouse/operations/repairs', data),
+  closeRepair: (id, data) => api.patch(`/warehouse/operations/repairs/${id}/close`, data),
 
   // Этикетки для Brother P-touch.
   //

@@ -23,6 +23,8 @@ const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
 const { generateInventoryNumber } = require('../../services/warehouse/numbering');
 const { splitName } = require('../../services/warehouse/nameParts');
+const { assertNotCounting } = require('../../services/warehouse/inventory');
+const { searchWhere } = require('../../services/warehouse/search');
 const qr = require('../../services/warehouse/qr');
 const ptouch = require('../../services/warehouse/ptouchRaster');
 
@@ -140,14 +142,13 @@ router.get('/', authenticate, requireWarehouse(), async (req, res) => {
     if (categoryId) where.categoryId = categoryId;
     if (roomId) where.roomId = roomId;
     if (responsibleUserId) where.responsibleUserId = responsibleUserId;
-    if (q) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${q}%` } },
-        { inventoryNumber: { [Op.iLike]: `%${q}%` } },
-        { serialNumber: { [Op.iLike]: `%${q}%` } },
-        { model: { [Op.iLike]: `%${q}%` } },
-      ];
-    }
+    // Поиск по словам в любом порядке и без разницы «ё»/«е» — почему именно
+    // так, см. services/warehouse/search.js. Раньше здесь стояло сравнение
+    // подстрокой целиком, и «системный блок» не находил «Блок системный HP».
+    const found = searchWhere(q, [
+      'WhAsset.name', 'WhAsset.inventoryNumber', 'WhAsset.serialNumber', 'WhAsset.model',
+    ]);
+    if (found) Object.assign(where, found);
     // «ТО на подходе» — 30 дней вперёд плюс всё уже просроченное.
     if (maintenanceDue === 'true') {
       const horizon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -224,8 +225,8 @@ router.get('/:id', authenticate, requireWarehouse(), async (req, res) => {
       WhMovement.findAll({
         where: { assetId: asset.id },
         include: [
-          { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name'] },
-          { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name'] },
+          { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name', 'isService'] },
+          { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name', 'isService'] },
           { model: User, as: 'fromResponsible', attributes: userAttrs },
           { model: User, as: 'toResponsible', attributes: userAttrs },
           { model: User, as: 'initiator', attributes: userAttrs },
@@ -279,6 +280,11 @@ router.post('/', authenticate, requireWarehouse('canManageAssets'), async (req, 
       await t.rollback();
       return res.status(400).json({ error: 'Место хранения не относится к выбранному кабинету' });
     }
+
+    // Новая карточка — это приход в кабинет, с движением и остатком, и на время
+    // пересчёта он запрещён так же, как выдача: комиссия считает полку, на
+    // которой под руками появляется вещь, которой в снимке нет.
+    await assertNotCounting([b.roomId], { transaction: t });
 
     // Заводить карточку сразу списанной бессмысленно: постановка на учёт — это
     // приход, а списание — выбытие, и одним действием они не бывают.
@@ -361,6 +367,8 @@ router.post('/', authenticate, requireWarehouse('canManageAssets'), async (req, 
     if (err.name === 'SequelizeUniqueConstraintError') {
       return res.status(409).json({ error: 'Такой инвентарный номер уже занят' });
     }
+    // Заморозка кабинета — нарушение правила со своим статусом, а не сбой.
+    if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('POST warehouse/assets error:', err);
     res.status(500).json({ error: err.message });
   }

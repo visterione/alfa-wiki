@@ -1,9 +1,15 @@
 /**
- * Дерево локаций для выбора кабинета: медцентр → корпус → этаж → кабинеты.
+ * Дерево локаций для выбора кабинета: медцентр → этаж → кабинеты.
  *
  * Отдельным модулем от экрана, потому что здесь два правила, от которых зависит
  * весь спуск, и проверять их удобнее прямо, а не через отрисовку списка:
  * отбрасывание пустых веток и склейка уровней, на которых выбирать не из чего.
+ *
+ * Корпуса убраны из спуска (ver. 7.48). На живых пользователях уровень корпуса
+ * не проходил никто: человек знает, что он на четвёртом этаже, а в каком
+ * корпусе — вспоминает не всегда, и лишнее нажатие стояло на каждом выборе
+ * кабинета. Сервер отдаёт этажи медцентра плоским списком (mc.floors); разбор
+ * mc.buildings оставлен запасным путём на случай, когда сборка новее сервера.
  */
 
 export const ROOT_KEY = '';
@@ -13,12 +19,12 @@ const floorTitle = floor => floor.name || `${floor.number} этаж`;
  * Дерево локаций → узлы для спуска.
  *
  * Узел либо ведёт дальше (children), либо заканчивается кабинетами (rooms), но
- * никогда не то и другое сразу: кабинеты медцентра без корпуса становятся
- * отдельным узлом «Без корпуса» рядом с корпусами, а не подмешиваются к ним
- * списком другого рода.
+ * никогда не то и другое сразу: кабинеты медцентра без этажа становятся
+ * отдельным узлом рядом с этажами, а не подмешиваются к ним списком другого
+ * рода.
  *
  * Ветки без единого кабинета отбрасываются. Сервер отдаёт их тем, кому можно
- * править локации, — на телефоне править нечего, и пустой корпус здесь только
+ * править локации, — на телефоне править нечего, и пустой этаж здесь только
  * обещание, за которым ничего нет.
  */
 /**
@@ -54,29 +60,25 @@ export function buildNodes(tree) {
   for (const mc of tree?.medCenters || []) {
     const children = [];
 
-    for (const building of mc.buildings || []) {
-      const floors = [];
-      for (const floor of building.floors || []) {
-        if (!floor.rooms?.length) continue;
-        const path = [mc.name, building.name, floorTitle(floor)].filter(Boolean).join(' · ');
-        const node = keep({
-          key: `f:${floor.id}`,
-          kind: 'floor',
-          title: floorTitle(floor),
-          subtitle: building.name,
-          path,
-          rooms: floor.rooms,
-        });
-        node.counts = countsOf(node);
-        floors.push(node);
-      }
-      if (!floors.length) continue;
+    // Этажи медцентра — плоским списком. Старый ответ сервера (корпуса) тоже
+    // разбирается: сборка может оказаться новее сервера, и пустой список
+    // кабинетов на телефоне выглядел бы как поломка склада.
+    const floors = mc.floors?.length
+      ? mc.floors
+      : (mc.buildings || []).flatMap(b => (b.floors || []).map(f => ({...f, buildingName: b.name})));
+
+    for (const floor of floors) {
+      if (!floor.rooms?.length) continue;
+      const path = [mc.name, floorTitle(floor)].filter(Boolean).join(' · ');
       const node = keep({
-        key: `b:${building.id}`,
-        kind: 'building',
-        title: building.name,
-        subtitle: building.address,
-        children: floors,
+        key: `f:${floor.id}`,
+        kind: 'floor',
+        title: floorTitle(floor),
+        // Подпись этажа — его номер: после отказа от корпусов у медцентра
+        // временно бывает два четвёртых этажа, и различает их название.
+        subtitle: floor.name ? `${floor.number} этаж` : (floor.buildingName || null),
+        path,
+        rooms: floor.rooms,
       });
       node.counts = countsOf(node);
       children.push(node);
@@ -86,12 +88,27 @@ export function buildNodes(tree) {
       const loose = keep({
         key: `mcr:${mc.id}`,
         kind: 'floor',
-        title: 'Без корпуса',
-        path: [mc.name, 'Без корпуса'].filter(Boolean).join(' · '),
+        title: 'Без этажа',
+        path: [mc.name, 'Без этажа'].filter(Boolean).join(' · '),
         rooms: mc.rooms,
       });
       loose.counts = countsOf(loose);
       children.push(loose);
+    }
+
+    // Склады медцентра — своим узлом рядом с корпусами (ver. 7.47). Не внутри
+    // корпуса и не среди кабинетов без корпуса: помещения за складом нет, он
+    // общий на весь медцентр, и в списке его ищут по названию, а не по номеру.
+    if (mc.services?.length) {
+      const services = keep({
+        key: `svc:${mc.id}`,
+        kind: 'floor',
+        title: 'Склады',
+        path: [mc.name, 'Склады'].filter(Boolean).join(' · '),
+        rooms: mc.services,
+      });
+      services.counts = countsOf(services);
+      children.push(services);
     }
 
     if (!children.length) continue;

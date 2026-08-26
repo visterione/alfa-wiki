@@ -28,6 +28,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   Plus, Search, X, Check, Trash2, ChevronRight, ChevronDown, Filter, CalendarDays,
+  Undo2,
 } from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
@@ -87,6 +88,12 @@ const TO_LABELS = {
 
 const TYPE_LABELS = Object.fromEntries(TYPES.map(t => [t.key, t.label]));
 
+/**
+ * Что отменяется кнопкой. Приход, списание и оприходование излишков сюда не
+ * входят намеренно — почему, см. backend/services/warehouse/reversal.js.
+ */
+const REVERSIBLE = new Set(['transfer', 'issue', 'return', 'repair_out', 'repair_in']);
+
 const num = value => Number(String(value ?? '').replace(',', '.')) || 0;
 
 /** Дата и время документа: до минут — секунды в журнале никому не нужны. */
@@ -114,6 +121,41 @@ export default function WarehouseOperationsScreen() {
     .catch(() => setDocuments([])), [typeFilter]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  /**
+   * Отмена операции прямо из журнала (ver. 7.50).
+   *
+   * Кнопка стоит на строке документа, а не в отдельной форме: человек уже
+   * смотрит на ту запись, которую хочет исправить, и повторять выбор
+   * кабинетов ему незачем. Что именно отменяется, решает сервер — здесь только
+   * гасим заведомо бессмысленное: приход, списание и уже отменённое.
+   */
+  const [undoing, setUndoing] = useState(null);
+
+  const undo = (document) => Alert.alert(
+    `Отменить ${TYPE_LABELS[document.type]?.toLowerCase() || 'операцию'} ${document.number}?`,
+    'Будет проведён встречный документ. Сама операция останется в истории — '
+    + 'видно будет и её, и отмену.',
+    [
+      {text: 'Нет', style: 'cancel'},
+      {
+        text: 'Отменить операцию',
+        style: 'destructive',
+        onPress: async () => {
+          setUndoing(document.id);
+          try {
+            const {data} = await warehouseApi.reverseDocument(document.id);
+            await load();
+            Alert.alert('Отменено', `Проведён документ ${data.document.number}.`);
+          } catch (e) {
+            Alert.alert('Не отменено', e?.response?.data?.error || 'Попробуйте ещё раз.');
+          } finally {
+            setUndoing(null);
+          }
+        },
+      },
+    ],
+  );
 
   if (!documents) return <LogoLoader />;
 
@@ -151,7 +193,24 @@ export default function WarehouseOperationsScreen() {
               {Boolean(item.reasonText) && (
                 <Text style={styles.rowNote} numberOfLines={1}>{item.reasonText}</Text>
               )}
+              {/* Исправленная ошибка не должна читаться как две операции подряд:
+                  говорим прямо, что документ отменён и чем. */}
+              {Boolean(item.reversedBy) && (
+                <Text style={styles.rowUndone}>отменён — сторно {item.reversedBy.number}</Text>
+              )}
             </View>
+
+            {canIssue && REVERSIBLE.has(item.type) && !item.reversedBy && !item.reversalOfId && (
+              <Pressable
+                style={styles.undo}
+                disabled={undoing === item.id}
+                hitSlop={8}
+                onPress={() => undo(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`Отменить операцию ${item.number}`}>
+                <Undo2 size={17} color={c.error} />
+              </Pressable>
+            )}
           </View>
         )}
       />
@@ -719,6 +778,8 @@ const makeStyles = c => StyleSheet.create({
   rowTitle: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary, lineHeight: 19},
   rowSub: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginTop: 2},
   rowNote: {fontFamily: font.regular, fontSize: 11, color: c.textTertiary, marginTop: 1},
+  rowUndone: {fontFamily: font.medium, fontSize: 11, color: c.error, marginTop: 2},
+  undo: {paddingLeft: 10, alignSelf: 'center'},
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, textAlign: 'center', marginTop: 30},
 
   bar: {

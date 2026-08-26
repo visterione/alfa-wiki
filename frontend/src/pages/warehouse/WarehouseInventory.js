@@ -191,9 +191,12 @@ function roomLabel(tree, roomId) {
   for (const mc of tree?.medCenters || []) {
     const own = [
       ...(mc.rooms || []),
-      ...(mc.buildings || []).flatMap(b => (b.floors || []).flatMap(f => f.rooms || [])),
+      ...(mc.services || []),
+      ...(mc.floors || []).flatMap(f => f.rooms || []),
     ];
     const room = own.find(r => r.id === roomId);
+    // У склада подпись — название: «Каб. Склад» читается как ошибка ввода.
+    if (room?.isService) return room.name || room.number;
     if (room) return `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`;
   }
   return 'Кабинет';

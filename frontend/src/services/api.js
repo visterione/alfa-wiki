@@ -993,9 +993,10 @@ export const warehouseApi = {
   tree:            ()             => api.get('/warehouse/locations/tree'),
   specialties:     ()             => api.get('/warehouse/locations/specialties'),
   createSpecialty: (data)         => api.post('/warehouse/locations/specialties', data),
-  createBuilding:  (data)         => api.post('/warehouse/locations/buildings', data),
-  updateBuilding:  (id, data)     => api.put(`/warehouse/locations/buildings/${id}`, data),
-  deleteBuilding:  (id)           => api.delete(`/warehouse/locations/buildings/${id}`),
+  // Корпусами интерфейс больше не управляет (ver. 7.48): этаж принадлежит
+  // медцентру напрямую. Маршруты на сервере остались — по ним видно, из какого
+  // корпуса пришёл этаж, — но вызывать их отсюда больше нечему.
+
   createFloor:     (data)         => api.post('/warehouse/locations/floors', data),
   updateFloor:     (id, data)     => api.put(`/warehouse/locations/floors/${id}`, data),
   deleteFloor:     (id)           => api.delete(`/warehouse/locations/floors/${id}`),
@@ -1059,6 +1060,11 @@ export const warehouseApi = {
   maintenance:     (params)       => api.get('/warehouse/operations/maintenance', { params }),
   createMaintenance: (data)       => api.post('/warehouse/operations/maintenance', data),
   closeMaintenance:(id, data)     => api.patch(`/warehouse/operations/maintenance/${id}/close`, data),
+  // Быстрый переезд оборудования (ver. 7.47): {serviceKind} — на склад этого
+  // вида, пустое тело — обратно в кабинет, откуда актив приехал.
+  placeAsset:      (id, body)     => api.post(`/warehouse/operations/assets/${id}/place`, body || {}),
+  // Отмена проведённой операции встречным документом (ver. 7.50).
+  reverseDocument: (id)           => api.post(`/warehouse/operations/documents/${id}/reverse`),
   createRepair:    (data)         => api.post('/warehouse/operations/repairs', data),
   closeRepair:     (id, data)     => api.patch(`/warehouse/operations/repairs/${id}/close`, data),
   inventorySessions: ()           => api.get('/warehouse/operations/inventory'),

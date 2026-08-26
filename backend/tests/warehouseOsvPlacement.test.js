@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { targetsOf } = require('../services/warehouse/osvMaterialize');
+const { targetsOf, requestedQuantity } = require('../services/warehouse/osvMaterialize');
 
 /**
  * Размещение позиций ведомости по кабинетам (ver. 6.80).
@@ -146,4 +146,34 @@ test('запасной путь через кабинет ветки тоже с
 
   assert.deepEqual(targetsOf(item, new Set(['room-305'])), []);
   assert.equal(targetsOf(item, new Set(['branch-room'])).length, 1);
+});
+
+/**
+ * Количество по умолчанию (ver. 7.46).
+ *
+ * До 7.46 пустое поле означало «весь нераспределённый остаток», и на боевых
+ * данных это записало на кабинет пятьдесят единиц одной галочкой. Правило
+ * проверяется тестом именно потому, что ошибка в нём не видна в момент
+ * совершения: размещение выглядит обычным, а после разбора снимается только
+ * перемещением.
+ */
+test('пустое количество — одна единица, а не весь остаток', () => {
+  assert.equal(requestedQuantity(undefined, 50), 1);
+  assert.equal(requestedQuantity(null, 50), 1);
+  assert.equal(requestedQuantity('', 50), 1);
+});
+
+test('явное количество принимается как есть', () => {
+  assert.equal(requestedQuantity(6, 50), 6);
+  assert.equal(requestedQuantity('6', 50), 6);
+  // Ноль не подменяется единицей: пустое поле и введённый ноль — разные вещи,
+  // и отказ по нулю человек должен увидеть, а не получить молча одну единицу.
+  assert.equal(requestedQuantity(0, 50), 0);
+});
+
+test('пустое количество не берёт больше, чем осталось', () => {
+  // Дробный остаток бывает у материалов: 0.4 метра портьеры не превращаются в
+  // запрос на метр, который сервер тут же и отвергнет.
+  assert.equal(requestedQuantity('', 0.4), 0.4);
+  assert.equal(requestedQuantity('', 0), 0);
 });

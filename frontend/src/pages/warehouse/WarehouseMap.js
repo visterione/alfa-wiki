@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Building2, Layers, ChevronRight, RefreshCw, AlertTriangle, Package,
+  Layers, ChevronRight, RefreshCw, AlertTriangle, Package,
   Wrench, CalendarClock, Boxes, X, ExternalLink,
   Home, PencilRuler,
 } from 'lucide-react';
@@ -25,7 +25,7 @@ import FloorPlanEditor from './FloorPlanEditor';
 
 export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom }) {
   // Уровень: { kind: 'network' } | { kind: 'medCenter', mcId }
-  //        | { kind: 'floor', mcId, buildingId, floorId }
+  //        | { kind: 'floor', mcId, floorId }
   //        | { kind: 'scheme', mcId } — общая схема медцентра без корпусов и этажей
   const [level, setLevel] = useState({ kind: 'network' });
   const [overview, setOverview] = useState([]);
@@ -42,7 +42,7 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   const [roomPanel, setRoomPanel] = useState(null);
   const [recomputing, setRecomputing] = useState(false);
   // Редактор планов — не соседняя вкладка, а тот же экран в режиме правки:
-  // { mcId?, buildingId?, floorId? } | null. Отдельная вкладка «Планы помещений»
+  // { mcId?, floorId? } | null. Отдельная вкладка «Планы помещений»
   // заставляла второй раз выбирать селектами тот медцентр и этаж, на который
   // человек уже смотрит на карте, и по возвращении карта ничего не знала о
   // правках. Пустой объект — вход без предвыбора, как было у вкладки.
@@ -58,13 +58,11 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
   // Сводка по сети даёт цифры для карточек, дерево — структуру площадки: по нему
   // решается, открывать медцентр списком корпусов или сразу общей схемой.
   const treeById = useMemo(() => new Map(medCenters.map(mc => [mc.id, mc])), [medCenters]);
-  const currentBuilding = useMemo(
-    () => currentMc?.buildings?.find(b => b.id === level.buildingId) || null,
-    [currentMc, level.buildingId]
-  );
+  // Этажи лежат прямо у медцентра (ver. 7.48): уровень корпуса убран.
+  const mcFloors = useMemo(() => currentMc?.floors || [], [currentMc]);
   const currentFloor = useMemo(
-    () => currentBuilding?.floors?.find(f => f.id === level.floorId) || null,
-    [currentBuilding, level.floorId]
+    () => mcFloors.find(f => f.id === level.floorId) || null,
+    [mcFloors, level.floorId]
   );
 
   useEffect(() => {
@@ -106,9 +104,9 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
    */
   const openMedCenter = (mcId) => {
     const mc = treeById.get(mcId);
-    const hasBuildings = (mc?.buildings || []).length > 0;
+    const hasFloors = (mc?.floors || []).length > 0;
     const hasScheme = (mc?.rooms || []).length > 0;
-    setLevel(!hasBuildings && hasScheme ? { kind: 'scheme', mcId } : { kind: 'medCenter', mcId });
+    setLevel(!hasFloors && hasScheme ? { kind: 'scheme', mcId } : { kind: 'medCenter', mcId });
   };
 
   const openRoomPanel = async (roomId) => {
@@ -179,7 +177,9 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
 
   // ── Уровень 1: сеть ────────────────────────────────────────────────────────
   if (level.kind === 'network') {
-    const withData = overview.filter(o => o.buildings > 0 || o.rooms > 0);
+    // Сводка больше не считает корпуса (ver. 7.48): показываем медцентры, где
+    // заведён хоть один этаж или кабинет.
+    const withData = overview.filter(o => o.floors > 0 || o.rooms > 0);
     return (
       <div className="wh-map">
         <div className="wh-map__head">
@@ -208,17 +208,15 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
     );
   }
 
-  // ── Уровень 2: медцентр, корпуса и этажи ───────────────────────────────────
+  // ── Уровень 2: медцентр и его этажи ────────────────────────────────────────
   if (level.kind === 'medCenter') {
-    const buildings = currentMc?.buildings || [];
+    const floors = currentMc?.floors || [];
     const directRooms = currentMc?.rooms || [];
-    const totals = buildings.reduce((acc, b) => {
-      for (const f of b.floors || []) {
-        acc.floors += 1;
-        for (const r of f.rooms || []) {
-          acc.rooms += 1;
-          acc.assets += r.counters?.assets || 0;
-        }
+    const totals = floors.reduce((acc, f) => {
+      acc.floors += 1;
+      for (const r of f.rooms || []) {
+        acc.rooms += 1;
+        acc.assets += r.counters?.assets || 0;
       }
       return acc;
     }, {
@@ -245,7 +243,6 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
             {currentMc?.city && <div className="wh-site__city">{currentMc.city}</div>}
           </div>
           <dl className="wh-spec wh-spec--wide">
-            <SpecItem label="Корпуса" value={buildings.length} />
             <SpecItem label="Этажи" value={totals.floors} />
             <SpecItem label="Кабинеты" value={totals.rooms} />
             <SpecItem label="Ед. ОС" value={totals.assets} />
@@ -258,20 +255,19 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
           )}
         </header>
 
-        {buildings.map(building => (
-          <BuildingSection key={building.id}
-                           building={building}
-                           onOpenFloor={floorId => setLevel({
-                             kind: 'floor', mcId: currentMc.id, buildingId: building.id, floorId,
-                           })} />
-        ))}
+        {floors.length > 0 && (
+          <FloorsSection floors={floors}
+                         onOpenFloor={floorId => setLevel({
+                           kind: 'floor', mcId: currentMc.id, floorId,
+                         })} />
+        )}
 
         {directRooms.length > 0 && (
           <SchemeSection medCenter={currentMc} rooms={directRooms}
                          onOpen={() => setLevel({ kind: 'scheme', mcId: level.mcId })} />
         )}
 
-        {!buildings.length && !directRooms.length && (
+        {!floors.length && !directRooms.length && (
           <div className="wh-empty">В этом медцентре не заведено ни одного кабинета</div>
         )}
       </div>
@@ -293,8 +289,9 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
         ...(isScheme
           ? [{ label: 'Общая схема' }]
           : [
-              { label: currentBuilding?.name || '—' },
-              { label: currentFloor ? (currentFloor.name || `${currentFloor.number} этаж`) : '—' },
+              { label: currentFloor
+                ? `${currentFloor.number} этаж${currentFloor.name ? ` — ${currentFloor.name}` : ''}`
+                : '—' },
             ]),
       ]} />
 
@@ -317,11 +314,10 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
         {canEditPlans && (
           <div className="wh-map__toolbar-actions">
             {/* Правка открывается ровно на том плане, который сейчас на экране:
-                медцентр, корпус и этаж уже выбраны, повторять выбор не нужно. */}
+                медцентр и этаж уже выбраны, повторять выбор не нужно. */}
             <button className="wh-btn wh-btn--secondary"
                     onClick={() => setEditing({
                       mcId: level.mcId,
-                      buildingId: isScheme ? null : level.buildingId,
                       floorId: isScheme ? null : level.floorId,
                     })}>
               <PencilRuler size={15} /> Редактировать план
@@ -348,7 +344,7 @@ export default function WarehouseMap({ access, tree, onReloadTree, onOpenRoom })
             меняется, кадр и выбранный показатель остаются. У общей схемы этажей
             нет, и пустая колонка кнопок только отнимала бы место. */}
         <div className="wh-floor-switch">
-          {(isScheme ? [] : currentBuilding?.floors || []).slice().reverse().map(f => (
+          {(isScheme ? [] : mcFloors).slice().reverse().map(f => (
             <button key={f.id}
                     className={`wh-floor-switch__btn ${f.id === level.floorId ? 'is-active' : ''}`}
                     title={f.name || `${f.number} этаж`}
@@ -456,11 +452,12 @@ function Breadcrumbs({ items }) {
  */
 function MedCenterCard({ mc, canSeeCosts, onOpen }) {
   const overdue = Number(mc.overdueMaintenance) || 0;
-  // Корпусов и этажей может не быть вовсе (помещения лежат прямо в медцентре) —
-  // тогда в строке остаётся только то, что есть, а не «0 корпусов».
+  // Этажей может не быть вовсе (помещения лежат прямо в медцентре) — тогда в
+  // строке остаётся только то, что есть, а не «0 этажей». Корпуса из сводки
+  // ушли вместе с самим уровнем (ver. 7.48).
   const structure = [
-    mc.buildings > 0 && `${mc.buildings} ${plural(mc.buildings, 'корпус', 'корпуса', 'корпусов')}`,
     mc.floors > 0 && `${mc.floors} ${plural(mc.floors, 'этаж', 'этажа', 'этажей')}`,
+    mc.rooms > 0 && `${mc.rooms} ${plural(mc.rooms, 'кабинет', 'кабинета', 'кабинетов')}`,
   ].filter(Boolean).join(' · ');
 
   return (
@@ -516,8 +513,15 @@ function Metric({ label, value }) {
  * этаж оказывался слева сверху, а верхний — справа снизу; это ровно наоборот
  * тому, как здание устроено, и найти нужный этаж глазами было неожиданно трудно.
  */
-function BuildingSection({ building, onOpenFloor }) {
-  const floors = (building.floors || []).slice().sort((a, z) => z.number - a.number);
+/**
+ * Стопка этажей медцентра.
+ *
+ * До ver. 7.48 это был раздел корпуса, и таких разделов на экране было столько
+ * же, сколько корпусов. Корпуса убраны — стопка осталась одна, и вопрос «какой
+ * этаж открыть» решается без предварительного «в каком корпусе».
+ */
+function FloorsSection({ floors: list, onOpenFloor }) {
+  const floors = list.slice().sort((a, z) => z.number - a.number);
   const totals = floors.reduce((acc, f) => {
     for (const r of f.rooms || []) {
       acc.rooms += 1;
@@ -529,10 +533,9 @@ function BuildingSection({ building, onOpenFloor }) {
   return (
     <section className="wh-bld">
       <div className="wh-bld__head">
-        <Building2 size={16} />
+        <Layers size={16} />
         <div className="wh-bld__id">
-          <div className="wh-bld__name">{building.name}</div>
-          {building.address && <div className="wh-bld__addr">{building.address}</div>}
+          <div className="wh-bld__name">Этажи</div>
         </div>
         <div className="wh-bld__sum">
           <span><Layers size={12} /> {floors.length}</span>

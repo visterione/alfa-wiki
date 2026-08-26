@@ -70,10 +70,16 @@ export const inventoryScopeText = (session) => {
   return session?.department?.name || 'вся сеть';
 };
 
-/** Подпись кабинета одинаково во всех списках: номер плюс название, если оно есть. */
-export const roomText = room => (room
-  ? `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`
-  : '—');
+/**
+ * Подпись места одинаково во всех списках: у кабинета номер плюс название, у
+ * склада — одно название (ver. 7.47). Без второго правила везде, где строку
+ * собирают из номера, получалось бы «Каб. Склад».
+ */
+export const roomText = (room) => {
+  if (!room) return '—';
+  if (room.isService) return room.name || room.number;
+  return `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`;
+};
 
 /**
  * Дерево локаций → плоский список кабинетов.
@@ -109,18 +115,47 @@ export function flattenRooms(tree) {
       where: groupTitle || mc.name,
     });
 
-    for (const building of mc.buildings || []) {
-      for (const floor of building.floors || []) {
-        const title = [building.name, floor.name || `${floor.number} этаж`]
-          .filter(Boolean).join(' · ');
-        for (const room of floor.rooms || []) push(room, `f${floor.id}`, title);
-      }
+    // Этажи медцентра плоским списком (ver. 7.48). Разбор старого ответа с
+    // корпусами оставлен запасным путём: сборка может оказаться новее сервера.
+    const floors = mc.floors?.length
+      ? mc.floors
+      : (mc.buildings || []).flatMap(b => b.floors || []);
+    for (const floor of floors) {
+      const title = floor.name || `${floor.number} этаж`;
+      for (const room of floor.rooms || []) push(room, `f${floor.id}`, title);
     }
     // Кабинеты, не привязанные к этажу, идут последними: их единицы, и наверху
     // они разрывали бы порядок обхода здания.
     for (const room of mc.rooms || []) push(room, `mc${mc.id}`, 'Без этажа');
+    // Склады — своей группой в самом низу: они не часть обхода здания, но
+    // выбирать их приходится там же, где кабинеты (ver. 7.47).
+    for (const room of mc.services || []) push(room, `svc${mc.id}`, 'Склады');
   }
   return out;
+}
+
+/**
+ * Поиск по названиям — тем же правилом, что и на сервере
+ * (backend/services/warehouse/search.js).
+ *
+ * Запрос дробится на слова, и строка подходит, когда КАЖДОЕ слово нашлось хоть
+ * в одном из полей, в любом порядке: в названиях из 1С слова стоят как придётся
+ * («Блок системный HP»), а набирают их тоже как придётся. «ё» и «е» не
+ * различаются — в одной ведомости соседствуют «Ёмкость» и «Емкость», и
+ * набравший одно не находил другого.
+ */
+const normalizeSearch = value => String(value || '').toLowerCase().replace(/ё/g, 'е');
+
+export function matchesSearch(q, values) {
+  const all = normalizeSearch(q).split(/[\s,;]+/).filter(Boolean);
+  // Односимвольные слова отбрасываем — они не сужают поиск, — но если после
+  // отсева не осталось ничего, берём что дали: «3» это номер кабинета, а не
+  // «показать всё».
+  const long = all.filter(w => w.length >= 2);
+  const words = long.length ? long : all;
+  if (!words.length) return true;
+  const hay = normalizeSearch(values.filter(Boolean).join(' '));
+  return words.every(word => hay.includes(word));
 }
 
 /**
@@ -130,6 +165,4 @@ export function flattenRooms(tree) {
  * разобранными через flattenRooms (там имя уже нормализовано), и прямо из
  * дерева локаций, где оно может быть null.
  */
-export const roomMatches = (room, needle) => !needle
-  || String(room.number).toLowerCase().includes(needle)
-  || String(room.name || '').toLowerCase().includes(needle);
+export const roomMatches = (room, needle) => matchesSearch(needle, [room.number, room.name]);

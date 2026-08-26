@@ -27,7 +27,14 @@ export default function WarehouseStock({ access, tree }) {
     setLoading(true);
     try {
       if (view === 'stock') {
-        const { data } = await warehouseApi.stock({ belowMinimum: belowOnly ? 'true' : undefined });
+        // Поиск уехал на сервер (ver. 7.49). Раньше сюда приходили первые две
+        // тысячи строк остатка, а искал по ним фильтр на экране — на реальной
+        // базе строк больше, и «компьютер» находил только те совпадения, что
+        // попали в загруженный кусок. Позиции пропадали без всякой причины.
+        const { data } = await warehouseApi.stock({
+          belowMinimum: belowOnly ? 'true' : undefined,
+          q: q.trim() || undefined,
+        });
         setStock(data);
       } else {
         const { data } = await warehouseApi.expiring({
@@ -41,14 +48,16 @@ export default function WarehouseStock({ access, tree }) {
     } finally {
       setLoading(false);
     }
-  }, [view, belowOnly, horizon, medCenterId]);
+  }, [view, belowOnly, horizon, medCenterId, q]);
 
-  useEffect(() => { load(); }, [load]);
+  // Задержка на наборе: запрос уходит на сервер, и слать его на каждую букву
+  // значит гонять по три тысячи строк остатка на слово.
+  useEffect(() => {
+    const timer = setTimeout(load, q ? 350 : 0);
+    return () => clearTimeout(timer);
+  }, [load, q]);
 
-  const filtered = (stock?.items || []).filter(i =>
-    !q || i.nomenclature?.name?.toLowerCase().includes(q.toLowerCase())
-       || i.nomenclature?.code?.toLowerCase().includes(q.toLowerCase())
-  );
+  const filtered = stock?.items || [];
 
   return (
     <div className="wh-stock">
@@ -86,6 +95,17 @@ export default function WarehouseStock({ access, tree }) {
 
       {view === 'stock' && (
         <>
+          {/* Список упёрся в потолок — значит показано не всё. Молчать об этом
+              нельзя: именно так и выглядела пропажа позиций из поиска. */}
+          {stock?.truncated && (
+            <div className="wh-note wh-note--warn">
+              <AlertTriangle size={15} />
+              <div>
+                Показаны первые {stock.limit} строк остатка — их больше.
+                Уточните поиск или возьмите полный список отчётом.
+              </div>
+            </div>
+          )}
 
           <div className="wh-table-wrap">
             <table className="wh-table">

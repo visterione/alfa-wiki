@@ -102,14 +102,24 @@ function turnoverLevels(rows) {
   if (manyMedCenters) {
     levels.push({ key: 'medCenter', id: r => r.medCenterName, label: r => r.medCenterName });
   }
-  if (rows.some(r => r.buildingName)) {
-    levels.push({ key: 'building', id: r => r.buildingName || 'Без корпуса',
-      label: r => r.buildingName || 'Без корпуса' });
-  }
-  if (rows.some(r => r.floorNumber !== null && r.floorNumber !== undefined)) {
-    levels.push({ key: 'floor', id: r => `${r.buildingName || 'none'}#${r.floorNumber ?? 'none'}`,
-      label: r => r.floorNumber === null || r.floorNumber === undefined
-        ? 'Без этажа' : `${r.floorNumber} этаж` });
+  // Уровня корпуса больше нет (ver. 7.48): этаж принадлежит медцентру напрямую,
+  // и в дереве отчёта он теперь второй уровень, а не четвёртый. Ключ уровня —
+  // идентификатор этажа, а не его номер с названием корпуса: у медцентра может
+  // быть два четвёртых этажа, пока их не объединили руками, и склеивать их в
+  // одну ветку значило бы сложить имущество двух разных мест в один подытог.
+  if (rows.some(r => r.floorId || r.roomIsService)) {
+    levels.push({
+      key: 'floor',
+      id: r => r.floorId || (r.roomIsService ? 'service' : 'none'),
+      label: (r) => {
+        if (r.floorId) {
+          return `${r.floorNumber} этаж${r.floorName ? ` — ${r.floorName}` : ''}`;
+        }
+        // Склады стоят своей веткой: это не «этаж, который забыли указать», а
+        // место, у которого этажа не бывает.
+        return r.roomIsService ? 'Склады' : 'Без этажа';
+      },
+    });
   }
   levels.push(
     // Ключ уровня — идентификатор отделения, а не строка на кабинет: иначе

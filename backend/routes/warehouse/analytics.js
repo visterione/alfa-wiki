@@ -36,7 +36,11 @@ router.get('/heatmap', authenticate, requireWarehouse(), requireReport('RPT-HEAT
     let medCenter = null;
     if (floorId) {
       floor = await WhFloor.findByPk(floorId, {
-        include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }],
+        include: [
+          { model: MedCenter, as: 'medCenter' },
+          // Запасной путь для этажей до ver. 7.48, у которых медцентр ещё пуст.
+          { model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] },
+        ],
       });
       if (!floor) return res.status(404).json({ error: 'Этаж не найден' });
     } else {
@@ -77,8 +81,8 @@ router.get('/heatmap', authenticate, requireWarehouse(), requireReport('RPT-HEAT
         planWidthM: Number(floor.planWidthM), planHeightM: Number(floor.planHeightM),
         planBgUrl: floor.planBgUrl, planBgOpacity: Number(floor.planBgOpacity),
         outline: floor.outline || {},
-        building: floor.building?.name,
-        medCenter: floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
+        medCenter: floor.medCenter?.displayName || floor.medCenter?.name
+          || floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
       } : {
         id: `med-center:${medCenter.id}`,
         scope: 'medCenter',
@@ -217,9 +221,12 @@ router.get('/overview', authenticate, requireWarehouse(), async (req, res) => {
     const { sequelize } = require('../../models');
     const [rows] = await sequelize.query(`
       SELECT mc.id, mc.name, mc."displayName", mc.code, mc.color, mc."logoUrl", mc.city,
-             COUNT(DISTINCT bld.id)::int AS buildings,
              COUNT(DISTINCT f.id)::int   AS floors,
-             COUNT(DISTINCT r.id)::int   AS rooms,
+             -- Склады не кабинеты: в плитке медцентра «кабинетов: 42» должно
+             -- означать помещения, а не помещения плюс склад и ремонт. Из
+             -- соединения они при этом не выкидываются — имущество, лежащее на
+             -- складе, принадлежит медцентру и в его суммы входит.
+             COUNT(DISTINCT r.id) FILTER (WHERE r."isService" = FALSE)::int AS rooms,
              COUNT(DISTINCT a.id)::int   AS assets,
              COALESCE(SUM(DISTINCT 0), 0) AS zero,
              (SELECT COALESCE(SUM(a2."initialCost"), 0) FROM warehouse_assets a2
@@ -231,8 +238,9 @@ router.get('/overview', authenticate, requireWarehouse(), async (req, res) => {
                WHERE r3."medCenterId" = mc.id AND m.status <> 'done'
                  AND m."plannedDate" < CURRENT_DATE) AS "overdueMaintenance"
       FROM med_centers mc
-      LEFT JOIN warehouse_buildings bld ON bld."medCenterId" = mc.id AND bld."isActive" = TRUE
-      LEFT JOIN warehouse_floors f      ON f."buildingId" = bld.id
+      -- Этаж принадлежит медцентру напрямую (ver. 7.48): считать их через
+      -- корпуса теперь нельзя — у новых этажей корпуса нет вовсе.
+      LEFT JOIN warehouse_floors f      ON f."medCenterId" = mc.id
       LEFT JOIN warehouse_rooms r       ON r."medCenterId" = mc.id AND r."isActive" = TRUE
       LEFT JOIN warehouse_assets a      ON a."roomId" = r.id AND a."isArchived" = FALSE
       WHERE mc."isActive" = TRUE AND mc."isVirtual" = FALSE

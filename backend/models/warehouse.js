@@ -35,7 +35,13 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
 
   const WhFloor = sequelize.define('WhFloor', {
     id:            { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    buildingId:    { type: DataTypes.UUID, allowNull: false },
+    // Медцентр напрямую (ver. 7.48). Уровень корпуса убран из работы: спуск
+    // «медцентр → корпус → этаж → кабинет» на живых пользователях не проходил
+    // никто — человек знает свой этаж, а корпус вспоминает не всегда.
+    medCenterId:   { type: DataTypes.UUID },
+    // Остался, чтобы было видно, из какого корпуса этаж пришёл, и чтобы прежнюю
+    // структуру можно было восстановить. Новые этажи заводятся без него.
+    buildingId:    { type: DataTypes.UUID },
     number:        { type: DataTypes.INTEGER, allowNull: false },
     name:          { type: DataTypes.STRING(120) },
     // Габариты плана в метрах: кабинеты рисуются в тех же единицах, из них же
@@ -81,6 +87,17 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     workingDays:       { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 5 },
     // Полигон на плане этажа в метрах: {points:[[x,y],…], label:{x,y}}
     plan:              { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+    // Служебное место медцентра — склад, ремонт и всё, что заведут после них
+    // (ver. 7.47). Это тот же кабинет по всей механике учёта: остатки, места
+    // хранения, движения, МОЛ, опись и отчёты работают по roomId, и отдельная
+    // сущность заставила бы продублировать каждый из этих путей. Отличий ровно
+    // два, и оба следуют из того, что физического помещения за ним нет: этажа у
+    // него не бывает, и в аналитику посещаемости он не входит.
+    isService:         { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Какое быстрое действие сюда ведёт: 'warehouse' — кнопка «На склад»,
+    // 'repair' — уход в ремонт. Пусто у складов, заведённых руками сверх этих
+    // двух: они обычные места хранения, просто без своей кнопки.
+    serviceKind:       { type: DataTypes.STRING(20) },
     publicToken:       { type: DataTypes.STRING(40) },
     isActive:          { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   }, { ...ts, tableName: 'warehouse_rooms' });
@@ -311,6 +328,11 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     // покажет десятки «не синхронизировано» на пустом месте.
     oneCStatus:    { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'disabled' },
     oneCError:     { type: DataTypes.TEXT },
+    // Документ, который этот сторнирует (ver. 7.50). Отмена оформляется
+    // встречным документом, а не удалением: удалённая проводка уносит из
+    // истории и саму ошибку, и то, что её исправили, — а отчёт № 2 обязан
+    // показывать обе записи.
+    reversalOfId:  { type: DataTypes.UUID },
   }, { ...ts, tableName: 'warehouse_documents' });
 
   const WhMovement = sequelize.define('WhMovement', {
@@ -755,6 +777,9 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhBuilding.hasMany(WhFloor, { foreignKey: 'buildingId', as: 'floors', onDelete: 'CASCADE' });
     WhFloor.belongsTo(WhBuilding, { foreignKey: 'buildingId', as: 'building' });
 
+    WhFloor.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+    MedCenter.hasMany(WhFloor, { foreignKey: 'medCenterId', as: 'whFloors' });
+
     WhFloor.hasMany(WhRoom, { foreignKey: 'floorId', as: 'rooms', onDelete: 'SET NULL' });
     WhRoom.belongsTo(WhFloor, { foreignKey: 'floorId', as: 'floor' });
     MedCenter.hasMany(WhRoom, { foreignKey: 'medCenterId', as: 'whRooms' });
@@ -823,6 +848,10 @@ module.exports = function defineWarehouseModels(sequelize, DataTypes) {
     WhDocument.belongsTo(WhRoom, { foreignKey: 'toRoomId', as: 'toRoom' });
     WhDocument.belongsTo(WhContractor, { foreignKey: 'contractorId', as: 'contractor' });
     WhDocument.hasMany(WhMovement, { foreignKey: 'documentId', as: 'movements', onDelete: 'CASCADE' });
+    // Пара «что отменили» ↔ «чем отменили»: по ней список операций помечает
+    // сторнированные документы, не спрашивая базу построчно.
+    WhDocument.belongsTo(WhDocument, { foreignKey: 'reversalOfId', as: 'reversalOf' });
+    WhDocument.hasOne(WhDocument, { foreignKey: 'reversalOfId', as: 'reversedBy' });
 
     WhMovement.belongsTo(WhDocument, { foreignKey: 'documentId', as: 'document' });
     WhMovement.belongsTo(WhAsset, { foreignKey: 'assetId', as: 'asset' });

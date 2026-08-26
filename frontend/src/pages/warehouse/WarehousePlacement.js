@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ArrowRight, DoorOpen, Package, RefreshCw, Search, Trash2 } from 'lucide-react';
+import {
+  ArrowRight, ClipboardList, DoorOpen, Package, RefreshCw, Search, Trash2,
+} from 'lucide-react';
 import { warehouseApi } from '../../services/api';
 import LocationPicker from './components/LocationPicker';
 import Pagination from './components/Pagination';
@@ -41,6 +43,15 @@ const hasStorage = room => (room.storages || []).length > 0;
 function flattenRooms(tree) {
   const out = [];
   for (const mc of tree?.medCenters || []) {
+    // Склады раскладываются наравне с кабинетами (ver. 7.47): резерв и то, что
+    // лежит на складе, — такая же часть ведомости, и без них очередь размещения
+    // никогда не сойдётся в ноль.
+    for (const r of mc.services || []) {
+      out.push({
+        id: r.id, storages: r.storages || [],
+        label: `${mc.name} · ${r.name || r.number}`,
+      });
+    }
     for (const r of mc.rooms || []) {
       out.push({
         id: r.id, storages: r.storages || [],
@@ -48,16 +59,16 @@ function flattenRooms(tree) {
           + (r.name && r.name !== r.number ? ` — ${r.name}` : ''),
       });
     }
-    for (const b of mc.buildings || []) {
-      for (const f of b.floors || []) {
-        for (const r of f.rooms || []) {
-          out.push({
-            id: r.id,
-            storages: r.storages || [],
-            label: `${b.name} · ${f.number} эт. · Каб. ${r.number}`
-              + (r.name && r.name !== r.number ? ` — ${r.name}` : ''),
-          });
-        }
+    // Этажи прямо под медцентром (ver. 7.48): корпусов в подписи больше нет,
+    // их место занял номер этажа с его собственным названием.
+    for (const f of mc.floors || []) {
+      for (const r of f.rooms || []) {
+        out.push({
+          id: r.id,
+          storages: r.storages || [],
+          label: `${f.number} эт.${f.name ? ` (${f.name})` : ''} · Каб. ${r.number}`
+            + (r.name && r.name !== r.number ? ` — ${r.name}` : ''),
+        });
       }
     }
   }
@@ -84,6 +95,11 @@ export default function WarehousePlacement({ access, tree, onDone }) {
   // добраться, и разложить ведомость до конца было нельзя в принципе.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  // Кабинеты, закрытые сейчас пересчётом: Map(roomId → номер описи). Правило
+  // считает сервер (services/warehouse/inventory.js), экран только показывает
+  // его заранее — отказ на кнопке «Положить сюда» человек читает уже после
+  // того, как отметил в очереди два десятка позиций.
+  const [frozen, setFrozen] = useState(new Map());
 
   const rooms = useMemo(() => flattenRooms(tree), [tree]);
   const canEdit = Boolean(access?.capabilities?.canImportOsv);
@@ -104,6 +120,14 @@ export default function WarehousePlacement({ access, tree, onDone }) {
   }, [q, branch, kind, mode, page, pageSize]);
 
   useEffect(() => { setPage(1); }, [q, branch, kind, mode]);
+
+  useEffect(() => {
+    warehouseApi.frozenRooms()
+      .then(({ data }) => setFrozen(new Map((data.items || []).map(x => [x.roomId, x.number]))))
+      // Молча: без этого списка экран работает, просто предупреждение придёт
+      // от сервера в момент отправки.
+      .catch(() => {});
+  }, []);
 
   const loadRoom = useCallback(async () => {
     if (!roomId) { setInRoom(null); return; }
@@ -132,9 +156,12 @@ export default function WarehousePlacement({ access, tree, onDone }) {
     setPicked((prev) => {
       const next = new Map(prev);
       if (next.has(item.lineKey)) next.delete(item.lineKey);
-      // Пустое значение означает «весь остаток»: в девяти случаях из десяти
-      // позиция целиком лежит там, где на неё смотрят.
-      else next.set(item.lineKey, '');
+      // Единица, а не весь остаток (ver. 7.46). Прежнее правило исходило из
+      // того, что позиция целиком лежит там, где на неё смотрят; на деле вещи
+      // в кабинетах стоят поштучно, и одна галочка без ввода числа записывала
+      // на кабинет все пятьдесят единиц строки — молча, а после разбора это
+      // снимается только перемещением.
+      else next.set(item.lineKey, '1');
       return next;
     });
   };
@@ -157,11 +184,27 @@ export default function WarehousePlacement({ access, tree, onDone }) {
           lineKey, quantity: quantity === '' ? null : Number(quantity),
         })),
       });
-      if (data.rejected?.length) {
+      // Разбор идёт вместе с размещением (ver. 7.46), поэтому в ответе есть
+      // чем отчитаться: раньше здесь честно писалось «размещено», а в кабинете
+      // до общего прогона не появлялось ничего — и выглядело это как операция,
+      // которая когда-нибудь применится сама.
+      const made = data.materialized;
+      const done = [
+        made?.assetsCreated && `заведено карточек: ${made.assetsCreated}`,
+        made?.stockReceipts && `позиций материалов: ${made.stockReceipts}`,
+      ].filter(Boolean).join(', ');
+
+      if (made?.failed) {
+        toast(`Размещено ${data.saved}, но разбор не прошёл: ${made.failed}`,
+          { icon: '⚠️', duration: 9000 });
+      } else if (data.rejected?.length) {
         toast(`Размещено ${data.saved}, пропущено ${data.rejected.length}: `
           + data.rejected[0].reason, { icon: '⚠️', duration: 7000 });
       } else {
-        toast.success(`Размещено позиций: ${data.saved}`);
+        toast.success(`Размещено позиций: ${data.saved}${done ? ` — ${done}` : ''}`);
+      }
+      if (made?.problems?.length) {
+        toast(made.problems[0].reason, { icon: '⚠️', duration: 9000 });
       }
       setPicked(new Map());
       await Promise.all([loadQueue(), loadRoom()]);
@@ -193,6 +236,7 @@ export default function WarehousePlacement({ access, tree, onDone }) {
     );
   }
 
+  const counting = frozen.get(roomId) || null;
   const t = queue.totals;
   const totalUnits = (t?.placedUnits || 0) + (t?.unplacedUnits || 0);
   const percent = totalUnits ? Math.round((t.placedUnits / totalUnits) * 100) : 0;
@@ -240,11 +284,22 @@ export default function WarehousePlacement({ access, tree, onDone }) {
             }}
           />
         </label>
-        <button className="wh-btn wh-btn--primary" disabled={!canEdit || !roomId || !picked.size || sending}
+        <button className="wh-btn wh-btn--primary"
+                disabled={!canEdit || !roomId || !picked.size || sending || Boolean(counting)}
                 onClick={send}>
           <ArrowRight size={15} /> {sending ? 'Размещаю…' : `Положить сюда (${picked.size})`}
         </button>
       </div>
+
+      {/* Пока по кабинету идёт пересчёт, размещение в него запрещено: разбор
+          кладёт остаток на полку, которую в эту минуту считает комиссия. */}
+      {Boolean(counting) && (
+        <div className="wh-place__frozen">
+          <ClipboardList size={15} />
+          Идёт инвентаризация {counting} — размещение в этот кабинет закрыто,
+          пока опись не закроют.
+        </div>
+      )}
 
       <div className="wh-place__sections">
         <div className="wh-place__queue">

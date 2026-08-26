@@ -61,19 +61,18 @@ const SHAPE_GROUPS = [
   },
 ];
 
-const EMPTY_SELECTION = { mcId: null, buildingId: null, floorId: null };
+const EMPTY_SELECTION = { mcId: null, floorId: null };
 
 export default function FloorPlanEditor({
   tree, departments, onReloadTree, initialSelection, onExit,
 }) {
-  // Место открытия приходит с карты: человек уже выбрал там медцентр, корпус и
-  // этаж, и заставлять его повторить тот же выбор тремя селектами — единственное,
-  // чем оправдывалась отдельная вкладка «Планы помещений». Пустой initialSelection
+  // Место открытия приходит с карты: человек уже выбрал там медцентр и этаж, и
+  // заставлять его повторить тот же выбор селектами — единственное, чем
+  // оправдывалась отдельная вкладка «Планы помещений». Пустой initialSelection
   // (вход «просто в планы») по-прежнему подхватывает первый медцентр ниже.
   const [selection, setSelection] = useState(() => ({
     ...EMPTY_SELECTION,
     mcId: initialSelection?.mcId || null,
-    buildingId: initialSelection?.buildingId || null,
     floorId: initialSelection?.floorId || null,
   }));
   const [plan, setPlan] = useState(null);
@@ -102,22 +101,18 @@ export default function FloorPlanEditor({
 
   const medCenters = tree?.medCenters || [];
   const mc = medCenters.find(m => m.id === selection.mcId);
-  const building = mc?.buildings?.find(b => b.id === selection.buildingId);
+  const mcFloors = (mc?.floors || []).slice().sort((a, z) => a.number - z.number);
   const currentDepartments = (departments || []).filter(d => d.medCenterId === selection.mcId);
 
   // Базовый контекст — сам медцентр. Корпус и этаж не подставляются автоматически:
   // это необязательное усложнение структуры, а не обязательный путь до помещения.
   useEffect(() => {
     if (selection.mcId || !medCenters.length) return;
-    setSelection({
-      mcId: medCenters[0]?.id || null,
-      buildingId: null,
-      floorId: null,
-    });
+    setSelection({ mcId: medCenters[0]?.id || null, floorId: null });
   }, [medCenters, selection.mcId]);
 
-  const loadPlan = useCallback(async ({ mcId, buildingId, floorId }) => {
-    if (!mcId || (buildingId && !floorId)) { setPlan(null); return; }
+  const loadPlan = useCallback(async ({ mcId, floorId }) => {
+    if (!mcId) { setPlan(null); return; }
     try {
       const { data } = floorId
         ? await warehouseApi.floorPlan(floorId)
@@ -131,7 +126,7 @@ export default function FloorPlanEditor({
     }
   }, []);
 
-  useEffect(() => { loadPlan(selection); }, [selection.mcId, selection.buildingId, selection.floorId, loadPlan]);
+  useEffect(() => { loadPlan(selection); }, [selection.mcId, selection.floorId, loadPlan]);
 
   const selectedRoom = useMemo(
     () => (selected.kind === 'room' ? plan?.rooms?.find(r => r.id === selected.id) : null) || null,
@@ -742,14 +737,8 @@ export default function FloorPlanEditor({
   // ── Создание локаций ───────────────────────────────────────────────────────
   const submitModal = async (form) => {
     try {
-      if (modal.type === 'building') {
-        await warehouseApi.createBuilding({ medCenterId: selection.mcId, ...form });
-        toast.success('Корпус добавлен');
-      } else if (modal.type === 'building-edit') {
-        await warehouseApi.updateBuilding(modal.id, form);
-        toast.success('Корпус обновлён');
-      } else if (modal.type === 'floor') {
-        const { data } = await warehouseApi.createFloor({ buildingId: selection.buildingId, ...form });
+      if (modal.type === 'floor') {
+        const { data } = await warehouseApi.createFloor({ medCenterId: selection.mcId, ...form });
         toast.success('Этаж добавлен');
         await onReloadTree?.();
         setSelection(s => ({ ...s, floorId: data.id }));
@@ -809,18 +798,6 @@ export default function FloorPlanEditor({
     }
   };
 
-  const removeBuilding = async (buildingId) => {
-    if (!window.confirm('Отключить корпус? Он скроется из списков, история сохранится.')) return;
-    try {
-      await warehouseApi.deleteBuilding(buildingId);
-      toast.success('Корпус отключён');
-      setSelection(s => ({ ...s, buildingId: null, floorId: null }));
-      await onReloadTree?.();
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'Не удалось отключить корпус');
-    }
-  };
-
   const roomsWithoutPlan = (plan?.rooms || []).filter(r => !hasGeometry(r));
   const roomsWithoutMis = (plan?.rooms || []).filter(r => !(r.misRoomAliases || []).length);
   const technicalShapes = (plan?.shapes || []).filter(s => s.isTechnical !== false);
@@ -868,55 +845,31 @@ export default function FloorPlanEditor({
           <div className="wh-field">
             <label>Медцентр</label>
             <select value={selection.mcId || ''} onChange={e => {
-              setSelection({ mcId: e.target.value, buildingId: null, floorId: null });
+              setSelection({ mcId: e.target.value, floorId: null });
             }}>
               <option value="">—</option>
               {medCenters.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
 
-          <div className="wh-field">
-            <label>Корпус</label>
-            <div className="wh-field__row">
-              <select value={selection.buildingId || ''} onChange={e => {
-                const b = mc?.buildings?.find(x => x.id === e.target.value);
-                setSelection(s => ({ ...s, buildingId: e.target.value, floorId: b?.floors?.[0]?.id || null }));
-              }}>
-                <option value="">—</option>
-                {(mc?.buildings || []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-              <button className="wh-icon-btn" title="Добавить корпус" disabled={!selection.mcId}
-                      onClick={() => setModal({ type: 'building', title: 'Новый корпус', form: { name: '', code: '', address: '' } })}>
-                <Plus size={15} />
-              </button>
-              {building && (
-                <>
-                  <button className="wh-icon-btn" title="Переименовать корпус"
-                          onClick={() => setModal({ type: 'building-edit', id: building.id, title: 'Корпус', form: { name: building.name, code: building.code || '', address: building.address || '' } })}>
-                    <Pencil size={14} />
-                  </button>
-                  <button className="wh-icon-btn wh-icon-btn--danger" title="Отключить корпус"
-                          onClick={() => removeBuilding(building.id)}>
-                    <Trash2 size={14} />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
+          {/* Выбор корпуса убран (ver. 7.48): этажи принадлежат медцентру
+              напрямую. Названия этажей после отказа от корпусов различают
+              бывшие «4 этаж» из разных зданий. */}
           <div className="wh-field">
             <label>Этаж</label>
             <div className="wh-field__row">
               <select value={selection.floorId || ''}
                       onChange={e => setSelection(s => ({ ...s, floorId: e.target.value }))}>
                 <option value="">—</option>
-                {(building?.floors || []).map(f => (
-                  <option key={f.id} value={f.id}>{f.name || `${f.number} этаж`}</option>
+                {mcFloors.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.name ? `${f.number} этаж — ${f.name}` : `${f.number} этаж`}
+                  </option>
                 ))}
               </select>
-              <button className="wh-icon-btn" title="Добавить этаж" disabled={!selection.buildingId}
+              <button className="wh-icon-btn" title="Добавить этаж" disabled={!selection.mcId}
                       onClick={() => {
-                        const next = Math.max(0, ...(building?.floors || []).map(f => f.number)) + 1;
+                        const next = Math.max(0, ...mcFloors.map(f => f.number)) + 1;
                         setModal({ type: 'floor', title: 'Новый этаж', form: { number: next, name: '' } });
                       }}>
                 <Plus size={15} />
@@ -1220,8 +1173,8 @@ export default function FloorPlanEditor({
             </>
           ) : (
             <div className="wh-empty">
-              {selection.buildingId
-                ? 'Выберите или добавьте этаж либо очистите корпус для общей схемы медцентра'
+              {selection.mcId
+                ? 'Выберите или добавьте этаж — либо оставьте его пустым, чтобы править общую схему медцентра'
                 : 'Выберите медцентр'}
             </div>
           )}
@@ -1693,16 +1646,6 @@ function LocationModal({ modal, departments, onClose, onSubmit }) {
   }, [modal.type]);
 
   const fields = {
-    building: [
-      ['name', 'Название корпуса', 'text', true],
-      ['code', 'Код (A, B…)', 'text'],
-      ['address', 'Адрес', 'text'],
-    ],
-    'building-edit': [
-      ['name', 'Название корпуса', 'text', true],
-      ['code', 'Код', 'text'],
-      ['address', 'Адрес', 'text'],
-    ],
     // Габариты листа из формы этажа убраны: они считаются по нарисованной схеме
     // при сохранении плана. Пока их спрашивали здесь, человек задавал размер
     // здания до того, как увидел здание, — и потом упирался в него как в стену.

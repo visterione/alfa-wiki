@@ -21,6 +21,17 @@ const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse } = require('../../services/warehouse/access');
 const { reconcileStock, attachBatchToStock } = require('../../services/warehouse/stock');
 const { assertNotCounting } = require('../../services/warehouse/inventory');
+const { searchWhere } = require('../../services/warehouse/search');
+
+/**
+ * Потолок списка остатков.
+ *
+ * Список читают глазами и фильтруют — выгружают его отчётом, а не этой ручкой,
+ * поэтому потолок остаётся. Важно другое: он применяется к найденному, а не к
+ * тому, среди чего ищут (см. поиск ниже), и о том, что упёрлись, экран говорит
+ * вслух.
+ */
+const STOCK_LIMIT = 2000;
 
 // ── Категории ────────────────────────────────────────────────────────────────
 router.get('/categories', authenticate, requireWarehouse(), async (req, res) => {
@@ -88,12 +99,8 @@ router.get('/nomenclature', authenticate, requireWarehouse(), async (req, res) =
     const where = { isActive: true };
     if (categoryId) where.categoryId = categoryId;
     if (isMedicine === 'true') where.isMedicine = true;
-    if (q) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${q}%` } },
-        { code: { [Op.iLike]: `%${q}%` } },
-      ];
-    }
+    const found = searchWhere(q, ['WhNomenclature.name', 'WhNomenclature.code']);
+    if (found) Object.assign(where, found);
     const rows = await WhNomenclature.findAndCountAll({
       where,
       include: [
@@ -212,7 +219,7 @@ router.patch('/batches/:id/block', authenticate, requireWarehouse('canManageCata
 // ── Остатки ──────────────────────────────────────────────────────────────────
 router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
   try {
-    const { roomId, storageId, nomenclatureId, belowMinimum, includeZero } = req.query;
+    const { roomId, storageId, nomenclatureId, belowMinimum, includeZero, q } = req.query;
 
     const scoped = await req.warehouse.scopedRoomIds();
     const roomFilter = [];
@@ -224,10 +231,28 @@ router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
     if (storageId) where.storageId = storageId;
     if (includeZero !== 'true') where.quantity = { [Op.gt]: 0 };
 
+    /**
+     * Поиск считает база, а не экран (ver. 7.49).
+     *
+     * Раньше сюда приходили первые две тысячи строк остатка, а искал по ним
+     * фильтр на клиенте. На реальной базе строк больше, и человек, набравший
+     * «компьютер», видел только те совпадения, что попали в загруженный кусок:
+     * позиции пропадали без всякой причины — ни опечатки, ни фильтра.
+     *
+     * Ограничение осталось (список читают глазами, а не выгружают), но теперь
+     * оно применяется к НАЙДЕННОМУ, а не к тому, среди чего ищут.
+     */
+    const found = searchWhere(q, ['nomenclature.name', 'nomenclature.code']);
+
     const rows = await WhStock.findAll({
       where,
       include: [
-        { model: WhNomenclature, as: 'nomenclature', attributes: ['id', 'code', 'name', 'unit', 'packUnit', 'isMedicine', 'isSterile'] },
+        {
+          model: WhNomenclature, as: 'nomenclature',
+          attributes: ['id', 'code', 'name', 'unit', 'packUnit', 'isMedicine', 'isSterile'],
+          required: Boolean(found),
+          where: found || undefined,
+        },
         { model: WhBatch, as: 'batch', attributes: ['id', 'batchNumber', 'expiryDate', 'isBlocked'] },
         {
           model: WhStorage, as: 'storage',
@@ -243,7 +268,7 @@ router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
         },
       ],
       order: [['updatedAt', 'DESC']],
-      limit: 2000,
+      limit: STOCK_LIMIT,
     });
 
     // Минимумы подмешиваем отдельно: правило может быть задано на кабинет, на
@@ -293,6 +318,10 @@ router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
     res.json({
       total: items.length,
       totalValue: Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100,
+      // Список упёрся в потолок — значит показано не всё. Молчать об этом
+      // нельзя: именно так и выглядела пропажа позиций из поиска.
+      truncated: rows.length >= STOCK_LIMIT,
+      limit: STOCK_LIMIT,
       items,
     });
   } catch (err) {
@@ -365,7 +394,7 @@ router.get('/reorder-rules', authenticate, requireWarehouse(), async (req, res) 
   const rows = await WhReorderRule.findAll({
     include: [
       { model: WhNomenclature, as: 'nomenclature', attributes: ['id', 'code', 'name', 'unit'] },
-      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
+      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'] },
       { model: WhStorage, as: 'storage', attributes: ['id', 'name'] },
     ],
     order: [['createdAt', 'DESC']],
@@ -521,7 +550,7 @@ router.get('/norms', authenticate, requireWarehouse(), async (req, res) => {
     include: [
       { model: WhNomenclature, as: 'nomenclature', attributes: ['id', 'code', 'name', 'unit'] },
       { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },
-      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name'] },
+      { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'] },
     ],
     order: [['createdAt', 'DESC']],
   });

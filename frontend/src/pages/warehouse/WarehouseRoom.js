@@ -4,9 +4,10 @@ import {
   ArrowLeft, Package, Boxes, CalendarClock, Wrench, QrCode, Printer, RefreshCw,
   Activity, AlertTriangle, Search, FileText, X, MapPin, User as UserIcon, Check,
   Download,
-  Undo2,
+  Undo2, ClipboardList,
 } from 'lucide-react';
 import { warehouseApi } from '../../services/api';
+import { matchesSearch } from './components/search';
 
 /**
  * Дашборд кабинета — отчёт № 7 из ТЗ.
@@ -125,13 +126,9 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
       const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
       rows = rows.filter(a => a.nextMaintenanceDate && a.nextMaintenanceDate <= soon);
     }
-    if (q) {
-      const needle = q.toLowerCase();
-      rows = rows.filter(a =>
-        a.name?.toLowerCase().includes(needle) ||
-        a.model?.toLowerCase().includes(needle) ||
-        a.inventoryNumber?.toLowerCase().includes(needle));
-    }
+    // Тем же правилом, что и на сервере: слова в любом порядке, «ё» и «е» не
+    // различаются (components/search.js).
+    if (q) rows = rows.filter(a => matchesSearch(q, [a.name, a.model, a.inventoryNumber]));
     return rows;
   }, [data, filter, q]);
 
@@ -140,10 +137,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
     let rows = data.stock;
     if (filter === 'expired') rows = rows.filter(s => s.expired || s.expiringSoon);
     if (filter === 'belowMin') rows = rows.filter(s => s.stockStatus === 'below');
-    if (q) {
-      const needle = q.toLowerCase();
-      rows = rows.filter(s => s.name?.toLowerCase().includes(needle));
-    }
+    if (q) rows = rows.filter(s => matchesSearch(q, [s.name, s.batchNumber, s.storageName]));
     return rows;
   }, [data, filter, q]);
 
@@ -173,6 +167,15 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
             <UserIcon size={11} /> МОЛ: {room.responsible?.displayName || 'не назначен'}
             {refreshedAt && ` · обновлено ${refreshedAt.toLocaleTimeString('ru-RU')}`}
           </div>
+          {/* Открытая опись стоит в шапке, а не только в «Требуют внимания»
+              внизу: пока она идёт, по кабинету не пройдёт ни одна операция, и
+              это первое, что надо знать зашедшему сюда. */}
+          {Boolean(room.counting) && (
+            <div className="wh-room__counting">
+              <ClipboardList size={12} /> Идёт инвентаризация {room.counting.number} —
+              операции по кабинету закрыты до её закрытия
+            </div>
+          )}
         </div>
         <div className="wh-room__actions">
           <button className="wh-btn wh-btn--secondary" onClick={() => load()}>
@@ -185,7 +188,7 @@ export default function WarehouseRoom({ roomId, access, onBack }) {
               что разбор ведомости завёл в этот кабинет, и возвращает строки в
               очередь размещения. Условие, при котором это надо убрать, —
               в backend/services/warehouse/osvRollback.js */}
-          {access?.isAdmin && (
+          {access?.isAdmin && !room.counting && (
             <button className="wh-btn wh-btn--danger-ghost" disabled={rollingBack}
                     onClick={rollback}>
               <Undo2 size={15} /> {rollingBack ? 'Отменяю…' : 'Отменить размещение'}

@@ -22,10 +22,10 @@
  */
 import React, {useCallback, useLayoutEffect, useState} from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, useWindowDimensions,
+  View, Text, ScrollView, Pressable, StyleSheet, Alert, useWindowDimensions,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {DoorOpen, Printer, Pencil} from 'lucide-react-native';
+import {DoorOpen, Printer, Pencil, Boxes, Wrench, Undo2} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
@@ -36,6 +36,12 @@ import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan} from '../../store/warehouseStore';
 import {ASSET_STATUS, statusColor, moneyText, dateText, roomText} from './warehouseMeta';
+
+/**
+ * Что отменяется кнопкой. Приход и списание сюда не входят намеренно — почему,
+ * см. backend/services/warehouse/reversal.js.
+ */
+const REVERSIBLE = new Set(['transfer', 'issue', 'return', 'repair_out', 'repair_in']);
 
 const MOVEMENT_LABELS = {
   receipt: 'Приём', issue: 'Выдача', transfer: 'Перемещение', return: 'Возврат',
@@ -54,8 +60,12 @@ export default function WarehouseAssetScreen({route, navigation}) {
   // человек упрётся в 403 уже после того, как подошёл к принтеру.
   const canPrint = useWarehouseCan('canPrintLabels');
   const canEdit = useWarehouseCan('canManageAssets');
+  // Переезд — это операция учёта, а не правка карточки: право на него своё.
+  const canIssue = useWarehouseCan('canIssue');
+  const canMaintenance = useWarehouseCan('canMaintenance');
   const [tab, setTab] = useState('main');
   const [loading, setLoading] = useState(true);
+  const [moving, setMoving] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -70,6 +80,90 @@ export default function WarehouseAssetScreen({route, navigation}) {
   }, [assetId]));
 
   const asset = data?.asset;
+
+  const reload = useCallback(() => {
+    warehouseApi.asset(assetId).then(({data: payload}) => setData(payload)).catch(() => {});
+  }, [assetId]);
+
+  /**
+   * Быстрый переезд: на склад, в ремонт и обратно (ver. 7.47).
+   *
+   * Через общую форму документа это возможно и так, но «убрать в резерв» и
+   * «вернуть на место» — движения ежедневные и делаются руками у самого прибора.
+   * Форма из четырёх полей ради них означает, что их просто не оформят: вещь
+   * уедет, а в портале останется в кабинете.
+   *
+   * Возврат из ремонта идёт закрытием ремонта, а не перемещением: иначе прибор
+   * приедет в кабинет, оставшись со статусом «в ремонте», и по нему нельзя будет
+   * открыть следующий ремонт.
+   */
+  const openRepair = data?.repairs?.find(r => !r.finishedAt) || null;
+  const inService = Boolean(asset?.room?.isService);
+
+  const run = async (title, action) => {
+    setMoving(true);
+    try {
+      await action();
+      reload();
+    } catch (e) {
+      Alert.alert(title, e?.response?.data?.error || 'Попробуйте ещё раз.');
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const toService = serviceKind => run('Не перемещено',
+    () => warehouseApi.placeAsset(assetId, {serviceKind}));
+
+  const backToRoom = () => run('Не перемещено', () => warehouseApi.placeAsset(assetId, {}));
+
+  const toRepair = () => Alert.alert(
+    'Отдать в ремонт?',
+    'Прибор переедет на склад «Ремонт» своего медцентра, а после закрытия ремонта '
+    + 'вернётся в кабинет, откуда его забрали.',
+    [
+      {text: 'Отмена', style: 'cancel'},
+      {
+        text: 'В ремонт',
+        onPress: () => run('Не отдано в ремонт', () => warehouseApi.createRepair({
+          assetId,
+          startedAt: new Date().toISOString().slice(0, 10),
+        })),
+      },
+    ],
+  );
+
+  const fromRepair = () => run('Не возвращено', () => warehouseApi.closeRepair(openRepair.id, {
+    result: 'repaired',
+  }));
+
+  /**
+   * Отмена последней операции по прибору (ver. 7.50).
+   *
+   * Кнопка стоит здесь, а не только в журнале операций, потому что промах
+   * замечают, глядя на сам прибор: «я его только что не туда отправил».
+   * Отменяется именно последняя операция — если после неё что-то было, сервер
+   * откажет и назовёт причину; проверять это на телефоне значит держать копию
+   * правила, которая однажды разойдётся с настоящим.
+   */
+  const lastMove = data?.movements?.[0] || null;
+  const undoable = lastMove?.documentId && REVERSIBLE.has(lastMove.type);
+
+  const undoLast = () => Alert.alert(
+    'Отменить последнюю операцию?',
+    `${MOVEMENT_LABELS[lastMove.type] || lastMove.type}`
+    + `${lastMove.fromRoom ? ` из ${roomText(lastMove.fromRoom)}` : ''}`
+    + `${lastMove.toRoom ? ` в ${roomText(lastMove.toRoom)}` : ''}.`
+    + '\nБудет проведён встречный документ — сама операция останется в истории.',
+    [
+      {text: 'Нет', style: 'cancel'},
+      {
+        text: 'Отменить операцию',
+        style: 'destructive',
+        onPress: () => run('Не отменено', () => warehouseApi.reverseDocument(lastMove.documentId)),
+      },
+    ],
+  );
 
   /**
    * Карандаш и дверь в шапке. Дверь ведёт в кабинет прибора — тот же переход,
@@ -221,6 +315,54 @@ export default function WarehouseAssetScreen({route, navigation}) {
         </View>
       </View>
 
+      {/* Быстрый переезд. Кнопки зависят от того, где прибор стоит: держать все
+          четыре сразу значит показывать «вернуть в кабинет» тому, кто и так
+          стоит с прибором в кабинете. */}
+      {(canIssue || canMaintenance) && !asset.isArchived && asset.status !== 'written_off' && (
+        <View style={styles.quickRow}>
+          {openRepair ? (
+            canMaintenance && (
+              <Pressable style={styles.quickBtn} disabled={moving} onPress={fromRepair}>
+                <Undo2 size={16} color={c.primary} />
+                <Text style={styles.quickText}>Из ремонта</Text>
+              </Pressable>
+            )
+          ) : (
+            <>
+              {canIssue && (inService ? (
+                <Pressable style={styles.quickBtn} disabled={moving} onPress={backToRoom}>
+                  <Undo2 size={16} color={c.primary} />
+                  <Text style={styles.quickText}>Вернуть в кабинет</Text>
+                </Pressable>
+              ) : (
+                <Pressable style={styles.quickBtn} disabled={moving} onPress={() => toService('warehouse')}>
+                  <Boxes size={16} color={c.primary} />
+                  <Text style={styles.quickText}>На склад</Text>
+                </Pressable>
+              ))}
+              {canMaintenance && (
+                <Pressable style={styles.quickBtn} disabled={moving} onPress={toRepair}>
+                  <Wrench size={16} color={c.primary} />
+                  <Text style={styles.quickText}>В ремонт</Text>
+                </Pressable>
+              )}
+            </>
+          )}
+        </View>
+      )}
+
+      {/* Отмена — отдельной строкой и приглушённой: это исправление ошибки, а
+          не повседневное действие, и стоять наравне с «На склад» ей незачем. */}
+      {canIssue && undoable && !asset.isArchived && (
+        <Pressable style={styles.undoBtn} disabled={moving} onPress={undoLast}>
+          <Undo2 size={15} color={c.error} />
+          <Text style={styles.undoText}>
+            Отменить: {(MOVEMENT_LABELS[lastMove.type] || lastMove.type).toLowerCase()}
+            {lastMove.toRoom ? ` в ${roomText(lastMove.toRoom).toLowerCase()}` : ''}
+          </Text>
+        </Pressable>
+      )}
+
       {/* Этикетка показывается как есть, а не строкой «напечатать». Стоя перед
           прибором, человек сверяет наклейку на нём с той, что в портале: у
           старого имущества номер на ленте затёрт, а иногда и вовсе не тот. */}
@@ -278,6 +420,20 @@ const makeStyles = c => StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 24,
   },
+  quickRow: {flexDirection: 'row', gap: 8, marginBottom: 14},
+  quickBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 7, paddingVertical: 12, paddingHorizontal: 10,
+    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+  },
+  quickText: {fontFamily: font.medium, fontSize: 13, color: c.primary},
+  undoBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 11, marginBottom: 14,
+    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+  },
+  undoText: {fontFamily: font.medium, fontSize: 13, color: c.error},
+
   labelCard: {
     backgroundColor: c.bgPrimary,
     borderRadius: radius.lg,

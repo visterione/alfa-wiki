@@ -219,20 +219,28 @@ function requireReport(code, mode = 'read') {
 }
 
 /**
- * Полный путь локации строкой: «Главный корпус / 3 этаж / Каб. 312».
+ * Полный путь локации строкой: «3 этаж / Хирургия / Каб. 312».
  * Нужен почти каждому отчёту, поэтому собран здесь один раз.
+ *
+ * Корпуса в пути больше нет (ver. 7.48): этаж принадлежит медцентру напрямую, а
+ * то, чем два одноимённых этажа отличаются друг от друга, теперь стоит в самом
+ * названии этажа.
  */
 async function roomPath(roomId) {
   const room = await WhRoom.findByPk(roomId, {
     include: [
-      { model: WhFloor, as: 'floor', include: [{ model: WhBuilding, as: 'building' }] },
+      { model: WhFloor, as: 'floor' },
       { model: WhDepartment, as: 'department' },
     ],
   });
   if (!room) return '';
+  // У склада этажа не бывает, и подпись у него своя: «Каб. Склад» читалось бы
+  // как ошибка ввода.
+  if (room.isService) {
+    return [room.department?.name, room.name || room.number].filter(Boolean).join(' / ');
+  }
   return [
-    room.floor?.building?.name,
-    room.floor ? `${room.floor.number} этаж` : null,
+    room.floor ? `${room.floor.number} этаж${room.floor.name ? ` — ${room.floor.name}` : ''}` : null,
     room.department?.name,
     `Каб. ${room.number}${room.name && room.name !== room.number ? ` — ${room.name}` : ''}`,
   ].filter(Boolean).join(' / ');

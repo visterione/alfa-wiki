@@ -33,7 +33,9 @@ import {
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {ChevronRight, Printer, Check, X, Undo2, Pencil, Plus} from 'lucide-react-native';
+import {
+  ChevronRight, Printer, Check, X, Undo2, Pencil, Plus, ClipboardList,
+} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
@@ -90,12 +92,16 @@ export default function WarehouseRoomScreen({route, navigation}) {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Опись, которой кабинет закрыт прямо сейчас (ver. 7.46). Приходит с
+  // дашбордом, отдельного запроса не нужно.
   const {room, cards, assets, stock} = useMemo(() => ({
     room: data?.room,
     cards: data?.cards,
     assets: data?.assets || [],
     stock: data?.stock || [],
   }), [data]);
+
+  const counting = room?.counting || null;
 
   /**
    * Шапка: «Каб. 434 (Архив) | МЦ Альфа».
@@ -107,7 +113,10 @@ export default function WarehouseRoomScreen({route, navigation}) {
   useLayoutEffect(() => {
     if (!room) return;
     const title = [
-      `Каб. ${room.number}${room.name && room.name !== room.number ? ` (${room.name})` : ''}`,
+      // У склада в заголовке одно название: «Каб. Склад» читается как ошибка.
+      room.isService
+        ? (room.name || room.number)
+        : `Каб. ${room.number}${room.name && room.name !== room.number ? ` (${room.name})` : ''}`,
       room.medCenter,
     ].filter(Boolean).join(' | ');
 
@@ -210,7 +219,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
 
   const assetsPage = (
     <View style={styles.page}>
-      {canAddAssets && !picking && addRow('Завести оборудование', 'asset')}
+      {canAddAssets && !picking && !counting && addRow('Завести оборудование', 'asset')}
       {/* Строка отбора появляется только у того, кому разрешена печать: у
           материалов этикеток нет вовсе. */}
       {canPrint && assets.length > 0 && (
@@ -270,13 +279,13 @@ export default function WarehouseRoomScreen({route, navigation}) {
 
   const stockPage = (
     <View style={styles.page}>
-      {canAddMaterials && addRow('Завести материал', 'material')}
+      {canAddMaterials && !counting && addRow('Завести материал', 'material')}
       <View style={styles.card}>
         {stock.map((item, index) => (
           <Pressable
             key={`${item.nomenclatureId}-${index}`}
             style={styles.row}
-            disabled={!canEditMaterials}
+            disabled={!canEditMaterials || Boolean(counting)}
             onPress={() => navigation.navigate('WarehouseMaterialEdit', {
               nomenclatureId: item.nomenclatureId,
               name: item.name,
@@ -299,7 +308,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
               ]}>
               {qtyText(item.quantity)} {item.unit}
             </Text>
-            {canEditMaterials && <Pencil size={14} color={c.textTertiary} />}
+            {canEditMaterials && !counting && <Pencil size={14} color={c.textTertiary} />}
           </Pressable>
         ))}
         {!stock.length && <Text style={styles.none}>Материалов в кабинете нет</Text>}
@@ -315,6 +324,20 @@ export default function WarehouseRoomScreen({route, navigation}) {
           styles.content,
           {paddingBottom: insets.bottom + (picking && checked.size ? 200 : 32)},
         ]}>
+        {/* Первым, до всего остального: пока идёт пересчёт, в кабинете не
+            сработает ни одна операция, и человек должен прочитать это раньше,
+            чем начнёт что-то заводить. Печать этикеток остаётся — она ничего
+            не двигает. */}
+        {Boolean(counting) && (
+          <View style={styles.counting}>
+            <ClipboardList size={16} color={c.error} />
+            <Text style={styles.countingText}>
+              Идёт инвентаризация {counting.number} — операции по кабинету
+              закрыты, пока опись не закроют
+            </Text>
+          </View>
+        )}
+
         {canPrint && (
           <View style={styles.labelCard}>
             <LabelPreview url={warehouseApi.doorCardUrl(room.id)} />
@@ -371,7 +394,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
         {/* Временный инструмент отладки: стирает всё, что разбор ведомости
             завёл в этот кабинет. Только администратору и внизу страницы —
             рядом с полезными кнопками ему не место. */}
-        {Boolean(access?.isAdmin) && (
+        {Boolean(access?.isAdmin) && !counting && (
           <Pressable
             style={styles.rollback}
             disabled={rollingBack}
@@ -432,6 +455,17 @@ const makeStyles = c => StyleSheet.create({
     marginTop: 14,
   },
   alertText: {fontFamily: font.medium, fontSize: 12, color: c.textPrimary},
+
+  counting: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 9,
+    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    borderLeftWidth: 3, borderLeftColor: c.error,
+    padding: 12, marginTop: 14,
+  },
+  countingText: {
+    flex: 1, fontFamily: font.medium, fontSize: 12,
+    color: c.textPrimary, lineHeight: 17,
+  },
 
   labelCard: {
     backgroundColor: c.bgPrimary,

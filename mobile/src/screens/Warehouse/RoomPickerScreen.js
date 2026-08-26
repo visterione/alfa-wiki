@@ -1,13 +1,22 @@
 /**
- * Кабинеты — медцентр → корпус → этаж → кабинеты.
+ * Кабинеты — медцентр → кабинеты, этажи лентой сверху.
  *
- * ── Корпус выпадающим списком, а не отдельным шагом ──────────────────────────
+ * ── Как спуск дошёл до одного шага ───────────────────────────────────────────
  *
- * Спуск был четырёхэкранным: медцентр, корпус, этаж, кабинет. Корпус при этом
- * почти всегда один-два, и отдельный экран под выбор из двух строк — самый
- * дорогой способ задать самый простой вопрос. Теперь корпус выбирается прямо на
- * экране медцентра, а под ним сразу лежат этажи выбранного корпуса. Экранов
- * стало три, и на среднем видно и корпус, и этажи разом.
+ * Сначала он был четырёхэкранным: медцентр, корпус, этаж, кабинет. Корпус при
+ * этом почти всегда один-два, и отдельный экран под выбор из двух строк — самый
+ * дорогой способ задать самый простой вопрос, поэтому корпус переехал в
+ * выпадающий список на экране медцентра.
+ *
+ * В ver. 7.48 корпуса убраны совсем: уровень не проходил никто — человек знает
+ * свой этаж, а корпус вспоминает не всегда.
+ *
+ * В ver. 7.50 исчез и шаг этажа. Кабинеты медцентра показываются сразу, все, с
+ * заголовками этажей, а лента этажей сверху сужает список одним касанием — как
+ * вертикальный переключатель на карте в вебе. Прежний выпадающий список стоил
+ * двух касаний (раскрыть, выбрать) и по умолчанию прятал все этажи, кроме
+ * первого: чтобы просто посмотреть, что есть в медцентре, приходилось обойти
+ * список этажей по одному.
  *
  * ── Почему не один список ────────────────────────────────────────────────────
  *
@@ -23,22 +32,24 @@
  * ── Поиск ────────────────────────────────────────────────────────────────────
  *
  * Поиск ищет по тому поддереву, в котором стоишь: на первом экране — по всей
- * сети, внутри корпуса — по корпусу. Так он остаётся быстрым путём для того,
- * кто номер знает, и не подсовывает чужой этаж тому, кто уже спустился.
+ * сети, внутри этажа — по этажу. Так он остаётся быстрым путём для того, кто
+ * номер знает, и не подсовывает чужой этаж тому, кто уже спустился.
  *
  * ── Печать этикеток на двери ─────────────────────────────────────────────────
  *
  * Кнопка принтера в шапке разворачивает текущее поддерево в плоский список с
  * галочками — этажами, как раньше. Маркировка дверей это обход коридора, и
- * отмечать надо сразу этаж целиком; стоя на корпусе, можно отметить и весь
- * корпус.
+ * отмечать надо сразу этаж целиком; стоя на медцентре, можно отметить и все
+ * его этажи разом.
  */
 import React, {useCallback, useLayoutEffect, useMemo, useState} from 'react';
-import {View, Text, Image, FlatList, Pressable, StyleSheet, TextInput} from 'react-native';
+import {
+  View, Text, Image, FlatList, ScrollView, Pressable, StyleSheet, TextInput,
+} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
-  Check, Search, Printer, ChevronRight, ChevronDown, X, Building2, Layers, MapPin,
+  Check, Search, Printer, ChevronRight, X, Layers, MapPin,
   Package, Boxes,
 } from 'lucide-react-native';
 
@@ -47,10 +58,10 @@ import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan, getLocationTree, loadLocationTree} from '../../store/warehouseStore';
-import {roomMatches} from './warehouseMeta';
+import {roomMatches, roomText} from './warehouseMeta';
 import {ROOT_KEY, buildNodes, leavesOf, resolveNode} from './locationTree';
 
-const LEVEL_ICON = {mc: MapPin, building: Building2, floor: Layers};
+const LEVEL_ICON = {mc: MapPin, floor: Layers};
 
 export default function WarehouseRoomPickerScreen({route, navigation}) {
   const styles = useThemedStyles(makeStyles);
@@ -69,10 +80,10 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   const [picking, setPicking] = useState(false);
   const [checked, setChecked] = useState(() => new Set());
   const [q, setQ] = useState('');
-  // Выбранный корпус на экране медцентра. Ключ, а не индекс: дерево
-  // перечитывается по таймеру кэша, и порядок веток от этого не гарантирован.
-  const [branchKey, setBranchKey] = useState(null);
-  const [branchOpen, setBranchOpen] = useState(false);
+  // Выбранный этаж на экране медцентра; null означает «все этажи» и стоит по
+  // умолчанию. Ключ, а не индекс: дерево перечитывается по таймеру кэша, и
+  // порядок веток от этого не гарантирован.
+  const [floorKey, setFloorKey] = useState(null);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -86,20 +97,17 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   const node = useMemo(() => resolveNode(nodes, nodeKey), [nodes, nodeKey]);
 
   /**
-   * Корпуса медцентра. На его экране они не отдельный шаг, а выпадающий список
-   * сверху: под ним сразу лежат этажи выбранного корпуса.
+   * Этажи медцентра — лентой сверху, а не отдельным шагом.
    *
-   * Ветка «Без корпуса» попадает сюда наравне с корпусами — это такой же вариант
-   * ответа на вопрос «где искать», и выносить его отдельной строкой значило бы
+   * «Склады» и «Без этажа» попадают в ленту наравне с этажами: это такие же
+   * ответы на вопрос «где искать», и выносить их отдельной строкой значило бы
    * спрашивать дважды.
    */
-  const branches = node?.kind === 'mc' ? node.children : null;
-  const branch = branches
-    ? (branches.find(item => item.key === branchKey) || branches[0])
-    : null;
+  const floors = node?.kind === 'mc' ? node.children : null;
+  const floor = floors && floorKey ? floors.find(item => item.key === floorKey) : null;
   // Ниже по экрану всё считается от того узла, чьё содержимое показано: на
-  // медцентре это выбранный корпус, в остальных случаях сам узел.
-  const listNode = branch || node;
+  // медцентре это выбранный этаж или сам медцентр целиком.
+  const listNode = floor || node;
 
   const groups = useMemo(() => {
     if (!listNode) return [];
@@ -110,9 +118,12 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   }, [listNode, q]);
 
   const hasRooms = Boolean(listNode?.counts?.rooms);
-  // Плоский список вместо спуска — когда ищут или отбирают под печать: и то и
-  // другое про кабинеты, а не про то, где они лежат.
-  const flat = Boolean(q.trim()) || picking || !listNode?.children;
+  /**
+   * Спуск остался только на первом экране — там выбирают медцентр. Дальше
+   * показываются кабинеты, а этаж это фильтр над ними, а не уровень: именно из
+   * этого и складывалась лишняя работа, на которую жаловались.
+   */
+  const flat = node?.kind !== 'root' || Boolean(q.trim()) || picking;
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -159,49 +170,38 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
 
   return (
     <View style={styles.root}>
-      {/* Корпус — выпадающим списком, а не отдельным экраном. Показывается
-          только когда есть из чего выбирать: единственный корпус мы и так
-          пропускаем (см. resolveNode). */}
-      {branches?.length > 1 && (
-        <View style={styles.branchWrap}>
-          <Pressable style={styles.branch} onPress={() => setBranchOpen(v => !v)}>
-            <Building2 size={17} color={c.primary} />
-            <View style={styles.rowText}>
-              <Text style={styles.branchTitle}>{branch.title}</Text>
-              {Boolean(branch.subtitle) && (
-                <Text style={styles.rowSub} numberOfLines={1}>{branch.subtitle}</Text>
-              )}
-            </View>
-            <Counts styles={styles} c={c} counts={branch.counts} />
-            <ChevronDown
-              size={16}
-              color={c.textTertiary}
-              style={branchOpen ? styles.branchArrowOpen : null}
-            />
+      {/* Лента этажей: одно касание сужает список, второе по «Все» возвращает
+          его целиком. Прокручивается горизонтально — этажей бывает шесть, и
+          переносить их в две строки значило бы отнимать высоту у самих
+          кабинетов. Скрыта, когда этаж один: фильтр из одной кнопки не фильтр. */}
+      {!picking && floors?.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.floorBar}
+          keyboardShouldPersistTaps="handled">
+          <Pressable
+            style={[styles.floorChip, !floorKey && styles.floorChipOn]}
+            onPress={() => setFloorKey(null)}>
+            <Text style={[styles.floorChipText, !floorKey && styles.floorChipTextOn]}>Все</Text>
           </Pressable>
-
-          {branchOpen && (
-            <View style={styles.branchList}>
-              {branches.map(item => (
-                <Pressable
-                  key={item.key}
-                  style={styles.branchOption}
-                  onPress={() => { setBranchKey(item.key); setBranchOpen(false); }}>
-                  <Text
-                    style={[
-                      styles.branchOptionText,
-                      item.key === branch.key && styles.branchOptionOn,
-                    ]}
-                    numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Counts styles={styles} c={c} counts={item.counts} />
-                  {item.key === branch.key && <Check size={14} color={c.primary} />}
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </View>
+          {floors.map(item => (
+            <Pressable
+              key={item.key}
+              style={[styles.floorChip, floorKey === item.key && styles.floorChipOn]}
+              onPress={() => setFloorKey(prev => (prev === item.key ? null : item.key))}>
+              <Text
+                style={[styles.floorChipText, floorKey === item.key && styles.floorChipTextOn]}
+                numberOfLines={1}>
+                {item.title}
+              </Text>
+              <Text
+                style={[styles.floorChipCount, floorKey === item.key && styles.floorChipTextOn]}>
+                {item.counts.rooms}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       )}
 
       {hasRooms && (
@@ -285,8 +285,10 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
                 </View>
               )}
               <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>Кабинет {room.number}</Text>
-                {Boolean(room.name) && (
+                <Text style={styles.rowTitle}>{roomText(room)}</Text>
+                {/* Название повторяется подписью только у кабинетов: у склада
+                    оно уже стоит в заголовке строки (ver. 7.47). */}
+                {Boolean(room.name) && !room.isService && (
                   <Text style={styles.rowSub} numberOfLines={1}>{room.name}</Text>
                 )}
               </View>
@@ -398,35 +400,17 @@ const makeStyles = c => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: '#FFFFFF',
   },
-  branchWrap: {paddingHorizontal: 16, marginBottom: 8},
-  branch: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    backgroundColor: c.bgPrimary,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+  floorBar: {paddingHorizontal: 16, paddingBottom: 10, gap: 8},
+  floorChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    paddingHorizontal: 12, paddingVertical: 8,
   },
-  branchTitle: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
-  branchArrowOpen: {transform: [{rotate: '180deg'}]},
-  branchList: {
-    backgroundColor: c.bgPrimary,
-    borderRadius: radius.md,
-    marginTop: 6,
-    overflow: 'hidden',
-  },
-  branchOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
-  },
-  branchOptionText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
-  branchOptionOn: {color: c.primary},
+  floorChipOn: {backgroundColor: c.primary},
+  floorChipText: {fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
+  floorChipCount: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary},
+  floorChipTextOn: {color: '#FFFFFF'},
+
   levelTitle: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
   counts: {alignItems: 'flex-end', gap: 2},
   count: {flexDirection: 'row', alignItems: 'center', gap: 4},

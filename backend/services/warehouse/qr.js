@@ -504,8 +504,12 @@ function toPublicAsset(asset, { maintenanceOrders = [], repairs = [], movements 
         ? `Каб. ${asset.room.number} — ${asset.room.name}`
         : `Каб. ${asset.room.number}`,
       department: asset.room.department?.name || null,
-      floor:      asset.room.floor ? `${asset.room.floor.number} этаж` : null,
-      building:   asset.room.floor?.building?.name || null,
+      // Корпуса на этикетке больше нет (ver. 7.48): этаж принадлежит медцентру
+      // напрямую, а то, чем два одноимённых этажа отличаются, стоит в его
+      // собственном названии.
+      floor:      asset.room.floor
+        ? `${asset.room.floor.number} этаж${asset.room.floor.name ? ` — ${asset.room.floor.name}` : ''}`
+        : null,
     } : null,
     // Ответственный — должностью и отделением, без ФИО.
     responsible: asset.room?.department?.name

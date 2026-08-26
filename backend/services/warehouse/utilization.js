@@ -154,7 +154,10 @@ async function computeForDate(date) {
   const unmatched = [];
 
   for (const room of rooms) {
+    // Медцентр берётся с самого кабинета: он был у него всегда, а путь через
+    // корпус остаётся запасным для кабинетов, у которых он почему-то пуст.
     const clinicIds = room.medCenter?.misClinicIds
+      || room.floor?.medCenter?.misClinicIds
       || room.floor?.building?.medCenter?.misClinicIds || [];
 
     // Ключи кабинета: из его номера и из всех заданных алиасов.
@@ -292,11 +295,14 @@ async function aggregate({ floorId, medCenterId, from, to }) {
            COALESCE(SUM(u."appointmentsCount"), 0) AS "appointments",
            COALESCE(MAX(u."idleAssets"), 0)        AS "idleAssets",
            COUNT(u.id)                             AS "daysCounted"
+    -- Склады в тепловую карту не входят (ver. 7.47): приёмов в них нет по
+    -- определению, и их вечный ноль утянул бы вниз средние по этажу и по сети,
+    -- а на самой карте они и рисоваться не могут — плана у них нет.
     FROM warehouse_rooms r
     LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
     LEFT JOIN warehouse_utilization_daily u
            ON u."roomId" = r.id AND u.date BETWEEN :from AND :to
-    WHERE ${scope} AND r."isActive" = TRUE
+    WHERE ${scope} AND r."isActive" = TRUE AND r."isService" = FALSE
     GROUP BY r.id, r.number, r.name, r.kind, r.plan, r."departmentId", d.name, d.color
     ORDER BY r.number
   `, { replacements: { ...scopeArgs, from: toDateOnly(from), to: toDateOnly(to) } });
@@ -320,7 +326,7 @@ async function aggregate({ floorId, medCenterId, from, to }) {
               JOIN warehouse_storages st2 ON st2.id = s2."storageId"
              WHERE st2."roomId" = r.id AND rr."roomId" = r.id AND s2.quantity < rr."minQty") AS "belowMinimum"
     FROM warehouse_rooms r
-    WHERE ${scope} AND r."isActive" = TRUE
+    WHERE ${scope} AND r."isActive" = TRUE AND r."isService" = FALSE
   `, { replacements: scopeArgs });
 
   const extraById = new Map(extra.map(e => [e.roomId, e]));
@@ -349,13 +355,12 @@ async function idleAssets({ medCenterId = null, days = IDLE_DAYS } = {}) {
   const [rows] = await sequelize.query(`
     SELECT a.id, a."inventoryNumber", a.name, a.model, a.status, a."lastActivityAt",
            a."initialCost", r.number AS "roomNumber", r.name AS "roomName",
-           d.name AS "departmentName", b.name AS "buildingName", mc.name AS "medCenterName",
+           d.name AS "departmentName", f.name AS "floorName", mc.name AS "medCenterName",
            EXTRACT(DAY FROM (now() - COALESCE(a."lastActivityAt", a."createdAt")))::int AS "idleDays"
     FROM warehouse_assets a
     LEFT JOIN warehouse_rooms r       ON r.id = a."roomId"
     LEFT JOIN warehouse_departments d ON d.id = r."departmentId"
     LEFT JOIN warehouse_floors f      ON f.id = r."floorId"
-    LEFT JOIN warehouse_buildings b   ON b.id = f."buildingId"
     LEFT JOIN med_centers mc          ON mc.id = r."medCenterId"
     WHERE a."isArchived" = FALSE
       AND a.status = 'in_use'

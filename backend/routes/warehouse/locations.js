@@ -93,6 +93,7 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
     const roomJson = r => ({
       id: r.id, medCenterId: r.medCenterId, floorId: r.floorId,
       number: r.number, name: r.name, kind: r.kind,
+      isService: r.isService, serviceKind: r.serviceKind,
       departmentId: r.departmentId,
       responsible: r.responsible,
       misRoomAliases: r.misRoomAliases,
@@ -106,20 +107,20 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
       counters: countsByRoom.get(r.id) || { assets: 0, positions: 0, stockValue: 0 },
     });
 
-    const floorsByBuilding = groupBy(
-      floors.map(f => ({
-        id: f.id, buildingId: f.buildingId, number: f.number, name: f.name,
-        planWidthM: Number(f.planWidthM), planHeightM: Number(f.planHeightM),
-        planBgUrl: f.planBgUrl, planBgOpacity: Number(f.planBgOpacity),
-        outline: f.outline || {},
-        rooms: rooms
-          .filter(r => r.floorId === f.id)
-          .filter(r => visible === null || visible.has(r.id))
-          .sort(byRoomNumber)
-          .map(roomJson),
-      })),
-      f => f.buildingId
-    );
+    const floorJson = f => ({
+      id: f.id, medCenterId: f.medCenterId, buildingId: f.buildingId,
+      number: f.number, name: f.name,
+      planWidthM: Number(f.planWidthM), planHeightM: Number(f.planHeightM),
+      planBgUrl: f.planBgUrl, planBgOpacity: Number(f.planBgOpacity),
+      outline: f.outline || {},
+      rooms: rooms
+        .filter(r => r.floorId === f.id)
+        .filter(r => visible === null || visible.has(r.id))
+        .sort(byRoomNumber)
+        .map(roomJson),
+    });
+
+    const floorsByBuilding = groupBy(floors.map(floorJson), f => f.buildingId);
 
     const buildingsByMc = groupBy(
       buildings.map(b => ({
@@ -138,6 +139,19 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
         logoUrl: mc.logoSquareUrl || mc.logoUrl,
         address: mc.address,
         city: mc.city,
+        // Этажи медцентра — плоским списком (ver. 7.48). Это основной путь:
+        // уровня корпуса в интерфейсе больше нет.
+        floors: floors
+          .filter(f => f.medCenterId === mc.id)
+          .map(floorJson)
+          .sort((a, z) => a.number - z.number || String(a.name || '').localeCompare(String(z.name || ''), 'ru')),
+        /**
+         * Корпуса остаются в ответе ради уже установленных сборок мобильного
+         * приложения: они читают дерево как mc.buildings[].floors[].rooms, а
+         * обновляются вручную — выкинуть корпуса из ответа значило бы оставить
+         * часть телефонов с пустым списком кабинетов. Веб и новые сборки берут
+         * mc.floors. Убрать, когда на телефонах не останется сборок до 7.48.
+         */
         buildings: buildingsByMc.get(mc.id) || [],
         // Только геометрия схемы: фигуры бывают тяжёлыми, а дерево грузится на
         // каждом экране модуля. Полная схема приходит отдельным запросом плана.
@@ -148,12 +162,21 @@ router.get('/tree', authenticate, requireWarehouse(), async (req, res) => {
         },
         // Кабинеты без этажа показываются прямо под медцентром.
         rooms: rooms
-          .filter(r => !r.floorId && r.medCenterId === mc.id)
+          .filter(r => !r.floorId && !r.isService && r.medCenterId === mc.id)
           .filter(r => visible === null || visible.has(r.id))
           .sort(byRoomNumber)
           .map(roomJson),
+        // Склады — отдельной веткой, а не среди кабинетов без этажа (ver. 7.47).
+        // Это разные вещи: кабинет без этажа — обычное помещение, которому не
+        // нарисовали план, а склад помещением не является вовсе. В списках они
+        // и должны стоять порознь, иначе «Склад» ищут среди номеров кабинетов.
+        services: rooms
+          .filter(r => r.isService && r.medCenterId === mc.id)
+          .filter(r => visible === null || visible.has(r.id))
+          .sort((a, z) => String(a.name || a.number).localeCompare(String(z.name || z.number), 'ru'))
+          .map(roomJson),
       }))
-      .filter(mc => mc.buildings.length > 0 || mc.rooms.length > 0
+      .filter(mc => mc.floors.length > 0 || mc.rooms.length > 0 || mc.services.length > 0
         || req.warehouse.capabilities.canEditLocations);
 
     res.json({
@@ -280,22 +303,38 @@ router.delete('/buildings/:id', authenticate, requireWarehouse('canEditLocations
 });
 
 // ── Этажи ────────────────────────────────────────────────────────────────────
+/**
+ * Новый этаж — у медцентра, а не у корпуса (ver. 7.48).
+ *
+ * buildingId принимается, но только от старых клиентов: медцентр из него
+ * выводится, и в новых этажах он остаётся пустым. Одинаковый номер этажа в
+ * одном медцентре не запрещён — после отказа от корпусов у медцентра временно
+ * бывает два четвёртых этажа, и запрет помешал бы как раз тому, ради чего
+ * миграция и делалась: перенести кабинеты и удалить лишний этаж руками.
+ */
 router.post('/floors', authenticate, requireWarehouse('canEditLocations'), async (req, res) => {
   try {
     const { buildingId, number, name, planWidthM, planHeightM } = req.body;
-    if (!buildingId || number === undefined) {
-      return res.status(400).json({ error: 'Нужны корпус и номер этажа' });
+    if (number === undefined) return res.status(400).json({ error: 'Нужен номер этажа' });
+
+    let medCenterId = req.body.medCenterId || null;
+    if (!medCenterId && buildingId) {
+      const building = await WhBuilding.findByPk(buildingId, { attributes: ['medCenterId'] });
+      medCenterId = building?.medCenterId || null;
     }
+    if (!medCenterId) return res.status(400).json({ error: 'Нужен медцентр' });
+
+    const medCenter = await MedCenter.findByPk(medCenterId, { attributes: ['id'] });
+    if (!medCenter) return res.status(404).json({ error: 'Медцентр не найден' });
+
     const row = await WhFloor.create({
-      buildingId, number, name: name?.trim() || null,
+      medCenterId, buildingId: buildingId || null,
+      number, name: name?.trim() || null,
       planWidthM: planWidthM ?? 40, planHeightM: planHeightM ?? 25,
       sortOrder: number,
     });
     res.status(201).json(row);
   } catch (err) {
-    if (err.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ error: 'Такой этаж в этом корпусе уже есть' });
-    }
     console.error('POST warehouse/floors error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -431,7 +470,12 @@ router.put('/med-centers/:id/plan', authenticate, requireWarehouse('canEditLocat
 router.get('/floors/:id/plan', authenticate, requireWarehouse(), async (req, res) => {
   try {
     const floor = await WhFloor.findByPk(req.params.id, {
-      include: [{ model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] }],
+      include: [
+        { model: MedCenter, as: 'medCenter' },
+        // Корпус — только чтобы показать медцентр у этажей, заведённых до
+        // ver. 7.48 и ещё не заполненных миграцией.
+        { model: WhBuilding, as: 'building', include: [{ model: MedCenter, as: 'medCenter' }] },
+      ],
     });
     if (!floor) return res.status(404).json({ error: 'Этаж не найден' });
 
@@ -450,9 +494,9 @@ router.get('/floors/:id/plan', authenticate, requireWarehouse(), async (req, res
     res.json({
       floor: {
         id: floor.id, scope: 'floor', number: floor.number, name: floor.name,
-        buildingId: floor.buildingId,
-        buildingName: floor.building?.name,
-        medCenterName: floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
+        medCenterId: floor.medCenterId || floor.building?.medCenterId || null,
+        medCenterName: floor.medCenter?.displayName || floor.medCenter?.name
+          || floor.building?.medCenter?.displayName || floor.building?.medCenter?.name,
         planWidthM: Number(floor.planWidthM), planHeightM: Number(floor.planHeightM),
         planBgUrl: floor.planBgUrl, planBgOpacity: Number(floor.planBgOpacity),
         // Контур произвольной формы (ver. 6.69). Пустой — этаж прямоугольный.
@@ -718,9 +762,17 @@ router.post('/rooms', authenticate, requireWarehouse('canEditLocations'), async 
   try {
     const {
       medCenterId, floorId, departmentId, number, name, kind, responsibleUserId,
-      misRoomAliases, capacityHours, plan,
+      misRoomAliases, capacityHours, plan, isService,
     } = req.body;
     if (!number?.trim()) return res.status(400).json({ error: 'Нужен номер или название кабинета' });
+
+    // Склад заводится тем же маршрутом, но этажа у него нет по определению:
+    // за ним не стоит помещения, которое можно нарисовать на плане. Принять
+    // floorId и промолчать значило бы завести склад, который ищут на схеме.
+    const service = Boolean(isService);
+    if (service && floorId) {
+      return res.status(400).json({ error: 'У склада не бывает этажа — он общий на медцентр' });
+    }
 
     const location = await resolveRoomLocation({ medCenterId, floorId });
     if (location.error) return res.status(location.status).json({ error: location.error });
@@ -729,11 +781,18 @@ router.post('/rooms', authenticate, requireWarehouse('canEditLocations'), async 
       medCenterId: location.medCenterId, floorId: location.floorId,
       departmentId: departmentId || null,
       number: number.trim(), name: name?.trim() || null,
-      kind: kind || 'office',
+      kind: kind || (service ? 'storage' : 'office'),
+      isService: service,
+      // serviceKind не принимается снаружи: он означает «к этому месту ведёт
+      // быстрое действие», и таких мест ровно два на медцентр — их заводит
+      // миграция. Всё, что человек создаёт руками, — склад без своей кнопки.
+      serviceKind: null,
       responsibleUserId: responsibleUserId || null,
       misRoomAliases: Array.isArray(misRoomAliases) ? misRoomAliases : [],
-      capacityHours: capacityHours ?? 8,
-      plan: plan || {},
+      // У склада нет приёмов, и час приёма ему не с чем сравнивать: восемь
+      // часов по умолчанию сделали бы из него кабинет с нулевой загрузкой.
+      capacityHours: service ? 0 : (capacityHours ?? 8),
+      plan: service ? {} : (plan || {}),
       publicToken: generateToken(),
     });
     res.status(201).json(row);
@@ -837,10 +896,50 @@ router.put('/rooms/:id', authenticate, requireWarehouse('canIssue'), async (req,
 
     const {
       departmentId, number, name, kind, responsibleUserId,
-      misRoomAliases, capacityHours, workingDays, plan, isActive,
+      misRoomAliases, capacityHours, workingDays, plan, isActive, floorId,
     } = req.body;
 
+    /**
+     * Перенос кабинета на другой этаж (ver. 7.48).
+     *
+     * Появился вместе с отказом от корпусов: у медцентра временно оказывается
+     * два четвёртых этажа — из административного корпуса и из главного, — и
+     * объединяет их владелец данных руками. Автоматически слить их нельзя, у
+     * каждого свой план и свои полигоны кабинетов в одних координатах.
+     *
+     * Полигон при переносе сбрасывается: на плане другого этажа те же
+     * координаты означают другое место, и кабинет оказался бы нарисован поверх
+     * чужого. Пусть лучше он не нарисован вовсе — это видно и исправляется, а
+     * тихо съехавший контур не видит никто.
+     *
+     * Право строже, чем у остальной правки: переезд между этажами меняет
+     * структуру, а не свойства кабинета.
+     */
+    let move = {};
+    if (floorId !== undefined && (floorId || null) !== row.floorId) {
+      if (!req.warehouse.capabilities.canEditLocations) {
+        return res.status(403).json({ error: 'Переносить кабинеты между этажами может только тот, кто правит локации' });
+      }
+      if (floorId) {
+        const floor = await WhFloor.findByPk(floorId, {
+          include: [{ model: WhBuilding, as: 'building', attributes: ['medCenterId'] }],
+        });
+        if (!floor) return res.status(404).json({ error: 'Этаж не найден' });
+        const floorMc = floor.medCenterId || floor.building?.medCenterId || null;
+        if (floorMc && floorMc !== row.medCenterId) {
+          return res.status(400).json({ error: 'Этаж относится к другому медцентру' });
+        }
+        move = { floorId: floor.id, plan: {} };
+      } else {
+        move = { floorId: null, plan: {} };
+      }
+      if (row.isService) {
+        return res.status(400).json({ error: 'У склада не бывает этажа — он общий на медцентр' });
+      }
+    }
+
     await row.update({
+      ...move,
       ...(departmentId !== undefined ? { departmentId: departmentId || null } : {}),
       ...(number !== undefined ? { number: number.trim() } : {}),
       ...(name !== undefined ? { name: name?.trim() || null } : {}),
@@ -942,10 +1041,14 @@ async function resolveRoomLocation({ medCenterId, floorId }) {
       include: [{ model: WhBuilding, as: 'building', attributes: ['medCenterId'] }],
     });
     if (!floor) return { status: 404, error: 'Этаж не найден' };
-    if (medCenterId && floor.building.medCenterId !== medCenterId) {
+    // Медцентр берётся с самого этажа (ver. 7.48); корпус — запасной путь для
+    // этажей, заведённых до миграции и ещё не заполненных.
+    const floorMc = floor.medCenterId || floor.building?.medCenterId || null;
+    if (!floorMc) return { status: 400, error: 'У этажа не указан медцентр' };
+    if (medCenterId && floorMc !== medCenterId) {
       return { status: 400, error: 'Этаж относится к другому медцентру' };
     }
-    return { medCenterId: floor.building.medCenterId, floorId: floor.id };
+    return { medCenterId: floorMc, floorId: floor.id };
   }
   if (!medCenterId) return { status: 400, error: 'Нужен медцентр' };
   const medCenter = await MedCenter.findByPk(medCenterId);

@@ -13,11 +13,16 @@
  * отсканировал QR на кабинете — и дальше отмечаешь то, что видишь вокруг.
  * Кабинет выбирается один раз, позиции набрасываются пачкой.
  *
- * ── Почему количество можно не вводить ───────────────────────────────────────
+ * ── Почему в количестве стоит единица (ver. 7.46) ────────────────────────────
  *
- * В девяти случаях из десяти позиция целиком лежит там, где на неё смотрят.
- * Пустое поле означает «весь нераспределённый остаток», и это снимает ввод
- * цифры с большинства строк.
+ * Раньше поле было пустым, и пустота означала «весь нераспределённый остаток»:
+ * считалось, что позиция целиком лежит там, где на неё смотрят. На бою вышло
+ * ровно наоборот — вещи лежат по одной, а одно касание строки без ввода цифры
+ * записывало на кабинет все пятьдесят единиц. Заметили это не сразу: после
+ * разбора размещение снимается только перемещением.
+ *
+ * Поэтому отметка ставит единицу, и она же видна в поле — человек правит её,
+ * когда стульев действительно шесть, а не когда их один.
  *
  * ── Сначала кабинет, потом ведомость (ver. 7.23) ─────────────────────────────
  *
@@ -36,11 +41,24 @@
  * Мобильная раскладка была работой, которую всё равно надо было доделывать за
  * столом, — и смысла в ней не оставалось.
  *
- * Теперь запрос несёт флаг materialize, и сервер сразу разбирает ровно тот
- * кабинет, который разложили. Это безопасно: разбор идемпотентен и считает уже
- * созданное, поэтому повторный прогон ничего не задваивает, а сужение до одного
- * кабинета не трогает остальную ведомость. Общий разбор в вебе никуда не делся —
- * он про проверку решений словаря по всей ведомости целиком.
+ * Теперь сервер разбирает ровно тот кабинет, который разложили, сразу же. Это
+ * безопасно: разбор идемпотентен и считает уже созданное, поэтому повторный
+ * прогон ничего не задваивает, а сужение до одного кабинета не трогает остальную
+ * ведомость. Общий разбор в вебе никуда не делся — он про проверку решений
+ * словаря по всей ведомости целиком.
+ *
+ * С ver. 7.46 флага materialize в запросе больше нет: разбор идёт всегда, в том
+ * числе при раскладке из веба. Раньше веб его не слал, и раскладка за столом
+ * оставалась намерением до общего прогона — со стороны это выглядело как
+ * операция, которая когда-нибудь применится сама.
+ *
+ * ── Кабинет под описью (ver. 7.46) ───────────────────────────────────────────
+ *
+ * Пока по кабинету идёт пересчёт, раскладывать в него нельзя, и узнать об этом
+ * надо до обхода, а не на кнопке «Положить сюда». Поэтому список кабинетов
+ * спрашивает frozen-rooms и такие кабинеты не даёт выбрать вовсе, а если опись
+ * открыли, пока экран был открыт, вместо ведомости показывается объяснение.
+ * Сервер проверяет то же самое ещё раз — экран может отстать от жизни на минуту.
  *
  * ── Почему этикетки печатаются отсюда же (ver. 7.36) ─────────────────────────
  *
@@ -57,14 +75,15 @@
  */
 import React, {useCallback, useMemo, useState} from 'react';
 import {
-  View, Text, Image, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
+  View, Text, Image, FlatList, ScrollView, TextInput, Pressable, StyleSheet,
+  Alert, Modal,
 } from 'react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Camera, useCameraDevice, useCodeScanner} from 'react-native-vision-camera';
 import {
   DoorOpen, ScanLine, Search, X, Check, Package, Boxes, Building2,
-  ChevronRight, ChevronLeft, ChevronDown, Printer,
+  ChevronRight, ChevronLeft, Printer, ClipboardList,
 } from 'lucide-react-native';
 
 import CONFIG from '../../config';
@@ -73,7 +92,7 @@ import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {loadLocationTree, useWarehouseCan} from '../../store/warehouseStore';
-import {qtyText, moneyText, flattenRooms, roomMatches} from './warehouseMeta';
+import {qtyText, moneyText, flattenRooms, roomMatches, roomText} from './warehouseMeta';
 import {ROOT_KEY, buildNodes, leavesOf, resolveNode} from './locationTree';
 
 export default function WarehousePlacementScreen() {
@@ -102,6 +121,8 @@ export default function WarehousePlacementScreen() {
   // Карточки, заведённые в этом кабинете, — только чтобы предложить этикетки.
   // Сбрасываются сменой кабинета: в новом кабинете печатать нужно уже другое.
   const [fresh, setFresh] = useState(null);
+  // Кабинеты под открытой описью: Map(roomId → номер описи).
+  const [frozen, setFrozen] = useState(new Map());
 
   const room = useMemo(
     () => flattenRooms(tree).find(item => item.id === roomId),
@@ -110,12 +131,16 @@ export default function WarehousePlacementScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [treeData, queueResult] = await Promise.all([
+      const [treeData, queueResult, frozenResult] = await Promise.all([
         loadLocationTree(),
         warehouseApi.placementQueue({limit: 200, mode: 'all'}),
+        // Список описей не роняет экран: без него размещение всё равно
+        // работает, просто отказ придёт от сервера, а не от списка кабинетов.
+        warehouseApi.frozenRooms().catch(() => ({data: {items: []}})),
       ]);
       setTree(treeData);
       setQueue(queueResult.data);
+      setFrozen(new Map((frozenResult.data?.items || []).map(x => [x.roomId, x.number])));
     } catch {
       setQueue(null);
     } finally {
@@ -129,7 +154,8 @@ export default function WarehousePlacementScreen() {
     setPicked((prev) => {
       const next = new Map(prev);
       if (next.has(item.lineKey)) next.delete(item.lineKey);
-      else next.set(item.lineKey, '');
+      // Единица, а не пустота: см. «Почему в количестве стоит единица» в шапке.
+      else next.set(item.lineKey, '1');
       return next;
     });
   };
@@ -146,9 +172,6 @@ export default function WarehousePlacementScreen() {
     try {
       const {data} = await warehouseApi.placeItems({
         roomId,
-        // Разбираем кабинет тут же: без этого раскладка остаётся намерением, а
-        // баланс кабинета — нулевым до общего прогона из веба.
-        materialize: true,
         items: [...picked.entries()].map(([lineKey, quantity]) => ({
           lineKey, quantity: quantity === '' ? null : Number(quantity),
         })),
@@ -246,6 +269,7 @@ export default function WarehousePlacementScreen() {
     return (
       <RoomStep
         tree={tree}
+        frozen={frozen}
         styles={styles}
         c={c}
         insets={insets}
@@ -255,6 +279,31 @@ export default function WarehousePlacementScreen() {
         onCloseScan={() => setScanning(false)}
         onFound={(id) => { setScanning(false); setRoomId(id); }}
       />
+    );
+  }
+
+  // Кабинет под описью — стоп, а не предупреждение над списком. Ведомость здесь
+  // показывать незачем: всё, что в ней отметят, сервер всё равно отвергнет, а
+  // человек к этому моменту уже обойдёт кабинет.
+  const countingHere = frozen.get(roomId);
+  if (countingHere) {
+    return (
+      <View style={styles.empty}>
+        <ClipboardList size={30} color={c.textTertiary} />
+        <Text style={styles.blockedTitle}>
+          {room ? room.label : 'Кабинет'} пересчитывают
+        </Text>
+        <Text style={styles.emptyText}>
+          Идёт инвентаризация {countingHere}. Размещение и любые движения по
+          кабинету закрыты, пока опись не закроют, — иначе разница уйдёт в описи
+          в недостачу.
+        </Text>
+        <Pressable
+          style={styles.blockedBtn}
+          onPress={() => { setRoomId(null); setPicked(new Map()); setFresh(null); }}>
+          <Text style={styles.blockedBtnText}>Выбрать другой кабинет</Text>
+        </Pressable>
+      </View>
     );
   }
 
@@ -358,7 +407,7 @@ export default function WarehousePlacementScreen() {
                     next.set(item.lineKey, value);
                     return next;
                   })}
-                  placeholder={qtyText(item.unplacedQty)}
+                  placeholder="1"
                   placeholderTextColor={c.textTertiary}
                   keyboardType="numeric"
                 />
@@ -393,7 +442,7 @@ export default function WarehousePlacementScreen() {
 }
 
 /**
- * Шаг выбора кабинета: медцентр → корпус → этаж → кабинет.
+ * Шаг выбора кабинета: медцентр → этаж → кабинет.
  *
  * Плоский список на сотню строк здесь не работал по той же причине, что и в
  * разделе «Кабинеты»: номер 305 есть в каждом здании, и найти нужный можно было
@@ -408,22 +457,21 @@ export default function WarehousePlacementScreen() {
  * Кабинеты без мест хранения выключены: разбор кладёт остаток на полку, и без
  * неё раскладка сорвалась бы уже после того, как человек всё отметил.
  */
-function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
+function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
   const [nodeKey, setNodeKey] = useState(ROOT_KEY);
-  const [branchKey, setBranchKey] = useState(null);
-  const [branchOpen, setBranchOpen] = useState(false);
+  // Выбранный этаж; null означает «все этажи» и стоит по умолчанию.
+  const [floorKey, setFloorKey] = useState(null);
   const [q, setQ] = useState('');
 
   const nodes = useMemo(() => buildNodes(tree), [tree]);
   const node = useMemo(() => resolveNode(nodes, nodeKey), [nodes, nodeKey]);
 
-  // Корпус выбирается выпадающим списком прямо на экране медцентра, а под ним
-  // сразу лежат этажи выбранного корпуса — ровно как в разделе «Кабинеты»
-  const branches = node?.kind === 'mc' ? node.children : null;
-  const branch = branches
-    ? (branches.find(item => item.key === branchKey) || branches[0])
-    : null;
-  const listNode = branch || node;
+  // Этажи — лентой над списком, а не уровнем спуска: ровно как в разделе
+  // «Кабинеты» (ver. 7.50). Раскладка это обход здания, и человек, стоящий в
+  // кабинете, ищет его номер, а не путь до него.
+  const floors = node?.kind === 'mc' ? node.children : null;
+  const floor = floors && floorKey ? floors.find(item => item.key === floorKey) : null;
+  const listNode = floor || node;
 
   const groups = useMemo(() => {
     if (!listNode) return [];
@@ -433,7 +481,7 @@ function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseSca
       .filter(group => group.rooms.length);
   }, [listNode, q]);
 
-  const flat = Boolean(q.trim()) || !listNode?.children;
+  const flat = node?.kind !== 'root' || Boolean(q.trim());
 
   const items = flat
     ? groups.flatMap(({leaf, rooms}) => [
@@ -454,51 +502,42 @@ function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseSca
       {nodeKey !== ROOT_KEY && (
         <Pressable
           style={styles.up}
-          onPress={() => { setNodeKey(ROOT_KEY); setBranchKey(null); setQ(''); }}>
+          onPress={() => { setNodeKey(ROOT_KEY); setFloorKey(null); setQ(''); }}>
           <ChevronLeft size={16} color={c.primary} />
           <Text style={styles.upText}>Все медцентры</Text>
         </Pressable>
       )}
 
-      {branches?.length > 1 && (
-        <View style={styles.branchWrap}>
-          <Pressable style={styles.branch} onPress={() => setBranchOpen(v => !v)}>
-            <Building2 size={17} color={c.primary} />
-            <View style={styles.itemText}>
-              <Text style={styles.branchTitle}>{branch.title}</Text>
-              {Boolean(branch.subtitle) && (
-                <Text style={styles.itemMeta} numberOfLines={1}>{branch.subtitle}</Text>
-              )}
-            </View>
-            <Counts styles={styles} c={c} counts={branch.counts} />
-            <ChevronDown
-              size={16}
-              color={c.textTertiary}
-              style={branchOpen ? styles.branchArrowOpen : null}
-            />
+      {/* Лента этажей: одно касание сужает список, второе по «Все» возвращает
+          его целиком. Прежде здесь стоял выпадающий список — два касания и
+          спрятанные этажи, кроме первого. */}
+      {floors?.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.floorBar}
+          keyboardShouldPersistTaps="handled">
+          <Pressable
+            style={[styles.floorChip, !floorKey && styles.floorChipOn]}
+            onPress={() => setFloorKey(null)}>
+            <Text style={[styles.floorChipText, !floorKey && styles.floorChipTextOn]}>Все</Text>
           </Pressable>
-
-          {branchOpen && (
-            <View style={styles.branchList}>
-              {branches.map(item => (
-                <Pressable
-                  key={item.key}
-                  style={styles.branchOption}
-                  onPress={() => { setBranchKey(item.key); setBranchOpen(false); }}>
-                  <Text
-                    style={[
-                      styles.branchOptionText,
-                      item.key === branch.key && styles.branchOptionOn,
-                    ]}
-                    numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Counts styles={styles} c={c} counts={item.counts} />
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </View>
+          {floors.map(item => (
+            <Pressable
+              key={item.key}
+              style={[styles.floorChip, floorKey === item.key && styles.floorChipOn]}
+              onPress={() => setFloorKey(prev => (prev === item.key ? null : item.key))}>
+              <Text
+                style={[styles.floorChipText, floorKey === item.key && styles.floorChipTextOn]}
+                numberOfLines={1}>
+                {item.title}
+              </Text>
+              <Text style={[styles.floorChipCount, floorKey === item.key && styles.floorChipTextOn]}>
+                {item.counts.rooms}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       )}
 
       <View style={styles.stepSearch}>
@@ -550,16 +589,27 @@ function RoomStep({tree, styles, c, insets, onScan, onPick, scanning, onCloseSca
 
           const {room} = item;
           const hasStorage = Boolean(room.storages?.length);
+          // Кабинет под описью гасится так же, как кабинет без мест хранения:
+          // выбрать его нельзя, а причина написана там же, где название, —
+          // человек читает её до того, как войдёт в кабинет.
+          const counting = frozen?.get(room.id);
+          const blocked = !hasStorage || Boolean(counting);
           return (
             <Pressable
-              style={[styles.pickRow, !hasStorage && styles.pickRowOff]}
-              disabled={!hasStorage}
+              style={[styles.pickRow, blocked && styles.pickRowOff]}
+              disabled={blocked}
               onPress={() => onPick(room.id)}>
-              <DoorOpen size={17} color={c.primary} />
+              {counting
+                ? <ClipboardList size={17} color={c.textTertiary} />
+                : <DoorOpen size={17} color={c.primary} />}
               <View style={styles.itemText}>
-                <Text style={styles.itemName}>Кабинет {room.number}</Text>
+                <Text style={styles.itemName}>{roomText(room)}</Text>
                 <Text style={styles.itemMeta} numberOfLines={1}>
-                  {[room.name, !hasStorage && 'нет мест хранения'].filter(Boolean).join(' · ')}
+                  {[
+                    room.name,
+                    counting && `идёт инвентаризация ${counting}`,
+                    !hasStorage && 'нет мест хранения',
+                  ].filter(Boolean).join(' · ')}
                 </Text>
               </View>
               <Counts
@@ -741,35 +791,16 @@ const makeStyles = c => StyleSheet.create({
     minWidth: 18,
     textAlign: 'right',
   },
-  branchWrap: {paddingHorizontal: 12, marginBottom: 8},
-  branch: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    backgroundColor: c.bgPrimary,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+  floorBar: {paddingHorizontal: 12, paddingBottom: 8, gap: 8},
+  floorChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    paddingHorizontal: 12, paddingVertical: 8,
   },
-  branchTitle: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
-  branchArrowOpen: {transform: [{rotate: '180deg'}]},
-  branchList: {
-    backgroundColor: c.bgPrimary,
-    borderRadius: radius.md,
-    marginTop: 6,
-    overflow: 'hidden',
-  },
-  branchOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
-  },
-  branchOptionText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
-  branchOptionOn: {color: c.primary},
+  floorChipOn: {backgroundColor: c.primary},
+  floorChipText: {fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
+  floorChipCount: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary},
+  floorChipTextOn: {color: '#FFFFFF'},
   up: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -854,6 +885,15 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8,
   },
   pickRowOff: {opacity: 0.45},
+  blockedTitle: {
+    fontFamily: font.semiBold, fontSize: 16, color: c.textPrimary,
+    textAlign: 'center', marginTop: 14, marginBottom: 6,
+  },
+  blockedBtn: {
+    marginTop: 20, paddingHorizontal: 18, paddingVertical: 12,
+    borderRadius: radius.md, backgroundColor: c.bgPrimary,
+  },
+  blockedBtnText: {fontFamily: font.medium, fontSize: 14, color: c.primary},
   scanModal: {flex: 1, backgroundColor: '#000000'},
   scanClose: {
     position: 'absolute', top: 52, left: 16,

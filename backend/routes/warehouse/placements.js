@@ -36,8 +36,12 @@ const {
 } = require('../../models');
 const { authenticate } = require('../../middleware/auth');
 const { requireWarehouse, requireReport } = require('../../services/warehouse/access');
-const { planMaterialization, materializeOsv } = require('../../services/warehouse/osvMaterialize');
+const {
+  planMaterialization, materializeOsv, requestedQuantity,
+} = require('../../services/warehouse/osvMaterialize');
 const { rollbackRoomPlacement } = require('../../services/warehouse/osvRollback');
+const { assertNotCounting } = require('../../services/warehouse/inventory');
+const { matchesSearch } = require('../../services/warehouse/search');
 
 const roomInclude = [
   { model: WhStorage, as: 'storages', attributes: ['id', 'name'], required: false },
@@ -159,10 +163,10 @@ router.get('/queue', authenticate, requireWarehouse(), requireReport('RPT-OSV'),
       return mode === 'all' ? placeable(item) > 0.0005 : item.unplacedQty > 0.0005;
     });
 
-    if (q) {
-      items = items.filter(i => i.line.name.toLowerCase().includes(q)
-        || String(i.line.pathText || '').toLowerCase().includes(q));
-    }
+    // Тем же правилом, что и остальной поиск по складу: слова в любом порядке,
+    // «ё» и «е» не различаются (services/warehouse/search.js). Очередь уже
+    // собрана в память целиком, поэтому второй запрос к базе не нужен.
+    if (q) items = items.filter(i => matchesSearch(q, [i.line.name, i.line.pathText]));
     if (branch) items = items.filter(i => (i.line.pathText || '') === branch);
     if (kind) items = items.filter(i => i.kind === kind);
 
@@ -303,6 +307,13 @@ router.post('/', authenticate, requireWarehouse('canImportOsv'), async (req, res
     const room = await WhRoom.findByPk(roomId);
     if (!room) return res.status(404).json({ error: 'Кабинет не найден' });
 
+    // Пока по кабинету идёт пересчёт, раскладывать в него нечего — и проверка
+    // стоит здесь, ДО записи размещения, а не перед разбором. Размещение это
+    // намерение, но намерение, которое исполняется само: сохранить его сейчас
+    // значит договориться, что имущество приедет в кабинет позже, без ведома
+    // комиссии. Почему заморозка вообще есть — services/warehouse/inventory.js.
+    await assertNotCounting([roomId]);
+
     if (storageId) {
       const storage = await WhStorage.findOne({ where: { id: storageId, roomId } });
       if (!storage) {
@@ -346,10 +357,11 @@ router.post('/', authenticate, requireWarehouse('canImportOsv'), async (req, res
         const total = Number(line.closingQty) || 0;
         const already = placedByKey.get(item.lineKey) || 0;
         const free = total - already;
-        // Пустое количество означает «всё, что осталось»: в девяти случаях из
-        // десяти позиция целиком лежит там, где на неё смотрят.
-        const want = item.quantity === undefined || item.quantity === null || item.quantity === ''
-          ? free : Number(item.quantity);
+        // Пустое количество — одна единица, а не весь остаток (ver. 7.46).
+        // Правило и его цена — в requestedQuantity, там же тест. Отвергать
+        // пустое нельзя: мобильные сборки обновляются вручную, и те, что уже
+        // стоят на телефонах, продолжают слать null.
+        const want = requestedQuantity(item.quantity, free);
 
         if (!(want > 0)) {
           rejected.push({ lineKey: item.lineKey, name: line.name, reason: 'Количество должно быть больше нуля' });
@@ -403,16 +415,19 @@ router.post('/', authenticate, requireWarehouse('canImportOsv'), async (req, res
      * же canImportOsv. Прогон идемпотентен и сужен до одного кабинета, поэтому
      * чужой ведомости он не касается и повтор ничего не задваивает.
      *
-     * Флагом, а не всегда: экран разбора в вебе — это проверка решений словаря
-     * по всей ведомости целиком, и тому, кто раскладывает за столом, полезно
-     * сперва посмотреть на неё, а не получить карточки по факту раскладки.
-     * Телефон флаг шлёт всегда: смотреть там не на что и некогда.
+     * ВСЕГДА, а не по флагу (ver. 7.46). Флаг слал только телефон, и раскладка
+     * из веба оставалась намерением до общего прогона — с этого на бою и начался
+     * разбор полётов: тридцать стульев «успешно разложили», в кабинете не
+     * появилось ничего, а приехали они через день, когда кто-то запустил разбор,
+     * и выглядело это как отложенная операция. Оговорка «сперва посмотри на
+     * решения словаря целиком» была написана, когда словарь был пуст; с ver. 7.13
+     * он заполнен и unmapped = 0, так что смотреть перед раскладкой не на что.
      *
      * Ошибка разбора не отменяет размещение: оно уже сохранено и верно само по
      * себе. Поэтому не 500, а поле problems в ответе.
      */
     let materialized = null;
-    if (req.body?.materialize && saved.length) {
+    if (saved.length) {
       try {
         materialized = await materializeOsv({
           importId: snapshot.id,
@@ -443,6 +458,10 @@ router.post('/', authenticate, requireWarehouse('canImportOsv'), async (req, res
       } : materialized,
     });
   } catch (err) {
+    // Заморозка кабинета — это нарушение правила, а не сбой: у ошибки есть свой
+    // статус, и отдать её пятисотой значит показать человеку «ошибка сервера»
+    // там, где ему надо прочитать номер описи.
+    if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('POST warehouse/placements error:', err);
     res.status(500).json({ error: err.message });
   }

@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import {
   Search, QrCode, Printer, X, Wrench, ArrowRightLeft,
   FileText, AlertTriangle, Plus, Pencil, Check, Download,
-  Wand2, Copy, MapPin, User,
+  Wand2, Copy, MapPin, User, Boxes,
 } from 'lucide-react';
 import { warehouseApi, BASE_URL } from '../../services/api';
 import SecureImage from '../../components/warehouse/SecureImage';
@@ -604,6 +604,32 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
   const { asset, depreciation, files, maintenance, repairs, movements } = data;
   const [tab, setTab] = useState('info');
   const [serviceModal, setServiceModal] = useState(null);
+  const [moving, setMoving] = useState(false);
+  // Переезд — операция учёта, а не правка карточки: право на него своё.
+  const canIssue = Boolean(access?.capabilities?.canIssue);
+
+  /**
+   * Быстрый переезд на склад и обратно (ver. 7.47).
+   *
+   * Медцентр, склад и место хранения выводит сервер: здесь вопроса два —
+   * «этот прибор» и «туда», — и всё остальное известно из того, где актив
+   * стоит сейчас. Документ создаётся тот же самый, что и в общей форме
+   * перемещения, поэтому в отчётах эти движения ничем не отличаются.
+   */
+  const move = async (body, done) => {
+    setMoving(true);
+    try {
+      await warehouseApi.placeAsset(asset.id, body);
+      toast.success(done);
+      await onReload?.();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось переместить');
+    } finally {
+      setMoving(false);
+    }
+  };
+  const placeToWarehouse = () => move({ serviceKind: 'warehouse' }, 'Убрано на склад');
+  const placeBack = () => move({}, 'Возвращено в кабинет');
 
   const printOne = async () => {
     try {
@@ -772,17 +798,35 @@ function AssetCard({ data, access, labelSize, onClose, onOpenRoom, onReload, onE
                 <div className="wh-bigcard">
                   <div className="wh-bigcard__head"><MapPin /> Размещение</div>
                   <div className="wh-assetcard__tile-value">
-                    {asset.room ? `Каб. ${asset.room.number}` : 'Не размещён'}
+                    {/* У склада подпись — название: «Каб. Склад» читается как
+                        ошибка ввода (ver. 7.47). */}
+                    {!asset.room ? 'Не размещён'
+                      : asset.room.isService ? (asset.room.name || asset.room.number)
+                      : `Каб. ${asset.room.number}`}
                   </div>
                   <div className="wh-bigcard__sub">
-                    {asset.room?.name && asset.room.name !== asset.room.number ? `${asset.room.name} · ` : ''}
-                    {asset.room?.department?.name || 'отделение не указано'}
+                    {!asset.room?.isService && asset.room?.name && asset.room.name !== asset.room.number
+                      ? `${asset.room.name} · ` : ''}
+                    {asset.room?.isService
+                      ? 'склад медцентра'
+                      : (asset.room?.department?.name || 'отделение не указано')}
                     {asset.storage?.name ? ` · ${asset.storage.name}` : ''}
                   </div>
                   {asset.room && (
                     <button className="wh-btn wh-btn--link wh-assetcard__tile-link"
                             onClick={() => { onClose(); onOpenRoom?.(asset.room.id); }}>
-                      Дашборд кабинета
+                      {asset.room.isService ? 'Дашборд склада' : 'Дашборд кабинета'}
+                    </button>
+                  )}
+                  {/* Быстрый переезд: убрать в резерв и вернуть на место —
+                      движения ежедневные, и форма документа из четырёх полей
+                      ради них означает, что их просто не оформят. */}
+                  {asset.room && canIssue && !asset.isArchived && asset.status !== 'written_off'
+                    && asset.status !== 'repair' && (
+                    <button className="wh-btn wh-btn--ghost wh-btn--sm wh-assetcard__tile-move"
+                            disabled={moving}
+                            onClick={() => (asset.room.isService ? placeBack() : placeToWarehouse())}>
+                      <Boxes size={13} /> {asset.room.isService ? 'Вернуть в кабинет' : 'На склад'}
                     </button>
                   )}
                 </div>
@@ -1115,7 +1159,16 @@ function ServiceModal({ asset, action, onClose, onSaved }) {
             </label>
             <label>Заключение <textarea rows={3} value={form.resultNote} onChange={e => set('resultNote', e.target.value)} /></label>
           </>}
-          {creatingRepair && <label>Дата начала <input type="date" value={form.startedAt} onChange={e => set('startedAt', e.target.value)} /></label>}
+          {creatingRepair && <>
+            <label>Дата начала <input type="date" value={form.startedAt} onChange={e => set('startedAt', e.target.value)} /></label>
+            {/* Ремонт с 7.47 не только меняет статус, но и увозит вещь. Сказать
+                об этом надо здесь: иначе прибор пропадёт из кабинета, и это
+                будет выглядеть сбоем, а не следствием нажатой кнопки. */}
+            <div className="wh-muted">
+              Прибор переедет на склад «Ремонт» своего медцентра, а при закрытии
+              ремонта вернётся в кабинет, откуда его забрали.
+            </div>
+          </>}
           {!creatingMaintenance && !closingMaintenance && !creatingRepair && <>
             <label>Дата окончания <input type="date" value={form.finishedAt} onChange={e => set('finishedAt', e.target.value)} /></label>
             <label>Результат

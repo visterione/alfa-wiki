@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast';
 import {
   AlertTriangle, ArrowLeft, Boxes, Check, ChevronRight, Copy, FilePlus2, Package,
-  Plus, Search, Trash2, X,
+  Plus, Search, Trash2, Undo2, X,
 } from 'lucide-react';
 import { users as usersApi, warehouseApi } from '../../services/api';
 import Combobox from './components/Combobox';
@@ -21,6 +21,12 @@ const TYPES = [
 ];
 
 const TYPE_LABELS = Object.fromEntries(TYPES);
+
+/**
+ * Что отменяется кнопкой. Приход, списание и оприходование излишков сюда не
+ * входят намеренно — почему, см. backend/services/warehouse/reversal.js.
+ */
+const REVERSIBLE = new Set(['transfer', 'issue', 'return', 'repair_out', 'repair_in']);
 const MATERIAL_TYPES = new Set(['receipt', 'issue', 'transfer', 'return', 'writeoff', 'surplus']);
 const ASSET_TYPES = new Set(['transfer', 'repair_out', 'repair_in', 'writeoff']);
 
@@ -99,6 +105,35 @@ export default function WarehouseOperations({ access, tree }) {
   // самая частая операция модуля, и каждый раз собирать её заново значит
   // повторять руками то, что уже сделано вчера.
   const [repeat, setRepeat] = useState(null);
+  const [undoing, setUndoing] = useState(null);
+  const canIssue = Boolean(access?.capabilities?.canIssue);
+
+  /**
+   * Отмена операции встречным документом (ver. 7.50).
+   *
+   * Проверяет сервер: что отменяется, не уехало ли имущество дальше и не идёт
+   * ли по кабинету пересчёт. Здесь спрашиваем подтверждение — операция
+   * проводится немедленно и сама попадает в журнал.
+   */
+  const undo = async (document) => {
+    const label = (TYPE_LABELS[document.type] || document.type).toLowerCase();
+    if (!window.confirm(
+      `Отменить ${label} ${document.number}?\n\n`
+      + 'Будет проведён встречный документ. Сама операция останется в истории — '
+      + 'видно будет и её, и отмену.',
+    )) return;
+
+    setUndoing(document.id);
+    try {
+      const { data } = await warehouseApi.reverseDocument(document.id);
+      toast.success(`Отменено документом ${data.document.number}`);
+      await loadDocuments();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось отменить операцию');
+    } finally {
+      setUndoing(null);
+    }
+  };
 
   const setFilter = (patch) => {
     setFilters(f => ({ ...f, ...patch }));
@@ -219,10 +254,32 @@ export default function WarehouseOperations({ access, tree }) {
                     <td className="wh-mono"><b>{d.number}</b></td>
                     <td>{TYPE_LABELS[d.type] || d.type}</td>
                     <td>{roomLabel(d.fromRoom)}</td><td>{roomLabel(d.toRoom)}</td>
-                    <td className="wh-cell-sub">{d.reasonText || d.comment || '—'}</td>
+                    <td className="wh-cell-sub">
+                      {d.reasonText || d.comment || '—'}
+                      {/* Исправленная ошибка не должна читаться как две
+                          настоящие операции подряд: говорим прямо. */}
+                      {d.reversedBy && (
+                        <div className="wh-danger">отменён — сторно {d.reversedBy.number}</div>
+                      )}
+                      {d.reversalOf && (
+                        <div className="wh-muted">отмена документа {d.reversalOf.number}</div>
+                      )}
+                    </td>
                     <td>{d.author?.displayName || '—'}</td>
                     <td>{d.status === 'signed' ? <span className="wh-ok">✓ подписан</span> : 'черновик'}</td>
-                    <td><ChevronRight size={15} /></td>
+                    <td onClick={e => e.stopPropagation()}>
+                      {/* Отмена стоит на строке документа: человек уже смотрит
+                          на ту запись, которую хочет исправить, и повторять за
+                          него выбор кабинетов незачем (ver. 7.50). */}
+                      {canIssue && REVERSIBLE.has(d.type) && !d.reversedBy && !d.reversalOf ? (
+                        <button className="wh-icon-btn wh-icon-btn--danger"
+                                title="Отменить операцию"
+                                disabled={undoing === d.id}
+                                onClick={() => undo(d)}>
+                          <Undo2 size={15} />
+                        </button>
+                      ) : <ChevronRight size={15} />}
+                    </td>
                   </tr>
                 ))}
                 {!loading && !documents.items.length && <tr><td colSpan={9} className="wh-empty">Документов нет</td></tr>}
@@ -1077,8 +1134,11 @@ function flattenStorages(tree) {
   };
   for (const mc of tree?.medCenters || []) {
     for (const r of mc.rooms || []) addRoom(mc, r);
-    for (const b of mc.buildings || []) for (const f of b.floors || []) {
-      for (const r of f.rooms || []) addRoom(mc, r, ` · ${b.name} · ${f.number} эт.`);
+    // Склады такие же места хранения, как кабинеты: выдать материал со склада и
+    // принять на склад — обычные операции (ver. 7.47).
+    for (const r of mc.services || []) addRoom(mc, r, ' · склад');
+    for (const f of mc.floors || []) {
+      for (const r of f.rooms || []) addRoom(mc, r, ` · ${f.number} эт.`);
     }
   }
   return rows;

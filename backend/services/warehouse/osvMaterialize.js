@@ -68,6 +68,7 @@ const { generateInventoryNumber } = require('./numbering');
 const { createDocument } = require('./stock');
 const { compileRules, classify } = require('./itemRules');
 const { splitName } = require('./nameParts');
+const { openCountByRoom } = require('./inventory');
 const qr = require('./qr');
 
 /**
@@ -370,6 +371,26 @@ function targetsOf(item, only = null) {
 }
 
 /**
+ * Сколько единиц строки кладём в кабинет по одному нажатию.
+ *
+ * Отдельной функцией и с тестом, потому что здесь значение по умолчанию решает
+ * больше, чем выглядит. До ver. 7.46 пустое количество означало «весь
+ * нераспределённый остаток»: считалось, что позиция целиком лежит там, где на
+ * неё смотрят. На боевых данных вышло обратное — вещи в кабинетах стоят
+ * поштучно, а одна галочка без ввода числа записывала на кабинет все пятьдесят
+ * единиц строки, и заметно это становилось не сразу: после разбора размещение
+ * снимается только перемещением.
+ *
+ * Меньше единицы берётся, когда меньше и осталось: дробный остаток бывает у
+ * материалов, и отказывать человеку, который просто не стал вводить 0.4, не за
+ * что.
+ */
+function requestedQuantity(raw, free) {
+  const empty = raw === undefined || raw === null || raw === '';
+  return empty ? Math.min(1, free) : Number(raw);
+}
+
+/**
  * Под каким ключом считать уже созданные карточки. У размещения это оно само, у
  * запасного пути — строка ведомости: так старые карточки (созданные до 6.80, без
  * ссылки на размещение) продолжают считаться по-старому и не дублируются.
@@ -436,6 +457,40 @@ async function materializeOsv({ importId, account, user, dryRun = false, roomIds
   const targets = new Map();
   for (const item of work) targets.set(item.line.lineKey, targetsOf(item, only));
   if (only) work = work.filter(item => targets.get(item.line.lineKey).length);
+
+  /**
+   * Кабинеты под открытой описью выпадают из работы.
+   *
+   * Разбор ведомости — это приход на полку, и на время пересчёта он запрещён
+   * ровно так же, как выдача (services/warehouse/inventory.js). Раскладка в
+   * такой кабинет не доходит сюда вовсе: маршрут размещения отказывает раньше.
+   * Остаётся общий прогон по всей ведомости — и вот его ронять из-за одной
+   * описи нельзя, иначе пересчёт в одном кабинете останавливает постановку на
+   * учёт по всей сети. Поэтому не отказ, а исключение этих кабинетов из работы,
+   * названное вслух: молча пропущенный кабинет выглядел бы как разобранный.
+   */
+  const frozen = await openCountByRoom(
+    [...new Set([...targets.values()].flat().map(t => t.roomId).filter(Boolean))],
+  );
+  if (frozen.size) {
+    for (const [lineKey, list] of targets) {
+      targets.set(lineKey, list.filter(t => !frozen.has(t.roomId)));
+    }
+    work = work.filter(item => targets.get(item.line.lineKey).length);
+
+    const roomsFrozen = await WhRoom.findAll({
+      where: { id: { [Op.in]: [...frozen.keys()] } }, attributes: ['id', 'number'],
+    });
+    for (const room of roomsFrozen) {
+      report.problems.push({
+        name: `Кабинет ${room.number}`,
+        pathText: null,
+        reason: `Идёт инвентаризация ${frozen.get(room.id).number} — кабинет пропущен, `
+          + 'разберите его после закрытия описи',
+      });
+    }
+  }
+
   if (!work.length) return report;
 
   const allTargets = [...targets.values()].flat();
@@ -642,6 +697,7 @@ async function materializeOsv({ importId, account, user, dryRun = false, roomIds
 }
 
 module.exports = {
+  requestedQuantity,
   materializeOsv,
   planMaterialization,
   decisionOf,
