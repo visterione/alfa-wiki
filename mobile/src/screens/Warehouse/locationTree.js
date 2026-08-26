@@ -77,6 +77,10 @@ export function buildNodes(tree) {
         // Подпись этажа — его номер: после отказа от корпусов у медцентра
         // временно бывает два четвёртых этажа, и различает их название.
         subtitle: floor.name ? `${floor.number} этаж` : (floor.buildingName || null),
+        // Короткая подпись для переключателя этажей: там помещается число, и
+        // ничего кроме числа там и не нужно — «3 этаж» в клетке 44×44 не
+        // читается, а обрезанное «3 эт…» читается как ошибка.
+        short: String(floor.number ?? '?'),
         path,
         rooms: floor.rooms,
       });
@@ -89,6 +93,8 @@ export function buildNodes(tree) {
         key: `mcr:${mc.id}`,
         kind: 'floor',
         title: 'Без этажа',
+        // Номера у него нет по определению — в переключателе это прочерк.
+        short: '—',
         path: [mc.name, 'Без этажа'].filter(Boolean).join(' · '),
         rooms: mc.rooms,
       });
@@ -103,6 +109,8 @@ export function buildNodes(tree) {
       const services = keep({
         key: `svc:${mc.id}`,
         kind: 'floor',
+        // Склады — не этаж, и числа у них нет: в переключателе это значок.
+        service: true,
         title: 'Склады',
         path: [mc.name, 'Склады'].filter(Boolean).join(' · '),
         rooms: mc.services,

@@ -984,8 +984,22 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         include: [{ model: WhAsset, as: 'asset', required: true, where: { roomId: room.id }, attributes: ['id', 'inventoryNumber', 'name'] }],
         order: [['plannedDate', 'ASC']],
       }),
+      /**
+       * Загрузка кабинета за месяц.
+       *
+       * Медцентр передаётся, когда этажа нет: у аггрегатора два режима — «этаж
+       * целиком» и «кабинеты медцентра вне этажей», — и без второго запрос
+       * уходил с пустым :medCenterId и падал. Дашборд при этом отдавал
+       * пятисотую, а экран писал «кабинет не открылся»: так ломались и склады
+       * (этажа у них не бывает по определению), и обычные кабинеты, которым
+       * этаж не назначили.
+       *
+       * Сам склад в ответе не появится — он исключён из расчёта загрузки, — и
+       * это правильно: приёмов в нём нет, и делить на них нечего.
+       */
       utilization.aggregate({
-        floorId: room.floorId,
+        floorId: room.floorId || null,
+        medCenterId: room.floorId ? null : room.medCenterId,
         from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
         to: today,
       }),

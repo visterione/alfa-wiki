@@ -75,8 +75,7 @@
  */
 import React, {useCallback, useMemo, useState} from 'react';
 import {
-  View, Text, Image, FlatList, ScrollView, TextInput, Pressable, StyleSheet,
-  Alert, Modal,
+  View, Text, Image, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
 } from 'react-native';
 import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -89,10 +88,13 @@ import {
 import CONFIG from '../../config';
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import FloorSwitch from './FloorSwitch';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {loadLocationTree, useWarehouseCan} from '../../store/warehouseStore';
-import {qtyText, moneyText, flattenRooms, roomMatches, roomText} from './warehouseMeta';
+import {
+  qtyText, moneyText, flattenRooms, roomMatches, roomHeadText, roomSubText,
+} from './warehouseMeta';
 import {ROOT_KEY, buildNodes, leavesOf, resolveNode} from './locationTree';
 
 export default function WarehousePlacementScreen() {
@@ -459,7 +461,7 @@ export default function WarehousePlacementScreen() {
  */
 function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
   const [nodeKey, setNodeKey] = useState(ROOT_KEY);
-  // Выбранный этаж; null означает «все этажи» и стоит по умолчанию.
+  // Выбранный этаж. Пусто до первого касания — тогда берётся первый по списку.
   const [floorKey, setFloorKey] = useState(null);
   const [q, setQ] = useState('');
 
@@ -470,8 +472,10 @@ function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, on
   // «Кабинеты» (ver. 7.50). Раскладка это обход здания, и человек, стоящий в
   // кабинете, ищет его номер, а не путь до него.
   const floors = node?.kind === 'mc' ? node.children : null;
-  const floor = floors && floorKey ? floors.find(item => item.key === floorKey) : null;
-  const listNode = floor || node;
+  const floor = floors ? (floors.find(item => item.key === floorKey) || floors[0]) : null;
+  // Поиск идёт по всему медцентру, а не по выбранному этажу: человек,
+  // набирающий номер кабинета, ищет его в здании.
+  const listNode = q.trim() ? node : (floor || node);
 
   const groups = useMemo(() => {
     if (!listNode) return [];
@@ -483,9 +487,17 @@ function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, on
 
   const flat = node?.kind !== 'root' || Boolean(q.trim());
 
+  // Заголовок этажа над списком нужен, только когда он говорит больше, чем
+  // нажатая кнопка переключателя: у именованных этажей — да (после отказа от
+  // корпусов «4» бывает два), у обычного «3 этаж» — нет.
+  const single = groups.length === 1;
+  const named = single && groups[0].leaf.title !== `${groups[0].leaf.short} этаж`;
+
   const items = flat
     ? groups.flatMap(({leaf, rooms}) => [
-      ...(groups.length > 1 ? [{type: 'group', key: `g-${leaf.key}`, title: leaf.path || leaf.title}] : []),
+      ...(!single || named
+        ? [{type: 'group', key: `g-${leaf.key}`, title: leaf.path || leaf.title}]
+        : []),
       ...rooms.map(room => ({type: 'room', key: `r-${room.id}`, room})),
     ])
     : (listNode?.children || []).map(child => ({type: 'node', key: `n-${child.key}`, node: child}));
@@ -508,37 +520,15 @@ function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, on
         </Pressable>
       )}
 
-      {/* Лента этажей: одно касание сужает список, второе по «Все» возвращает
-          его целиком. Прежде здесь стоял выпадающий список — два касания и
-          спрятанные этажи, кроме первого. */}
-      {floors?.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.floorBar}
-          keyboardShouldPersistTaps="handled">
-          <Pressable
-            style={[styles.floorChip, !floorKey && styles.floorChipOn]}
-            onPress={() => setFloorKey(null)}>
-            <Text style={[styles.floorChipText, !floorKey && styles.floorChipTextOn]}>Все</Text>
-          </Pressable>
-          {floors.map(item => (
-            <Pressable
-              key={item.key}
-              style={[styles.floorChip, floorKey === item.key && styles.floorChipOn]}
-              onPress={() => setFloorKey(prev => (prev === item.key ? null : item.key))}>
-              <Text
-                style={[styles.floorChipText, floorKey === item.key && styles.floorChipTextOn]}
-                numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text style={[styles.floorChipCount, floorKey === item.key && styles.floorChipTextOn]}>
-                {item.counts.rooms}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
+      {/* Поля по линии поиска и списка этого экрана, интервал — как у соседей:
+          здесь всё стоит на восьми. */}
+      <FloorSwitch
+        floors={floors}
+        value={floor?.key}
+        onChange={setFloorKey}
+        inset={12}
+        spacing={8}
+      />
 
       <View style={styles.stepSearch}>
         <Search size={15} color={c.textTertiary} />
@@ -594,6 +584,11 @@ function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, on
           // человек читает её до того, как войдёт в кабинет.
           const counting = frozen?.get(room.id);
           const blocked = !hasStorage || Boolean(counting);
+          const meta = [
+            roomSubText(room),
+            counting && `идёт инвентаризация ${counting}`,
+            !hasStorage && 'нет мест хранения',
+          ].filter(Boolean).join(' · ');
           return (
             <Pressable
               style={[styles.pickRow, blocked && styles.pickRowOff]}
@@ -603,14 +598,14 @@ function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, on
                 ? <ClipboardList size={17} color={c.textTertiary} />
                 : <DoorOpen size={17} color={c.primary} />}
               <View style={styles.itemText}>
-                <Text style={styles.itemName}>{roomText(room)}</Text>
-                <Text style={styles.itemMeta} numberOfLines={1}>
-                  {[
-                    room.name,
-                    counting && `идёт инвентаризация ${counting}`,
-                    !hasStorage && 'нет мест хранения',
-                  ].filter(Boolean).join(' · ')}
-                </Text>
+                {/* В заголовке только номер: название стоит подписью снизу, и
+                    через тире оно шло бы вторым разом подряд. */}
+                <Text style={styles.itemName}>{roomHeadText(room)}</Text>
+                {/* Пустая подпись — это пустая строка высотой в строку: у
+                    кабинета без имени, без описи и с полками говорить нечего. */}
+                {Boolean(meta) && (
+                  <Text style={styles.itemMeta} numberOfLines={1}>{meta}</Text>
+                )}
               </View>
               <Counts
                 styles={styles}
@@ -791,16 +786,6 @@ const makeStyles = c => StyleSheet.create({
     minWidth: 18,
     textAlign: 'right',
   },
-  floorBar: {paddingHorizontal: 12, paddingBottom: 8, gap: 8},
-  floorChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
-    paddingHorizontal: 12, paddingVertical: 8,
-  },
-  floorChipOn: {backgroundColor: c.primary},
-  floorChipText: {fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
-  floorChipCount: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary},
-  floorChipTextOn: {color: '#FFFFFF'},
   up: {
     flexDirection: 'row',
     alignItems: 'center',
