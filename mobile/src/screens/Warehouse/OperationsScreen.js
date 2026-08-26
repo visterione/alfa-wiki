@@ -18,7 +18,7 @@
  * позиций на телефоне не влезает таблицей, а «добавить и повторить» — ровно тот
  * ритм, в котором человек снимает вещи с полки.
  */
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -637,47 +637,64 @@ function LinePicker({styles, c, insets, roomId, fromStock, material, asset, onCl
   const [chosen, setChosen] = useState(null);
   const [quantity, setQuantity] = useState('1');
 
+  /**
+   * Что предлагать в выборе объекта.
+   *
+   * Поиск уходит на сервер (ver. 7.51): списки здесь с потолком — двести
+   * карточек, триста позиций справочника, — и фильтр на экране искал только
+   * внутри загруженного куска. На реальной базе это выглядело как пропавшие
+   * позиции: набираешь название и не находишь того, что точно есть.
+   */
   useFocusEffect(useCallback(() => {
     let alive = true;
     const nothing = Promise.resolve({data: {items: []}});
-    const request = fromStock
-      ? Promise.all([
-        // Что именно предлагать, решает тип операции: в ремонт уходит только
-        // оборудование, а материалы там взять неоткуда
-        material ? warehouseApi.stock({roomId, includeZero: 'false'}) : nothing,
-        asset ? warehouseApi.assets({roomId, limit: 200}) : nothing,
-      ]).then(([stock, assets]) => [
-        ...(Array.isArray(stock.data) ? stock.data : []).map(row => ({
-          key: `s-${row.id}`,
-          nomenclatureId: row.nomenclature?.id,
-          name: row.nomenclature?.name,
-          unit: row.nomenclature?.unit,
-          available: Number(row.quantity),
-        })),
-        ...((assets.data?.items) || []).map(asset => ({
-          key: `a-${asset.id}`,
-          assetId: asset.id,
-          name: `${asset.inventoryNumber} · ${asset.name}`,
-          unit: 'шт',
-          available: 1,
-        })),
-      ])
-      : (material ? warehouseApi.nomenclature({limit: 300}) : nothing).then(({data}) => (data?.items || []).map(row => ({
-        key: `n-${row.id}`,
-        nomenclatureId: row.id,
-        name: row.name,
-        unit: row.unit,
-        available: null,
-      })));
+    const search = q.trim() || undefined;
 
-    request.then(list => alive && setRows(list)).catch(() => alive && setRows([]));
-    return () => { alive = false; };
-  }, [roomId, fromStock, material, asset]));
+    const load = () => {
+      const request = fromStock
+        ? Promise.all([
+          // Что именно предлагать, решает тип операции: в ремонт уходит только
+          // оборудование, а материалы там взять неоткуда
+          material ? warehouseApi.stock({roomId, includeZero: 'false', q: search}) : nothing,
+          asset ? warehouseApi.assets({roomId, limit: 200, q: search}) : nothing,
+        ]).then(([stock, assets]) => [
+          // Остаток приходит объектом со строками, а не массивом: раньше здесь
+          // стояла проверка на массив, и материалы не показывались НИКОГДА —
+          // список молча оставался пустым.
+          ...((stock.data?.items) || []).map(row => ({
+            key: `s-${row.id}`,
+            nomenclatureId: row.nomenclature?.id,
+            name: row.nomenclature?.name,
+            unit: row.nomenclature?.unit,
+            available: Number(row.quantity),
+          })),
+          ...((assets.data?.items) || []).map(item => ({
+            key: `a-${item.id}`,
+            assetId: item.id,
+            name: `${item.inventoryNumber} · ${item.name}`,
+            unit: 'шт',
+            available: 1,
+          })),
+        ])
+        : (material ? warehouseApi.nomenclature({limit: 300, q: search}) : nothing)
+          .then(({data}) => (data?.items || []).map(row => ({
+            key: `n-${row.id}`,
+            nomenclatureId: row.id,
+            name: row.name,
+            unit: row.unit,
+            available: null,
+          })));
 
-  const list = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return (rows || []).filter(row => !needle || String(row.name || '').toLowerCase().includes(needle));
-  }, [rows, q]);
+      request.then(list => alive && setRows(list)).catch(() => alive && setRows([]));
+    };
+
+    // Задержка на наборе: запрос на каждую букву — это запрос на каждую букву.
+    const timer = setTimeout(load, q ? 350 : 0);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [roomId, fromStock, material, asset, q]));
+
+  // Отбор уже сделан сервером — здесь только то, что он прислал.
+  const list = rows || [];
 
   const confirm = () => {
     const value = num(quantity);
