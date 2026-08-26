@@ -219,7 +219,7 @@ router.patch('/batches/:id/block', authenticate, requireWarehouse('canManageCata
 // ── Остатки ──────────────────────────────────────────────────────────────────
 router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
   try {
-    const { roomId, storageId, nomenclatureId, belowMinimum, includeZero, q } = req.query;
+    const { roomId, storageId, nomenclatureId, belowMinimum, includeZero, q, medCenterId } = req.query;
 
     const scoped = await req.warehouse.scopedRoomIds();
     const roomFilter = [];
@@ -260,6 +260,17 @@ router.get('/stock', authenticate, requireWarehouse(), async (req, res) => {
           where: roomFilter.length ? { roomId: { [Op.in]: [...new Set(roomFilter)] } } : undefined,
           include: [{
             model: WhRoom, as: 'room',
+            /**
+             * Отбор по медцентру считает база, а не экран.
+             *
+             * На телефоне медцентр выбирается один на весь раздел, и соблазн
+             * отфильтровать пришедшие строки на месте велик. Но STOCK_LIMIT
+             * режет выборку ДО фильтрации: клиентский отбор показывал бы
+             * позиции медцентра только из первой тысячи строк сети — ровно тот
+             * баг, из-за которого в ver. 7.49 на сервер уехал поиск.
+             */
+            required: Boolean(medCenterId),
+            where: medCenterId ? { medCenterId } : undefined,
             include: [
               { model: WhDepartment, as: 'department', attributes: ['id', 'name', 'color'] },
               { model: WhFloor, as: 'floor', include: [{ model: WhBuilding, as: 'building', attributes: ['id', 'name'] }] },

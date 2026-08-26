@@ -25,14 +25,19 @@ import {Search, SlidersHorizontal, Wrench, User as UserIcon, MapPin} from 'lucid
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import BottomSheet from '../../components/BottomSheet';
-import {loadLocationTree, useWarehouseAccess} from '../../store/warehouseStore';
+import {loadLocationTree, useWarehouseAccess, useWarehouseMedCenter} from '../../store/warehouseStore';
+import {useNetworkFallback, NetworkFallbackHint} from './MedCenterSwitch';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {ASSET_STATUS, statusColor, moneyText, dateText, roomText} from './warehouseMeta';
 
 const PAGE = 50;
-const EMPTY = {status: '', medCenterId: '', departmentId: '', maintenanceDue: false};
+// Медцентра в этом наборе больше нет: он выбирается один на весь раздел в шапке
+// склада (MedCenterSwitch). Две ручки на одну величину — глобальный выбор и
+// строка в листе — спорили бы между собой, и выигрывала бы та, о которой
+// человек помнит.
+const EMPTY = {status: '', departmentId: '', maintenanceDue: false};
 
 export default function WarehouseAssetsScreen({navigation}) {
   const styles = useThemedStyles(makeStyles);
@@ -40,6 +45,7 @@ export default function WarehouseAssetsScreen({navigation}) {
   const tabInset = useTabBarInset();
   const access = useWarehouseAccess();
   const canSeeCosts = Boolean(access?.capabilities?.canSeeCosts);
+  const {medCenterId, ready} = useWarehouseMedCenter();
 
   const [q, setQ] = useState('');
   const [filters, setFilters] = useState(EMPTY);
@@ -63,7 +69,7 @@ export default function WarehouseAssetsScreen({navigation}) {
     return warehouseApi.assets({
       q: q.trim() || undefined,
       status: filters.status || undefined,
-      medCenterId: filters.medCenterId || undefined,
+      medCenterId: medCenterId || undefined,
       departmentId: filters.departmentId || undefined,
       maintenanceDue: filters.maintenanceDue ? 'true' : undefined,
       page,
@@ -76,23 +82,41 @@ export default function WarehouseAssetsScreen({navigation}) {
       })
       .catch(() => request.current === mine && setItems([]))
       .finally(() => request.current === mine && setLoadingMore(false));
-  }, [q, filters]);
+  }, [q, filters, medCenterId]);
 
-  // Поиск с задержкой: запрос на каждую букву — это запрос на каждую букву
+  // Поиск с задержкой: запрос на каждую букву — это запрос на каждую букву.
+  // Пока медцентр читается из памяти телефона, запрос не уходит вовсе: иначе
+  // первым ответом пришла бы вся сеть и список моргнул бы чужими карточками.
   useEffect(() => {
+    if (!ready) return undefined;
     const timer = setTimeout(() => load(1), q ? 350 : 0);
     return () => clearTimeout(timer);
-  }, [load, q]);
+  }, [load, q, ready]);
 
-  const active = filters.status || filters.medCenterId
-    || filters.departmentId || filters.maintenanceDue;
+  const active = filters.status || filters.departmentId || filters.maintenanceDue;
 
+  // Отделения принадлежат медцентру, поэтому список сужается вместе с ним:
+  // выбирать отделение чужого центра, глядя на список своего, бессмысленно.
   const departments = useMemo(() => {
     const all = tree?.departments || [];
-    return filters.medCenterId
-      ? all.filter(d => d.medCenterId === filters.medCenterId)
-      : all;
-  }, [tree, filters.medCenterId]);
+    return medCenterId ? all.filter(d => d.medCenterId === medCenterId) : all;
+  }, [tree, medCenterId]);
+
+  // Пустой список должен уметь отличить «нет нигде» от «нет здесь» — иначе
+  // человек решит, что карточки прибора не существует, и заведёт вторую.
+  const probeNetwork = useCallback(
+    () => warehouseApi.assets({
+      q: q.trim() || undefined,
+      status: filters.status || undefined,
+      maintenanceDue: filters.maintenanceDue ? 'true' : undefined,
+      page: 1,
+      limit: 1,
+    }).then(({data}) => data.total || 0),
+    [q, filters.status, filters.maintenanceDue],
+  );
+  const foundInNetwork = useNetworkFallback(probeNetwork, {
+    enabled: Boolean(medCenterId) && Boolean(items) && items.length === 0,
+  });
 
   return (
     <View style={styles.root}>
@@ -130,7 +154,12 @@ export default function WarehouseAssetsScreen({navigation}) {
             load(Math.floor(items.length / PAGE) + 1);
           }}
           ListHeaderComponent={<Text style={styles.total}>Найдено: {total}</Text>}
-          ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
+          ListEmptyComponent={
+            <>
+              <Text style={styles.none}>Ничего не нашлось</Text>
+              <NetworkFallbackHint found={foundInNetwork} />
+            </>
+          }
           ListFooterComponent={loadingMore
             ? <ActivityIndicator size="small" color={c.textTertiary} style={styles.more} />
             : null}
@@ -203,25 +232,6 @@ export default function WarehouseAssetsScreen({navigation}) {
                 label={label}
                 on={filters.status === key}
                 onPress={() => setFilters(f => ({...f, status: key}))}
-              />
-            ))}
-          </View>
-
-          <Text style={styles.sheetLabel}>Медцентр</Text>
-          <View style={styles.options}>
-            <Option
-              styles={styles}
-              label="Все"
-              on={!filters.medCenterId}
-              onPress={() => setFilters(f => ({...f, medCenterId: '', departmentId: ''}))}
-            />
-            {(tree?.medCenters || []).map(mc => (
-              <Option
-                key={mc.id}
-                styles={styles}
-                label={mc.name}
-                on={filters.medCenterId === mc.id}
-                onPress={() => setFilters(f => ({...f, medCenterId: mc.id, departmentId: ''}))}
               />
             ))}
           </View>

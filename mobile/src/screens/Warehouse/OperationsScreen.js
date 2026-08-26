@@ -34,7 +34,8 @@ import {
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import BottomSheet from '../../components/BottomSheet';
-import {loadLocationTree, useWarehouseCan} from '../../store/warehouseStore';
+import {loadLocationTree, useWarehouseCan, useWarehouseMedCenter} from '../../store/warehouseStore';
+import {useNetworkFallback, NetworkFallbackHint} from './MedCenterSwitch';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
@@ -107,6 +108,7 @@ export default function WarehouseOperationsScreen() {
   const insets = useSafeAreaInsets();
   const tabInset = useTabBarInset();
   const canIssue = useWarehouseCan('canIssue');
+  const {medCenterId, ready} = useWarehouseMedCenter();
 
   const [documents, setDocuments] = useState(null);
   const [typeFilter, setTypeFilter] = useState('');
@@ -116,11 +118,28 @@ export default function WarehouseOperationsScreen() {
   const load = useCallback(() => warehouseApi.documents({
     limit: 50,
     ...(typeFilter ? {type: typeFilter} : {}),
+    // Своего медцентра у документа нет — сервер определяет его по движениям
+    // (см. operations.js). Перемещение между центрами попадает в журнал обоих:
+    // оно и правда касается обоих.
+    ...(medCenterId ? {medCenterId} : {}),
   })
     .then(({data}) => setDocuments(data?.items || []))
-    .catch(() => setDocuments([])), [typeFilter]);
+    .catch(() => setDocuments([])), [typeFilter, medCenterId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Пока выбранный медцентр читается из памяти телефона, запрос не уходит:
+  // иначе журнал открылся бы сетевым и через миг сменился своим.
+  useFocusEffect(useCallback(() => { if (ready) load(); }, [load, ready]));
+
+  // Число по всей сети — только для пустого журнала: человек должен видеть, что
+  // документы есть, просто не здесь.
+  const probeNetwork = useCallback(
+    () => warehouseApi.documents({limit: 1, ...(typeFilter ? {type: typeFilter} : {})})
+      .then(({data}) => data?.total || 0),
+    [typeFilter],
+  );
+  const foundInNetwork = useNetworkFallback(probeNetwork, {
+    enabled: Boolean(medCenterId) && Boolean(documents) && documents.length === 0,
+  });
 
   /**
    * Отмена операции прямо из журнала (ver. 7.50).
@@ -175,7 +194,12 @@ export default function WarehouseOperationsScreen() {
         data={documents}
         keyExtractor={item => item.id}
         contentContainerStyle={[styles.list, {paddingBottom: tabInset + (canIssue ? 90 : 24)}]}
-        ListEmptyComponent={<Text style={styles.none}>Документов нет</Text>}
+        ListEmptyComponent={
+          <>
+            <Text style={styles.none}>Документов нет</Text>
+            <NetworkFallbackHint found={foundInNetwork} />
+          </>
+        }
         renderItem={({item}) => (
           <View style={styles.row}>
             <View style={styles.rowText}>

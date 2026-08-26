@@ -12,7 +12,7 @@
  * сервера — тогда дерево приходит с корпусами.
  */
 const {
-  ROOT_KEY, buildNodes, leavesOf, resolveNode,
+  ROOT_KEY, buildNodes, leavesOf, resolveNode, medCentersOf,
 } = require('../src/screens/Warehouse/locationTree');
 
 const room = (id, number, counters = {}) => ({
@@ -197,5 +197,52 @@ describe('leavesOf', () => {
     expect(leavesOf(nodes.get('mc:mc1')).map(n => n.key))
       .toEqual(['f:f1', 'f:f2', 'mcr:mc1', 'svc:mc1']);
     expect(leavesOf(nodes.get('f:f1')).map(n => n.key)).toEqual(['f:f1']);
+  });
+});
+
+describe('medCentersOf', () => {
+  it('оставляет только те медцентры, где есть кабинеты', () => {
+    const list = medCentersOf(tree({
+      floors: [floor('f1', 1, [room('r1', '101')])],
+      extra: [
+        {id: 'mc2', name: 'МЦ Проф', floors: [], rooms: [], services: []},
+        {id: 'mc3', name: 'МЦ Смайл', floors: [floor('f9', 1, [])]},
+      ],
+    }));
+
+    // Склад ведут не во всех юрлицах сети: пустые медцентры в переключателе —
+    // это восемь строк, за каждой из которых ничего нет.
+    expect(list.map(mc => mc.id)).toEqual(['mc1']);
+  });
+
+  it('считает кабинеты во всех трёх местах, где они бывают', () => {
+    const [mc] = medCentersOf(tree({
+      floors: [floor('f1', 1, [room('r1', '101'), room('r2', '102')])],
+      rooms: [room('r9', '000')],
+      services: [room('s1', 'Склад')],
+    }));
+
+    expect(mc.rooms).toBe(4);
+  });
+
+  it('разбирает старый ответ сервера с корпусами', () => {
+    const list = medCentersOf(tree({
+      buildings: [{id: 'b1', name: 'Главный', floors: [floor('f1', 1, [room('r1', '101')])]}],
+    }));
+
+    expect(list.map(mc => mc.rooms)).toEqual([1]);
+  });
+
+  it('берёт адрес и квадратный знак — то, чем медцентры различают', () => {
+    const [mc] = medCentersOf({
+      medCenters: [{
+        id: 'mc1', name: 'МЦ Альфа', address: 'ул. Владимирская, 93', city: 'Тюмень',
+        logoUrl: '/uploads/wide.png', logoSquareUrl: '/uploads/square.png',
+        floors: [floor('f1', 1, [room('r1', '101')])],
+      }],
+    });
+
+    expect(mc.subtitle).toBe('ул. Владимирская, 93');
+    expect(mc.logoUrl).toBe('/uploads/square.png');
   });
 });

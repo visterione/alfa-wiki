@@ -1,4 +1,5 @@
 import {useEffect, useState} from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {warehouse as warehouseApi} from '../services/api';
 
@@ -106,6 +107,12 @@ export function resetWarehouseAccess() {
   locations = null;
   locationsAt = 0;
   locationsPending = null;
+  // Выбранный медцентр стирается вместе с правами и из памяти телефона тоже:
+  // следующий, кто войдёт на этом аппарате, не должен увидеть чужой склад.
+  medCenter = null;
+  medCenterPending = null;
+  AsyncStorage.removeItem(MED_CENTER_KEY).catch(() => {});
+  medCenterListeners.forEach(fn => fn(null));
   listeners.forEach(fn => fn(null));
 }
 
@@ -184,4 +191,113 @@ export function refreshWarehouseBadge() {
 export function useWarehouseCan(capability) {
   const value = useWarehouseAccess();
   return Boolean(value?.allowed && value.capabilities?.[capability]);
+}
+
+
+/**
+ * Выбранный медцентр — один на весь раздел.
+ *
+ * Раньше медцентр спрашивали в каждом месте по-своему: в кабинетах это был
+ * первый шаг спуска, в оборудовании — строка в листе отбора, в материалах его
+ * не было вовсе. Три разных ответа на один вопрос «где я работаю», который за
+ * смену не меняется. Теперь ответ один и живёт здесь.
+ *
+ * Пустая строка означает всю сеть — это полноценный режим, а не «ничего не
+ * выбрано»: снабжению и тем, кто ведёт сеть целиком, нужен именно он.
+ *
+ * Значение переживает перезапуск, поэтому магазин отвечает не сразу, и у него
+ * есть третье состояние — «ещё читаем». Экраны обязаны его дождаться: запрос,
+ * ушедший до чтения памяти, вернул бы всю сеть, и человек увидел бы чужие
+ * кабинеты, которые через миг сменились бы своими.
+ */
+const MED_CENTER_KEY = 'warehouse.medCenterId';
+
+/** '' — вся сеть, null — ещё не прочитали из памяти. */
+let medCenter = null;
+let medCenterPending = null;
+const medCenterListeners = new Set();
+
+const publishMedCenter = value => {
+  medCenter = value;
+  medCenterListeners.forEach(fn => fn(value));
+};
+
+/**
+ * Первый выбор человек не делает — его делает за него зона ответственности.
+ *
+ * В складских правах администратор перечисляет медцентры, за которые человек
+ * отвечает. Если он там один, спрашивать нечего: это и есть тот медцентр, куда
+ * человек ходит на работу. Пустой список означает доступ ко всей сети — тогда
+ * и стартуем со всей сети.
+ */
+const defaultMedCenter = () => {
+  const scoped = access?.medCenterIds;
+  return Array.isArray(scoped) && scoped.length === 1 ? scoped[0] : '';
+};
+
+export function loadWarehouseMedCenter() {
+  if (medCenter !== null) return Promise.resolve(medCenter);
+  if (medCenterPending) return medCenterPending;
+
+  medCenterPending = Promise.all([
+    // Память недоступна — это не повод залипнуть в «ещё читаем» навсегда:
+    // отвечаем значением по умолчанию, просто не запомним его.
+    AsyncStorage.getItem(MED_CENTER_KEY).catch(() => null),
+    // Права ждём намеренно: выбор по умолчанию берётся из зоны
+    // ответственности, а она приезжает с ними. Без ожидания человек с одним
+    // медцентром получал бы всю сеть — и до самого перезапуска, потому что
+    // умолчание вычисляется единожды. Запроса это не добавляет: права
+    // кэшируются на всё приложение.
+    loadWarehouseAccess(),
+  ])
+    .then(([saved]) => {
+      publishMedCenter(saved === null ? defaultMedCenter() : saved);
+      medCenterPending = null;
+      return medCenter;
+    });
+
+  return medCenterPending;
+}
+
+export function getWarehouseMedCenter() {
+  return medCenter;
+}
+
+export function setWarehouseMedCenter(value) {
+  const next = value || '';
+  if (next === medCenter) return;
+  publishMedCenter(next);
+  AsyncStorage.setItem(MED_CENTER_KEY, next).catch(() => {});
+}
+
+/**
+ * Сверка выбора с тем, что вообще есть.
+ *
+ * Медцентр могли закрыть, а права — сузить. Молча показывать пустые списки
+ * из-за выбора, сделанного полгода назад, нельзя: человек решит, что пропал
+ * склад, а не что пропал медцентр.
+ */
+export function reconcileWarehouseMedCenter(availableIds) {
+  if (!medCenter) return;
+  if (availableIds.includes(medCenter)) return;
+  setWarehouseMedCenter('');
+}
+
+/**
+ * Выбранный медцентр в компоненте.
+ *
+ * ready отделяет «вся сеть» от «ещё не прочитали»: обе величины — пустая
+ * строка и null — ложны, и без отдельного признака экран не отличил бы их.
+ */
+export function useWarehouseMedCenter() {
+  const [value, setValue] = useState(medCenter);
+
+  useEffect(() => {
+    setValue(medCenter);
+    medCenterListeners.add(setValue);
+    loadWarehouseMedCenter();
+    return () => { medCenterListeners.delete(setValue); };
+  }, []);
+
+  return {medCenterId: value || '', ready: value !== null};
 }

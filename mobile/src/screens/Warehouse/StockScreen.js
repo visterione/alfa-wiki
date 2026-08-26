@@ -21,7 +21,8 @@ import {Search, SlidersHorizontal, Pencil, MapPin, CalendarClock} from 'lucide-r
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import BottomSheet from '../../components/BottomSheet';
-import {useWarehouseAccess, useWarehouseCan} from '../../store/warehouseStore';
+import {useWarehouseAccess, useWarehouseCan, useWarehouseMedCenter} from '../../store/warehouseStore';
+import {useNetworkFallback, NetworkFallbackHint} from './MedCenterSwitch';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
@@ -36,6 +37,7 @@ export default function WarehouseStockScreen({navigation}) {
   const canEdit = useWarehouseCan('canManageCatalog');
   const access = useWarehouseAccess();
   const canSeeCosts = Boolean(access?.capabilities?.canSeeCosts);
+  const {medCenterId, ready} = useWarehouseMedCenter();
 
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState('');
@@ -54,10 +56,14 @@ export default function WarehouseStockScreen({navigation}) {
   const load = useCallback(() => warehouseApi.stock({
     includeZero: 'false',
     q: q.trim() || undefined,
+    // Отбор по медцентру считает сервер. На клиенте его делать нельзя: ответ
+    // обрезан по лимиту, и позиции выбранного медцентра нашлись бы только среди
+    // первой тысячи строк сети.
+    medCenterId: medCenterId || undefined,
   })
     .then(({data}) => setRows(Array.isArray(data) ? data : (data?.items || [])))
     .catch(() => setRows([]))
-    .finally(() => setRefreshing(false)), [q]);
+    .finally(() => setRefreshing(false)), [q, medCenterId]);
 
   /**
    * Один эффект на оба повода перечитать список: возврат на экран и набор в
@@ -66,9 +72,13 @@ export default function WarehouseStockScreen({navigation}) {
    * строки запроса.
    */
   useFocusEffect(useCallback(() => {
+    // Пока выбранный медцентр читается из памяти телефона, запрос не уходит:
+    // иначе первым ответом пришла бы вся сеть, и человек на секунду увидел бы
+    // чужие остатки.
+    if (!ready) return undefined;
     const timer = setTimeout(load, q ? 350 : 0);
     return () => clearTimeout(timer);
-  }, [load, q]));
+  }, [load, q, ready]));
 
   // Поиск уже применил сервер — здесь остаются только признаки, которых в базе
   // нет: они считаются на строке (просрочка, ниже минимума).
@@ -80,6 +90,17 @@ export default function WarehouseStockScreen({navigation}) {
   [rows, filters]);
 
   const active = Object.values(filters).some(Boolean);
+
+  // Тот же запрос без медцентра — только ради числа: пустой список должен уметь
+  // отличить «нет нигде» от «нет здесь».
+  const probeNetwork = useCallback(
+    () => warehouseApi.stock({includeZero: 'false', q: q.trim() || undefined})
+      .then(({data}) => (Array.isArray(data) ? data : (data?.items || [])).length),
+    [q],
+  );
+  const foundInNetwork = useNetworkFallback(probeNetwork, {
+    enabled: Boolean(medCenterId) && Boolean(rows) && items.length === 0,
+  });
 
   if (!rows) return <LogoLoader />;
 
@@ -118,7 +139,12 @@ export default function WarehouseStockScreen({navigation}) {
           />
         }
         ListHeaderComponent={<Text style={styles.total}>Позиций: {items.length}</Text>}
-        ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
+        ListEmptyComponent={
+          <>
+            <Text style={styles.none}>Ничего не нашлось</Text>
+            <NetworkFallbackHint found={foundInNetwork} />
+          </>
+        }
         renderItem={({item}) => {
           const nom = item.nomenclature || {};
           // Цвет остатка отвечает на «надо ли что-то делать»: просрочка красным,

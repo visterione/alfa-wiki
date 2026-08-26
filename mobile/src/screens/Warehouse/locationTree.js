@@ -52,6 +52,41 @@ const countsOf = (node) => {
   }), {rooms: 0, assets: 0, materials: 0});
 };
 
+/**
+ * Медцентры для переключателя в шапке склада.
+ *
+ * Правило то же, по которому buildNodes отбрасывает пустые ветки: медцентр без
+ * единого кабинета выбирать бессмысленно — за ним ничего нет, и в списке он
+ * только обещание. На сети из девяти юридических лиц складом занята пока часть,
+ * и без этого отбора переключатель предлагал бы восемь заведомо пустых строк.
+ *
+ * Считается по всем трём местам, где у медцентра бывают кабинеты: этажи, «без
+ * этажа» и склады. Разбор старого ответа сервера (корпуса) оставлен по той же
+ * причине, что и в buildNodes: сборка может оказаться новее сервера.
+ */
+export function medCentersOf(tree) {
+  return (tree?.medCenters || [])
+    .map(mc => {
+      const floors = mc.floors?.length
+        ? mc.floors
+        : (mc.buildings || []).flatMap(b => b.floors || []);
+      const rooms = floors.reduce((n, f) => n + (f.rooms?.length || 0), 0)
+        + (mc.rooms?.length || 0) + (mc.services?.length || 0);
+      return {
+        id: mc.id,
+        title: mc.name,
+        // Адрес, а не город: медцентров в одном городе несколько, и различают
+        // их по улице — то же правило, что в узле спуска.
+        subtitle: mc.address || mc.city || null,
+        // Квадратный знак предпочтительнее: в кнопке шапки и в клетке списка
+        // место квадратное, и вытянутый логотип в нём ужимается до нечитаемого.
+        logoUrl: mc.logoSquareUrl || mc.logoUrl || null,
+        rooms,
+      };
+    })
+    .filter(mc => mc.rooms > 0);
+}
+
 export function buildNodes(tree) {
   const byKey = new Map();
   const keep = (node) => { byKey.set(node.key, node); return node; };

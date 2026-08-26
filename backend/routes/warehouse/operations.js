@@ -34,7 +34,7 @@ const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 // ── Документы и движения ─────────────────────────────────────────────────────
 router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
   try {
-    const { type, from, to, status, q, page = 1, limit = 50 } = req.query;
+    const { type, from, to, status, q, page = 1, limit = 50, medCenterId } = req.query;
     const where = {};
     if (type) where.type = { [Op.in]: String(type).split(',') };
     if (status) where.status = status;
@@ -50,23 +50,61 @@ router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
     // клиентский фильтр стал бы ещё и обманчивым: он показывал бы совпадения
     // на текущей странице и молчал про остальные.
     const search = String(q || '').trim();
+    // Оба отбора складываются через Op.and: каждый из них сам по себе — «или»
+    // по нескольким полям, и записать их одним Op.or значило бы показать
+    // документы чужого медцентра, совпавшие по номеру.
+    const conditions = [];
     if (search) {
       const like = { [Op.iLike]: `%${search}%` };
-      where[Op.or] = [
-        { number: like },
-        { reasonText: like },
-        { comment: like },
-        { '$author.displayName$': like },
-      ];
+      conditions.push({
+        [Op.or]: [
+          { number: like },
+          { reasonText: like },
+          { comment: like },
+          { '$author.displayName$': like },
+        ],
+      });
     }
+
+    /**
+     * Отбор по медцентру.
+     *
+     * Своего медцентра у документа нет, и по кабинетам самого документа судить
+     * нельзя: fromRoomId/toRoomId заполнены только у перемещений, а у прихода,
+     * списания и оприходования излишков они пустые — на живой базе это семь
+     * документов из девяти. Отбор по ним выкинул бы почти весь журнал.
+     *
+     * Поэтому медцентр берётся из движений: у каждой строки документа есть
+     * место хранения (откуда или куда), у места хранения — кабинет, у кабинета
+     * — медцентр. Кабинеты самого документа остаются вторым основанием, чтобы
+     * перемещение попадало в журнал обоих медцентров даже тогда, когда его
+     * строки лежат на одной стороне.
+     */
+    if (medCenterId) {
+      const mc = sequelize.escape(String(medCenterId));
+      conditions.push({
+        [Op.or]: [
+          { '$fromRoom.medCenterId$': medCenterId },
+          { '$toRoom.medCenterId$': medCenterId },
+          sequelize.literal(`EXISTS (
+            SELECT 1 FROM warehouse_movements mv
+            LEFT JOIN warehouse_storages fs ON fs.id = mv."fromStorageId"
+            LEFT JOIN warehouse_storages ts ON ts.id = mv."toStorageId"
+            LEFT JOIN warehouse_rooms mr ON mr.id IN (fs."roomId", ts."roomId")
+            WHERE mv."documentId" = "WhDocument".id AND mr."medCenterId" = ${mc}
+          )`),
+        ],
+      });
+    }
+    if (conditions.length) where[Op.and] = conditions;
 
     const rows = await WhDocument.findAndCountAll({
       where,
       include: [
         { model: User, as: 'author', attributes: userAttrs },
         { model: User, as: 'signer', attributes: userAttrs },
-        { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name', 'isService'] },
-        { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name', 'isService'] },
+        { model: WhRoom, as: 'fromRoom', attributes: ['id', 'number', 'name', 'isService', 'medCenterId'] },
+        { model: WhRoom, as: 'toRoom', attributes: ['id', 'number', 'name', 'isService', 'medCenterId'] },
         { model: WhContractor, as: 'contractor', attributes: ['id', 'name'] },
         // Сторно и то, чем документ отменён: список должен показывать это сразу,
         // иначе исправленная ошибка выглядит как две настоящие операции подряд.

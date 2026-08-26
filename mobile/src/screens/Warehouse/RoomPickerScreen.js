@@ -56,7 +56,10 @@ import LogoLoader from '../../components/LogoLoader';
 import FloorSwitch from './FloorSwitch';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {useWarehouseCan, getLocationTree, loadLocationTree} from '../../store/warehouseStore';
+import {
+  useWarehouseCan, getLocationTree, loadLocationTree, useWarehouseMedCenter,
+} from '../../store/warehouseStore';
+import MedCenterSwitch from './MedCenterSwitch';
 import {roomMatches, roomHeadText, roomSubText} from './warehouseMeta';
 import {ROOT_KEY, buildNodes, leavesOf, resolveNode} from './locationTree';
 
@@ -67,6 +70,7 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   const c = useTheme();
   const insets = useSafeAreaInsets();
   const canPrint = useWarehouseCan('canPrintLabels');
+  const {medCenterId} = useWarehouseMedCenter();
   const nodeKey = route.params?.nodeKey ?? ROOT_KEY;
 
   // Дерево берётся из кэша прямо в начальном состоянии, а не после запроса:
@@ -89,10 +93,20 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
     return () => { alive = false; };
   }, []));
 
-  // Уровень, на котором выбирать не из чего, пропускается. Спуск идёт до
-  // первого настоящего выбора, поэтому «единственный корпус» и «единственный
-  // этаж» не превращаются в два экрана с одной строкой.
-  const node = useMemo(() => resolveNode(nodes, nodeKey), [nodes, nodeKey]);
+  /**
+   * Уровень, на котором выбирать не из чего, пропускается. Спуск идёт до
+   * первого настоящего выбора, поэтому «единственный корпус» и «единственный
+   * этаж» не превращаются в два экрана с одной строкой.
+   *
+   * Выбранный в шапке склада медцентр пропускает и свой уровень: экран
+   * открывается сразу на его кабинетах. Это то же правило, только вопрос задан
+   * заранее и один раз на весь раздел, а не при каждом заходе в кабинеты.
+   * Спуск с корня остаётся живым для режима «вся сеть» и для случая, когда
+   * выбранного медцентра в дереве уже нет: resolveNode тогда сам вернётся к
+   * корню, а не покажет пустоту.
+   */
+  const startKey = nodeKey === ROOT_KEY && medCenterId ? `mc:${medCenterId}` : nodeKey;
+  const node = useMemo(() => resolveNode(nodes, startKey), [nodes, startKey]);
 
   /**
    * Этажи медцентра — лентой сверху, а не отдельным шагом.
@@ -128,21 +142,32 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   const flat = node?.kind !== 'root' || Boolean(q.trim()) || picking;
 
   useLayoutEffect(() => {
+    const printer = canPrint && hasRooms ? (
+      <Pressable
+        onPress={() => { setPicking(v => !v); setChecked(new Set()); }}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={picking ? 'Выйти из отбора' : 'Печать этикеток на двери'}>
+        {picking
+          ? <X size={21} color="#FFFFFF" />
+          : <Printer size={20} color="#FFFFFF" />}
+      </Pressable>
+    ) : null;
+
     navigation.setOptions({
       title: picking ? 'Этикетки на двери' : (node?.title || 'Кабинеты'),
-      headerRight: canPrint && hasRooms ? () => (
-        <Pressable
-          onPress={() => { setPicking(v => !v); setChecked(new Set()); }}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={picking ? 'Выйти из отбора' : 'Печать этикеток на двери'}>
-          {picking
-            ? <X size={21} color="#FFFFFF" />
-            : <Printer size={20} color="#FFFFFF" />}
-        </Pressable>
-      ) : undefined,
+      // Переключатель медцентров соседствует с принтером, а не заменяет его:
+      // это разные вещи — что показывать и что делать с показанным. Во время
+      // отбора под печать он убирается, иначе смена медцентра посреди обхода
+      // этажа обнулила бы уже отмеченные двери.
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          {!picking && <MedCenterSwitch />}
+          {printer}
+        </View>
+      ),
     });
-  }, [navigation, picking, canPrint, hasRooms, node]);
+  }, [navigation, picking, canPrint, hasRooms, node, styles]);
 
   const toggle = ids => setChecked((prev) => {
     const next = new Set(prev);
@@ -344,6 +369,7 @@ function Counts({styles, c, counts}) {
 }
 
 const makeStyles = c => StyleSheet.create({
+  headerActions: {flexDirection: 'row', alignItems: 'center', gap: 12},
   // Верхний отступ живёт на экране, а не на первом элементе: первым бывает и
   // переключатель этажей, и поиск, и отступ должен быть одинаковым в обоих
   // случаях. Дальше интервалы идут сверху вниз — каждый элемент отодвигает

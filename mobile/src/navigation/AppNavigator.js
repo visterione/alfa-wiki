@@ -29,6 +29,7 @@ import TaskListScreen from '../screens/Tasks/TaskListScreen';
 import TaskCardScreen from '../screens/Tasks/TaskCardScreen';
 import NormScreen from '../screens/Tasks/NormScreen';
 import WarehouseScreen from '../screens/Warehouse/WarehouseScreen';
+import MedCenterSwitch from '../screens/Warehouse/MedCenterSwitch';
 import WarehouseScannerScreen from '../screens/Warehouse/ScannerScreen';
 import WarehouseAssetScreen from '../screens/Warehouse/AssetScreen';
 import WarehouseAssetEditScreen from '../screens/Warehouse/AssetEditScreen';
@@ -354,20 +355,26 @@ function WarehouseStack() {
       {/* Разделы «Оборудование», «Материалы» и «Операции» — те же, что в вебе.
           Первые два отвечают на вопрос «где у нас такое», третий ведёт журнал
           движений и позволяет провести выдачу, приём, перемещение и списание. */}
+      {/* Переключатель медцентров стоит в шапке каждого списка, а не только на
+          главной склада: выбор действует неделями и со списка не виден, и
+          короткий список без него читается как «имущество пропало». Заодно
+          переключиться можно там, где это заметил, а не возвращаясь назад.
+          На карточках прибора и кабинета его нет намеренно — они показывают
+          один предмет, и отбирать там нечего. */}
       <Stack.Screen
         name="WarehouseAssets"
         component={WarehouseAssetsScreen}
-        options={{title: 'Оборудование'}}
+        options={{title: 'Оборудование', headerRight: () => <MedCenterSwitch />}}
       />
       <Stack.Screen
         name="WarehouseStock"
         component={WarehouseStockScreen}
-        options={{title: 'Материалы'}}
+        options={{title: 'Материалы', headerRight: () => <MedCenterSwitch />}}
       />
       <Stack.Screen
         name="WarehouseOperations"
         component={WarehouseOperationsScreen}
-        options={{title: 'Операции'}}
+        options={{title: 'Операции', headerRight: () => <MedCenterSwitch />}}
       />
       <Stack.Screen
         name="WarehouseRoom"
