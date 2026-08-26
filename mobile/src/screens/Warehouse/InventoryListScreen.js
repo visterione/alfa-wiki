@@ -20,7 +20,8 @@ import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {useWarehouseCan} from '../../store/warehouseStore';
+import {useWarehouseCan, useWarehouseMedCenter} from '../../store/warehouseStore';
+import {useNetworkFallback, NetworkFallbackHint} from './MedCenterSwitch';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {INVENTORY_STATUS, dateText, inventoryScopeText} from './warehouseMeta';
 
@@ -32,16 +33,33 @@ export default function WarehouseInventoryListScreen({navigation}) {
   // Открыть опись может тот же, кто проводит операции: право одно на оба
   // действия, и разделять их сервер не станет.
   const canStart = useWarehouseCan('canIssue');
+  const {medCenterId, ready} = useWarehouseMedCenter();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => warehouseApi.inventorySessions()
+  // Опись относится к медцентру своими кабинетами — их у неё бывает и один, и
+  // список, и целое отделение. Разбирает это сервер, здесь только выбор.
+  const load = useCallback(() => warehouseApi.inventorySessions(
+    medCenterId ? {medCenterId} : undefined,
+  )
     .then(({data}) => setSessions(data || []))
     .catch(() => setSessions([]))
-    .finally(() => { setLoading(false); setRefreshing(false); }), []);
+    .finally(() => { setLoading(false); setRefreshing(false); }), [medCenterId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Пока выбранный медцентр читается из памяти телефона, запрос не уходит:
+  // иначе список открылся бы сетевым и через миг сменился своим.
+  useFocusEffect(useCallback(() => { if (ready) load(); }, [load, ready]));
+
+  // «Описей нет» на выбранном медцентре и «описей нет вообще» — разные вещи, и
+  // человек должен видеть, какая из них перед ним.
+  const probeNetwork = useCallback(
+    () => warehouseApi.inventorySessions().then(({data}) => (data || []).length),
+    [],
+  );
+  const foundInNetwork = useNetworkFallback(probeNetwork, {
+    enabled: Boolean(medCenterId) && !loading && sessions.length === 0,
+  });
 
   if (loading) return <LogoLoader />;
 
@@ -76,7 +94,10 @@ export default function WarehouseInventoryListScreen({navigation}) {
         ) : null
       }
       ListEmptyComponent={
-        <Text style={styles.none}>Инвентаризаций ещё не было</Text>
+        <>
+          <Text style={styles.none}>Инвентаризаций ещё не было</Text>
+          <NetworkFallbackHint found={foundInNetwork} />
+        </>
       }
       renderItem={({item}) => {
         const isOpen = item.status !== 'closed' && item.status !== 'cancelled';

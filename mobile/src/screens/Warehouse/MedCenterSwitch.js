@@ -45,15 +45,61 @@ import {
 } from '../../store/warehouseStore';
 import {medCentersOf} from './locationTree';
 
-/** Знак медцентра или запасной значок, когда логотипа нет. */
-function MedCenterMark({logoUrl, size, color}) {
-  if (!logoUrl) return <Building2 size={size} color={color} />;
+/** «МЦ Альфа» → «МА». Те же правила, что у плитки на карте склада в вебе. */
+const initials = name => (name || '?')
+  .replace(/[«»"]/g, '')
+  .split(/[\s-]+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map(word => word[0].toUpperCase())
+  .join('');
+
+/**
+ * Знак медцентра — плитка, устроенная как .wh-mc__mark в вебе.
+ *
+ * Квадрат со скруглёнными углами, а не круг и не голая картинка: фирменные
+ * знаки сети нарисованы под квадрат, и в круге у них срезаются углы.
+ *
+ * Подложка под логотипом белая всегда, даже в тёмной теме. Знаки приходят
+ * прозрачными PNG и нарисованы для белого листа: на тёмном фоне тёмная часть
+ * рисунка пропадает, и в шапке оставался чёрный прямоугольник вместо знака.
+ * Шеврон рядом белый по той же причине, по какой белы заголовок и кнопка
+ * принтера: шапка раздела залита фирменным градиентом (headerTintColor).
+ *
+ * Медцентру без логотипа достаётся плитка его фирменного цвета с инициалами —
+ * так же, как на карте склада в вебе, где это единственное, чем такие
+ * медцентры различаются.
+ */
+function MedCenterMark({mc, size}) {
+  const styles = useThemedStyles(makeStyles);
+  const c = useTheme();
+  // Пропорции взяты у веба: плитка 44 px со скруглением 13 и полями 5.
+  const shape = {width: size, height: size, borderRadius: Math.round(size * 0.3)};
+  const logo = mc?.logoUrl ? CONFIG.fileUrl(mc.logoUrl) : null;
+
+  if (logo) {
+    return (
+      <View style={[styles.mark, shape, {backgroundColor: '#FFFFFF', padding: Math.round(size * 0.11)}]}>
+        <Image source={{uri: logo}} style={styles.markImage} resizeMode="contain" />
+      </View>
+    );
+  }
+
+  if (!mc) {
+    // Вся сеть — не медцентр, и знака у неё нет: значок на нейтральной плитке.
+    return (
+      <View style={[styles.mark, shape, {backgroundColor: c.bgTertiary}]}>
+        <Building2 size={Math.round(size * 0.5)} color={c.textSecondary} />
+      </View>
+    );
+  }
+
   return (
-    <Image
-      source={{uri: CONFIG.fileUrl(logoUrl)}}
-      style={{width: size, height: size}}
-      resizeMode="contain"
-    />
+    <View style={[styles.mark, shape, {backgroundColor: mc.color || c.primary}]}>
+      <Text style={[styles.markText, {fontSize: Math.round(size * 0.34)}]}>
+        {initials(mc.title)}
+      </Text>
+    </View>
   );
 }
 
@@ -88,11 +134,16 @@ export default function MedCenterSwitch() {
 
   return (
     <>
-      <Pressable style={styles.button} onPress={() => setSheet(true)} hitSlop={8}>
-        {current
-          ? <MedCenterMark logoUrl={current.logoUrl} size={22} color={c.textSecondary} />
-          : <><Building2 size={16} color={c.textSecondary} /><Text style={styles.all}>Все</Text></>}
-        <ChevronDown size={14} color={c.textTertiary} />
+      {/* Своей подложки у кнопки нет: плитка знака уже читается кнопкой, и
+          вторая скруглённая заливка вокруг неё выглядела кнопкой в кнопке. */}
+      <Pressable
+        style={styles.button}
+        onPress={() => setSheet(true)}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={current ? `Медцентр: ${current.title}` : 'Все медцентры'}>
+        <MedCenterMark mc={current} size={26} />
+        <ChevronDown size={14} color="#FFFFFF" />
       </Pressable>
 
       <BottomSheet visible={sheet} title="Медцентр" onClose={() => setSheet(false)}>
@@ -101,9 +152,7 @@ export default function MedCenterSwitch() {
               снабжению и тем, кто ведёт сеть целиком. Поэтому у него своя
               строка с названием, а не пустой пункт наверху списка. */}
           <Pressable style={styles.row} onPress={() => choose('')}>
-            <View style={styles.rowMark}>
-              <Building2 size={22} color={c.textSecondary} />
-            </View>
+            <MedCenterMark mc={null} size={40} />
             <View style={styles.rowText}>
               <Text style={styles.rowTitle}>Все медцентры</Text>
               <Text style={styles.rowSub}>Склад всей сети целиком</Text>
@@ -113,9 +162,7 @@ export default function MedCenterSwitch() {
 
           {list.map(mc => (
             <Pressable key={mc.id} style={styles.row} onPress={() => choose(mc.id)}>
-              <View style={styles.rowMark}>
-                <MedCenterMark logoUrl={mc.logoUrl} size={26} color={c.textSecondary} />
-              </View>
+              <MedCenterMark mc={mc} size={40} />
               <View style={styles.rowText}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{mc.title}</Text>
                 {Boolean(mc.subtitle) && (
@@ -132,21 +179,22 @@ export default function MedCenterSwitch() {
 }
 
 const makeStyles = c => StyleSheet.create({
-  button: {
+  button: {flexDirection: 'row', alignItems: 'center', gap: 5},
+
+  mark: {alignItems: 'center', justifyContent: 'center', overflow: 'hidden'},
+  markImage: {width: '100%', height: '100%'},
+  markText: {fontFamily: font.bold, color: '#FFFFFF', letterSpacing: 0.2},
+
+  // Поля по бокам те же, что у заголовка шторки (20): строки, прижатые к
+  // краям, читаются как обрезанные, а галочка выбранного упирается в самый
+  // край экрана.
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: radius.sm,
-    backgroundColor: c.bgSecondary,
+    gap: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
   },
-  all: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary},
-
-  row: {flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12},
-  // Знак стоит в клетке одной ширины: логотипы у сети разной формы, и без
-  // клетки названия в списке разъезжались бы по левому краю.
-  rowMark: {width: 34, alignItems: 'center'},
   rowText: {flex: 1, minWidth: 0},
   rowTitle: {fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
   rowSub: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, marginTop: 1},

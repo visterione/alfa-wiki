@@ -178,7 +178,13 @@ export function useWarehouseBadge() {
  * ровно тогда, когда она уже не нужна.
  */
 export function refreshWarehouseBadge() {
-  return warehouseApi.inventorySessions()
+  // Счётчик считается по тому же медцентру, что и список описей. Иначе выходит
+  // «на кнопке 2, а в списке пусто»: цифра обещает работу, которой на выбранном
+  // медцентре нет. Выбор при этом дожидаемся — до него счёт был бы сетевым.
+  return loadWarehouseMedCenter()
+    .then(medCenterId => warehouseApi.inventorySessions(
+      medCenterId ? {medCenterId} : undefined,
+    ))
     .then(({data}) => {
       const open = (data || []).filter(s => s.status !== 'closed' && s.status !== 'cancelled');
       setWarehouseBadge(open.length);

@@ -350,7 +350,7 @@ export const warehouse = {
   contractors: () => api.get('/warehouse/catalog/contractors'),
 
   // Инвентаризация
-  inventorySessions: () => api.get('/warehouse/operations/inventory'),
+  inventorySessions: params => api.get('/warehouse/operations/inventory', {params}),
   inventory: id => api.get(`/warehouse/operations/inventory/${id}`),
   // Открытие описи с телефона (ver. 7.22). Раньше её заводили только в вебе, и
   // человек, пришедший считать кабинет, упирался в пустой список.

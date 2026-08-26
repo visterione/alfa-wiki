@@ -26,6 +26,25 @@
  * открыть существующий пересчёт. Это тот же самый случай — человек пришёл
  * считать, — и упереться здесь в «тут уже идёт инвентаризация» было бы
  * издевательством.
+ *
+ * ── Почему отделения больше нет ──────────────────────────────────────────────
+ *
+ * Опись по отделению осталась в вебе, а с телефона убрана. Она была вкладкой
+ * рядом с кабинетами и делила экран надвое: половина инструментов — поиск,
+ * сканер, отметки — работала только в одной из них. При этом в кабинет с
+ * телефоном приходят считать полки, а не оформлять приказ на отделение
+ * целиком: это как раз то распорядительное действие, которое делают за столом.
+ *
+ * Описи по отделению, заведённые в вебе, экран по-прежнему учитывает: их
+ * кабинеты помечаются занятыми, иначе человек отметил бы кабинет, а сервер
+ * ответил бы отказом уже после нажатия «Считать».
+ *
+ * ── Этажи лентой ─────────────────────────────────────────────────────────────
+ *
+ * Тот же переключатель, что и в списке кабинетов (FloorSwitch): медцентр
+ * выбран один на весь раздел, и внутри него нужен не спуск, а сужение — «мне
+ * нужен третий этаж». Склады и кабинеты без этажа стоят в ленте наравне с
+ * этажами: это такие же места, и попадают в них тем же движением.
  */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
@@ -43,7 +62,8 @@ import LogoLoader from '../../components/LogoLoader';
 import BottomSheet from '../../components/BottomSheet';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {loadLocationTree} from '../../store/warehouseStore';
+import {loadLocationTree, useWarehouseMedCenter, setWarehouseMedCenter} from '../../store/warehouseStore';
+import FloorSwitch from './FloorSwitch';
 import {flattenRooms, roomMatches} from './warehouseMeta';
 
 const personName = person => person?.displayName || person?.username || 'Сотрудник';
@@ -54,15 +74,13 @@ export default function WarehouseInventoryNewScreen({navigation}) {
   const insets = useSafeAreaInsets();
   const device = useCameraDevice('back');
 
-  const [tree, setTree] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [busyRooms, setBusyRooms] = useState(new Map());
-  // Область: кабинеты пачкой или отделение целиком. Отделение осталось
-  // отдельной областью, а не «отметить все его кабинеты»: оно накрывает и те
-  // кабинеты, которые в нём появятся после открытия описи.
-  const [scope, setScope] = useState('rooms');
+  const {medCenterId} = useWarehouseMedCenter();
   const [picked, setPicked] = useState(() => new Set());
-  const [departmentId, setDepartmentId] = useState(null);
+  // Выбранный этаж. Ключ, а не индекс: дерево перечитывается, и порядок групп
+  // от этого не гарантирован.
+  const [floorKey, setFloorKey] = useState(null);
   const [basis, setBasis] = useState('');
   const [chairmanUserId, setChairmanUserId] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState('');
@@ -84,7 +102,6 @@ export default function WarehouseInventoryNewScreen({navigation}) {
         loadLocationTree(),
         warehouseApi.inventorySessions(),
       ]);
-      setTree(treeData);
       const flat = flattenRooms(treeData);
       setRooms(flat);
 
@@ -125,49 +142,64 @@ export default function WarehouseInventoryNewScreen({navigation}) {
     usersApi.listBasic().then(({data}) => setPeople(data || [])).catch(() => setPeople([]));
   }, [sheet, people.length]);
 
-  // Список с заголовками медцентра и этажа: выбирают в нём кабинет, но узнают
-  // его по месту — номер 305 есть в каждом здании сети.
+  // Кабинеты выбранного медцентра. В режиме «вся сеть» остаются все — тогда
+  // список и вправду про сеть, и заголовок медцентра в нём обязателен.
+  const scopeRooms = useMemo(
+    () => (medCenterId ? rooms.filter(room => room.medCenterId === medCenterId) : rooms),
+    [rooms, medCenterId],
+  );
+
+  // Ленту собираем по тем группам, в которых кабинеты действительно есть:
+  // пустой этаж в переключателе — кнопка, за которой ничего нет.
+  const floors = useMemo(() => {
+    const seen = new Map();
+    for (const room of scopeRooms) {
+      if (seen.has(room.groupKey)) continue;
+      seen.set(room.groupKey, {
+        key: room.groupKey,
+        short: room.groupShort,
+        title: room.groupTitle,
+        service: room.groupService,
+      });
+    }
+    return [...seen.values()];
+  }, [scopeRooms]);
+
+  const floor = floors.find(item => item.key === floorKey) || floors[0] || null;
+
+  /**
+   * Список с заголовками медцентра и этажа: выбирают в нём кабинет, но узнают
+   * его по месту — номер 305 есть в каждом здании сети.
+   *
+   * Этаж сужает список, но только пока не ищут: человек, набирающий номер
+   * кабинета, ищет его в здании, а не на текущем этаже, и «не нашлось» из-за
+   * невыбранного этажа он прочитает как «такого кабинета нет». То же правило,
+   * что в списке кабинетов.
+   */
   const items = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    const narrow = !needle && floor;
     const out = [];
     let mc = null;
     let group = null;
-    for (const room of rooms) {
+    for (const room of scopeRooms) {
       if (!roomMatches(room, needle)) continue;
-      if (room.medCenterId !== mc) {
+      if (narrow && room.groupKey !== floor.key) continue;
+      if (!medCenterId && room.medCenterId !== mc) {
         mc = room.medCenterId;
         group = null;
-        out.push({type: 'mc', key: `mc-${mc}`, title: room.medCenterName});
+        out.push({type: 'mc', key: `mc-${room.medCenterId}`, title: room.medCenterName});
       }
       if (room.groupKey !== group) {
         group = room.groupKey;
-        out.push({type: 'group', key: `g-${mc}-${group}`, title: room.groupTitle});
+        // Заголовок группы не нужен, когда группа в списке одна и её название
+        // уже написано на нажатой кнопке ленты.
+        if (!narrow) out.push({type: 'group', key: `g-${group}`, title: room.groupTitle});
       }
       out.push({type: 'room', key: `r-${room.id}`, room});
     }
     return out;
-  }, [rooms, q]);
-
-  // Отделения — с подписью медцентра и числом кабинетов: одноимённые «Хирургия»
-  // есть в нескольких центрах, а число отвечает на «сколько я сейчас заморожу».
-  const departments = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const centerName = new Map((tree?.medCenters || []).map(m => [m.id, m.name]));
-    const roomCount = new Map();
-    for (const room of rooms) {
-      if (!room.departmentId) continue;
-      roomCount.set(room.departmentId, (roomCount.get(room.departmentId) || 0) + 1);
-    }
-    return (tree?.departments || [])
-      .map(d => ({
-        id: d.id,
-        name: d.name,
-        where: centerName.get(d.medCenterId) || '',
-        rooms: roomCount.get(d.id) || 0,
-      }))
-      .filter(d => !needle || `${d.name} ${d.where}`.toLowerCase().includes(needle))
-      .sort((a, b) => a.where.localeCompare(b.where, 'ru') || a.name.localeCompare(b.name, 'ru'));
-  }, [tree, rooms, q]);
+  }, [scopeRooms, q, floor, medCenterId]);
 
   const openExisting = session => navigation.replace('WarehouseInventoryCount', {
     sessionId: session.id,
@@ -204,14 +236,42 @@ export default function WarehouseInventoryNewScreen({navigation}) {
       }
       const busy = busyRooms.get(data.room.id);
       if (busy) return openExisting(busy);
+
+      /**
+       * Кабинет чужого медцентра.
+       *
+       * Сканеру отбор не указ — код называет конкретную дверь, и человек стоит
+       * перед ней. Но отметить кабинет, которого нет в списке, значило бы
+       * набирать опись вслепую, поэтому спрашиваем и переключаем весь раздел:
+       * молча менять выбранный медцентр — то же самое, что молча его прятать.
+       */
+      const room = scopeRooms.find(item => item.id === data.room.id);
+      if (medCenterId && !room) {
+        const found = rooms.find(item => item.id === data.room.id);
+        return Alert.alert(
+          'Кабинет в другом медцентре',
+          `Каб. ${data.room.number} относится к «${found?.medCenterName || 'другому медцентру'}». `
+            + 'Переключиться на него?',
+          [
+            {text: 'Отмена', style: 'cancel'},
+            {
+              text: 'Переключиться',
+              onPress: () => {
+                if (found) setWarehouseMedCenter(found.medCenterId);
+                setPicked(prev => new Set(prev).add(data.room.id));
+              },
+            },
+          ],
+        );
+      }
+
       // Сканирование добавляет к отмеченному, а не заменяет его: обход кабинетов
       // с камерой — самый быстрый способ набрать область из приказа.
-      setScope('rooms');
       return setPicked(prev => new Set(prev).add(data.room.id));
     } catch {
       return Alert.alert('Не найдено', 'По этому коду кабинета нет.');
     }
-  }, [busyRooms, navigation]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [busyRooms, navigation, scopeRooms, rooms, medCenterId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const codeScanner = useCodeScanner({
     codeTypes: ['qr'],
@@ -228,12 +288,11 @@ export default function WarehouseInventoryNewScreen({navigation}) {
 
   const start = async () => {
     const roomIds = [...picked];
-    if (scope === 'rooms' ? !roomIds.length : !departmentId) return;
+    if (!roomIds.length) return;
     setStarting(true);
     try {
       const {data} = await warehouseApi.createInventory({
-        roomIds: scope === 'rooms' ? roomIds : [],
-        departmentId: scope === 'department' ? departmentId : null,
+        roomIds,
         basis: basis.trim() || null,
         chairmanUserId: chairmanUserId || null,
         responsibleUserId: responsibleUserId || null,
@@ -252,8 +311,7 @@ export default function WarehouseInventoryNewScreen({navigation}) {
 
   const chairman = people.find(p => p.id === chairmanUserId);
   const responsible = people.find(p => p.id === responsibleUserId);
-  const ready = scope === 'rooms' ? picked.size > 0 : Boolean(departmentId);
-  const department = departments.find(d => d.id === departmentId);
+  const ready = picked.size > 0;
   // Параметры одной строкой: заполненное показываем, незаполненное не называем —
   // это подпись под кнопкой, а не список полей.
   const paramsText = [
@@ -264,19 +322,9 @@ export default function WarehouseInventoryNewScreen({navigation}) {
 
   return (
     <View style={styles.root}>
-      {/* Область — первым делом: от неё зависит, что показывает список ниже. */}
-      <View style={styles.scopeRow}>
-        {[['rooms', 'Кабинеты'], ['department', 'Отделение']].map(([key, label]) => (
-          <Pressable
-            key={key}
-            style={[styles.scopeTab, scope === key && styles.scopeTabOn]}
-            onPress={() => setScope(key)}
-            accessibilityRole="button"
-            accessibilityState={{selected: scope === key}}>
-            <Text style={[styles.scopeText, scope === key && styles.scopeTextOn]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {/* Этажи и склады — над поиском, как в списке кабинетов: сначала «где»,
+          потом «что искать». Панель прячется сама, когда группа одна. */}
+      <FloorSwitch floors={floors} value={floor?.key} onChange={setFloorKey} spacing={2} />
 
       <View style={styles.tools}>
         <View style={styles.search}>
@@ -285,92 +333,60 @@ export default function WarehouseInventoryNewScreen({navigation}) {
             style={styles.searchInput}
             value={q}
             onChangeText={setQ}
-            placeholder={scope === 'rooms' ? 'Кабинет' : 'Отделение'}
+            placeholder="Кабинет"
             placeholderTextColor={c.textTertiary}
             autoCorrect={false}
           />
         </View>
-        {scope === 'rooms' && (
-          <Pressable style={styles.scanChip} onPress={() => setScanning(true)} hitSlop={6}>
-            <ScanLine size={18} color={c.primary} />
-          </Pressable>
-        )}
+        <Pressable style={styles.scanChip} onPress={() => setScanning(true)} hitSlop={6}>
+          <ScanLine size={18} color={c.primary} />
+        </Pressable>
       </View>
 
-      {scope === 'rooms' ? (
-        <FlatList
-          data={items}
-          keyExtractor={item => item.key}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: insets.bottom + (ready ? 200 : 24),
-          }}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
-          renderItem={({item}) => {
-            if (item.type === 'mc') return <Text style={styles.mc}>{item.title}</Text>;
-            if (item.type === 'group') return <Text style={styles.group}>{item.title}</Text>;
+      <FlatList
+        data={items}
+        keyExtractor={item => item.key}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingBottom: insets.bottom + (ready ? 200 : 24),
+        }}
+        keyboardShouldPersistTaps="handled"
+        ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
+        renderItem={({item}) => {
+          if (item.type === 'mc') return <Text style={styles.mc}>{item.title}</Text>;
+          if (item.type === 'group') return <Text style={styles.group}>{item.title}</Text>;
 
-            const busy = busyRooms.get(item.room.id);
-            const on = picked.has(item.room.id);
-            return (
-              <Pressable
-                style={[styles.row, on && styles.rowOn]}
-                onPress={() => toggleRoom(item.room)}>
-                {/* Квадрат отметки, а не подсветка строки: кабинетов в области
-                    бывает восемь, и «сколько я уже отметил» должно читаться
-                    списком, а не перечитыванием цветов. */}
-                <View style={[styles.check, on && styles.checkOn]}>
-                  {on && <Check size={13} color="#FFFFFF" />}
-                </View>
-                <View style={styles.rowText}>
-                  <Text style={[styles.rowTitle, on && styles.rowTitleOn]}>
-                    Кабинет {item.room.number}
-                  </Text>
-                  {Boolean(item.room.name) && (
-                    <Text style={[styles.rowSub, on && styles.rowSubOn]} numberOfLines={1}>
-                      {item.room.name}
-                    </Text>
-                  )}
-                </View>
-                {Boolean(busy) && (
-                  <View style={styles.chip}>
-                    <Text style={styles.chipText}>{busy.number}</Text>
-                  </View>
-                )}
-              </Pressable>
-            );
-          }}
-        />
-      ) : (
-        <FlatList
-          data={departments}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: insets.bottom + (ready ? 200 : 24),
-          }}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Text style={styles.none}>Отделений нет</Text>}
-          renderItem={({item}) => {
-            const on = item.id === departmentId;
-            return (
-              <Pressable
-                style={[styles.row, on && styles.rowOn]}
-                onPress={() => setDepartmentId(prev => (prev === item.id ? null : item.id))}>
-                <View style={styles.rowText}>
-                  <Text style={[styles.rowTitle, on && styles.rowTitleOn]}>{item.name}</Text>
+          const busy = busyRooms.get(item.room.id);
+          const on = picked.has(item.room.id);
+          return (
+            <Pressable
+              style={[styles.row, on && styles.rowOn]}
+              onPress={() => toggleRoom(item.room)}>
+              {/* Квадрат отметки, а не подсветка строки: кабинетов в области
+                  бывает восемь, и «сколько я уже отметил» должно читаться
+                  списком, а не перечитыванием цветов. */}
+              <View style={[styles.check, on && styles.checkOn]}>
+                {on && <Check size={13} color="#FFFFFF" />}
+              </View>
+              <View style={styles.rowText}>
+                <Text style={[styles.rowTitle, on && styles.rowTitleOn]}>
+                  Кабинет {item.room.number}
+                </Text>
+                {Boolean(item.room.name) && (
                   <Text style={[styles.rowSub, on && styles.rowSubOn]} numberOfLines={1}>
-                    {[item.where, item.rooms ? `кабинетов: ${item.rooms}` : 'кабинетов нет']
-                      .filter(Boolean).join(' · ')}
+                    {item.room.name}
                   </Text>
+                )}
+              </View>
+              {Boolean(busy) && (
+                <View style={styles.chip}>
+                  <Text style={styles.chipText}>{busy.number}</Text>
                 </View>
-                {on && <Check size={16} color="#FFFFFF" />}
-              </Pressable>
-            );
-          }}
-        />
-      )}
+              )}
+            </Pressable>
+          );
+        }}
+      />
 
       {ready && (
         <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
@@ -390,11 +406,7 @@ export default function WarehouseInventoryNewScreen({navigation}) {
             onPress={start}>
             <ClipboardCheck size={17} color="#FFFFFF" />
             <Text style={styles.buttonText}>
-              {starting
-                ? 'Открываю…'
-                : scope === 'rooms'
-                  ? `Считать · кабинетов ${picked.size}`
-                  : `Считать ${department ? department.name.toLowerCase() : 'отделение'}`}
+              {starting ? 'Открываю…' : `Считать · кабинетов ${picked.size}`}
             </Text>
           </Pressable>
         </View>
@@ -523,19 +535,9 @@ function SheetRow({styles, c, label, value, onPress}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
-  scopeRow: {flexDirection: 'row', gap: 8, marginHorizontal: 16, marginTop: 14},
-  scopeTab: {
-    flex: 1,
-    height: 38,
-    borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scopeTabOn: {backgroundColor: c.primary},
-  scopeText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary},
-  scopeTextOn: {color: '#FFFFFF'},
+  root: {flex: 1, backgroundColor: c.bgSecondary, paddingTop: 12},
+  // Верхний отступ теперь на самом экране: первой идёт лента этажей, а она,
+  // как и в списке кабинетов, своего отступа сверху не держит.
   tools: {flexDirection: 'row', alignItems: 'center', gap: 8, margin: 16, marginTop: 10, marginBottom: 10},
   search: {
     flex: 1,

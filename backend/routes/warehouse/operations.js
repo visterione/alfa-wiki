@@ -856,7 +856,37 @@ router.patch('/repairs/:id/close', authenticate, requireWarehouse('canMaintenanc
 
 // ── Инвентаризация ───────────────────────────────────────────────────────────
 router.get('/inventory', authenticate, requireWarehouse(), async (req, res) => {
+  /**
+   * Отбор по медцентру.
+   *
+   * Кабинеты описи лежат тремя разными способами: roomId у описи по одному
+   * кабинету, roomIds массивом у описи по нескольким и departmentId у описи по
+   * отделению (services/warehouse/inventory.js). Отбор обязан знать про все
+   * три — иначе описи, заведённые одним способом, из списка пропадут.
+   *
+   * Считается в базе, а не после выборки: limit 100 стоит на описях, и отбор
+   * поверх него отдавал бы уже обрезанный кусок — на медцентр приходилось бы
+   * тем меньше строк, чем активнее считают в соседних.
+   */
+  const { medCenterId } = req.query;
+  const where = {};
+  if (medCenterId) {
+    const mc = sequelize.escape(String(medCenterId));
+    where[Op.and] = [sequelize.literal(`(
+      "WhInventorySession"."roomId" IN (SELECT id FROM warehouse_rooms WHERE "medCenterId" = ${mc})
+      OR EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text("WhInventorySession"."roomIds") AS rid
+        JOIN warehouse_rooms r ON r.id = rid::uuid
+        WHERE r."medCenterId" = ${mc}
+      )
+      OR "WhInventorySession"."departmentId" IN (
+        SELECT id FROM warehouse_departments WHERE "medCenterId" = ${mc}
+      )
+    )`)];
+  }
+
   const rows = await WhInventorySession.findAll({
+    where,
     include: [
       { model: WhRoom, as: 'room', attributes: ['id', 'number', 'name', 'isService'] },
       { model: WhDepartment, as: 'department', attributes: ['id', 'name'] },

@@ -119,7 +119,7 @@ export const roomSubText = (room) => {
 export function flattenRooms(tree) {
   const out = [];
   for (const mc of tree?.medCenters || []) {
-    const push = (room, groupKey, groupTitle) => out.push({
+    const push = (room, groupKey, groupTitle, groupShort = null, groupService = false) => out.push({
       id: room.id,
       number: room.number,
       name: room.name || '',
@@ -136,6 +136,11 @@ export function flattenRooms(tree) {
       departmentId: room.departmentId || null,
       groupKey,
       groupTitle,
+      // Короткая подпись группы и признак склада — для переключателя этажей над
+      // списком (FloorSwitch): в клетке 44×44 помещается число, а у складов
+      // числа нет вовсе, и там стоит значок.
+      groupShort,
+      groupService,
       where: groupTitle || mc.name,
     });
 
@@ -146,14 +151,16 @@ export function flattenRooms(tree) {
       : (mc.buildings || []).flatMap(b => b.floors || []);
     for (const floor of floors) {
       const title = floor.name || `${floor.number} этаж`;
-      for (const room of floor.rooms || []) push(room, `f${floor.id}`, title);
+      for (const room of floor.rooms || []) {
+        push(room, `f${floor.id}`, title, String(floor.number ?? '?'));
+      }
     }
     // Кабинеты, не привязанные к этажу, идут последними: их единицы, и наверху
     // они разрывали бы порядок обхода здания.
-    for (const room of mc.rooms || []) push(room, `mc${mc.id}`, 'Без этажа');
+    for (const room of mc.rooms || []) push(room, `mc${mc.id}`, 'Без этажа', '—');
     // Склады — своей группой в самом низу: они не часть обхода здания, но
     // выбирать их приходится там же, где кабинеты (ver. 7.47).
-    for (const room of mc.services || []) push(room, `svc${mc.id}`, 'Склады');
+    for (const room of mc.services || []) push(room, `svc${mc.id}`, 'Склады', null, true);
   }
   return out;
 }

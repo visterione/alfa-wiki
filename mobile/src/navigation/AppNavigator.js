@@ -384,7 +384,7 @@ function WarehouseStack() {
       <Stack.Screen
         name="WarehouseInventoryList"
         component={WarehouseInventoryListScreen}
-        options={{title: 'Инвентаризация'}}
+        options={{title: 'Инвентаризация', headerRight: () => <MedCenterSwitch />}}
       />
       <Stack.Screen
         name="WarehouseInventoryCount"
@@ -394,7 +394,7 @@ function WarehouseStack() {
       <Stack.Screen
         name="WarehouseInventoryNew"
         component={WarehouseInventoryNewScreen}
-        options={{title: 'Новая опись'}}
+        options={{title: 'Новая опись', headerRight: () => <MedCenterSwitch />}}
       />
       <Stack.Screen
         name="WarehousePlacement"

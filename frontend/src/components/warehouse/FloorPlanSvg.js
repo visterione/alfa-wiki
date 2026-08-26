@@ -129,11 +129,171 @@ function polygonCenter(points) {
 }
 
 /**
- * Обрезает подпись под ширину кабинета. Оценка ширины символа — 0,52 от размера
- * шрифта: точную ширину в SVG без measureText не узнать, а measureText на каждый
- * кабинет при каждом кадре зума слишком дорог. Если не влезает даже три символа,
- * подпись не рисуется вовсе — обрубок «М…» бесполезен, а полное название всегда
- * доступно в подсказке при наведении.
+ * Наибольший прямоугольник, целиком помещающийся внутри контура.
+ *
+ * Подпись раньше ставилась в центр масс вершин и обрезалась по габаритной
+ * ширине. У невыпуклого помещения врут оба числа: центр масс «Г» лежит во
+ * внутреннем углу, у П-образного коридора — снаружи, а габаритная ширина
+ * считает и ту полосу, где стены нет. Название выезжало за помещение и наезжало
+ * на соседей — чаще всего именно у коридоров, они почти никогда не прямоугольны.
+ *
+ * Поэтому подпись ставится в середину самого широкого прямоугольника, который
+ * влезает внутрь контура, и по его же ширине режется.
+ *
+ * Прямоугольники ищутся горизонтальными сечениями. Горизонталь пересекает
+ * стены в нескольких точках, и промежутки между ними по правилу чётности —
+ * ровно те отрезки, что лежат внутри (вырезы считаются теми же пересечениями,
+ * поэтому дырка кольцевого коридора учитывается сама). Между соседними
+ * высотами вершин стены прямые, так что пересечение отрезков в начале и в конце
+ * полосы — точный ответ для всей полосы, а не приближение: у полосы с косой
+ * стеной вписанный прямоугольник упирается в её узкий конец. Полосы наращиваются
+ * по одной, пересечение только сужается — отсюда перебор квадратичен по числу
+ * вершин и стоит доли миллисекунды даже на этаже целиком.
+ *
+ * Ответ зависит только от геометрии, поэтому кэшируется на её объекте: при
+ * панорамировании и зуме перебор не повторяется, а правка вершины создаёт новый
+ * объект и сама сбрасывает кэш.
+ */
+const LABEL_BOXES = new WeakMap();
+
+/**
+ * Отрезки горизонтали y, лежащие внутри фигуры.
+ *
+ * Стороны берутся полуоткрытыми по y: вершина иначе даёт два пересечения вместо
+ * одного, и чётность после неё переворачивается наизнанку.
+ */
+function scanline(rings, y) {
+  const xs = [];
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const [x1, y1] = ring[i];
+      const [x2, y2] = ring[(i + 1) % ring.length];
+      if ((y1 <= y) === (y2 <= y)) continue;
+      xs.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
+    }
+  }
+  xs.sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i + 1] - xs[i] > 1e-9) out.push([xs[i], xs[i + 1]]);
+  return out;
+}
+
+/** Общая часть двух наборов отрезков. */
+function overlap(a, b) {
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const from = Math.max(a[i][0], b[j][0]);
+    const to = Math.min(a[i][1], b[j][1]);
+    if (to - from > 1e-9) out.push([from, to]);
+    if (a[i][1] < b[j][1]) i++; else j++;
+  }
+  return out;
+}
+
+/**
+ * Высоты, по которым режется контур: все высоты вершин. Косые стены между ними
+ * дробятся дополнительно — у треугольной ниши вершин всего три, и без дробления
+ * единственная полоса вырождается в её острый угол.
+ */
+function scanHeights(rings) {
+  const values = [];
+  rings.forEach(ring => ring.forEach(p => values.push(p[1])));
+  values.sort((a, b) => a - b);
+  const ys = [];
+  for (const v of values) if (!ys.length || v - ys[ys.length - 1] > 1e-6) ys.push(v);
+  if (ys.length < 2) return ys;
+
+  const slanted = rings.some(ring => ring.some(([x1, y1], i) => {
+    const [x2, y2] = ring[(i + 1) % ring.length];
+    return Math.abs(x2 - x1) > 1e-9 && Math.abs(y2 - y1) > 1e-9;
+  }));
+  if (!slanted) return ys;
+
+  const parts = Math.max(1, Math.min(6, Math.round(30 / (ys.length - 1))));
+  if (parts < 2) return ys;
+  const dense = [];
+  for (let i = 0; i + 1 < ys.length; i++) {
+    for (let p = 0; p < parts; p++) dense.push(ys[i] + ((ys[i + 1] - ys[i]) * p) / parts);
+  }
+  dense.push(ys[ys.length - 1]);
+  return dense;
+}
+
+function computeLabelBoxes(points, holes) {
+  if (!Array.isArray(points) || points.length < 3) return [];
+  const rings = [points, ...(holes || [])].filter(r => r.length >= 3);
+  const ys = scanHeights(rings);
+  if (ys.length < 2) return [];
+
+  // Сечение берётся чуть внутрь полосы: ровно на высоте вершины горизонталь
+  // проходит через угол, и ширина там уже не описывает полосу целиком.
+  const bands = [];
+  for (let i = 0; i + 1 < ys.length; i++) {
+    const inset = Math.min(1e-3, (ys[i + 1] - ys[i]) / 1000);
+    bands.push(overlap(scanline(rings, ys[i] + inset), scanline(rings, ys[i + 1] - inset)));
+  }
+
+  const boxes = [];
+  for (let from = 0; from < bands.length; from++) {
+    let cut = bands[from];
+    for (let to = from; to < bands.length && cut.length; to++) {
+      if (to > from) cut = overlap(cut, bands[to]);
+      const widest = cut.reduce((a, b) => (b[1] - b[0] > a[1] - a[0] ? b : a), [0, 0]);
+      if (widest[1] - widest[0] > 1e-9) {
+        boxes.push({
+          x: (widest[0] + widest[1]) / 2,
+          y: (ys[from] + ys[to + 1]) / 2,
+          width: widest[1] - widest[0],
+          height: ys[to + 1] - ys[from],
+        });
+      }
+    }
+  }
+
+  // Остаются только несравнимые варианты: шире и при этом не ниже другого.
+  // Подписи нужен либо самый широкий, либо самый широкий из достаточно высоких,
+  // и промежуточные в этом выборе не участвуют.
+  const best = [];
+  let tallest = 0;
+  boxes.sort((a, b) => b.width - a.width || b.height - a.height).forEach(box => {
+    if (box.height > tallest + 1e-6) { best.push(box); tallest = box.height; }
+  });
+  return best;
+}
+
+function labelBoxes(geometry, points, holes) {
+  if (geometry && LABEL_BOXES.has(geometry)) return LABEL_BOXES.get(geometry);
+  const boxes = computeLabelBoxes(points, holes);
+  if (geometry) LABEL_BOXES.set(geometry, boxes);
+  return boxes;
+}
+
+/**
+ * Место под подпись: самый широкий вписанный прямоугольник, в который влезает
+ * строка нужной высоты. Если такой высоты нет нигде — самый просторный из
+ * найденных: подпись всё равно обрежется по ширине, но встанет в помещении, а
+ * не поверх соседа. Совсем без геометрии (стена, дверь — две точки) остаётся
+ * прежнее поведение: центр масс и габарит.
+ */
+export function labelSpot(geometry, points, holes, minHeight) {
+  const boxes = labelBoxes(geometry, points, holes);
+  if (!boxes.length) {
+    const center = geometry?.label || polygonCenter(points);
+    const bounds = polygonBounds(points);
+    return { x: center.x, y: center.y, width: bounds.width, height: bounds.depth };
+  }
+  return boxes.find(box => box.height >= minHeight)
+    || boxes.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a));
+}
+
+/**
+ * Обрезает подпись под ширину места, найденного labelSpot. Оценка ширины
+ * символа — 0,52 от размера шрифта: точную ширину в SVG без measureText не
+ * узнать, а measureText на каждый кабинет при каждом кадре зума слишком дорог.
+ * Если не влезает даже три символа, подпись не рисуется вовсе — обрубок «М…»
+ * бесполезен, а полное название всегда доступно в подсказке при наведении.
  */
 function clip(text, widthM, fontSize) {
   if (!text) return null;
@@ -1181,15 +1341,32 @@ export default function FloorPlanSvg({
             const st = SHAPE_STYLE[shape.kind] || SHAPE_STYLE.area;
             const { points: pts, holes: shapeHoles } = ringsOf(shape.geometry);
             if (pts.length < 2) return null;
-            const center = shape.geometry?.label || polygonCenter(pts);
             const id = shape.id || `tmp-${idx}`;
             const isSel = selectedShapeId === id;
             const editable = mode === 'edit';
 
-            const xs = pts.map(p => p[0]);
-            const shapeWidthM = Math.max(...xs) - Math.min(...xs);
             const labelSize = (shape.kind === 'text' ? 0.72 : 0.58) * k;
-            const labelText = clip(shape.label, Math.max(shapeWidthM, 2.5), labelSize);
+            // Надпись на плане — не помещение: стен, за которые можно выехать, у
+            // неё нет, и вписывать её в собственную рамку незачем.
+            const spot = shape.kind === 'text'
+              ? {
+                ...(shape.geometry?.label || polygonCenter(pts)),
+                width: Math.max(polygonBounds(pts).width, 2.5),
+                height: polygonBounds(pts).depth,
+              }
+              : labelSpot(shape.geometry, pts, shapeHoles, labelSize * 1.25);
+            // Вертикальный коридор в полтора метра шириной поперёк подписать
+            // нечем, а вдоль — свободно; так подписывают коридоры и на бумажных
+            // планах. Поэтому у узкого и длинного помещения берётся то
+            // направление, в котором от названия остаётся больше: «Коридор»
+            // вдоль лучше, чем «Кор…» поперёк. Условие на ширину — чтобы
+            // повёрнутая строка не вылезла из коридора уже своей высотой.
+            const across = clip(shape.label, spot.width, labelSize);
+            const along = spot.height > spot.width * 1.6 && spot.width >= labelSize * 1.25
+              ? clip(shape.label, spot.height, labelSize)
+              : null;
+            const rotated = shape.kind !== 'text' && (along?.length || 0) > (across?.length || 0);
+            const labelText = rotated ? along : across;
 
             return (
               <g key={id}
@@ -1210,7 +1387,8 @@ export default function FloorPlanSvg({
                       strokeDasharray={st.dash || undefined}
                       style={{ cursor: editable ? 'move' : 'default' }} />
                 {labelText && (
-                  <text x={center.x} y={center.y} textAnchor="middle" dominantBaseline="middle"
+                  <text x={spot.x} y={spot.y} textAnchor="middle" dominantBaseline="middle"
+                        transform={rotated ? `rotate(-90 ${spot.x} ${spot.y})` : undefined}
                         fontSize={labelSize}
                         fontWeight={shape.kind === 'text' ? 600 : 400}
                         fill={shape.kind === 'text' ? '#475569' : '#8794a5'}
@@ -1249,18 +1427,26 @@ export default function FloorPlanSvg({
             const stroke = custom?.stroke || zone.stroke;
             const isSelected = selectedRoomId === room.roomId || selectedRoomId === room.id;
             const isHovered = hoveredRoomId === room.roomId || hoveredRoomId === room.id;
-            const center = room.plan?.label || polygonCenter(pts);
             const id = room.roomId || room.id;
 
-            // Подписи режем по ширине самого кабинета. Без этого «МРТ высокого
-            // разрешения» и «Смотровая (Хирургия)» выезжают за полигон и наезжают
-            // на соседей — на плане это выглядело как каша из букв.
-            const xs = pts.map(p => p[0]);
-            const roomWidthM = Math.max(...xs) - Math.min(...xs);
+            // Подписи вписываем в место, которое реально есть внутри кабинета.
+            // Без этого «МРТ высокого разрешения» и «Смотровая (Хирургия)»
+            // выезжают за полигон и наезжают на соседей — на плане это выглядело
+            // как каша из букв.
             const numberSize = 0.75 * k;
             const subSize = 0.62 * k;
-            const numberText = clip(room.number, roomWidthM, numberSize);
-            const subText = clip(labelOf ? labelOf(room) : null, roomWidthM, subSize);
+            const sub = labelOf ? labelOf(room) : null;
+            // Строки разнесены на 1,05 k, к этому добавляются их полувысоты —
+            // отсюда 1,7 k под две строки и 0,9 k под одну.
+            const roomy = labelSpot(room.plan, pts, roomHoles, sub ? 1.7 * k : 0.9 * k);
+            // Если места хватило только на строку — остаётся номер: имя кабинета
+            // есть в подсказке, а номер на плане не заменить ничем. Место под
+            // одну строку ищется заново: в узком кабинете оно шире того, куда
+            // пытались уместить две.
+            const twoLines = Boolean(sub) && roomy.height >= 1.7 * k;
+            const spot = twoLines || !sub ? roomy : labelSpot(room.plan, pts, roomHoles, 0.9 * k);
+            const numberText = clip(room.number, spot.width, numberSize);
+            const subText = twoLines ? clip(sub, spot.width, subSize) : null;
 
             return (
               <g key={id}
@@ -1281,13 +1467,13 @@ export default function FloorPlanSvg({
 
                 <title>{[room.number, room.name, labelOf ? labelOf(room) : null].filter(Boolean).join(' · ')}</title>
 
-                <text x={center.x} y={center.y - 0.35 * k} textAnchor="middle" dominantBaseline="middle"
+                <text x={spot.x} y={spot.y - (twoLines ? 0.52 * k : 0)} textAnchor="middle" dominantBaseline="middle"
                       fontSize={numberSize} fontWeight="600" fill="#25303f"
                       style={{ pointerEvents: 'none' }}>
                   {numberText}
                 </text>
                 {subText && (
-                  <text x={center.x} y={center.y + 0.7 * k} textAnchor="middle" dominantBaseline="middle"
+                  <text x={spot.x} y={spot.y + 0.53 * k} textAnchor="middle" dominantBaseline="middle"
                         fontSize={subSize} fill="#5a6779" style={{ pointerEvents: 'none' }}>
                     {subText}
                   </text>

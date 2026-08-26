@@ -34,6 +34,18 @@ describe('flattenRooms', () => {
     expect(rooms.map(r => r.id)).toEqual(['r-205', 'r-loose', 'r-wh']);
   });
 
+  // Короткая подпись и признак склада нужны переключателю этажей над списком
+  // кабинетов: в клетке 44×44 помещается число, у складов числа нет вовсе.
+  it('у каждой группы есть короткая подпись для переключателя', () => {
+    const [floorRoom, looseRoom, serviceRoom] = flattenRooms(tree);
+
+    expect(floorRoom.groupShort).toBe('2');
+    expect(looseRoom.groupShort).toBe('—');
+    expect(serviceRoom.groupShort).toBeNull();
+    expect(serviceRoom.groupService).toBe(true);
+    expect(floorRoom.groupService).toBe(false);
+  });
+
   it('подпись этажа собирается из номера, когда имени у этажа нет', () => {
     const [floorRoom] = flattenRooms(tree);
     expect(floorRoom.groupTitle).toBe('2 этаж');

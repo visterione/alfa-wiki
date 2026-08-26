@@ -27,7 +27,7 @@ import LogoLoader from '../../components/LogoLoader';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {
-  useWarehouseAccess, loadWarehouseAccess, setWarehouseBadge,
+  useWarehouseAccess, loadWarehouseAccess, setWarehouseBadge, useWarehouseMedCenter,
 } from '../../store/warehouseStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import MedCenterSwitch from './MedCenterSwitch';
@@ -54,6 +54,7 @@ export default function WarehouseScreen({navigation}) {
   // запомнил: без него экран остался бы с access === null навсегда.
   const [attempt, setAttempt] = useState(null);
   const access = cached || attempt;
+  const {medCenterId, ready} = useWarehouseMedCenter();
   const [queue, setQueue] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,8 +73,11 @@ export default function WarehouseScreen({navigation}) {
         // mode: 'all' — тот же счёт, что и на экране размещения. В режиме по
         // умолчанию строки, держащиеся на кабинете ветки, считаются
         // размещёнными, и главная показывала бы работы меньше, чем её есть.
+        // Размещение остаётся сетевым и при выбранном медцентре: очередь
+        // строится из ведомости ОСВ, а у неё есть счёт («МЦ.04»), но нет
+        // разреза по медцентрам — делить её попросту не по чему.
         warehouseApi.placementQueue({limit: 1, mode: 'all'}),
-        warehouseApi.inventorySessions(),
+        warehouseApi.inventorySessions(medCenterId ? {medCenterId} : undefined),
       ]);
       if (queueResult.status === 'fulfilled') setQueue(queueResult.value.data);
       if (sessionsResult.status === 'fulfilled') {
@@ -89,9 +93,11 @@ export default function WarehouseScreen({navigation}) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [medCenterId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Пока выбранный медцентр читается из памяти телефона, запросов не шлём:
+  // иначе счётчик описей на секунду показал бы сетевой.
+  useFocusEffect(useCallback(() => { if (ready) load(); }, [load, ready]));
 
   // Выбранный медцентр — в шапке раздела, а не на самом экране: он относится ко
   // всему складу, а не к этой странице, и с началом списка не соседствует.

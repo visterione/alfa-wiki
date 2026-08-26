@@ -47,11 +47,50 @@ const boundsOf = (points) => {
   };
 };
 
-/** Центр подписи: сохранённый в плане, иначе середина габарита. */
-const labelPoint = (plan, points) => {
-  if (Number.isFinite(plan?.label?.x) && Number.isFinite(plan?.label?.y)) return plan.label;
+/**
+ * Место под номер кабинета — середина самого широкого отрезка, который влезает
+ * внутрь контура.
+ *
+ * Сохранённый в плане `label` для этого не годится: там центр масс вершин, а у
+ * Г-образного кабинета он лежит в вырезанном углу — номер оказывался на соседе.
+ * Веб считает то же самое честнее (см. labelSpot в FloorPlanSvg.js: там подписи
+ * в две строки, и прямоугольник ищется по высоте тоже); здесь строка одна, и
+ * хватает горизонтального сечения.
+ *
+ * Сечения берутся посередине между высотами вершин: там стены уже не меняются,
+ * и промежутки между пересечениями по правилу чётности — ровно то, что внутри.
+ * Вырез (внутренний двор) даёт свои пересечения и учитывается сам.
+ */
+const labelSpot = ({points, holes}, minHeight) => {
+  const rings = [points, ...holes].filter(r => r.length >= 3);
+  const ys = [...new Set(rings.flatMap(r => r.map(p => p[1])))].sort((a, b) => a - b);
+  let best = null;
+  for (let i = 0; i + 1 < ys.length; i++) {
+    const y = (ys[i] + ys[i + 1]) / 2;
+    const crossings = [];
+    rings.forEach(ring => ring.forEach(([x1, y1], j) => {
+      const [x2, y2] = ring[(j + 1) % ring.length];
+      if ((y1 <= y) === (y2 <= y)) return;
+      crossings.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
+    }));
+    crossings.sort((a, b) => a - b);
+    for (let c = 0; c + 1 < crossings.length; c += 2) {
+      const width = crossings[c + 1] - crossings[c];
+      const height = ys[i + 1] - ys[i];
+      // Полоса ниже кегля номер всё равно не вместит, поэтому широкая, но низкая
+      // полоса уступает той, в которую цифры влезают целиком.
+      const fits = height >= minHeight;
+      const better = !best
+        || (fits && !best.fits)
+        || (fits === best.fits && width > best.width);
+      if (better) {
+        best = {x: (crossings[c] + crossings[c + 1]) / 2, y: (ys[i] + ys[i + 1]) / 2, width, fits};
+      }
+    }
+  }
+  if (best) return best;
   const b = boundsOf(points);
-  return {x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2};
+  return {x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, width: b.maxX - b.minX};
 };
 
 export default function RoomMiniMap({plan, roomId}) {
@@ -130,13 +169,12 @@ export default function RoomMiniMap({plan, roomId}) {
         {view.rooms.map(({room, rings}) => {
           if (rings.points.length < 3) return null;
           const mine = room.id === roomId;
-          const b = boundsOf(rings.points);
           const size = view.unit * (mine ? 1.15 : 0.85);
+          const at = labelSpot(rings, size);
           // Номер шире самого кабинета читается не подписью, а помаркой поверх
           // схемы. Соседей в таком случае оставляем без подписи — свой кабинет
           // подписан всегда, ради него схема и открыта.
-          if (!mine && (b.maxX - b.minX) < size * String(room.number).length * 0.62) return null;
-          const at = labelPoint(room.plan, rings.points);
+          if (!mine && at.width < size * String(room.number).length * 0.62) return null;
           return (
             <SvgText
               key={`t-${room.id}`}
