@@ -43,9 +43,7 @@
  * его этажи разом.
  */
 import React, {useCallback, useLayoutEffect, useMemo, useState} from 'react';
-import {
-  View, Text, Image, FlatList, ScrollView, Pressable, StyleSheet, TextInput,
-} from 'react-native';
+import {View, Text, Image, FlatList, Pressable, StyleSheet, TextInput} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
@@ -55,10 +53,11 @@ import {
 
 import CONFIG from '../../config';
 import LogoLoader from '../../components/LogoLoader';
+import FloorSwitch from './FloorSwitch';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan, getLocationTree, loadLocationTree} from '../../store/warehouseStore';
-import {roomMatches, roomText} from './warehouseMeta';
+import {roomMatches, roomHeadText, roomSubText} from './warehouseMeta';
 import {ROOT_KEY, buildNodes, leavesOf, resolveNode} from './locationTree';
 
 const LEVEL_ICON = {mc: MapPin, floor: Layers};
@@ -80,9 +79,8 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   const [picking, setPicking] = useState(false);
   const [checked, setChecked] = useState(() => new Set());
   const [q, setQ] = useState('');
-  // Выбранный этаж на экране медцентра; null означает «все этажи» и стоит по
-  // умолчанию. Ключ, а не индекс: дерево перечитывается по таймеру кэша, и
-  // порядок веток от этого не гарантирован.
+  // Выбранный этаж на экране медцентра. Ключ, а не индекс: дерево
+  // перечитывается по таймеру кэша, и порядок веток от этого не гарантирован.
   const [floorKey, setFloorKey] = useState(null);
 
   useFocusEffect(useCallback(() => {
@@ -104,10 +102,14 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
    * спрашивать дважды.
    */
   const floors = node?.kind === 'mc' ? node.children : null;
-  const floor = floors && floorKey ? floors.find(item => item.key === floorKey) : null;
-  // Ниже по экрану всё считается от того узла, чьё содержимое показано: на
-  // медцентре это выбранный этаж или сам медцентр целиком.
-  const listNode = floor || node;
+  const floor = floors ? (floors.find(item => item.key === floorKey) || floors[0]) : null;
+  /**
+   * Что показывает список. Обычно — выбранный этаж, но поиск и отбор под печать
+   * всегда идут по всему медцентру: человек, набирающий номер кабинета, ищет
+   * его в здании, а не на текущем этаже, и «не нашлось» из-за невыбранного
+   * этажа он прочитает как «такого кабинета нет».
+   */
+  const listNode = (q.trim() || picking) ? node : (floor || node);
 
   const groups = useMemo(() => {
     if (!listNode) return [];
@@ -157,11 +159,21 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
   // Строки списка собираются заранее: у групп и кабинетов разная разметка, а
   // FlatList должен получить один массив, иначе прокрутка пойдёт по вложенным
   // спискам и перестанет быть непрерывной.
+  /**
+   * Заголовок группы не нужен, когда группа единственная и в переключателе уже
+   * написано то же самое, — «3 этаж» над списком повторял бы нажатую кнопку.
+   *
+   * Но у этажа бывает имя, и тогда заголовок обязателен: после отказа от
+   * корпусов у медцентра встречаются два четвёртых этажа, в переключателе оба
+   * выглядят как «4», и различает их только название.
+   */
+  const single = groups.length === 1 && !picking;
+  const named = single && groups[0].leaf.title !== `${groups[0].leaf.short} этаж`;
+  const withHeaders = !single || named;
+
   const items = flat
     ? groups.flatMap(({leaf, rooms}) => [
-      // Заголовок группы не нужен, когда группа единственная и без отбора:
-      // он повторял бы заголовок экрана
-      ...(groups.length > 1 || picking
+      ...(withHeaders
         ? [{type: 'group', key: `g-${leaf.key}`, title: leaf.path || leaf.title, ids: rooms.map(r => r.id)}]
         : []),
       ...rooms.map(room => ({type: 'room', key: `r-${room.id}`, room})),
@@ -170,38 +182,10 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
 
   return (
     <View style={styles.root}>
-      {/* Лента этажей: одно касание сужает список, второе по «Все» возвращает
-          его целиком. Прокручивается горизонтально — этажей бывает шесть, и
-          переносить их в две строки значило бы отнимать высоту у самих
-          кабинетов. Скрыта, когда этаж один: фильтр из одной кнопки не фильтр. */}
-      {!picking && floors?.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.floorBar}
-          keyboardShouldPersistTaps="handled">
-          <Pressable
-            style={[styles.floorChip, !floorKey && styles.floorChipOn]}
-            onPress={() => setFloorKey(null)}>
-            <Text style={[styles.floorChipText, !floorKey && styles.floorChipTextOn]}>Все</Text>
-          </Pressable>
-          {floors.map(item => (
-            <Pressable
-              key={item.key}
-              style={[styles.floorChip, floorKey === item.key && styles.floorChipOn]}
-              onPress={() => setFloorKey(prev => (prev === item.key ? null : item.key))}>
-              <Text
-                style={[styles.floorChipText, floorKey === item.key && styles.floorChipTextOn]}
-                numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text
-                style={[styles.floorChipCount, floorKey === item.key && styles.floorChipTextOn]}>
-                {item.counts.rooms}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+      {/* Панель этажей — как кнопки лифта. Отбор под печать её прячет: там
+          отмечают целыми этажами, и список идёт по всему медцентру. */}
+      {!picking && (
+        <FloorSwitch floors={floors} value={floor?.key} onChange={setFloorKey} />
       )}
 
       {hasRooms && (
@@ -285,11 +269,12 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
                 </View>
               )}
               <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{roomText(room)}</Text>
-                {/* Название повторяется подписью только у кабинетов: у склада
-                    оно уже стоит в заголовке строки (ver. 7.47). */}
-                {Boolean(room.name) && !room.isService && (
-                  <Text style={styles.rowSub} numberOfLines={1}>{room.name}</Text>
+                {/* В заголовке только номер, название — подписью снизу. Через
+                    тире оно шло бы вторым разом подряд: «Каб. 415 — Архив», а
+                    под ним «Архив». */}
+                <Text style={styles.rowTitle}>{roomHeadText(room)}</Text>
+                {Boolean(roomSubText(room)) && (
+                  <Text style={styles.rowSub} numberOfLines={1}>{roomSubText(room)}</Text>
                 )}
               </View>
               {/* Сколько в кабинете имущества — дерево знает это и так. Числа
@@ -359,7 +344,11 @@ function Counts({styles, c, counts}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  // Верхний отступ живёт на экране, а не на первом элементе: первым бывает и
+  // переключатель этажей, и поиск, и отступ должен быть одинаковым в обоих
+  // случаях. Дальше интервалы идут сверху вниз — каждый элемент отодвигает
+  // следующий.
+  root: {flex: 1, backgroundColor: c.bgSecondary, paddingTop: 12},
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -368,8 +357,8 @@ const makeStyles = c => StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: 12,
     height: 42,
-    margin: 16,
-    marginBottom: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
   },
   searchInput: {flex: 1, color: c.textPrimary, fontFamily: font.regular, fontSize: 14},
   list: {paddingHorizontal: 16, paddingTop: 6},
@@ -400,16 +389,6 @@ const makeStyles = c => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: '#FFFFFF',
   },
-  floorBar: {paddingHorizontal: 16, paddingBottom: 10, gap: 8},
-  floorChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
-    paddingHorizontal: 12, paddingVertical: 8,
-  },
-  floorChipOn: {backgroundColor: c.primary},
-  floorChipText: {fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
-  floorChipCount: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary},
-  floorChipTextOn: {color: '#FFFFFF'},
 
   levelTitle: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary},
   counts: {alignItems: 'flex-end', gap: 2},
