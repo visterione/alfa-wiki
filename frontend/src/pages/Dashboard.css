@@ -18,7 +18,12 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
-  flex-shrink: 0;
+  /* Обычно ширина держится ровно 410 px — сжиматься здесь нечему, пока в строке
+     есть свободное место. Резерв нужен только с открытой панелью информации о
+     группе на узком мониторе: тогда список отдаёт до 110 px, чтобы переписка не
+     схлопнулась в колонку. */
+  flex-shrink: 1;
+  min-width: 300px;
 }
 
 .chat-sidebar-header {
@@ -337,6 +342,13 @@
 /* ========== CHAT MAIN ========== */
 .chat-main {
   flex: 1;
+  /* Без min-width flex-элемент не сжимается уже своего min-content, и панель
+     информации о группе (380 px) не влезала в строку — её выносило за правый
+     край окна, приходилось скроллить. Теперь ширину под панель отдаёт сама
+     рабочая область чата, но не всю: 320 px — тот минимум, при котором пузыри
+     сообщений и панель ввода ещё читаются. Ниже 1280 px панель показывается
+     поверх переписки (медиазапрос в конце файла), делить там уже нечего. */
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
@@ -373,12 +385,18 @@
 
 .chat-main-info {
   flex: 1;
+  /* Название группы бывает длинным; без ужатия оно задаёт минимальную ширину
+     всей рабочей области и мешает ей уступить место боковой панели. */
+  min-width: 0;
 }
 
 .chat-main-name {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-main-status {
@@ -387,6 +405,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .online-dot {
@@ -906,6 +927,9 @@
 .chat-input-wrapper {
   position: relative;
   flex: 1;
+  /* У <input> своя минимальная ширина (атрибут size), из-за неё панель ввода
+     держала рабочую область шире, чем нужно. */
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1008,6 +1032,7 @@
 
 .chat-input-wrapper input {
   flex: 1;
+  min-width: 0;
   border: none;
   background: none;
   font-size: 15px;
@@ -1171,6 +1196,9 @@
 /* ========== CHAT INFO PANEL ========== */
 .chat-info-panel {
   width: 380px;
+  /* Ширина фиксированная: место под панель уступает рабочая область чата
+     (.chat-main), а не сама панель. */
+  flex-shrink: 0;
   border-left: 1px solid var(--border-light);
   background: var(--bg-primary);
   display: flex;
@@ -1194,10 +1222,25 @@
 .chat-info-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  /* Своих отступов нет: их держат внутренние блоки. Иначе строка вкладок,
+     прилипающая к верху при скролле, оставляла бы над собой полосу фона,
+     сквозь которую просвечивало уезжающее содержимое. */
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+}
+
+/* Шапка панели: аватар, название и подпись под ним.
+   flex-shrink:0 обязателен всем трём блокам панели: .chat-info-body — колонка с
+   прокруткой, и без запрета на сжатие содержимое вкладки продавливает соседей,
+   вплоть до строки вкладок нулевой высоты. */
+.chat-info-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  flex-shrink: 0;
 }
 
 .chat-info-avatar-wrapper {
@@ -1248,10 +1291,72 @@
 }
 
 .chat-info-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   font-size: 18px;
   font-weight: 600;
   text-align: center;
   color: var(--text-primary);
+}
+
+.chat-info-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: -6px;
+}
+
+/* Вкладки панели: состав группы и галерея чата в одном месте. Строка липнет к
+   верху, чтобы при длинном списке медиа не терять переключатель. */
+.chat-info-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex-shrink: 0;
+  display: flex;
+  padding: 0 8px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+  /* Пять вкладок у группы («Участники» плюс четыре раздела галереи) влезают в
+     380 px только за счёт мелкого шрифта и узких полей. Если подписи когда-то
+     станут длиннее, строка прокрутится, а не переползёт на второй ряд —
+     двухрядные вкладки в узкой панели выглядят поломкой. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-info-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-info-tab {
+  padding: 12px 8px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  /* Подчёркивание рисуем всегда — прозрачным: иначе активная вкладка выше
+     остальных на два пикселя и строка дёргается при переключении */
+  border-bottom: 2px solid transparent;
+}
+
+.chat-info-tab:hover {
+  color: var(--text-primary);
+}
+
+.chat-info-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.chat-info-tab-content {
+  padding: 16px 20px;
+  flex-shrink: 0;
 }
 
 .chat-info-section {
@@ -1334,8 +1439,13 @@
   flex-shrink: 0;
 }
 
+/* Действия над группой прибиты к низу панели, а не к концу ленты: иначе с
+   открытой вкладкой медиа до них пришлось бы прокручивать всю галерею. */
 .chat-info-actions {
-  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px;
   border-top: 1px solid var(--border-light);
 }
 
@@ -1721,11 +1831,15 @@
 }
 
 /* ========== RESPONSIVE ========== */
-@media (max-width: 1024px) {
+/* Ниже 1280 px делить ширину между списком чатов, перепиской и панелью уже
+   нечего — панель ложится поверх переписки. Привязка к окну (fixed), а не к
+   ближайшему предку: .alfa-chat не создаёт контекста позиционирования, и с
+   absolute панель отсчитывалась от документа, накрывая шапку портала. */
+@media (max-width: 1279px) {
   .chat-info-panel {
-    position: absolute;
+    position: fixed;
     right: 0;
-    top: 0;
+    top: var(--header-height);
     bottom: 0;
     z-index: 20;
     box-shadow: var(--shadow-xl);
@@ -2709,40 +2823,17 @@
 
 /* ── Галерея чата: медиа, файлы, голосовые, ссылки (ver. 7.35) ─────────── */
 
-.media-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.media-tab {
-  padding: 8px 14px;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-family: inherit;
-  cursor: pointer;
-  /* Подчёркивание рисуем всегда — прозрачным: иначе активная вкладка выше
-     остальных на два пикселя и строка дёргается при переключении */
-  border-bottom: 2px solid transparent;
-}
-
-.media-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-}
-
-.media-grid {
+/* Галерея чата живёт внутри боковой панели, поэтому и селекторы заужены до
+   неё: имя .media-grid занято ещё и медиатекой в админке (Admin.css), а оба
+   файла стилей глобальные. */
+.chat-info-panel .media-grid {
   display: grid;
+  /* В панели шириной 380 px это ровно три колонки превью */
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 4px;
-  max-height: 60vh;
-  overflow-y: auto;
 }
 
-.media-grid-item {
+.chat-info-panel .media-grid-item {
   aspect-ratio: 1;
   overflow: hidden;
   border-radius: var(--radius-sm);
@@ -2750,13 +2841,13 @@
   background: var(--bg-secondary);
 }
 
-.media-grid-item img {
+.chat-info-panel .media-grid-item img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.media-grid-video {
+.chat-info-panel .media-grid-video {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2765,14 +2856,14 @@
   color: var(--text-secondary);
 }
 
-.media-list {
+/* Прокрутка общая для всей панели (.chat-info-body), у самого списка её нет —
+   иначе внутри узкой колонки получались бы две вложенные полосы прокрутки. */
+.chat-info-panel .media-list {
   display: flex;
   flex-direction: column;
-  max-height: 60vh;
-  overflow-y: auto;
 }
 
-.media-list-item {
+.chat-info-panel .media-list-item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2780,19 +2871,19 @@
   border-bottom: 1px solid var(--border-color);
 }
 
-.media-list-icon {
+.chat-info-panel .media-list-icon {
   color: var(--text-secondary);
   flex-shrink: 0;
 }
 
 /* min-width нужен, чтобы длинное имя файла ужималось многоточием,
    а не выдавливало кнопки за край */
-.media-list-info {
+.chat-info-panel .media-list-info {
   flex: 1;
   min-width: 0;
 }
 
-.media-list-name {
+.chat-info-panel .media-list-name {
   color: var(--text-primary);
   font-size: 14px;
   white-space: nowrap;
@@ -2800,12 +2891,12 @@
   text-overflow: ellipsis;
 }
 
-.media-list-meta {
+.chat-info-panel .media-list-meta {
   color: var(--text-secondary);
   font-size: 12px;
 }
 
-.media-list-link {
+.chat-info-panel .media-list-link {
   display: block;
   color: var(--primary);
   font-size: 14px;

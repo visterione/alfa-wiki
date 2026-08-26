@@ -131,11 +131,25 @@ export default function WarehousePlacementScreen() {
     [tree, roomId],
   );
 
+  /**
+   * Очередь ведомости.
+   *
+   * Поиск и отбор по виду считает СЕРВЕР (ver. 7.51). Раньше телефон брал
+   * первые двести строк и фильтровал их у себя: на ведомости в три тысячи
+   * позиций «компью» находило три совпадения вместо семидесяти — ровно те, что
+   * попали в загруженный кусок. В вебе тот же запрос всегда уходил на сервер, и
+   * два экрана отвечали по-разному на один и тот же вопрос.
+   */
   const load = useCallback(async () => {
     try {
       const [treeData, queueResult, frozenResult] = await Promise.all([
         loadLocationTree(),
-        warehouseApi.placementQueue({limit: 200, mode: 'all'}),
+        warehouseApi.placementQueue({
+          limit: 200,
+          mode: 'all',
+          q: q.trim() || undefined,
+          kind: kind === 'all' ? undefined : kind,
+        }),
         // Список описей не роняет экран: без него размещение всё равно
         // работает, просто отказ придёт от сервера, а не от списка кабинетов.
         warehouseApi.frozenRooms().catch(() => ({data: {items: []}})),
@@ -148,9 +162,18 @@ export default function WarehousePlacementScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [q, kind]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  /**
+   * Один эффект на оба повода перечитать очередь: возврат на экран и набор в
+   * поиске. Двумя эффектами они дублировали бы запрос при открытии, а поиск,
+   * висящий на возврате фокуса, стрелял бы на каждую букву — load зависит от
+   * строки запроса.
+   */
+  useFocusEffect(useCallback(() => {
+    const timer = setTimeout(load, q ? 350 : 0);
+    return () => clearTimeout(timer);
+  }, [load, q]));
 
   const toggle = (item) => {
     setPicked((prev) => {
@@ -235,24 +258,16 @@ export default function WarehousePlacementScreen() {
     }
   };
 
-  const items = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return (queue?.items || [])
-      .filter(i => kind === 'all' || i.kind === kind)
-      .filter(i => !needle || i.name.toLowerCase().includes(needle)
-        || String(i.pathText || '').toLowerCase().includes(needle));
-  }, [queue, q, kind]);
+  // Отбор уже сделан сервером — здесь только то, что он прислал.
+  const items = queue?.items || [];
 
-  // Счётчики на чипах считаются по всей очереди, а не по видимому списку: чип
-  // «Материалы (0)» отвечает на вопрос раньше, чем по нему нажмут.
-  const counts = useMemo(() => {
-    const list = queue?.items || [];
-    return {
-      all: list.length,
-      asset: list.filter(i => i.kind === 'asset').length,
-      material: list.filter(i => i.kind === 'material').length,
-    };
-  }, [queue]);
+  // Счётчики на переключателях вида считает сервер по всей очереди, а не по
+  // присланной странице: «Материалы (0)» отвечает на вопрос раньше, чем по
+  // нему нажмут, и по одной странице такой ответ был бы неверным.
+  const counts = {
+    asset: queue?.kinds?.asset || 0,
+    material: queue?.kinds?.material || 0,
+  };
 
   if (loading) return <LogoLoader />;
 
@@ -421,6 +436,15 @@ export default function WarehousePlacementScreen() {
           <Text style={styles.none}>
             {q ? 'Ничего не нашлось' : 'Всё имущество ведомости уже разложено по кабинетам.'}
           </Text>
+        }
+        ListFooterComponent={
+          // Список упёрся в потолок — значит найдено больше, чем показано.
+          // Молчать об этом нельзя: именно так и выглядит пропажа позиций.
+          queue.total > items.length ? (
+            <Text style={styles.none}>
+              Показано {items.length} из {queue.total} — уточните поиск.
+            </Text>
+          ) : null
         }
       />
 

@@ -133,7 +133,11 @@ export default function Dashboard() {
   const [pinnedIndex, setPinnedIndex] = useState(0);
   // Галерея чата (ver. 7.35). Данные берутся с сервера, а не из загруженной
   // ленты: раньше «медиа чата» показывало только то, что успело подгрузиться.
-  const [mediaPanel, setMediaPanel] = useState(null); // 'media' | 'files' | 'voice' | 'links'
+  // Позже галерея переехала из отдельной модалки в боковую панель чата и делит
+  // её с составом участников — как в Telegram: отдельная кнопка с модалкой на
+  // каждый раздел рвала один и тот же экран «о чём этот чат» надвое. infoTab
+  // говорит, что открыто сейчас: 'members' | 'media' | 'files' | 'voice' | 'links'.
+  const [infoTab, setInfoTab] = useState('members');
   const [mediaItems, setMediaItems] = useState([]);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [hasOlderMessages, setHasOlderMessages] = useState(true);
@@ -281,18 +285,46 @@ export default function Dashboard() {
     { key: 'links', label: 'Ссылки' },
   ];
 
-  const openMediaPanel = async (kind) => {
-    setMediaPanel(kind);
+  const loadChatMedia = async (kind, chatId) => {
     setMediaLoading(true);
     setMediaItems([]);
     try {
-      const { data } = await chat.getChatMedia(activeChat.id, kind, { limit: 100 });
+      const { data } = await chat.getChatMedia(chatId, kind, { limit: 100 });
+      // Пока грузили, пользователь мог уйти на другую вкладку или в другой чат —
+      // тогда ответ уже не о том, что на экране, и подставлять его нельзя
+      if (activeChatRef.current?.id !== chatId) return;
       setMediaItems(data);
     } catch {
       toast.error('Не удалось загрузить');
     } finally {
       setMediaLoading(false);
     }
+  };
+
+  // Переход из галереи к самому сообщению. Пока панель стоит рядом с
+  // перепиской, закрывать её незачем; на узком экране она лежит поверх чата —
+  // там без закрытия результат прыжка просто не увидеть.
+  const revealMessageFromInfo = (messageId) => {
+    if (window.innerWidth < 1280) setShowChatInfo(false);
+    scrollToMessage(messageId);
+  };
+
+  const selectInfoTab = (tab) => {
+    setInfoTab(tab);
+    if (tab === 'members') {
+      setMediaItems([]);
+      return;
+    }
+    loadChatMedia(tab, activeChat.id);
+  };
+
+  // Единая точка входа в боковую панель: и клик по шапке, и кнопка галереи.
+  // Вкладка по умолчанию зависит от типа чата — у группы это состав участников,
+  // у переписки один на один участников нет, и первым осмысленным экраном
+  // оказывается галерея.
+  const openChatInfo = (tab) => {
+    setShowChatInfo(true);
+    selectInfoTab(tab || (activeChat?.type === 'group' ? 'members' : 'media'));
   };
 
   const loadPinned = useCallback(async (chatId) => {
@@ -686,6 +718,7 @@ export default function Dashboard() {
   const handleSelectChat = async (chatItem, searchTerm = '') => {
     setActiveChat(chatItem);
     setShowChatInfo(false);
+    setMediaItems([]);
     setAttachments([]);
     setEditingMessage(null);
     setReplyingToMessage(null);
@@ -2042,7 +2075,7 @@ export default function Dashboard() {
               <div className="chat-main-header">
                 <button className="btn-icon-chat mobile-only" onClick={() => setActiveChat(null)}><ArrowLeft size={20} /></button>
                 <div className="chat-main-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={20} /> : <User size={20} />)}</div>
-                <div className="chat-main-info" style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }} onClick={() => activeChat.type === 'group' && setShowChatInfo(true)}>
+                <div className="chat-main-info" style={{ cursor: 'pointer' }} onClick={() => showChatInfo ? setShowChatInfo(false) : openChatInfo()}>
                   <div className="chat-main-name">{activeChat.displayName}</div>
                   <div className="chat-main-status">
                     {activeChat.type === 'group'
@@ -2059,10 +2092,10 @@ export default function Dashboard() {
                     }
                   </div>
                 </div>
-                <button className="btn-icon-chat" title="Медиа, файлы и ссылки" onClick={() => openMediaPanel('media')}>
+                <button className="btn-icon-chat" title="Медиа, файлы и ссылки" onClick={() => openChatInfo('media')}>
                   <Image size={20} />
                 </button>
-                {activeChat.type === 'group' && <button className="btn-icon-chat" onClick={() => setShowChatInfo(true)}><MoreVertical size={20} /></button>}
+                {activeChat.type === 'group' && <button className="btn-icon-chat" title="Информация о группе" onClick={() => openChatInfo('members')}><MoreVertical size={20} /></button>}
               </div>
               {/* Шапка закреплённых. Показываем одно сообщение из списка —
                   нажатие уводит к нему в ленте и переключает на следующее. */}
@@ -2419,80 +2452,210 @@ export default function Dashboard() {
           ) : <div className="chat-placeholder"><MessageCircle size={64} /><h3>Альфа Чат</h3><p>Выберите чат или начните новый</p></div>}
         </div>
 
-        {showChatInfo && activeChat?.type === 'group' && (
+        {showChatInfo && activeChat && (
           <div className="chat-info-panel">
-            <div className="chat-info-header"><h3>Информация о группе</h3><button className="btn-icon-chat" onClick={() => setShowChatInfo(false)}><X size={20} /></button></div>
+            <div className="chat-info-header">
+              <h3>{activeChat.type === 'group' ? 'Информация о группе' : 'Информация о чате'}</h3>
+              <button className="btn-icon-chat" onClick={() => setShowChatInfo(false)}><X size={20} /></button>
+            </div>
             <div className="chat-info-body">
-              <div className="chat-info-avatar-wrapper">
-                <div className="chat-info-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : <Users size={48} />}</div>
-                {isGroupAdmin && (
-                  <div className="chat-info-avatar-actions">
-                    <input type="file" ref={avatarInputRef} hidden accept="image/*" onChange={handleAvatarChange} />
-                    <button className="btn btn-sm btn-ghost" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}>{avatarUploading ? <div className="loading-spinner" style={{width: 16, height: 16}} /> : <Camera size={16} />}{activeChat.avatar ? 'Изменить' : 'Добавить'}</button>
-                    {activeChat.avatar && <button className="btn btn-sm btn-ghost text-danger" onClick={handleDeleteAvatar}><X size={16} /> Удалить</button>}
-                  </div>
-                )}
-              </div>
-              <div className="chat-info-name" style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                {activeChat.displayName}
-                {isGroupAdmin && (
-                  <button className="btn-icon-chat sm" title="Переименовать" onClick={() => { setRenameGroupValue(activeChat.name || activeChat.displayName || ''); setShowRenameGroup(true); }}>
-                    <Pencil size={14} />
+              <div className="chat-info-profile">
+                <div className="chat-info-avatar-wrapper">
+                  <div className="chat-info-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={48} /> : <User size={48} />)}</div>
+                  {isGroupAdmin && (
+                    <div className="chat-info-avatar-actions">
+                      <input type="file" ref={avatarInputRef} hidden accept="image/*" onChange={handleAvatarChange} />
+                      <button className="btn btn-sm btn-ghost" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}>{avatarUploading ? <div className="loading-spinner" style={{width: 16, height: 16}} /> : <Camera size={16} />}{activeChat.avatar ? 'Изменить' : 'Добавить'}</button>
+                      {activeChat.avatar && <button className="btn btn-sm btn-ghost text-danger" onClick={handleDeleteAvatar}><X size={16} /> Удалить</button>}
+                    </div>
+                  )}
+                </div>
+                <div className="chat-info-name">
+                  {activeChat.displayName}
+                  {isGroupAdmin && (
+                    <button className="btn-icon-chat sm" title="Переименовать" onClick={() => { setRenameGroupValue(activeChat.name || activeChat.displayName || ''); setShowRenameGroup(true); }}>
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="chat-info-subtitle">
+                  {activeChat.type === 'group'
+                    ? `${formatMemberCount(activeGroupMembers.length)} · ${activeGroupOnlineCount} онлайн`
+                    : (() => {
+                        const otherId = activeChat.otherUser?.id;
+                        const st = userStatuses[otherId];
+                        const isOnline = activeChat.otherUser?.isOnline || st?.isOnline;
+                        const lastSeen = st?.lastSeen || activeChat.otherUser?.lastSeen;
+                        return isOnline ? 'В сети' : formatLastSeen(lastSeen);
+                      })()
+                  }
+                </div>
+                {activeChat.type !== 'group' && activeChat.otherUser?.id && (
+                  <button className="btn btn-sm btn-ghost" onClick={() => navigate(`/users/${activeChat.otherUser.id}`)}>
+                    <User size={16} /> Открыть профиль
                   </button>
                 )}
               </div>
-              <div className="chat-info-section">
-                <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupAdmin && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); loadUsers(); loadBots(); }}><UserPlus size={16} /> Добавить</button>}</div>
-                <div className="chat-members-list">
-                  {activeChat.members?.map(m => {
-                    const isCreatorMember = m.userId === activeChat.createdBy;
-                    const isAdminMember = m.role === 'admin';
-                    return (
-                      <div key={m.userId} className="chat-member-item">
-                        <div className="chat-member-avatar" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
-                        <div className="chat-member-info">
-                          <div className="chat-member-name" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{m.user?.displayName || m.user?.username}</div>
-                          {isCreatorMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Создатель</div>}
-                          {!isCreatorMember && isAdminMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Админ</div>}
-                        </div>
-                        {m.userId !== user.id && (
-                          <div className="chat-member-actions">
-                            {isGroupAdmin && !isCreatorMember && (
-                              <button
-                                className={`btn-icon-chat sm${m.isReadOnly ? ' active' : ''}`}
-                                title={m.isReadOnly ? 'Снять заглушку' : 'Включить заглушку (только чтение)'}
-                                onClick={() => toggleMemberReadOnly(m.userId, m.isReadOnly)}
-                                style={m.isReadOnly ? { color: 'var(--primary)' } : {}}
-                              >
-                                {m.isReadOnly ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                              </button>
-                            )}
-                            {isGroupCreator && !isCreatorMember && (
-                              <button
-                                className="btn-icon-chat sm"
-                                title={isAdminMember ? 'Снять права администратора' : 'Назначить администратором'}
-                                onClick={() => toggleMemberAdmin(m.userId, m.role)}
-                              >
-                                {isAdminMember ? <ShieldOff size={16} /> : <Shield size={16} />}
-                              </button>
-                            )}
-                            {isGroupAdmin && !isCreatorMember && (
-                              <button className="btn-icon-chat sm" title="Удалить из группы" onClick={() => removeMemberFromGroup(m.userId)}>
-                                <UserMinus size={16} />
-                              </button>
+
+              {/* Вкладки в духе Telegram: состав группы и вся её галерея живут в
+                  одной панели, а не в панели и модалке по отдельности */}
+              <div className="chat-info-tabs">
+                {(activeChat.type === 'group' ? [{ key: 'members', label: 'Участники' }, ...MEDIA_TABS] : MEDIA_TABS).map(tab => (
+                  <button
+                    key={tab.key}
+                    className={`chat-info-tab ${infoTab === tab.key ? 'active' : ''}`}
+                    onClick={() => selectInfoTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="chat-info-tab-content">
+                {infoTab === 'members' && activeChat.type === 'group' && (
+                  <div className="chat-info-section">
+                    <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupAdmin && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); loadUsers(); loadBots(); }}><UserPlus size={16} /> Добавить</button>}</div>
+                    <div className="chat-members-list">
+                      {activeChat.members?.map(m => {
+                        const isCreatorMember = m.userId === activeChat.createdBy;
+                        const isAdminMember = m.role === 'admin';
+                        return (
+                          <div key={m.userId} className="chat-member-item">
+                            <div className="chat-member-avatar" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
+                            <div className="chat-member-info">
+                              <div className="chat-member-name" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{m.user?.displayName || m.user?.username}</div>
+                              {isCreatorMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Создатель</div>}
+                              {!isCreatorMember && isAdminMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Админ</div>}
+                            </div>
+                            {m.userId !== user.id && (
+                              <div className="chat-member-actions">
+                                {isGroupAdmin && !isCreatorMember && (
+                                  <button
+                                    className={`btn-icon-chat sm${m.isReadOnly ? ' active' : ''}`}
+                                    title={m.isReadOnly ? 'Снять заглушку' : 'Включить заглушку (только чтение)'}
+                                    onClick={() => toggleMemberReadOnly(m.userId, m.isReadOnly)}
+                                    style={m.isReadOnly ? { color: 'var(--primary)' } : {}}
+                                  >
+                                    {m.isReadOnly ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                                  </button>
+                                )}
+                                {isGroupCreator && !isCreatorMember && (
+                                  <button
+                                    className="btn-icon-chat sm"
+                                    title={isAdminMember ? 'Снять права администратора' : 'Назначить администратором'}
+                                    onClick={() => toggleMemberAdmin(m.userId, m.role)}
+                                  >
+                                    {isAdminMember ? <ShieldOff size={16} /> : <Shield size={16} />}
+                                  </button>
+                                )}
+                                {isGroupAdmin && !isCreatorMember && (
+                                  <button className="btn-icon-chat sm" title="Удалить из группы" onClick={() => removeMemberFromGroup(m.userId)}>
+                                    <UserMinus size={16} />
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {infoTab !== 'members' && mediaLoading && <div className="chat-loading"><div className="loading-spinner" /></div>}
+                {infoTab !== 'members' && !mediaLoading && mediaItems.length === 0 && (
+                  <div className="text-muted text-center">Здесь пока пусто</div>
+                )}
+
+                {!mediaLoading && infoTab === 'media' && (
+                  <div className="media-grid">
+                    {mediaItems.map((item, idx) => {
+                      const att = item.attachment || {};
+                      const url = fixUrl(att.url || att.path);
+                      const thumb = fixUrl(att.thumbnailUrl || att.thumbnailPath) || url;
+                      const isVideo = att.mimeType?.startsWith('video/');
+                      return (
+                        <div
+                          key={`${item.messageId}:${idx}`}
+                          className="media-grid-item"
+                          title={format(new Date(item.createdAt), 'dd.MM.yyyy HH:mm')}
+                          onClick={() => revealMessageFromInfo(item.messageId)}
+                        >
+                          {isVideo ? <div className="media-grid-video"><Film size={22} /></div> : <img src={thumb} alt="" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!mediaLoading && (infoTab === 'files' || infoTab === 'voice') && (
+                  <div className="media-list">
+                    {mediaItems.map((item, idx) => {
+                      const att = item.attachment || {};
+                      const url = fixUrl(att.url || att.path);
+                      const name = att.kind === 'voice'
+                        ? 'Голосовое сообщение'
+                        : (att.name || att.filename || 'Файл');
+                      return (
+                        <div key={`${item.messageId}:${idx}`} className="media-list-item">
+                          <div className="media-list-icon">{getFileIcon(att.mimeType)}</div>
+                          <div className="media-list-info">
+                            <div className="media-list-name">{name}</div>
+                            <div className="media-list-meta">
+                              {item.senderName} · {format(new Date(item.createdAt), 'dd.MM.yyyy')}
+                              {att.size ? ` · ${formatFileSize(att.size)}` : ''}
+                            </div>
+                          </div>
+                          <button
+                            className="btn-icon-chat"
+                            title="Показать в переписке"
+                            onClick={() => revealMessageFromInfo(item.messageId)}
+                          >
+                            <CornerUpLeft size={16} />
+                          </button>
+                          <a className="btn-icon-chat" href={url} target="_blank" rel="noreferrer" title="Открыть">
+                            <Download size={16} />
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!mediaLoading && infoTab === 'links' && (
+                  <div className="media-list">
+                    {mediaItems.map(item => (
+                      <div key={item.messageId} className="media-list-item">
+                        <div className="media-list-icon"><Link2 size={20} /></div>
+                        <div className="media-list-info">
+                          {item.urls.map(url => (
+                            <a key={url} className="media-list-link" href={url} target="_blank" rel="noreferrer">{url}</a>
+                          ))}
+                          <div className="media-list-meta">
+                            {item.senderName} · {format(new Date(item.createdAt), 'dd.MM.yyyy')}
+                          </div>
+                        </div>
+                        <button
+                          className="btn-icon-chat"
+                          title="Показать в переписке"
+                          onClick={() => revealMessageFromInfo(item.messageId)}
+                        >
+                          <CornerUpLeft size={16} />
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <button className="btn btn-ghost text-danger" onClick={leaveGroup}><LogOut size={16} /> Покинуть группу</button>
-              {isGroupCreator && (
-                <button className="btn btn-ghost text-danger" onClick={deleteGroup} style={{ marginTop: '8px' }}><Trash2 size={16} /> Удалить группу</button>
-              )}
             </div>
+            {activeChat.type === 'group' && (
+              <div className="chat-info-actions">
+                <button className="btn btn-sm btn-ghost text-danger" onClick={leaveGroup}><LogOut size={16} /> Покинуть группу</button>
+                {isGroupCreator && (
+                  <button className="btn btn-sm btn-ghost text-danger" onClick={deleteGroup}><Trash2 size={16} /> Удалить группу</button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2869,116 +3032,6 @@ export default function Dashboard() {
           reactions={reactionDetailsModal.reactions}
           onClose={() => setReactionDetailsModal(null)}
         />
-      )}
-
-      {/* Галерея чата: медиа, файлы, голосовые, ссылки (ver. 7.35) */}
-      {mediaPanel && (
-        <div className="modal-overlay" onClick={() => setMediaPanel(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Медиа чата</h2>
-              <button className="modal-close" onClick={() => setMediaPanel(null)}><X size={20} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="media-tabs">
-                {MEDIA_TABS.map(tab => (
-                  <button
-                    key={tab.key}
-                    className={`media-tab ${mediaPanel === tab.key ? 'active' : ''}`}
-                    onClick={() => openMediaPanel(tab.key)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {mediaLoading && <div className="chat-loading"><div className="loading-spinner" /></div>}
-              {!mediaLoading && mediaItems.length === 0 && (
-                <div className="text-muted text-center">Здесь пока пусто</div>
-              )}
-
-              {!mediaLoading && mediaPanel === 'media' && (
-                <div className="media-grid">
-                  {mediaItems.map((item, idx) => {
-                    const att = item.attachment || {};
-                    const url = fixUrl(att.url || att.path);
-                    const thumb = fixUrl(att.thumbnailUrl || att.thumbnailPath) || url;
-                    const isVideo = att.mimeType?.startsWith('video/');
-                    return (
-                      <div
-                        key={`${item.messageId}:${idx}`}
-                        className="media-grid-item"
-                        title={format(new Date(item.createdAt), 'dd.MM.yyyy HH:mm')}
-                        onClick={() => { setMediaPanel(null); scrollToMessage(item.messageId); }}
-                      >
-                        {isVideo ? <div className="media-grid-video"><Film size={22} /></div> : <img src={thumb} alt="" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {!mediaLoading && (mediaPanel === 'files' || mediaPanel === 'voice') && (
-                <div className="media-list">
-                  {mediaItems.map((item, idx) => {
-                    const att = item.attachment || {};
-                    const url = fixUrl(att.url || att.path);
-                    const name = att.kind === 'voice'
-                      ? 'Голосовое сообщение'
-                      : (att.name || att.filename || 'Файл');
-                    return (
-                      <div key={`${item.messageId}:${idx}`} className="media-list-item">
-                        <div className="media-list-icon">{getFileIcon(att.mimeType)}</div>
-                        <div className="media-list-info">
-                          <div className="media-list-name">{name}</div>
-                          <div className="media-list-meta">
-                            {item.senderName} · {format(new Date(item.createdAt), 'dd.MM.yyyy')}
-                            {att.size ? ` · ${formatFileSize(att.size)}` : ''}
-                          </div>
-                        </div>
-                        <button
-                          className="btn-icon-chat"
-                          title="Показать в переписке"
-                          onClick={() => { setMediaPanel(null); scrollToMessage(item.messageId); }}
-                        >
-                          <CornerUpLeft size={16} />
-                        </button>
-                        <a className="btn-icon-chat" href={url} target="_blank" rel="noreferrer" title="Открыть">
-                          <Download size={16} />
-                        </a>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {!mediaLoading && mediaPanel === 'links' && (
-                <div className="media-list">
-                  {mediaItems.map(item => (
-                    <div key={item.messageId} className="media-list-item">
-                      <div className="media-list-icon"><Link2 size={20} /></div>
-                      <div className="media-list-info">
-                        {item.urls.map(url => (
-                          <a key={url} className="media-list-link" href={url} target="_blank" rel="noreferrer">{url}</a>
-                        ))}
-                        <div className="media-list-meta">
-                          {item.senderName} · {format(new Date(item.createdAt), 'dd.MM.yyyy')}
-                        </div>
-                      </div>
-                      <button
-                        className="btn-icon-chat"
-                        title="Показать в переписке"
-                        onClick={() => { setMediaPanel(null); scrollToMessage(item.messageId); }}
-                      >
-                        <CornerUpLeft size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Диалог удаления — один на пачку и на одно сообщение */}

@@ -168,6 +168,20 @@ router.get('/queue', authenticate, requireWarehouse(), requireReport('RPT-OSV'),
     // собрана в память целиком, поэтому второй запрос к базе не нужен.
     if (q) items = items.filter(i => matchesSearch(q, [i.line.name, i.line.pathText]));
     if (branch) items = items.filter(i => (i.line.pathText || '') === branch);
+
+    /**
+     * Сколько найденного приходится на оборудование и на материалы.
+     *
+     * Считается ДО отбора по виду и по всей очереди, а не по отданной странице:
+     * на телефоне это подписи переключателей вида, и они должны отвечать «а
+     * есть ли там вообще материалы» раньше, чем по ним нажмут. Считать их на
+     * клиенте нельзя — он видит только страницу.
+     */
+    const kinds = {
+      asset: items.filter(i => i.kind === 'asset').length,
+      material: items.filter(i => i.kind === 'material').length,
+    };
+
     if (kind) items = items.filter(i => i.kind === kind);
 
     // Дорогое — выше: если разложить успеют не всё, пусть это будет не хирургия
@@ -207,6 +221,7 @@ router.get('/queue', authenticate, requireWarehouse(), requireReport('RPT-OSV'),
       },
       items: page,
       total: items.length,
+      kinds,
       branches,
       totals,
     });
