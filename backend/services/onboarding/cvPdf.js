@@ -74,7 +74,8 @@ function repeatRow(key, row) {
  * @param {Object} app        Заявка (модель)
  * @param {Object} projected  Срез анкеты под шаг смотрящего
  * @param {Object} medCenter  Филиал
- * @returns {PDFDocument} поток, готовый к отдаче в ответ
+ * @returns {PDFDocument} незавершённый поток: вызывающий код подключает его к
+ *   приёмнику и затем вызывает end()
  */
 function buildCv(app, projected, medCenter) {
   const doc = new PDFDocument({ size: 'A4', margin: PAGE_MARGIN, bufferPages: true });
@@ -169,7 +170,6 @@ function buildCv(app, projected, medCenter) {
     y += 14;
   }
 
-  doc.end();
   return doc;
 }
 
@@ -293,7 +293,6 @@ function buildServices(app, choices = [], medCenter) {
     }
   }
 
-  doc.end();
   return doc;
 }
 

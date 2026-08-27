@@ -374,48 +374,6 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
   }
 });
 
-/**
- * Анкета в PDF.
- *
- * Отдаёт тот же срез, что человек видит в карточке: маркетолог, скачавший
- * анкету, получит ровно свои поля, без СНИЛС и даты рождения. Заменила печать
- * из браузера — она задавала имя файла по заголовку вкладки, и все анкеты
- * сохранялись как «Альфа Вики.pdf».
- */
-router.get('/applications/:id/cv.pdf', loadApplication, async (req, res) => {
-  try {
-    const app = req.application;
-    const files = await OnbFile.findAll({ where: { applicationId: app.id } });
-    const visible = projection.canSeeDocuments(req.viewKey)
-      ? files
-      : files.filter(f => f.kind === 'photo');
-
-    const view = projection.project(app, req.viewKey, visible);
-    const name = cvPdf.fileName(view);
-
-    res.setHeader('Content-Type', 'application/pdf');
-    // Оба варианта имени: filename* понимают современные браузеры, простой
-    // filename остаётся запасным и потому без кириллицы.
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="anketa.pdf"; filename*=UTF-8''${encodeURIComponent(name)}`
-    );
-
-    const doc = cvPdf.buildCv(view, {
-      labels: formSchema.labelMap(),
-      sections: formSchema.sections(),
-      medCenterName: app.medCenter?.name || null
-    });
-    doc.pipe(res);
-    doc.end();
-  } catch (error) {
-    console.error('[onboarding] cv.pdf:', error);
-    // Заголовки могли уже уйти вместе с началом файла — тогда только обрываем.
-    if (res.headersSent) return res.end();
-    res.status(500).json({ error: 'Не удалось собрать PDF' });
-  }
-});
-
 // ── Решение главврача ─────────────────────────────────────────────────────
 
 function requireDecider(req, res, next) {
@@ -694,7 +652,9 @@ router.get('/applications/:id/cv.pdf', loadApplication, async (req, res) => {
     const name = encodeURIComponent(cvPdf.fileName(app));
     res.setHeader('Content-Disposition', `attachment; filename="cv.pdf"; filename*=UTF-8''${name}`);
 
-    cvPdf.buildCv(app, projected, app.medCenter).pipe(res);
+    const doc = cvPdf.buildCv(app, projected, app.medCenter);
+    doc.pipe(res);
+    doc.end();
   } catch (error) {
     console.error('[onboarding] cv.pdf:', error);
     res.status(500).json({ error: 'Не удалось собрать файл' });
@@ -718,7 +678,9 @@ router.get('/applications/:id/services.pdf', loadApplication, async (req, res) =
     const name = encodeURIComponent(cvPdf.servicesFileName(app));
     res.setHeader('Content-Disposition', `attachment; filename="services.pdf"; filename*=UTF-8''${name}`);
 
-    cvPdf.buildServices(app, choices, app.medCenter).pipe(res);
+    const doc = cvPdf.buildServices(app, choices, app.medCenter);
+    doc.pipe(res);
+    doc.end();
   } catch (error) {
     console.error('[onboarding] services.pdf:', error);
     res.status(500).json({ error: 'Не удалось собрать файл' });
