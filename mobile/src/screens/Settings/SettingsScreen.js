@@ -1,229 +1,113 @@
-import React, {useState, useEffect} from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  Linking,
-  Dimensions,
-} from 'react-native';
-import {
-  Bell,
-  Palette,
-  Type,
-  Image as ImageIcon,
-  Check,
-  Volume2,
-  Droplet,
-  ChevronRight,
-  Timer,
-} from 'lucide-react-native';
-import {radius, font, ACCENTS} from '../../theme';
-import {
-  useTheme, useThemedStyles, useSettings,
-  THEME_OPTIONS, SOUND_OPTIONS, soundOption,
-} from '../../store/settingsStore';
+/**
+ * Настройки — единственный «личный» раздел приложения (ver. 7.55).
+ *
+ * ── Почему «Профиля» больше нет отдельной вкладкой ──────────────────────────
+ *
+ * Вкладок было семь, и две из них вели в соседние половины одного и того же:
+ * в «Профиле» лежали имя, почта, пароль и устройства, в «Настройках» — тема,
+ * звук и фон. Границу между ними приходилось помнить: пароль — это профиль или
+ * настройки? А устройства? Люди искали и там, и там.
+ *
+ * Теперь раздел один, и устроен он так же, как в мессенджерах: сверху карточка
+ * с собой, ниже — список разделов, каждый на своём экране. Свиток в четыре
+ * экрана, каким «Настройки» были раньше, заодно перестал быть свитком: чтобы
+ * поменять мелодию, больше не нужно проезжать мимо восьми узоров фона.
+ *
+ * Выход из аккаунта остался внизу этого экрана и в колесе действий на долгое
+ * нажатие знака «Альфа» (см. AlfaTabBar) — там он был у профиля и переехал
+ * сюда вместе с ним.
+ */
+import React from 'react';
+import {View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert} from 'react-native';
+import {Bell, Palette, User, Lock, LogOut, Timer, ChevronRight} from 'lucide-react-native';
+
+import {radius, font} from '../../theme';
+import {useTheme, useThemedStyles, useSettings} from '../../store/settingsStore';
+import {useAuth} from '../../store/authStore';
+import Avatar from '../../components/Avatar';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {CHAT_BACKGROUNDS, PatternPreview} from '../../components/ChatBackground';
-import NotificationService from '../../services/notifications';
-import notifee from '@notifee/react-native';
-import {fontScales} from '../../theme';
+import {Row, Section, Divider, makeSettingsStyles} from './parts';
 
-/**
- * Персональные настройки приложения.
- *
- * Отличается от «Профиля»: там данные учётной записи (имя, аватар, пароль),
- * здесь — поведение самого приложения на этом устройстве.
- */
-
-// Размер плитки с образцом фона. Считается от ширины экрана: три плитки в ряд
-// с отступами. SVG-образцу нужен конкретный размер в пунктах — процентами
-// узор не смасштабируешь.
-const BG_TILE_W = Math.floor((Dimensions.get('window').width - 68) / 3);
-const BG_TILE_H = BG_TILE_W;
-
-function Row({icon: Icon, title, subtitle, onPress, right, danger}) {
-  const c = useTheme();
-  const styles = useThemedStyles(makeStyles);
-
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Wrapper style={styles.row} onPress={onPress} activeOpacity={0.6}>
-      <View style={[styles.rowIcon, danger && styles.rowIconDanger]}>
-        <Icon size={18} color={danger ? c.error : c.primary} />
-      </View>
-      <View style={styles.rowBody}>
-        <Text style={[styles.rowTitle, danger && styles.rowTitleDanger]}>{title}</Text>
-        {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
-      </View>
-      {right ?? (onPress ? <ChevronRight size={18} color={c.textTertiary} /> : null)}
-    </Wrapper>
-  );
-}
-
-/**
- * Строка-переключатель с галочкой у выбранного. Выбор из трёх-семи вариантов
- * удобнее списком, чем модалкой: всё видно сразу и меняется одним касанием.
- */
-function ChoiceRow({label, selected, onPress, preview}) {
-  const c = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <TouchableOpacity
-      style={[styles.choiceRow, preview && styles.choiceRowWide]}
-      onPress={onPress}
-      activeOpacity={0.6}>
-      {preview}
-      <Text style={[styles.choiceLabel, selected && styles.choiceLabelActive, preview && styles.choiceLabelInset]}>
-        {label}
-      </Text>
-      {/* Фиксированная ширина: иначе появление галочки сдвигает кнопку
-          прослушивания, и строки «прыгают» при выборе */}
-      <View style={styles.choiceCheck}>
-        {selected ? <Check size={18} color={c.primary} /> : null}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-/**
- * Плитка с образцом фона.
- *
- * Показывает узор так, как он ляжет в переписке: на том же цвете подложки и с
- * пузырьком сообщения поверх. Без пузырька невозможно оценить главное — не
- * мешает ли узор читать.
- */
-function BackgroundCell({item, selected, onPress}) {
-  const styles = useThemedStyles(makeStyles);
-
-  return (
-    <TouchableOpacity
-      style={styles.bgCell}
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityState={{selected}}>
-      <View style={[styles.bgTile, selected && styles.bgTileActive]}>
-        <View style={StyleSheet.absoluteFill}>
-          <PatternPreview name={item.key} width={BG_TILE_W} height={BG_TILE_H} />
-        </View>
-        <View style={styles.bgBubble} />
-        <View style={styles.bgBubbleOwn} />
-        {selected && (
-          <View style={styles.bgCheck}>
-            <Check size={13} color="#FFFFFF" />
-          </View>
-        )}
-      </View>
-      <Text
-        style={[styles.bgLabel, selected && styles.bgLabelActive]}
-        numberOfLines={1}>
-        {item.label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-/**
- * Образец текста в выбранном размере. Цифру «1,15×» на глаз оценить нельзя —
- * а увидеть свой же пузырёк можно сразу.
- */
-function FontPreview({scale}) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.fontPreview}>
-      <View style={styles.fontPreviewBubble}>
-        <Text style={[styles.fontPreviewText, {fontSize: 15 * scale, lineHeight: 21 * scale}]}>
-          Так будет выглядеть текст сообщения
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function Section({title, children}) {
-  const styles = useThemedStyles(makeStyles);
-
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.card}>{children}</View>
-    </View>
-  );
+/** Подпись под именем: администратор, роли или должность — что есть. */
+function roleText(user) {
+  if (!user) return '';
+  if (user.isAdmin) return 'Администратор';
+  if (user.roles?.length) return user.roles.map(r => r.name).join(', ');
+  return user.role?.name || 'Пользователь';
 }
 
 export default function SettingsScreen({navigation}) {
   const c = useTheme();
+  const base = useThemedStyles(makeSettingsStyles);
   const styles = useThemedStyles(makeStyles);
   const settings = useSettings();
+  const {user, logout} = useAuth();
   // Панель лежит поверх экрана — высоту под неё резервируем сами
   const tabInset = useTabBarInset();
 
-  const [pushEnabled, setPushEnabled] = useState(null);
-
-  // Реальное состояние разрешения спрашиваем у системы, а не храним у себя:
-  // пользователь мог отключить уведомления в настройках Android мимо приложения
-  useEffect(() => {
-    notifee
-      .getNotificationSettings()
-      .then(s => setPushEnabled(s.authorizationStatus === 1))
-      .catch(() => setPushEnabled(null));
-  }, []);
-
-  const openSystemNotificationSettings = () => {
-    // Начиная с Android 8 звук, вибрация и важность живут в системных
-    // настройках канала — приложение ими управлять не может
-    notifee.openNotificationSettings().catch(() => {
-      Linking.openSettings().catch(() => {});
-    });
+  const handleLogout = () => {
+    Alert.alert('Выйти из аккаунта?', '', [
+      {text: 'Отмена', style: 'cancel'},
+      {text: 'Выйти', style: 'destructive', onPress: logout},
+    ]);
   };
-
-  /**
-   * Прослушать мелодию.
-   *
-   * Показываем настоящее уведомление в нужном канале, а не проигрываем файл
-   * плеером: только так слышно ровно то, что услышит пользователь — с учётом
-   * громкости канала и системных настроек. Через пару секунд убираем его,
-   * чтобы не копилось в шторке.
-   */
-  const previewSound = async key => {
-    try {
-      const channelId = await NotificationService.ensureChannel(key);
-      const option = soundOption(key);
-      const id = await notifee.displayNotification({
-        title: 'Проверка звука',
-        body: option.label,
-        android: {channelId, smallIcon: 'ic_notification', color: '#2563EB'},
-        // Блока ios здесь не было вовсе, поэтому на айфоне проверка молчала:
-        // уведомление показывалось без звука, и выбрать мелодию на слух было
-        // невозможно. На iOS звук задаётся у самого уведомления, а не у канала.
-        ios: {sound: option.iosSound},
-      });
-      setTimeout(() => notifee.cancelNotification(id).catch(() => {}), 2500);
-    } catch {
-      Alert.alert('Не удалось', 'Проверьте разрешение на уведомления');
-    }
-  };
-
 
   return (
     <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, {paddingBottom: tabInset + 16}]}>
-      <Section title="Уведомления">
+      style={base.container}
+      contentContainerStyle={[base.content, {paddingBottom: tabInset + 16}]}>
+      {/* Карточка «это я». Ведёт в личные данные — как и сама аватарка:
+          человек, который хочет сменить фото, жмёт по фото, а не ищет строку
+          с подписью «Личные данные» ниже. */}
+      <TouchableOpacity
+        style={styles.me}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('SettingsAccount')}>
+        <Avatar uri={user?.avatar} size={62} />
+        <View style={styles.meBody}>
+          <Text style={styles.meName} numberOfLines={1}>
+            {user?.displayName || user?.username}
+          </Text>
+          <Text style={styles.meRole} numberOfLines={1}>{roleText(user)}</Text>
+        </View>
+        <ChevronRight size={20} color={c.textTertiary} />
+      </TouchableOpacity>
+
+      <Section title="Аккаунт">
+        <Row
+          icon={User}
+          tint={c.primary}
+          title="Личные данные"
+          subtitle="Фото, имя и почта"
+          onPress={() => navigation.navigate('SettingsAccount')}
+        />
+        <Divider inset />
+        <Row
+          icon={Lock}
+          tint={c.success}
+          title="Безопасность"
+          subtitle="Пароль и вход на устройствах"
+          onPress={() => navigation.navigate('SettingsSecurity')}
+        />
+      </Section>
+
+      <Section title="Приложение">
         <Row
           icon={Bell}
-          title="Уведомления о сообщениях"
-          subtitle={
-            pushEnabled === null
-              ? 'Статус неизвестен'
-              : pushEnabled
-              ? 'Разрешены'
-              : 'Запрещены в настройках системы'
-          }
-          onPress={openSystemNotificationSettings}
+          tint={c.error}
+          title="Уведомления"
+          subtitle="Разрешение и мелодия"
+          onPress={() => navigation.navigate('SettingsNotifications')}
+        />
+        <Divider inset />
+        <Row
+          icon={Palette}
+          tint={c.secondary}
+          title="Оформление"
+          // Подпись перечисляет содержимое: без неё «Оформление» — это и тема,
+          // и фон, и размер текста, но узнать об этом можно только зайдя
+          subtitle={`Тема, цвет, фон переписки, размер текста · ${settings.scheme === 'dark' ? 'тёмная' : 'светлая'}`}
+          onPress={() => navigation.navigate('SettingsAppearance')}
         />
       </Section>
 
@@ -234,243 +118,43 @@ export default function SettingsScreen({navigation}) {
       <Section title="Работа">
         <Row
           icon={Timer}
+          tint={c.warning}
           title="Рабочее расписание"
+          subtitle="Часы, в которые вам ставят задачи"
           onPress={() => navigation.navigate('TasksNorm')}
         />
       </Section>
 
-      <Section title="Тема оформления">
-        <Row icon={Palette} title="Тема" />
-        <View style={styles.divider} />
-        {THEME_OPTIONS.map((opt, i) => (
-          <React.Fragment key={opt.key}>
-            {i > 0 && <View style={styles.divider} />}
-            <ChoiceRow
-              label={opt.label}
-              selected={settings.theme === opt.key}
-              onPress={() => settings.update({theme: opt.key})}
-            />
-          </React.Fragment>
-        ))}
-      </Section>
-
-      <Section title="Акцентный цвет">
-        <Row
-          icon={Droplet}
-          title="Цвет"
-        />
-        <View style={styles.divider} />
-        <View style={styles.accentGrid}>
-          {ACCENTS.map(a => {
-            const selected = settings.accent === a.key;
-            // Показываем оттенок именно для текущей темы: в светлой и тёмной
-            // один и тот же акцент выглядит по-разному
-            const swatch = settings.scheme === 'dark' ? a.dark : a.light;
-            return (
-              <TouchableOpacity
-                key={a.key}
-                style={styles.accentCell}
-                onPress={() => settings.update({accent: a.key})}
-                activeOpacity={0.7}
-                // Подписи под кружками нет — название остаётся только для
-                // озвучки скринридером, иначе цвет для него безымянный
-                accessibilityLabel={a.label}
-                accessibilityRole="button">
-                <View
-                  style={[
-                    styles.accentDot,
-                    {backgroundColor: swatch},
-                    selected && {borderColor: c.textPrimary},
-                  ]}>
-                  {selected && <Check size={16} color="#FFFFFF" />}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </Section>
-
-      <Section title="Фон переписки">
-        <Row icon={ImageIcon} title="Узор" />
-        <View style={styles.divider} />
-        {/* Сеткой, а не списком: узоров стало больше десятка, и строками они
-            растянулись бы на два экрана, а сравнить их между собой — главное,
-            ради чего вообще нужен образец */}
-        <View style={styles.bgGrid}>
-          {CHAT_BACKGROUNDS.map(bg => (
-            <BackgroundCell
-              key={bg.key}
-              item={bg}
-              selected={settings.chatBackground === bg.key}
-              onPress={() => settings.update({chatBackground: bg.key})}
-            />
-          ))}
-        </View>
-      </Section>
-
-      <Section title="Размер текста в чате">
-        <Row icon={Type} title="Шрифт" />
-        <FontPreview scale={settings.scale} />
-        <View style={styles.divider} />
-        {Object.values(fontScales).map((fs, i) => (
-          <React.Fragment key={fs.key}>
-            {i > 0 && <View style={styles.divider} />}
-            <ChoiceRow
-              label={fs.label}
-              selected={settings.fontScale === fs.key}
-              onPress={() => settings.update({fontScale: fs.key})}
-            />
-          </React.Fragment>
-        ))}
-      </Section>
-
-      <Section title="Звук уведомлений">
-        <Row
-          icon={Volume2}
-          title="Мелодия"
-        />
-        <View style={styles.divider} />
-        {SOUND_OPTIONS.map((snd, i) => (
-          <React.Fragment key={snd.key}>
-            {i > 0 && <View style={styles.divider} />}
-            <ChoiceRow
-              label={snd.label}
-              selected={settings.notificationSound === snd.key}
-              onPress={() => {
-                // Выбор и есть проба: человек слышит мелодию сразу и,
-                // если не понравилась, тут же жмёт другую
-                settings.update({notificationSound: snd.key});
-                previewSound(snd.key);
-              }}
-            />
-          </React.Fragment>
-        ))}
-      </Section>
-
+      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+        <LogOut size={18} color={c.error} style={styles.logoutIcon} />
+        <Text style={styles.logoutText}>Выйти из аккаунта</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const makeStyles = c => StyleSheet.create({
-  container: {flex: 1, backgroundColor: c.bgSecondary},
-  content: {padding: 16, paddingBottom: 32},
-
-  section: {marginBottom: 22},
-  sectionTitle: {
-    fontSize: 13,
-    fontFamily: font.medium,
-    color: c.textSecondary,
-    marginBottom: 8,
-    marginLeft: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  card: {
+  me: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: c.bgPrimary,
     borderRadius: radius.lg,
-    overflow: 'hidden',
+    padding: 14,
+    marginBottom: 22,
+    gap: 14,
   },
+  // minWidth: 0 — без него длинное имя растягивает строку и выталкивает
+  // стрелку за край карточки
+  meBody: {flex: 1, minWidth: 0},
+  meName: {fontSize: 18, fontFamily: font.semiBold, color: c.textPrimary},
+  meRole: {fontSize: 13, fontFamily: font.regular, color: c.textSecondary, marginTop: 3},
 
-  row: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13},
-  rowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: c.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+  logoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: c.bgPrimary, borderRadius: radius.lg,
+    paddingVertical: 15,
+    borderWidth: 1, borderColor: `${c.error}44`,
   },
-  rowIconDanger: {backgroundColor: '#FFE5E5'},
-  rowBody: {flex: 1, marginRight: 8},
-  rowTitle: {fontSize: 15, fontFamily: font.regular, color: c.textPrimary},
-  rowTitleDanger: {color: c.error},
-  rowSubtitle: {fontSize: 12.5, fontFamily: font.regular, color: c.textSecondary, marginTop: 2},
-  divider: {height: 1, backgroundColor: c.borderLight, marginLeft: 58},
-
-  // ── Фон переписки ──────────────────────────────────────────────────────────
-  bgGrid: {flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 8},
-  bgCell: {width: BG_TILE_W},
-  bgTile: {
-    width: BG_TILE_W,
-    height: BG_TILE_H,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: c.bgSecondary,
-    borderWidth: 1,
-    borderColor: c.borderLight,
-    // Пузырьки прижаты книзу — так плитка читается как кусок переписки
-    justifyContent: 'flex-end',
-    padding: 7,
-  },
-  bgTileActive: {borderColor: c.primary, borderWidth: 2},
-  bgBubble: {
-    height: 11,
-    width: '70%',
-    borderRadius: 5.5,
-    backgroundColor: c.bubbleOther,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
-    marginBottom: 5,
-  },
-  bgBubbleOwn: {
-    height: 11,
-    width: '55%',
-    borderRadius: 5.5,
-    alignSelf: 'flex-end',
-    backgroundColor: c.primary,
-  },
-  bgCheck: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: c.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bgLabel: {
-    marginTop: 6,
-    fontSize: 11,
-    fontFamily: font.medium,
-    color: c.textSecondary,
-    textAlign: 'center',
-  },
-  bgLabelActive: {color: c.primary},
-
-  accentGrid: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingVertical: 14,
-  },
-  // Без подписей восемь цветов помещаются в одну строку
-  accentCell: {width: '12.5%', alignItems: 'center'},
-  accentDot: {
-    width: 34, height: 34, borderRadius: 17,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: 'transparent',
-  },
-
-  choiceRowWide: {paddingLeft: 14},
-  choiceCheck: {width: 20, alignItems: 'flex-end'},
-  choiceLabelInset: {marginLeft: 12},
-  fontPreview: {paddingHorizontal: 14, paddingBottom: 12, paddingTop: 2},
-  fontPreviewBubble: {
-    alignSelf: 'flex-start', maxWidth: '92%',
-    backgroundColor: c.bubbleOther, borderRadius: radius.lg,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderWidth: 1, borderColor: c.borderLight,
-  },
-  fontPreviewText: {fontFamily: font.regular, color: c.bubbleOtherText},
-
-  choiceRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 12, paddingLeft: 58,
-  },
-  // flex:1 — иначе при наличии образца строка растягивает промежутки
-  // и подпись уезжает в центр
-  choiceLabel: {flex: 1, fontSize: 15, fontFamily: font.regular, color: c.textPrimary},
-  choiceLabelActive: {fontFamily: font.semiBold, color: c.primary},
-
+  logoutIcon: {marginRight: 10},
+  logoutText: {fontSize: 15, fontFamily: font.medium, color: c.error},
 });

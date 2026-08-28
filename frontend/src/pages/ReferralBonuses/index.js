@@ -1119,7 +1119,7 @@ export default function ReferralBonusesPage() {
             <div className="rb-modal-body rb-reset-modal-body">
               <section className="rb-reset-section">
                 <div className="rb-reset-section-title">1. Выберите клиники</div>
-                <p className="rb-reset-hint">Данные остальных клиник затронуты не будут. Записи с замочком сохранятся.</p>
+                <p className="rb-reset-hint">Данные остальных клиник затронуты не будут. Записи с замочком сохранятся. Ставки сброс не трогает вовсе — у ставок по ролям обнуляются только часы.</p>
                 <div className="rb-reset-selection-actions">
                   <button type="button" onClick={() => {
                     setResetClinicIds(new Set([

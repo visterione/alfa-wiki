@@ -74,3 +74,26 @@ test('locked norm stays while its unlocked rate and hours are reset', () => {
     { name: 'Операция', rate: 5000, hours: 0, locked: true, lockedRate: true },
   ]);
 });
+
+test('role rates survive the reset while their period hours are zeroed', () => {
+  const clinic = {
+    hourlyRate: 700,
+    hoursWorked: 120,
+    roleRates: [
+      { roleTitle: 'Врач УЗД', rate: 900, hoursWorked: 40 },
+      { roleTitle: 'Терапевт', rate: 750 },
+    ],
+  };
+  const preview = buildResetPreview([{ misUserId: 1, doctorName: 'Врач', settings: { clinicSettings: { 4: clinic } } }], ['4']);
+  const changes = preview.employees[0].clinics[0].changes;
+  assert.deepEqual(changes.map(change => change.key), ['roleRateHours', 'hoursWorked']);
+
+  const result = resetClinicData('4', clinic);
+  assert.equal(result.hourlyRate, 700);
+  assert.deepEqual(result.roleRates, [
+    { roleTitle: 'Врач УЗД', rate: 900, hoursWorked: 0 },
+    { roleTitle: 'Терапевт', rate: 750 },
+  ]);
+  assert.equal(result.hoursWorked, 0);
+  assert.equal(clinic.roleRates[0].hoursWorked, 40);
+});

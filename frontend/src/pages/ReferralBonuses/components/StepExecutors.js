@@ -739,7 +739,6 @@ function RoleRatesList({ items, onDelete, onUpdate, readOnly, roles, professions
             )}
             {!readOnly && editIdx !== i && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                <LockBtn locked={!!item.locked} onClick={() => onUpdate(i, { ...item, locked: !item.locked })} />
                 <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -1659,11 +1658,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     setIsDirty(true);
   };
 
-  const handleToggleHourlyRateLock = () => {
-    updateClinicData({ lockedHourlyRate: !data.lockedHourlyRate });
-    setIsDirty(true);
-  };
-
   const handleToggleHoursWorkedLock = () => {
     updateClinicData({ lockedHoursWorked: !data.lockedHoursWorked });
     setIsDirty(true);
@@ -1787,7 +1781,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   const handleResetAll = async () => {
-    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Выполненные услуги, Дополнительно, Кабинеты, Ставки по ролям, Нормы часов, Основная ЗП, Аванс)?')) return;
+    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Выполненные услуги, Дополнительно, Кабинеты, Нормы часов, Основная ЗП, Аванс)? Ставки сохранятся, у ставок по ролям обнулятся только часы.')) return;
     const current = getClinicData();
     const newDeductions     = (current.deductions     || []).filter(it => it.locked === true);
     const newMaterials      = (current.materials      || []).filter(it => it.locked === true);
@@ -1798,7 +1792,12 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       rate:  it.lockedRate  ? it.rate  : 0,
       hours: it.lockedHours ? it.hours : 0,
     }));
-    const newRoleRates       = (current.roleRates        || []).filter(it => it.locked === true);
+    // Ставки сброс не удаляет: суммы из месяца в месяц одни и те же, а после
+    // каждого сброса их заново раскатывали по подразделениям руками. Часы —
+    // величина периода, оставленные с прошлого раза дали бы неверную зарплату.
+    const newRoleRates       = (current.roleRates        || []).map(it => (
+      it.hoursWorked ? { ...it, hoursWorked: 0 } : it
+    ));
     const newRoleNormOverrides = (current.roleNormOverrides || []).filter(it => it.locked === true);
     const lockedCabs        = execData.clinicSettings?.global?.lockedCabinets || [];
     const newCabinets       = (execData.clinicSettings?.global?.cabinets || []).filter(c => lockedCabs.includes(c));
@@ -2667,16 +2666,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               )}
             </div>
             <div className="rb-exec-fields-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', padding: '0 12px 10px' }}>
-              <div className="rb-exec-field" style={data.lockedHourlyRate ? { background: '#eff6ff', borderRadius: 6 } : {}}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="rb-exec-field">
+                <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
                   <label style={{ marginBottom: 0 }}>Общая ставка, ₽/час</label>
-                  {!readOnly && <LockBtn locked={!!data.lockedHourlyRate} onClick={handleToggleHourlyRateLock} />}
                 </div>
                 <input
                   type="number" min="0" step="any" placeholder="0"
                   value={data.hourlyRate || ''}
                   onChange={e => handlePaymentFieldChange('hourlyRate', parseFloat(e.target.value) || 0)}
-                  disabled={!!data.lockedHourlyRate}
                 />
               </div>
               <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#eff6ff', borderRadius: 6 } : {}}>

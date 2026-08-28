@@ -17,7 +17,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
 import {
-  Settings, User, ListTodo, GraduationCap, Package, MessageCircle, Star,
+  Settings, ListTodo, GraduationCap, Package, MessageCircle, Star, UserPlus,
   SquarePen, Plus, LogOut,
 } from 'lucide-react-native';
 
@@ -29,7 +29,11 @@ import {
   useWarehouseAccess, useWarehouseBadge, refreshWarehouseBadge,
 } from '../store/warehouseStore';
 import {useReviewBoards, useReviewsBadge, refreshReviewsBadge} from '../store/reviewsStore';
+import {
+  useOnboardingAccess, useOnboardingBadge, refreshOnboardingBadge,
+} from '../store/onboardingStore';
 import {runQuickAction} from '../store/quickActions';
+import SocketService from '../services/socket';
 import {useAuth} from '../store/authStore';
 import {TAB_BAR_HEIGHT} from './tabBarLayout';
 
@@ -80,6 +84,9 @@ const HIDDEN_ROUTES = [
   // Внутренние экраны модуля «Задачи» (ver. 6.75): у каждого своя кнопка
   // «назад» в шапке, и панель под ними только отнимала бы высоту у списка.
   'TaskCard', 'TasksNorm',
+  // Подэкраны настроек (ver. 7.55) — по той же причине. Знак нужен на самом
+  // хабе: оттуда и уходят в другой раздел.
+  'SettingsAccount', 'SettingsSecurity', 'SettingsNotifications', 'SettingsAppearance',
   // Склад (ver. 6.81). Сканер — потому что кадр камеры занимает экран целиком и
   // кнопка поверх него читалась бы как часть видоискателя. Пересчёт, размещение
   // и выбор этикеток — потому что у них своя кнопка внизу, а два ряда органов
@@ -96,6 +103,9 @@ const HIDDEN_ROUTES = [
   // Отзывы (ver. 7.26). Карточка держит внизу поле комментария, доска —
   // колонки во всю высоту: знак «Альфа» лёг бы прямо на них.
   'Review', 'ReviewBoard', 'ReviewsAssigned',
+  // Онбординг (ver. 7.55). Карточка заявки — длинный документ с вкладками,
+  // знак поверх него отнимал бы нижнюю строку у каждой из пяти.
+  'OnboardingApplication',
 ];
 
 const ORB_SIZE = 58;
@@ -259,7 +269,9 @@ const TAB_ACTIONS = {
     // открыть — просьба уходит через quickActions
     run: () => runQuickAction('new-task'),
   }],
-  ProfileTab: [{
+  // Выход стоит у настроек, а не у профиля: профиля отдельной вкладкой больше
+  // нет — он стал первым экраном настроек (ver. 7.55)
+  SettingsTab: [{
     key: 'logout',
     icon: LogOut,
     label: 'Выйти',
@@ -272,11 +284,11 @@ const TAB_ACTIONS = {
 };
 
 const ICONS = {
-  ProfileTab: User,
   ChatsTab: MessageCircle,
   TasksTab: ListTodo,
   WarehouseTab: Package,
   ReviewsTab: Star,
+  OnboardingTab: UserPlus,
   CoursesTab: GraduationCap,
   SettingsTab: Settings,
 };
@@ -611,6 +623,8 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   const warehouseBadge = useWarehouseBadge();
   const reviewBoards = useReviewBoards();
   const reviewsBadge = useReviewsBadge();
+  const onboardingAccess = useOnboardingAccess();
+  const onboardingBadge = useOnboardingBadge();
   // Под каким углом стоит подсветка выбранного раздела, в градусах от верха.
   // Углом, а не координатами: сектор приезжает в гнездо поворотом.
   const active = useRef(new Animated.Value(0)).current;
@@ -646,6 +660,22 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   useEffect(() => {
     if (reviewBoards?.length) refreshReviewsBadge();
   }, [reviewBoards?.length]);
+
+  /**
+   * Счётчик онбординга и его живое обновление.
+   *
+   * Задачу мог закрыть или перехватить коллега — тогда бейдж обязан погаснуть
+   * сам, без перезахода в раздел. Сервер шлёт на это беззвучный
+   * onboarding:changed (см. backend/services/onboarding/engine.js), и слушаем
+   * его здесь, а не на экране раздела: бейдж висит в панели, которая живёт всю
+   * сессию, а экран человек открывает раз в день.
+   */
+  useEffect(() => {
+    if (!onboardingAccess?.allowed) return undefined;
+    refreshOnboardingBadge();
+    SocketService.on('tabbar:onboarding', 'onboarding:changed', refreshOnboardingBadge);
+    return () => SocketService.off('tabbar:onboarding');
+  }, [onboardingAccess?.allowed]);
 
   useEffect(() => {
     if (open) { setMounted(true); turn.setValue(openTurn.current); }
@@ -737,6 +767,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     TasksTab: inboxCount,
     WarehouseTab: warehouseBadge,
     ReviewsTab: reviewsBadge,
+    OnboardingTab: onboardingBadge,
   };
 
   const sections = state.routes
@@ -748,6 +779,12 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     // не должно менять шаг под уже занесённым пальцем.
     .filter(route => route.name !== 'ReviewsTab'
       || Boolean(reviewBoards?.length))
+    // Онбординг закрыт правом adminAccess.onboarding, и есть оно у десятка
+    // человек на сеть. Пока право не приехало (access === null), кнопки тоже
+    // нет — по той же причине, что у склада: показать и убрать хуже, чем
+    // показать чуть позже.
+    .filter(route => route.name !== 'OnboardingTab'
+      || Boolean(onboardingAccess?.allowed))
     .map(route => ({
       key: route.key,
       route,

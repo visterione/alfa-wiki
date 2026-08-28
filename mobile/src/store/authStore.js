@@ -5,6 +5,7 @@ import SocketService from '../services/socket';
 import PushService from '../services/push';
 import {resetWarehouseAccess} from './warehouseStore';
 import {resetReviews} from './reviewsStore';
+import {resetOnboarding} from './onboardingStore';
 import {ensureFileToken, resetFileToken} from '../services/fileToken';
 
 const KEYCHAIN_OPTIONS = {service: 'alfa-wiki'};
@@ -68,6 +69,7 @@ export function AuthProvider({children}) {
     // телефоне следующий вошедший унаследовал бы чужие кнопки.
     resetWarehouseAccess();
     resetReviews();
+    resetOnboarding();
     resetFileToken();
     await Keychain.resetGenericPassword(KEYCHAIN_OPTIONS);
     setUser(null);

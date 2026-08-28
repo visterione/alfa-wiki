@@ -1,11 +1,13 @@
 import React, {useEffect, useState, useRef, useCallback, useMemo} from 'react';
 import {
+  Animated,
   View,
   Text,
   FlatList,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Image,
@@ -20,7 +22,11 @@ import {
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
-import {pick as pickDocument} from '@react-native-documents/picker';
+import {
+  pick as pickDocument,
+  errorCodes as pickerErrorCodes,
+  isErrorWithCode as isPickerError,
+} from '@react-native-documents/picker';
 import {
   Send,
   Paperclip,
@@ -80,16 +86,12 @@ import CONFIG from '../../config';
 import {radius, shadow, font} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import ChatBackground from '../../components/ChatBackground';
+import EmojiPicker from '../../components/EmojiPicker';
 import {useSettings} from '../../store/settingsStore';
 
 const {width: SCREEN_WIDTH} = Dimensions.get('window');
 
 const REACTIONS = ['👍', '👎', '❤️', '😂', '😮', '🎉', '🔥'];
-const COMMON_EMOJI = [
-  '😀','😂','🥹','😊','😍','🤩','😎','🥳','😢','😭','😤','🤔',
-  '👍','👎','👏','🙌','🤝','💪','🫡','🫶','❤️','🔥','⭐','✅',
-  '❌','⚡','🎉','🎊','💯','🚀','💀','🤣',
-];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 // Единая сборка URL вложений — та же, что для аватаров (см. CONFIG.fileUrl)
@@ -100,6 +102,13 @@ function formatTime(iso) {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
+// Полные названия, а не «28 авг»: бейдж стоит один на весь день переписки и
+// места ему хватает, а сокращение читается как строка из таблицы
+const MONTHS_GEN = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
+
 function formatDateSep(iso) {
   const d = new Date(iso);
   const now = new Date();
@@ -109,7 +118,10 @@ function formatDateSep(iso) {
   const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   if (msgDay.getTime() === today.getTime()) return 'Сегодня';
   if (msgDay.getTime() === yesterday.getTime()) return 'Вчера';
-  return `${d.getDate()} ${['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'][d.getMonth()]} ${d.getFullYear()}`;
+  // Год подписываем только у прошлых лет: в переписке этого года он и так
+  // очевиден, а лишнее число удлиняет бейдж вдвое
+  const year = d.getFullYear() === now.getFullYear() ? '' : ` ${d.getFullYear()}`;
+  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}${year}`;
 }
 
 function formatFileSize(bytes) {
@@ -117,6 +129,33 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+/**
+ * Тип файла для подписи под названием. Берём расширение, а не mime: человек
+ * узнаёт «PDF» и «XLSX», а «application/vnd.openxmlformats-officedocument…»
+ * не говорит ему ничего и в строку всё равно не помещается.
+ */
+function fileKindLabel(name, mime) {
+  const ext = String(name || '').split('.').pop();
+  if (ext && ext.length <= 5 && ext !== name) return ext.toUpperCase();
+  if (mime) return String(mime).split('/').pop().toUpperCase();
+  return 'Файл';
+}
+
+/**
+ * Чем было сообщение, у которого нет текста, — для цитаты в ответе. Ответ на
+ * фотографию раньше показывал пустую строку под именем автора, и понять, на что
+ * именно ответили, можно было только уйдя к самому сообщению.
+ */
+function attachmentSummary(attachments) {
+  const first = attachments?.[0];
+  if (!first) return '';
+  if (first.kind === 'voice') return 'Голосовое сообщение';
+  const mime = first.mimeType || '';
+  if (mime.startsWith('image/')) return 'Фотография';
+  if (mime.startsWith('video/')) return 'Видео';
+  return first.name || first.filename || 'Файл';
 }
 
 function sameDay(a, b) {
@@ -206,29 +245,81 @@ function Attachments({attachments, isOwn, onMediaPress, messageId, chatTitle, ch
         const FileIcon = mime.includes('pdf') ? FileText
           : mime.includes('zip') || mime.includes('rar') ? Archive
           : File;
-        const iconColor = isOwn ? 'rgba(255,255,255,0.9)' : c.textPrimary;
+        const iconColor = isOwn ? '#FFFFFF' : c.primary;
 
-        // Тап открывает файл, отдельная кнопка — сохраняет. Раньше был только
-        // переход в браузер, и файл оставался «где-то там».
+        // Тап по строке открывает файл, кнопка справа — сохраняет. Раньше был
+        // только переход в браузер, и файл оставался «где-то там».
+        //
+        // Своей подложки у карточки больше нет. Серый прямоугольник внутри
+        // пузырька читался как вложенное окно, а на своём (синем) пузырьке
+        // мутное белое пятно вдобавок гасило название файла. Значок в кружке
+        // отделяет файл от текста не хуже, а места занимает меньше.
         return (
-          <View key={idx} style={[styles.attachFile, isOwn && styles.attachFileOwn]}>
-            <FileIcon size={22} color={iconColor} />
-            <TouchableOpacity
-              style={styles.attachFileInfo}
-              onPress={() => url && Linking.openURL(url)}>
+          <TouchableOpacity
+            key={idx}
+            style={styles.attachFile}
+            activeOpacity={0.7}
+            onPress={() => url && Linking.openURL(url)}>
+            <View style={[styles.attachFileIcon, isOwn && styles.attachFileIconOwn]}>
+              <FileIcon size={19} color={iconColor} />
+            </View>
+            <View style={styles.attachFileInfo}>
               <Text style={[styles.attachFileName, isOwn && styles.attachFileNameOwn]} numberOfLines={1}>{name}</Text>
-              <Text style={[styles.attachFileSize, isOwn && styles.attachFileSizeOwn]}>{formatFileSize(att.size)}</Text>
-            </TouchableOpacity>
+              <Text style={[styles.attachFileSize, isOwn && styles.attachFileSizeOwn]} numberOfLines={1}>
+                {[fileKindLabel(name, mime), formatFileSize(att.size)].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
             <TouchableOpacity
               style={styles.attachDownload}
-              hitSlop={8}
+              hitSlop={10}
               onPress={() => saveAttachment({url, name, mimeType: mime})}>
-              <Download size={18} color={iconColor} />
+              <Download size={17} color={isOwn ? 'rgba(255,255,255,0.85)' : c.textTertiary} />
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         );
       })}
     </View>
+  );
+}
+
+/**
+ * Цитата сообщения, на которое отвечают.
+ *
+ * Лежит ВНУТРИ пузырька, а не отдельной плашкой над ним. Снаружи она читалась
+ * как самостоятельное сообщение с собственным фоном: два прямоугольника подряд,
+ * разной ширины, с зазором между ними — и по виду нельзя было сказать, что
+ * верхний относится к нижнему. Внутри пузырька у цитаты появляется хозяин,
+ * ширину она делит с текстом, а полоска слева говорит «это чужие слова» —
+ * ровно так же, как в почте и в мессенджерах.
+ *
+ * Тап уводит к исходному сообщению: цитата обрезана одной строкой, и когда
+ * ответ пришёл через сутки, найти начало разговора прокруткой невозможно.
+ */
+function ReplyQuote({reply, isOwn, onPress}) {
+  const styles = useThemedStyles(makeStyles);
+
+  // У ответа на фотографию текста может не быть вовсе — тогда показываем сам
+  // снимок и подпись «Фотография», иначе цитата вышла бы пустой строкой
+  const media = (reply.attachments || []).find(att => /^image\//.test(att.mimeType || ''));
+  const thumb = media ? fixUrl(media.url || media.path) : null;
+  const preview = stripFormatting(reply.content) || attachmentSummary(reply.attachments);
+
+  return (
+    <TouchableOpacity
+      style={[styles.replyQuote, isOwn && styles.replyQuoteOwn]}
+      activeOpacity={0.75}
+      onPress={onPress}>
+      <View style={[styles.replyQuoteBar, isOwn && styles.replyQuoteBarOwn]} />
+      {thumb && <Image source={{uri: thumb}} style={styles.replyQuoteThumb} />}
+      <View style={styles.replyQuoteBody}>
+        <Text style={[styles.replyQuoteAuthor, isOwn && styles.replyQuoteAuthorOwn]} numberOfLines={1}>
+          {reply.sender?.displayName || reply.sender?.username || 'Сообщение'}
+        </Text>
+        <Text style={[styles.replyQuoteText, isOwn && styles.replyQuoteTextOwn]} numberOfLines={1}>
+          {preview}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -305,13 +396,6 @@ function MessageActions({actions, isOwn, runningId, onPress}) {
 
 const noop = () => {};
 
-const MEDIA_TABS = [
-  {key: 'media', label: 'Медиа'},
-  {key: 'files', label: 'Файлы'},
-  {key: 'voice', label: 'Голосовые'},
-  {key: 'links', label: 'Ссылки'},
-];
-
 // Склонение для «Удалить 2 сообщения?» — иначе везде было бы «сообщений»
 function pluralMessages(n) {
   const tail = n % 100 >= 11 && n % 100 <= 14 ? 0 : n % 10;
@@ -321,7 +405,7 @@ function pluralMessages(n) {
 }
 
 // ── Message bubble ─────────────────────────────────────────────────────────
-function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, isSelected, onSelectToggle, onLongPress, onReactionTap, onMediaPress, onActionPress, onPollVote, onRetry, runningAction, status, chatTitle, chatId}) {
+function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, isSelected, onSelectToggle, onLongPress, onReactionTap, onMediaPress, onActionPress, onPollVote, onRetry, onReplyPress, runningAction, status, chatTitle, chatId}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   // Масштаб шрифта — настройка для тех, кому мелкий текст неудобен
@@ -377,27 +461,6 @@ function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, 
             <Text style={styles.retryText}>Не отправлено · повторить</Text>
           </TouchableOpacity>
         )}
-        {message.forwardedFrom && (
-          <View style={[styles.forwardBadge, isOwn && styles.forwardBadgeOwn]}>
-            <Forward size={11} color={isOwn ? 'rgba(255,255,255,0.75)' : c.textSecondary} style={{marginRight: 4}} />
-            <Text style={[styles.forwardLabel, isOwn && styles.forwardLabelOwn]}>
-              Переслано от {message.forwardedFrom.senderName || 'пользователя'}
-            </Text>
-          </View>
-        )}
-
-        {/* Reply to */}
-        {message.replyTo && (
-          <View style={[styles.replyBadge, isOwn && styles.replyBadgeOwn]}>
-            <Text style={[styles.replyAuthor, isOwn && styles.replyAuthorOwn]} numberOfLines={1}>
-              {message.replyTo.sender?.displayName || 'Сообщение'}
-            </Text>
-            <Text style={[styles.replyText, isOwn && styles.replyTextOwn]} numberOfLines={1}>
-              {stripFormatting(message.replyTo.content)}
-            </Text>
-          </View>
-        )}
-
         <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
           {/* Автор — внутри пузырька, а не отдельной строкой над ним:
               так подпись явно принадлежит сообщению и не висит в воздухе */}
@@ -408,6 +471,28 @@ function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, 
               </Text>
               <UserBadge badge={message.sender.chatBadge} size={14} />
             </View>
+          )}
+
+          {/* «Переслано» и цитата ответа — тоже внутри пузырька и по той же
+              причине, что и автор: снаружи они висели отдельными плашками, и
+              к какому именно сообщению относятся, было видно только по
+              близости. Плашка с фоном для «переслано» больше не нужна — внутри
+              достаточно строки со значком. */}
+          {message.forwardedFrom && (
+            <View style={styles.forwardLine}>
+              <Forward size={11} color={isOwn ? 'rgba(255,255,255,0.75)' : c.textSecondary} />
+              <Text style={[styles.forwardLabel, isOwn && styles.forwardLabelOwn]} numberOfLines={1}>
+                Переслано от {message.forwardedFrom.senderName || 'пользователя'}
+              </Text>
+            </View>
+          )}
+
+          {message.replyTo && (
+            <ReplyQuote
+              reply={message.replyTo}
+              isOwn={isOwn}
+              onPress={() => onReplyPress?.(message.replyTo.id)}
+            />
           )}
 
           {/* Attachments */}
@@ -709,9 +794,6 @@ export default function ChatScreen({route, navigation}) {
 
   // Галерея чата (ver. 7.35). Список приходит с сервера, а не собирается из
   // загруженной ленты: до этого «медиа чата» показывало только подгруженное.
-  const [mediaPanel, setMediaPanel] = useState(null);
-  const [mediaItems, setMediaItems] = useState([]);
-  const [mediaLoading, setMediaLoading] = useState(false);
 
   // Pending attachments (before sending)
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -803,32 +885,22 @@ export default function ChatScreen({route, navigation}) {
           chatType={chatType}
           memberCount={groupMembers.length}
           onlineCount={groupOnlineCount}
-          onPress={chatType === 'group' ? () => navigation.navigate('ChatInfo', {chatId}) : undefined}
+          // Экран сведений теперь общий для группы и личной переписки, и
+          // галерея чата живёт там же — отдельной кнопки в шапке под неё
+          // больше нет (см. ChatInfoScreen)
+          onPress={() => navigation.navigate('ChatInfo', {chatId})}
         />
       ),
       headerRight: () => (
-        <View style={{flexDirection: 'row', alignItems: 'center'}}>
-          {!searchMode && (
-            <TouchableOpacity
-              style={{padding: 4}}
-              onPress={() => openMediaPanel('media')}>
-              <ImageIcon size={21} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={{padding: 4, marginRight: 4}}
-            onPress={() => setSearchMode(v => !v)}>
-            {searchMode
-              ? <X size={22} color="#FFFFFF" />
-              : <Search size={22} color="#FFFFFF" />}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={{padding: 4, marginRight: 4}}
+          onPress={() => setSearchMode(v => !v)}>
+          {searchMode
+            ? <X size={22} color="#FFFFFF" />
+            : <Search size={22} color="#FFFFFF" />}
+        </TouchableOpacity>
       ),
     });
-  // openMediaPanel в зависимости не берём намеренно: он объявлен ниже по файлу,
-  // и обращение к нему в массиве зависимостей (он считается на рендере) упало бы
-  // до инициализации. Тело эффекта выполняется позже и видит его нормально.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, chatName, chatAvatar, isOnline, otherLastSeen, isTyping, chatType, searchMode, chatId, groupMembers.length, groupOnlineCount]);
 
   // Online status + typing listeners
@@ -1028,7 +1100,33 @@ export default function ChatScreen({route, navigation}) {
   };
 
   // ── Голосовые сообщения ────────────────────────────────────────────────────
+  const askMicrophone = async () => {
+    const permission = await VoiceRecorder.checkPermission();
+    if (permission === 'granted') return true;
+
+    // Про настройки системы говорим, только когда путь туда действительно
+    // единственный: человек либо запретил навсегда, либо (на iOS) уже ответил
+    // «нет» в единственном диалоге, который система показывает один раз.
+    if (permission === 'blocked') {
+      Alert.alert(
+        'Нет доступа к микрофону',
+        'Разрешите приложению запись звука в настройках системы.',
+        [
+          {text: 'Отмена', style: 'cancel'},
+          {text: 'Открыть настройки', onPress: () => Linking.openSettings()},
+        ],
+      );
+    }
+    // 'denied' — человек только что отказал сам, и сказать ему об этом нечего
+    return false;
+  };
+
   const startVoiceRecording = async () => {
+    // Разрешение спрашиваем ДО того, как показать полосу записи. Иначе на
+    // первом голосовом человек видел «Идёт запись…» под системным диалогом, а
+    // после ответа полоса оставалась висеть при так и не начавшейся записи.
+    if (!(await askMicrophone())) return;
+
     // Обнуляем счётчик ДО старта. Раньше это стояло после await: пока
     // startRecorder разрешался, слушатель успевал прислать первые тики, и
     // затем они затирались нулём — таймер показывал секунду и падал обратно.
@@ -1036,10 +1134,23 @@ export default function ChatScreen({route, navigation}) {
     setRecording(true);
 
     const started = await VoiceRecorder.start(sec => setRecordSeconds(sec));
-    if (!started) {
-      setRecording(false);
-      Alert.alert('Микрофон недоступен', 'Разрешите доступ к микрофону в настройках системы');
-    }
+    if (started.ok) return;
+
+    setRecording(false);
+    if (started.reason === 'busy') return;
+    // Разрешение уже спрошено выше: сюда эти причины доходят, только если
+    // доступ отозвали между проверкой и стартом — говорить о нём нечего
+    if (started.reason === 'blocked' || started.reason === 'permission') return;
+
+    // Текст от нативной стороны показываем как есть. Своими словами тут не
+    // обойтись: причин у отказа десяток, и по пересказу «микрофон занят» уже
+    // один раз ушли искать несуществующее второе приложение.
+    Alert.alert(
+      'Не удалось начать запись',
+      started.message
+        ? `Микрофон не отвечает.\n\n${started.message}`
+        : 'Микрофон занят другим приложением или звонком. Закройте его и попробуйте ещё раз.',
+    );
   };
 
   const finishVoiceRecording = async (send) => {
@@ -1195,14 +1306,44 @@ export default function ChatScreen({route, navigation}) {
     });
   };
 
-  const pickFile = async () => {
+  // iOS показывает <Modal> отдельным view controller'ом, а системный выбор
+  // файлов умеет встать только поверх самого верхнего из них. Если позвать его
+  // сразу за setShowAttachMenu(false), меню ещё не ушло с экрана: iOS пытается
+  // показать выбор поверх исчезающего контроллера и молча ничего не делает —
+  // кнопка «Файл» выглядела нерабочей. Галерея и камера от этого не страдали
+  // только потому, что react-native-image-picker сам откладывает показ на
+  // следующий проход цикла событий.
+  //
+  // Поэтому действие запоминается и выполняется в onDismiss модалки. На Android
+  // меню — обычный диалог, поверх него активность открывается спокойно, и
+  // onDismiss там не вызывается вовсе, так что запускаем сразу.
+  const afterAttachMenu = useRef(null);
+
+  const runAfterAttachMenu = () => {
+    const action = afterAttachMenu.current;
+    afterAttachMenu.current = null;
+    action?.();
+  };
+
+  const closeAttachMenuThen = action => {
+    afterAttachMenu.current = action;
     setShowAttachMenu(false);
+    if (Platform.OS !== 'ios') runAfterAttachMenu();
+  };
+
+  const pickFile = () => closeAttachMenuThen(async () => {
     try {
       const results = await pickDocument({allowMultiSelection: true});
       const files = results.map(r => ({uri: r.uri, type: r.type, name: r.name, size: r.size}));
       setPendingFiles(prev => [...prev, ...files].slice(0, 10));
-    } catch {}
-  };
+    } catch (err) {
+      if (isPickerError(err) && err.code === pickerErrorCodes.OPERATION_CANCELED) return;
+      // Раньше здесь стоял пустой catch, и любая осечка выглядела как
+      // «нажал на файл — ничего не произошло»
+      console.warn('[Chat] Выбор файла не удался:', err?.code, err?.message);
+      Alert.alert('Не удалось открыть файлы', 'Попробуйте ещё раз или отправьте файл из галереи');
+    }
+  });
 
   const createPoll = async () => {
     const options = pollDraft.options.map(value => value.trim()).filter(Boolean);
@@ -1271,21 +1412,6 @@ export default function ChatScreen({route, navigation}) {
     setText('');
   };
 
-  // ── Галерея чата ───────────────────────────────────────────────────────────
-  const openMediaPanel = useCallback(async kind => {
-    setMediaPanel(kind);
-    setMediaLoading(true);
-    setMediaItems([]);
-    try {
-      const {data} = await chatApi.getChatMedia(chatId, kind, {limit: 100});
-      setMediaItems(data);
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось загрузить');
-    } finally {
-      setMediaLoading(false);
-    }
-  }, [chatId]);
-
   // ── Закреплённые сообщения ─────────────────────────────────────────────────
   const loadPinned = useCallback(async () => {
     try {
@@ -1312,6 +1438,18 @@ export default function ChatScreen({route, navigation}) {
       flatListRef.current?.scrollToIndex({index: listIdx, animated: true, viewPosition: 0.5});
     }
   }, []);
+
+  // Возврат из экрана сведений: там из галереи чата попросили показать
+  // конкретное сообщение. Экран не пересоздаётся — он всё это время был в
+  // стеке, — поэтому запрос приходит параметром, и его надо сбросить, иначе
+  // следующий возврат в чат снова уедет к тому же сообщению.
+  const jumpRequest = route.params?.jumpToMessageId;
+  const jumpNonce = route.params?.jumpNonce;
+  useEffect(() => {
+    if (!jumpRequest) return;
+    jumpToMessage(jumpRequest);
+    navigation.setParams({jumpToMessageId: undefined, jumpNonce: undefined});
+  }, [jumpRequest, jumpNonce, jumpToMessage, navigation]);
 
   const togglePin = async (msg, pin) => {
     setContextMenu(null);
@@ -1508,6 +1646,57 @@ export default function ChatScreen({route, navigation}) {
     setMediaItem({items: mediaGallery, index: index >= 0 ? index : 0});
   }, [mediaGallery]);
 
+  /**
+   * Дата, висящая над лентой во время прокрутки.
+   *
+   * Бейджи-разделители отвечают на вопрос «где кончился день», но пока
+   * пролистываешь месяц переписки, ближайший из них давно уехал за верхний
+   * край, и понять, какой день сейчас перед глазами, нельзя. Поэтому дата
+   * верхнего видимого сообщения дублируется капсулой поверх ленты — и уходит
+   * через полторы секунды после того, как прокрутка остановилась, чтобы не
+   * закрывать собой сообщения при чтении.
+   *
+   * Показывается только по прокрутке: при обычном открытии чата капсула была
+   * бы просто лишней надписью поверх последних сообщений.
+   */
+  const [floatingDate, setFloatingDate] = useState(null);
+  const floatingOpacity = useRef(new Animated.Value(0)).current;
+  const floatingTimer = useRef(null);
+  const floatingShown = useRef(false);
+
+  const bumpFloatingDate = useCallback(() => {
+    if (!floatingShown.current) {
+      floatingShown.current = true;
+      Animated.timing(floatingOpacity, {
+        toValue: 1, duration: 140, useNativeDriver: true,
+      }).start();
+    }
+    clearTimeout(floatingTimer.current);
+    floatingTimer.current = setTimeout(() => {
+      floatingShown.current = false;
+      Animated.timing(floatingOpacity, {
+        toValue: 0, duration: 260, useNativeDriver: true,
+      }).start();
+    }, 1500);
+  }, [floatingOpacity]);
+
+  useEffect(() => () => clearTimeout(floatingTimer.current), []);
+
+  /**
+   * Обработчики видимости обязаны быть неизменными: FlatList запоминает их при
+   * первом рендере и на смену ссылки отвечает предупреждением
+   * «Changing onViewableItemsChanged on the fly is not supported».
+   *
+   * Лента перевёрнута (inverted), поэтому верхнее на экране сообщение — то, у
+   * которого наибольший индекс, то есть последнее в списке видимых.
+   */
+  const viewabilityConfig = useRef({itemVisiblePercentThreshold: 10}).current;
+  const onViewableItemsChanged = useRef(({viewableItems}) => {
+    const top = viewableItems[viewableItems.length - 1]?.item;
+    const iso = top?.date || top?.createdAt;
+    if (iso) setFloatingDate(iso);
+  }).current;
+
   // ── Render item ────────────────────────────────────────────────────────────
   const renderItem = ({item}) => {
     if (item._itemType === 'separator') {
@@ -1534,6 +1723,7 @@ export default function ChatScreen({route, navigation}) {
         onActionPress={selectionMode ? noop : handleActionPress}
         onPollVote={selectionMode ? noop : votePoll}
         onRetry={retrySend}
+        onReplyPress={selectionMode ? noop : jumpToMessage}
         runningAction={runningAction}
         chatTitle={chatName}
         chatId={chatId}
@@ -1640,26 +1830,40 @@ export default function ChatScreen({route, navigation}) {
       })()}
 
       {/* Messages list (inverted = newest at bottom) */}
-      <FlatList
-        ref={flatListRef}
-        data={listData}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        inverted
-        contentContainerStyle={styles.msgList}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.3}
-        initialNumToRender={20}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-        removeClippedSubviews={false}
-        ListFooterComponent={loadingMore ? <LogoLoader width={64} style={styles.loadMoreLoader} /> : null}
-        onScrollToIndexFailed={info => {
-          setTimeout(() => {
-            flatListRef.current?.scrollToIndex({index: info.index, animated: true, viewPosition: 0.5});
-          }, 300);
-        }}
-      />
+      <View style={styles.listWrap}>
+        <FlatList
+          ref={flatListRef}
+          data={listData}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          inverted
+          contentContainerStyle={styles.msgList}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          initialNumToRender={20}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          removeClippedSubviews={false}
+          onScroll={bumpFloatingDate}
+          scrollEventThrottle={64}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
+          ListFooterComponent={loadingMore ? <LogoLoader width={64} style={styles.loadMoreLoader} /> : null}
+          onScrollToIndexFailed={info => {
+            setTimeout(() => {
+              flatListRef.current?.scrollToIndex({index: info.index, animated: true, viewPosition: 0.5});
+            }, 300);
+          }}
+        />
+
+        {/* Капсула не перехватывает касания: под ней живая лента, и промах по
+            сообщению из-за невидимой уже надписи читался бы как залипание */}
+        <Animated.View
+          style={[styles.floatingDate, {opacity: floatingOpacity}]}
+          pointerEvents="none">
+          {floatingDate && <Text style={styles.dateSepText}>{formatDateSep(floatingDate)}</Text>}
+        </Animated.View>
+      </View>
 
       {/* Reaction quick-pick (after long press → reaction) */}
       {showReactionPicker && (
@@ -1731,20 +1935,9 @@ export default function ChatScreen({route, navigation}) {
         </ScrollView>
       )}
 
-      {/* Emoji picker panel */}
+      {/* Панель эмодзи — полный набор с категориями, см. components/EmojiPicker */}
       {showEmojiPicker && (
-        <View style={styles.emojiPanel}>
-          <ScrollView contentContainerStyle={styles.emojiGrid}>
-            {COMMON_EMOJI.map(e => (
-              <TouchableOpacity
-                key={e}
-                style={styles.emojiBtn}
-                onPress={() => setText(prev => prev + e)}>
-                <Text style={styles.emojiBtnText}>{e}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        <EmojiPicker onSelect={e => setText(prev => prev + e)} />
       )}
 
       {/* Играет голосовое из другого чата — показываем полоску управления */}
@@ -1863,7 +2056,16 @@ export default function ChatScreen({route, navigation}) {
 
         <TouchableOpacity
           style={styles.iconBtn}
-          onPress={() => {setShowEmojiPicker(v => !v); setShowAttachMenu(false);}}>
+          onPress={() => {
+            // Клавиатуру убираем: панель эмодзи занимает столько же места, и
+            // вдвоём они не оставляют от переписки ничего. Так же ведёт себя
+            // Telegram — панель приходит на место клавиатуры.
+            setShowEmojiPicker(v => {
+              if (!v) Keyboard.dismiss();
+              return !v;
+            });
+            setShowAttachMenu(false);
+          }}>
           <Smile size={22} color={showEmojiPicker ? c.primary : c.textSecondary} />
         </TouchableOpacity>
 
@@ -1891,7 +2093,12 @@ export default function ChatScreen({route, navigation}) {
       )}
 
       {/* ── Attach menu modal ── */}
-      <Modal transparent visible={showAttachMenu} animationType="fade" onRequestClose={() => setShowAttachMenu(false)}>
+      <Modal
+        transparent
+        visible={showAttachMenu}
+        animationType="fade"
+        onDismiss={runAfterAttachMenu}
+        onRequestClose={() => setShowAttachMenu(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowAttachMenu(false)}>
           <View style={attachMenuStyle}>
             <TouchableOpacity style={styles.attachMenuItem} onPress={pickFromGallery}>
@@ -1947,93 +2154,6 @@ export default function ChatScreen({route, navigation}) {
           <TouchableOpacity style={styles.pollCreateBtn} onPress={createPoll} disabled={sending}>
             {sending ? <LogoLoader width={52} color="#FFFFFF" /> : <Text style={styles.pollCreateText}>Создать опрос</Text>}
           </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* ── Галерея чата: медиа, файлы, голосовые, ссылки (ver. 7.35) ── */}
-      <Modal
-        transparent
-        visible={!!mediaPanel}
-        animationType="slide"
-        onRequestClose={() => setMediaPanel(null)}>
-        <View style={styles.forwardModal}>
-          <View style={styles.forwardModalHeader}>
-            <Text style={styles.forwardModalTitle}>Медиа чата</Text>
-            <TouchableOpacity onPress={() => setMediaPanel(null)}>
-              <X size={22} color={c.textTertiary} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.mediaTabs}>
-            {MEDIA_TABS.map(tab => (
-              <TouchableOpacity
-                key={tab.key}
-                style={[styles.mediaTab, mediaPanel === tab.key && styles.mediaTabActive]}
-                onPress={() => openMediaPanel(tab.key)}>
-                <Text style={[styles.mediaTabText, mediaPanel === tab.key && styles.mediaTabTextActive]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {mediaLoading ? (
-            <View style={styles.center}><LogoLoader width={80} /></View>
-          ) : mediaItems.length === 0 ? (
-            <View style={styles.center}><Text style={styles.mediaEmpty}>Здесь пока пусто</Text></View>
-          ) : mediaPanel === 'media' ? (
-            <FlatList
-              data={mediaItems}
-              numColumns={3}
-              keyExtractor={(item, idx) => `${item.messageId}:${idx}`}
-              renderItem={({item}) => {
-                const att = item.attachment || {};
-                const uri = fixUrl(att.thumbnailUrl || att.thumbnailPath || att.url || att.path);
-                return (
-                  <TouchableOpacity
-                    style={styles.mediaCell}
-                    onPress={() => { setMediaPanel(null); jumpToMessage(item.messageId); }}>
-                    {att.mimeType?.startsWith('video/')
-                      ? <View style={styles.mediaCellVideo}><Play size={20} color={c.textTertiary} /></View>
-                      : <Image source={{uri}} style={styles.mediaCellImage} />}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          ) : (
-            <FlatList
-              data={mediaItems}
-              keyExtractor={(item, idx) => `${item.messageId}:${idx}`}
-              renderItem={({item}) => {
-                const att = item.attachment || {};
-                const isLink = mediaPanel === 'links';
-                const title = isLink
-                  ? (item.urls?.[0] || item.content)
-                  : att.kind === 'voice'
-                    ? 'Голосовое сообщение'
-                    : (att.name || att.filename || 'Файл');
-                return (
-                  <TouchableOpacity
-                    style={styles.mediaRow}
-                    onPress={() => {
-                      if (isLink && item.urls?.[0]) {
-                        Linking.openURL(item.urls[0]).catch(() => {});
-                        return;
-                      }
-                      setMediaPanel(null);
-                      jumpToMessage(item.messageId);
-                    }}>
-                    <Text style={[styles.mediaRowTitle, isLink && styles.mediaRowLink]} numberOfLines={1}>
-                      {title}
-                    </Text>
-                    <Text style={styles.mediaRowMeta} numberOfLines={1}>
-                      {item.senderName} · {new Date(item.createdAt).toLocaleDateString('ru-RU')}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          )}
         </View>
       </Modal>
 
@@ -2159,12 +2279,30 @@ const makeStyles = c => StyleSheet.create({
   center: {flex: 1, alignItems: 'center', justifyContent: 'center'},
   msgList: {paddingVertical: 8, paddingHorizontal: 10},
 
-  // Date separator
-  dateSep: {alignItems: 'center', marginVertical: 10},
+  /**
+   * Бейдж даты.
+   *
+   * Тёмная полупрозрачная подложка с белой надписью, а не светлая плашка цвета
+   * границы. Причина не в моде: под лентой лежит узор (ChatBackground), и
+   * плашка в цвет границы на нём терялась, а в тёмной теме почти сливалась с
+   * фоном. Полупрозрачный тёмный работает одинаково на обеих темах и на любом
+   * узоре — он не красит, а притемняет то, что под ним.
+   *
+   * overflow: 'hidden' у текста обязателен: на iOS фон Text не обрезается
+   * скруглением, и вместо капсулы получается прямоугольник.
+   */
+  dateSep: {alignItems: 'center', marginVertical: 12},
   dateSepText: {
-    fontSize: 12, fontFamily: font.regular, color: c.textSecondary,
-    backgroundColor: c.borderLight, paddingHorizontal: 12, paddingVertical: 3,
-    borderRadius: radius.md,
+    fontSize: 12.5, fontFamily: font.medium, color: '#FFFFFF',
+    backgroundColor: 'rgba(0,0,0,0.30)',
+    paddingHorizontal: 12, paddingVertical: 4,
+    borderRadius: 12, overflow: 'hidden',
+  },
+  // Та же капсула, но висящая над лентой во время прокрутки
+  listWrap: {flex: 1},
+  floatingDate: {
+    position: 'absolute', top: 8, left: 0, right: 0,
+    alignItems: 'center',
   },
 
   // System message
@@ -2210,59 +2348,53 @@ const makeStyles = c => StyleSheet.create({
   pinnedText: {color: c.textSecondary, fontSize: 13},
   retryRow: {flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2},
   retryText: {color: c.error, fontSize: 11},
-  // Галерея чата (ver. 7.35)
-  mediaTabs: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
-  },
-  // Прозрачная подчёркивающая линия у неактивных вкладок: иначе активная
-  // выше остальных на два пикселя и строка дёргается при переключении
-  mediaTab: {paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 2, borderBottomColor: 'transparent'},
-  mediaTabActive: {borderBottomColor: c.primary},
-  mediaTabText: {color: c.textSecondary, fontSize: 14},
-  mediaTabTextActive: {color: c.primary, fontWeight: '600'},
-  mediaEmpty: {color: c.textTertiary, fontSize: 14},
-  mediaCell: {flex: 1 / 3, aspectRatio: 1, padding: 1},
-  mediaCellImage: {width: '100%', height: '100%', borderRadius: 4, backgroundColor: c.bgSecondary},
-  mediaCellVideo: {
-    width: '100%', height: '100%', borderRadius: 4,
-    backgroundColor: c.bgSecondary, alignItems: 'center', justifyContent: 'center',
-  },
-  mediaRow: {
-    paddingVertical: 10, paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border,
-  },
-  mediaRowTitle: {color: c.textPrimary, fontSize: 14},
-  mediaRowLink: {color: c.primary},
-  mediaRowMeta: {color: c.textSecondary, fontSize: 12, marginTop: 2},
   bubbleAvatar: {marginRight: 6, marginBottom: 2},
 
   bubbleContent: {maxWidth: '78%'},
   senderNameRow: {flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3},
   senderName: {fontSize: 12.5, fontFamily: font.semiBold, color: c.primary},
 
-  // Forward / reply
-  forwardBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    borderLeftWidth: 3, borderLeftColor: c.textTertiary,
-    paddingLeft: 8, marginBottom: 3,
-    backgroundColor: c.bgSecondary, borderRadius: 4, paddingVertical: 2, paddingRight: 8,
+  // Forward / reply — обе строки живут внутри пузырька (см. MessageBubble)
+  forwardLine: {flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4},
+  forwardLabel: {
+    flexShrink: 1,
+    fontSize: 11.5, fontFamily: font.medium, color: c.textSecondary, fontStyle: 'italic',
   },
-  forwardBadgeOwn: {backgroundColor: 'rgba(255,255,255,0.2)', borderLeftColor: 'rgba(255,255,255,0.6)'},
-  forwardLabel: {fontSize: 11, fontFamily: font.regular, color: c.textSecondary, fontStyle: 'italic'},
-  forwardLabelOwn: {color: 'rgba(255,255,255,0.75)'},
+  forwardLabelOwn: {color: 'rgba(255,255,255,0.8)'},
 
-  replyBadge: {
-    borderLeftWidth: 3, borderLeftColor: c.primary,
-    paddingLeft: 8, marginBottom: 3,
-    backgroundColor: c.primaryLight, borderRadius: 4, paddingVertical: 2, paddingRight: 8,
+  /**
+   * Цитата ответа.
+   *
+   * alignSelf: 'stretch' — цитата тянется на всю ширину пузырька, а не по
+   * своему тексту: иначе короткий ответ на длинную реплику давал внутри
+   * пузырька вторую, более узкую плашку со своим фоном, и вместе они читались
+   * как два вложенных окна.
+   *
+   * overflow: 'hidden' нужен полоске слева: без него она рисуется поверх
+   * скруглённого угла подложки и торчит из него прямым срезом.
+   */
+  replyQuote: {
+    flexDirection: 'row', alignItems: 'stretch', alignSelf: 'stretch',
+    backgroundColor: c.primaryLight,
+    borderRadius: 6, overflow: 'hidden', marginBottom: 5,
+    // Ширина пузырька считается по самому широкому содержимому, и без
+    // minWidth ответ «ок» давал пузырёк в три буквы, внутри которого от
+    // цитаты оставалось многоточие. Теперь цитата раздвигает пузырёк под
+    // себя — до общего потолка в 78% экрана (bubbleContent), дальше она
+    // сжимается сама.
+    minWidth: 170,
   },
-  replyBadgeOwn: {backgroundColor: 'rgba(255,255,255,0.2)', borderLeftColor: 'rgba(255,255,255,0.6)'},
-  replyAuthor: {fontSize: 11, fontFamily: font.semiBold, color: c.primary},
-  replyAuthorOwn: {color: 'rgba(255,255,255,0.9)'},
-  replyText: {fontSize: 12, fontFamily: font.regular, color: c.textSecondary},
-  replyTextOwn: {color: 'rgba(255,255,255,0.75)'},
+  replyQuoteOwn: {backgroundColor: 'rgba(255,255,255,0.18)'},
+  replyQuoteBar: {width: 3, backgroundColor: c.primary},
+  replyQuoteBarOwn: {backgroundColor: 'rgba(255,255,255,0.9)'},
+  replyQuoteThumb: {width: 32, height: 32, alignSelf: 'center', borderRadius: 4, marginLeft: 5},
+  // minWidth: 0 обязателен — без него длинная строка не сжимается до
+  // многоточия, а растягивает цитату и вместе с ней весь пузырёк
+  replyQuoteBody: {flex: 1, minWidth: 0, paddingVertical: 4, paddingHorizontal: 7, justifyContent: 'center'},
+  replyQuoteAuthor: {fontSize: 12.5, fontFamily: font.semiBold, color: c.primary},
+  replyQuoteAuthorOwn: {color: '#FFFFFF'},
+  replyQuoteText: {fontSize: 12.5, fontFamily: font.regular, color: c.textSecondary, marginTop: 1},
+  replyQuoteTextOwn: {color: 'rgba(255,255,255,0.82)'},
 
   // Bubble
   bubble: {borderRadius: radius.lg, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6},
@@ -2325,15 +2457,26 @@ const makeStyles = c => StyleSheet.create({
   attachImage: {width: SCREEN_WIDTH * 0.55, height: SCREEN_WIDTH * 0.45, borderRadius: 8, marginBottom: 4},
   attachFile: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: c.bgSecondary, borderRadius: 8, padding: 8, marginBottom: 4,
+    gap: 10, paddingVertical: 4, marginBottom: 2,
   },
-  attachFileOwn: {backgroundColor: 'rgba(255,255,255,0.15)'},
-  attachFileIcon: {fontSize: 22, marginRight: 8},
-  attachFileInfo: {flex: 1},
-  attachFileName: {fontSize: 13, color: c.textPrimary, fontFamily: font.medium},
+  attachFileIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: c.primaryLight,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  attachFileIconOwn: {backgroundColor: 'rgba(255,255,255,0.22)'},
+  // flexShrink, а не flex: 1. У пузырька нет заданной ширины — он сжимается по
+  // содержимому, — а flex: 1 в таком родителе означает flexBasis: 0, то есть
+  // нулевую ширину колонки с названием: имя файла просто не рисовалось, хотя в
+  // данных оно было (в вебе то же правило CSS считает по max-content, поэтому
+  // там имя видно). С flexShrink колонка занимает ширину названия и ужимается
+  // только когда пузырёк упирается в свои 78% экрана — тогда включается
+  // многоточие от numberOfLines.
+  attachFileInfo: {flexShrink: 1},
+  attachFileName: {fontSize: 14, color: c.textPrimary, fontFamily: font.medium},
   attachFileNameOwn: {color: c.bubbleOwnText},
-  attachFileSize: {fontSize: 11, fontFamily: font.regular, color: c.textSecondary, marginTop: 1},
-  attachFileSizeOwn: {color: 'rgba(255,255,255,0.7)'},
+  attachFileSize: {fontSize: 11.5, fontFamily: font.regular, color: c.textSecondary, marginTop: 2},
+  attachFileSizeOwn: {color: 'rgba(255,255,255,0.72)'},
 
   // Reaction quick pick
   reactionQuickPick: {
@@ -2378,14 +2521,6 @@ const makeStyles = c => StyleSheet.create({
     backgroundColor: c.error, borderRadius: 8, width: 16, height: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-
-  // Emoji panel
-  emojiPanel: {
-    backgroundColor: c.bgPrimary, borderTopWidth: 1, borderTopColor: c.borderLight, maxHeight: 180,
-  },
-  emojiGrid: {flexDirection: 'row', flexWrap: 'wrap', padding: 8},
-  emojiBtn: {padding: 6},
-  emojiBtnText: {fontSize: 26},
 
   // Input bar
   // Нижний отступ задаётся в компоненте: он зависит от системной панели

@@ -3,8 +3,8 @@ import {
   AudioSourceAndroidType,
   OutputFormatAndroidType,
   AudioEncoderAndroidType,
-  AVEncoderAudioQualityIOSType,
 } from 'react-native-nitro-sound';
+import {Camera} from 'react-native-vision-camera';
 import Sound from './soundInstance';
 import VoicePlayer from './voicePlayer';
 
@@ -26,34 +26,109 @@ import VoicePlayer from './voicePlayer';
 // равно обрежет длиннее, но лучше остановиться самим и не гонять лишнее по сети
 const MAX_DURATION_SEC = 300;
 
-// Имена полей отличаются от старой библиотеки: параметры качества переехали
-// из Android-специфичных (AudioSamplingRateAndroid и подобных) в общую секцию
-// без суффикса. Старые имена нативная сторона молча игнорировала.
+/**
+ * Настройки записи. Числами частоту, каналы и битрейт здесь задавать нельзя —
+ * и это не стилистика, а причина, по которой запись не начиналась вовсе.
+ *
+ * У NitroModules есть известная беда с передачей необязательных чисел
+ * (std::optional<double>, swiftlang/swift#85735): до нативной стороны вместо
+ * значения может доехать мусор. Библиотека про неё знает — в iOS-коде каждое
+ * такое поле пропущено через safeInt/safeDouble с комментарием про этот баг.
+ * А в Android-коде защиты нет: AudioSamplingRate уходит прямо в
+ * MediaRecorder.setAudioSamplingRate(), и от испорченного значения падает
+ * prepare(). Наружу это выглядело как «микрофон недоступен», хотя разрешение
+ * выдано и микрофон свободен.
+ *
+ * Раньше беда не проявлялась: поля назывались по-старому
+ * (AudioSamplingRateAndroid и подобные), нативная сторона их не узнавала и
+ * молча игнорировала. Как только имена исправили, значения начали доезжать —
+ * и запись сломалась.
+ *
+ * Поэтому те же параметры задаются строковым AudioQuality: 'medium' — на обеих
+ * платформах это 44100 Гц, моно, 128 кбит/с. Контейнер и кодек остаются
+ * заданными явно (это перечисления, а не числа, их баг не касается), так что
+ * формат прежний — AAC в m4a, тот самый, который сервер принимает без
+ * перекодирования.
+ */
 const AUDIO_SET = {
-  // Android
   AudioSourceAndroid: AudioSourceAndroidType.MIC,
   OutputFormatAndroid: OutputFormatAndroidType.MPEG_4,
   AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
   // iOS: aac в контейнере m4a
   AVFormatIDKeyIOS: 'aac',
-  AVNumberOfChannelsKeyIOS: 1,
-  AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
-  // Общие для обеих платформ
-  AudioChannels: 1,
-  AudioSamplingRate: 44100,
-  AudioEncodingBitRate: 64000,
+  AudioQuality: 'medium',
 };
+
+// Запасной вариант — вообще без настроек: библиотека возьмёт свои (тот же
+// AAC в MPEG-4, только 48 кГц стерео). Нужен на случай, если конкретный
+// аппарат не поднимет кодек с нашими параметрами: голосовое важнее того,
+// в каком качестве оно записано, тем более что сервер всё равно приводит
+// записи к общему формату (backend/services/voiceService.js).
+const AUDIO_SET_FALLBACK = undefined;
 
 let recording = false;
 
+// Признаки того, что нативная сторона отказала именно из-за разрешения, а не
+// из-за занятого микрофона или сломанного кодека. iOS отдаёт свой текст
+// («Recording permission denied…»), у Android внятного кода нет вовсе —
+// поэтому там мы полагаемся на собственную проверку до старта.
+function looksLikePermissionError(message) {
+  const text = String(message || '').toLowerCase();
+  return text.includes('permission') || text.includes('denied');
+}
+
 const VoiceRecorder = {
   /**
-   * Разрешение на микрофон. На Android 13+ спрашивается в рантайме,
-   * на iOS его выдаёт системный диалог при первой записи.
+   * Разрешение на микрофон — спрашивается до того, как трогать аудиосессию.
+   *
+   * На iOS раньше здесь стоял безусловный 'granted': считалось, что системный
+   * диалог покажет сама библиотека при первой записи. Она и показывает, но
+   * слишком поздно — в её startRecorder сначала идёт setActive(true) на
+   * категории playAndRecord и только потом requestRecordPermission
+   * (node_modules/react-native-nitro-sound/ios/Sound.swift). Пока разрешения
+   * нет, активация сессии не проходит, до запроса дело не доходит вовсе, и
+   * первое нажатие на микрофон заканчивается ничем. Диалог человек видел
+   * только со второй попытки — то есть если догадался попробовать ещё раз.
+   *
+   * Спрашиваем через vision-camera: она уже есть в проекте ради сканера
+   * этикеток, а под капотом у неё AVCaptureDevice.requestAccess(for: .audio) —
+   * то же самое разрешение, что нужно записи, но запрашивается оно отдельно от
+   * аудиосессии и честно ждёт ответа человека.
+   *
+   * На Android остаётся PermissionsAndroid: только он отличает «отказался
+   * сейчас» от «запретил навсегда» (NEVER_ASK_AGAIN). Отдаём это различие
+   * наверх, чтобы экран мог предложить настройки, а не показывать бесполезное
+   * «разрешите доступ».
+   *
+   * Сначала check, и только потом request: если человек когда-то отказал
+   * навсегда, повторный request молча возвращает NEVER_ASK_AGAIN без диалога,
+   * и по одному его результату двух этих случаев не различить.
+   *
+   * @returns {Promise<'granted'|'denied'|'blocked'>}
    */
-  async ensurePermission() {
-    if (Platform.OS !== 'android') return true;
+  async checkPermission() {
+    if (Platform.OS !== 'android') {
+      try {
+        const status = Camera.getMicrophonePermissionStatus();
+        if (status === 'granted') return 'granted';
+        // На iOS диалог показывается один раз за установку: и отказ, и запрет
+        // родительским контролем дальше снимаются только в настройках системы
+        if (status === 'denied' || status === 'restricted') return 'blocked';
+        const asked = await Camera.requestMicrophonePermission();
+        return asked === 'granted' ? 'granted' : 'blocked';
+      } catch {
+        // Нативного модуля нет (или он не поднялся) — не повод запрещать
+        // запись: пусть библиотека спросит сама, как было раньше
+        return 'granted';
+      }
+    }
+
     try {
+      const already = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      );
+      if (already) return 'granted';
+
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         {
@@ -63,9 +138,11 @@ const VoiceRecorder = {
           buttonNegative: 'Отмена',
         },
       );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) return 'granted';
+      if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return 'blocked';
+      return 'denied';
     } catch {
-      return false;
+      return 'denied';
     }
   },
 
@@ -73,38 +150,70 @@ const VoiceRecorder = {
 
   /**
    * Начать запись.
+   *
+   * Возвращает не «получилось/нет», а причину отказа: раньше на любую неудачу
+   * экран показывал «разрешите доступ к микрофону», и когда запись не шла по
+   * другой причине — микрофон занят звонком, кодек не поднялся — человек
+   * уходил в настройки, видел там выданное разрешение и оставался ни с чем.
+   *
    * @param {(seconds:number) => void} onTick — вызывается примерно раз в секунду
-   * @returns {Promise<boolean>} удалось ли начать
+   * @returns {Promise<{ok: boolean, reason?: 'busy'|'permission'|'blocked'|'error', message?: string}>}
    */
   async start(onTick) {
-    if (recording) return false;
-    const allowed = await this.ensurePermission();
-    if (!allowed) return false;
+    if (recording) return {ok: false, reason: 'busy'};
+
+    const permission = await this.checkPermission();
+    if (permission !== 'granted') {
+      return {ok: false, reason: permission === 'blocked' ? 'blocked' : 'permission'};
+    }
 
     // Нативный движок один: пока играет голосовое, писать нельзя
     await VoicePlayer.stop();
 
-    try {
-      Sound.setSubscriptionDuration(0.25);
-      Sound.addRecordBackListener(e => {
-        const sec = Math.floor((e.currentPosition || 0) / 1000);
-        onTick?.(sec);
-        if (sec >= MAX_DURATION_SEC) {
-          // Не даём записи расти бесконечно, если пользователь забыл остановить
-          this.stop().catch(() => {});
-        }
-      });
-      // Путь не задаём — библиотека сама положит файл во временный каталог
-      // с правильным для платформы расширением
-      await Sound.startRecorder(undefined, AUDIO_SET);
-      recording = true;
-      return true;
-    } catch (e) {
-      console.warn('[Voice] Не удалось начать запись:', e?.message);
-      Sound.removeRecordBackListener();
-      recording = false;
-      return false;
+    // Подстраховка от повисшего с прошлого раза MediaRecorder: если приложение
+    // свернули прямо во время записи, объект остаётся живым и держит микрофон,
+    // а следующий startRecorder падает. Когда останавливать нечего, вызов
+    // отказывает, но при этом сам же освобождает объект — поэтому ошибку тут
+    // и глотаем.
+    try { await Sound.stopRecorder(); } catch {}
+
+    Sound.setSubscriptionDuration(0.25);
+    Sound.addRecordBackListener(e => {
+      const sec = Math.floor((e.currentPosition || 0) / 1000);
+      onTick?.(sec);
+      if (sec >= MAX_DURATION_SEC) {
+        // Не даём записи расти бесконечно, если пользователь забыл остановить
+        this.stop().catch(() => {});
+      }
+    });
+
+    let lastError = null;
+    for (const audioSet of [AUDIO_SET, AUDIO_SET_FALLBACK]) {
+      try {
+        // Путь не задаём — библиотека сама положит файл во временный каталог
+        // с правильным для платформы расширением. Замер громкости выключаем
+        // явно: незаполненные необязательные аргументы едут через то же
+        // проблемное место nitro, что и числа в настройках.
+        await Sound.startRecorder(undefined, audioSet, false);
+        recording = true;
+        return {ok: true};
+      } catch (e) {
+        lastError = e;
+        console.warn('[Voice] Не удалось начать запись:', e?.message);
+        // Неудачный старт оставляет наполовину настроенный MediaRecorder,
+        // который держит микрофон. Освобождаем перед следующей попыткой,
+        // иначе она упадёт уже из-за занятого устройства
+        try { await Sound.stopRecorder(); } catch {}
+      }
     }
+
+    Sound.removeRecordBackListener();
+    recording = false;
+    return {
+      ok: false,
+      reason: looksLikePermissionError(lastError?.message) ? 'blocked' : 'error',
+      message: lastError?.message,
+    };
   },
 
   /**

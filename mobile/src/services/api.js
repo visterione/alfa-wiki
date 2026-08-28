@@ -321,6 +321,48 @@ export const reviews = {
   assign: (id, data) => api.post(`/reviews/${id}/assign`, data),
 };
 
+/**
+ * Онбординг врача (ver. 7.55 в мобилке, сам модуль — ver. 7.30).
+ *
+ * Набор ручек урезан по тому же признаку, что у склада и задач: здесь только
+ * то, что делают между делом, а не за столом. Задача из онбординга — это
+ * «завести бейдж», «выдать доступ в МИС», «согласовать анкету»: их закрывают,
+ * когда о них напомнили, а напоминает push, и приходит он на телефон.
+ *
+ * В вебе остались настройки шагов (кто за что отвечает — это раскладывают один
+ * раз и вдумчиво) и выгрузки PDF анкеты и услуг: их печатают и по ним вносят
+ * позиции в «Реновацию», то есть работают с бумагой перед клавиатурой.
+ *
+ * Отдельной ручки «есть ли доступ» у модуля нет: раздел закрыт флагом
+ * adminAccess.onboarding, и 403 на overview — это и есть ответ (см.
+ * store/onboardingStore.js).
+ */
+export const onboarding = {
+  overview: () => api.get('/onboarding/overview'),
+  myTasks: () => api.get('/onboarding/tasks/my'),
+  // archived: 'true' — отклонённые и отменённые, 'false' — всё остальное
+  applications: params => api.get('/onboarding/applications', {params}),
+  application: id => api.get(`/onboarding/applications/${id}`),
+  services: id => api.get(`/onboarding/applications/${id}/services`),
+
+  // Материалы для рассылки: постоянная ссылка на анкету и QR к ней. Доступны
+  // всем, у кого есть раздел: ссылку даёт тот, кто ищет врача, и на
+  // собеседовании QR показывают прямо с экрана телефона.
+  materials: () => api.get('/onboarding/materials'),
+  invite: data => api.post('/onboarding/materials/invite', data),
+
+  claimTask: taskId => api.post(`/onboarding/tasks/${taskId}/claim`),
+  verifyTask: (taskId, data) => api.post(`/onboarding/tasks/${taskId}/verify`, data || {}),
+  completeTask: (taskId, data) => api.post(`/onboarding/tasks/${taskId}/complete`, data || {}),
+  // Сотрудники МИС для ручного выбора, когда сверка по фамилии не сошлась
+  misUsers: (id, q) => api.get(`/onboarding/applications/${id}/mis-users`, {params: {q}}),
+
+  approve: id => api.post(`/onboarding/applications/${id}/approve`),
+  revision: (id, data) => api.post(`/onboarding/applications/${id}/revision`, data),
+  reject: (id, data) => api.post(`/onboarding/applications/${id}/reject`, data),
+  cancel: (id, data) => api.post(`/onboarding/applications/${id}/cancel`, data),
+};
+
 // в ней не помогает, а мешает.
 export const warehouse = {
   access: () => api.get('/warehouse/access'),

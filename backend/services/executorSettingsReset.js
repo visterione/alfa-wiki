@@ -3,7 +3,6 @@ const RESET_COLLECTIONS = [
   ['materials', 'Материалы'],
   ['serviceMaterials', 'Выполненные услуги'],
   ['extras', 'Дополнительно'],
-  ['roleRates', 'Ставки по ролям'],
   ['roleNormOverrides', 'Нормы по ролям'],
   ['extraPayments', 'Дополнительные выплаты'],
 ];
@@ -12,7 +11,6 @@ const RESET_FIELDS = [
   ['advance', 'Аванс', 'lockedAdvance'],
   ['mainPayment', 'Основная ЗП', 'lockedMainPayment'],
   ['fixedSalary', 'Фиксированный оклад', 'lockedFixedSalary'],
-  ['hourlyRate', 'Ставка в час', 'lockedHourlyRate'],
   ['hoursWorked', 'Отработанные часы', 'lockedHoursWorked'],
 ];
 
@@ -30,6 +28,14 @@ function itemTitle(item) {
   const value = item.amount ?? item.value ?? item.sum ?? item.price;
   if (title && hasValue(value)) return `${title}: ${value}`;
   return String(title || (hasValue(value) ? value : 'Запись'));
+}
+
+// Ставки по ролям сброс не трогает вовсе: суммы там из месяца в месяц одни и те
+// же, а после каждого сброса их приходилось заново раскатывать по всем
+// подразделениям вручную. Обнуляются только часы — они у каждого периода свои,
+// и оставленные с прошлого раза дали бы неверную зарплату.
+function roleRateTitle(item) {
+  return String(item?.roleTitle || 'Ставка');
 }
 
 function getClinicChanges(clinicId, clinicData = {}) {
@@ -55,6 +61,17 @@ function getClinicChanges(clinicId, clinicData = {}) {
   const unlockedHours = normServices.filter(item => item?.locked === true && item.lockedHours !== true && hasValue(item.hours));
   if (unlockedHours.length) {
     changes.push({ key: 'normServiceHours', label: 'Часы норм', count: unlockedHours.length, items: unlockedHours.map(item => `${itemTitle(item)}: ${item.hours}`) });
+  }
+
+  const roleRateHours = (Array.isArray(clinicData.roleRates) ? clinicData.roleRates : [])
+    .filter(item => hasValue(item?.hoursWorked));
+  if (roleRateHours.length) {
+    changes.push({
+      key: 'roleRateHours',
+      label: 'Часы ставок по ролям',
+      count: roleRateHours.length,
+      items: roleRateHours.map(item => `${roleRateTitle(item)}: ${item.hoursWorked} ч`),
+    });
   }
 
   for (const [key, label, lockKey] of RESET_FIELDS) {
@@ -92,6 +109,12 @@ function resetClinicData(clinicId, clinicData = {}) {
         ...(item.lockedRate === true || !hasValue(item.rate) ? {} : { rate: 0 }),
         ...(item.lockedHours === true || !hasValue(item.hours) ? {} : { hours: 0 }),
       }));
+  }
+
+  if (Array.isArray(clinicData.roleRates)) {
+    result.roleRates = clinicData.roleRates.map(item => (
+      hasValue(item?.hoursWorked) ? { ...item, hoursWorked: 0 } : item
+    ));
   }
 
   for (const [key, , lockKey] of RESET_FIELDS) {

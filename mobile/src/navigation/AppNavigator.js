@@ -2,6 +2,7 @@ import React, {useState, useEffect, useMemo} from 'react';
 import {
   StyleSheet,
   Image,
+  TouchableOpacity,
 } from 'react-native';
 import {
   NavigationContainer,
@@ -12,6 +13,7 @@ import {
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import LinearGradient from 'react-native-linear-gradient';
+import {QrCode} from 'lucide-react-native';
 
 import {useAuth} from '../store/authStore';
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -19,8 +21,11 @@ import ChatListScreen from '../screens/Chat/ChatListScreen';
 import ChatScreen from '../screens/Chat/ChatScreen';
 import NewChatScreen from '../screens/Chat/NewChatScreen';
 import ChatInfoScreen from '../screens/Chat/ChatInfoScreen';
-import ProfileScreen from '../screens/Profile/ProfileScreen';
 import SettingsScreen from '../screens/Settings/SettingsScreen';
+import SettingsAccountScreen from '../screens/Settings/AccountScreen';
+import SettingsSecurityScreen from '../screens/Settings/SecurityScreen';
+import SettingsNotificationsScreen from '../screens/Settings/NotificationsScreen';
+import SettingsAppearanceScreen from '../screens/Settings/AppearanceScreen';
 import EventScreen from '../screens/Calendar/EventScreen';
 import EventEditScreen from '../screens/Calendar/EventEditScreen';
 import TasksScreen from '../screens/Tasks/TasksScreen';
@@ -51,6 +56,9 @@ import ReviewsScreen from '../screens/Reviews/ReviewsScreen';
 import ReviewBoardScreen from '../screens/Reviews/ReviewBoardScreen';
 import ReviewsAssignedScreen from '../screens/Reviews/ReviewsAssignedScreen';
 import ReviewScreen from '../screens/Reviews/ReviewScreen';
+import OnboardingScreen from '../screens/Onboarding/OnboardingScreen';
+import OnboardingApplicationScreen from '../screens/Onboarding/ApplicationScreen';
+import OnboardingMaterialsScreen from '../screens/Onboarding/MaterialsScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
 import LessonScreen from '../screens/Courses/LessonScreen';
@@ -141,6 +149,18 @@ const splashStyles = StyleSheet.create({
   loader: {position: 'absolute', bottom: 96},
 });
 
+/**
+ * Значок-кнопка в шапке. Объявлена вне стеков: определённая внутри, она была бы
+ * новым типом компонента на каждый рендер, и React пересобирал бы шапку целиком.
+ */
+function HeaderIconButton({icon: Icon, label, onPress}) {
+  return (
+    <TouchableOpacity onPress={onPress} hitSlop={10} accessibilityLabel={label}>
+      <Icon size={21} color="#FFFFFF" />
+    </TouchableOpacity>
+  );
+}
+
 function HeaderBackground() {
   const c = useTheme();
 
@@ -201,26 +221,9 @@ function ChatsStack() {
       <Stack.Screen
         name="ChatInfo"
         component={ChatInfoScreen}
-        options={{title: 'Информация о группе'}}
-      />
-    </Stack.Navigator>
-  );
-}
-
-function ProfileStack() {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerBackground: () => <HeaderBackground />,
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
-        headerTitleAlign: 'center',
-        ...STACK_ANIMATION,
-      }}>
-      <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{title: 'Профиль'}}
+        // Заголовок экран проставляет сам, когда узнает имя чата: он один
+        // и для группы, и для личной переписки
+        options={{title: 'Информация'}}
       />
     </Stack.Navigator>
   );
@@ -473,6 +476,63 @@ function ReviewsStack() {
   );
 }
 
+/**
+ * Вкладка «Онбординг» (ver. 7.55). Сам модуль — ver. 7.30.
+ *
+ * В мобилке живёт то же, чем оправданы «Отзывы»: задача приходит push-ом, а
+ * человек в этот момент не за столом. Главврач согласовывает анкету между
+ * приёмами, старший регистратор закрывает «выдать бейдж» по дороге в кабинет,
+ * а колл-центр отмечает свой шаг, не открывая портал.
+ *
+ * Настройка шагов (кто за что отвечает в каком филиале) и выгрузки PDF анкеты и
+ * услуг остались в вебе: первое раскладывают один раз и вдумчиво, второе
+ * печатают и по бумаге вносят позиции в «Реновацию».
+ *
+ * «Материалы» — QR и ссылка на анкету — стоят кнопкой в шапке, а не пунктом
+ * списка: их достают на собеседовании, когда соискатель уже сидит напротив.
+ */
+function OnboardingStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerBackground: () => <HeaderBackground />,
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
+        headerTitleAlign: 'center',
+        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
+        ...STACK_ANIMATION,
+      }}>
+      <Stack.Screen
+        name="OnboardingHome"
+        component={OnboardingScreen}
+        options={({navigation}) => ({
+          title: 'Онбординг',
+          headerRight: () => (
+            <HeaderIconButton
+              icon={QrCode}
+              label="Материалы"
+              onPress={() => navigation.navigate('OnboardingMaterials')}
+            />
+          ),
+        })}
+      />
+      {/* Заголовок карточки — имя врача, его ставит сам экран: из списка оно
+          приходит сразу, поэтому шапка подписана ещё до загрузки заявки */}
+      <Stack.Screen
+        name="OnboardingApplication"
+        component={OnboardingApplicationScreen}
+        options={({route}) => ({title: route.params?.title || 'Заявка'})}
+      />
+      <Stack.Screen
+        name="OnboardingMaterials"
+        component={OnboardingMaterialsScreen}
+        options={{title: 'Материалы'}}
+      />
+    </Stack.Navigator>
+  );
+}
+
 function CoursesStack() {
   return (
     <Stack.Navigator
@@ -512,6 +572,17 @@ function CoursesStack() {
   );
 }
 
+/**
+ * Вкладка «Настройки» (ver. 7.55) — она же бывший «Профиль».
+ *
+ * Два раздела слились в один: обе вкладки вели в личное, и граница между ними
+ * («пароль — это профиль или настройки?») существовала только в голове у того,
+ * кто их разводил. Подробнее — в шапке SettingsScreen.
+ *
+ * Хаб остался коротким списком, а всё содержимое разъехалось по подэкранам:
+ * каждый из них человек открывает раз в полгода, и держать их развёрнутыми в
+ * одном свитке значило проезжать мимо восьми узоров фона ради смены мелодии.
+ */
 function SettingsStack() {
   return (
     <Stack.Navigator
@@ -520,12 +591,34 @@ function SettingsStack() {
         headerTintColor: '#FFFFFF',
         headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
         headerTitleAlign: 'center',
+        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
         ...STACK_ANIMATION,
       }}>
       <Stack.Screen
         name="Settings"
         component={SettingsScreen}
         options={{title: 'Настройки'}}
+      />
+      <Stack.Screen
+        name="SettingsAccount"
+        component={SettingsAccountScreen}
+        options={{title: 'Личные данные'}}
+      />
+      <Stack.Screen
+        name="SettingsSecurity"
+        component={SettingsSecurityScreen}
+        options={{title: 'Безопасность'}}
+      />
+      <Stack.Screen
+        name="SettingsNotifications"
+        component={SettingsNotificationsScreen}
+        options={{title: 'Уведомления'}}
+      />
+      <Stack.Screen
+        name="SettingsAppearance"
+        component={SettingsAppearanceScreen}
+        options={{title: 'Оформление'}}
       />
       {/* Рабочее расписание: личная настройка, поэтому лежит в
           настройках, а не в самом модуле «Задачи» */}
@@ -551,18 +644,15 @@ function MainTabs() {
       screenOptions={{headerShown: false, animation: 'none'}}
       tabBar={props => <AlfaTabBar {...props} />}>
       <Tab.Screen
-        name="ProfileTab"
-        component={ProfileStack}
-        options={{title: 'Профиль'}}
-      />
-      <Tab.Screen
         name="TasksTab"
         component={TasksStack}
         options={{title: 'Задачи'}}
       />
-      {/* Порядок вкладок = порядок разделов на колесе. Склад стоит раньше
-          чатов намеренно: он попадает ровно наверх колеса, куда палец
-          дотягивается не глядя, а в чаты чаще заходят по уведомлению. */}
+      {/* Порядок вкладок = порядок разделов на колесе, и колесо центрирует их
+          относительно верха. Точное «что окажется наверху» посчитать заранее
+          нельзя: склад и отзывы у половины людей в колесо не попадают вовсе
+          (см. AlfaTabBar), и число разделов у каждого своё. Важен сам порядок —
+          рабочие разделы идут раньше справочных, настройки замыкают. */}
       <Tab.Screen
         name="WarehouseTab"
         component={WarehouseStack}
@@ -581,6 +671,13 @@ function MainTabs() {
         name="ReviewsTab"
         component={ReviewsStack}
         options={{title: 'Отзывы'}}
+      />
+      {/* Онбординг: раздел закрыт правом adminAccess.onboarding, и у кого его
+          нет — кнопки в колесе тоже нет (см. onboardingStore и AlfaTabBar) */}
+      <Tab.Screen
+        name="OnboardingTab"
+        component={OnboardingStack}
+        options={{title: 'Онбординг'}}
       />
       <Tab.Screen
         name="CoursesTab"
