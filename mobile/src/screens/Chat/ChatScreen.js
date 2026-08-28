@@ -68,6 +68,7 @@ import {chat as chatApi} from '../../services/api';
 import SocketService from '../../services/socket';
 import {setActiveChat, clearActiveChat} from '../../services/activeChat';
 import VoiceRecorder from '../../services/voiceRecorder';
+import {ensure as ensurePermission} from '../../services/permissions';
 import VoiceMessage from '../../components/VoiceMessage';
 import VoiceMiniPlayer from '../../components/VoiceMiniPlayer';
 import MarqueeText from '../../components/MarqueeText';
@@ -182,6 +183,77 @@ function withSeparators(messages) {
   return result;
 }
 
+/**
+ * Ширина альбома вложений.
+ *
+ * Считается от экрана, а не задаётся числом: пузырёк и так не шире 78% (см.
+ * bubbleContent), и альбом обязан помещаться внутрь с полями пузырька. 0.62 —
+ * та же ширина, что была у одиночного снимка (0.55) с небольшим запасом: сетке
+ * пара лишних пунктов важнее, чем одиночной картинке.
+ */
+const ALBUM_WIDTH = Math.floor(SCREEN_WIDTH * 0.62);
+const ALBUM_GAP = 2;
+
+/**
+ * Сколько колонок у альбома.
+ *
+ * Двойки и четвёрки раскладываются на две колонки — так плитки крупнее и ровно
+ * заполняют строки. Всё остальное на три: у пяти и семи снимков ряд всё равно
+ * не сойдётся ровно, и выбор между неполной строкой из двух и неполной из трёх
+ * решается в пользу более мелких плиток — их помещается больше, а ради этого
+ * плитка и заводилась.
+ */
+function albumColumns(count) {
+  return count === 2 || count === 4 ? 2 : 3;
+}
+
+/**
+ * Плитка снимков и видео внутри одного сообщения.
+ *
+ * Квадратные ячейки, а не исходные пропорции: в сетке из разных по высоте
+ * плиток нет ни рядов, ни колонок — есть каша. Кадрирование здесь безобидно,
+ * плитка нужна чтобы выбрать снимок, а не рассмотреть его: для этого открывается
+ * просмотрщик, и в нём кадр целый.
+ */
+function Album({items, messageId, onMediaPress}) {
+  const c = useTheme();
+  const styles = useThemedStyles(makeStyles);
+
+  const columns = albumColumns(items.length);
+  const size = Math.floor((ALBUM_WIDTH - ALBUM_GAP * (columns - 1)) / columns);
+
+  return (
+    <View style={[styles.album, {width: ALBUM_WIDTH}]}>
+      {items.map(({att, idx}) => {
+        const url = fixUrl(att.url || att.path);
+        const mime = att.mimeType || '';
+        const name = att.name || att.filename;
+        const isVideo = mime.startsWith('video/');
+        // У видео своё превью есть не всегда — тогда плитка остаётся заглушкой
+        // со значком, а не пустым прямоугольником с неудавшейся загрузкой
+        const preview = fixUrl(att.thumbnailUrl || att.thumbnailPath) || (isVideo ? null : url);
+
+        return (
+          <TouchableOpacity
+            key={idx}
+            style={[styles.albumTile, {width: size, height: size}]}
+            activeOpacity={0.85}
+            onPress={() => onMediaPress({url, name, mimeType: mime, galleryKey: `${messageId}:${idx}`})}>
+            {preview
+              ? <Image source={{uri: preview}} style={styles.albumImage} />
+              : <View style={styles.albumStub}><Play size={20} color={c.textTertiary} /></View>}
+            {isVideo && preview && (
+              <View style={styles.albumPlay}>
+                <Play size={18} color="#FFFFFF" fill="#FFFFFF" />
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 // ── Attachment renderer ───────────────────────────────────────────────────────
 function Attachments({attachments, isOwn, onMediaPress, messageId, chatTitle, chatId}) {
   const c = useTheme();
@@ -204,9 +276,37 @@ function Attachments({attachments, isOwn, onMediaPress, messageId, chatTitle, ch
     );
   }
 
+  /**
+   * Снимки и видео, отправленные разом, показываем плиткой (ver. 7.58).
+   *
+   * Раньше каждое вложение рисовалось во всю ширину пузырька и вставало под
+   * предыдущим: десять фотографий давали экранов пять высоты, и переписка после
+   * одной такой отправки пролистывалась долго. Сообщение при этом всегда было
+   * одно — цепочки не было, была очень длинная картинка.
+   *
+   * Одиночный снимок остаётся как был: плитка нужна там, где надо охватить
+   * взглядом количество и выбрать, а один снимок хочется видеть целиком.
+   *
+   * Индекс сохраняем исходный: по нему просмотрщик находит снимок в галерее
+   * сообщения (galleryKey), и после отбора он обязан указывать на то же
+   * вложение, что и до него.
+   */
+  const indexed = attachments.map((att, idx) => ({att, idx}));
+  const isVisual = att => /^(image|video)\//.test(att.mimeType || '');
+  const visuals = indexed.filter(({att}) => isVisual(att));
+  const others = indexed.filter(({att}) => !isVisual(att));
+
   return (
     <View style={styles.attachmentsWrap}>
-      {attachments.map((att, idx) => {
+      {visuals.length > 1 && (
+        <Album
+          items={visuals}
+          messageId={messageId}
+          onMediaPress={onMediaPress}
+        />
+      )}
+
+      {(visuals.length > 1 ? others : indexed).map(({att, idx}) => {
         const url = fixUrl(att.url || att.path);
         const mime = att.mimeType || '';
         // filename — вложения заявок с сайта, отправленные до перехода на name
@@ -1103,32 +1203,12 @@ export default function ChatScreen({route, navigation}) {
   };
 
   // ── Голосовые сообщения ────────────────────────────────────────────────────
-  const askMicrophone = async () => {
-    const permission = await VoiceRecorder.checkPermission();
-    if (permission === 'granted') return true;
-
-    // Про настройки системы говорим, только когда путь туда действительно
-    // единственный: человек либо запретил навсегда, либо (на iOS) уже ответил
-    // «нет» в единственном диалоге, который система показывает один раз.
-    if (permission === 'blocked') {
-      Alert.alert(
-        'Нет доступа к микрофону',
-        'Разрешите приложению запись звука в настройках системы.',
-        [
-          {text: 'Отмена', style: 'cancel'},
-          {text: 'Открыть настройки', onPress: () => Linking.openSettings()},
-        ],
-      );
-    }
-    // 'denied' — человек только что отказал сам, и сказать ему об этом нечего
-    return false;
-  };
-
   const startVoiceRecording = async () => {
     // Разрешение спрашиваем ДО того, как показать полосу записи. Иначе на
-    // первом голосовом человек видел «Идёт запись…» под системным диалогом, а
+    // первом голосовом человек видел «Идёт запись…» под системным окном, а
     // после ответа полоса оставалась висеть при так и не начавшейся записи.
-    if (!(await askMicrophone())) return;
+    // Отказ и предложение уйти в настройки разбирает сам ensure().
+    if (!(await ensurePermission('microphone'))) return;
 
     // Обнуляем счётчик ДО старта. Раньше это стояло после await: пока
     // startRecorder разрешался, слушатель успевал прислать первые тики, и
@@ -1293,43 +1373,21 @@ export default function ChatScreen({route, navigation}) {
   }, [chatId]);
 
   // ── File/image picking ─────────────────────────────────────────────────────
-  const pickFromGallery = () => {
-    setShowAttachMenu(false);
-    launchImageLibrary({mediaType: 'mixed', selectionLimit: 10, includeBase64: false}, res => {
-      if (res.didCancel || res.errorCode) return;
-      const files = (res.assets || []).map(a => ({
-        uri: a.uri,
-        type: a.type || 'image/jpeg',
-        name: a.fileName || `photo_${Date.now()}.jpg`,
-        size: a.fileSize,
-      }));
-      setPendingFiles(prev => [...prev, ...files].slice(0, 10));
-    });
-  };
-
-  const pickFromCamera = () => {
-    setShowAttachMenu(false);
-    launchCamera({mediaType: 'photo', includeBase64: false}, res => {
-      if (res.didCancel || res.errorCode) return;
-      const a = res.assets?.[0];
-      if (!a) return;
-      setPendingFiles(prev =>
-        [...prev, {uri: a.uri, type: a.type || 'image/jpeg', name: a.fileName || `photo_${Date.now()}.jpg`, size: a.fileSize}].slice(0, 10),
-      );
-    });
-  };
-
-  // iOS показывает <Modal> отдельным view controller'ом, а системный выбор
-  // файлов умеет встать только поверх самого верхнего из них. Если позвать его
-  // сразу за setShowAttachMenu(false), меню ещё не ушло с экрана: iOS пытается
-  // показать выбор поверх исчезающего контроллера и молча ничего не делает —
-  // кнопка «Файл» выглядела нерабочей. Галерея и камера от этого не страдали
-  // только потому, что react-native-image-picker сам откладывает показ на
-  // следующий проход цикла событий.
+  // iOS показывает <Modal> отдельным view controller'ом, а системное окно умеет
+  // встать только поверх самого верхнего из них. Если позвать его сразу за
+  // setShowAttachMenu(false), меню ещё не ушло с экрана: iOS пытается показать
+  // окно поверх исчезающего контроллера и молча ничего не делает.
   //
-  // Поэтому действие запоминается и выполняется в onDismiss модалки. На Android
-  // меню — обычный диалог, поверх него активность открывается спокойно, и
-  // onDismiss там не вызывается вовсе, так что запускаем сразу.
+  // Сначала так вела себя только кнопка «Файл» — она просто выглядела
+  // нерабочей. Галерея и камера казались целыми лишь потому, что
+  // react-native-image-picker откладывает показ на следующий проход цикла
+  // событий, и одного такого прохода обычно хватало. Камере не хватило: ей,
+  // кроме своего окна, нужно ещё системное окно про доступ, и два контроллера
+  // поверх исчезающего третьего вешали экран намертво (ver. 7.58). Совпадение
+  // тиков — не гарантия, поэтому через onDismiss ходят теперь все трое.
+  //
+  // На Android меню — обычный диалог, поверх него активность открывается
+  // спокойно, и onDismiss там не вызывается вовсе, так что запускаем сразу.
   const afterAttachMenu = useRef(null);
 
   const runAfterAttachMenu = () => {
@@ -1343,6 +1401,55 @@ export default function ChatScreen({route, navigation}) {
     setShowAttachMenu(false);
     if (Platform.OS !== 'ios') runAfterAttachMenu();
   };
+
+  const addPicked = assets => {
+    const files = (assets || []).map(a => ({
+      uri: a.uri,
+      type: a.type || 'image/jpeg',
+      name: a.fileName || `photo_${Date.now()}.jpg`,
+      size: a.fileSize,
+    }));
+    // Больше десяти вложений в одно сообщение не берём: столько же принимает
+    // альбом в пузырьке, и сервер грузит их по одному (см. api.uploadFiles)
+    setPendingFiles(prev => [...prev, ...files].slice(0, 10));
+  };
+
+  const pickFromGallery = () => closeAttachMenuThen(() => {
+    launchImageLibrary({mediaType: 'mixed', selectionLimit: 10, includeBase64: false}, res => {
+      if (res.didCancel || res.errorCode) return;
+      addPicked(res.assets);
+    });
+  });
+
+  /**
+   * Снять фото на камеру.
+   *
+   * Разрешение спрашиваем сами и ДО запуска камеры. Раньше его показывала сама
+   * iOS, уже открыв видоискатель, — и окно про доступ поднималось третьим
+   * контроллером поверх закрывающегося меню вложений. Экран после этого
+   * замирал: снять было нельзя, ответить на вопрос про доступ тоже, а
+   * неотвеченный вопрос означал, что и при следующем запуске камера откроется
+   * на мгновение и закроется. Выбраться из этого без переустановки было нельзя
+   * — окно про доступ система показывает один раз.
+   *
+   * ensure() вдобавок предлагает уйти в настройки тем, кто уже успел попасть в
+   * это состояние: иначе кнопка «Камера» осталась бы у них нерабочей навсегда.
+   */
+  const pickFromCamera = () => closeAttachMenuThen(async () => {
+    if (!(await ensurePermission('camera'))) return;
+
+    launchCamera({mediaType: 'photo', includeBase64: false}, res => {
+      if (res.didCancel) return;
+      if (res.errorCode) {
+        // Молчать нельзя: «нажал на камеру — ничего не произошло» это ровно то,
+        // из-за чего беду выше и не удавалось опознать
+        console.warn('[Chat] Камера не открылась:', res.errorCode, res.errorMessage);
+        Alert.alert('Камера недоступна', res.errorMessage || 'Попробуйте ещё раз');
+        return;
+      }
+      addPicked(res.assets);
+    });
+  });
 
   const pickFile = () => closeAttachMenuThen(async () => {
     try {
@@ -2487,6 +2594,20 @@ const makeStyles = c => StyleSheet.create({
   uploadBarText: {fontSize: 13, fontFamily: font.medium, color: c.primary},
 
   attachmentsWrap: {marginBottom: 4},
+
+  // Альбом вложений (ver. 7.58). Обрезаем по общему скруглению: плитки внутри
+  // прямоугольные, и без overflow углы сетки торчали бы из пузырька
+  album: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: ALBUM_GAP,
+    borderRadius: 8, overflow: 'hidden', marginBottom: 4,
+  },
+  albumTile: {backgroundColor: c.bgTertiary},
+  albumImage: {width: '100%', height: '100%'},
+  albumStub: {flex: 1, alignItems: 'center', justifyContent: 'center'},
+  albumPlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+  },
   attachImage: {width: SCREEN_WIDTH * 0.55, height: SCREEN_WIDTH * 0.45, borderRadius: 8, marginBottom: 4},
   attachFile: {
     flexDirection: 'row', alignItems: 'center',

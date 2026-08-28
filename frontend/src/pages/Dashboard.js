@@ -36,6 +36,19 @@ const formatMemberCount = count => {
   return `${count} ${word}`;
 };
 
+/**
+ * Сколько колонок у альбома вложений.
+ *
+ * Двойки и четвёрки раскладываются на две колонки — так плитки крупнее и
+ * ровно заполняют строки. Всё остальное на три: у пяти и семи снимков ряд
+ * всё равно не сойдётся ровно, и выбор между «неполная строка из двух» и
+ * «неполная строка из трёх» решается в пользу более мелких плиток — их
+ * помещается больше, а ради чего плитка и заводилась.
+ */
+function albumColumns(count) {
+  return count === 2 || count === 4 ? 2 : 3;
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { socket, notifications, removeNotification, userStatuses, setMutedChatIds } = useSocket();
@@ -1955,75 +1968,125 @@ export default function Dashboard() {
         </div>
       );
     }
+    /**
+     * Снимки и видео, отправленные разом, показываем плиткой (ver. 7.58).
+     *
+     * Раньше каждое вложение рисовалось во всю ширину пузырька и вставало под
+     * предыдущим: десять фотографий давали три тысячи пикселей высоты, и
+     * переписка после одной такой отправки пролистывалась минуту. Сообщение при
+     * этом всегда было одно — цепочки не было, была очень длинная картинка.
+     *
+     * Одиночный снимок остаётся как был: плитка нужна там, где надо сравнить
+     * количество и выбрать, а один снимок хочется видеть целиком.
+     *
+     * Индекс сохраняем исходный: по нему открывается просмотрщик
+     * (openLightbox по ключу `${msgId}:${idx}`), и после фильтрации он обязан
+     * указывать на то же вложение, что и до неё.
+     */
+    const indexed = msgAttachments.map((att, idx) => ({ att, idx }));
+    const isVisual = (att) => att.mimeType?.startsWith('image/') || att.mimeType?.startsWith('video/');
+    const visuals = indexed.filter(({ att }) => isVisual(att));
+    const others = indexed.filter(({ att }) => !isVisual(att));
+    const asAlbum = visuals.length > 1;
+
+    const renderOne = (att, idx) => {
+      const url = fixUrl(att.url || att.path);
+      const thumbUrl = fixUrl(att.thumbnailUrl || att.thumbnailPath);
+      // filename — вложения заявок с сайта, отправленные до перехода на name
+      const name = att.name || att.filename;
+
+      if (att.mimeType?.startsWith('image/')) {
+        return (
+          <div key={idx} className="attachment-image" onClick={() => openLightbox(`${msgId}:${idx}`)}>
+            <img src={thumbUrl || url} alt={name} />
+          </div>
+        );
+      }
+          
+      if (att.mimeType?.startsWith('video/')) {
+        return (
+          <div 
+            key={idx} 
+            className={`attachment-video ${isOwn ? 'own' : ''}`}
+            onClick={() => openLightbox(`${msgId}:${idx}`)}
+          >
+            <div className="attachment-video-thumb">
+              <Film size={32} />
+              <div className="attachment-video-play">▶</div>
+            </div>
+            <div className="attachment-file-info">
+              <div className="attachment-file-name">{name}</div>
+              <div className="attachment-file-size">{formatFileSize(att.size)}</div>
+            </div>
+          </div>
+        );
+      }
+          
+      if (att.mimeType?.includes('pdf')) {
+        return (
+          <div 
+            key={idx} 
+            className={`attachment-file ${isOwn ? 'own' : ''}`}
+            onClick={() => openPdfPreview(url, name)}
+            style={{ cursor: 'pointer' }}
+          >
+            <div className="attachment-file-icon"><FileText size={20} /></div>
+            <div className="attachment-file-info">
+              <div className="attachment-file-name">{name}</div>
+              <div className="attachment-file-size">{formatFileSize(att.size)}</div>
+            </div>
+            <Eye size={18} />
+          </div>
+        );
+      }
+          
+      return (
+        <div 
+          key={idx} 
+          className={`attachment-file ${isOwn ? 'own' : ''}`}
+          onClick={(e) => downloadFile(e, url, name)}
+          style={{ cursor: 'pointer' }}
+        >
+          <div className="attachment-file-icon">{getFileIcon(att.mimeType)}</div>
+          <div className="attachment-file-info">
+            <div className="attachment-file-name">{name}</div>
+            <div className="attachment-file-size">{formatFileSize(att.size)}</div>
+          </div>
+          <Download size={18} />
+        </div>
+      );
+    };
+
     return (
       <div className="message-attachments">
-        {msgAttachments.map((att, idx) => {
-          const url = fixUrl(att.url || att.path);
-          const thumbUrl = fixUrl(att.thumbnailUrl || att.thumbnailPath);
-          // filename — вложения заявок с сайта, отправленные до перехода на name
-          const name = att.name || att.filename;
-
-          if (att.mimeType?.startsWith('image/')) {
-            return (
-              <div key={idx} className="attachment-image" onClick={() => openLightbox(`${msgId}:${idx}`)}>
-                <img src={thumbUrl || url} alt={name} />
-              </div>
-            );
-          }
-          
-          if (att.mimeType?.startsWith('video/')) {
-            return (
-              <div 
-                key={idx} 
-                className={`attachment-video ${isOwn ? 'own' : ''}`}
-                onClick={() => openLightbox(`${msgId}:${idx}`)}
-              >
-                <div className="attachment-video-thumb">
-                  <Film size={32} />
-                  <div className="attachment-video-play">▶</div>
+        {asAlbum && (
+          <div className={`message-album cols-${albumColumns(visuals.length)}`}>
+            {visuals.map(({ att, idx }) => {
+              const url = fixUrl(att.url || att.path);
+              const thumbUrl = fixUrl(att.thumbnailUrl || att.thumbnailPath);
+              const name = att.name || att.filename;
+              const isVideo = att.mimeType?.startsWith('video/');
+              const preview = thumbUrl || (isVideo ? null : url);
+              return (
+                <div
+                  key={idx}
+                  className="message-album-tile"
+                  onClick={() => openLightbox(`${msgId}:${idx}`)}
+                  title={name}
+                >
+                  {/* У видео превью есть не всегда — тогда плитка остаётся
+                      заглушкой со значком, а не битой картинкой */}
+                  {preview
+                    ? <img src={preview} alt={name} loading="lazy" />
+                    : <span className="message-album-stub"><Film size={22} /></span>}
+                  {isVideo && <span className="message-album-play">▶</span>}
                 </div>
-                <div className="attachment-file-info">
-                  <div className="attachment-file-name">{name}</div>
-                  <div className="attachment-file-size">{formatFileSize(att.size)}</div>
-                </div>
-              </div>
-            );
-          }
-          
-          if (att.mimeType?.includes('pdf')) {
-            return (
-              <div 
-                key={idx} 
-                className={`attachment-file ${isOwn ? 'own' : ''}`}
-                onClick={() => openPdfPreview(url, name)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="attachment-file-icon"><FileText size={20} /></div>
-                <div className="attachment-file-info">
-                  <div className="attachment-file-name">{name}</div>
-                  <div className="attachment-file-size">{formatFileSize(att.size)}</div>
-                </div>
-                <Eye size={18} />
-              </div>
-            );
-          }
-          
-          return (
-            <div 
-              key={idx} 
-              className={`attachment-file ${isOwn ? 'own' : ''}`}
-              onClick={(e) => downloadFile(e, url, name)}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="attachment-file-icon">{getFileIcon(att.mimeType)}</div>
-              <div className="attachment-file-info">
-                <div className="attachment-file-name">{name}</div>
-                <div className="attachment-file-size">{formatFileSize(att.size)}</div>
-              </div>
-              <Download size={18} />
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
+        {!asAlbum && visuals.map(({ att, idx }) => renderOne(att, idx))}
+        {others.map(({ att, idx }) => renderOne(att, idx))}
       </div>
     );
   };

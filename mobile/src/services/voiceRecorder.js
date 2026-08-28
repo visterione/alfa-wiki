@@ -1,12 +1,11 @@
-import {Platform, PermissionsAndroid} from 'react-native';
 import {
   AudioSourceAndroidType,
   OutputFormatAndroidType,
   AudioEncoderAndroidType,
 } from 'react-native-nitro-sound';
-import {Camera} from 'react-native-vision-camera';
 import Sound from './soundInstance';
 import VoicePlayer from './voicePlayer';
+import {ask as askPermission} from './permissions';
 
 /**
  * Запись голосовых сообщений.
@@ -81,69 +80,21 @@ const VoiceRecorder = {
   /**
    * Разрешение на микрофон — спрашивается до того, как трогать аудиосессию.
    *
-   * На iOS раньше здесь стоял безусловный 'granted': считалось, что системный
-   * диалог покажет сама библиотека при первой записи. Она и показывает, но
+   * На iOS раньше здесь стоял безусловный 'granted': считалось, что системное
+   * окно покажет сама библиотека при первой записи. Она и показывает, но
    * слишком поздно — в её startRecorder сначала идёт setActive(true) на
    * категории playAndRecord и только потом requestRecordPermission
    * (node_modules/react-native-nitro-sound/ios/Sound.swift). Пока разрешения
    * нет, активация сессии не проходит, до запроса дело не доходит вовсе, и
-   * первое нажатие на микрофон заканчивается ничем. Диалог человек видел
-   * только со второй попытки — то есть если догадался попробовать ещё раз.
+   * первое нажатие на микрофон заканчивалось ничем.
    *
-   * Спрашиваем через vision-camera: она уже есть в проекте ради сканера
-   * этикеток, а под капотом у неё AVCaptureDevice.requestAccess(for: .audio) —
-   * то же самое разрешение, что нужно записи, но запрашивается оно отдельно от
-   * аудиосессии и честно ждёт ответа человека.
-   *
-   * На Android остаётся PermissionsAndroid: только он отличает «отказался
-   * сейчас» от «запретил навсегда» (NEVER_ASK_AGAIN). Отдаём это различие
-   * наверх, чтобы экран мог предложить настройки, а не показывать бесполезное
-   * «разрешите доступ».
-   *
-   * Сначала check, и только потом request: если человек когда-то отказал
-   * навсегда, повторный request молча возвращает NEVER_ASK_AGAIN без диалога,
-   * и по одному его результату двух этих случаев не различить.
+   * Сам запрос живёт в services/permissions.js — там же, где запрос камеры,
+   * сломавшийся ровно тем же образом (ver. 7.58).
    *
    * @returns {Promise<'granted'|'denied'|'blocked'>}
    */
-  async checkPermission() {
-    if (Platform.OS !== 'android') {
-      try {
-        const status = Camera.getMicrophonePermissionStatus();
-        if (status === 'granted') return 'granted';
-        // На iOS диалог показывается один раз за установку: и отказ, и запрет
-        // родительским контролем дальше снимаются только в настройках системы
-        if (status === 'denied' || status === 'restricted') return 'blocked';
-        const asked = await Camera.requestMicrophonePermission();
-        return asked === 'granted' ? 'granted' : 'blocked';
-      } catch {
-        // Нативного модуля нет (или он не поднялся) — не повод запрещать
-        // запись: пусть библиотека спросит сама, как было раньше
-        return 'granted';
-      }
-    }
-
-    try {
-      const already = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      );
-      if (already) return 'granted';
-
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        {
-          title: 'Доступ к микрофону',
-          message: 'Нужен, чтобы записывать голосовые сообщения',
-          buttonPositive: 'Разрешить',
-          buttonNegative: 'Отмена',
-        },
-      );
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) return 'granted';
-      if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return 'blocked';
-      return 'denied';
-    } catch {
-      return 'denied';
-    }
+  checkPermission() {
+    return askPermission('microphone');
   },
 
   isRecording: () => recording,
