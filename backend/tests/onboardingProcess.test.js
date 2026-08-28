@@ -41,12 +41,12 @@ test('чек-лист включает выбор услуг врачом и н�
   assert.equal(proc.isReadyToLaunch(missingBadge), false);
 });
 
-// Пока кадры не приняли документы, человек в клинике не оформлен, и заводить
-// ему пользователя в «Реновации» рано: сразу за учёткой идут расписание и запись
-// пациентов. Поэтому кадры — не параллельная ветка, а ворота перед учёткой.
-test('учётка в МИС ждёт кадровую проверку', () => {
-  assert.deepEqual(proc.stepsAfter(null).map(s => s.key), ['hr_check']);
-  assert.deepEqual(proc.stepsAfter('hr_check').map(s => s.key), ['mis_account']);
+// Кадровая проверка ничего не ждёт и никого не задерживает: отказа на этом шаге
+// нет, есть отметка, и воротами перед учёткой она держала бы всю цепочку зря.
+// Обязательной её делает чек-лист, а не место в очереди.
+test('проверка кадров идёт параллельно учётке, но запуск без неё не разрешён', () => {
+  const start = proc.stepsAfter(null).map(s => s.key).sort();
+  assert.deepEqual(start, ['hr_check', 'mis_account']);
 
   const withoutHr = proc.checklistOf([])
     .map(i => ({ stepKey: i.key, completedAt: new Date() }))
@@ -54,25 +54,9 @@ test('учётка в МИС ждёт кадровую проверку', () => 
   assert.equal(proc.isReadyToLaunch(withoutHr), false, 'без кадров запуск не разрешён');
 });
 
-// Статус между кадрами и заведением учётки не меняется: обе точки живут внутри
-// «Согласован», и различает их только закрытая задача.
-test('согласованная заявка стоит то на кадрах, то на учётке', () => {
-  const app = { status: proc.STATUS.APPROVED };
-  const hrDone = [{ stepKey: 'hr_check', completedAt: new Date() }];
-
-  assert.equal(proc.stageOf(app, []).label, 'Проверка кадрами');
-  assert.equal(proc.stageOf(app, hrDone).label, 'Заведение в МИС');
-
-  const current = points => points.find(p => p.state === 'current')?.key;
-  assert.equal(current(proc.timeline(app, [])), 'hr');
-  assert.equal(current(proc.timeline(app, hrDone)), 'mis');
-  const misDone = [...hrDone, { stepKey: 'mis_account', completedAt: new Date() }];
-  assert.equal(current(proc.timeline({ status: proc.STATUS.MIS_CREATED }, misDone)), 'launch');
-});
-
-test('после учётки в МИС стартуют три внутренние ветки', () => {
+test('после учётки в МИС стартуют четыре внутренние ветки', () => {
   const next = proc.stepsAfter('mis_account').map(s => s.key).sort();
-  assert.deepEqual(next, ['badge', 'schedule', 'website']);
+  assert.deepEqual(next, ['badge', 'doctor_card', 'schedule', 'website']);
   // Ветка врача независима от учётки: у неё нет исполнителя внутри клиники,
   // поэтому в STEPS её нет и движок открывает её уже при согласовании.
   assert.equal(proc.DOCTOR_STEP, 'services_pick');
@@ -149,12 +133,36 @@ test('маркетолог по бейджу не видит паспортны�
   assert.equal(chief.email, 'i@example.com');
 });
 
-test('сканы документов доступны допуску и кадрам, остальным — нет', () => {
+test('сканы документов доступны допуску, кадрам и карточке врача, остальным — нет', () => {
   assert.equal(projection.canSeeDocuments('*'), true);
   // Кадры эти документы и проверяют: без сканов их шаг был бы галочкой вслепую.
   assert.equal(projection.canSeeDocuments('hr_check'), true);
+  // Карточка врача собирается из анкеты целиком — так решил заказчик.
+  assert.equal(projection.canSeeDocuments('doctor_card'), true);
   assert.equal(projection.canSeeDocuments('badge'), false);
   assert.equal(projection.canSeeDocuments('mis_account'), false);
+});
+
+// Полный доступ у шага, который не согласовывает допуск, — исключение, и оно
+// должно быть видно в тестах: расширить срез можно молча, сузить — уже нет.
+test('карточка врача получает анкету целиком, реклама — только публичную часть', () => {
+  const app = {
+    id: 'a', status: 'mis_created', medCenterId: 'mc', professions: [],
+    fullName: 'Иванов Иван', phone: '+79000000000', email: 'i@example.com',
+    form: { snils: '123-456', bio: 'текст для сайта', siteName: 'И. Иванов' },
+    consents: { pd: true }
+  };
+  const files = [{ kind: 'diploma' }, { kind: 'photo' }];
+
+  const card = projection.project(app, 'doctor_card', files);
+  assert.equal(card.form.snils, '123-456');
+  assert.equal(card.email, 'i@example.com');
+  assert.deepEqual(card.files.map(f => f.kind).sort(), ['diploma', 'photo']);
+
+  const ads = projection.project(app, 'website', files);
+  assert.equal(ads.form.bio, 'текст для сайта');
+  assert.equal('snils' in ads.form, false);
+  assert.deepEqual(ads.files.map(f => f.kind), ['photo']);
 });
 
 // Право видеть сканы — это ещё не сами сканы: срез отдавал только фото, и шаг

@@ -96,7 +96,7 @@ function viewKeyFor(acl, app) {
   if (mine.includes(assignments.CHIEF_STEP)) return '*';
   // Порядок важен: первый совпавший и определяет срез, поэтому идём от самого
   // широкого набора полей к самому узкому.
-  const order = ['hr_check', 'mis_account', 'website', 'schedule', 'services_mis', 'badge', 'callcenter'];
+  const order = ['doctor_card', 'hr_check', 'mis_account', 'website', 'schedule', 'services_mis', 'badge', 'callcenter'];
   for (const step of order) {
     if (mine.includes(step)) return step;
   }
