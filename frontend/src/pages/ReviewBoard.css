@@ -1,7 +1,10 @@
 .review-board-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 60px);
+  /* Обёртка контента больше не добавляет полей, поэтому вычитаем настоящую
+     высоту шапки, а не приблизительные 60 px: иначе доска на пиксели выше
+     экрана и внизу появляется вторая полоса прокрутки. */
+  height: calc(100vh - var(--header-height));
   padding: 1.5rem;
   overflow: hidden;
 }

@@ -43,14 +43,14 @@ export default function Courses() {
 
   if (loading) {
     return (
-      <div className="page-container">
+      <div className="page-container courses-page">
         <div className="loading-spinner" />
       </div>
     );
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container courses-page">
       <div className="page-header">
         <div>
           <h1>Курсы и обучение</h1>

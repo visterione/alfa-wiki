@@ -46,10 +46,21 @@
   min-width: 0;
 }
 
-/* Широкий контент (для админки, редактора) */
-.content-wrapper:has(.admin-page),
+/* Редактор страницы остаётся узким — ради этого лимит и ставили: набирать
+   текст в строке во весь монитор нечитаемо. */
 .content-wrapper:has(.page-editor) {
   max-width: 1400px;
+  padding: 24px 32px;
+}
+
+/* Админка — во всю ширину окна. Почти каждый её экран это таблица или дерево:
+   пользователи, роли, журнал, интеграции, парсер, проводник. Лимит в 1400 px
+   держал их в середине, и на 1920 по краям пропадало по 260 px, а таблица
+   пользователей в это время прокручивалась по горизонтали. Поля оставляем
+   здесь, у самих страниц своих нет. */
+.content-wrapper:has(.admin-page),
+.content-wrapper:has(.admin-container) {
+  max-width: 100%;
   padding: 24px 32px;
 }
 
@@ -64,17 +75,31 @@
 .content-wrapper:has(.wh-app),
 .content-wrapper:has(.tsk),
 .content-wrapper:has(.onb),
-.content-wrapper:has(.rb-app) {
+.content-wrapper:has(.rb-app),
+.content-wrapper:has(.reviews-boards-page),
+.content-wrapper:has(.review-board-page),
+.content-wrapper:has(.review-archive-page),
+.content-wrapper:has(.review-stats-page),
+.content-wrapper:has(.review-settings-page),
+.content-wrapper:has(.courses-page),
+.content-wrapper:has(.course-view-container),
+.content-wrapper:has(.favorites-page) {
   max-width: 100%;
   padding: 0;
 }
 
-/* Стандартный контент (для страниц wiki) */
+/* Стандартный контент (для страниц wiki).
+   Раньше страница занимала 80 % ширины и держалась по центру: предполагалось,
+   что вики — это текст, а длинная строка нечитаема. На практике страницы
+   давно наполнены таблицами, схемами и встроенными HTML-приложениями из
+   backend/bot, которым узкая колонка мешает, а по краям на широком мониторе
+   пропадало по 10 % экрана с каждой стороны. Теперь во всю ширину, поля
+   задаются только этим padding. */
 .content-wrapper:has(.page-view) {
   max-width: none;
-  width: 80%;
-  margin: 0 auto;
-  padding: 32px 0;
+  width: 100%;
+  margin: 0;
+  padding: 24px;
 }
 
 /* Редактор урока: высота ровно в экран, чтобы прокручивалось только полотно
