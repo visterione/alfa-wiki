@@ -798,6 +798,9 @@ export default function ChatScreen({route, navigation}) {
   // Pending attachments (before sending)
   const [pendingFiles, setPendingFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  // Сколько вложений уже ушло: при отправке десяти снимков молчащий крутящийся
+  // индикатор неотличим от зависшего приложения
+  const [uploadDone, setUploadDone] = useState(0);
 
   // UI modals
   const [contextMenu, setContextMenu] = useState(null); // {message}
@@ -1204,11 +1207,21 @@ export default function ChatScreen({route, navigation}) {
       let attachments = [];
       if (savedFiles.length > 0) {
         setUploading(true);
+        setUploadDone(0);
         try {
-          const res = await chatApi.uploadFiles(chatId, savedFiles);
+          const res = await chatApi.uploadFiles(chatId, savedFiles, done => setUploadDone(done));
           attachments = res.data;
-        } catch {
-          Alert.alert('Ошибка', 'Не удалось загрузить файлы');
+        } catch (err) {
+          // Говорим, на чём именно споткнулись: при отправке десяти снимков
+          // «не удалось загрузить файлы» не отвечает ни на «какой», ни на
+          // «надо ли выбирать всё заново»
+          const done = err?.uploadedCount || 0;
+          Alert.alert(
+            'Файлы не отправлены',
+            err?.failedFile
+              ? `Не удалось загрузить «${err.failedFile}»${done ? ` (до него ушло: ${done})` : ''}.\n\nПроверьте связь и попробуйте ещё раз — выбранное осталось на месте.`
+              : 'Проверьте связь и попробуйте ещё раз — выбранное осталось на месте.',
+          );
           setPendingFiles(savedFiles);
           setText(savedText);
           return;
@@ -1913,6 +1926,17 @@ export default function ChatScreen({route, navigation}) {
       )}
 
       {/* Pending attachments preview */}
+      {uploading && (
+        <View style={styles.uploadBar}>
+          <LogoLoader width={30} />
+          <Text style={styles.uploadBarText}>
+            {pendingFiles.length > 1 || uploadDone > 0
+              ? `Отправляем вложения… ${uploadDone + 1} из ${pendingFiles.length || uploadDone + 1}`
+              : 'Отправляем вложение…'}
+          </Text>
+        </View>
+      )}
+
       {pendingFiles.length > 0 && (
         <ScrollView horizontal style={styles.pendingRow} showsHorizontalScrollIndicator={false}>
           {pendingFiles.map((f, idx) => (
@@ -2453,6 +2477,15 @@ const makeStyles = c => StyleSheet.create({
   reactionChipText: {fontSize: 13, fontFamily: font.regular},
 
   // Attachments
+  // Полоса отправки вложений — над строкой ввода, там же, где баннеры ответа
+  // и правки: место, куда человек уже смотрит, когда нажал «отправить»
+  uploadBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 8,
+    backgroundColor: c.primaryLight,
+  },
+  uploadBarText: {fontSize: 13, fontFamily: font.medium, color: c.primary},
+
   attachmentsWrap: {marginBottom: 4},
   attachImage: {width: SCREEN_WIDTH * 0.55, height: SCREEN_WIDTH * 0.45, borderRadius: 8, marginBottom: 4},
   attachFile: {

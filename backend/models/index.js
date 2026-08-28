@@ -382,7 +382,22 @@ const Chat = sequelize.define('Chat', {
   avatar: { type: DataTypes.STRING(500) },
   lastMessage: { type: DataTypes.TEXT },
   lastMessageAt: { type: DataTypes.DATE },
-  createdBy: { type: DataTypes.UUID }
+  createdBy: { type: DataTypes.UUID },
+
+  // === Пригласительная ссылка (ver. 7.58) ===
+  //
+  // Выключена по умолчанию и включается админом группы вручную. Это не
+  // осторожность ради осторожности: ссылка даёт доступ к переписке всем, кто её
+  // получил, а в рабочих группах обсуждают пациентов. Пока признак не поднят,
+  // токен не действует, даже если он есть в строке.
+  //
+  // Токен один на группу и перевыпускается кнопкой: сложности телеграма
+  // (несколько ссылок со сроком, лимитом переходов и заявками на вступление)
+  // здесь не нужны — группы заводят под отдел, а не под набор посторонних.
+  inviteToken: { type: DataTypes.STRING(64), allowNull: true, unique: true },
+  inviteEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  inviteCreatedBy: { type: DataTypes.UUID, allowNull: true },
+  inviteCreatedAt: { type: DataTypes.DATE, allowNull: true }
 }, { tableName: 'chats', timestamps: true });
 
 // === CHAT MEMBER MODEL ===

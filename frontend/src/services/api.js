@@ -311,6 +311,15 @@ export const chat = {
   addMember: (chatId, userId) => api.post(`/chat/${chatId}/members`, { userId }),
   bulkAddMembers: (chatId, userIds) => api.post(`/chat/${chatId}/members/bulk`, { userIds }),
   removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
+
+  // Пригласительные ссылки (ver. 7.58). Выключены по умолчанию — см.
+  // backend/services/chatInvites.js
+  getInvite: (chatId) => api.get(`/chat/${chatId}/invite`),
+  enableInvite: (chatId) => api.post(`/chat/${chatId}/invite`),
+  rotateInvite: (chatId) => api.post(`/chat/${chatId}/invite/rotate`),
+  disableInvite: (chatId) => api.delete(`/chat/${chatId}/invite`),
+  previewInvite: (token) => api.get(`/chat/invite/${token}`),
+  joinByInvite: (token) => api.post(`/chat/invite/${token}/join`),
   leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
   deleteGroup: (chatId) => api.delete(`/chat/${chatId}`),
   deleteChat: (chatId) => api.delete(`/chat/${chatId}`),

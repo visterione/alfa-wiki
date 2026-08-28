@@ -1,0 +1,78 @@
+/* Вступление в группу по ссылке (ver. 7.58). */
+
+.chat-join {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+/* Карточка узкая и по центру: на экране одно решение — вступать или нет,
+   и растягивать его на всю ширину незачем */
+.chat-join-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 18px;
+  box-shadow: var(--shadow-md);
+  padding: 32px 28px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-join-avatar,
+.chat-join-icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-light);
+  color: var(--primary);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.chat-join-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-join-icon.is-dead {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.chat-join-card h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.chat-join-meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.chat-join-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.chat-join-card .btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 6px;
+}

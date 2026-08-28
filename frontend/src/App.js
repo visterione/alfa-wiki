@@ -14,6 +14,7 @@ const PageEditor = lazy(() => import('./pages/PageEditor'));
 const Profile = lazy(() => import('./pages/Profile'));
 const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Favorites = lazy(() => import('./pages/Favorites'));
+const ChatJoin = lazy(() => import('./pages/ChatJoin'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 // Публичные страницы анкеты: их открывает врач, у которого нет и не будет
 // аккаунта в портале.
@@ -147,6 +148,12 @@ function AppRoutes() {
         <Route path="whats-new" element={<WhatsNew />} />
         <Route path="users/:id" element={<UserProfile />} />
         <Route path="favorites" element={<Favorites />} />
+
+        {/* Вступление в группу по пригласительной ссылке (ver. 7.58).
+            Внутри ProtectedRoute намеренно: ссылка для сотрудников, и
+            незалогиненного отсюда уводит на вход, а после входа возвращает
+            обратно — этим же занимается сам ProtectedRoute. */}
+        <Route path="chat/join/:token" element={<ChatJoin />} />
         <Route path="calendar" element={<Calendar />} />
         {/* Складской учёт (ver. 6.68). Право warehouse — то же гранулярное, что у
             «Отзывов»: уровень внутри модуля считает бэкенд. */}

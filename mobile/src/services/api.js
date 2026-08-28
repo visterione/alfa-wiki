@@ -39,6 +39,12 @@ const api = axios.create({
   timeout: 30000,
 });
 
+// Отдельный таймаут для загрузки вложений: 30 секунд хватает обычному запросу,
+// но не файлу на несколько мегабайт с мобильного интернета. Порядок тот же, что
+// у proxy_read_timeout в nginx (docs/mobile-nginx.md) — раньше сдаваться, чем
+// это сделает сервер, смысла нет.
+const UPLOAD_TIMEOUT = 180000;
+
 // Attach JWT token on every request — use in-memory cache, read Keychain only once
 api.interceptors.request.use(async config => {
   if (!_token) {
@@ -99,6 +105,7 @@ export const media = {
     });
     return api.post('/media/upload', formData, {
       headers: {'Content-Type': 'multipart/form-data'},
+      timeout: UPLOAD_TIMEOUT,
     });
   },
 };
@@ -169,6 +176,15 @@ export const chat = {
     api.post(`/chat/${chatId}/members`, {userId}),
   removeMember: (chatId, userId) =>
     api.delete(`/chat/${chatId}/members/${userId}`),
+
+  // Пригласительные ссылки (ver. 7.58). Выключены по умолчанию и включаются
+  // админом группы — замысел описан в backend/services/chatInvites.js
+  getInvite: chatId => api.get(`/chat/${chatId}/invite`),
+  enableInvite: chatId => api.post(`/chat/${chatId}/invite`),
+  rotateInvite: chatId => api.post(`/chat/${chatId}/invite/rotate`),
+  disableInvite: chatId => api.delete(`/chat/${chatId}/invite`),
+  previewInvite: token => api.get(`/chat/invite/${token}`),
+  joinByInvite: token => api.post(`/chat/invite/${token}/join`),
   leave: chatId => api.delete(`/chat/${chatId}/leave`),
   forwardMessages: (targetChatId, messageIds) =>
     api.post('/chat/forward', {targetChatId, messageIds}),
@@ -187,6 +203,9 @@ export const chat = {
     if (duration) formData.append('duration', String(duration));
     return api.post('/chat/voice', formData, {
       headers: {'Content-Type': 'multipart/form-data'},
+      // Пятиминутная запись — несколько мегабайт, и на мобильном интернете она
+      // не укладывается в обычные 30 секунд
+      timeout: UPLOAD_TIMEOUT,
     });
   },
 
@@ -195,21 +214,61 @@ export const chat = {
   // DELETE с телом — axios требует передавать его через config.data
   unregisterDevice: token => api.delete('/chat/devices', {data: {token}}),
 
-  uploadFiles: async (_chatId, files) => {
-    const results = await Promise.all(
-      files.map(file => {
-        const formData = new FormData();
-        formData.append('file', {
-          uri: file.uri,
-          type: file.type || 'application/octet-stream',
-          name: file.name || 'file',
-        });
-        return api.post('/chat/upload', formData, {
+  /**
+   * Загрузка вложений — по одному файлу за раз (ver. 7.58).
+   *
+   * Раньше здесь стоял Promise.all, и все выбранные файлы уходили на сервер
+   * одновременно. На айфоне это гарантированно ломало отправку из галереи.
+   *
+   * NSURLSession держит к одному хосту не больше четырёх соединений, поэтому из
+   * десяти снимков четыре начинали грузиться, а шесть вставали в очередь. Но
+   * таймаут axios (30 секунд, см. создание клиента выше) отсчитывается с
+   * момента вызова, а не с момента, когда запрос действительно пошёл: пока
+   * первая четвёрка отдавала свои мегабайты, очередь успевала протухнуть, не
+   * отправив ни байта. Promise.all отклонялся целиком, экран показывал «не
+   * удалось загрузить файлы», а начатые загрузки продолжали занимать сеть — это
+   * и выглядело как зависание.
+   *
+   * Последовательно — значит каждый файл получает и свободное соединение, и
+   * собственный отсчёт таймаута. Медленнее по секундомеру, но доходит, а
+   * параллельная отправка своего выигрыша всё равно не давала: канал у телефона
+   * один, и четыре потока делили ту же полосу.
+   *
+   * Таймаут поднят до трёх минут: снимок с айфона — это 3–5 МБ, а в отделениях
+   * телефон нередко сидит на мобильном интернете. Три минуты на файл — тот же
+   * порядок, что proxy_read_timeout у nginx (docs/mobile-nginx.md).
+   */
+  uploadFiles: async (_chatId, files, onProgress) => {
+    const uploaded = [];
+
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', {
+        uri: file.uri,
+        type: file.type || 'application/octet-stream',
+        name: file.name || 'file',
+      });
+
+      try {
+        const {data} = await api.post('/chat/upload', formData, {
           headers: {'Content-Type': 'multipart/form-data'},
+          timeout: UPLOAD_TIMEOUT,
         });
-      }),
-    );
-    return {data: results.map(r => r.data)};
+        uploaded.push(data);
+        // Последовательная отправка позволяет наконец показать, сколько уже
+        // ушло: при параллельной осмысленного «сколько готово» не существует
+        onProgress?.(uploaded.length, files.length);
+      } catch (error) {
+        // Имя файла в ошибке — не украшение: при отправке десяти снимков
+        // «не удалось загрузить файлы» не говорит, какой именно не прошёл и
+        // надо ли повторять всё заново
+        error.uploadedCount = uploaded.length;
+        error.failedFile = file.name || 'файл';
+        throw error;
+      }
+    }
+
+    return {data: uploaded};
   },
 };
 

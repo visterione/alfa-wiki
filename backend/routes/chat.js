@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { authenticate } = require('../middleware/auth');
 const { sequelize, Chat, ChatMember, Message, MessageReaction, ChatFile, MessageDeletion, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
 const notificationService = require('../services/notificationService');
+const invites = require('../services/chatInvites');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
 const messageActions = require('../services/messageActions');
@@ -1918,6 +1919,116 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Add member error:', error);
     res.status(500).json({ error: 'Failed to add member' });
+  }
+});
+
+// ── Пригласительные ссылки (ver. 7.58) ─────────────────────────────────────
+//
+// Подробности замысла — в services/chatInvites.js. Здесь только маршруты.
+//
+// Маршруты по токену объявлены ДО маршрутов с :chatId. Пересечься они не могут
+// (у первых первый сегмент — литерал «invite»), но порядок объявления избавляет
+// следующего читателя от необходимости это проверять.
+
+/** Группа по токену: во что зовут. Доступно любому сотруднику портала. */
+router.get('/invite/:token', authenticate, async (req, res) => {
+  try {
+    const chat = await invites.findByToken(req.params.token);
+    // Выключенная и несуществующая ссылка отвечают одинаково: по разнице
+    // ответов можно было бы узнать о существовании группы, не входя в неё
+    if (!chat) return res.status(404).json({ error: 'Ссылка недействительна' });
+
+    res.json(await invites.preview(chat, req.user.id));
+  } catch (error) {
+    console.error('Invite preview error:', error);
+    res.status(500).json({ error: 'Не удалось открыть приглашение' });
+  }
+});
+
+/** Вступить по ссылке. */
+router.post('/invite/:token/join', authenticate, async (req, res) => {
+  try {
+    const chat = await invites.findByToken(req.params.token);
+    if (!chat) return res.status(404).json({ error: 'Ссылка недействительна' });
+
+    const result = await invites.join(chat, req.user);
+    if (!result.joined) return res.json({ chatId: result.chatId, joined: false });
+
+    // Уведомляем и группу (в ней появился человек), и самого вошедшего: у него
+    // список чатов обязан пополниться без перезагрузки
+    const io = req.app.get('io');
+    const members = await invites.memberIds(chat.id);
+    emitToMembers(io, members, 'new_message', {
+      chatId: chat.id,
+      message: {
+        chatId: chat.id,
+        senderId: req.user.id,
+        content: result.systemMessage,
+        type: 'system',
+        createdAt: new Date()
+      }
+    });
+    notifyBotMembership({ chatId: chat.id, userId: req.user.id, actorId: req.user.id, status: 'member' });
+
+    res.json({ chatId: chat.id, joined: true });
+  } catch (error) {
+    console.error('Invite join error:', error);
+    res.status(500).json({ error: 'Не удалось вступить в группу' });
+  }
+});
+
+/**
+ * Состояние ссылки. Только админам группы: обычный участник не должен даже
+ * знать адрес — иначе «выключено по умолчанию» ничего не стоит.
+ */
+async function loadGroupForInvite(req, res, next) {
+  try {
+    const chatRecord = await Chat.findByPk(req.params.chatId);
+    if (!chatRecord || chatRecord.type !== 'group') {
+      return res.status(404).json({ error: 'Группа не найдена' });
+    }
+    if (!(await invites.isGroupAdmin(chatRecord.id, req.user.id))) {
+      return res.status(403).json({ error: 'Ссылками управляют администраторы группы' });
+    }
+    req.groupChat = chatRecord;
+    next();
+  } catch (error) {
+    console.error('Invite access error:', error);
+    res.status(500).json({ error: 'Не удалось проверить права' });
+  }
+}
+
+router.get('/:chatId/invite', authenticate, loadGroupForInvite, (req, res) => {
+  res.json(invites.describe(req.groupChat));
+});
+
+/** Включить приём по ссылке (создав её при первом включении). */
+router.post('/:chatId/invite', authenticate, loadGroupForInvite, async (req, res) => {
+  try {
+    res.json(await invites.enable(req.groupChat, req.user.id));
+  } catch (error) {
+    console.error('Invite enable error:', error);
+    res.status(500).json({ error: 'Не удалось включить приглашение' });
+  }
+});
+
+/** Перевыпустить: старая ссылка перестаёт работать немедленно. */
+router.post('/:chatId/invite/rotate', authenticate, loadGroupForInvite, async (req, res) => {
+  try {
+    res.json(await invites.rotate(req.groupChat, req.user.id));
+  } catch (error) {
+    console.error('Invite rotate error:', error);
+    res.status(500).json({ error: 'Не удалось обновить ссылку' });
+  }
+});
+
+/** Выключить приём. Токен остаётся — чтобы включить обратно тем же адресом. */
+router.delete('/:chatId/invite', authenticate, loadGroupForInvite, async (req, res) => {
+  try {
+    res.json(await invites.disable(req.groupChat));
+  } catch (error) {
+    console.error('Invite disable error:', error);
+    res.status(500).json({ error: 'Не удалось выключить приглашение' });
   }
 });
 

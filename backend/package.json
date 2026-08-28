@@ -31,6 +31,8 @@
     "migrate:chat-files:check": "node scripts/migrateChatFileAccess.js --check",
     "migrate:chat-enhancements": "node scripts/migrateChatEnhancements.js",
     "migrate:chat-enhancements:check": "node scripts/migrateChatEnhancements.js --check",
+    "migrate:chat-invites": "node scripts/migrateChatInviteLinks.js",
+    "migrate:chat-invites:check": "node scripts/migrateChatInviteLinks.js --check",
     "migrate:inventory-rooms": "node scripts/migrateInventoryMultiRoom.js",
     "migrate:inventory-rooms:check": "node scripts/migrateInventoryMultiRoom.js --check",
     "migrate:role-badges": "node scripts/migrateRoleChatBadges.js",

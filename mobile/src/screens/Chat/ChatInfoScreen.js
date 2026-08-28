@@ -33,11 +33,13 @@ import {
   Mail,
   AtSign,
   Download,
+  Link2,
 } from 'lucide-react-native';
 import {chat as chatApi} from '../../services/api';
 import {useAuth} from '../../store/authStore';
 import Avatar from '../../components/Avatar';
 import LogoLoader from '../../components/LogoLoader';
+import InviteLinkModal from './InviteLinkModal';
 import {saveAttachment} from '../../services/downloads';
 import CONFIG from '../../config';
 import {radius, font} from '../../theme';
@@ -68,6 +70,12 @@ const MEDIA_TABS = [
   {key: 'voice', label: 'Голосовые'},
   {key: 'links', label: 'Ссылки'},
 ];
+
+// Участники — такая же вкладка, как медиа и ссылки, и стоит первой (ver. 7.56).
+// Раньше состав группы лежал отдельным списком НАД полосой вкладок, и до медиа
+// в группе на полсотни человек приходилось листать полэкрана. В вебе это давно
+// одна полоса (Dashboard.js, chat-info-tabs) — теперь и здесь.
+const MEMBERS_TAB = {key: 'members', label: 'Участники'};
 
 const MEDIA_LIMIT = 100;
 const MEDIA_COLUMNS = 3;
@@ -101,12 +109,16 @@ export default function ChatInfoScreen({route, navigation}) {
   const [renameValue, setRenameValue] = useState('');
 
   const [addOpen, setAddOpen] = useState(false);
+  // Пригласительная ссылка (ver. 7.58) — своя модалка, см. InviteLinkModal
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [users, setUsers] = useState([]);
   const [userSearch, setUserSearch] = useState('');
   const [selected, setSelected] = useState([]);
 
-  // Общие материалы переписки
-  const [mediaTab, setMediaTab] = useState('media');
+  // Что показано в нижней части экрана: 'members' | 'media' | 'files' |
+  // 'voice' | 'links'. Начальное значение выставляется, когда приедет чат:
+  // до этого неизвестно, группа это или личная переписка.
+  const [infoTab, setInfoTab] = useState(null);
   const [mediaItems, setMediaItems] = useState([]);
   const [mediaLoading, setMediaLoading] = useState(true);
 
@@ -156,17 +168,32 @@ export default function ChatInfoScreen({route, navigation}) {
     });
   }, [navigation, chat, isPrivate]);
 
-  // ── Общие материалы ────────────────────────────────────────────────────────
+  const tabs = useMemo(
+    () => (isPrivate ? MEDIA_TABS : [MEMBERS_TAB, ...MEDIA_TABS]),
+    [isPrivate],
+  );
+
+  // Первой открывается та вкладка, ради которой сюда чаще всего и заходят: в
+  // группе это состав, в личной переписке состава нет — значит медиа. То же
+  // правило в вебе (Dashboard.js, openChatInfo).
   useEffect(() => {
+    if (!chat || infoTab) return;
+    setInfoTab(isPrivate ? 'media' : 'members');
+  }, [chat, isPrivate, infoTab]);
+
+  // ── Общие материалы ────────────────────────────────────────────────────────
+  // Список участников уже приехал вместе с чатом — за ним в сеть не ходим
+  useEffect(() => {
+    if (!infoTab || infoTab === 'members') return undefined;
     let cancelled = false;
     setMediaLoading(true);
     setMediaItems([]);
-    chatApi.getChatMedia(chatId, mediaTab, {limit: MEDIA_LIMIT})
+    chatApi.getChatMedia(chatId, infoTab, {limit: MEDIA_LIMIT})
       .then(({data}) => { if (!cancelled) setMediaItems(Array.isArray(data) ? data : []); })
       .catch(() => { if (!cancelled) setMediaItems([]); })
       .finally(() => { if (!cancelled) setMediaLoading(false); });
     return () => { cancelled = true; };
-  }, [chatId, mediaTab]);
+  }, [chatId, infoTab]);
 
   // Возврат в переписку к нужному сообщению. Экран чата остался в стеке под
   // нами, поэтому не открываем второй, а возвращаемся в него с параметром:
@@ -335,6 +362,8 @@ export default function ChatInfoScreen({route, navigation}) {
   // Ширина ячейки сетки: три в ряд с полями по краям карточки
   const cellSize = Math.floor((width - 24 - 4) / MEDIA_COLUMNS);
 
+  const showMembers = infoTab === 'members' && !isPrivate;
+
   const header = (
     <View>
       {/* Шапка чата */}
@@ -383,68 +412,9 @@ export default function ChatInfoScreen({route, navigation}) {
         </View>
       )}
 
-      {/* Участники — только в группе */}
-      {!isPrivate && (
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Участники</Text>
-            {isAdmin && (
-              <TouchableOpacity style={styles.addBtn} onPress={openAddMembers}>
-                <UserPlus size={16} color={c.primary} />
-                <Text style={styles.addBtnText}>Добавить</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.card}>
-            {members.map((m, i) => {
-              const isMe = String(m.userId) === String(user?.id);
-              const memberIsCreator = String(chat.createdBy) === String(m.userId);
-              return (
-                <View key={m.userId}>
-                  {i > 0 && <View style={styles.divider} />}
-                  <View style={styles.memberRow}>
-                    <Avatar uri={m.user?.avatar} size={42} />
-                    <View style={styles.memberInfo}>
-                      <Text style={styles.memberName} numberOfLines={1}>
-                        {m.user?.displayName || m.user?.username}
-                        {isMe ? ' (вы)' : ''}
-                      </Text>
-                      <View style={styles.memberTags}>
-                        {memberIsCreator && <Text style={styles.tag}>Создатель</Text>}
-                        {!memberIsCreator && m.role === 'admin' && <Text style={styles.tag}>Админ</Text>}
-                        {m.isReadOnly && <Text style={[styles.tag, styles.tagMuted]}>Только чтение</Text>}
-                      </View>
-                    </View>
-
-                    {/* Управлять можно чужими записями и только админам.
-                        Создателя не трогаем: снять с него права некому. */}
-                    {isAdmin && !isMe && !memberIsCreator && (
-                      <View style={styles.memberActions}>
-                        <TouchableOpacity style={styles.iconBtn} onPress={() => toggleRole(m)}>
-                          {m.role === 'admin'
-                            ? <ShieldOff size={18} color={c.textSecondary} />
-                            : <Shield size={18} color={c.textSecondary} />}
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.iconBtn} onPress={() => toggleReadOnly(m)}>
-                          {m.isReadOnly
-                            ? <Volume2 size={18} color={c.textSecondary} />
-                            : <VolumeX size={18} color={c.textSecondary} />}
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.iconBtn} onPress={() => removeMember(m)}>
-                          <UserMinus size={18} color={c.error} />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      )}
-
-      {/* Опасные действия — в личной переписке ни выйти, ни удалить нельзя */}
+      {/* Опасные действия — в личной переписке ни выйти, ни удалить нельзя.
+          Стоят НАД полосой вкладок, а не под содержимым: под ним их пришлось бы
+          искать в конце сотни фотографий. */}
       {!isPrivate && (
         <View style={styles.section}>
           <View style={styles.card}>
@@ -465,18 +435,19 @@ export default function ChatInfoScreen({route, navigation}) {
         </View>
       )}
 
-      {/* Общие материалы */}
+      {/* Одна полоса на состав группы и на всю её галерею */}
       <View style={styles.section}>
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Общие материалы</Text>
-        </View>
-        <View style={styles.mediaTabs}>
-          {MEDIA_TABS.map(tab => (
+        <View style={styles.tabsBar}>
+          {tabs.map(tab => (
             <TouchableOpacity
               key={tab.key}
-              style={[styles.mediaTab, mediaTab === tab.key && styles.mediaTabActive]}
-              onPress={() => setMediaTab(tab.key)}>
-              <Text style={[styles.mediaTabText, mediaTab === tab.key && styles.mediaTabTextActive]}>
+              style={[styles.mediaTab, infoTab === tab.key && styles.mediaTabActive]}
+              onPress={() => setInfoTab(tab.key)}
+              accessibilityRole="tab"
+              accessibilityState={{selected: infoTab === tab.key}}>
+              <Text
+                style={[styles.mediaTabText, infoTab === tab.key && styles.mediaTabTextActive]}
+                numberOfLines={1}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -484,10 +455,26 @@ export default function ChatInfoScreen({route, navigation}) {
         </View>
       </View>
 
-      {mediaLoading && (
+      {/* Позвать человека в группу — только админам и только на вкладке
+          участников. Оба способа стоят рядом: они отвечают на один и тот же
+          вопрос, и выбирать между ними надо не уходя в другое место. */}
+      {infoTab === 'members' && isAdmin && (
+        <View style={styles.inviteRow}>
+          <TouchableOpacity style={styles.addBtn} onPress={() => setInviteOpen(true)}>
+            <Link2 size={16} color={c.primary} />
+            <Text style={styles.addBtnText}>Ссылка</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addBtn} onPress={openAddMembers}>
+            <UserPlus size={16} color={c.primary} />
+            <Text style={styles.addBtnText}>Добавить</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {infoTab && infoTab !== 'members' && mediaLoading && (
         <View style={styles.mediaPlaceholder}><LogoLoader width={80} /></View>
       )}
-      {!mediaLoading && mediaItems.length === 0 && (
+      {infoTab && infoTab !== 'members' && !mediaLoading && mediaItems.length === 0 && (
         <View style={styles.mediaPlaceholder}>
           <Text style={styles.emptyText}>Здесь пока пусто</Text>
         </View>
@@ -495,10 +482,63 @@ export default function ChatInfoScreen({route, navigation}) {
     </View>
   );
 
+  /** Участник группы — строка того же списка, что и материалы. */
+  const renderMember = ({item: m, index: i}) => {
+    const isMe = String(m.userId) === String(user?.id);
+    const memberIsCreator = String(chat.createdBy) === String(m.userId);
+    return (
+      <View
+        style={[
+          styles.memberCard,
+          // Скругление только у краёв списка: строки — отдельные элементы
+          // FlatList, и общей карточки, которую можно было бы обрезать разом,
+          // у них нет
+          i === 0 && styles.memberCardFirst,
+          i === members.length - 1 && styles.memberCardLast,
+        ]}>
+        {i > 0 && <View style={styles.divider} />}
+        <View style={styles.memberRow}>
+          <Avatar uri={m.user?.avatar} size={42} />
+          <View style={styles.memberInfo}>
+            <Text style={styles.memberName} numberOfLines={1}>
+              {m.user?.displayName || m.user?.username}
+              {isMe ? ' (вы)' : ''}
+            </Text>
+            <View style={styles.memberTags}>
+              {memberIsCreator && <Text style={styles.tag}>Создатель</Text>}
+              {!memberIsCreator && m.role === 'admin' && <Text style={styles.tag}>Админ</Text>}
+              {m.isReadOnly && <Text style={[styles.tag, styles.tagMuted]}>Только чтение</Text>}
+            </View>
+          </View>
+
+          {/* Управлять можно чужими записями и только админам.
+              Создателя не трогаем: снять с него права некому. */}
+          {isAdmin && !isMe && !memberIsCreator && (
+            <View style={styles.memberActions}>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => toggleRole(m)}>
+                {m.role === 'admin'
+                  ? <ShieldOff size={18} color={c.textSecondary} />
+                  : <Shield size={18} color={c.textSecondary} />}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => toggleReadOnly(m)}>
+                {m.isReadOnly
+                  ? <Volume2 size={18} color={c.textSecondary} />
+                  : <VolumeX size={18} color={c.textSecondary} />}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => removeMember(m)}>
+                <UserMinus size={18} color={c.error} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
   const renderMedia = ({item}) => {
     const att = item.attachment || {};
 
-    if (mediaTab === 'media') {
+    if (infoTab === 'media') {
       const uri = CONFIG.fileUrl(att.thumbnailUrl || att.thumbnailPath || att.url || att.path);
       return (
         <TouchableOpacity
@@ -511,7 +551,7 @@ export default function ChatInfoScreen({route, navigation}) {
       );
     }
 
-    const isLink = mediaTab === 'links';
+    const isLink = infoTab === 'links';
     const name = att.name || att.filename || 'Файл';
     const title = isLink
       ? (item.urls?.[0] || item.content)
@@ -540,7 +580,7 @@ export default function ChatInfoScreen({route, navigation}) {
 
         {/* Скачать можно прямо отсюда: ради одного файла возвращаться в
             переписку и искать там сообщение — лишний путь */}
-        {mediaTab === 'files' && (
+        {infoTab === 'files' && (
           <TouchableOpacity
             style={styles.mediaRowDownload}
             hitSlop={8}
@@ -558,16 +598,31 @@ export default function ChatInfoScreen({route, navigation}) {
 
   return (
     <View style={styles.container}>
+      {/* Один список на все вкладки: и участники, и материалы — его строки.
+          Держать под участников отдельный список нельзя — тогда шапка с
+          аватаром и полосой вкладок существовала бы в двух экземплярах и при
+          переключении вкладки перерисовывалась бы целиком. */}
       <FlatList
         // Смена числа колонок на лету не поддерживается — список пересоздаём
-        key={mediaTab === 'media' ? 'grid' : 'rows'}
-        numColumns={mediaTab === 'media' ? MEDIA_COLUMNS : 1}
-        data={mediaLoading ? [] : mediaItems}
-        keyExtractor={(item, idx) => `${item.messageId}:${idx}`}
-        renderItem={renderMedia}
+        key={infoTab === 'media' ? 'grid' : 'rows'}
+        numColumns={infoTab === 'media' ? MEDIA_COLUMNS : 1}
+        data={showMembers ? members : (mediaLoading ? [] : mediaItems)}
+        keyExtractor={(item, idx) => (showMembers
+          ? String(item.userId ?? idx)
+          : `${item.messageId}:${idx}`)}
+        renderItem={showMembers ? renderMember : renderMedia}
         ListHeaderComponent={header}
+        ListEmptyComponent={showMembers
+          ? <Text style={styles.emptyText}>В группе пока никого нет</Text>
+          : null}
         contentContainerStyle={styles.content}
-        columnWrapperStyle={mediaTab === 'media' ? styles.mediaGridRow : undefined}
+        columnWrapperStyle={infoTab === 'media' ? styles.mediaGridRow : undefined}
+      />
+
+      <InviteLinkModal
+        chatId={chatId}
+        visible={inviteOpen}
+        onClose={() => setInviteOpen(false)}
       />
 
       {/* Переименование */}
@@ -674,6 +729,15 @@ const makeStyles = c => StyleSheet.create({
   addBtnText: {fontSize: 14, fontFamily: font.medium, color: c.primary, marginLeft: 5},
 
   card: {backgroundColor: c.bgPrimary, marginHorizontal: 12, borderRadius: radius.lg, overflow: 'hidden'},
+  memberCard: {backgroundColor: c.bgPrimary, marginHorizontal: 12},
+  memberCardFirst: {borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg},
+  memberCardLast: {borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg},
+  // Ряд с «Добавить» стоит между полосой вкладок и списком, поэтому у него свои
+  // отступы: секционного заголовка над участниками больше нет
+  inviteRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
+    gap: 18, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10,
+  },
   divider: {height: 1, backgroundColor: c.borderLight, marginLeft: 66},
 
   factRow: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12},
@@ -698,10 +762,19 @@ const makeStyles = c => StyleSheet.create({
   dangerText: {fontSize: 15.5, fontFamily: font.regular, color: c.error, marginLeft: 13},
 
   // Общие материалы
-  mediaTabs: {flexDirection: 'row', marginHorizontal: 12, backgroundColor: c.bgPrimary, borderRadius: radius.lg, padding: 4},
-  mediaTab: {flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: radius.md},
+  // Пять вкладок в группе против четырёх в личной переписке: подписи ужимаются
+  // сами (flex: 1 + numberOfLines), поэтому горизонтальной прокрутки полосе
+  // не нужно — «Голосовые» остаётся читаемым и на 360pt
+  tabsBar: {
+    flexDirection: 'row',
+    marginHorizontal: 12,
+    backgroundColor: c.bgPrimary,
+    borderRadius: radius.lg,
+    padding: 4,
+  },
+  mediaTab: {flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2, borderRadius: radius.md},
   mediaTabActive: {backgroundColor: c.primaryLight},
-  mediaTabText: {fontSize: 13, fontFamily: font.medium, color: c.textSecondary},
+  mediaTabText: {fontSize: 12.5, fontFamily: font.medium, color: c.textSecondary},
   mediaTabTextActive: {color: c.primary},
   mediaPlaceholder: {alignItems: 'center', justifyContent: 'center', paddingVertical: 34},
   mediaGridRow: {paddingHorizontal: 12, gap: 2},

@@ -11,6 +11,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { chat, users as usersApi, media, BASE_URL } from '../services/api';
+import ChatInviteModal from './ChatInviteModal';
 import { format, isToday, isYesterday, isThisYear } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -66,6 +67,8 @@ export default function Dashboard() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
+  // Пригласительная ссылка группы (ver. 7.58) — своя модалка, см. ChatInviteModal
+  const [showInviteLink, setShowInviteLink] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showEmailCompose, setShowEmailCompose] = useState(false);
   // Мобильное меню действий (заменяет chat-sidebar-header на телефонах)
@@ -114,6 +117,17 @@ export default function Dashboard() {
   const [quickAddRoleFilter, setQuickAddRoleFilter] = useState('');
   const [quickAddMedCenterFilter, setQuickAddMedCenterFilter] = useState('');
   const [showPollEditor, setShowPollEditor] = useState(false);
+  /**
+   * Меню под скрепкой (ver. 7.58).
+   *
+   * Опрос переехал сюда с отдельной кнопки. Он нужен раз в месяц, а место в
+   * строке ввода занимал постоянно — и только в группах, из-за чего панель у
+   * группы и у личной переписки была разной ширины. Заодно так же устроена
+   * мобилка: там скрепка давно открывает список «Галерея / Камера / Файл /
+   * Опрос», и два клиента перестали расходиться в том, где искать опрос.
+   */
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const attachMenuRef = useRef(null);
   const [pollDraft, setPollDraft] = useState({ question: '', options: ['', ''], multipleChoice: false, anonymous: true });
 
   // В поле ввода что-то выделено — показываем панель форматирования
@@ -140,6 +154,19 @@ export default function Dashboard() {
   const [infoTab, setInfoTab] = useState('members');
   const [mediaItems, setMediaItems] = useState([]);
   const [mediaLoading, setMediaLoading] = useState(false);
+
+  /**
+   * Дата, висящая над лентой во время прокрутки (ver. 7.58, как в мобилке).
+   *
+   * Разделители отвечают на вопрос «где кончился день», но пока пролистываешь
+   * месяц переписки, ближайший из них давно уехал за верхний край, и понять,
+   * какой день перед глазами, нельзя. Поэтому дата текущего дня дублируется
+   * капсулой поверх ленты — и уходит через полторы секунды после того, как
+   * прокрутка остановилась, чтобы не закрывать собой сообщения при чтении.
+   */
+  const [floatingDate, setFloatingDate] = useState('');
+  const [floatingDateOn, setFloatingDateOn] = useState(false);
+  const floatingDateTimer = useRef(null);
   const [hasOlderMessages, setHasOlderMessages] = useState(true);
   const activeChatRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -274,9 +301,63 @@ export default function Dashboard() {
     }
   }, [activeChat, messages, loadingOlder, hasOlderMessages]);
 
+  /**
+   * Какой день сейчас вверху ленты.
+   *
+   * Считаем по самим разделителям, а не по сообщениям: у разделителя дата уже
+   * посчитана и подписана (data-date), а обходить сообщения пришлось бы каждое
+   * и заново приводить их createdAt к дню. Разделителей на экране единицы, и
+   * цикл по ним дешевле любого другого способа.
+   *
+   * Берём последний разделитель, ушедший за верхний край: он и открывает тот
+   * день, что виден сейчас. Если ни один ещё не ушёл — значит виден самый
+   * первый день переписки.
+   */
+  // Переключили чат — меню закрываем: оно относилось к прошлой переписке,
+  // а в личной его и вовсе не рисуют
+  useEffect(() => { setAttachMenuOpen(false); }, [activeChat?.id]);
+
+  // Меню закрывается кликом мимо и клавишей Escape — как любое всплывающее
+  // окно в портале. Без этого оно оставалось висеть над строкой ввода.
+  useEffect(() => {
+    if (!attachMenuOpen) return undefined;
+    const onDocumentClick = (e) => {
+      if (!attachMenuRef.current?.contains(e.target)) setAttachMenuOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setAttachMenuOpen(false); };
+    document.addEventListener('mousedown', onDocumentClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocumentClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [attachMenuOpen]);
+
+  const updateFloatingDate = () => {
+    const root = messagesScrollRef.current;
+    if (!root) return;
+    const separators = root.querySelectorAll('.date-separator');
+    if (!separators.length) return;
+
+    const edge = root.getBoundingClientRect().top + 12;
+    let current = separators[0];
+    for (const separator of separators) {
+      if (separator.getBoundingClientRect().top > edge) break;
+      current = separator;
+    }
+    setFloatingDate(current.dataset.date || '');
+  };
+
   const handleMessagesScroll = (e) => {
     if (e.target.scrollTop < 120) loadOlderMessages();
+
+    updateFloatingDate();
+    setFloatingDateOn(true);
+    clearTimeout(floatingDateTimer.current);
+    floatingDateTimer.current = setTimeout(() => setFloatingDateOn(false), 1500);
   };
+
+  useEffect(() => () => clearTimeout(floatingDateTimer.current), []);
 
   const MEDIA_TABS = [
     { key: 'media', label: 'Медиа' },
@@ -2092,9 +2173,11 @@ export default function Dashboard() {
                     }
                   </div>
                 </div>
-                <button className="btn-icon-chat" title="Медиа, файлы и ссылки" onClick={() => openChatInfo('media')}>
-                  <Image size={20} />
-                </button>
+                {/* Кнопки «Медиа» здесь больше нет (ver. 7.58): в панель ведёт
+                    сама шапка, а открывается панель на той вкладке, ради которой
+                    в неё чаще всего и заходят — в группе на участниках, в личной
+                    переписке на медиа (openChatInfo без аргумента). Отдельная
+                    кнопка вела ровно туда же, только другой дверью. */}
                 {activeChat.type === 'group' && <button className="btn-icon-chat" title="Информация о группе" onClick={() => openChatInfo('members')}><MoreVertical size={20} /></button>}
               </div>
               {/* Шапка закреплённых. Показываем одно сообщение из списка —
@@ -2146,6 +2229,12 @@ export default function Dashboard() {
                 </div>
               )}
               <div className="chat-messages" ref={messagesScrollRef} onScroll={handleMessagesScroll}>
+                {/* Капсула прилипает к верху ленты и не занимает места в
+                    потоке (height: 0), поэтому сообщения под ней не сдвигаются.
+                    Касания не перехватывает: под ней живая переписка. */}
+                <div className="chat-date-float" aria-hidden="true">
+                  <span className={floatingDateOn ? 'is-on' : ''}>{floatingDate}</span>
+                </div>
                 {loadingOlder && <div className="chat-messages-older"><div className="loading-spinner" /></div>}
                 {messages.length > 0 ? messages.map((msg, idx) => {
                   const isOwn = msg.senderId === user.id;
@@ -2158,7 +2247,9 @@ export default function Dashboard() {
                   return (
                     <React.Fragment key={msg.id}>
                       {showDateSeparator && (
-                        <div className="date-separator">
+                        // data-date читает плавающая капсула: дата тут уже
+                        // посчитана, и считать её второй раз незачем
+                        <div className="date-separator" data-date={formatDateSeparator(new Date(msg.createdAt))}>
                           <span>{formatDateSeparator(new Date(msg.createdAt))}</span>
                         </div>
                       )}
@@ -2333,12 +2424,34 @@ export default function Dashboard() {
                   ) : (
                     <>
                       {!editingMessage && (
-                        <>
-                          <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
+                        <div className="chat-attach" ref={attachMenuRef}>
+                          {/* В личной переписке прикреплять нечего, кроме файла,
+                              и меню из одного пункта было бы лишним нажатием —
+                              там скрепка сразу открывает выбор файла. */}
+                          <button
+                            type="button"
+                            className="btn-icon-chat"
+                            onClick={() => {
+                              if (activeChat.type === 'group') setAttachMenuOpen(open => !open);
+                              else fileInputRef.current?.click();
+                            }}
+                            disabled={uploading}
+                            title={activeChat.type === 'group' ? 'Прикрепить' : 'Прикрепить файл'}
+                          >
                             {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
                           </button>
-                          {activeChat.type === 'group' && <button type="button" className="btn-icon-chat" onClick={() => setShowPollEditor(true)} title="Создать опрос"><BarChart3 size={20} /></button>}
-                        </>
+
+                          {attachMenuOpen && activeChat.type === 'group' && (
+                            <div className="chat-attach-menu" role="menu">
+                              <button type="button" role="menuitem" onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}>
+                                <Paperclip size={18} /> Файл
+                              </button>
+                              <button type="button" role="menuitem" onClick={() => { setAttachMenuOpen(false); setShowPollEditor(true); }}>
+                                <BarChart3 size={18} /> Опрос
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                       <div className="chat-input-wrapper">
                         {showCommandMenu && (
@@ -2514,7 +2627,23 @@ export default function Dashboard() {
               <div className="chat-info-tab-content">
                 {infoTab === 'members' && activeChat.type === 'group' && (
                   <div className="chat-info-section">
-                    <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupAdmin && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); loadUsers(); loadBots(); }}><UserPlus size={16} /> Добавить</button>}</div>
+                    <div className="chat-info-section-header">
+                      <span>Участники ({activeChat.members?.length || 0})</span>
+                      {isGroupAdmin && (
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          {/* Ссылка стоит рядом с «Добавить», а не в общих настройках
+                              группы: оба ответа на один вопрос «как сюда позвать
+                              человека», и выбирать между ними надо не переходя
+                              в другое место */}
+                          <button className="btn btn-sm btn-ghost" onClick={() => setShowInviteLink(true)}>
+                            <Link2 size={16} /> Ссылка
+                          </button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); loadUsers(); loadBots(); }}>
+                            <UserPlus size={16} /> Добавить
+                          </button>
+                        </span>
+                      )}
+                    </div>
                     <div className="chat-members-list">
                       {activeChat.members?.map(m => {
                         const isCreatorMember = m.userId === activeChat.createdBy;
@@ -2863,6 +2992,10 @@ export default function Dashboard() {
             <div className="modal-footer"><button className="btn btn-ghost" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
           </div>
         </div>
+      )}
+
+      {showInviteLink && activeChat && (
+        <ChatInviteModal chatId={activeChat.id} onClose={() => setShowInviteLink(false)} />
       )}
 
       {showAddMember && (

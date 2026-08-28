@@ -924,6 +924,58 @@
   flex-shrink: 0;
 }
 
+/* ========== МЕНЮ ПОД СКРЕПКОЙ (ver. 7.58) ==========
+   Опрос переехал сюда с отдельной кнопки: он нужен раз в месяц, а место в
+   строке ввода занимал всегда — и только в группах, из-за чего панель у группы
+   и у личной переписки была разной ширины. */
+.chat-attach {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+/* Раскрывается вверх: строка ввода прижата к низу экрана, и вниз меню было бы
+   некуда. Прижато к левому краю скрепки — оттуда его и открыли. */
+.chat-attach-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 168px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  padding: 6px;
+  z-index: 20;
+  animation: fadeIn 0.15s ease;
+}
+
+.chat-attach-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.chat-attach-menu button:hover {
+  background: var(--bg-secondary);
+}
+
+.chat-attach-menu button svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 .chat-input-wrapper {
   position: relative;
   flex: 1;
@@ -1480,36 +1532,67 @@
   margin: 0;
 }
 
-/* ========== DATE SEPARATOR ========== */
+/* ========== DATE SEPARATOR ==========
+   Оформление приведено к мобильному (ver. 7.58): тёмная полупрозрачная капсула
+   вместо светлой плашки, и без линии на всю ширину.
+
+   Линии здесь не просто «не нравились»: разделитель дня — это подпись, а не
+   граница раздела. Черта во всю ширину ленты делит переписку сильнее, чем
+   отличается вчера от сегодня, и глаз спотыкается о неё чаще, чем читает саму
+   дату. Полупрозрачный тёмный фон вдобавок одинаково работает и на светлой, и
+   на тёмной теме — он не красит подложку, а притемняет её. */
 .date-separator {
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 16px 0;
-  position: relative;
 }
 
-.date-separator span {
-  padding: 6px 16px;
-  background: var(--bg-tertiary);
+.date-separator span,
+.chat-date-float span {
+  padding: 5px 13px;
+  background: rgba(0, 0, 0, 0.30);
   border-radius: 100px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: #FFFFFF;
   text-transform: capitalize;
-  box-shadow: var(--shadow-sm);
-  position: relative;
-  z-index: 1;
+  white-space: nowrap;
 }
 
-.date-separator::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--border-light);
-  opacity: 0.5;
+/* ========== ПЛАВАЮЩАЯ ДАТА ==========
+   Та же капсула, но прилипшая к верху ленты во время прокрутки.
+
+   sticky, а не absolute: у ленты нет обёртки с position: relative, а добавлять
+   её пришлось бы вокруг прокручиваемого блока — то есть трогать раскладку всего
+   чата ради одной надписи. height: 0 убирает капсулу из потока, поэтому первое
+   сообщение не сдвигается вниз на её высоту. */
+.chat-date-float {
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.chat-date-float span {
+  opacity: 0;
+  /* Появление быстрое, уход медленный: капсула должна успеть за пальцем,
+     но не мигать перед глазами, когда прокрутка остановилась */
+  transition: opacity 260ms ease;
+}
+
+.chat-date-float span.is-on {
+  opacity: 1;
+  transition-duration: 140ms;
+}
+
+/* Пустую капсулу (до первой прокрутки дата ещё не посчитана) не рисуем вовсе —
+   иначе поверх ленты висел бы прозрачный прямоугольник */
+.chat-date-float span:empty {
+  display: none;
 }
 
 /* ========== LIGHTBOX (ИСПРАВЛЕНО) ========== */
