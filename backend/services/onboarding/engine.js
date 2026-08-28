@@ -154,8 +154,13 @@ async function submit(app) {
 }
 
 /**
- * Согласование запускает две независимые ветки: создание учётки в МИС и выбор
- * услуг врачом. Для показа каталога doctor_id не нужен.
+ * Согласование запускает кадровую проверку и выбор услуг врачом. Учётка в МИС
+ * ждёт кадры, а каталог услуг — нет: для его показа doctor_id не нужен, и врач
+ * спокойно отмечает услуги, пока кадры смотрят документы.
+ *
+ * Стартовые шаги перебираются по after: null, а не перечислены здесь поимённо:
+ * список стартующих от согласования задан в process.js, и второе его место в
+ * коде разошлось бы с первым на следующем добавленном шаге.
  */
 async function approve(app, user) {
   await app.update({
@@ -166,7 +171,9 @@ async function approve(app, user) {
     revisionFields: []
   });
   await log(app.id, 'approved', {}, user.id);
-  await openTask(app, 'mis_account');
+  for (const step of proc.stepsAfter(null)) {
+    await openTask(app, step.key);
+  }
   await openDoctorServicesTask(app);
   return app;
 }

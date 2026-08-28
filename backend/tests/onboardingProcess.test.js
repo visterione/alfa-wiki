@@ -41,6 +41,35 @@ test('чек-лист включает выбор услуг врачом и н�
   assert.equal(proc.isReadyToLaunch(missingBadge), false);
 });
 
+// Пока кадры не приняли документы, человек в клинике не оформлен, и заводить
+// ему пользователя в «Реновации» рано: сразу за учёткой идут расписание и запись
+// пациентов. Поэтому кадры — не параллельная ветка, а ворота перед учёткой.
+test('учётка в МИС ждёт кадровую проверку', () => {
+  assert.deepEqual(proc.stepsAfter(null).map(s => s.key), ['hr_check']);
+  assert.deepEqual(proc.stepsAfter('hr_check').map(s => s.key), ['mis_account']);
+
+  const withoutHr = proc.checklistOf([])
+    .map(i => ({ stepKey: i.key, completedAt: new Date() }))
+    .filter(t => t.stepKey !== 'hr_check');
+  assert.equal(proc.isReadyToLaunch(withoutHr), false, 'без кадров запуск не разрешён');
+});
+
+// Статус между кадрами и заведением учётки не меняется: обе точки живут внутри
+// «Согласован», и различает их только закрытая задача.
+test('согласованная заявка стоит то на кадрах, то на учётке', () => {
+  const app = { status: proc.STATUS.APPROVED };
+  const hrDone = [{ stepKey: 'hr_check', completedAt: new Date() }];
+
+  assert.equal(proc.stageOf(app, []).label, 'Проверка кадрами');
+  assert.equal(proc.stageOf(app, hrDone).label, 'Заведение в МИС');
+
+  const current = points => points.find(p => p.state === 'current')?.key;
+  assert.equal(current(proc.timeline(app, [])), 'hr');
+  assert.equal(current(proc.timeline(app, hrDone)), 'mis');
+  const misDone = [...hrDone, { stepKey: 'mis_account', completedAt: new Date() }];
+  assert.equal(current(proc.timeline({ status: proc.STATUS.MIS_CREATED }, misDone)), 'launch');
+});
+
 test('после учётки в МИС стартуют три внутренние ветки', () => {
   const next = proc.stepsAfter('mis_account').map(s => s.key).sort();
   assert.deepEqual(next, ['badge', 'schedule', 'website']);
@@ -120,10 +149,31 @@ test('маркетолог по бейджу не видит паспортны�
   assert.equal(chief.email, 'i@example.com');
 });
 
-test('сканы документов доступны только тому, кто согласовывает допуск', () => {
+test('сканы документов доступны допуску и кадрам, остальным — нет', () => {
   assert.equal(projection.canSeeDocuments('*'), true);
+  // Кадры эти документы и проверяют: без сканов их шаг был бы галочкой вслепую.
+  assert.equal(projection.canSeeDocuments('hr_check'), true);
   assert.equal(projection.canSeeDocuments('badge'), false);
   assert.equal(projection.canSeeDocuments('mis_account'), false);
+});
+
+// Право видеть сканы — это ещё не сами сканы: срез отдавал только фото, и шаг
+// кадров получил бы пустую вкладку файлов при разрешении их смотреть.
+test('в срез кадров попадают сканы, а публичные тексты — нет', () => {
+  const app = {
+    id: 'a', status: 'approved', medCenterId: 'mc', professions: [],
+    fullName: 'Иванов Иван', phone: '+79000000000', email: 'i@example.com',
+    form: { snils: '123-456', bio: 'текст для сайта', badgeName: 'И. И. Иванов' }
+  };
+  const files = [{ kind: 'diploma' }, { kind: 'certificate' }, { kind: 'photo' }];
+
+  const hr = projection.project(app, 'hr_check', files);
+  assert.equal(hr.form.snils, '123-456');
+  assert.equal('bio' in hr.form, false);
+  assert.deepEqual(hr.files.map(f => f.kind).sort(), ['certificate', 'diploma']);
+
+  // Маркетологу по бейджу — по-прежнему только фото.
+  assert.deepEqual(projection.project(app, 'badge', files).files.map(f => f.kind), ['photo']);
 });
 
 // Дни приёма и время перестали быть свободным текстом: расписание по ним строит

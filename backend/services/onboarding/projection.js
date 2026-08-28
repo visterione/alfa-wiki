@@ -41,6 +41,16 @@ const VIEWS = {
   // усечённому набору нельзя.
   [assignments.CHIEF_STEP]: '*',
 
+  // Отдел кадров сверяет человека и его документы: анкетные данные, образование,
+  // квалификацию и сертификаты. Публичная часть (био, тексты и ссылки для сайта)
+  // к кадровому оформлению отношения не имеет и сюда не входит.
+  hr_check: [
+    'fullName', 'birthDate', 'phone', 'startDate', 'professions',
+    'experienceTotal', 'experienceSpecialty',
+    'education', 'qualification', 'certificates',
+    'snils', 'inn'
+  ],
+
   // Админу МИС нужны данные для учётной записи. Публичная часть (био, ссылки,
   // тексты для сайта) к созданию пользователя отношения не имеет.
   mis_account: [
@@ -77,10 +87,12 @@ const VIEWS = {
   [assignments.ESCALATION_STEP]: ['fullName', 'professions']
 };
 
-// Сканы документов — отдельная категория: их видит только главврач, который
-// согласовывает допуск. Фото врача в этот список не входит, оно нужно обоим
-// маркетологам.
+// Сканы документов — отдельная категория: их видит главврач, который
+// согласовывает допуск, и отдел кадров, который эти документы и проверяет —
+// без сканов его шаг превратился бы в галочку вслепую. Фото врача в этот
+// список не входит, оно нужно обоим маркетологам.
 const DOC_KINDS_FOR_CHIEF = ['diploma', 'certificate'];
+const VIEWS_WITH_DOCUMENTS = ['hr_check'];
 
 /**
  * @param {Object} app        Заявка (модель)
@@ -130,12 +142,18 @@ function project(app, viewKey, files = []) {
   if (!keys.has('fullName')) delete base.fullName;
   if (!keys.has('professions')) base.professions = [];
 
+  // Фото отдаётся тем, у кого оно есть в списке полей; сканы — тем, кому шаг
+  // разрешает документы. Раньше здесь хватало условия про фото: кроме главврача
+  // (он идёт веткой выше, целиком) документы не видел никто.
+  const withDocuments = VIEWS_WITH_DOCUMENTS.includes(viewKey);
+
   return {
     ...base,
     ...(keys.has('phone') ? { phone: app.phone } : {}),
     form: orderFields(slice),
     files: files
-      .filter(f => keys.has('photo') && f.kind === 'photo')
+      .filter(f => (keys.has('photo') && f.kind === 'photo')
+        || (withDocuments && DOC_KINDS_FOR_CHIEF.includes(f.kind)))
       .map(fileInfo)
   };
 }
@@ -156,7 +174,10 @@ function fileInfo(file) {
 
 /** Может ли этот шаг видеть сканы документов. */
 function canSeeDocuments(viewKey) {
-  return viewKey === '*' || VIEWS[viewKey] === '*';
+  if (viewKey === '*' || VIEWS[viewKey] === '*') return true;
+  return VIEWS_WITH_DOCUMENTS.includes(viewKey);
 }
 
-module.exports = { project, fileInfo, canSeeDocuments, VIEWS, DOC_KINDS_FOR_CHIEF };
+module.exports = {
+  project, fileInfo, canSeeDocuments, VIEWS, DOC_KINDS_FOR_CHIEF, VIEWS_WITH_DOCUMENTS
+};

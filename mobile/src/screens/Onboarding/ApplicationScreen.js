@@ -40,6 +40,14 @@ import {
   formatPhone, fileSizeText, FILE_KINDS,
 } from './onboardingMeta';
 
+/**
+ * Геометрия ленты процесса. Числа связаны между собой, поэтому заданы здесь, а
+ * не россыпью по стилям: шаг задаёт ширину гнезда, а линия между точками
+ * считается из шага и диаметра кружка.
+ */
+const TL_STEP = 78;
+const TL_DOT = 16;
+
 const TABS = [
   {key: 'cv', label: 'Анкета'},
   {key: 'files', label: 'Файлы'},
@@ -888,12 +896,30 @@ const makeStyles = c => StyleSheet.create({
 
   // ── Лента процесса ─────────────────────────────────────────────────────────
   timeline: {paddingBottom: 16, paddingRight: 8},
-  tlPoint: {width: 78, alignItems: 'center'},
-  // Линия идёт влево от точки на половину ширины соседей, поэтому и ширина 78,
-  // и смещение считаются от одного числа
-  tlLine: {position: 'absolute', top: 7, right: '50%', width: 78, height: 2, backgroundColor: c.bgTertiary},
+  tlPoint: {width: TL_STEP, alignItems: 'center'},
+  /**
+   * Линия к предыдущей точке занимает только промежуток МЕЖДУ кружками, а не
+   * расстояние между их центрами.
+   *
+   * Раньше она тянулась на весь шаг (width: TL_STEP от центра до центра) и
+   * проходила прямо сквозь предыдущий кружок на высоте его середины. Само по
+   * себе это ещё не беда, но линия лежит в своём гнезде, а гнездо стоит в
+   * списке позже соседнего — и абсолютно спозиционированная линия рисовалась
+   * ПОВЕРХ предыдущей точки, перечёркивая её галочку.
+   *
+   * Теперь правый край линии упирается в левый край своего кружка, а левый — в
+   * правый край предыдущего: рисовать поверх чего-либо ей больше нечем.
+   */
+  tlLine: {
+    position: 'absolute',
+    top: TL_DOT / 2 - 1,
+    right: (TL_STEP + TL_DOT) / 2,
+    width: TL_STEP - TL_DOT,
+    height: 2,
+    backgroundColor: c.bgTertiary,
+  },
   tlDot: {
-    width: 16, height: 16, borderRadius: 8,
+    width: TL_DOT, height: TL_DOT, borderRadius: TL_DOT / 2,
     alignItems: 'center', justifyContent: 'center',
   },
   tlLabel: {

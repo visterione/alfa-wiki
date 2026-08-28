@@ -22,7 +22,7 @@ const STATUS = {
   SUBMITTED:   'submitted',    // на согласовании у главврача
   REVISION:    'revision',     // возвращена врачу на доработку
   REJECTED:    'rejected',     // отклонена, в архив
-  APPROVED:    'approved',     // согласована, ждём учётку в МИС
+  APPROVED:    'approved',     // согласована, идёт кадровая проверка и заведение в МИС
   MIS_CREATED: 'mis_created',  // учётка есть, идут параллельные ветки
   LAUNCHED:    'launched',     // чек-лист закрыт
   CANCELLED:   'cancelled'     // процесс прерван вручную
@@ -63,11 +63,26 @@ const ACTIVE_STATUSES = [
 // slaHours — в рабочих часах, см. services/onboarding/sla.js.
 const STEPS = [
   {
+    key: 'hr_check',
+    title: 'Проверка отделом кадров',
+    hint: 'Оригиналы диплома, сертификатов и документов, оформление трудовых отношений.',
+    scope: 'network',
+    // Первый шаг после согласования и единственный, от которого зависит учётка:
+    // пока кадры не приняли документы, человек в клинике не оформлен, и заводить
+    // ему пользователя в «Реновации» рано — за учёткой сразу идут расписание и
+    // запись пациентов. Цена решения — вся цепочка ждёт кадры, и это осознанно:
+    // ошибка «врач принимает, а документы не приняты» дороже суток ожидания.
+    after: null,
+    verify: 'manual',
+    slaHours: 16,
+    checklist: 'Документы проверены отделом кадров'
+  },
+  {
     key: 'mis_account',
     title: 'Создать пользователя в «Реновации»',
     hint: 'Только создание учётной записи. От неё зависят расписание и внесение выбранных услуг в МИС.',
     scope: 'network',
-    after: null,
+    after: 'hr_check',
     verify: 'mis',
     slaHours: 4,
     checklist: 'Пользователь создан в МИС, doctor_id получен'
@@ -165,11 +180,20 @@ function requiresClaim(task) {
  * @returns {{key: string, label: string}}
  */
 function stageOf(app, tasks = []) {
+  const done = new Set(tasks.filter(t => t.completedAt).map(t => t.stepKey));
+
+  // «Согласован» — это два разных состояния подряд: сначала документы у кадров,
+  // потом заведение учётки. Одним ярлыком на оба список скрывал бы, где заявка
+  // стоит на самом деле, — а стоит она здесь дольше, чем где-либо ещё.
+  if (app.status === STATUS.APPROVED) {
+    return done.has('hr_check')
+      ? { key: 'mis', label: 'Заведение в МИС' }
+      : { key: 'hr', label: 'Проверка кадрами' };
+  }
+
   if (app.status !== STATUS.MIS_CREATED) {
     return { key: app.status, label: STATUS_LABELS[app.status] || app.status };
   }
-
-  const done = new Set(tasks.filter(t => t.completedAt).map(t => t.stepKey));
 
   if (!done.has(DOCTOR_STEP)) return { key: 'launch', label: 'Запуск / выбор услуг' };
   if (!done.has('services_mis')) return { key: 'accounting', label: 'Услуги у бухгалтера' };
@@ -188,8 +212,11 @@ function checklistOf(tasks = []) {
     .map(s => ({ key: s.key, title: s.checklist, done: done.has(s.key) }));
 
   // Выбор услуг врачом в STEPS не входит, но в чек-листе он нужен — иначе
-  // «услуги внесены» окажется единственным следом от целой ветки.
-  items.splice(1, 0, {
+  // «услуги внесены» окажется единственным следом от целой ветки. Позицию ищем
+  // по ключу, а не берём числом: с появлением кадровой проверки жёсткий индекс
+  // уехал бы вместе с порядком STEPS.
+  const afterMis = items.findIndex(item => item.key === 'mis_account');
+  items.splice(afterMis + 1, 0, {
     key: DOCTOR_STEP,
     title: 'Врач отметил услуги, которые будет оказывать',
     done: done.has(DOCTOR_STEP)
@@ -201,7 +228,7 @@ function checklistOf(tasks = []) {
 /**
  * Лента процесса для карточки: где заявка сейчас и что уже позади.
  *
- * Пять точек, а не восемь статусов: «Доработка», «Отклонён» и «Отменён» — это не
+ * Шесть точек, а не восемь статусов: «Доработка», «Отклонён» и «Отменён» — это не
  * этапы, а сходы с пути, и место в ленте им выделять незачем. Первый из них
  * подсвечивает текущую точку красным, остальные две останавливают ленту совсем.
  *
@@ -212,6 +239,7 @@ function timeline(app, tasks = []) {
   const points = [
     { key: 'form', label: 'Анкета' },
     { key: 'approval', label: 'Согласование' },
+    { key: 'hr', label: 'Кадры' },
     { key: 'mis', label: 'Учётка в МИС' },
     { key: 'launch', label: 'Запуск' },
     { key: 'done', label: 'Запущен' }
@@ -223,9 +251,11 @@ function timeline(app, tasks = []) {
     [STATUS.DRAFT]: 0,
     [STATUS.REVISION]: 0,
     [STATUS.SUBMITTED]: 1,
-    [STATUS.APPROVED]: 2,
-    [STATUS.MIS_CREATED]: done.has('mis_account') ? 3 : 2,
-    [STATUS.LAUNCHED]: 4,
+    // Согласованная заявка стоит либо на кадрах, либо уже на заведении учётки:
+    // статус между этими двумя точками не меняется, разводит их закрытая задача.
+    [STATUS.APPROVED]: done.has('hr_check') ? 3 : 2,
+    [STATUS.MIS_CREATED]: done.has('mis_account') ? 4 : 3,
+    [STATUS.LAUNCHED]: 5,
     [STATUS.REJECTED]: 1,
     [STATUS.CANCELLED]: -1
   }[app.status] ?? 0;
