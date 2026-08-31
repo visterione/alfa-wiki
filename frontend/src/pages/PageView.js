@@ -586,14 +586,17 @@ export default function PageView({ slugOverride } = {}) {
           )}
         </div>
 
+        {/* page-sheet держит рабочую область светлой при любой теме: в статьях
+            лежат скриншоты и схемы на белом, а встроенные приложения из
+            backend/bot/ про тему портала не знают (см. index.css) */}
         {page.contentType === 'file' ? (
-          <div className="card">
+          <div className="card page-sheet">
             <div className="file-viewer-wrap">
               <FileViewer mediaFile={page.mediaFile} />
             </div>
           </div>
         ) : (
-        <div className="card">
+        <div className="card page-sheet">
           <div ref={contentRefCallback} className="page-content">
             {page.contentType === 'wysiwyg' ? (
               <ContentRenderer content={page.content} />

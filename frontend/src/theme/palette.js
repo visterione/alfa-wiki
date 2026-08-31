@@ -103,22 +103,33 @@ export function accentRamp(scheme, accentKey) {
  * Пишутся из JavaScript, а не лежат в index.css, потому что зависят от выбора
  * человека. Всё остальное — нейтральные и семантические рампы — статично и
  * живёт в index.css.
+ *
+ * `prefix` нужен, чтобы рядом с рабочей рампой отдать ещё и светлую: рабочая
+ * область страницы остаётся белым листом при любой теме, и акцент внутри неё
+ * обязан быть светлым вариантом. Тёмный на белом местами нечитаем — песочный
+ * даёт там контраст 1.5.
  */
-export function accentVariables(scheme, accentKey) {
+export function accentVariables(scheme, accentKey, prefix = 'accent') {
   const ramp = accentRamp(scheme, accentKey);
   const vars = {};
   for (const [step, value] of Object.entries(ramp)) {
-    vars[`--accent-${step}`] = value;
+    vars[`--${prefix}-${step}`] = value;
   }
 
-  vars['--primary'] = ramp[500];
-  vars['--primary-hover'] = ramp[600];
-  vars['--primary-light'] = ramp[100];
-  vars['--primary-rgb'] = hexToRgb(ramp[500]).join(', ');
+  vars[`--${prefix}-rgb`] = hexToRgb(ramp[500]).join(', ');
 
-  // Градиент шапки. Тот же цвет на пару шагов темнее — как в мобильном приложении
-  vars['--header-gradient-start'] = scheme === 'dark' ? ramp[300] : ramp[700];
-  vars['--header-gradient-end'] = ramp[500];
+  // Именованные переменные нужны только основной рампе: у светлой копии свои
+  // потребители — блок листа в index.css, и он обращается к ступеням напрямую
+  if (prefix === 'accent') {
+    vars['--primary'] = ramp[500];
+    vars['--primary-hover'] = ramp[600];
+    vars['--primary-light'] = ramp[100];
+    vars['--primary-rgb'] = hexToRgb(ramp[500]).join(', ');
+
+    // Градиент шапки. Тот же цвет на пару шагов темнее — как в мобильном приложении
+    vars['--header-gradient-start'] = scheme === 'dark' ? ramp[300] : ramp[700];
+    vars['--header-gradient-end'] = ramp[500];
+  }
 
   return vars;
 }

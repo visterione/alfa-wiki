@@ -833,3 +833,143 @@ input[type="radio"] {
 /* Profile link — inline clickable user name/avatar */
 .user-profile-link { color: inherit; text-decoration: none; cursor: pointer; }
 .user-profile-link:hover { color: var(--primary); text-decoration: underline; }
+
+/* ── Рабочая область страницы ───────────────────────────────────────────────
+ *
+ * Лист вики остаётся белым при любой теме. Причина не в оформлении: в статьях
+ * лежат скриншоты интерфейсов, схемы и сканы — всё на белом, — а на вики-страницы
+ * встраиваются самостоятельные HTML-приложения из backend/bot/ со своей вёрсткой,
+ * которая про тему портала не знает. В тёмной теме вокруг такого содержимого
+ * получалась бы рамка наоборот: тёмный текст на светлых картинках посреди тёмной
+ * страницы. Дешевле и честнее оставить лист листом.
+ *
+ * Сделано переопределением рамп, а не отдельными правилами: содержимое статьи
+ * уже описано токенами, и достаточно вернуть им светлые значения — весь
+ * поддеревень перекрашивается сам. Акцент берётся из светлой копии, которую
+ * рядом с рабочей кладёт AppearanceContext.
+ */
+:root[data-theme='dark'] .page-sheet {
+  color-scheme: light;
+
+  /* Переопределения переменных сами по себе не перекрашивают текст: `color`
+     объявлен на body, там же и вычислился — тёмная тема подставила в него
+     светлый цвет, и внутрь листа он приходит уже готовым значением. Значение
+     наследуется, а не пересчитывается, поэтому цвет назначаем заново — теперь
+     он берёт токен листа */
+  color: var(--text-primary);
+
+  --n-0: #FFFFFF;
+  --n-25: #FBFCFD;
+  --n-50: #F7F8FA;
+  --n-100: #F1F3F6;
+  --n-150: #E9ECF0;
+  --n-200: #E2E5EA;
+  --n-300: #D2D6DC;
+  --n-400: #B3B8C0;
+  --n-500: #8E949E;
+  --n-600: #6B7280;
+  --n-700: #4A5462;
+  --n-800: #2C3440;
+  --n-900: #14181F;
+
+  --red-50: #FEF2F2;
+  --red-100: #FEE2E2;
+  --red-200: #FECACA;
+  --red-300: #FCA5A5;
+  --red-400: #F87171;
+  --red-500: #EF4444;
+  --red-600: #DC2626;
+  --red-700: #B91C1C;
+  --red-800: #991B1B;
+
+  --green-50: #F0FDF4;
+  --green-100: #DCFCE7;
+  --green-200: #BBF7D0;
+  --green-300: #86EFAC;
+  --green-400: #4ADE80;
+  --green-500: #22C55E;
+  --green-600: #16A34A;
+  --green-700: #15803D;
+  --green-800: #166534;
+
+  --amber-50: #FFFBEB;
+  --amber-100: #FEF3C7;
+  --amber-200: #FDE68A;
+  --amber-300: #FCD34D;
+  --amber-400: #FBBF24;
+  --amber-500: #F59E0B;
+  --amber-600: #D97706;
+  --amber-700: #B45309;
+  --amber-800: #92400E;
+
+  --violet-50: #F5F3FF;
+  --violet-100: #EDE9FE;
+  --violet-200: #DDD6FE;
+  --violet-300: #C4B5FD;
+  --violet-400: #A78BFA;
+  --violet-500: #8B5CF6;
+  --violet-600: #7C3AED;
+  --violet-700: #6D28D9;
+  --violet-800: #5B21B6;
+
+  --cyan-50: #ECFEFF;
+  --cyan-100: #CFFAFE;
+  --cyan-200: #A5F3FC;
+  --cyan-500: #06B6D4;
+  --cyan-600: #0891B2;
+  --cyan-700: #0E7490;
+
+  --pink-50: #FDF2F8;
+  --pink-100: #FCE7F3;
+  --pink-200: #FBCFE8;
+  --pink-500: #EC4899;
+  --pink-600: #DB2777;
+  --pink-700: #BE185D;
+
+  --accent-50: var(--sheet-accent-50);
+  --accent-100: var(--sheet-accent-100);
+  --accent-200: var(--sheet-accent-200);
+  --accent-300: var(--sheet-accent-300);
+  --accent-400: var(--sheet-accent-400);
+  --accent-500: var(--sheet-accent-500);
+  --accent-600: var(--sheet-accent-600);
+  --accent-700: var(--sheet-accent-700);
+  --accent-800: var(--sheet-accent-800);
+  --accent-900: var(--sheet-accent-900);
+
+  /* Семантические имена объявляются заново не для красоты: значение var()
+     подставляется на том элементе, где записано объявление. Эти имена живут
+     на :root, там же и подставились — тёмными. Переопределения рамп выше
+     сами по себе до них не доходят. */
+  --text-on-inverse: #FFFFFF;
+  --bg-primary: var(--n-0);
+  --bg-secondary: var(--n-50);
+  --bg-tertiary: var(--n-150);
+  --bg-hover: var(--n-100);
+  --text-primary: var(--n-900);
+  --text-secondary: var(--n-600);
+  --text-tertiary: var(--n-500);
+  --text-disabled: var(--n-400);
+  --border: var(--n-300);
+  --border-light: var(--n-200);
+  --secondary: #5856D6;
+  --success: var(--green-600);
+  --warning: var(--amber-500);
+  --error: var(--red-500);
+  --danger: var(--red-500);
+  --info: var(--cyan-500);
+  --primary: var(--sheet-accent-500);
+  --primary-hover: var(--sheet-accent-600);
+  --primary-light: var(--sheet-accent-100);
+  --primary-rgb: var(--sheet-accent-rgb);
+
+  /* Блок кода в статье и так тёмный в обеих темах — но на белом листе ему
+     нужен светлый вариант подложки, тёмная тема поднимала её на две ступени */
+  --surface-inverse: #1D1D1F;
+
+  /* Тени на белом снова лёгкие: плотные из тёмной темы выглядели бы грязью */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+}

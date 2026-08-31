@@ -69,7 +69,9 @@ export default function LoadTable({ rows, days, view, ctx, subtitle = weekHours,
                   <Avatar user={row.user} percent={percentOf?.get(row.userId) ?? null} />
                   <div>
                     <div className="tsk-person-name">{shortName(row.user)}</div>
-                    <div className="tsk-person-sub">{subtitle(row)}</div>
+                    {/* Пустой подписи не бывает: строка без текста всё равно
+                        занимала бы место и сдвигала имя вверх от центра. */}
+                    {subtitle(row) && <div className="tsk-person-sub">{subtitle(row)}</div>}
                   </div>
                 </div>
               </td>

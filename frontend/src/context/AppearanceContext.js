@@ -82,7 +82,13 @@ function applyAppearance(settings, scheme) {
   const root = document.documentElement;
 
   root.dataset.theme = scheme;
-  for (const [name, value] of Object.entries(accentVariables(scheme, settings.accent))) {
+  const vars = {
+    ...accentVariables(scheme, settings.accent),
+    // Светлая копия акцента — для рабочей области страницы: она остаётся белым
+    // листом при любой теме (см. блок .page-sheet в index.css)
+    ...accentVariables('light', settings.accent, 'sheet-accent')
+  };
+  for (const [name, value] of Object.entries(vars)) {
     root.style.setProperty(name, value);
   }
 
