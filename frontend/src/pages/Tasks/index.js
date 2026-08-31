@@ -96,6 +96,15 @@ export default function Tasks() {
    * перерисовки экран не узнал бы, что портал уже есть куда ставить.
    */
   const [headerSlot, setHeaderSlot] = useState(null);
+  /**
+   * Что подставить в «Новую задачу», если экран успел это подсказать.
+   *
+   * Кнопка одна на все разделы и стоит в шапке — своей кнопки «поставить
+   * задачу» у экрана быть не должно, она дублировала бы её в двух шагах друг от
+   * друга. Но экран загрузки знает больше шапки: там уже выбрали и человека, и
+   * день. Поэтому выбор едет не в отдельную кнопку, а в эту же.
+   */
+  const [newTaskPreset, setNewTaskPreset] = useState({});
   const navRef = useRef(null);
   const [navIndicator, setNavIndicator] = useState({ top: 0, height: 0, ready: false });
 
@@ -204,6 +213,10 @@ export default function Tasks() {
     window.dispatchEvent(new Event('calendar-events-changed'));
   }, [refreshInbox]);
 
+  // Выбор живёт ровно на том экране, где его сделали: уходя, кнопка снова
+  // становится просто «Новой задачей».
+  useEffect(() => { setNewTaskPreset({}); }, [screen]);
+
   const go = useCallback((key, options = {}) => {
     const next = new URLSearchParams(params);
     next.set('screen', key);
@@ -257,6 +270,7 @@ export default function Tasks() {
     headerSlot,
     openTask: setOpenTaskId,
     newTask: (preset = {}) => setFormState(preset),
+    setNewTaskPreset,
     refreshInbox,
     reloadAccess: loadAccess,
     teamsRevision,
@@ -315,8 +329,14 @@ export default function Tasks() {
               <div className="tsk-top-filters" ref={setHeaderSlot} />
               {headerAction && <button className="tsk-btn is-primary"
                 onClick={() => headerAction === 'team' ? setTeamFormOpen(true)
-                  : headerAction === 'project' ? setProjectFormOpen(true) : setFormState({})}>
+                  : headerAction === 'project' ? setProjectFormOpen(true) : setFormState(newTaskPreset)}>
                 {headerAction === 'team' ? 'Создать команду' : headerAction === 'project' ? 'Создать проект' : 'Новая задача'}
+                {/* Подпись выбора — единственное подтверждение, что нажатие по
+                    клетке во что-то попало. Без неё выбор молчит, и человек
+                    заново ищет исполнителя в модалке. */}
+                {headerAction === 'task' && newTaskPreset.label && (
+                  <span className="tsk-btn-preset">{newTaskPreset.label}</span>
+                )}
               </button>}
             </div>
           </div>

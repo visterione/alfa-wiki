@@ -23,7 +23,7 @@ function avatarUrl(value) {
   return `${BASE_URL}/${String(value).replace(/^\//, '')}`;
 }
 
-export function Avatar({ user, size = 26, title }) {
+export function Avatar({ user, size = 26, title, percent = null }) {
   const [failed, setFailed] = useState(false);
   const src = failed ? null : avatarUrl(user?.avatar);
   useEffect(() => setFailed(false), [user?.avatar]);
@@ -37,11 +37,56 @@ export function Avatar({ user, size = 26, title }) {
     maxHeight: size,
     flexBasis: size,
   };
-  return (
+  const face = (
     <span className={`tsk-av ${src ? 'has-image' : 'is-placeholder'}`} style={style} title={title || userName(user)}>
       {src
         ? <img src={src} alt="" onError={() => setFailed(true)} />
         : <User size={Math.max(12, Math.round(size * 0.52))} strokeWidth={1.8} />}
+    </span>
+  );
+
+  return percent === null || percent === undefined
+    ? face
+    : <LoadRing percent={percent} size={size}>{face}</LoadRing>;
+}
+
+/**
+ * Процент от нормы кольцом вокруг аватарки.
+ *
+ * Раньше он стоял текстом под именем, рядом с командами и должностью, и там его
+ * приходилось читать — а это единственное число строки, которое нужно узнавать
+ * взглядом, не читая. Кольцо занимает место, которое и так пустует, и красится
+ * той же шкалой, что полосы дней: строка целиком получает один цвет, и «кто в
+ * завале» видно до того, как глаз дошёл до имени.
+ *
+ * Дуга обрывается на полном круге, а цвет — нет: у того, кто набрал 150%,
+ * кольцо замкнуто и красное, и отличать его от 100% длиной бессмысленно —
+ * важно, что предел пройден.
+ */
+function LoadRing({ percent, size, children }) {
+  const outer = size + 9;
+  const radius = (outer - 3) / 2;
+  const length = 2 * Math.PI * radius;
+  const filled = Math.max(0, Math.min(percent / 100, 1));
+
+  return (
+    <span
+      className="tsk-avring"
+      style={{ width: outer, height: outer }}
+      title={`${percent}% от нормы за период`}
+    >
+      <svg width={outer} height={outer} viewBox={`0 0 ${outer} ${outer}`} aria-hidden="true">
+        <circle className="tsk-avring-track" cx={outer / 2} cy={outer / 2} r={radius} />
+        <circle
+          className="tsk-avring-arc"
+          cx={outer / 2}
+          cy={outer / 2}
+          r={radius}
+          stroke={loadColor(percent / 100)}
+          strokeDasharray={`${length * filled} ${length}`}
+        />
+      </svg>
+      {children}
     </span>
   );
 }
@@ -78,11 +123,32 @@ export function Badge({ tone = 'muted', children, title }) {
  * бэкенда: `color` в ответе — это три ступени (запас/плотно/переработка), а
  * полоса красится непрерывной шкалой, см. loadColor.
  */
-export function LoadBar({ hours, done, norm, onVacation, compact }) {
+export function LoadBar({ hours, done, norm, onVacation, onDayOff, compact }) {
   if (onVacation) {
     return (
       <div className={`tsk-bar tsk-bar-vac ${compact ? 'is-compact' : ''}`} title="Отпуск">
         <span className="tsk-bar-vac-label">отпуск</span>
+      </div>
+    );
+  }
+  // Выходной заштрихован, а не подписан мелким серым словом под пустой полосой.
+  // В таблице на тридцать один столбец такая подпись терялась, и месяц читался
+  // как сплошной ряд одинаково пустых дней — а разница между «свободен» и «его
+  // сегодня нет» ровно та, ради которой на эту таблицу и смотрят. Часы в
+  // выходной всё-таки бывают (кто-то вышел), поэтому полоса рисуется поверх
+  // штриховки, а не вместо неё.
+  if (onDayOff) {
+    return (
+      <div className={`tsk-bar tsk-bar-off ${compact ? 'is-compact' : ''}`}
+        title={hours > 0 ? `Выходной, но занято ${hoursText(hours)}` : 'Выходной'}>
+        {hours > 0 && (
+          // Нормы в выходной нет, сравнивать не с чем — поэтому длина отмеряется
+          // от условных восьми часов: она говорит «сколько», а не «сколько из».
+          <div className="tsk-bar-fill" style={{
+            width: `${Math.min(hours / 8, 1) * 100}%`,
+            background: 'var(--text-tertiary)',
+          }} />
+        )}
       </div>
     );
   }

@@ -23,7 +23,7 @@ import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
 import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, hoursText } from '../utils/dates';
 import { User, Users } from 'lucide-react';
-import { loadColor } from '../utils/labels';
+import { loadColor, userName } from '../utils/labels';
 import { LoadBar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 import LoadTable from './LoadTable';
@@ -230,6 +230,9 @@ function TeamCards({ start, end, controls, onOpen, ctx }) {
   );
 }
 
+/** Процент от нормы по людям — для кольца вокруг аватарки. */
+const percentByUser = summary => new Map((summary?.perUser || []).map(u => [u.userId, u.percent]));
+
 /* ─────────────────────────── внутри команды ─────────────────────────── */
 
 function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
@@ -245,6 +248,8 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
 
   if (!data) return <>{controls}<Empty compact>Загружаем…</Empty></>;
 
+  const percentOf = percentByUser(data.summary);
+
   return (
     <>
       <div className="tsk-ctl">
@@ -253,12 +258,14 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
       </div>
       {controls}
 
-      <LoadTable rows={data.rows} days={days} view={view} ctx={ctx} />
+      <LoadTable rows={data.rows} days={days} view={view} ctx={ctx} percentOf={percentOf} />
 
       <Note>
         Норма у каждого своя, поэтому пунктир на каждой строке стоит в своём
         месте: 4 ч у подрядчика и 7 ч у поддержки — это не один и тот же день.
-        Состав чужого дня здесь не показывается: видны только часы.
+        Кольцо вокруг аватарки — процент от нормы за весь период. Состав чужого
+        дня здесь не показывается: видны только часы. Нажатие на клетку выбирает
+        человека и день для кнопки «Новая задача».
         {data.summary.overloadedDays > 0 && (
           <> Переработка суммарно: {data.summary.overloadedDays} человеко-дней.</>
         )}
@@ -297,15 +304,13 @@ function PeopleLoad({ start, end, days, view, controls, ctx }) {
 
   if (!data) return <>{controls}<Empty compact>Загружаем…</Empty></>;
 
-  const percentOf = new Map((data.summary.perUser || []).map(u => [u.userId, u.percent]));
-  const rows = [...data.rows].sort((a, b) => {
-    const left = percentOf.get(a.userId);
-    const right = percentOf.get(b.userId);
-    if (left === right) return 0;
-    if (left === null || left === undefined) return 1;
-    if (right === null || right === undefined) return -1;
-    return right - left;
-  });
+  const percentOf = percentByUser(data.summary);
+  // По алфавиту, а не по загрузке. Сортировка «сверху самые занятые» переставляла
+  // строки при каждом переключении недели, и человека приходилось искать заново;
+  // кто перегружен, теперь и так видно по кольцу вокруг аватарки — для этого
+  // список ворошить не нужно.
+  const rows = [...data.rows].sort((a, b) =>
+    userName(a.user).localeCompare(userName(b.user), 'ru'));
 
   if (!rows.length) {
     return (
@@ -326,29 +331,29 @@ function PeopleLoad({ start, end, days, view, controls, ctx }) {
     <>
       {controls}
 
-      {/* Подпись под именем — процент за период и то, что объясняет человека:
-          его команды, а если их нет (исполнителя могли ни в одну не записать) —
-          должность из профиля. Команды показываются только те, о которых знает
-          смотрящий. */}
+      {/* Подпись под именем объясняет человека, а не его цифры: команды, а если
+          их нет (исполнителя могли ни в одну не записать) — должность из
+          профиля. Процент оттуда ушёл в кольцо вокруг аватарки: числом его
+          читали, кольцо видно сразу. Команды показываются только те, о которых
+          знает смотрящий. */}
       <LoadTable
         rows={rows}
         days={days}
         view={view}
         ctx={ctx}
-        subtitle={row => {
-          const percent = percentOf.get(row.userId);
-          const load = percent === null || percent === undefined ? 'расписания нет' : `${percent}% нормы`;
-          const where = (row.teams || []).map(t => t.name).join(', ') || row.user?.position;
-          return where ? `${load} · ${where}` : load;
-        }}
+        percentOf={percentOf}
+        subtitle={row => (row.teams || []).map(t => t.name).join(', ')
+          || row.user?.position
+          || (row.user?.taskWorkSchedule ? 'вне команд' : 'расписание не настроено')}
       />
 
       <Note>
         {data.scope === 'module'
           ? `${rows.length} человек участвуют в модуле: им настроено рабочее расписание или их хоть раз ставили исполнителями. Это не весь штат — те, кого в модуль не заводили, здесь не стоят и часов не тратят.`
           : `${rows.length} человек из команд, чью загрузку вам открыли: тот, кто состоит сразу в трёх, стоит здесь одной строкой со всеми своими часами.`}
-        {' '}Сверху — самые загруженные. Состав чужого дня не показывается: видны
-        только часы.
+        {' '}Кольцо вокруг аватарки — процент от нормы за период, штриховка —
+        выходной. Состав чужого дня не показывается: видны только часы. Нажатие
+        на клетку выбирает человека и день для кнопки «Новая задача».
         {data.notEnrolled > 0 && (
           <> У {data.notEnrolled} из них нет рабочего расписания: часы видны, а
           сравнивать их не с чем — норма не задана, и полоса остаётся серой.
