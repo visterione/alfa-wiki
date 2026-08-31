@@ -10,7 +10,7 @@ const router = express.Router();
 const { Op } = require('sequelize');
 
 const { authenticate } = require('../../middleware/auth');
-const { User, TaskScheduleChange, CalendarEvent } = require('../../models');
+const { User, TaskScheduleChange, CalendarEvent, TaskPartAssignee } = require('../../models');
 const context = require('../../services/tasks/context');
 const teams = require('../../services/tasks/teams');
 const loadQuery = require('../../services/tasks/loadQuery');
@@ -76,16 +76,32 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 /**
- * Загрузка всех людей в области видимости — та же таблица, что у команды.
+ * Загрузка людей одной таблицей — вкладка «Сотрудники» на экране загрузки.
  *
- * Появилась потому, что человек редко состоит в одной команде: чтобы понять,
- * кому можно поручить работу, руководителю приходилось обходить карточки команд
- * по очереди и складывать одного и того же сотрудника в уме. Здесь он строкой
- * один раз, со всеми своими часами сразу.
+ * Появилась потому, что человек редко состоит в одной команде, а половина
+ * компании не состоит ни в одной: чтобы понять, кому можно поручить работу,
+ * руководителю приходилось обходить карточки команд по очереди и складывать
+ * одного и того же сотрудника в уме, а того, кого в команды не записали, он не
+ * видел вовсе.
  *
- * Область видимости — та же, что у списка людей: peopleInScope собирает
- * участников команд, чью загрузку человеку открыли. Отдельного права у вкладки
- * нет намеренно, иначе она стала бы обходом настроек команд.
+ * Кого показывать — главное решение маршрута, и оно разное для двух случаев.
+ *
+ * Куратору модуля (администратор или adminAccess.tasks) приходят те, кто в
+ * модуле участвует: у кого настроено рабочее расписание либо кто хоть раз был
+ * зафиксирован исполнителем части задачи. Это не «все пользователи портала» —
+ * такой список на 140 человек состоял бы из строк с прочерками, в которых
+ * утонули бы те несколько, ради кого экран открывают. И не «только с
+ * расписанием»: исполнитель без расписания часы всё равно тратит, его блоки
+ * лежат в календаре, и не показать их значит соврать про день.
+ *
+ * Всем остальным остаётся прежняя граница: участники команд, чью загрузку им
+ * открыли. Иначе вкладка стала бы обходом настроек команд — именно тем, от чего
+ * закрытые команды и защищают. Участников команды при этом не фильтруем по
+ * участию в модуле: членство в команде и есть явное участие, а свежедобавленный
+ * человек не должен пропадать из таблицы, в которой его только что завели.
+ *
+ * Уволенные (isActive = false) не показываются никому: их часы — история, а
+ * список отвечает на вопрос про завтра.
  */
 router.get('/load', authenticate, async (req, res) => {
   try {
@@ -93,17 +109,35 @@ router.get('/load', authenticate, async (req, res) => {
     if (!start || !end) return res.status(400).json({ error: 'Нужен период: start и end' });
 
     const all = await context.loadTeams();
-    const scope = teams.peopleInScope(all, req.user.id, req.user.isAdmin);
-    const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
-    const matrix = await loadQuery.loadMatrix(scope, start, end, viewer);
+    const seesEveryone = !!(req.user.isAdmin || req.user.adminAccess?.tasks);
+
+    // Исполнители берутся за всё время, а не за показанный период: человек,
+    // которому в прошлом месяце ставили задачи, из списка исчезать не должен —
+    // иначе он «пропадает» ровно тогда, когда у него освободилось время.
+    const assignees = seesEveryone
+      ? (await TaskPartAssignee.findAll({ attributes: ['userId'], group: ['userId'], raw: true })).map(a => a.userId)
+      : [];
 
     const users = await User.findAll({
-      // position — должность из профиля: в общем списке без деления на команды
-      // «кто это вообще» перестаёт быть очевидным по одному имени.
+      // position — должность из профиля: в списке без деления на команды «кто
+      // это вообще» по одному имени уже не понять, особенно у тех, кого в
+      // командах нет.
       attributes: ['id', 'displayName', 'username', 'avatar', 'position', 'taskWorkSchedule'],
-      where: { id: scope },
+      where: seesEveryone
+        ? {
+          isActive: true,
+          [Op.or]: [
+            { taskWorkSchedule: { [Op.ne]: null } },
+            ...(assignees.length ? [{ id: { [Op.in]: assignees } }] : []),
+          ],
+        }
+        : { id: teams.peopleInScope(all, req.user.id, req.user.isAdmin), isActive: true },
       raw: true,
     });
+
+    const scope = users.map(u => u.id);
+    const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
+    const matrix = await loadQuery.loadMatrix(scope, start, end, viewer);
     const byId = new Map(users.map(u => [u.id, u]));
 
     const rows = loadQuery.toRows(matrix).map(row => ({
@@ -117,7 +151,16 @@ router.get('/load', authenticate, async (req, res) => {
         .map(t => ({ id: t.id, name: t.name })),
     }));
 
-    res.json({ rows, summary: loadQuery.summarize(matrix) });
+    res.json({
+      rows,
+      summary: loadQuery.summarize(matrix),
+      // Кем ограничен список — чтобы подпись под таблицей говорила правду о
+      // том, что человек видит, а не общую формулировку на оба случая.
+      scope: seesEveryone ? 'module' : 'teams',
+      // Исполнители без расписания: часы у них есть, а нормы нет, и полоса
+      // сравнивать её не с чем. Это рабочий список «кого ещё завести».
+      notEnrolled: users.filter(u => !u.taskWorkSchedule).length,
+    });
   } catch (error) {
     console.error('Загрузка людей:', error);
     res.status(500).json({ error: 'Не удалось посчитать загрузку' });
