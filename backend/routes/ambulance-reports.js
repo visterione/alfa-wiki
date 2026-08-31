@@ -91,6 +91,12 @@ const DATE_DATA_FIELDS = {
   caddy: ['caddyDate'],
   patientCalls: ['patientCallDate', 'callDate']
 };
+const TABLE_FIELDS = {
+  calls: ['seqNumber', 'callDate', 'callTime', 'patientName', 'address', 'brigadeNumber', 'amount', 'waitingTime', 'comment'],
+  refusals: ['seqNumber', 'refusalDate', 'callTime', 'reason', 'refusalDelay', 'localVisitor'],
+  caddy: ['caddyDate', 'caddyTime', 'carNumber', 'reason', 'medCenter'],
+  patientCalls: ['comment', 'patientCallDate', 'callDate', 'patientName', 'diagnosis', 'direction', 'doctorName', 'examination', 'phone', 'registrarMark']
+};
 
 function normalizeEntry(entryType, body, userId) {
   const rawData = body.data && typeof body.data === 'object' ? body.data : body;
@@ -590,11 +596,12 @@ function parseImportWorkbook(workbook, userId) {
 
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { type, dateFrom, dateTo, search } = req.query;
+    const { type, dateFrom, dateTo, search, filterField, filterValue, sortBy, sortDir } = req.query;
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
     const offset = (page - 1) * limit;
     const where = {};
+    const allowedFields = TABLE_FIELDS[type] || [];
 
     if (type && ENTRY_TYPES.includes(type)) where.entryType = type;
     if (dateFrom || dateTo) {
@@ -610,11 +617,36 @@ router.get('/', authenticate, async (req, res) => {
       ];
     }
 
+    if (filterField && filterValue && allowedFields.includes(filterField)) {
+      const q = `%${String(filterValue).trim().slice(0, 200)}%`;
+      const expression = filterField === 'seqNumber'
+        ? AmbulanceReportEntry.sequelize.cast(AmbulanceReportEntry.sequelize.col('seqNumber'), 'text')
+        : AmbulanceReportEntry.sequelize.cast(AmbulanceReportEntry.sequelize.json(`data.${filterField}`), 'text');
+      where[Op.and] = [AmbulanceReportEntry.sequelize.where(expression, { [Op.iLike]: q })];
+    }
+
+    const direction = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    let sortExpression = 'createdAt';
+    if (sortBy && allowedFields.includes(sortBy)) {
+      if (sortBy === 'seqNumber') {
+        sortExpression = 'seqNumber';
+      } else if ((DATE_DATA_FIELDS[type] || []).includes(sortBy)) {
+        // Даты хранятся в data как ДД.ММ.ГГГГ. Переставляем части в ГГГГММДД:
+        // так сортировка остаётся календарной и не падает на старых некорректных значениях.
+        sortExpression = AmbulanceReportEntry.sequelize.literal(`NULLIF(CONCAT(SUBSTRING("data"->>'${sortBy}' FROM 7 FOR 4), SUBSTRING("data"->>'${sortBy}' FROM 4 FOR 2), SUBSTRING("data"->>'${sortBy}' FROM 1 FOR 2)), '')`);
+      } else if (sortBy === 'amount') {
+        sortExpression = AmbulanceReportEntry.sequelize.literal(`CASE WHEN "data"->>'amount' ~ '^-?[0-9]+([.,][0-9]+)?$' THEN REPLACE("data"->>'amount', ',', '.')::numeric END`);
+      } else {
+        sortExpression = AmbulanceReportEntry.sequelize.literal(`NULLIF("data"#>>'{${sortBy}}', '')`);
+      }
+    }
+
+    const order = [[sortExpression, `${direction} NULLS LAST`]];
+    if (sortExpression !== 'createdAt') order.push(['createdAt', 'DESC']);
+
     const result = await AmbulanceReportEntry.findAndCountAll({
       where,
-      order: [
-        ['createdAt', 'DESC']
-      ],
+      order,
       limit,
       offset
     });

@@ -30,7 +30,7 @@ body {
   font-size: 14px;
 }
 button, input, textarea, select { font-family: inherit; }
-#ambulance-app { max-width: 1480px; margin: 0 auto; padding: 10px 14px 14px; }
+#ambulance-app { width: 100%; max-width: none; margin: 0; padding: 10px 14px 14px; }
 .amb-topbar {
   display: flex; align-items: flex-end; justify-content: space-between;
   gap: 6px; margin-bottom: 10px; border-bottom: 1px solid var(--amb-border);
@@ -100,16 +100,43 @@ button, input, textarea, select { font-family: inherit; }
   display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
   padding-top: 10px; border-top: 1px solid var(--amb-border);
 }
-.amb-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--amb-border); flex-wrap: wrap; }
-.amb-filters { display: flex; gap: 7px; flex-wrap: wrap; flex: 1; min-width: 0; }
-.amb-filter { min-width: 120px; max-width: 200px; }
-.amb-search { min-width: 130px; flex: 1; }
+.amb-toolbar { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--amb-border); flex-wrap: wrap; }
+.amb-filters { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+.amb-search-wrap { position: relative; flex: 1 1 260px; max-width: 520px; }
+.amb-search-wrap svg {
+  position: absolute; left: 10px; top: 50%; width: 15px; height: 15px;
+  color: #94a3b8; pointer-events: none; transform: translateY(-50%);
+}
+.amb-search { width: 100%; padding-left: 32px; }
+.amb-filter-toggle.active { color: var(--amb-primary); border-color: #93c5fd; background: #eff6ff; }
+.amb-filter-badge {
+  display: none; min-width: 17px; height: 17px; padding: 0 5px; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--amb-primary); color: #fff; font-size: 10px; line-height: 1;
+}
+.amb-filter-badge.visible { display: inline-flex; }
+.amb-filter-panel {
+  display: none; flex: 1 0 100%; grid-template-columns: repeat(4, minmax(145px, 220px));
+  gap: 8px; padding-top: 8px; border-top: 1px solid var(--amb-border);
+}
+.amb-filter-panel.open { display: grid; }
+.amb-filter-control { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.amb-filter-control label {
+  font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .06em;
+}
 .amb-table-wrap { overflow: auto; max-height: calc(100vh - 260px); min-height: 120px; }
 .amb-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .amb-table th {
   position: sticky; top: 0; z-index: 1; background: #f8fafc; color: #334155; text-align: left;
   padding: 5px 7px; border-bottom: 1px solid var(--amb-border); font-weight: 700; white-space: nowrap;
 }
+.amb-sort-btn {
+  display: inline-flex; align-items: center; gap: 5px; width: 100%; margin: -5px -7px; padding: 5px 7px;
+  border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap;
+}
+.amb-sort-btn:hover { color: var(--amb-primary); background: #eff6ff; }
+.amb-sort-indicator { width: 10px; color: #94a3b8; font-size: 10px; }
+.amb-sort-btn.active { color: var(--amb-primary); }
+.amb-sort-btn.active .amb-sort-indicator { color: var(--amb-primary); }
 .amb-table td { padding: 4px 7px; border-bottom: 1px solid var(--amb-border); vertical-align: top; }
 .amb-car-red { color: #dc2626; font-weight: 600; }
 .amb-car-green { color: #16a34a; font-weight: 600; }
@@ -143,9 +170,14 @@ button, input, textarea, select { font-family: inherit; }
 @media (max-width: 640px) {
   #ambulance-app { padding: 8px 10px 12px; }
   .amb-actions { justify-content: flex-start; width: 100%; }
-  .amb-filter, .amb-search { min-width: 100%; max-width: none; }
+  .amb-filters { flex-basis: 100%; }
+  .amb-search-wrap { max-width: none; }
+  .amb-filter-panel { grid-template-columns: 1fr 1fr; }
   .amb-table-wrap { max-height: none; }
   .amb-form { padding: 11px; }
+}
+@media (max-width: 420px) {
+  .amb-filter-panel { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -182,9 +214,34 @@ button, input, textarea, select { font-family: inherit; }
     <section class="amb-panel">
       <div class="amb-toolbar">
         <div class="amb-filters">
-          <input class="amb-input amb-search" id="amb-search" placeholder="Поиск по таблице" oninput="ambApp.onSearchChange()">
+          <div class="amb-search-wrap">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="m20 20-4-4" stroke-width="2" stroke-linecap="round"/></svg>
+            <input class="amb-input amb-search" id="amb-search" placeholder="Поиск по всей таблице" oninput="ambApp.onSearchChange()">
+          </div>
+          <button class="amb-btn amb-btn-secondary amb-filter-toggle" id="amb-filter-toggle" onclick="ambApp.toggleFilterPanel()" type="button" aria-expanded="false" aria-controls="amb-filter-panel">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16M7 12h10m-7 7h4"/></svg>
+            Фильтры <span class="amb-filter-badge" id="amb-filter-badge">0</span>
+          </button>
         </div>
         <button class="amb-btn amb-btn-secondary" onclick="ambApp.clearFilters()" type="button">Сбросить</button>
+        <div class="amb-filter-panel" id="amb-filter-panel">
+          <div class="amb-filter-control">
+            <label for="amb-date-from">Дата от</label>
+            <input class="amb-input" id="amb-date-from" type="date" onchange="ambApp.filtersChanged()">
+          </div>
+          <div class="amb-filter-control">
+            <label for="amb-date-to">Дата до</label>
+            <input class="amb-input" id="amb-date-to" type="date" onchange="ambApp.filtersChanged()">
+          </div>
+          <div class="amb-filter-control">
+            <label for="amb-filter-field">Столбец</label>
+            <select class="amb-select" id="amb-filter-field" onchange="ambApp.filterFieldChanged()"></select>
+          </div>
+          <div class="amb-filter-control">
+            <label for="amb-filter-value">Значение содержит</label>
+            <input class="amb-input" id="amb-filter-value" placeholder="Введите значение" oninput="ambApp.onFilterValueChange()">
+          </div>
+        </div>
       </div>
       <div class="amb-table-wrap">
         <table class="amb-table">
@@ -217,6 +274,8 @@ window.ambApp = (function() {
   var editingId = '';
   var pagination = { page: 1, pageSize: 50, total: 0 };
   var searchTimer = null;
+  var filterTimer = null;
+  var tableState = { dateFrom: '', dateTo: '', filterField: '', filterValue: '', sortBy: 'createdAt', sortDir: 'desc' };
   var CAR_COLORS = { 'г/н 908': 'amb-car-red', 'г/н 991': 'amb-car-green', 'г/н 053': 'amb-car-blue' };
   var CAR_EXCEL_COLORS = { 'г/н 908': 'FFDC2626', 'г/н 991': 'FF16A34A', 'г/н 053': 'FF2563EB' };
 
@@ -516,6 +575,34 @@ window.ambApp = (function() {
     el.textContent = '';
   }
 
+  function tableFields() {
+    return configs[activeTab].fields.filter(function(f) { return f.type !== 'call-select'; });
+  }
+
+  function renderFilterControls() {
+    var fieldSelect = document.getElementById('amb-filter-field');
+    var validField = tableFields().some(function(f) { return f.name === tableState.filterField; });
+    if (!validField) {
+      tableState.filterField = '';
+      tableState.filterValue = '';
+    }
+    fieldSelect.innerHTML = '<option value="">Выберите столбец</option>' + tableFields().map(function(field) {
+      return '<option value="' + escapeHtml(field.name) + '"' + (field.name === tableState.filterField ? ' selected' : '') + '>' + escapeHtml(field.label) + '</option>';
+    }).join('');
+    document.getElementById('amb-date-from').value = tableState.dateFrom;
+    document.getElementById('amb-date-to').value = tableState.dateTo;
+    var valueInput = document.getElementById('amb-filter-value');
+    valueInput.value = tableState.filterValue;
+    valueInput.disabled = !tableState.filterField;
+
+    var activeCount = (tableState.dateFrom ? 1 : 0) + (tableState.dateTo ? 1 : 0) +
+      (tableState.filterField && tableState.filterValue ? 1 : 0);
+    var badge = document.getElementById('amb-filter-badge');
+    badge.textContent = activeCount;
+    badge.classList.toggle('visible', activeCount > 0);
+    document.getElementById('amb-filter-toggle').classList.toggle('active', activeCount > 0);
+  }
+
   function setStatus(text, type) {
     var el = document.getElementById('amb-storage-status');
     el.className = 'amb-status ' + (type || '');
@@ -618,7 +705,10 @@ window.ambApp = (function() {
 
     document.getElementById('amb-table-head').innerHTML = '<tr>' +
       cfg.fields.filter(function(f) { return f.type !== 'call-select'; }).map(function(f) {
-        return '<th>' + escapeHtml(f.label) + '</th>';
+        var active = tableState.sortBy === f.name;
+        var indicator = active ? (tableState.sortDir === 'asc' ? '▲' : '▼') : '↕';
+        return '<th><button class="amb-sort-btn' + (active ? ' active' : '') + '" type="button" onclick="ambApp.toggleSort(\'' + f.name + '\')" title="Сортировать по столбцу «' + escapeHtml(f.label) + '»">' +
+          '<span>' + escapeHtml(f.label) + '</span><span class="amb-sort-indicator" aria-hidden="true">' + indicator + '</span></button></th>';
       }).join('') +
       '<th class="center col-actions">Действия</th></tr>';
 
@@ -659,6 +749,7 @@ window.ambApp = (function() {
   function renderAll() {
     renderTabs();
     renderStatus();
+    renderFilterControls();
     renderTable();
   }
 
@@ -669,6 +760,14 @@ window.ambApp = (function() {
     params.set('page', pagination.page);
     params.set('limit', pagination.pageSize);
     if (search) params.set('search', search);
+    if (tableState.dateFrom) params.set('dateFrom', tableState.dateFrom);
+    if (tableState.dateTo) params.set('dateTo', tableState.dateTo);
+    if (tableState.filterField && tableState.filterValue) {
+      params.set('filterField', tableState.filterField);
+      params.set('filterValue', tableState.filterValue);
+    }
+    params.set('sortBy', tableState.sortBy);
+    params.set('sortDir', tableState.sortDir);
     return api('?' + params.toString()).then(function(res) {
       records = normalizeRows(res.rows || []);
       pagination.total = res.total || 0;
@@ -695,6 +794,10 @@ window.ambApp = (function() {
     activeTab = tab;
     editingId = '';
     pagination.page = 1;
+    tableState.filterField = '';
+    tableState.filterValue = '';
+    tableState.sortBy = 'createdAt';
+    tableState.sortDir = 'desc';
     renderForm();
     reload();
   }
@@ -762,6 +865,44 @@ window.ambApp = (function() {
 
   function clearFilters() {
     document.getElementById('amb-search').value = '';
+    tableState.dateFrom = '';
+    tableState.dateTo = '';
+    tableState.filterField = '';
+    tableState.filterValue = '';
+    tableState.sortBy = 'createdAt';
+    tableState.sortDir = 'desc';
+    pagination.page = 1;
+    reload();
+  }
+
+  function toggleFilterPanel() {
+    var panel = document.getElementById('amb-filter-panel');
+    var isOpen = panel.classList.toggle('open');
+    document.getElementById('amb-filter-toggle').setAttribute('aria-expanded', String(isOpen));
+  }
+
+  function filterFieldChanged() {
+    tableState.filterField = document.getElementById('amb-filter-field').value;
+    if (!tableState.filterField) tableState.filterValue = '';
+    renderFilterControls();
+    if (!tableState.filterField) filtersChanged();
+    else document.getElementById('amb-filter-value').focus();
+  }
+
+  function onFilterValueChange() {
+    tableState.filterValue = document.getElementById('amb-filter-value').value.trim();
+    renderFilterControls();
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(filtersChanged, 350);
+  }
+
+  function toggleSort(field) {
+    if (!tableFields().some(function(f) { return f.name === field; })) return;
+    if (tableState.sortBy === field) tableState.sortDir = tableState.sortDir === 'asc' ? 'desc' : 'asc';
+    else {
+      tableState.sortBy = field;
+      tableState.sortDir = 'asc';
+    }
     pagination.page = 1;
     reload();
   }
@@ -905,6 +1046,10 @@ window.ambApp = (function() {
   }
 
   function filtersChanged() {
+    tableState.dateFrom = document.getElementById('amb-date-from').value;
+    tableState.dateTo = document.getElementById('amb-date-to').value;
+    tableState.filterField = document.getElementById('amb-filter-field').value;
+    tableState.filterValue = document.getElementById('amb-filter-value').value.trim();
     pagination.page = 1;
     reload();
   }
@@ -957,6 +1102,10 @@ window.ambApp = (function() {
     remove: remove,
     reload: reload,
     clearFilters: clearFilters,
+    toggleFilterPanel: toggleFilterPanel,
+    filterFieldChanged: filterFieldChanged,
+    onFilterValueChange: onFilterValueChange,
+    toggleSort: toggleSort,
     onSearchChange: onSearchChange,
     filtersChanged: filtersChanged,
     exportExcel: exportExcel,
