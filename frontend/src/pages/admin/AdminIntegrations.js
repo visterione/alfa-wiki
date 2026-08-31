@@ -31,9 +31,9 @@ function CopyButton({ text }) {
 /** Ключ показывается ровно один раз — в базе только его хеш */
 function NewKeyBanner({ apiKey, onClose }) {
   return (
-    <div className="card" style={{ marginBottom: 16, padding: '14px 16px', border: '1px solid var(--color-warning, #d97706)' }}>
+    <div className="card" style={{ marginBottom: 16, padding: '14px 16px', border: '1px solid var(--color-warning, var(--amber-600))' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <AlertTriangle size={18} style={{ color: 'var(--color-warning, #d97706)' }} />
+        <AlertTriangle size={18} style={{ color: 'var(--color-warning, var(--amber-600))' }} />
         <strong>Скопируйте ключ сейчас — больше он не отобразится</strong>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -329,7 +329,7 @@ export default function AdminIntegrations() {
                     <td>{formTitle(s.formType)}</td>
                     <td style={{ fontSize: 12 }}>
                       {s.deliveries.length === 0
-                        ? <span style={{ color: 'var(--color-error, #dc2626)' }}>адресатов не было</span>
+                        ? <span style={{ color: 'var(--color-error, var(--red-600))' }}>адресатов не было</span>
                         : s.deliveries.map((d, i) => (
                             <div key={i}>
                               {d.status === 'sent' ? '✓' : '✗'} {d.chatName || d.chatId}

@@ -5,7 +5,7 @@
 }
 
 .admin-course-card {
-  background: white;
+  background: var(--n-0);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
@@ -187,12 +187,12 @@
 
 .stats-score.success {
   background: rgba(52, 211, 153, 0.1);
-  color: #10b981;
+  color: var(--green-600);
 }
 
 .stats-score.danger {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--red-500);
 }
 
 .badge {
@@ -207,12 +207,12 @@
 
 .badge-success {
   background: rgba(52, 211, 153, 0.1);
-  color: #10b981;
+  color: var(--green-600);
 }
 
 .badge-info {
   background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: var(--accent-500);
 }
 
 .badge-secondary {

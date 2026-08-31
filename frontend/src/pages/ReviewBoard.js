@@ -1813,7 +1813,7 @@ const ReviewBoard = () => {
                     <div className="avatar-placeholder"><User size={14} /></div>
                     <span style={{ color: 'var(--text-secondary)' }}>Без назначения</span>
                   </div>
-                  {selectedAssignee === null && <Check size={16} style={{ color: 'var(--primary-color, #6366f1)', flexShrink: 0 }} />}
+                  {selectedAssignee === null && <Check size={16} style={{ color: 'var(--primary-color, var(--accent-400))', flexShrink: 0 }} />}
                 </div>
                 {getColumnMembers(selectedReview?.status)
                   .filter(u => {
@@ -1835,7 +1835,7 @@ const ReviewBoard = () => {
                         )}
                         <span>{u.displayName || u.username}</span>
                       </div>
-                      {selectedAssignee === u.id && <Check size={16} style={{ color: 'var(--primary-color, #6366f1)', flexShrink: 0 }} />}
+                      {selectedAssignee === u.id && <Check size={16} style={{ color: 'var(--primary-color, var(--accent-400))', flexShrink: 0 }} />}
                     </div>
                   ))}
               </div>

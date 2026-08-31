@@ -11,7 +11,6 @@ export default function AdminSettings() {
   const [form, setForm] = useState({
     siteName: 'Alfa Wiki',
     siteDescription: '',
-    primaryColor: '#007AFF',
     logo: '',
     defaultRole: '',
     allowRegistration: false
@@ -33,7 +32,6 @@ export default function AdminSettings() {
       setForm({
         siteName: s.data.siteName || 'Alfa Wiki',
         siteDescription: s.data.siteDescription || '',
-        primaryColor: s.data.primaryColor || '#007AFF',
         logo: s.data.logo || '',
         defaultRole: s.data.defaultRole || '',
         allowRegistration: s.data.allowRegistration || false
@@ -74,11 +72,6 @@ export default function AdminSettings() {
       load();
       reloadTheme();
     } catch (e) { toast.error('Ошибка'); }
-  };
-
-  const previewColor = (color) => {
-    document.documentElement.style.setProperty('--primary', color);
-    setForm({...form, primaryColor: color});
   };
 
   const handleLogoUpload = async (e) => {
@@ -207,60 +200,6 @@ export default function AdminSettings() {
         </div>
 
         <div className="card">
-          <div className="card-header"><h3>Внешний вид</h3></div>
-          <div className="card-body">
-            <div className="form-group">
-              <label className="form-label">Основной цвет</label>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <input 
-                  type="color" 
-                  value={form.primaryColor} 
-                  onChange={e => previewColor(e.target.value)} 
-                  style={{ width: 50, height: 40, padding: 0, border: 'none', cursor: 'pointer', borderRadius: 8 }} 
-                />
-                <input 
-                  className="input" 
-                  value={form.primaryColor} 
-                  onChange={e => previewColor(e.target.value)} 
-                  style={{ width: 120 }} 
-                />
-              </div>
-            </div>
-            <div className="form-group">
-              <span className="form-label" style={{ marginBottom: 12, display: 'block' }}>Готовые темы:</span>
-              <div className="color-presets">
-                {[
-                  { name: 'Синий', color: '#007AFF' },
-                  { name: 'Фиолетовый', color: '#5856D6' },
-                  { name: 'Зелёный', color: '#34C759' },
-                  { name: 'Оранжевый', color: '#FF9500' },
-                  { name: 'Красный', color: '#FF3B30' },
-                  { name: 'Розовый', color: '#AF52DE' },
-                  { name: 'Тёмно-синий', color: '#1a5fb4' },
-                  { name: 'Бирюзовый', color: '#00BCD4' },
-                ].map(({ name, color }) => (
-                  <button 
-                    key={color} 
-                    className={`color-preset ${form.primaryColor === color ? 'active' : ''}`}
-                    style={{ background: color }} 
-                    onClick={() => previewColor(color)}
-                    title={name}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="theme-preview">
-              <div className="theme-preview-label">Предпросмотр:</div>
-              <div className="theme-preview-box">
-                <button className="btn btn-primary btn-sm">Кнопка</button>
-                <span className="badge badge-primary">Метка</span>
-                <a href="#preview" style={{ color: form.primaryColor }}>Ссылка</a>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
           <div className="card-header"><h3>Пользователи</h3></div>
           <div className="card-body">
             <div className="form-group">
@@ -327,21 +266,6 @@ export default function AdminSettings() {
           padding: 12px; border-radius: var(--radius-md);
           background: rgba(239, 68, 68, 0.1); color: var(--error);
           font-size: 13px;
-        }
-        .color-presets { display: flex; gap: 10px; flex-wrap: wrap; }
-        .color-preset { 
-          width: 40px; height: 40px; border-radius: 10px; 
-          border: 3px solid transparent; 
-          box-shadow: 0 2px 8px rgba(0,0,0,0.15); 
-          cursor: pointer; transition: all 0.2s; 
-        }
-        .color-preset:hover { transform: scale(1.1); }
-        .color-preset.active { border-color: var(--text-primary); transform: scale(1.1); }
-        .theme-preview { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-light); }
-        .theme-preview-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
-        .theme-preview-box { 
-          display: flex; align-items: center; gap: 16px; 
-          padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); 
         }
         
         .logo-preview-container {

@@ -367,7 +367,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             year={year} month={month}
             onChange={(y, m) => { setYear(y); setMonth(m); }}
           />
-          {hasPeriod && <span style={{ fontSize: 12, color: 'var(--rb-success, #16a34a)', fontWeight: 500 }}>✓</span>}
+          {hasPeriod && <span style={{ fontSize: 12, color: 'var(--rb-success, var(--green-600))', fontWeight: 500 }}>✓</span>}
           <div style={{ display: 'flex', height: 32, background: 'var(--rb-border)', borderRadius: 8, padding: 2, gap: 2, boxSizing: 'border-box' }}>
             {[
               { value: 'professions', label: 'По специальностям' },
@@ -397,7 +397,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
               const slice = categories.slice(col * third, (col + 1) * third);
               return (
                 <table key={col} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, borderLeft: col > 0 ? '2px solid var(--rb-border)' : 'none' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+                  <thead style={{ position: 'sticky', top: 0, background: 'var(--n-50)', zIndex: 1 }}>
                     <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
                       <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
                         Категория
@@ -451,7 +451,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
               const slice = currentList.slice(col * third, (col + 1) * third);
               return (
                 <table key={col} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, borderLeft: col > 0 ? '2px solid var(--rb-border)' : 'none' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+                  <thead style={{ position: 'sticky', top: 0, background: 'var(--n-50)', zIndex: 1 }}>
                     <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
                       <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
                         {mode === 'professions' ? 'Специальность' : 'Роль'}
@@ -533,7 +533,7 @@ function ScheduleListPanel({
           title="По подразделениям"
           style={{
             width: 26, height: 26, borderRadius: 6, border: 'none',
-            background: '#64748b', color: '#fff', cursor: 'pointer',
+            background: 'var(--n-600)', color: '#fff', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
@@ -561,7 +561,7 @@ function ScheduleListPanel({
           style={{
             height: 32, padding: '0 8px', fontSize: 12,
             border: '1px solid var(--rb-border)', borderRadius: 6,
-            background: '#fff', color: 'var(--rb-text)', outline: 'none',
+            background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
             cursor: 'pointer', width: '100%', fontFamily: 'inherit',
           }}
         >

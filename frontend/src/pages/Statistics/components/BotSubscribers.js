@@ -183,14 +183,14 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
           <span style={{ fontSize: 30, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
             {derived ? derived.grand.toLocaleString('ru-RU') : '—'}
           </span>
-          <span style={{ color: 'var(--rb-text-secondary, #64748b)', fontSize: 14 }}>
+          <span style={{ color: 'var(--rb-text-secondary, var(--n-600))', fontSize: 14 }}>
             подписчиков{platform !== 'all' ? ` · ${PLATFORM_META[platform].label}` : ''}
           </span>
           {derived && prevTotal != null && <DeltaBadge current={derived.grand} prev={prevTotal} />}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 13, color: 'var(--rb-text-secondary, #64748b)' }}>Детализация:</span>
+            <span style={{ fontSize: 13, color: 'var(--rb-text-secondary, var(--n-600))' }}>Детализация:</span>
             <Segmented options={GRAN_TABS} value={effGran} onChange={setGranOverride} />
           </div>
           <Segmented options={PLATFORM_TABS} value={platform} onChange={setPlatform} />
@@ -201,7 +201,7 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
       {platform === 'all' && (
         <div style={{ display: 'flex', gap: 18, marginBottom: 8 }}>
           {['telegram', 'max'].map(p => (
-            <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--rb-text-secondary, #64748b)' }}>
+            <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--rb-text-secondary, var(--n-600))' }}>
               <span style={{ width: 12, height: 12, borderRadius: 3, background: PLATFORM_META[p].color }} />
               {PLATFORM_META[p].label}
             </span>
@@ -215,7 +215,7 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
       </div>
 
       {loading && <div style={{ opacity: 0.6, padding: 20 }}>Загрузка…</div>}
-      {error && <div style={{ color: 'var(--rb-danger, #dc2626)', padding: 20 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--rb-danger, var(--red-600))', padding: 20 }}>{error}</div>}
 
 
       {!loading && !error && derived && (empty ? (
@@ -361,8 +361,8 @@ function Segmented({ options, value, onChange }) {
 
 function Panel({ title, children }) {
   return (
-    <div style={{ border: `1px solid ${GRID}`, borderRadius: 12, background: 'var(--rb-card-bg, #fff)', padding: '14px 16px' }}>
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--rb-text, #1e293b)' }}>{title}</div>
+    <div style={{ border: `1px solid ${GRID}`, borderRadius: 12, background: 'var(--rb-card-bg, var(--n-0))', padding: '14px 16px' }}>
+      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--rb-text, var(--n-800))' }}>{title}</div>
       {children}
     </div>
   );
@@ -407,7 +407,7 @@ function PenetrationPanel({ data, loading, gran }) {
           {/* Легенда сегментов */}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
             {SEG_ORDER.map(k => (
-              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--rb-text-secondary, #64748b)' }}>
+              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--rb-text-secondary, var(--n-600))' }}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: SEG_META[k].color }} />
                 {SEG_META[k].label}
               </span>
@@ -438,18 +438,18 @@ function PenTip({ active, payload, label }) {
   const row = payload[0].payload;
   const total = row.total || 0;
   return (
-    <div style={{ background: 'var(--rb-card-bg, #fff)', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: 190 }}>
-      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, #1e293b)' }}>{row.short || label}</div>
-      <div style={{ color: 'var(--rb-text-secondary, #64748b)', marginBottom: 6 }}>
-        Пациентов: <b style={{ color: 'var(--rb-text, #1e293b)' }}>{total.toLocaleString('ru-RU')}</b>
+    <div style={{ background: 'var(--rb-card-bg, var(--n-0))', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: 190 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, var(--n-800))' }}>{row.short || label}</div>
+      <div style={{ color: 'var(--rb-text-secondary, var(--n-600))', marginBottom: 6 }}>
+        Пациентов: <b style={{ color: 'var(--rb-text, var(--n-800))' }}>{total.toLocaleString('ru-RU')}</b>
       </div>
       {SEG_ORDER.map(k => {
         const v = row[k] || 0;
         const p = total > 0 ? (v / total) * 100 : 0;
         return (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--rb-text-secondary, #64748b)' }}>
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--rb-text-secondary, var(--n-600))' }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: SEG_META[k].color }} />
-            {SEG_META[k].label}: <b style={{ color: 'var(--rb-text, #1e293b)' }}>{v.toLocaleString('ru-RU')}</b> · {p.toFixed(1)}%
+            {SEG_META[k].label}: <b style={{ color: 'var(--rb-text, var(--n-800))' }}>{v.toLocaleString('ru-RU')}</b> · {p.toFixed(1)}%
           </div>
         );
       })}
@@ -512,7 +512,7 @@ function Stat({ value, label }) {
   return (
     <div>
       <div style={{ fontSize: 26, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: 12, color: 'var(--rb-text-secondary, #64748b)', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, color: 'var(--rb-text-secondary, var(--n-600))', marginTop: 2 }}>{label}</div>
     </div>
   );
 }
@@ -532,10 +532,10 @@ function EcoTip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
   const row = payload[0].payload;
   return (
-    <div style={{ background: 'var(--rb-card-bg, #fff)', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, #1e293b)' }}>{row.label}</div>
-      <div style={{ color: 'var(--rb-text-secondary, #64748b)' }}>
-        Подписчиков: <b style={{ color: 'var(--rb-text, #1e293b)' }}>{row.subscribers.toLocaleString('ru-RU')}</b> · {row.pct.toFixed(1)}%
+    <div style={{ background: 'var(--rb-card-bg, var(--n-0))', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, var(--n-800))' }}>{row.label}</div>
+      <div style={{ color: 'var(--rb-text-secondary, var(--n-600))' }}>
+        Подписчиков: <b style={{ color: 'var(--rb-text, var(--n-800))' }}>{row.subscribers.toLocaleString('ru-RU')}</b> · {row.pct.toFixed(1)}%
       </div>
     </div>
   );
@@ -547,15 +547,15 @@ function ChartTip({ active, payload, label }) {
   const title = row.short || label;
   const total = payload.reduce((s, p) => s + (p.value || 0), 0);
   return (
-    <div style={{ background: 'var(--rb-card-bg, #fff)', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, #1e293b)' }}>{title}</div>
+    <div style={{ background: 'var(--rb-card-bg, var(--n-0))', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, var(--n-800))' }}>{title}</div>
       {payload.map(p => (
-        <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--rb-text-secondary, #64748b)' }}>
+        <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--rb-text-secondary, var(--n-600))' }}>
           <span style={{ width: 10, height: 10, borderRadius: 2, background: p.color || p.fill }} />
-          {PLATFORM_META[p.dataKey]?.label || p.dataKey}: <b style={{ color: 'var(--rb-text, #1e293b)' }}>{p.value}</b>
+          {PLATFORM_META[p.dataKey]?.label || p.dataKey}: <b style={{ color: 'var(--rb-text, var(--n-800))' }}>{p.value}</b>
         </div>
       ))}
-      {payload.length > 1 && <div style={{ marginTop: 4, fontWeight: 600, color: 'var(--rb-text, #1e293b)' }}>Итого: {total}</div>}
+      {payload.length > 1 && <div style={{ marginTop: 4, fontWeight: 600, color: 'var(--rb-text, var(--n-800))' }}>Итого: {total}</div>}
     </div>
   );
 }
@@ -567,4 +567,4 @@ function heat(v, max) {
 }
 
 const tdStyle = { padding: '7px 10px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
-const thStyle = { ...tdStyle, fontWeight: 600, color: 'var(--rb-text-secondary, #64748b)', borderBottom: `2px solid ${GRID}` };
+const thStyle = { ...tdStyle, fontWeight: 600, color: 'var(--rb-text-secondary, var(--n-600))', borderBottom: `2px solid ${GRID}` };

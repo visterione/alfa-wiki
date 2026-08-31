@@ -8,12 +8,12 @@ import { users, BASE_URL } from '../services/api';
 import './UserProfile.css';
 
 const COURSE_COLORS = [
-  { bg: '#eff6ff', icon: '#3b82f6', border: '#bfdbfe' },
-  { bg: '#f0fdf4', icon: '#16a34a', border: '#bbf7d0' },
-  { bg: '#faf5ff', icon: '#9333ea', border: '#e9d5ff' },
-  { bg: '#fffbeb', icon: '#d97706', border: '#fde68a' },
-  { bg: '#fff1f2', icon: '#e11d48', border: '#fecdd3' },
-  { bg: '#f0fdfa', icon: '#0d9488', border: '#99f6e4' },
+  { bg: '#eff6ff', icon: '#3b82f6', border: 'var(--accent-200)' },
+  { bg: '#f0fdf4', icon: '#16a34a', border: 'var(--green-200)' },
+  { bg: '#faf5ff', icon: '#9333ea', border: 'var(--violet-200)' },
+  { bg: '#fffbeb', icon: '#d97706', border: 'var(--amber-200)' },
+  { bg: '#fff1f2', icon: '#e11d48', border: 'var(--red-200)' },
+  { bg: '#f0fdfa', icon: '#0d9488', border: 'var(--green-300)' },
 ];
 
 function getAvatarUrl(avatar) {

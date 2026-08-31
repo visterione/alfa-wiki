@@ -3189,7 +3189,7 @@ export default function Dashboard() {
                 <button onClick={() => setVideoPreview({ open: false, url: '', name: '' })}><X size={20} /></button>
               </div>
             </div>
-            <div style={{ padding: 20, background: 'black', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ padding: 20, background: 'var(--n-900)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <video controls autoPlay style={{ maxWidth: '100%', maxHeight: 'calc(90vh - 60px)' }}><source src={videoPreview.url} /></video>
             </div>
           </div>

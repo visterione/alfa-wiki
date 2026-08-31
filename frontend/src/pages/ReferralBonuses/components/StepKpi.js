@@ -578,14 +578,14 @@ function filterRows(rows, clinic, spec) {
 const thStyle = {
   padding: '8px 10px', fontWeight: 600, color: 'var(--rb-text)',
   textAlign: 'left', borderBottom: '2px solid var(--rb-border)',
-  background: '#f8fafc',
+  background: 'var(--n-50)',
 };
 const tdStyle = { padding: '7px 10px', color: 'var(--rb-text)', verticalAlign: 'top' };
 
 function StatCard({ label, value, sub, color }) {
   return (
     <div style={{
-      background: '#fff', borderRadius: 14, overflow: 'hidden',
+      background: 'var(--n-0)', borderRadius: 14, overflow: 'hidden',
       boxShadow: '0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05)',
       display: 'flex', flexDirection: 'column',
     }}>
@@ -619,7 +619,7 @@ function ChartFilter({ value, onChange, options, placeholder }) {
       onChange={e => onChange(e.target.value)}
       style={{
         padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-        fontSize: 12, fontFamily: 'inherit', background: '#fff',
+        fontSize: 12, fontFamily: 'inherit', background: 'var(--n-0)',
         color: value ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
       }}
     >
@@ -673,7 +673,7 @@ function HBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#4f8ef
   const max = Math.max(...items.map(d => d[dataKey]), 1);
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
         {CHART_SORT_OPTIONS.map(o => (
           <button
@@ -688,7 +688,7 @@ function HBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#4f8ef
           >{o.label}</button>
         ))}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, borderLeft: '2px solid #e2e8f0', paddingLeft: 8, maxHeight: 750, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, borderLeft: '2px solid var(--n-200)', paddingLeft: 8, maxHeight: 750, overflowY: 'auto' }}>
         {items.map((d, i) => {
           const pct   = (d[dataKey] / max) * 100;
           const label = formatter ? formatter(d[dataKey]) : fmt(d[dataKey]);
@@ -699,7 +699,7 @@ function HBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#4f8ef
                 {sub && <span style={{ flexShrink: 0 }}>{sub}</span>}
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d[labelKey]}</span>
               </div>
-              <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 20, position: 'relative', minWidth: 60 }}>
+              <div style={{ flex: 1, background: 'var(--n-100)', borderRadius: 4, height: 20, position: 'relative', minWidth: 60 }}>
                 <div style={{ width: `${pct}%`, background: colorKey ? (d[colorKey] || color) : color, borderRadius: 4, height: '100%', transition: 'width 0.5s cubic-bezier(.4,0,.2,1)', opacity: 0.85 }} />
               </div>
               <div style={{ width: 110, flexShrink: 0, color: 'var(--rb-text)', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{label}</div>
@@ -719,7 +719,7 @@ function VBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#14b8a
   const max = Math.max(...items.map(d => d[dataKey]), 1);
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
         {CHART_SORT_OPTIONS.map(o => (
           <button key={o.value} onClick={() => setSortMode(o.value)} style={{
@@ -730,7 +730,7 @@ function VBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#14b8a
           }}>{o.label}</button>
         ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: chartHeight, borderBottom: '2px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: chartHeight, borderBottom: '2px solid var(--n-200)' }}>
         {items.map((d, i) => {
           const pct      = d[dataKey] / max;
           const barH     = Math.max(pct * (chartHeight - 30), pct > 0 ? 2 : 0);
@@ -767,8 +767,8 @@ function PatientModal({ patient, onClose }) {
         <div className="rb-modal-header">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {patient.name || 'Пациент'}
-            {patient.isVip && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>VIP</span>}
-            {patient.hasLK && <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>ЛК</span>}
+            {patient.isVip && <span style={{ fontSize: 11, background: 'var(--amber-100)', color: 'var(--amber-800)', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>VIP</span>}
+            {patient.hasLK && <span style={{ fontSize: 11, background: 'var(--accent-100)', color: 'var(--accent-900)', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>ЛК</span>}
           </h3>
           <button className="rb-modal-close" onClick={onClose}>×</button>
         </div>
@@ -914,7 +914,7 @@ function PieChart({ segments, size = 200, title, centerLabel, formatter }) {
   const labelFontSize = Math.max(10, size * 0.072);
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '16px 18px' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '16px 18px' }}>
       {title && <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', marginBottom: 12 }}>{title}</div>}
       <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
@@ -1065,7 +1065,7 @@ function TabPatients({ rows }) {
       <SectionHeader title={`Топ 20% пациентов по выручке (${top20.length} из ${top20Patients.length})`}>
         <ChartFilter value={top20Clinic} onChange={setTop20Clinic} options={clinicOptions} placeholder="Все клиники" />
       </SectionHeader>
-      <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ maxHeight: 520, overflowY: 'auto' }}>
         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
@@ -1084,14 +1084,14 @@ function TabPatients({ rows }) {
                 <td style={tdStyle}>{p.card || '—'}</td>
                 <td style={tdStyle}>
                   {p.name || '—'}
-                  {p.isVip && <span style={{ marginLeft: 6, fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 10, fontWeight: 600 }}>VIP</span>}
-                  {p.hasLK && <span style={{ marginLeft: 4, fontSize: 10, background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: 10, fontWeight: 600 }}>ЛК</span>}
+                  {p.isVip && <span style={{ marginLeft: 6, fontSize: 10, background: 'var(--amber-100)', color: 'var(--amber-800)', padding: '1px 5px', borderRadius: 10, fontWeight: 600 }}>VIP</span>}
+                  {p.hasLK && <span style={{ marginLeft: 4, fontSize: 10, background: 'var(--accent-100)', color: 'var(--accent-900)', padding: '1px 5px', borderRadius: 10, fontWeight: 600 }}>ЛК</span>}
                 </td>
                 <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtRub(p.revenue)}</td>
                 <td style={tdStyle}>
                   <button
                     onClick={() => setPatientModal(p)}
-                    style={{ fontSize: 11, padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, background: '#fff', cursor: 'pointer', color: 'var(--rb-text)' }}
+                    style={{ fontSize: 11, padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, background: 'var(--n-0)', cursor: 'pointer', color: 'var(--rb-text)' }}
                   >Детали</button>
                 </td>
               </tr>
@@ -1181,7 +1181,7 @@ function TabMargin({ rows }) {
 
       <SectionTitle>Маржинальность услуг</SectionTitle>
       {!hasCostData && (
-        <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 12 }}>
+        <div style={{ background: 'var(--amber-50)', border: '1px solid var(--amber-500)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--amber-800)', marginBottom: 12 }}>
           Данные о себестоимости отсутствуют — колонка «Себестоимость услуги» не найдена в источниках
         </div>
       )}
@@ -1193,7 +1193,7 @@ function TabMargin({ rows }) {
           style={{ width: 340, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}
         />
       </div>
-      <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ maxHeight: 520, overflowY: 'auto' }}>
           <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
@@ -1321,15 +1321,15 @@ function DoctorHeatmap({ rows, periodStart, periodEnd }) {
   );
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '16px 18px' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '16px 18px' }}>
       <div style={{ overflowX: 'auto', maxHeight: 760, overflowY: 'auto' }}>
         {/* Заголовок (липкий при вертикальном скролле) */}
-        <div style={{ display: 'flex', marginBottom: 4, position: 'sticky', top: 0, background: '#fff', zIndex: 1, paddingBottom: 2 }}>
+        <div style={{ display: 'flex', marginBottom: 4, position: 'sticky', top: 0, background: 'var(--n-0)', zIndex: 1, paddingBottom: 2 }}>
           <div style={{ width: LABEL_W, flexShrink: 0 }} />
           {days.map((d, i) => (
             <div key={i} style={{ width: CELL_W, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: multiMonth ? 1.3 : 1 }}>
               {multiMonth && d.getDate() === 1
-                ? <><div style={{ fontSize: 9, color: '#94a3b8' }}>{MONTH_NAMES[d.getMonth()].slice(0,3)}</div><div>{d.getDate()}</div></>
+                ? <><div style={{ fontSize: 9, color: 'var(--n-500)' }}>{MONTH_NAMES[d.getMonth()].slice(0,3)}</div><div>{d.getDate()}</div></>
                 : d.getDate()
               }
             </div>
@@ -1405,7 +1405,7 @@ function ReturnVisitsTable({ data }) {
   );
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ maxHeight: 500, overflowY: 'auto' }}>
         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
@@ -1585,7 +1585,7 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
               style={{ width: 300, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}
             />
           </div>
-          <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ maxHeight: 520, overflowY: 'auto' }}>
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
@@ -1611,7 +1611,7 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
           </div>
         </>
       ) : (
-        <div style={{ marginTop: 20, padding: '24px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, background: '#f8fafc', borderRadius: 10, border: '1px solid var(--rb-border)' }}>
+        <div style={{ marginTop: 20, padding: '24px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, background: 'var(--n-50)', borderRadius: 10, border: '1px solid var(--rb-border)' }}>
           Данные о направлениях отсутствуют (колонки «ФИО рекомендателя» и «ФИО исполнителя» должны быть заполнены)
         </div>
       )}
@@ -1619,7 +1619,7 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
       {/* Взаимные направления */}
       <SectionTitle>Взаимные направления между врачами</SectionTitle>
       {mutualPairs.length > 0 ? (
-        <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ maxHeight: 440, overflowY: 'auto' }}>
             <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
@@ -1637,8 +1637,8 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
                   <tr key={i} style={{ borderBottom: '1px solid var(--rb-border)' }}>
                     <td style={{ ...tdStyle, color: 'var(--rb-text-secondary)' }}>{i + 1}</td>
                     <td style={tdStyle}>{p.docA}</td>
-                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: '#4f8ef7' }}>{p.aToB}</td>
-                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: '#10b981' }}>{p.bToA}</td>
+                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: 'var(--accent-400)' }}>{p.aToB}</td>
+                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, color: 'var(--green-600)' }}>{p.bToA}</td>
                     <td style={tdStyle}>{p.docB}</td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{p.total}</td>
                   </tr>
@@ -1673,7 +1673,7 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
       </SectionHeader>
       {chainData.length > 0 ? (
         <>
-          <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
             {chainData.map((c, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: i < chainData.length - 1 ? '1px solid var(--rb-border)' : 'none', fontSize: 13 }}>
                 <span style={{ color: 'var(--rb-text)' }}>{c.name}</span>
@@ -1686,7 +1686,7 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
           {!showAll && allChains.filter(c => c.steps >= minSteps).length > 10 && (
             <button onClick={() => setShowAll(true)} style={{
               marginTop: 8, padding: '5px 14px', fontSize: 12, borderRadius: 7, cursor: 'pointer',
-              border: '1px solid var(--rb-border-dark)', background: '#fff',
+              border: '1px solid var(--rb-border-dark)', background: 'var(--n-0)',
               color: 'var(--rb-text)', fontFamily: 'inherit',
             }}>Показать все</button>
           )}
@@ -1795,7 +1795,7 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
 
   return (
     // Внешняя карточка без overflow — чтобы не ломать ширину соседних блоков
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10 }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10 }}>
       {/* Скроллируемая сетка — только она горизонтально прокручивается */}
       <div style={{ overflowX: 'auto', padding: '16px 18px 8px' }}>
         {/* Заголовок: числа дней */}
@@ -1804,7 +1804,7 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
           {days.map((d, i) => (
             <div key={i} style={{ width: CELL_W, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: multiMonth ? 1.3 : 1 }}>
               {multiMonth && d.getDate() === 1
-                ? <><div style={{ fontSize: 9, color: '#94a3b8' }}>{MONTH_NAMES[d.getMonth()].slice(0, 3)}</div><div>{d.getDate()}</div></>
+                ? <><div style={{ fontSize: 9, color: 'var(--n-500)' }}>{MONTH_NAMES[d.getMonth()].slice(0, 3)}</div><div>{d.getDate()}</div></>
                 : d.getDate()
               }
             </div>
@@ -1856,7 +1856,7 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
         <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Пациентов в день:</span>
         {[0, Math.round(maxCount * 0.25), Math.round(maxCount * 0.5), Math.round(maxCount * 0.75), maxCount].map((v, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <div style={{ width: 18, height: 18, background: getColor(v), borderRadius: 3, border: '1px solid #e2e8f0' }} />
+            <div style={{ width: 18, height: 18, background: getColor(v), borderRadius: 3, border: '1px solid var(--n-200)' }} />
             <span style={{ fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
           </div>
         ))}
@@ -2011,7 +2011,7 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
         <span className="rb-spinner" style={{ width: 22, height: 22 }} />
         <span style={{ fontSize: 14 }}>Первичная загрузка данных из МИС…</span>
         {total > 0 && <span style={{ fontSize: 12 }}>{done} / {total} дней</span>}
-        {phase && <span style={{ fontSize: 12, color: '#94a3b8' }}>{phase}</span>}
+        {phase && <span style={{ fontSize: 12, color: 'var(--n-500)' }}>{phase}</span>}
       </div>
     );
   }
@@ -2025,7 +2025,7 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
           <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
         </svg>
         <div style={{ fontSize: 14 }}>База данных визитов пуста</div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>Загрузим данные с 01.02.2026 по текущий день. Это займёт несколько минут.</div>
+        <div style={{ fontSize: 12, color: 'var(--n-500)' }}>Загрузим данные с 01.02.2026 по текущий день. Это займёт несколько минут.</div>
         <button
           onClick={handleFirstSync}
           style={{ padding: '8px 22px', background: 'var(--rb-primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
@@ -2042,7 +2042,7 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--rb-text-secondary)', gap: 10 }}>
         <div style={{ fontSize: 14 }}>Нет визитов за выбранный период</div>
         {syncStatus?.lastSyncAt && (
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>
+          <div style={{ fontSize: 12, color: 'var(--n-500)' }}>
             Последняя синхронизация: {new Date(syncStatus.lastSyncAt).toLocaleString('ru-RU')}
           </div>
         )}
@@ -2056,13 +2056,13 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
       {/* Статус-строка */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
         {syncStatus?.lastSyncAt && (
-          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+          <span style={{ fontSize: 11, color: 'var(--n-500)' }}>
             Обновлено: {new Date(syncStatus.lastSyncAt).toLocaleString('ru-RU')}
           </span>
         )}
         <button
           onClick={loadFromDB}
-          style={{ marginLeft: 'auto', padding: '3px 12px', fontSize: 12, border: '1px solid var(--rb-border-dark)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text)', fontFamily: 'inherit' }}
+          style={{ marginLeft: 'auto', padding: '3px 12px', fontSize: 12, border: '1px solid var(--rb-border-dark)', borderRadius: 6, cursor: 'pointer', background: 'var(--n-0)', color: 'var(--rb-text)', fontFamily: 'inherit' }}
         >
           Обновить
         </button>
@@ -2073,7 +2073,7 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
         <select
           value={roomClinic}
           onChange={e => setRoomClinic(e.target.value)}
-          style={{ padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: roomClinic ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+          style={{ padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: 'var(--n-0)', color: roomClinic ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
         >
           <option value="">Все клиники</option>
           {clinicOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -2245,7 +2245,7 @@ function PdfConfigModal({ rows, appointments, onClose, onExport }) {
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text)' }}>Разделы</div>
               <button
                 onClick={toggleAll}
-                style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}
+                style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', background: 'var(--n-0)', color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}
               >{allOn ? 'Снять все' : 'Выбрать все'}</button>
             </div>
             {PDF_SECTIONS.map(s => {
@@ -2284,7 +2284,7 @@ function PdfConfigModal({ rows, appointments, onClose, onExport }) {
                 <select
                   value={clinicFilter}
                   onChange={e => setClinicFilter(e.target.value)}
-                  style={{ padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: clinicFilter ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+                  style={{ padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: 'var(--n-0)', color: clinicFilter ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
                 >
                   <option value="">Все клиники</option>
                   {clinicOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -2295,7 +2295,7 @@ function PdfConfigModal({ rows, appointments, onClose, onExport }) {
                 <select
                   value={specFilter}
                   onChange={e => setSpecFilter(e.target.value)}
-                  style={{ padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: specFilter ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+                  style={{ padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: 'var(--n-0)', color: specFilter ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
                 >
                   <option value="">Все специальности</option>
                   {specOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -2308,7 +2308,7 @@ function PdfConfigModal({ rows, appointments, onClose, onExport }) {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button
               onClick={onClose}
-              style={{ padding: '7px 16px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13, color: 'var(--rb-text)', fontFamily: 'inherit' }}
+              style={{ padding: '7px 16px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: 'var(--n-0)', cursor: 'pointer', fontSize: 13, color: 'var(--rb-text)', fontFamily: 'inherit' }}
             >Отмена</button>
             <button
               onClick={() => onExport({ sections, clinicFilter, specFilter })}
@@ -2450,13 +2450,13 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
 
       {/* Панель выбора периода */}
       {(() => {
-        const selStyle = { height: 32, padding: '0 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)', cursor: 'pointer', outline: 'none' };
+        const selStyle = { height: 32, padding: '0 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', background: 'var(--n-0)', color: 'var(--rb-text)', cursor: 'pointer', outline: 'none' };
         const divider  = <span style={{ width: 1, height: 20, background: 'var(--rb-border)', flexShrink: 0, alignSelf: 'center' }} />;
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap', background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '8px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap', background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '8px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
             {/* Режим периода — segmented */}
-            <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
+            <div style={{ display: 'flex', background: 'var(--n-100)', borderRadius: 8, padding: 3, gap: 2 }}>
               {PERIOD_MODES.map(m => (
                 <button key={m.key} onClick={() => setPeriodMode(m.key)} style={{
                   padding: '4px 11px', fontSize: 12, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', border: 'none',
@@ -2516,7 +2516,7 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
             {/* Статистика + кнопки */}
             {!loading && loaded && (
               <>
-                <button onClick={loadData} title="Обновить данные" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', cursor: 'pointer', color: 'var(--rb-text-secondary)', flexShrink: 0 }}>
+                <button onClick={loadData} title="Обновить данные" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: 'var(--n-0)', cursor: 'pointer', color: 'var(--rb-text-secondary)', flexShrink: 0 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
                 </button>
                 <button onClick={() => setPdfConfigOpen(true)} disabled={pdfExporting} title="Экспорт в PDF" style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: pdfExporting ? '#f8fafc' : '#fff', cursor: pdfExporting ? 'default' : 'pointer', fontSize: 12, fontWeight: 500, color: pdfExporting ? '#94a3b8' : 'var(--rb-text)', fontFamily: 'inherit', flexShrink: 0, opacity: pdfExporting ? 0.7 : 1 }}>
@@ -2590,7 +2590,7 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
           {!loading && loaded && rows.length === 0 && (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
               {excelSources.length === 0
-                ? <span style={{ color: '#ef4444', fontSize: 13 }}>Нет загруженных источников — добавьте файлы в разделе Архив → Источники</span>
+                ? <span style={{ color: 'var(--red-500)', fontSize: 13 }}>Нет загруженных источников — добавьте файлы в разделе Архив → Источники</span>
                 : `Нет данных за ${getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth)}`
               }
             </div>

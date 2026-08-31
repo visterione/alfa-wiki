@@ -16,7 +16,6 @@ const { authenticate } = require('../../middleware/auth');
 const { TaskTeam, TaskTeamMember, TaskTeamInvite, User, sequelize } = require('../../models');
 const context = require('../../services/tasks/context');
 const teams = require('../../services/tasks/teams');
-const workload = require('../../services/tasks/workload');
 const loadQuery = require('../../services/tasks/loadQuery');
 
 /** Команда со списком участников — в форме, которую ждёт сервис. */
@@ -316,7 +315,9 @@ router.get('/:id/load', authenticate, async (req, res) => {
 
     // Процент — от суммы личных норм участников, а не от «людей × 8 ч»:
     // команда из подрядчиков на part-time иначе выглядела бы недозагруженной.
-    const summary = summarize(matrix);
+    // Сам свод живёт в loadQuery: те же цифры теперь считает и вкладка
+    // «Сотрудники», и расходиться они не должны.
+    const summary = loadQuery.summarize(matrix);
 
     res.json({ team: team.plain, rows, summary });
   } catch (error) {
@@ -324,46 +325,5 @@ router.get('/:id/load', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Не удалось посчитать загрузку' });
   }
 });
-
-/**
- * Свод по уже посчитанной матрице.
- *
- * Считается по готовым числам, а не пересчётом из событий: второй проход по
- * календарю ради тех же цифр — лишний запрос и лишний способ разойтись с
- * таблицей, которую пользователь видит рядом.
- */
-function summarize(matrix) {
-  let hours = 0;
-  let capacity = 0;
-  let overloadedDays = 0;
-  const perUser = [];
-
-  for (const [userId, perDay] of matrix) {
-    let free = 0;
-    let over = 0;
-    for (const [, load] of perDay) {
-      if (load.onVacation || load.onDayOff || load.norm === null) continue;
-      hours += load.hours;
-      capacity += load.norm;
-      free += load.free;
-      if (load.color === workload.COLORS.OVER) {
-        over += 1;
-        overloadedDays += 1;
-      }
-    }
-    perUser.push({ userId, freeHours: round(free), overloadedDays: over });
-  }
-
-  return {
-    hours: round(hours),
-    capacity: round(capacity),
-    percent: capacity ? Math.round((hours / capacity) * 100) : 0,
-    freeHours: round(Math.max(0, capacity - hours)),
-    overloadedDays,
-    perUser: perUser.sort((a, b) => b.freeHours - a.freeHours),
-  };
-}
-
-const round = v => Math.round(v * 100) / 100;
 
 module.exports = router;

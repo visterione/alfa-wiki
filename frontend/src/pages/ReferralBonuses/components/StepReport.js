@@ -36,11 +36,11 @@ function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
 
   if (compact) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 13 }} {...dragProps}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', fontSize: 13 }} {...dragProps}>
         {uploadedFile ? (
           <>
             <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#16a34a', fontWeight: 500 }}>{uploadedFile.name}</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--green-600)', fontWeight: 500 }}>{uploadedFile.name}</span>
             {onDms && <button onClick={onDms} style={{ ...compactBtn, width: 90 }}>Юр. комп.</button>}
             <button onClick={onClear} style={{ ...compactBtn, width: 90 }}>Удалить</button>
           </>
@@ -63,7 +63,7 @@ function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
       onClick={() => !uploadedFile && ref.current?.click()}
       style={{
         margin: '16px 20px 0',
-        border: `2px dashed ${isDragging ? 'var(--rb-primary)' : uploadedFile ? '#16a34a' : '#cbd5e1'}`,
+        border: `2px dashed ${isDragging ? 'var(--rb-primary)' : uploadedFile ? 'var(--green-600)' : 'var(--n-300)'}`,
         borderRadius: 10,
         padding: '24px 20px',
         textAlign: 'center',
@@ -75,7 +75,7 @@ function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
       {uploadedFile ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="28" height="28"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 12 12 15 16 10"/></svg>
-          <div style={{ fontWeight: 600, fontSize: 13, color: '#16a34a' }}>{uploadedFile.name}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--green-600)' }}>{uploadedFile.name}</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             {onDms && <button onClick={e => { e.stopPropagation(); onDms(); }} style={{ width: 90, padding: '4px 0', fontSize: 12, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Юр. комп.</button>}
             <button onClick={e => { e.stopPropagation(); ref.current?.click(); }} style={{ width: 90, padding: '4px 0', fontSize: 12, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Заменить</button>
@@ -88,7 +88,7 @@ function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
           <div style={{ fontSize: 13, fontWeight: 500, color: isDragging ? 'var(--rb-primary)' : 'var(--rb-text-secondary)' }}>
             {isDragging ? 'Отпустите файл' : 'Перетащите Excel-файл или нажмите для выбора'}
           </div>
-          <div style={{ fontSize: 11, color: '#94a3b8' }}>.xlsx / .xls</div>
+          <div style={{ fontSize: 11, color: 'var(--n-500)' }}>.xlsx / .xls</div>
         </div>
       )}
       {input}
@@ -128,7 +128,7 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClin
   ].filter(Boolean);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', flexWrap: 'wrap' }}>
       <DateRangePicker dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
 
       {clinics?.length > 0 && (
@@ -175,7 +175,7 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClin
             {menuOpen && (
               <div style={{
                 position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 300,
-                background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10,
+                background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10,
                 boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 190, overflow: 'hidden',
               }}>
                 {menuItems.map((item, i) => (
@@ -228,7 +228,7 @@ function SourceConflictModal({ sources, onPick, onDismiss }) {
               <button
                 key={src.id}
                 onClick={() => onPick(src)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: '1px solid var(--rb-border)', borderRadius: 8, background: '#f8fafc', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-50)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
                 onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
               >
@@ -286,10 +286,10 @@ function MissingSection({ label, items, kind, forms, onFormChange, onSave, savin
   if (!items.length) return null;
   return (
     <>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '10px 0 5px' }}>{label}:</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber-800)', margin: '10px 0 5px' }}>{label}:</div>
       {groupByClinic(items).map(({ label: clinicLabel, items: svcs }) => (
         <div key={clinicLabel}>
-          {clinicLabel && <div style={{ fontSize: 12, fontWeight: 600, color: '#a16207', margin: '4px 0 3px' }}>— {clinicLabel}</div>}
+          {clinicLabel && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber-800)', margin: '4px 0 3px' }}>— {clinicLabel}</div>}
           {svcs.map((s, i) => {
             const key = `${kind}|${s.code}|${String(s.clinicId ?? '')}`;
             const form = forms?.[key] || { type: 'pct', value: '' };
@@ -297,14 +297,14 @@ function MissingSection({ label, items, kind, forms, onFormChange, onSave, savin
             const isSaved = !!savedKeys?.has(key);
             return (
               <div key={i} style={{ paddingLeft: clinicLabel ? 12 : 0, marginBottom: canEdit ? 7 : 2 }}>
-                <div style={{ fontSize: 12, color: '#78350f', marginBottom: canEdit ? 4 : 0 }}>
+                <div style={{ fontSize: 12, color: 'var(--amber-800)', marginBottom: canEdit ? 4 : 0 }}>
                   {s.code && <span style={{ fontWeight: 600 }}>{s.code}{' '}</span>}{s.name}
                 </div>
                 {canEdit && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ display: 'flex', border: '1px solid #f59e0b', borderRadius: 4, overflow: 'hidden', flexShrink: 0, fontSize: 11, opacity: isSaved ? 0.5 : 1 }}>
-                      <button onClick={() => !isSaved && onFormChange(key, 'type', 'pct')} style={{ padding: '2px 8px', background: form.type === 'pct' ? '#fbbf24' : '#fff', border: 'none', cursor: isSaved ? 'default' : 'pointer', color: '#92400e', fontWeight: form.type === 'pct' ? 700 : 400, fontFamily: 'inherit' }}>%</button>
-                      <button onClick={() => !isSaved && onFormChange(key, 'type', 'rub')} style={{ padding: '2px 8px', background: form.type === 'rub' ? '#fbbf24' : '#fff', border: 'none', borderLeft: '1px solid #f59e0b', cursor: isSaved ? 'default' : 'pointer', color: '#92400e', fontWeight: form.type === 'rub' ? 700 : 400, fontFamily: 'inherit' }}>₽</button>
+                    <div style={{ display: 'flex', border: '1px solid var(--amber-500)', borderRadius: 4, overflow: 'hidden', flexShrink: 0, fontSize: 11, opacity: isSaved ? 0.5 : 1 }}>
+                      <button onClick={() => !isSaved && onFormChange(key, 'type', 'pct')} style={{ padding: '2px 8px', background: form.type === 'pct' ? '#fbbf24' : '#fff', border: 'none', cursor: isSaved ? 'default' : 'pointer', color: 'var(--amber-800)', fontWeight: form.type === 'pct' ? 700 : 400, fontFamily: 'inherit' }}>%</button>
+                      <button onClick={() => !isSaved && onFormChange(key, 'type', 'rub')} style={{ padding: '2px 8px', background: form.type === 'rub' ? '#fbbf24' : '#fff', border: 'none', borderLeft: '1px solid var(--amber-500)', cursor: isSaved ? 'default' : 'pointer', color: 'var(--amber-800)', fontWeight: form.type === 'rub' ? 700 : 400, fontFamily: 'inherit' }}>₽</button>
                     </div>
                     <input
                       type="number" min="0" step="0.1"
@@ -312,10 +312,10 @@ function MissingSection({ label, items, kind, forms, onFormChange, onSave, savin
                       onChange={e => !isSaved && onFormChange(key, 'value', e.target.value)}
                       placeholder={form.type === 'pct' ? '%' : '₽'}
                       disabled={isSaved}
-                      style={{ width: 72, padding: '3px 7px', fontSize: 11, border: '1px solid #f59e0b', borderRadius: 4, outline: 'none', fontFamily: 'inherit', opacity: isSaved ? 0.6 : 1 }}
+                      style={{ width: 72, padding: '3px 7px', fontSize: 11, border: '1px solid var(--amber-500)', borderRadius: 4, outline: 'none', fontFamily: 'inherit', opacity: isSaved ? 0.6 : 1 }}
                     />
                     {isSaved ? (
-                      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, whiteSpace: 'nowrap' }}>✓ Сохранено</span>
+                      <span style={{ fontSize: 11, color: 'var(--green-600)', fontWeight: 600, whiteSpace: 'nowrap' }}>✓ Сохранено</span>
                     ) : (
                       <button
                         onClick={() => onSave(s, kind, key)}
@@ -371,7 +371,7 @@ function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
   };
 
   return (
-    <div style={{ marginBottom: 16, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ marginBottom: 16, background: 'var(--amber-50)', border: '1px solid var(--amber-500)', borderRadius: 8, overflow: 'hidden' }}>
       <div
         onClick={() => setExpanded(e => !e)}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', userSelect: 'none' }}
@@ -380,7 +380,7 @@ function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
           <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#92400e' }}>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--amber-800)' }}>
           Не настроен бонус для {total} {total === 1 ? 'услуги' : 'услуг'} — бонус не будет начислен
         </div>
         <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0, transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
@@ -388,13 +388,13 @@ function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
         </svg>
       </div>
       {expanded && (
-        <div style={{ padding: '0 14px 12px', borderTop: '1px solid #fde68a' }}>
+        <div style={{ padding: '0 14px 12px', borderTop: '1px solid var(--amber-200)' }}>
           <MissingSection label="Выполненные услуги (нет в «Услуги»)" items={missingPerformed} kind="performed" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} savedKeys={savedKeys} />
           <MissingSection label="Направления (нет в «Направления»)" items={missingReferral} kind="referral" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} savedKeys={savedKeys} />
           {savedKeys.size > 0 && onSaved && (
             <button
               onClick={onSaved}
-              style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', fontSize: 12, background: '#d97706', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+              style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', fontSize: 12, background: 'var(--amber-600)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
               Пересчитать отчёт
@@ -427,7 +427,7 @@ function MissingSubdivisionBanner({ clinicReports }) {
   if (!missing.length) return null;
 
   return (
-    <div style={{ marginBottom: 16, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ marginBottom: 16, background: 'var(--amber-50)', border: '1px solid var(--amber-500)', borderRadius: 8, overflow: 'hidden' }}>
       <div
         onClick={() => setExpanded(e => !e)}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', userSelect: 'none' }}
@@ -436,7 +436,7 @@ function MissingSubdivisionBanner({ clinicReports }) {
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
           <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#92400e' }}>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--amber-800)' }}>
           Не указано подразделение (1С) для {missing.length} {missing.length === 1 ? 'клиники' : 'клиник'} — импорт расчётных листков PDF не попадёт в эту клинику
         </div>
         <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0, transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
@@ -444,12 +444,12 @@ function MissingSubdivisionBanner({ clinicReports }) {
         </svg>
       </div>
       {expanded && (
-        <div style={{ padding: '2px 14px 12px', borderTop: '1px solid #fde68a' }}>
-          <div style={{ fontSize: 12, color: '#78350f', margin: '8px 0 6px' }}>
+        <div style={{ padding: '2px 14px 12px', borderTop: '1px solid var(--amber-200)' }}>
+          <div style={{ fontSize: 12, color: 'var(--amber-800)', margin: '8px 0 6px' }}>
             Задайте «Подразделение (1С)» этим клиникам во вкладке «Исполнители», чтобы импорт расчётных листков распределял суммы автоматически:
           </div>
           {missing.map((m, i) => (
-            <div key={i} style={{ fontSize: 12, color: '#92400e', paddingLeft: 12, marginBottom: 2 }}>
+            <div key={i} style={{ fontSize: 12, color: 'var(--amber-800)', paddingLeft: 12, marginBottom: 2 }}>
               • {m.clinic || 'Клиника не указана'}
             </div>
           ))}
@@ -730,19 +730,19 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       {/* ── Duplicate confirmation modal ── */}
       {dupConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 28, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+          <div style={{ background: 'var(--n-0)', borderRadius: 12, padding: 28, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="22" height="22"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               <span style={{ fontWeight: 700, fontSize: 15 }}>Запись уже существует</span>
             </div>
             {dupConfirm.isBulk ? (
-              <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+              <p style={{ fontSize: 13, color: 'var(--n-700)', lineHeight: 1.6, margin: '0 0 20px' }}>
                 Среди выбранных врачей <strong>{dupConfirm.dupCount}</strong> уже {dupConfirm.dupCount === 1 ? 'имеет запись' : 'имеют записи'} за этот период.
                 {dupConfirm.newCount > 0 && <> Новых записей: <strong>{dupConfirm.newCount}</strong>.</>}
                 <br />Перезаписать существующие данные?
               </p>
             ) : (
-              <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+              <p style={{ fontSize: 13, color: 'var(--n-700)', lineHeight: 1.6, margin: '0 0 20px' }}>
                 Запись за <strong>{dupConfirm.period}</strong> уже существует в истории.<br />
                 Перезаписать её новыми данными?
               </p>
@@ -750,7 +750,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setDupConfirm(null)}
-                style={{ padding: '7px 18px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#fff', cursor: 'pointer', color: '#475569' }}
+                style={{ padding: '7px 18px', border: '1px solid var(--n-200)', borderRadius: 7, fontSize: 13, fontWeight: 600, background: 'var(--n-0)', cursor: 'pointer', color: 'var(--n-700)' }}
               >
                 Отменить
               </button>
@@ -761,7 +761,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
                   if (confirm.isBulk) confirm.onConfirmBulk();
                   else doSaveIndividual(confirm.existingId);
                 }}
-                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#007AFF', color: '#fff', cursor: 'pointer' }}
+                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: 'var(--accent-500)', color: '#fff', cursor: 'pointer' }}
               >
                 Перезаписать
               </button>
@@ -812,7 +812,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
               const isAup = String(clinicId) === 'aup';
               return (
                 <div key={idx} style={{ marginBottom: isMulti ? 40 : 20, ...(isMulti && idx > 0 ? { borderTop: '3px dashed var(--rb-border)', paddingTop: 28 } : {}) }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '12px 16px', background: isAup ? '#1a1a1a' : `${clinicColor}18`, border: `2px solid ${isAup ? '#8a6d1f' : clinicColor}`, borderRadius: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '12px 16px', background: isAup ? '#1a1a1a' : `${clinicColor}18`, border: `2px solid ${isAup ? 'var(--amber-800)' : clinicColor}`, borderRadius: 8 }}>
                     {isAup
                       ? <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#bf953f', flexShrink: 0 }} />
                       : <ClinicLogo clinicId={clinicId} color={clinicColor} size={30} dotSize={14} />}
@@ -1178,12 +1178,12 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
       {/* ── Duplicate confirmation modal ── */}
       {dupConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 28, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+          <div style={{ background: 'var(--n-0)', borderRadius: 12, padding: 28, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="22" height="22"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               <span style={{ fontWeight: 700, fontSize: 15 }}>Записи уже существуют</span>
             </div>
-            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+            <p style={{ fontSize: 13, color: 'var(--n-700)', lineHeight: 1.6, margin: '0 0 20px' }}>
               Среди выбранных врачей <strong>{dupConfirm.dupCount}</strong> уже {dupConfirm.dupCount === 1 ? 'имеет запись' : 'имеют записи'} за этот период.
               {dupConfirm.newCount > 0 && <> Новых записей: <strong>{dupConfirm.newCount}</strong>.</>}
               <br />Перезаписать существующие данные?
@@ -1191,13 +1191,13 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setDupConfirm(null)}
-                style={{ padding: '7px 18px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#fff', cursor: 'pointer', color: '#475569' }}
+                style={{ padding: '7px 18px', border: '1px solid var(--n-200)', borderRadius: 7, fontSize: 13, fontWeight: 600, background: 'var(--n-0)', cursor: 'pointer', color: 'var(--n-700)' }}
               >
                 Отменить
               </button>
               <button
                 onClick={() => { const c = dupConfirm; setDupConfirm(null); c.onConfirmBulk(); }}
-                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#007AFF', color: '#fff', cursor: 'pointer' }}
+                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: 'var(--accent-500)', color: '#fff', cursor: 'pointer' }}
               >
                 Перезаписать
               </button>
@@ -1237,8 +1237,8 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
 
       {/* Progress bar */}
       {generating && progress.total > 0 && (
-        <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--rb-border)', background: '#eff6ff' }}>
-          <div style={{ height: 5, background: '#dbeafe', borderRadius: 3, overflow: 'hidden', marginBottom: 3 }}>
+        <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--rb-border)', background: 'var(--accent-50)' }}>
+          <div style={{ height: 5, background: 'var(--accent-100)', borderRadius: 3, overflow: 'hidden', marginBottom: 3 }}>
             <div style={{ height: '100%', background: 'var(--rb-primary)', borderRadius: 3, width: `${(progress.current / progress.total) * 100}%`, transition: 'width 0.3s' }} />
           </div>
           <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{progress.currentName} ({progress.current} из {progress.total})</div>
@@ -1251,9 +1251,9 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         {bulkResults.length > 0 && (
           <>
             {/* Summary + action buttons */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '12px 16px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '12px 16px', background: 'var(--accent-50)', border: '1px solid var(--accent-200)', borderRadius: 8, marginBottom: 16 }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: '#1D4ED8' }}>Сводный отчёт готов</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--accent-700)' }}>Сводный отчёт готов</div>
                 <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
                   {successResults.length} из {bulkResults.length} врачей · Итого: <strong>{fmtRub(totalFinalSalary)}</strong>
                   {bulkResults.filter(r => r.error).length > 0 && (
@@ -1300,17 +1300,17 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                           : <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Нет данных за период</div>
                       }
                       {(bmp.length > 0 || bmr.length > 0) && (
-                        <div style={{ marginTop: 5, fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, padding: '5px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div style={{ marginTop: 5, fontSize: 11, color: 'var(--amber-800)', background: 'var(--amber-50)', border: '1px solid var(--amber-500)', borderRadius: 6, padding: '5px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                           {bmp.length > 0 && (
                             <div>
                               <span style={{ fontWeight: 600 }}>Услуги без бонуса: </span>
-                              <span style={{ color: '#78350f' }}>{bmp.map(s => [s.code, s.name].filter(Boolean).join(' ')).join(', ')}</span>
+                              <span style={{ color: 'var(--amber-800)' }}>{bmp.map(s => [s.code, s.name].filter(Boolean).join(' ')).join(', ')}</span>
                             </div>
                           )}
                           {bmr.length > 0 && (
                             <div>
                               <span style={{ fontWeight: 600 }}>Направления без бонуса: </span>
-                              <span style={{ color: '#78350f' }}>{bmr.map(s => [s.code, s.name].filter(Boolean).join(' ')).join(', ')}</span>
+                              <span style={{ color: 'var(--amber-800)' }}>{bmr.map(s => [s.code, s.name].filter(Boolean).join(' ')).join(', ')}</span>
                             </div>
                           )}
                         </div>
@@ -1336,7 +1336,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                         const isAup = String(cr.clinicId) === 'aup';
                         return (
                         <div key={cidx} style={{ ...(cidx > 0 ? { marginTop: 16, borderTop: '2px dashed var(--rb-border)', paddingTop: 16 } : {}) }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: isAup ? '#1a1a1a' : `${cr.clinicColor}18`, border: `2px solid ${isAup ? '#8a6d1f' : cr.clinicColor}`, borderRadius: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: isAup ? '#1a1a1a' : `${cr.clinicColor}18`, border: `2px solid ${isAup ? 'var(--amber-800)' : cr.clinicColor}`, borderRadius: 8 }}>
                             {isAup
                               ? <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#bf953f', flexShrink: 0 }} />
                               : <ClinicLogo clinicId={cr.clinicId} color={cr.clinicColor} size={24} dotSize={10} />}

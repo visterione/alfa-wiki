@@ -16,6 +16,21 @@
 
   <title>Альфа Вики</title>
 
+  <!-- Тема применяется до загрузки бандла: React монтируется через сотни
+       миллисекунд, и всё это время тёмная тема была бы белой вспышкой.
+       Значение берём из того же кэша, что и AppearanceContext.
+
+       Настройку системы не спрашиваем: тёмная включается только явным выбором,
+       иначе портал сменил бы вид у половины сотрудников сам по себе. -->
+  <script>
+    (function () {
+      try {
+        var saved = JSON.parse(localStorage.getItem('appearance-v1') || '{}');
+        document.documentElement.dataset.theme = saved.theme === 'dark' ? 'dark' : 'light';
+      } catch (e) {}
+    })();
+  </script>
+
   <style>
     /* Initial loading styles to prevent white flash */
     body {

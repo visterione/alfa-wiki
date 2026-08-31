@@ -98,7 +98,7 @@ function PsTreeNode({ node, level, search, clinicId }) {
             <PsTreeNode key={child.categoryId || child.name} node={child} level={level + 1} search={search} clinicId={clinicId} />
           ))}
           {needsSvcs && (svcLoading
-            ? <div style={{ padding: '8px 16px 8px 60px', fontSize: 12, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ? <div style={{ padding: '8px 16px 8px 60px', fontSize: 12, color: 'var(--n-500)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div className="ps-spinner" style={{ width: 14, height: 14, borderWidth: 2, flexShrink: 0 }} />Загрузка услуг...
               </div>
             : services?.length > 0 && (
@@ -124,7 +124,7 @@ function PsTreeNode({ node, level, search, clinicId }) {
                   </tbody>
                 </table>
                 {services.length >= 500 && (
-                  <div style={{ padding: '4px 10px 8px', fontSize: 12, color: '#9ca3af' }}>Показано первые 500</div>
+                  <div style={{ padding: '4px 10px 8px', fontSize: 12, color: 'var(--n-500)' }}>Показано первые 500</div>
                 )}
               </div>
             )
@@ -334,7 +334,7 @@ function TabPartnerServices() {
   // ── Sort icon ──
   function SortIcon({ field }) {
     if (sort.field !== field) return <i className="sort-icon">↕</i>;
-    return <i className="sort-icon" style={{ opacity: 1, color: '#3b82f6' }}>{sort.dir === 'asc' ? '↑' : '↓'}</i>;
+    return <i className="sort-icon" style={{ opacity: 1, color: 'var(--accent-500)' }}>{sort.dir === 'asc' ? '↑' : '↓'}</i>;
   }
 
   // ── Pagination ──
@@ -489,7 +489,7 @@ function TabPartnerServices() {
                 {tableLoading ? (
                   <tr><td colSpan={7} className="ps-loading"><div className="ps-spinner" />Загрузка...</td></tr>
                 ) : tableError ? (
-                  <tr><td colSpan={7} className="ps-empty" style={{ color: '#ef4444' }}>Ошибка: {tableError}</td></tr>
+                  <tr><td colSpan={7} className="ps-empty" style={{ color: 'var(--red-500)' }}>Ошибка: {tableError}</td></tr>
                 ) : sortedData.length === 0 ? (
                   <tr><td colSpan={7} className="ps-empty">
                     {!hasActiveFilters && (!tablePag || tablePag.total === 0)
@@ -537,7 +537,7 @@ function TabPartnerServices() {
       {view === 'checks' && (
         <div>
           {checksLoading && <div className="ps-table-container"><div className="ps-loading"><div className="ps-spinner" />Загрузка всех услуг для проверки...</div></div>}
-          {checksError && <div className="ps-table-container"><div className="ps-empty" style={{ color: '#ef4444' }}>Ошибка: {checksError}</div></div>}
+          {checksError && <div className="ps-table-container"><div className="ps-empty" style={{ color: 'var(--red-500)' }}>Ошибка: {checksError}</div></div>}
           {checks?.problems.length === 0 && (
             <div className="ps-checks-summary ps-checks-ok">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, verticalAlign: 'middle', marginRight: 4 }}><polyline points="20 6 9 17 4 12"/></svg>
@@ -582,7 +582,7 @@ function TabPartnerServices() {
       {view === 'price-err' && (
         <div>
           {priceErrLoading && <div className="ps-table-container"><div className="ps-loading"><div className="ps-spinner" />Загрузка данных для проверки цен...</div></div>}
-          {priceErrError && <div className="ps-table-container"><div className="ps-empty" style={{ color: '#ef4444' }}>Ошибка: {priceErrError}</div></div>}
+          {priceErrError && <div className="ps-table-container"><div className="ps-empty" style={{ color: 'var(--red-500)' }}>Ошибка: {priceErrError}</div></div>}
           {priceErr?.data.length === 0 && (
             <div className="ps-perr-summary ps-perr-ok">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, verticalAlign: 'middle', marginRight: 4 }}><polyline points="20 6 9 17 4 12"/></svg>
@@ -610,7 +610,7 @@ function TabPartnerServices() {
                         <td className="col-name">{s.title}</td>
                         <td className="col-name">{s.categoryTitle || '—'}</td>
                         <td className="col-price">{fmtPrice(s.price)}</td>
-                        <td className="ps-perr-cell" style={{ fontWeight: 600, color: '#b91c1c' }}>{fmtPrice(s.costPrice)}</td>
+                        <td className="ps-perr-cell" style={{ fontWeight: 600, color: 'var(--red-700)' }}>{fmtPrice(s.costPrice)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -901,7 +901,7 @@ function Tab804n() {
       {/* Чипы-сводка (кликабельные фильтры) */}
       {summary && (
         <div className="n804-chips">
-          <button className={`n804-chip${filter === 'problems' ? ' active' : ''}`} onClick={() => setFilter('problems')} style={{ background: '#334155' }}>
+          <button className={`n804-chip${filter === 'problems' ? ' active' : ''}`} onClick={() => setFilter('problems')} style={{ background: 'var(--n-800)' }}>
             <span className="n804-chip-val">{problemCount}<span className="n804-chip-total">/{summary.total || 0}</span></span>
             <span className="n804-chip-lbl">Проблемные</span>
           </button>

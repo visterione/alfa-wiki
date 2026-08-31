@@ -99,7 +99,7 @@ const VALUE_LABELS = {
 };
 
 const TD = ({ children, style }) => (
-  <td style={{ padding: '3px 8px', fontSize: 12, borderBottom: '1px solid #f3f4f6', ...style }}>{children}</td>
+  <td style={{ padding: '3px 8px', fontSize: 12, borderBottom: '1px solid var(--n-100)', ...style }}>{children}</td>
 );
 
 function formatItem(item) {
@@ -167,10 +167,10 @@ function buildArrayRows(change, showClinic, prefix, clinicMap = {}) {
     const item = change.added[j];
     rows.push(
       <tr key={`${prefix}-a${j}`}>
-        {showClinic && <TD style={{ color: '#6b7280' }}>{clinicLabel || ''}</TD>}
+        {showClinic && <TD style={{ color: 'var(--n-600)' }}>{clinicLabel || ''}</TD>}
         <TD style={{ fontWeight: 500 }}>{change.label}</TD>
-        <TD style={{ color: '#9ca3af' }}>—</TD>
-        <TD style={{ background: '#dcfce7', color: '#166534' }}>+ {formatItem(item)}</TD>
+        <TD style={{ color: 'var(--n-500)' }}>—</TD>
+        <TD style={{ background: 'var(--green-100)', color: 'var(--green-800)' }}>+ {formatItem(item)}</TD>
       </tr>
     );
   }
@@ -178,10 +178,10 @@ function buildArrayRows(change, showClinic, prefix, clinicMap = {}) {
     const item = change.removed[j];
     rows.push(
       <tr key={`${prefix}-r${j}`}>
-        {showClinic && <TD style={{ color: '#6b7280' }}>{clinicLabel || ''}</TD>}
+        {showClinic && <TD style={{ color: 'var(--n-600)' }}>{clinicLabel || ''}</TD>}
         <TD style={{ fontWeight: 500 }}>{change.label}</TD>
-        <TD style={{ background: '#fee2e2', color: '#991b1b' }}>− {formatItem(item)}</TD>
-        <TD style={{ color: '#9ca3af' }}>—</TD>
+        <TD style={{ background: 'var(--red-100)', color: 'var(--red-800)' }}>− {formatItem(item)}</TD>
+        <TD style={{ color: 'var(--n-500)' }}>—</TD>
       </tr>
     );
   }
@@ -197,10 +197,10 @@ function buildArrayRows(change, showClinic, prefix, clinicMap = {}) {
     const afterDesc  = changedSubs.map(k => `${SUB_LABELS[k] || FIELD_LABELS[k] || k}: ${formatValue((mod.after  || {})[k])}`).join('; ');
     rows.push(
       <tr key={`${prefix}-m${j}`}>
-        {showClinic && <TD style={{ color: '#6b7280' }}>{clinicLabel || ''}</TD>}
+        {showClinic && <TD style={{ color: 'var(--n-600)' }}>{clinicLabel || ''}</TD>}
         <TD style={{ fontWeight: 500 }}>✎ {name}</TD>
-        <TD style={{ background: beforeDesc ? '#fee2e2' : 'transparent', color: '#991b1b' }}>{beforeDesc || '—'}</TD>
-        <TD style={{ background: afterDesc  ? '#dcfce7' : 'transparent', color: '#166534' }}>{afterDesc  || '—'}</TD>
+        <TD style={{ background: beforeDesc ? '#fee2e2' : 'transparent', color: 'var(--red-800)' }}>{beforeDesc || '—'}</TD>
+        <TD style={{ background: afterDesc  ? '#dcfce7' : 'transparent', color: 'var(--green-800)' }}>{afterDesc  || '—'}</TD>
       </tr>
     );
   }
@@ -229,12 +229,12 @@ function DiffViewer({ diff, clinicMap = {} }) {
         const clinicLabel = clinicMap[c.clinicId] || c.clinicName || (c.clinicId === 'global' ? 'Общие' : c.clinicId ? `Клиника ${c.clinicId}` : null);
         rows.push(
           <tr key={i}>
-            {showClinic && <TD style={{ color: '#6b7280' }}>{clinicLabel || ''}</TD>}
+            {showClinic && <TD style={{ color: 'var(--n-600)' }}>{clinicLabel || ''}</TD>}
             <TD style={{ fontWeight: 500 }}>{label}</TD>
-            <TD style={{ background: c.before != null ? '#fee2e2' : 'transparent', color: '#991b1b' }}>
+            <TD style={{ background: c.before != null ? '#fee2e2' : 'transparent', color: 'var(--red-800)' }}>
               {formatValue(c.before)}
             </TD>
-            <TD style={{ background: c.after != null ? '#dcfce7' : 'transparent', color: '#166534' }}>
+            <TD style={{ background: c.after != null ? '#dcfce7' : 'transparent', color: 'var(--green-800)' }}>
               {formatValue(c.after)}
             </TD>
           </tr>
@@ -246,11 +246,11 @@ function DiffViewer({ diff, clinicMap = {} }) {
     return (
       <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6 }}>
         <thead>
-          <tr style={{ background: '#f9fafb' }}>
-            {showClinic && <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: '#6b7280', minWidth: 100 }}>Клиника</th>}
-            <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: '#6b7280' }}>Поле / раздел</th>
-            <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: '#991b1b', width: '35%' }}>До</th>
-            <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: '#166534', width: '35%' }}>После</th>
+          <tr style={{ background: 'var(--n-50)' }}>
+            {showClinic && <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: 'var(--n-600)', minWidth: 100 }}>Клиника</th>}
+            <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: 'var(--n-600)' }}>Поле / раздел</th>
+            <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: 'var(--red-800)', width: '35%' }}>До</th>
+            <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: 'var(--green-800)', width: '35%' }}>После</th>
           </tr>
         </thead>
         <tbody>{rows}</tbody>
@@ -272,18 +272,18 @@ function DiffViewer({ diff, clinicMap = {} }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6 }}>
       <thead>
-        <tr style={{ background: '#f9fafb' }}>
-          <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: '#6b7280' }}>Поле</th>
-          <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: '#991b1b', width: '40%' }}>До</th>
-          <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: '#166534', width: '40%' }}>После</th>
+        <tr style={{ background: 'var(--n-50)' }}>
+          <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: 'var(--n-600)' }}>Поле</th>
+          <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: 'var(--red-800)', width: '40%' }}>До</th>
+          <th style={{ padding: '3px 8px', fontSize: 11, textAlign: 'left', color: 'var(--green-800)', width: '40%' }}>После</th>
         </tr>
       </thead>
       <tbody>
         {rows.map(key => (
           <tr key={key}>
             <TD style={{ fontWeight: 500 }}>{FIELD_LABELS[key] || key}</TD>
-            <TD style={{ background: '#fee2e2', color: '#991b1b' }}>{formatValue((diff.before || {})[key])}</TD>
-            <TD style={{ background: '#dcfce7', color: '#166534' }}>{formatValue((diff.after  || {})[key])}</TD>
+            <TD style={{ background: 'var(--red-100)', color: 'var(--red-800)' }}>{formatValue((diff.before || {})[key])}</TD>
+            <TD style={{ background: 'var(--green-100)', color: 'var(--green-800)' }}>{formatValue((diff.after  || {})[key])}</TD>
           </tr>
         ))}
       </tbody>
@@ -487,9 +487,9 @@ export default function AdminJournal() {
   // === HELPERS ===
   const getPageTypeIcon = (contentType) => {
     switch (contentType) {
-      case 'spreadsheet': return <TableIcon size={16} style={{ color: '#16a34a' }} />;
-      case 'html': return <FileCode size={16} style={{ color: '#f97316' }} />;
-      default: return <FileText size={16} style={{ color: '#3b82f6' }} />;
+      case 'spreadsheet': return <TableIcon size={16} style={{ color: 'var(--green-600)' }} />;
+      case 'html': return <FileCode size={16} style={{ color: 'var(--amber-500)' }} />;
+      default: return <FileText size={16} style={{ color: 'var(--accent-500)' }} />;
     }
   };
 
@@ -510,7 +510,7 @@ export default function AdminJournal() {
         <h1>Журнал изменений</h1>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border-color, #e5e7eb)' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border-color, var(--n-200))' }}>
         <button onClick={() => setActiveTab('pages')} style={tabStyle('pages')}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <FileText size={15} />Страницы Wiki
@@ -715,9 +715,9 @@ export default function AdminJournal() {
             ) : (
               <>
                 {/* ── Event list ── */}
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+                <div style={{ border: '1px solid var(--n-200)', borderRadius: 8, overflow: 'hidden', background: 'var(--n-0)' }}>
                   {/* Header row */}
-                  <div style={{ display: 'flex', alignItems: 'stretch', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                  <div style={{ display: 'flex', alignItems: 'stretch', background: 'var(--n-50)', borderBottom: '1px solid var(--n-200)' }}>
                     {[
                       { label: 'Время',        w: 140 },
                       { label: 'Пользователь', w: 130 },
@@ -727,7 +727,7 @@ export default function AdminJournal() {
                       <span key={label} style={{
                         ...(w ? { width: w, flexShrink: 0 } : { flex: 1 }),
                         padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 11, fontWeight: 600, color: '#9ca3af',
+                        fontSize: 11, fontWeight: 600, color: 'var(--n-500)',
                         textTransform: 'uppercase', letterSpacing: '.04em',
                         borderRight: i < arr.length - 1 ? '1px solid #e5e7eb' : 'none',
                       }}>{label}</span>
@@ -744,7 +744,7 @@ export default function AdminJournal() {
                         style={{
                           display: 'flex', alignItems: 'stretch', cursor: 'pointer',
                           borderBottom: idx < rbLogs.length - 1 ? '1px solid #e5e7eb' : 'none',
-                          borderLeft: `3px solid ${isSelected ? '#3b82f6' : 'transparent'}`,
+                          borderLeft: `3px solid ${isSelected ? 'var(--accent-500)' : 'transparent'}`,
                           background: isSelected ? '#eff6ff' : '#fff',
                           transition: 'background .1s',
                         }}
@@ -752,29 +752,29 @@ export default function AdminJournal() {
                         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}
                       >
                         {/* Time */}
-                        <div style={{ width: 140, flexShrink: 0, padding: '10px 12px', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center' }}>
-                          <span style={{ fontSize: 12, color: '#111827', lineHeight: 1.3 }}>
+                        <div style={{ width: 140, flexShrink: 0, padding: '10px 12px', borderRight: '1px solid var(--n-200)', display: 'flex', alignItems: 'center' }}>
+                          <span style={{ fontSize: 12, color: 'var(--n-900)', lineHeight: 1.3 }}>
                             {formatRelativeTime(entry.created_at || entry.createdAt)}
                           </span>
                         </div>
 
                         {/* User */}
-                        <div style={{ width: 130, flexShrink: 0, padding: '10px 12px', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-                          <span style={{ fontSize: 12, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ width: 130, flexShrink: 0, padding: '10px 12px', borderRight: '1px solid var(--n-200)', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+                          <span style={{ fontSize: 12, color: 'var(--n-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {abbreviateName(entry.user?.displayName || entry.user?.username || '')}
                           </span>
                         </div>
 
                         {/* Tab label */}
-                        <div style={{ width: 110, flexShrink: 0, padding: '10px 12px', borderRight: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-                          <span style={{ fontSize: 13, color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ width: 110, flexShrink: 0, padding: '10px 12px', borderRight: '1px solid var(--n-200)', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+                          <span style={{ fontSize: 13, color: 'var(--n-800)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {entry.tabLabel}
                           </span>
                         </div>
 
                         {/* Description + chevron */}
                         <div style={{ flex: 1, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                          <div style={{ flex: 1, fontSize: 13, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                          <div style={{ flex: 1, fontSize: 13, color: 'var(--n-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                             {entry.summary}
                           </div>
                           <ChevronRight size={14} style={{ color: isSelected ? '#3b82f6' : '#d1d5db', flexShrink: 0 }} />
@@ -805,13 +805,13 @@ export default function AdminJournal() {
                     />
                     <div style={{
                       position: 'fixed', right: 0, top: 0, bottom: 0, width: 500,
-                      background: '#fff', boxShadow: '-4px 0 32px rgba(0,0,0,0.12)',
+                      background: 'var(--n-0)', boxShadow: '-4px 0 32px rgba(0,0,0,0.12)',
                       zIndex: 401, overflowY: 'auto', display: 'flex', flexDirection: 'column',
                     }}>
                       {/* Drawer header */}
                       <div style={{
                         display: 'flex', alignItems: 'center', gap: 8, padding: '14px 20px',
-                        borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 1,
+                        borderBottom: '1px solid var(--n-200)', position: 'sticky', top: 0, background: 'var(--n-0)', zIndex: 1,
                       }}>
                         {(() => {
                           const as = ACTION_COLORS[selectedEntry.action] || { bg: '#f3f4f6', color: '#374151' };
@@ -821,13 +821,13 @@ export default function AdminJournal() {
                             </span>
                           );
                         })()}
-                        <span style={{ padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 500, background: '#eff6ff', color: '#1d4ed8' }}>
+                        <span style={{ padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 500, background: 'var(--accent-50)', color: 'var(--accent-700)' }}>
                           {selectedEntry.tabLabel}
                         </span>
                         <div style={{ flex: 1 }} />
                         <button
                           onClick={() => setSelectedEntry(null)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 22, lineHeight: 1, padding: '0 4px' }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n-500)', fontSize: 22, lineHeight: 1, padding: '0 4px' }}
                         >×</button>
                       </div>
 
@@ -836,16 +836,16 @@ export default function AdminJournal() {
 
                         {/* Doctor + summary */}
                         {selectedEntry.doctorName && (
-                          <div style={{ fontSize: 17, fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--n-900)', marginBottom: 4 }}>
                             {selectedEntry.doctorName}
                           </div>
                         )}
-                        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20, lineHeight: 1.5 }}>
+                        <div style={{ fontSize: 13, color: 'var(--n-600)', marginBottom: 20, lineHeight: 1.5 }}>
                           {selectedEntry.summary}
                         </div>
 
                         {/* Metadata card */}
-                        <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 16px', marginBottom: 24 }}>
+                        <div style={{ background: 'var(--n-50)', borderRadius: 8, padding: '12px 16px', marginBottom: 24 }}>
                           {[
                             { label: 'Дата и время', value: formatDate(selectedEntry.created_at || selectedEntry.createdAt) },
                             { label: 'Пользователь', value: selectedEntry.user ? (selectedEntry.user.displayName || selectedEntry.user.username) : '—' },
@@ -854,24 +854,24 @@ export default function AdminJournal() {
                             ...(selectedEntry.misUserId ? [{ label: 'ID врача', value: selectedEntry.misUserId }] : []),
                           ].map(({ label, value }) => (
                             <div key={label} style={{ display: 'flex', gap: 16, marginBottom: 7, alignItems: 'baseline' }}>
-                              <span style={{ fontSize: 12, color: '#9ca3af', width: 110, flexShrink: 0 }}>{label}</span>
-                              <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>{value}</span>
+                              <span style={{ fontSize: 12, color: 'var(--n-500)', width: 110, flexShrink: 0 }}>{label}</span>
+                              <span style={{ fontSize: 13, color: 'var(--n-800)', fontWeight: 500 }}>{value}</span>
                             </div>
                           ))}
                         </div>
 
                         {/* Diff */}
                         {selectedEntry.detailLoading ? (
-                          <div style={{ fontSize: 13, color: '#6b7280' }}>Загрузка деталей…</div>
+                          <div style={{ fontSize: 13, color: 'var(--n-600)' }}>Загрузка деталей…</div>
                         ) : selectedEntry.diff ? (
                           <>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>
                               Изменения
                             </div>
                             <DiffViewer diff={selectedEntry.diff} clinicMap={clinicMap} />
                           </>
                         ) : (
-                          <div style={{ fontSize: 13, color: '#9ca3af', fontStyle: 'italic' }}>Детализация недоступна</div>
+                          <div style={{ fontSize: 13, color: 'var(--n-500)', fontStyle: 'italic' }}>Детализация недоступна</div>
                         )}
                       </div>
                     </div>

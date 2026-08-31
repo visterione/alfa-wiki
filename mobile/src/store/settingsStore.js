@@ -7,10 +7,11 @@ import React, {
   useState,
   useCallback,
 } from 'react';
-import {Platform, Settings, useColorScheme} from 'react-native';
+import {Platform, Settings} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {getPalette, fontScales} from '../theme';
 import {auth as authApi} from '../services/api';
+import SocketService from '../services/socket';
 import {useAuth} from './authStore';
 
 /**
@@ -18,8 +19,12 @@ import {useAuth} from './authStore';
  *
  * AsyncStorage служит быстрым локальным кэшем, чтобы оформление было известно
  * ещё до авторизации и не мигало при запуске. После входа серверная копия из
- * user.settings.mobile синхронизирует выбор между устройствами и переживает
+ * user.settings.appearance синхронизирует выбор между устройствами и переживает
  * удаление приложения.
+ *
+ * С ver. 7.60 те же настройки применяет веб-версия, поэтому namespace на сервере
+ * переименован из `mobile` в `appearance`, а изменения приезжают по сокету:
+ * смена темы в браузере должна доехать сюда без перезапуска приложения.
  */
 
 const STORAGE_KEY = 'app-settings-v1';
@@ -28,8 +33,11 @@ const STORAGE_DIRTY_KEY = 'app-settings-dirty-v1';
 const IOS_LAUNCH_COLOR_KEY = 'AlfaWikiLaunchBackgroundColor';
 const SYNC_DELAY = 350;
 
+// Варианта «как в системе» здесь намеренно нет. Настройка общая с веб-версией,
+// а портал много лет был только светлым: следование за системой означало бы,
+// что в момент появления тёмной темы интерфейс сменится сам собой у половины
+// сотрудников. Тема меняется только руками.
 export const THEME_OPTIONS = [
-  {key: 'system', label: 'Как в системе'},
   {key: 'light', label: 'Светлая'},
   {key: 'dark', label: 'Тёмная'},
 ];
@@ -66,7 +74,7 @@ export function soundOption(key) {
 }
 
 const DEFAULTS = {
-  theme: 'system',
+  theme: 'light',
   accent: 'blue',
   fontScale: 'normal',
   chatBackground: 'plain',
@@ -87,6 +95,11 @@ function pickPreferences(value) {
   if (REMOVED_CHAT_BACKGROUNDS.has(picked.chatBackground)) {
     picked.chatBackground = DEFAULTS.chatBackground;
   }
+  // 'system' было значением по умолчанию до 7.60, поэтому хранится у всех, кто
+  // тему не трогал. Читаем как светлую — именно её эти люди и видели
+  if (picked.theme === 'system') {
+    picked.theme = DEFAULTS.theme;
+  }
   return picked;
 }
 
@@ -96,13 +109,10 @@ function pickPreferences(value) {
  * стандартный RN Settings API — AppDelegate сможет взять его при следующем
  * запуске. Остальные настройки по-прежнему живут только в AsyncStorage.
  */
-function persistNativeLaunchColor(settings, systemScheme) {
+function persistNativeLaunchColor(settings) {
   if (Platform.OS !== 'ios') return;
 
-  const scheme = settings.theme === 'system'
-    ? (systemScheme === 'dark' ? 'dark' : 'light')
-    : settings.theme;
-  const palette = getPalette(scheme, settings.accent);
+  const palette = getPalette(settings.theme === 'dark' ? 'dark' : 'light', settings.accent);
 
   Settings.set({[IOS_LAUNCH_COLOR_KEY]: palette.headerGradientStart});
 }
@@ -127,7 +137,6 @@ const SettingsContext = createContext(null);
 
 export function SettingsProvider({children}) {
   const {user} = useAuth();
-  const systemScheme = useColorScheme();
   const [settings, setSettings] = useState(DEFAULTS);
   const [loaded, setLoaded] = useState(false);
   const syncedUserRef = useRef(null);
@@ -169,7 +178,7 @@ export function SettingsProvider({children}) {
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      authApi.updateMobileSettings(pickPreferences(next))
+      authApi.updatePreferences(pickPreferences(next))
         .then(() => {
           // Более новая правка могла появиться, пока запрос был в сети.
           if (saveVersionRef.current !== version) return;
@@ -205,7 +214,9 @@ export function SettingsProvider({children}) {
     if (!loaded || !userId || syncedUserRef.current === userId) return;
     syncedUserRef.current = userId;
 
-    const rawRemote = user?.settings?.mobile;
+    // Старый ключ читается запасным: аккаунты, не заходившие в веб после
+    // переезда, хранят выбор только в нём
+    const rawRemote = user?.settings?.appearance ?? user?.settings?.mobile;
     const remote = pickPreferences(rawRemote);
     const hasRemote = Object.keys(remote).length > 0;
     const needsCleanup = REMOVED_CHAT_BACKGROUNDS.has(rawRemote?.chatBackground);
@@ -238,11 +249,27 @@ export function SettingsProvider({children}) {
     if (!user?.id) syncedUserRef.current = null;
   }, [user?.id]);
 
-  // Обновляем нативный цвет после чтения настроек, при выборе нового акцента
-  // и при смене системной светлой/тёмной темы.
+  // Обновляем нативный цвет после чтения настроек и при выборе новой темы
+  // или акцента.
   useEffect(() => {
-    if (loaded) persistNativeLaunchColor(settings, systemScheme);
-  }, [loaded, settings, systemScheme]);
+    if (loaded) persistNativeLaunchColor(settings);
+  }, [loaded, settings]);
+
+  // Изменения с другого устройства. Обновляем только состояние и кэш: обратно
+  // отправлять нечего — сервер уже сохранил то, что прислал.
+  useEffect(() => {
+    if (!userId) return undefined;
+    SocketService.on('settings:preferences', 'preferences_updated', incoming => {
+      const remote = pickPreferences(incoming);
+      if (!Object.keys(remote).length) return;
+      setSettings(prev => {
+        const next = {...prev, ...remote};
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    });
+    return () => SocketService.off('settings:preferences');
+  }, [userId]);
 
   const update = useCallback(patch => {
     setSettings(prev => {
@@ -254,10 +281,7 @@ export function SettingsProvider({children}) {
   }, [saveToAccount]);
 
   const value = useMemo(() => {
-    // 'system' следует за настройкой телефона и переключается на лету
-    const scheme = settings.theme === 'system'
-      ? (systemScheme === 'dark' ? 'dark' : 'light')
-      : settings.theme;
+    const scheme = settings.theme === 'dark' ? 'dark' : 'light';
 
     return {
       ...settings,
@@ -267,7 +291,7 @@ export function SettingsProvider({children}) {
       scale: (fontScales[settings.fontScale] ?? fontScales.normal).scale,
       update,
     };
-  }, [settings, systemScheme, loaded, update]);
+  }, [settings, loaded, update]);
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }

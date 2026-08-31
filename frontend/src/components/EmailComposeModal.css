@@ -116,11 +116,11 @@
 
 .chip-star-btn.active {
   opacity: 1 !important;
-  color: #FF9500 !important;
+  color: var(--amber-500) !important;
 }
 
 .chip-star-btn.active svg {
-  fill: #FF9500;
+  fill: var(--amber-500);
 }
 
 /* Add Recipients Button */
@@ -262,12 +262,12 @@
 }
 
 .email-star-btn.active {
-  color: #FF9500;
-  fill: #FF9500;
+  color: var(--amber-500);
+  fill: var(--amber-500);
 }
 
 .email-star-btn.active svg {
-  fill: #FF9500;
+  fill: var(--amber-500);
 }
 
 /* Section label in picker */

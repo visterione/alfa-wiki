@@ -466,7 +466,7 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
         </div>
 
         {isRecurringInstance && !editingSeries && (
-          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#e0f2fe', border: '1px solid #00bfff', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: 'var(--accent-100)', border: '1px solid var(--cyan-500)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
               Это экземпляр повторяющегося события. Редактирование отдельных экземпляров не поддерживается.
@@ -477,7 +477,7 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
                 onClick={handleEditSeries}
                 style={{
                   padding: '6px 12px',
-                  background: '#00bfff',
+                  background: 'var(--cyan-500)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -500,14 +500,14 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
         )}
 
         {editingSeries && (
-          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#dcfce7', border: '1px solid #22c55e', borderRadius: '4px' }}>
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: 'var(--green-100)', border: '1px solid var(--green-500)', borderRadius: '4px' }}>
             <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
             Режим редактирования серии: изменения будут применены ко всем повторениям этого события.
           </div>
         )}
 
         {event && !isCreator && (
-          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px' }}>
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: 'var(--amber-100)', border: '1px solid var(--amber-500)', borderRadius: '4px' }}>
             <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
             Это событие создано другим пользователем. Вы можете просматривать и удалять его, но не редактировать.
           </div>

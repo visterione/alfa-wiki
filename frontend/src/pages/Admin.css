@@ -11,8 +11,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: white !important;
-  border: 1px solid #e5e5e7 !important;
+  background: var(--n-0) !important;
+  border: 1px solid var(--n-200) !important;
   border-radius: var(--radius-md);
   padding: 0 16px !important;
   width: 300px;
@@ -35,10 +35,10 @@
   width: auto !important;
 }
 .search-box input::placeholder {
-  color: #86868b !important;
+  color: var(--n-500) !important;
 }
 .search-box svg {
-  color: #86868b;
+  color: var(--n-500);
   flex-shrink: 0;
 }
 
@@ -48,11 +48,11 @@
 .filter-tab.active { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
 
 /* Journal tabs */
-.admin-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
-.admin-tab { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; font-size: 14px; font-weight: 500; color: #6b7280; cursor: pointer; transition: all 0.2s; }
-.admin-tab:hover { color: #374151; }
-.admin-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-.admin-tab-badge { background: #3b82f6; color: white; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 10px; min-width: 18px; text-align: center; }
+.admin-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid var(--n-200); }
+.admin-tab { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; font-size: 14px; font-weight: 500; color: var(--n-600); cursor: pointer; transition: all 0.2s; }
+.admin-tab:hover { color: var(--n-800); }
+.admin-tab.active { color: var(--accent-500); border-bottom-color: var(--accent-500); }
+.admin-tab-badge { background: var(--accent-500); color: white; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 10px; min-width: 18px; text-align: center; }
 
 /* Filter select dropdowns */
 .filter-select {
@@ -63,17 +63,17 @@
 
 /* Контейнер таблицы с белым фоном */
 .admin-table-container {
-  background: #ffffff;
+  background: var(--n-0);
   border: 1px solid var(--border-light);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.admin-table { width: 100%; border-collapse: collapse; background: #ffffff; }
-.admin-table th, .admin-table td { padding: 14px 20px; text-align: left; border-bottom: 1px solid var(--border-light); background: #ffffff; }
-.admin-table th { font-weight: 500; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; }
-.admin-table tr:hover td { background: #f9fafb; }
+.admin-table { width: 100%; border-collapse: collapse; background: var(--n-0); }
+.admin-table th, .admin-table td { padding: 14px 20px; text-align: left; border-bottom: 1px solid var(--border-light); background: var(--n-0); }
+.admin-table th { font-weight: 500; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; background: var(--n-50); }
+.admin-table tr:hover td { background: var(--n-50); }
 .admin-table tr:last-child td { border-bottom: none; }
 
 /* Оптимизация колонок для таблицы пользователей */
@@ -142,7 +142,7 @@
 .role-users-count { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
 
 .role-row { cursor: pointer; }
-.role-row:hover td { background: #f0f7ff !important; }
+.role-row:hover td { background: var(--accent-50) !important; }
 
 .role-perm-icons { display: inline-flex; flex-direction: column; gap: 5px; }
 .role-perm-row { display: flex; align-items: center; gap: 5px; }
@@ -186,12 +186,12 @@
 .sidebar-list-item:hover {
   border-color: var(--border);
   box-shadow: var(--shadow-sm);
-  background: #fafafa;
+  background: var(--n-50);
 }
 
 .sidebar-list-item.page   { border-left-color: var(--primary); }
-.sidebar-list-item.folder { border-left-color: #f59e0b; }
-.sidebar-list-item.link   { border-left-color: #10b981; }
+.sidebar-list-item.folder { border-left-color: var(--amber-500); }
+.sidebar-list-item.link   { border-left-color: var(--green-600); }
 .sidebar-list-item.header {
   border: 1px dashed var(--border-light);
   border-left: none;
@@ -243,8 +243,8 @@
   color: var(--text-secondary);
 }
 .sidebar-list-item.page   .sidebar-list-icon { background: var(--primary-light); color: var(--primary); }
-.sidebar-list-item.folder .sidebar-list-icon { background: #FFF4E5; color: #f59e0b; }
-.sidebar-list-item.link   .sidebar-list-icon { background: #ECFDF5; color: #10b981; }
+.sidebar-list-item.folder .sidebar-list-icon { background: var(--amber-50); color: var(--amber-500); }
+.sidebar-list-item.link   .sidebar-list-icon { background: var(--green-50); color: var(--green-600); }
 .sidebar-list-item.header .sidebar-list-icon { background: transparent; color: var(--text-tertiary); width: 20px; height: 20px; }
 
 /* content */
@@ -337,7 +337,7 @@
 .admin-toggle-track {
   width: 36px;
   height: 20px;
-  background: #aeaeb2 !important; /* явный серый, не зависящий от CSS переменных */
+  background: var(--n-400) !important; /* явный серый, не зависящий от CSS переменных */
   border-radius: 10px;
   position: relative;
   flex-shrink: 0;
@@ -346,11 +346,11 @@
 }
 
 .admin-toggle-track.on {
-  background: #3b82f6 !important;
+  background: var(--accent-500) !important;
 }
 
 .admin-toggle-track.forced {
-  background: #3b82f6 !important;
+  background: var(--accent-500) !important;
   opacity: 0.55;
 }
 
@@ -360,7 +360,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #ffffff !important;
+  background: var(--n-0) !important;
   top: 2px;
   left: 2px;
   transition: transform 0.2s;
@@ -792,8 +792,8 @@
 }
 
 .type-segment-page.active   { color: var(--primary); }
-.type-segment-folder.active { color: #f59e0b; }
-.type-segment-link.active   { color: #10b981; }
+.type-segment-folder.active { color: var(--amber-500); }
+.type-segment-link.active   { color: var(--green-600); }
 .type-segment-header.active { color: var(--text-secondary); }
 
 .btn-icon {
@@ -918,24 +918,24 @@
 }
 
 .explorer-page .explorer-icon-spreadsheet {
-  color: #22c55e; /* Зелёный - таблицы */
+  color: var(--green-500); /* Зелёный - таблицы */
 }
 
 .explorer-page .explorer-icon-html {
-  color: #f97316; /* Оранжевый - HTML/CSS/JS */
+  color: var(--amber-500); /* Оранжевый - HTML/CSS/JS */
 }
 
 /* File-type icons */
-.explorer-page .explorer-icon-file-pdf   { color: #ef4444; }
-.explorer-page .explorer-icon-file-image { color: #06b6d4; }
-.explorer-page .explorer-icon-file-video { color: #8b5cf6; }
-.explorer-page .explorer-icon-file-audio { color: #ec4899; }
-.explorer-page .explorer-icon-file-doc   { color: #3b82f6; }
-.explorer-page .explorer-icon-file-ppt   { color: #f97316; }
-.explorer-page .explorer-icon-file-archive { color: #a78bfa; }
-.explorer-page .explorer-icon-file-exe   { color: #6b7280; }
-.explorer-page .explorer-icon-file-text  { color: #64748b; }
-.explorer-page .explorer-icon-file       { color: #94a3b8; }
+.explorer-page .explorer-icon-file-pdf   { color: var(--red-500); }
+.explorer-page .explorer-icon-file-image { color: var(--cyan-500); }
+.explorer-page .explorer-icon-file-video { color: var(--violet-500); }
+.explorer-page .explorer-icon-file-audio { color: var(--pink-500); }
+.explorer-page .explorer-icon-file-doc   { color: var(--accent-500); }
+.explorer-page .explorer-icon-file-ppt   { color: var(--amber-500); }
+.explorer-page .explorer-icon-file-archive { color: var(--violet-400); }
+.explorer-page .explorer-icon-file-exe   { color: var(--n-600); }
+.explorer-page .explorer-icon-file-text  { color: var(--n-600); }
+.explorer-page .explorer-icon-file       { color: var(--n-500); }
 
 /* File upload modal components */
 .file-upload-dropzone {
@@ -953,7 +953,7 @@
   background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 .file-upload-dropzone.has-file {
-  border-color: var(--success, #22c55e);
+  border-color: var(--success, var(--green-500));
 }
 .file-upload-placeholder {
   display: flex;
@@ -1146,22 +1146,22 @@
 }
 
 .explorer-list-icon.explorer-icon-spreadsheet {
-  color: #22c55e;
+  color: var(--green-500);
 }
 
 .explorer-list-icon.explorer-icon-html {
-  color: #f97316;
+  color: var(--amber-500);
 }
-.explorer-list-icon.explorer-icon-file-pdf     { color: #ef4444; }
-.explorer-list-icon.explorer-icon-file-image   { color: #06b6d4; }
-.explorer-list-icon.explorer-icon-file-video   { color: #8b5cf6; }
-.explorer-list-icon.explorer-icon-file-audio   { color: #ec4899; }
-.explorer-list-icon.explorer-icon-file-doc     { color: #3b82f6; }
-.explorer-list-icon.explorer-icon-file-ppt     { color: #f97316; }
-.explorer-list-icon.explorer-icon-file-archive { color: #a78bfa; }
-.explorer-list-icon.explorer-icon-file-exe     { color: #6b7280; }
-.explorer-list-icon.explorer-icon-file-text    { color: #64748b; }
-.explorer-list-icon.explorer-icon-file         { color: #94a3b8; }
+.explorer-list-icon.explorer-icon-file-pdf     { color: var(--red-500); }
+.explorer-list-icon.explorer-icon-file-image   { color: var(--cyan-500); }
+.explorer-list-icon.explorer-icon-file-video   { color: var(--violet-500); }
+.explorer-list-icon.explorer-icon-file-audio   { color: var(--pink-500); }
+.explorer-list-icon.explorer-icon-file-doc     { color: var(--accent-500); }
+.explorer-list-icon.explorer-icon-file-ppt     { color: var(--amber-500); }
+.explorer-list-icon.explorer-icon-file-archive { color: var(--violet-400); }
+.explorer-list-icon.explorer-icon-file-exe     { color: var(--n-600); }
+.explorer-list-icon.explorer-icon-file-text    { color: var(--n-600); }
+.explorer-list-icon.explorer-icon-file         { color: var(--n-500); }
 
 .explorer-list-name {
   font-size: 14px;
@@ -1664,7 +1664,7 @@
 }
 
 .btn-danger:hover {
-  background: #d32f2f;
+  background: var(--red-600);
 }
 
 .text-danger {
@@ -1805,17 +1805,17 @@
   align-items: flex-start;
   gap: 16px;
   padding: 16px 20px;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border: 1px solid #93c5fd;
+  background: linear-gradient(135deg, var(--accent-50) 0%, var(--accent-100) 100%);
+  border: 1px solid var(--accent-300);
   border-radius: var(--radius-lg);
   margin-bottom: 24px;
-  color: #1e40af;
+  color: var(--accent-800);
 }
 
 .info-banner svg {
   flex-shrink: 0;
   margin-top: 2px;
-  color: #3b82f6;
+  color: var(--accent-500);
 }
 
 .info-banner strong {
@@ -1823,13 +1823,13 @@
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 4px;
-  color: #1e3a8a;
+  color: var(--accent-900);
 }
 
 .info-banner p {
   font-size: 14px;
   margin: 0;
-  color: #1e40af;
+  color: var(--accent-800);
   line-height: 1.5;
 }
 
@@ -1926,35 +1926,35 @@
 }
 
 .explorer-item.explorer-folder .explorer-item-icon {
-  color: #fbbf24;
+  color: var(--amber-400);
 }
 
 .explorer-item.explorer-page .explorer-item-icon {
-  color: #60a5fa;
+  color: var(--accent-400);
 }
 
 /* Цветные иконки по типу контента страницы */
 .explorer-item.explorer-page .explorer-icon-wysiwyg {
-  color: #60a5fa; /* Синий - стандартный редактор */
+  color: var(--accent-400); /* Синий - стандартный редактор */
 }
 
 .explorer-item.explorer-page .explorer-icon-spreadsheet {
-  color: #22c55e; /* Зелёный - таблицы */
+  color: var(--green-500); /* Зелёный - таблицы */
 }
 
 .explorer-item.explorer-page .explorer-icon-html {
-  color: #f97316; /* Оранжевый - HTML/CSS/JS */
+  color: var(--amber-500); /* Оранжевый - HTML/CSS/JS */
 }
-.explorer-item.explorer-page .explorer-icon-file-pdf     { color: #ef4444; }
-.explorer-item.explorer-page .explorer-icon-file-image   { color: #06b6d4; }
-.explorer-item.explorer-page .explorer-icon-file-video   { color: #8b5cf6; }
-.explorer-item.explorer-page .explorer-icon-file-audio   { color: #ec4899; }
-.explorer-item.explorer-page .explorer-icon-file-doc     { color: #3b82f6; }
-.explorer-item.explorer-page .explorer-icon-file-ppt     { color: #f97316; }
-.explorer-item.explorer-page .explorer-icon-file-archive { color: #a78bfa; }
-.explorer-item.explorer-page .explorer-icon-file-exe     { color: #6b7280; }
-.explorer-item.explorer-page .explorer-icon-file-text    { color: #64748b; }
-.explorer-item.explorer-page .explorer-icon-file         { color: #94a3b8; }
+.explorer-item.explorer-page .explorer-icon-file-pdf     { color: var(--red-500); }
+.explorer-item.explorer-page .explorer-icon-file-image   { color: var(--cyan-500); }
+.explorer-item.explorer-page .explorer-icon-file-video   { color: var(--violet-500); }
+.explorer-item.explorer-page .explorer-icon-file-audio   { color: var(--pink-500); }
+.explorer-item.explorer-page .explorer-icon-file-doc     { color: var(--accent-500); }
+.explorer-item.explorer-page .explorer-icon-file-ppt     { color: var(--amber-500); }
+.explorer-item.explorer-page .explorer-icon-file-archive { color: var(--violet-400); }
+.explorer-item.explorer-page .explorer-icon-file-exe     { color: var(--n-600); }
+.explorer-item.explorer-page .explorer-icon-file-text    { color: var(--n-600); }
+.explorer-item.explorer-page .explorer-icon-file         { color: var(--n-500); }
 
 .explorer-item.explorer-back .explorer-item-icon {
   color: var(--text-tertiary);
@@ -2102,7 +2102,7 @@
 
 /* Warning text */
 .text-warning {
-  color: #d97706;
+  color: var(--amber-600);
   font-size: 13px;
   margin-top: 8px;
   font-weight: 500;
@@ -2376,7 +2376,7 @@
   width: 20px;
   left: 3px;
   bottom: 3px;
-  background: #fff;
+  background: var(--n-0);
   border-radius: 50%;
   transition: transform var(--transition-fast);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
@@ -2394,8 +2394,8 @@
 
 /* Панель фильтров */
 .admin-filters-panel {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: var(--n-50);
+  border: 1px solid var(--n-200);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 24px;
@@ -2439,16 +2439,16 @@
   padding: 10px 14px;
   font-size: 14px;
   font-family: inherit;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--n-200);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--n-0);
   color: var(--text-primary);
   outline: none;
   transition: all 0.2s;
 }
 
 .form-control:focus {
-  border-color: #007AFF;
+  border-color: var(--accent-500);
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
 }
 
@@ -2470,7 +2470,7 @@
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--n-600);
   white-space: nowrap;
 }
 
@@ -2490,7 +2490,7 @@
 /* Путь к папке */
 .folder-path {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--n-600);
   font-style: italic;
 }
 
@@ -2515,13 +2515,13 @@
 }
 
 .status-badge.published {
-  background-color: #d1fae5;
-  color: #065f46;
+  background-color: var(--green-100);
+  color: var(--green-800);
 }
 
 .status-badge.draft {
-  background-color: #fee2e2;
-  color: #991b1b;
+  background-color: var(--red-100);
+  color: var(--red-800);
 }
 
 /* Пагинация */
@@ -2530,13 +2530,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--n-200);
   margin-top: 16px;
 }
 
 .admin-pagination-info {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--n-600);
 }
 
 .admin-pagination-controls {
@@ -2547,7 +2547,7 @@
 
 .pagination-page {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--n-600);
   min-width: 120px;
   text-align: center;
 }
@@ -2559,7 +2559,7 @@
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #6b7280;
+  color: var(--n-600);
 }
 
 .admin-empty-state svg {
@@ -2594,7 +2594,7 @@
    ============================================================ */
 .explorer-type-divider {
   height: 1px;
-  background: var(--border, #e5e7eb);
+  background: var(--border, var(--n-200));
   margin: 4px 8px;
 }
 
@@ -2611,19 +2611,19 @@
 
 /* Folder that can receive a drop — blue highlight */
 .explorer-item.drag-over-target {
-  outline: 2px solid var(--primary, #2563eb);
+  outline: 2px solid var(--primary, var(--accent-600));
   outline-offset: -2px;
-  background: var(--primary-light, #eff6ff) !important;
+  background: var(--primary-light, var(--accent-50)) !important;
 }
 
 .explorer-list-item.drag-over-target {
-  background: var(--primary-light, #eff6ff) !important;
-  border-left: 3px solid var(--primary, #2563eb);
+  background: var(--primary-light, var(--accent-50)) !important;
+  border-left: 3px solid var(--primary, var(--accent-600));
 }
 
 /* Row that acts as a reorder target */
 .explorer-list-item.drag-over-row {
-  border-top: 2px solid var(--primary, #2563eb);
+  border-top: 2px solid var(--primary, var(--accent-600));
 }
 
 /* ============================================================
@@ -2633,7 +2633,7 @@
   position: absolute;
   top: 6px;
   right: 6px;
-  background: var(--primary, #2563eb);
+  background: var(--primary, var(--accent-600));
   color: #fff;
   font-size: 10px;
   font-weight: 600;
@@ -2650,8 +2650,8 @@
 .explorer-folder-count {
   display: inline-block;
   margin-left: 6px;
-  background: #e5e7eb;
-  color: #374151;
+  background: var(--n-200);
+  color: var(--n-800);
   font-size: 10px;
   font-weight: 600;
   padding: 1px 5px;

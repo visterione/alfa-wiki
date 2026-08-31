@@ -441,17 +441,17 @@ async function loadConsumableStats(sources, norms) {
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const fieldInputStyle = {
   padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7,
-  fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff',
+  fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--n-0)',
   color: 'var(--rb-text)', width: '100%', boxSizing: 'border-box',
 };
 const inlineInputStyle = {
   width: '100%', padding: '4px 8px', fontSize: 12,
   border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-  fontFamily: 'inherit', outline: 'none', background: '#fafafa', boxSizing: 'border-box',
+  fontFamily: 'inherit', outline: 'none', background: 'var(--n-50)', boxSizing: 'border-box',
 };
 const timeInputStyle = {
   padding: '4px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-  fontSize: 12, fontFamily: 'inherit', outline: 'none', background: '#fff', width: 90,
+  fontSize: 12, fontFamily: 'inherit', outline: 'none', background: 'var(--n-0)', width: 90,
 };
 
 // ── Micro-components ──────────────────────────────────────────────────────────
@@ -484,7 +484,7 @@ function InfoRow({ icon: Icon, text }) {
 
 function THCell({ children, right, center }) {
   return (
-    <th style={{ background: '#f8fafc', padding: '10px 12px', textAlign: center ? 'center' : right ? 'right' : 'left', fontWeight: 600, fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
+    <th style={{ background: 'var(--n-50)', padding: '10px 12px', textAlign: center ? 'center' : right ? 'right' : 'left', fontWeight: 600, fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
       {children}
     </th>
   );
@@ -671,15 +671,15 @@ function EquipmentCellEdit({ items, onAdd, onRemove }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 150 }}>
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         {items.map(item => (
-          <span key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 11, padding: '2px 5px 2px 7px', borderRadius: 4, background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe' }}>
+          <span key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 11, padding: '2px 5px 2px 7px', borderRadius: 4, background: 'var(--accent-50)', color: 'var(--accent-800)', border: '1px solid var(--accent-200)' }}>
             {item.name}
             <button onClick={() => onRemove(item.id)} title="Удалить"
-              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '0 1px', fontSize: 14, lineHeight: 1, color: '#93c5fd', display: 'flex', alignItems: 'center' }}>×</button>
+              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '0 1px', fontSize: 14, lineHeight: 1, color: 'var(--accent-300)', display: 'flex', alignItems: 'center' }}>×</button>
           </span>
         ))}
         {!adding && (
           <button onClick={() => setAdding(true)}
-            style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+            style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, border: '1px dashed var(--n-500)', background: 'none', cursor: 'pointer', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
             + Добавить
           </button>
         )}
@@ -693,7 +693,7 @@ function EquipmentCellEdit({ items, onAdd, onRemove }) {
           <button onClick={confirm}
             style={{ padding: '3px 8px', borderRadius: 5, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✓</button>
           <button onClick={() => { setAdding(false); setNewName(''); }}
-            style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid var(--rb-border)', background: '#fff', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✕</button>
+            style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid var(--rb-border)', background: 'var(--n-0)', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✕</button>
         </div>
       )}
     </div>
@@ -807,7 +807,7 @@ function TabCabinets({ appointments, loadingAppts, doctors }) {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={clinicFilter} onChange={e => setClinicFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
+          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer' }}>
           <option value="">Все филиалы</option>
           {clinicOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -845,10 +845,10 @@ function TabCabinets({ appointments, loadingAppts, doctors }) {
                     {r.specialties.length > 0 ? (
                       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                         {r.specialties.slice(0, 3).map(s => (
-                          <span key={s} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: '#f1f5f9', color: 'var(--rb-text)', whiteSpace: 'nowrap' }}>{s}</span>
+                          <span key={s} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'var(--n-100)', color: 'var(--rb-text)', whiteSpace: 'nowrap' }}>{s}</span>
                         ))}
                         {r.specialties.length > 3 && (
-                          <span title={r.specialties.slice(3).join(', ')} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: '#e2e8f0', color: 'var(--rb-text-secondary)', cursor: 'help' }}>+{r.specialties.length - 3}</span>
+                          <span title={r.specialties.slice(3).join(', ')} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'var(--n-200)', color: 'var(--rb-text-secondary)', cursor: 'help' }}>+{r.specialties.length - 3}</span>
                         )}
                       </div>
                     ) : <span style={{ color: 'var(--rb-text-secondary)', fontSize: 12 }}>{DASH}</span>}
@@ -1004,7 +1004,7 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по ФИО или специальности…"
           style={{ flex: '1 1 200px', minWidth: 200, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
         <select value={clinicFilter} onChange={e => setClinicFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
+          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer' }}>
           <option value="">Все филиалы</option>
           {allClinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -1015,7 +1015,7 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
           </span>
         )}
         {!statsLoading && statsPeriodLabel && (
-          <span style={{ fontSize: 12, color: '#1e40af', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 10px' }}>
+          <span style={{ fontSize: 12, color: 'var(--accent-800)', background: 'var(--accent-50)', border: '1px solid var(--accent-200)', borderRadius: 6, padding: '4px 10px' }}>
             Статистика: {statsPeriodLabel}
           </span>
         )}
@@ -1025,7 +1025,7 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
           </span>
         )}
         {!statsLoading && !excelSources.length && (
-          <span style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px' }}>
+          <span style={{ fontSize: 12, color: 'var(--amber-800)', background: 'var(--amber-50)', border: '1px solid var(--amber-200)', borderRadius: 6, padding: '4px 10px' }}>
             Нет загруженных источников данных
           </span>
         )}
@@ -1179,7 +1179,7 @@ function EquipServiceBindings({ equipItem, onClose }) {
 
   return (
     <div style={{ marginTop: 12, border: '1px solid var(--rb-border-dark)', borderRadius: 10, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid var(--rb-border-dark)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--accent-50)', borderBottom: '1px solid var(--rb-border-dark)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--rb-text)' }}>Привязка услуг — {equipItem.name}</span>
           {equipItem.room && (
@@ -1196,7 +1196,7 @@ function EquipServiceBindings({ equipItem, onClose }) {
       <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 0 }}>
         {/* LEFT: search panel */}
         <div style={{ borderRight: '1px solid var(--rb-border)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa', display: 'flex', gap: 6 }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', display: 'flex', gap: 6 }}>
             <input
               value={svcSearch}
               onChange={e => setSvcSearch(e.target.value)}
@@ -1231,7 +1231,7 @@ function EquipServiceBindings({ equipItem, onClose }) {
                     {svc.code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{svc.code}</div>}
                   </div>
                   {bound ? (
-                    <span style={{ fontSize: 10, color: '#16a34a', flexShrink: 0, fontWeight: 600, marginTop: 2 }}>✓ добавлено</span>
+                    <span style={{ fontSize: 10, color: 'var(--green-600)', flexShrink: 0, fontWeight: 600, marginTop: 2 }}>✓ добавлено</span>
                   ) : (
                     <button onClick={() => addBinding(svc)}
                       style={{ flexShrink: 0, padding: '2px 8px', borderRadius: 5, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' }}>
@@ -1287,7 +1287,7 @@ function EquipServiceBindings({ equipItem, onClose }) {
                       </td>
                       <td style={{ width: 36 }}>
                         <button onClick={() => removeBinding(b.id)} title="Удалить"
-                          style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>×</button>
+                          style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: 'var(--n-500)', fontSize: 16, lineHeight: 1 }}>×</button>
                       </td>
                     </tr>
                   ))}
@@ -1369,7 +1369,7 @@ function TabEquipment({ monthKey }) {
           placeholder="Поиск по названию или кабинету…"
           style={{ flex: '1 1 200px', minWidth: 180, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
         <select value={clinicFilter} onChange={e => setClinicFilter(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
+          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer' }}>
           <option value="">Все филиалы</option>
           {clinicOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -1408,7 +1408,7 @@ function TabEquipment({ monthKey }) {
                 const maintenanceValue = getMonthlyValue(item, 'maintenanceByMonth', 'maintenance', monthKey);
                 const repairsValue = getMonthlyValue(item, 'repairsByMonth', 'repairs', monthKey);
                 return (
-                  <tr key={item.id} style={isExpanded ? { background: '#f0f9ff' } : {}}>
+                  <tr key={item.id} style={isExpanded ? { background: 'var(--accent-50)' } : {}}>
                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{item.name}</td>
                     <td style={{ fontSize: 12 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1618,7 +1618,7 @@ function TabConsumables() {
 
       {/* LEFT: Filters + Services list */}
       <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <select value={clinicFilter}
             onChange={e => { setClinicFilter(e.target.value); setSelectedSvc(null); setCatFilter(''); setSearch(''); }}
             style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }}>
@@ -1681,7 +1681,7 @@ function TabConsumables() {
                   {s.code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{s.code}</div>}
                 </div>
                 {count > 0 && (
-                  <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: isSel ? '#bfdbfe' : '#dbeafe', color: '#1e40af', marginTop: 2 }}>{count}</span>
+                  <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: isSel ? '#bfdbfe' : '#dbeafe', color: 'var(--accent-800)', marginTop: 2 }}>{count}</span>
                 )}
               </button>
             );
@@ -1716,7 +1716,7 @@ function TabConsumables() {
             </div>
 
             {showAdd && (
-              <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '12px 14px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 90px 90px 110px auto', gap: 8, alignItems: 'flex-end' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Расходник *</span>
@@ -1797,7 +1797,7 @@ function TabConsumables() {
                           </td>
                           <td style={{ width: 36 }}>
                             <button onClick={() => removeNorm(item.id)} title="Удалить"
-                              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>\xd7</button>
+                              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: 'var(--n-500)', fontSize: 16, lineHeight: 1 }}>\xd7</button>
                           </td>
                         </tr>
                       );
@@ -1847,12 +1847,12 @@ function NegativeReviewRow({ r }) {
           {r.patientName || 'Аноним'}
         </span>
         {date && <>
-          <span style={{ color: '#cbd5e1' }}>|</span>
+          <span style={{ color: 'var(--n-300)' }}>|</span>
           <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{date}</span>
         </>}
-        <span style={{ color: '#cbd5e1' }}>|</span>
+        <span style={{ color: 'var(--n-300)' }}>|</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>{rating}/5</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--red-500)' }}>{rating}/5</span>
           <span style={{ display: 'flex', gap: 1 }}>
             {[1,2,3,4,5].map(n => (
               <Star key={n} size={12} fill={n <= rating ? '#ef4444' : 'none'} color={n <= rating ? '#ef4444' : '#d1d5db'} />
@@ -1877,17 +1877,17 @@ function NegativeReviewRow({ r }) {
       {/* Footer: площадка | врач | клиника */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 6px' }}>
         {r.platformName && (
-          <span style={{ fontSize: 11, color: '#64748b', padding: '1px 7px', borderRadius: 4, background: '#f1f5f9', border: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: 11, color: 'var(--n-600)', padding: '1px 7px', borderRadius: 4, background: 'var(--n-100)', border: '1px solid var(--n-200)' }}>
             {r.platformName}
           </span>
         )}
         {doctorName && <>
-          {r.platformName && <span style={{ fontSize: 11, color: '#cbd5e1' }}>|</span>}
+          {r.platformName && <span style={{ fontSize: 11, color: 'var(--n-300)' }}>|</span>}
           <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>
             Лечащий врач: <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>{doctorName}</span>
           </span>
         </>}
-        {(r.platformId || doctorName) && <span style={{ fontSize: 11, color: '#cbd5e1' }}>|</span>}
+        {(r.platformId || doctorName) && <span style={{ fontSize: 11, color: 'var(--n-300)' }}>|</span>}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.boardColor, display: 'inline-block', flexShrink: 0 }} />
           <span style={{ fontSize: 11, fontWeight: 600, color: r.boardColor }}>{r.boardName}</span>
@@ -2140,7 +2140,7 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
-      <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 12px', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+      <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 12px', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
         <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text)' }}>{label}</div>
         {payload.map(e => (
           <div key={e.dataKey} style={{ color: e.stroke, display: 'flex', gap: 6 }}>
@@ -2229,7 +2229,7 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
             })}
             {hiddenLines.size > 0 && (
               <button onClick={() => setHiddenLines(new Set())}
-                style={{ padding: '5px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', border: '1px dashed #94a3b8', background: 'none', color: 'var(--rb-text-secondary)' }}>
+                style={{ padding: '5px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', border: '1px dashed var(--n-500)', background: 'none', color: 'var(--rb-text-secondary)' }}>
                 Показать все
               </button>
             )}
@@ -2267,7 +2267,7 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
             <select
               value={doctorBoardFilter}
               onChange={e => setDoctorBoardFilter(e.target.value)}
-              style={{ padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', maxWidth: 260 }}
+              style={{ padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer', maxWidth: 260 }}
             >
               <option value="">Все медцентры</option>
               {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -2338,13 +2338,13 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
 
       {/* Negative reviews section */}
       {(negCount > 0 || loadingNeg) && (
-        <div style={{ background: 'var(--rb-card-bg)', border: '1px solid #fecaca', borderRadius: 'var(--rb-radius)', marginTop: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ background: 'var(--rb-card-bg)', border: '1px solid var(--red-200)', borderRadius: 'var(--rb-radius)', marginTop: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--red-200)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <Star size={15} fill="#ef4444" color="#ef4444" />
             <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--rb-text)', flex: 1 }}>Негативные отзывы</span>
             {loadingNeg
               ? <span className="rb-spinner" style={{ width: 14, height: 14, flexShrink: 0 }} />
-              : <span style={{ background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: 12, borderRadius: 10, padding: '2px 9px', flexShrink: 0 }}>{negReviews.length}</span>
+              : <span style={{ background: 'var(--red-100)', color: 'var(--red-600)', fontWeight: 700, fontSize: 12, borderRadius: 10, padding: '2px 9px', flexShrink: 0 }}>{negReviews.length}</span>
             }
           </div>
 
@@ -2352,7 +2352,7 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
             <div style={{ padding: '8px 20px 10px', borderBottom: '1px solid var(--rb-border)', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginRight: 2 }}>По врачам:</span>
               {negByDoctor.slice(0, 8).map(([name, cnt]) => (
-                <span key={name} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                <span key={name} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--red-100)', color: 'var(--red-600)', fontWeight: 500, whiteSpace: 'nowrap' }}>
                   {name} ({cnt})
                 </span>
               ))}
@@ -2372,7 +2372,7 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
               )}
               {!negExpanded && negReviews.length > 20 && (
                 <button onClick={() => setNegExpanded(true)}
-                  style={{ display: 'block', width: '100%', padding: '12px 20px', border: 'none', borderTop: '1px solid var(--rb-border)', background: '#fafafa', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--rb-primary)', fontWeight: 500 }}>
+                  style={{ display: 'block', width: '100%', padding: '12px 20px', border: 'none', borderTop: '1px solid var(--rb-border)', background: 'var(--n-50)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--rb-primary)', fontWeight: 500 }}>
                   Показать ещё {negReviews.length - 20} отзывов
                 </button>
               )}
@@ -2387,12 +2387,12 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
 // ── Helper: utility stats table cell ─────────────────────────────────────────
 function UtilStatCell({ value, hint, noData }) {
   if (noData) return (
-    <td style={{ textAlign: 'right', padding: '7px 12px', border: '1px solid var(--rb-border)', color: '#cbd5e1', fontSize: 12 }}>
+    <td style={{ textAlign: 'right', padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--n-300)', fontSize: 12 }}>
       н/д
     </td>
   );
   if (value === null || value === undefined) return (
-    <td style={{ textAlign: 'right', padding: '7px 12px', border: '1px solid var(--rb-border)', color: '#cbd5e1', fontSize: 12 }}>
+    <td style={{ textAlign: 'right', padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--n-300)', fontSize: 12 }}>
       {DASH}
     </td>
   );
@@ -2476,7 +2476,7 @@ function UtilityCatEditor({ cats, onSave, onClose, embedded = false }) {
       <div style={embedded
         ? {}
         : { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            width: 600, maxWidth: '97vw', maxHeight: '90vh', overflow: 'hidden', background: '#fff', borderRadius: 14,
+            width: 600, maxWidth: '97vw', maxHeight: '90vh', overflow: 'hidden', background: 'var(--n-0)', borderRadius: 14,
             boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
         {!embedded && (
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -2492,7 +2492,7 @@ function UtilityCatEditor({ cats, onSave, onClose, embedded = false }) {
             return (
               <div key={cat.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
                 {/* Category header */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: '#f1f5f9' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: 'var(--n-100)' }}>
                   <div style={{ display:'flex',flexDirection:'column' }}>
                     {mvBtn(() => moveCat(ci,-1), ci===0, '▲')}
                     {mvBtn(() => moveCat(ci,1), ci===draft.length-1, '▼')}
@@ -2501,11 +2501,11 @@ function UtilityCatEditor({ cats, onSave, onClose, embedded = false }) {
                     style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
                   <button onClick={() => hasSubcats ? convertToFlat(ci) : convertToHierarchical(ci)}
                     title={hasSubcats ? 'Сделать плоской (убрать подкатегории)' : 'Добавить уровень подкатегорий'}
-                    style={{ border:'1px solid #bfdbfe',background:'#eff6ff',cursor:'pointer',borderRadius:6,padding:'3px 8px',fontSize:11,color:'#1e40af',fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap' }}>
+                    style={{ border:'1px solid var(--accent-200)',background:'var(--accent-50)',cursor:'pointer',borderRadius:6,padding:'3px 8px',fontSize:11,color:'var(--accent-800)',fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap' }}>
                     {hasSubcats ? '⊟ Плоско' : '⊞ Уровни'}
                   </button>
                   <button onClick={() => deleteCat(ci)}
-                    style={{ border:'1px solid #fecaca',background:'#fff',cursor:'pointer',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#ef4444',fontFamily:'inherit',flexShrink:0 }}>
+                    style={{ border:'1px solid var(--red-200)',background:'var(--n-0)',cursor:'pointer',borderRadius:6,padding:'3px 10px',fontSize:12,color:'var(--red-500)',fontFamily:'inherit',flexShrink:0 }}>
                     Удалить
                   </button>
                 </div>
@@ -2514,17 +2514,17 @@ function UtilityCatEditor({ cats, onSave, onClose, embedded = false }) {
                   /* ── 3-level: subcategories ── */
                   <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {(cat.subcats||[]).map((sc, si) => (
-                      <div key={sc.key} style={{ border:'1px solid #e2e8f0',borderRadius:8,overflow:'hidden' }}>
-                        <div style={{ display:'flex',gap:6,alignItems:'center',padding:'6px 10px',background:'#f8fafc' }}>
+                      <div key={sc.key} style={{ border:'1px solid var(--n-200)',borderRadius:8,overflow:'hidden' }}>
+                        <div style={{ display:'flex',gap:6,alignItems:'center',padding:'6px 10px',background:'var(--n-50)' }}>
                           <div style={{ display:'flex',flexDirection:'column' }}>
                             {mvBtn(() => moveSubcat(ci,si,-1), si===0, '▲')}
                             {mvBtn(() => moveSubcat(ci,si,1), si===(cat.subcats||[]).length-1, '▼')}
                           </div>
-                          <div style={{ width:3,alignSelf:'stretch',background:'#93c5fd',borderRadius:2,flexShrink:0 }} />
+                          <div style={{ width:3,alignSelf:'stretch',background:'var(--accent-300)',borderRadius:2,flexShrink:0 }} />
                           <input value={sc.label} onChange={e => updateSubcatLabel(ci,si,e.target.value)}
                             style={{ ...inlineInputStyle, flex:1, fontWeight:600, fontSize:12 }} />
                           <button onClick={() => deleteSubcat(ci,si)}
-                            style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#94a3b8',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
+                            style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'var(--n-500)',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
                         </div>
                         <div style={{ padding:'6px 12px',display:'flex',flexDirection:'column',gap:4 }}>
                           {(sc.types||[]).map((type,ti) => (
@@ -2533,24 +2533,24 @@ function UtilityCatEditor({ cats, onSave, onClose, embedded = false }) {
                                 {mvBtn(() => moveSubcatType(ci,si,ti,-1), ti===0, '▲')}
                                 {mvBtn(() => moveSubcatType(ci,si,ti,1), ti===(sc.types||[]).length-1, '▼')}
                               </div>
-                              <div style={{ width:3,alignSelf:'stretch',background:'#bfdbfe',borderRadius:2,flexShrink:0 }} />
+                              <div style={{ width:3,alignSelf:'stretch',background:'var(--accent-200)',borderRadius:2,flexShrink:0 }} />
                               <input value={type.label} onChange={e => updateSubcatTypeLabel(ci,si,ti,e.target.value)}
                                 style={{ ...inlineInputStyle, flex:1, fontSize:12 }} />
                               <input value={type.unit||''} onChange={e => updateSubcatTypeUnit(ci,si,ti,e.target.value)}
                                 placeholder="ед." title="Единица измерения" style={{ ...inlineInputStyle, width:55, fontSize:12 }} />
                               <button onClick={() => deleteSubcatType(ci,si,ti)}
-                                style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#94a3b8',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
+                                style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'var(--n-500)',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
                             </div>
                           ))}
                           <button onClick={() => addSubcatType(ci,si)}
-                            style={{ alignSelf:'flex-start',marginTop:2,padding:'2px 8px',borderRadius:5,border:'1px dashed #94a3b8',background:'none',cursor:'pointer',fontSize:11,color:'var(--rb-text-secondary)',fontFamily:'inherit' }}>
+                            style={{ alignSelf:'flex-start',marginTop:2,padding:'2px 8px',borderRadius:5,border:'1px dashed var(--n-500)',background:'none',cursor:'pointer',fontSize:11,color:'var(--rb-text-secondary)',fontFamily:'inherit' }}>
                             + подтип
                           </button>
                         </div>
                       </div>
                     ))}
                     <button onClick={() => addSubcat(ci)}
-                      style={{ alignSelf:'flex-start',padding:'3px 10px',borderRadius:5,border:'1px dashed #93c5fd',background:'#eff6ff',cursor:'pointer',fontSize:12,color:'#1e40af',fontFamily:'inherit' }}>
+                      style={{ alignSelf:'flex-start',padding:'3px 10px',borderRadius:5,border:'1px dashed var(--accent-300)',background:'var(--accent-50)',cursor:'pointer',fontSize:12,color:'var(--accent-800)',fontFamily:'inherit' }}>
                       + подкатегорию
                     </button>
                   </div>
@@ -2563,17 +2563,17 @@ function UtilityCatEditor({ cats, onSave, onClose, embedded = false }) {
                           {mvBtn(() => moveType(ci,ti,-1), ti===0, '▲')}
                           {mvBtn(() => moveType(ci,ti,1), ti===(cat.types||[]).length-1, '▼')}
                         </div>
-                        <div style={{ width:3,alignSelf:'stretch',background:'#bfdbfe',borderRadius:2,flexShrink:0 }} />
+                        <div style={{ width:3,alignSelf:'stretch',background:'var(--accent-200)',borderRadius:2,flexShrink:0 }} />
                         <input value={type.label} onChange={e => updateTypeLabel(ci,ti,e.target.value)}
                           style={{ ...inlineInputStyle, flex:1 }} />
                         <input value={type.unit||''} onChange={e => updateTypeUnit(ci,ti,e.target.value)}
                           placeholder="ед." title="Единица измерения" style={{ ...inlineInputStyle, width:55 }} />
                         <button onClick={() => deleteType(ci,ti)}
-                          style={{ border:'none',background:'none',cursor:'pointer',fontSize:18,color:'#94a3b8',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
+                          style={{ border:'none',background:'none',cursor:'pointer',fontSize:18,color:'var(--n-500)',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
                       </div>
                     ))}
                     <button onClick={() => addType(ci)}
-                      style={{ alignSelf:'flex-start',marginTop:2,padding:'3px 10px',borderRadius:5,border:'1px dashed #94a3b8',background:'none',cursor:'pointer',fontSize:12,color:'var(--rb-text-secondary)',fontFamily:'inherit' }}>
+                      style={{ alignSelf:'flex-start',marginTop:2,padding:'3px 10px',borderRadius:5,border:'1px dashed var(--n-500)',background:'none',cursor:'pointer',fontSize:12,color:'var(--rb-text-secondary)',fontFamily:'inherit' }}>
                       + подтип
                     </button>
                   </div>
@@ -2708,7 +2708,7 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose, embedded = fals
       <div style={embedded
         ? {}
         : { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            width: 600, maxWidth: '96vw', maxHeight: '88vh', overflow: 'hidden', background: '#fff', borderRadius: 14,
+            width: 600, maxWidth: '96vw', maxHeight: '88vh', overflow: 'hidden', background: 'var(--n-0)', borderRadius: 14,
             boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
         {!embedded && (
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -2719,7 +2719,7 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose, embedded = fals
         <div style={embedded
           ? { padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 5 }
           : { flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--n-500)', marginBottom: 4 }}>
             Перетащите ▲▼ для изменения порядка. Отдельная клиника — одиночный столбец; группа — объединённый.
           </div>
           {unified.map((item, ui) => {
@@ -2727,7 +2727,7 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose, embedded = fals
             if (item.kind === 'solo') {
               const clinic = clinics.find(c => String(c.id) === item.clinicId);
               return (
-                <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fafcff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--n-25)', border: '1px solid var(--n-200)', borderRadius: 8 }}>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {mvBtn(() => move(ui, -1), isFirst, '▲')}
                     {mvBtn(() => move(ui, 1), isLast, '▼')}
@@ -2735,23 +2735,23 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose, embedded = fals
                   <div style={{ width: 4, height: 18, borderRadius: 2, background: item.color || '#94a3b8', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, flex: 1 }}>🏥 {clinic?.title || clinic?.name || item.label}</span>
                   <button onClick={() => deleteUnified(ui)}
-                    style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#cbd5e1',padding:'0 2px',lineHeight:1 }}>×</button>
+                    style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'var(--n-300)',padding:'0 2px',lineHeight:1 }}>×</button>
                 </div>
               );
             }
             // Group item
             return (
               <div key={item.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 10px', background: '#f1f5f9' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 10px', background: 'var(--n-100)' }}>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {mvBtn(() => move(ui, -1), isFirst, '▲')}
                     {mvBtn(() => move(ui, 1), isLast, '▼')}
                   </div>
-                  <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>⊞</span>
+                  <span style={{ fontSize: 12, color: 'var(--n-500)', flexShrink: 0 }}>⊞</span>
                   <input value={item.label} onChange={e => updateGroupLabel(ui, e.target.value)}
                     style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
                   <button onClick={() => deleteUnified(ui)}
-                    style={{ border:'1px solid #fecaca',background:'#fff',cursor:'pointer',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#ef4444',fontFamily:'inherit',flexShrink:0 }}>
+                    style={{ border:'1px solid var(--red-200)',background:'var(--n-0)',cursor:'pointer',borderRadius:6,padding:'2px 8px',fontSize:12,color:'var(--red-500)',fontFamily:'inherit',flexShrink:0 }}>
                     Удалить
                   </button>
                 </div>
@@ -2768,19 +2768,19 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose, embedded = fals
                         : <input value={it.label || ''} onChange={e => updateItemLabel(ui, ii, e.target.value)} style={{ ...inlineInputStyle, flex: 1, fontSize: 12 }} />
                       }
                       <button onClick={() => removeFromGroup(ui, ii)}
-                        style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#94a3b8',lineHeight:1,padding:'0 2px',flexShrink:0 }}>×</button>
+                        style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'var(--n-500)',lineHeight:1,padding:'0 2px',flexShrink:0 }}>×</button>
                     </div>
                   ))}
                   <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                     {availableForGroups.length > 0 && (
                       <select defaultValue="" onChange={e => { if (e.target.value) { addClinicToGroup(ui, e.target.value); e.target.value = ''; } }}
-                        style={{ padding: '3px 7px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                        style={{ padding: '3px 7px', borderRadius: 5, border: '1px dashed var(--n-500)', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
                         <option value="">+ клиника</option>
                         {availableForGroups.map(c => <option key={c.id} value={c.id}>{c.title || c.name}</option>)}
                       </select>
                     )}
                     <button onClick={() => addPremiseToGroup(ui)}
-                      style={{ padding: '3px 8px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                      style={{ padding: '3px 8px', borderRadius: 5, border: '1px dashed var(--n-500)', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
                       + помещение
                     </button>
                   </div>
@@ -2814,7 +2814,7 @@ function UtilitySettingsModal({ utilCats, colGroups, clinics, onSaveCats, onSave
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000 }} />
       <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        width: 660, maxWidth: '97vw', maxHeight: '90vh', overflow: 'hidden', background: '#fff', borderRadius: 14,
+        width: 660, maxWidth: '97vw', maxHeight: '90vh', overflow: 'hidden', background: 'var(--n-0)', borderRadius: 14,
         boxShadow: '0 24px 64px rgba(0,0,0,0.3)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
         {/* Header with tabs */}
         <div style={{ padding: '14px 20px 0', borderBottom: '1px solid var(--rb-border)', flexShrink: 0 }}>
@@ -2854,7 +2854,7 @@ function ColumnFilterPanel({ groups, hiddenGroups, onChange, onClose }) {
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.3)' }} />
       <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+        background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12,
         boxShadow: '0 8px 32px rgba(0,0,0,0.2)', zIndex: 501, padding: 16, minWidth: 260, maxHeight: '80vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontWeight: 700, fontSize: 14 }}>Видимые столбцы</span>
@@ -2871,7 +2871,7 @@ function ColumnFilterPanel({ groups, hiddenGroups, onChange, onClose }) {
                   if (hidden) next.delete(grp.key); else next.add(grp.key);
                   onChange(next);
                 }}>
-                <div style={{ width: 16, height: 16, border: `2px solid ${visible ? 'var(--rb-primary)' : '#cbd5e1'}`,
+                <div style={{ width: 16, height: 16, border: `2px solid ${visible ? 'var(--rb-primary)' : 'var(--n-300)'}`,
                   borderRadius: 3, background: visible ? 'var(--rb-primary)' : '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {visible && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
@@ -2886,7 +2886,7 @@ function ColumnFilterPanel({ groups, hiddenGroups, onChange, onClose }) {
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12, borderTop: '1px solid var(--rb-border)', paddingTop: 10 }}>
           <button onClick={() => onChange(new Set())}
-            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: 'var(--n-0)', cursor: 'pointer', fontFamily: 'inherit' }}>
             Показать все
           </button>
           <button onClick={onClose}
@@ -2923,7 +2923,7 @@ function MonthFilterPanel({ selectedPeriods, onChange, onClose }) {
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.3)' }} />
       <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+        background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12,
         boxShadow: '0 8px 32px rgba(0,0,0,0.2)', zIndex: 501, padding: 16, minWidth: 340, maxHeight: '82vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontWeight: 700, fontSize: 14 }}>Выбор периода</span>
@@ -2936,7 +2936,7 @@ function MonthFilterPanel({ selectedPeriods, onChange, onClose }) {
             <div key={y} style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer', userSelect: 'none' }}
                 onClick={() => toggleYear(y)}>
-                <div style={{ width: 16, height: 16, border: `2px solid ${full || partial ? 'var(--rb-primary)' : '#cbd5e1'}`,
+                <div style={{ width: 16, height: 16, border: `2px solid ${full || partial ? 'var(--rb-primary)' : 'var(--n-300)'}`,
                   borderRadius: 3, background: full ? 'var(--rb-primary)' : '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {full    && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
@@ -2965,7 +2965,7 @@ function MonthFilterPanel({ selectedPeriods, onChange, onClose }) {
           <button onClick={() => {
             const cy = new Date().getFullYear();
             const next = new Set(); MONTHS_RU.forEach(m => next.add(`${cy}_${m.num}`)); onChange(next);
-          }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+          }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: 'var(--n-0)', cursor: 'pointer', fontFamily: 'inherit' }}>
             Текущий год
           </button>
           <button onClick={onClose}
@@ -3012,7 +3012,7 @@ function TypeFilterPanel({ utilCats, selectedTypeKeys, onChange, onClose }) {
   const Chk = ({ checked, partial, label, onClick, indent = 0 }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '3px 0', paddingLeft: indent, userSelect: 'none' }}
       onClick={onClick}>
-      <div style={{ width: 16, height: 16, border: `2px solid ${checked || partial ? 'var(--rb-primary)' : '#cbd5e1'}`,
+      <div style={{ width: 16, height: 16, border: `2px solid ${checked || partial ? 'var(--rb-primary)' : 'var(--n-300)'}`,
         borderRadius: 3, background: checked ? 'var(--rb-primary)' : '#fff', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {checked && <span style={{ color: '#fff', fontSize: 10, fontWeight: 700 }}>✓</span>}
@@ -3036,7 +3036,7 @@ function TypeFilterPanel({ utilCats, selectedTypeKeys, onChange, onClose }) {
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.3)' }} />
       <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+        background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12,
         boxShadow: '0 8px 32px rgba(0,0,0,0.2)', zIndex: 501, padding: 16, minWidth: 300, maxHeight: '84vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontWeight: 700, fontSize: 14 }}>Виды услуг</span>
@@ -3044,7 +3044,7 @@ function TypeFilterPanel({ utilCats, selectedTypeKeys, onChange, onClose }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 0 8px', borderBottom: '1px solid var(--rb-border)', marginBottom: 8 }}
           onClick={() => onChange(null)}>
-          <div style={{ width: 16, height: 16, border: `2px solid ${isAll ? 'var(--rb-primary)' : '#cbd5e1'}`,
+          <div style={{ width: 16, height: 16, border: `2px solid ${isAll ? 'var(--rb-primary)' : 'var(--n-300)'}`,
             borderRadius: 3, background: isAll ? 'var(--rb-primary)' : '#fff',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             {isAll && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
@@ -3057,7 +3057,7 @@ function TypeFilterPanel({ utilCats, selectedTypeKeys, onChange, onClose }) {
             const catKeys   = flatTypes.map(t => t.key);
             const full = isCatFull(cat), part = isCatPart(cat);
             return (
-              <div key={cat.key} style={{ paddingBottom: 4, borderBottom: '1px solid #f1f5f9', marginBottom: 2 }}>
+              <div key={cat.key} style={{ paddingBottom: 4, borderBottom: '1px solid var(--n-100)', marginBottom: 2 }}>
                 <CatChk full={full} part={part} label={cat.label} onClick={() => toggleGroup(catKeys)} />
                 {cat.subcats?.length ? (
                   // 3-level: category → subcategory → types
@@ -3530,7 +3530,7 @@ function TabUtilities() {
   );
 
   const thFilterSt = {
-    background: '#f8fafc', padding: '7px 10px', textAlign: 'left', fontWeight: 600,
+    background: 'var(--n-50)', padding: '7px 10px', textAlign: 'left', fontWeight: 600,
     fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap', verticalAlign: 'top',
   };
 
@@ -3547,7 +3547,7 @@ function TabUtilities() {
             style={{ ...cellInpSt, paddingRight: typeUnit ? `${Math.max(typeUnit.length * 6 + 8, 28)}px` : cellInpSt.paddingRight }} />
           {typeUnit && (
             <span style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)',
-              fontSize: 10, color: '#94a3b8', pointerEvents: 'none', userSelect: 'none', lineHeight: 1, whiteSpace: 'nowrap' }}>
+              fontSize: 10, color: 'var(--n-500)', pointerEvents: 'none', userSelect: 'none', lineHeight: 1, whiteSpace: 'nowrap' }}>
               {typeUnit}
             </span>
           )}
@@ -3581,7 +3581,7 @@ function TabUtilities() {
           <td key={`cgs_${grp.key}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
           <td key={`cgs_${grp.key}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
           <td key={`cgs_${grp.key}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', background: total > 0 ? '#f0fdf4' : undefined }}>
-            {total > 0 ? fmtRubP(total) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+            {total > 0 ? fmtRubP(total) : <span style={{ color: 'var(--n-300)' }}>{DASH}</span>}
           </td>,
         ];
       }
@@ -3593,7 +3593,7 @@ function TabUtilities() {
 
       const totalCell = (
         <td key={`cgm_${grp.key}_tot`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', fontWeight: grpTotal > 0 ? 600 : 400, background: grpTotal > 0 ? '#f0fdf4' : undefined }}>
-          {grpTotal > 0 ? fmtRubP(grpTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+          {grpTotal > 0 ? fmtRubP(grpTotal) : <span style={{ color: 'var(--n-300)' }}>{DASH}</span>}
         </td>
       );
 
@@ -3609,14 +3609,14 @@ function TabUtilities() {
   const renderTypeRow = (type, pYear, monthNum, isSubRow) => {
     const rowTotal = visibleGroups.reduce((s, grp) => s + getGrpSum(grp, pYear, monthNum, type.key), 0);
     return (
-      <tr key={`${pYear}_${monthNum}_${type.key}`} style={isSubRow ? { background: '#fafcff' } : undefined}>
+      <tr key={`${pYear}_${monthNum}_${type.key}`} style={isSubRow ? { background: 'var(--n-25)' } : undefined}>
         <td style={{ borderLeft: isSubRow ? '3px solid #bfdbfe' : undefined }} />
         <td style={{ fontSize: 12, paddingLeft: isSubRow ? 20 : 12, whiteSpace: 'nowrap', borderLeft: isSubRow ? '3px solid #bfdbfe' : undefined }}>
           {type.label}
         </td>
         {renderGroupCells(pYear, monthNum, type.key, false, null)}
         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: rowTotal > 0 ? 600 : 400 }}>
-          {rowTotal > 0 ? fmtRubP(rowTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+          {rowTotal > 0 ? fmtRubP(rowTotal) : <span style={{ color: 'var(--n-300)' }}>{DASH}</span>}
         </td>
       </tr>
     );
@@ -3636,7 +3636,7 @@ function TabUtilities() {
           <button onClick={exportToXLSX}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7,
                      cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
-                     border: 'none', background: '#16a34a', color: '#fff',
+                     border: 'none', background: 'var(--green-600)', color: '#fff',
                      boxShadow: '0 1px 3px rgba(22,163,74,0.4)' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
               <path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/>
@@ -3647,7 +3647,7 @@ function TabUtilities() {
           <button onClick={exportToPDF}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7,
                      cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
-                     border: 'none', background: '#dc2626', color: '#fff',
+                     border: 'none', background: 'var(--red-600)', color: '#fff',
                      boxShadow: '0 1px 3px rgba(220,38,38,0.4)' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
               <path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/>
@@ -3684,7 +3684,7 @@ function TabUtilities() {
                 <div>Период</div>
                 <button onClick={() => setShowMonthPanel(true)}
                   style={{ marginTop: 4, padding: '3px 6px', border: '1px solid var(--rb-border)', borderRadius: 5,
-                    fontSize: 11, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', width: '100%',
+                    fontSize: 11, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer', width: '100%',
                     textAlign: 'left', color: selectedPeriods.size > 0 ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', display: 'block' }}>
                   {selectedPeriods.size} мес. ▾
                 </button>
@@ -3693,7 +3693,7 @@ function TabUtilities() {
                 <div>Вид услуги</div>
                 <button onClick={() => setShowTypePanel(true)}
                   style={{ marginTop: 4, padding: '3px 6px', border: '1px solid var(--rb-border)', borderRadius: 5,
-                    fontSize: 11, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', width: '100%',
+                    fontSize: 11, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer', width: '100%',
                     textAlign: 'left', color: selectedTypeKeys !== null ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', display: 'block' }}>
                   {selectedTypeKeys === null ? 'Все' : `${selectedTypeKeys.size} выбрано`} ▾
                 </button>
@@ -3706,9 +3706,9 @@ function TabUtilities() {
                 return (
                   <th key={grp.key} colSpan={colSpan} rowSpan={isSingle ? 3 : 1}
                     onClick={canExpand ? () => toggleGroup(grp.key) : undefined}
-                    style={{ background: '#f0f7ff', padding: '8px 12px', textAlign: 'center', fontWeight: 700,
+                    style={{ background: 'var(--accent-50)', padding: '8px 12px', textAlign: 'center', fontWeight: 700,
                       fontSize: 12, border: '1px solid var(--rb-border)',
-                      borderLeft: `3px solid ${grp.color || '#94a3b8'}`,
+                      borderLeft: `3px solid ${grp.color || 'var(--n-500)'}`,
                       whiteSpace: 'nowrap', cursor: canExpand ? 'pointer' : 'default',
                       userSelect: 'none', verticalAlign: 'middle' }}>
                     {canExpand && <span style={{ marginRight: 4, fontSize: 10, color: 'var(--rb-primary)' }}>{isExpanded ? '▼' : '▶'}</span>}
@@ -3716,7 +3716,7 @@ function TabUtilities() {
                   </th>
                 );
               })}
-              <th rowSpan={3} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+              <th rowSpan={3} style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
                   <span>Итого</span>
                   {/* Column visibility toggle */}
@@ -3731,7 +3731,7 @@ function TabUtilities() {
                   {/* Settings gear */}
                   <button onClick={() => setShowSettings(true)} title="Настройки таблицы"
                     style={{ width: 22, height: 22, border: '1px solid var(--rb-border)', borderRadius: 5,
-                      background: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1,
+                      background: 'var(--n-0)', cursor: 'pointer', fontSize: 13, lineHeight: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       color: 'var(--rb-text-secondary)', padding: 0, flexShrink: 0 }}>
                     ⚙
@@ -3744,17 +3744,17 @@ function TabUtilities() {
               {visibleGroups.flatMap(grp => {
                 if (grp.items.length === 1) return [];
                 const isExpanded = expandedGroups.has(grp.key);
-                if (!isExpanded) return [<th key={`r2_${grp.key}_tot`} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>Итого ₽</th>];
+                if (!isExpanded) return [<th key={`r2_${grp.key}_tot`} style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>Итого ₽</th>];
                 return [
                   ...grp.items.map(item => (
                     <th key={`r2_${grp.key}_${item.id}`} colSpan={3}
-                      style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {item.kind === 'clinic'
                         ? (clinics.find(c => String(c.id) === item.id)?.title || clinics.find(c => String(c.id) === item.id)?.name || item.id)
                         : (item.label || item.id)}
                     </th>
                   )),
-                  <th key={`r2_${grp.key}_tot`} style={{ background: '#f0f7ff', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>Итого ₽</th>,
+                  <th key={`r2_${grp.key}_tot`} style={{ background: 'var(--accent-50)', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>Итого ₽</th>,
                 ];
               })}
             </tr>
@@ -3766,11 +3766,11 @@ function TabUtilities() {
                 if (!isExpanded) return [];
                 return [
                   ...grp.items.flatMap(item => [
-                    <th key={`r3_${grp.key}_${item.id}_q`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Кол-во</th>,
-                    <th key={`r3_${grp.key}_${item.id}_p`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Цена ₽</th>,
-                    <th key={`r3_${grp.key}_${item.id}_s`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Сумма ₽</th>,
+                    <th key={`r3_${grp.key}_${item.id}_q`} style={{ background: 'var(--n-50)', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Кол-во</th>,
+                    <th key={`r3_${grp.key}_${item.id}_p`} style={{ background: 'var(--n-50)', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Цена ₽</th>,
+                    <th key={`r3_${grp.key}_${item.id}_s`} style={{ background: 'var(--n-50)', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Сумма ₽</th>,
                   ]),
-                  <th key={`r3_${grp.key}_tot`} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />,
+                  <th key={`r3_${grp.key}_tot`} style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />,
                 ];
               })}
             </tr>
@@ -3790,7 +3790,7 @@ function TabUtilities() {
               return (
                 <React.Fragment key={`${pYear}_${monthNum}`}>
                   <tr>
-                    <td colSpan={numCols} style={{ background: '#f1f5f9', fontWeight: 700, fontSize: 12, padding: '7px 14px', border: '1px solid var(--rb-border)' }}>
+                    <td colSpan={numCols} style={{ background: 'var(--n-100)', fontWeight: 700, fontSize: 12, padding: '7px 14px', border: '1px solid var(--rb-border)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span>{periodLabel}</span>
                         {monthTotal > 0 && <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--rb-primary)' }}>{fmtRub(monthTotal)}</span>}
@@ -3818,7 +3818,7 @@ function TabUtilities() {
                           </td>
                           {renderGroupCells(pYear, monthNum, null, true, types)}
                           <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: catTotal > 0 ? 700 : 400, border: '1px solid var(--rb-border)' }}>
-                            {catTotal > 0 ? fmtRub(catTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+                            {catTotal > 0 ? fmtRub(catTotal) : <span style={{ color: 'var(--n-300)' }}>{DASH}</span>}
                           </td>
                         </tr>
                         {isExpanded && (subcats?.length ? (
@@ -3831,13 +3831,13 @@ function TabUtilities() {
                               <React.Fragment key={`${pYear}_${monthNum}_${scKey}`}>
                                 <tr onClick={() => toggleSubcat(scKey)} style={{ cursor:'pointer', background: isScExp ? '#f5f9ff' : '#fafcff' }}>
                                   <td />
-                                  <td style={{ fontSize:12,fontWeight:600,paddingLeft:24,whiteSpace:'nowrap',borderLeft:'3px solid #93c5fd' }}>
-                                    <span style={{ fontSize:10,color:'#3b82f6',marginRight:4,userSelect:'none' }}>{isScExp?'▼':'▶'}</span>
+                                  <td style={{ fontSize:12,fontWeight:600,paddingLeft:24,whiteSpace:'nowrap',borderLeft:'3px solid var(--accent-300)' }}>
+                                    <span style={{ fontSize:10,color:'var(--accent-500)',marginRight:4,userSelect:'none' }}>{isScExp?'▼':'▶'}</span>
                                     {sc.label}
                                   </td>
                                   {renderGroupCells(pYear,monthNum,null,true,sc.visTypes)}
                                   <td style={{ textAlign:'right',fontVariantNumeric:'tabular-nums',fontSize:12,padding:'4px 10px',fontWeight:scTotal>0?600:400,border:'1px solid var(--rb-border)' }}>
-                                    {scTotal > 0 ? fmtRubP(scTotal) : <span style={{ color:'#cbd5e1' }}>{DASH}</span>}
+                                    {scTotal > 0 ? fmtRubP(scTotal) : <span style={{ color:'var(--n-300)' }}>{DASH}</span>}
                                   </td>
                                 </tr>
                                 {isScExp && sc.visTypes.map(type => renderTypeRow(type, pYear, monthNum, true))}
@@ -3854,7 +3854,7 @@ function TabUtilities() {
               );
             })}
             {/* Totals row */}
-            <tr style={{ background: '#f8fafc' }}>
+            <tr style={{ background: 'var(--n-50)' }}>
               <td colSpan={2} style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, border: '1px solid var(--rb-border)' }}>
                 Итого за период
               </td>
@@ -4007,7 +4007,7 @@ export function TabEquipmentAnalytics({ excelSources = [], periodStart, periodEn
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--rb-text)' }}>Оборудование</div>
         <select value={clinicFilter} onChange={e => setClinicFilter(e.target.value)}
-          style={{ padding: '5px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
+          style={{ padding: '5px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer' }}>
           <option value="">Все филиалы</option>
           {clinicOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -4309,13 +4309,13 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Категория:</span>
         <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
           style={{ padding: '3px 8px', border: '1px solid var(--rb-border)', borderRadius: 5,
-                   fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
+                   fontSize: 12, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer' }}>
           <option value="">Все категории</option>
           {utilCats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
         <button onClick={() => setRefreshKey(k => k + 1)}
           title="Обновить данные"
-          style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#fff',
+          style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: 'var(--n-0)',
                    cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--rb-text-secondary)' }}>
           ↻ Обновить
         </button>
@@ -4334,17 +4334,17 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
             <table className="rb-table" style={{ minWidth: 520 }}>
               <thead>
                 <tr>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Подразделение</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Итого ₽</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² ₽</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>В час ₽</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На визит ₽</th>
+                  <th style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Подразделение</th>
+                  <th style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Итого ₽</th>
+                  <th style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² ₽</th>
+                  <th style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>В час ₽</th>
+                  <th style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На визит ₽</th>
                 </tr>
               </thead>
               <tbody>
                 {utilStats.filter(s => s.total > 0).map(s => (
                   <tr key={s.key}>
-                    <td style={{ padding: '7px 12px', fontWeight: 600, fontSize: 13, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${s.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '7px 12px', fontWeight: 600, fontSize: 13, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${s.color || 'var(--n-500)'}`, whiteSpace: 'nowrap' }}>
                       {s.label}
                     </td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700, padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
@@ -4616,7 +4616,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
         ) : hasExpected && (
           <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden' }}>
             {/* Header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, padding: '8px 14px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, padding: '8px 14px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               <span>Врач</span>
               <span style={{ textAlign: 'right' }}>Норма → Факт → Откл.</span>
             </div>
@@ -4653,7 +4653,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
                               fontSize: 11, padding: '2px 8px', borderRadius: 5, whiteSpace: 'nowrap',
                               background: diff === null ? '#f1f5f9' : diff > 0 ? '#fee2e2' : diff < 0 ? '#dcfce7' : '#f1f5f9',
                               color: diff === null ? 'var(--rb-text-secondary)' : diff > 0 ? '#dc2626' : '#15803d',
-                              border: `1px solid ${diff === null ? '#e2e8f0' : diff > 0 ? '#fecaca' : '#bbf7d0'}`,
+                              border: `1px solid ${diff === null ? 'var(--n-200)' : diff > 0 ? 'var(--red-200)' : 'var(--green-200)'}`,
                             }}>
                               {c.name}: {expected.toFixed(1)}
                               {actual !== null && ` → ${actual.toFixed(1)} (${diff > 0 ? '+' : ''}${diff.toFixed(1)})`}
@@ -4666,7 +4666,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
 
                   {/* Expanded: per-consumable actual inputs + service detail */}
                   {isOpen && (
-                    <div style={{ background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', padding: '12px 14px 10px 34px' }}>
+                    <div style={{ background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', padding: '12px 14px 10px 34px' }}>
                       {/* Actual input cards */}
                       <div style={{ fontWeight: 600, fontSize: 11, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
                         Фактический расход за период
@@ -4679,7 +4679,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
                           const inputVal = rec?.qty ?? '';
                           const diff     = inputVal !== '' ? parseFloat(inputVal) - expected : null;
                           return (
-                            <div key={c.name} style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 12px', minWidth: 160 }}>
+                            <div key={c.name} style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 12px', minWidth: 160 }}>
                               <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>{c.name}</div>
                               <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>
                                 Норма: {expected.toFixed(1)} {c.unit}
@@ -4741,7 +4741,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
             })}
 
             {/* ИТОГО row */}
-            <div style={{ padding: '10px 14px', background: '#f8fafc', borderTop: '2px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ padding: '10px 14px', background: 'var(--n-50)', borderTop: '2px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: 12 }}>ИТОГО</span>
               {activeCols.map(c => {
                 const expected = expectedTotals[c.name]?.expected || 0;
@@ -4758,7 +4758,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
                     fontSize: 11, padding: '3px 10px', borderRadius: 6, fontWeight: 600, whiteSpace: 'nowrap',
                     background: diff === null ? '#f1f5f9' : diff > 0 ? '#fee2e2' : diff < 0 ? '#dcfce7' : '#f1f5f9',
                     color: diff === null ? 'var(--rb-text-secondary)' : diff > 0 ? '#dc2626' : '#15803d',
-                    border: `1px solid ${diff === null ? '#e2e8f0' : diff > 0 ? '#fecaca' : '#bbf7d0'}`,
+                    border: `1px solid ${diff === null ? 'var(--n-200)' : diff > 0 ? 'var(--red-200)' : 'var(--green-200)'}`,
                   }}>
                     {c.name}: {expected.toFixed(1)}
                     {hasAny && ` → ${totalActual.toFixed(1)} (${diff > 0 ? '+' : ''}${diff.toFixed(1)})`}
@@ -5171,14 +5171,14 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 20, alignItems: 'start' }}>
-      <div style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#fff', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-        <div style={{ padding: '14px 14px 12px', background: '#2563eb', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--n-0)', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
+        <div style={{ padding: '14px 14px 12px', background: 'var(--accent-600)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Медцентр</div>
           <select value={clinicFilter}
             onChange={e => { setClinicFilter(e.target.value); setSelectedSvc(null); setCatFilter(''); setSearch(''); }}
             style={{ width: '100%', padding: '7px 10px', fontSize: 12, border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontFamily: 'inherit', outline: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', boxSizing: 'border-box', cursor: 'pointer' }}>
-            <option value="" style={{ background: '#1e3a8a', color: '#fff' }}>— Выберите —</option>
-            {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id} style={{ background: '#1e3a8a', color: '#fff' }}>{c.name}</option>)}
+            <option value="" style={{ background: 'var(--accent-900)', color: '#fff' }}>— Выберите —</option>
+            {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id} style={{ background: 'var(--accent-900)', color: '#fff' }}>{c.name}</option>)}
           </select>
           {clinicFilter && (
             <>
@@ -5187,21 +5187,21 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
                 onChange={e => { setCatFilter(e.target.value); setSelectedSvc(null); setSearch(''); }}
                 style={{ width: '100%', padding: '7px 10px', fontSize: 12, border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontFamily: 'inherit', outline: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', boxSizing: 'border-box', cursor: 'pointer' }}
                 disabled={catsLoading}>
-                <option value="" style={{ background: '#1e3a8a', color: '#fff' }}>Все категории{catsLoading ? ' (загрузка…)' : ''}</option>
-                {flatCats.map(c => <option key={c.id} value={c.id} style={{ background: '#1e3a8a', color: '#fff' }}>{c.title}{c.count != null ? ` (${c.count})` : ''}</option>)}
+                <option value="" style={{ background: 'var(--accent-900)', color: '#fff' }}>Все категории{catsLoading ? ' (загрузка…)' : ''}</option>
+                {flatCats.map(c => <option key={c.id} value={c.id} style={{ background: 'var(--accent-900)', color: '#fff' }}>{c.title}{c.count != null ? ` (${c.count})` : ''}</option>)}
               </select>
             </>
           )}
         </div>
 
         {clinicFilter && (
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Поиск по коду или названию…"
               style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 12, fontFamily: 'inherit', outline: 'none', color: 'var(--rb-text)' }} />
             {!svcsLoading && (
-              <span style={{ fontSize: 10, color: 'var(--rb-text-secondary)', flexShrink: 0, background: '#e2e8f0', borderRadius: 10, padding: '1px 7px' }}>{filteredSvcs.length}</span>
+              <span style={{ fontSize: 10, color: 'var(--rb-text-secondary)', flexShrink: 0, background: 'var(--n-200)', borderRadius: 10, padding: '1px 7px' }}>{filteredSvcs.length}</span>
             )}
           </div>
         )}
@@ -5255,7 +5255,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'stretch', border: '1px solid var(--rb-border)', borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'stretch', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-0)', overflow: 'hidden' }}>
             <span style={{ width: 5, flexShrink: 0, background: getClinicColor(clinicFilter) }} />
             <div style={{ flex: 1, minWidth: 0, padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
@@ -5274,7 +5274,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 430px) 1fr', gap: 14, alignItems: 'stretch' }}>
-            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: '#fff', padding: '12px 14px' }}>
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-0)', padding: '12px 14px' }}>
               <div style={{ height: 260 }}>
                 {totals.price > 0 && pieRows.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -5304,7 +5304,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
               </div>
             </div>
 
-            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: '#fff', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-0)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))', gap: 10 }}>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Полная себестоимость</div>
@@ -5457,14 +5457,14 @@ function MarketingCategoryDropdown({ onSelect, clinicId }) {
   return (
     <div style={{ position: 'relative', marginBottom: 10 }}>
       <button ref={btnRef} type="button" onClick={handleToggle}
-        style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, textAlign: 'left', color: selectedLabel ? 'var(--rb-text)' : 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+        style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, background: 'var(--n-0)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, textAlign: 'left', color: selectedLabel ? 'var(--rb-text)' : 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
         <span>{selectedLabel || 'Выберите категорию…'}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }}>
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
         </svg>
       </button>
       {open && (
-        <div ref={dropRef} style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: Math.max(dropPos.width, 320), border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.14)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
+        <div ref={dropRef} style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: Math.max(dropPos.width, 320), border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: 'var(--n-0)', boxShadow: '0 4px 20px rgba(0,0,0,0.14)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--rb-border)' }}>
             <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
               placeholder="Поиск категории…"
@@ -5686,7 +5686,7 @@ function TabMarketing() {
       <div style={{ marginBottom: 14 }}>
         <select value={clinicFilter}
           onChange={e => { setClinicFilter(e.target.value); setSelectedSvc(null); setCatFilter(''); setSearch(''); }}
-          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', minWidth: 220 }}>
+          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--n-0)', cursor: 'pointer', minWidth: 220 }}>
           <option value="">— Выберите медцентр —</option>
           {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -5705,7 +5705,7 @@ function TabMarketing() {
 
           {/* LEFT: категория + поиск + список услуг */}
           <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {clinicFilter && (
                 <select value={categoryFilter}
                   onChange={e => { setCatFilter(e.target.value); setSelectedSvc(null); setSearch(''); }}
@@ -5747,7 +5747,7 @@ function TabMarketing() {
                       {s.code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{s.code}</div>}
                     </div>
                     {hasSetting && (
-                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: isSel ? '#bfdbfe' : '#dbeafe', color: '#1e40af', marginTop: 2 }}>
+                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: isSel ? '#bfdbfe' : '#dbeafe', color: 'var(--accent-800)', marginTop: 2 }}>
                         {fmtVal(settingByCode[code])}
                       </span>
                     )}
@@ -5767,7 +5767,7 @@ function TabMarketing() {
               /* Сводная таблица */
               Object.values(settings).filter(s => s.clinicId === clinicFilter).length > 0 ? (
                 <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden' }}>
-                  <div style={{ padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>
+                  <div style={{ padding: '10px 14px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>
                     Назначенные ставки — {clinicName}
                   </div>
                   <table className="rb-table" style={{ minWidth: 400 }}>
@@ -5790,7 +5790,7 @@ function TabMarketing() {
                               </div>
                             </td>
                             <td style={{ width: 36 }}>
-                              <button onClick={() => handleRemove(id)} title="Удалить" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>×</button>
+                              <button onClick={() => handleRemove(id)} title="Удалить" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: 'var(--n-500)', fontSize: 16, lineHeight: 1 }}>×</button>
                             </td>
                           </tr>
                         ))}
@@ -5822,7 +5822,7 @@ function TabMarketing() {
                 </div>
 
                 {showEditForm && (
-                  <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '14px 16px' }}>
+                  <div style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '14px 16px' }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>Маркетинговая ставка</div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <div style={{ display: 'inline-flex', border: '1px solid var(--rb-border-dark)', borderRadius: 7, overflow: 'hidden', flexShrink: 0 }}>
@@ -5838,7 +5838,7 @@ function TabMarketing() {
                         {saving ? '…' : 'Сохранить'}
                       </button>
                       <button onClick={() => setShowEditForm(false)}
-                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid var(--rb-border)', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--rb-text-secondary)', flexShrink: 0 }}>
+                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid var(--rb-border)', background: 'var(--n-0)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--rb-text-secondary)', flexShrink: 0 }}>
                         Отмена
                       </button>
                     </div>
@@ -5853,9 +5853,9 @@ function TabMarketing() {
                 )}
 
                 {currentSetting ? (
-                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ background: 'var(--green-50)', border: '1px solid var(--green-200)', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, color: '#15803d', fontWeight: 600, marginBottom: 2 }}>Текущая ставка</div>
+                      <div style={{ fontSize: 12, color: 'var(--green-700)', fontWeight: 600, marginBottom: 2 }}>Текущая ставка</div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--rb-text)' }}>{fmtVal(currentSetting)}</div>
                       {currentSetting.valueType !== 'rub' && selectedSvc.price != null && (
                         <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
@@ -5864,7 +5864,7 @@ function TabMarketing() {
                       )}
                     </div>
                     <button onClick={() => handleRemove(currentSetting.id)} title="Удалить"
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 8px', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 8px', color: 'var(--n-500)', fontSize: 18, lineHeight: 1 }}>×</button>
                   </div>
                 ) : !showEditForm && (
                   <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 8 }}>
@@ -5902,7 +5902,7 @@ function TabMarketing() {
                 return (
                   <>
                     {/* Форма массового назначения */}
-                    <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+                    <div style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
                         Маркетинговая ставка для выбранных услуг
                       </div>
@@ -5925,7 +5925,7 @@ function TabMarketing() {
 
                     {/* Список услуг с тоглами */}
                     <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8 }}>
-                      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', borderRadius: '8px 8px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', borderRadius: '8px 8px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <input value={catFilter} onChange={e => setCatFilter2(e.target.value)}
                           placeholder="Найти услугу в категории…"
                           style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
@@ -5955,14 +5955,14 @@ function TabMarketing() {
                               onClick={() => toggleCatExclude(code)}>
                               {/* Toggle */}
                               <div style={{ width: 32, height: 18, borderRadius: 9, background: excluded ? '#cbd5e1' : 'var(--rb-primary)', position: 'relative', transition: 'background 0.18s', flexShrink: 0 }}>
-                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: excluded ? 2 : 16, transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.18)' }} />
+                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--n-0)', position: 'absolute', top: 2, left: excluded ? 2 : 16, transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.18)' }} />
                               </div>
                               <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{code}</span>
                                 <span style={{ fontSize: 12, color: 'var(--rb-text)' }}>{svc.title}</span>
                               </div>
                               {existing && !excluded && (
-                                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: '#dbeafe', color: '#1e40af', flexShrink: 0 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'var(--accent-100)', color: 'var(--accent-800)', flexShrink: 0 }}>
                                   {fmtVal(existing)}
                                 </span>
                               )}
@@ -6139,7 +6139,7 @@ function ScaleDot({ name, isBase, color }) {
   const showImg = logo && !imgErr;
   const size = isBase ? 24 : 20;
   return (
-    <div title={name} style={{ width: size, height: size, borderRadius: '50%', background: showImg ? '#fff' : color, border: `2px solid ${isBase ? '#3b82f6' : '#fff'}`, boxShadow: '0 1px 4px rgba(0,0,0,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#fff', fontWeight: 700, cursor: 'default', userSelect: 'none', overflow: 'hidden' }}>
+    <div title={name} style={{ width: size, height: size, borderRadius: '50%', background: showImg ? '#fff' : color, border: `2px solid ${isBase ? 'var(--accent-500)' : 'var(--n-0)'}`, boxShadow: '0 1px 4px rgba(0,0,0,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#fff', fontWeight: 700, cursor: 'default', userSelect: 'none', overflow: 'hidden' }}>
       {showImg
         ? <img src={logo} alt={name} draggable={false} onError={() => setImgErr(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         : pcAbbr(name)}
@@ -6160,10 +6160,10 @@ function ScaleRow({ label, allVals, baseVal, onHover, onLeave }) {
   };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 0' }}>
-      <span style={{ width: 88, fontSize: 10, color: '#6b7280', flexShrink: 0, textAlign: 'right' }}>{label}</span>
+      <span style={{ width: 88, fontSize: 10, color: 'var(--n-600)', flexShrink: 0, textAlign: 'right' }}>{label}</span>
       <div style={{ flex: 1, position: 'relative', height: 30 }}>
-        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: 'linear-gradient(to right, #fca5a5, #f3f4f6 50%, #86efac)', transform: 'translateY(-50%)', borderRadius: 2 }} />
-        {baseVal != null && <div style={{ position: 'absolute', top: '10%', left: '50%', transform: 'translateX(-50%)', height: '80%', width: 2, background: '#94a3b8', borderRadius: 1 }} />}
+        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: 'linear-gradient(to right, var(--red-300), var(--n-100) 50%, var(--green-300))', transform: 'translateY(-50%)', borderRadius: 2 }} />
+        {baseVal != null && <div style={{ position: 'absolute', top: '10%', left: '50%', transform: 'translateX(-50%)', height: '80%', width: 2, background: 'var(--n-500)', borderRadius: 1 }} />}
         {allVals.map(x => {
           const isBase = x.isBase;
           const diff = !isBase && baseVal != null ? pcDiff(baseVal, x.val) : null;
@@ -6178,7 +6178,7 @@ function ScaleRow({ label, allVals, baseVal, onHover, onLeave }) {
           );
         })}
       </div>
-      <span style={{ width: 72, fontSize: 11, fontWeight: 600, color: '#374151', textAlign: 'right', flexShrink: 0 }}>{pcFmt(baseVal)}</span>
+      <span style={{ width: 72, fontSize: 11, fontWeight: 600, color: 'var(--n-800)', textAlign: 'right', flexShrink: 0 }}>{pcFmt(baseVal)}</span>
     </div>
   );
 }
@@ -6264,7 +6264,7 @@ const PcCompRow = React.memo(function PcCompRow({ item, orderedCols, hiddenCols,
                       key={`${item.id}-${col.name}-p-${price ?? ''}`}
                       type="number"
                       className={`pc-price-input${hasHist ? ' has-history' : ''}`}
-                      style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #d1d5db', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffPrice, price, basePrice), fontWeight: 600, outline: 'none' }}
+                      style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed var(--n-300)', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffPrice, price, basePrice), fontWeight: 600, outline: 'none' }}
                       defaultValue={price ?? ''}
                       placeholder="—"
                       onBlur={e => onUpdatePrice(item.id, col.name, e.target.value, 'price')}
@@ -6280,7 +6280,7 @@ const PcCompRow = React.memo(function PcCompRow({ item, orderedCols, hiddenCols,
                       key={`${item.id}-${col.name}-c-${cost ?? ''}`}
                       type="number"
                       className="pc-price-input"
-                      style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #e5e7eb', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffCost, cost, baseCost), fontWeight: 600, outline: 'none' }}
+                      style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed var(--n-200)', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffCost, cost, baseCost), fontWeight: 600, outline: 'none' }}
                       defaultValue={cost ?? ''}
                       placeholder="—"
                       onBlur={e => onUpdatePrice(item.id, col.name, e.target.value, 'cost')}
@@ -6300,7 +6300,7 @@ const PcCompRow = React.memo(function PcCompRow({ item, orderedCols, hiddenCols,
         );
       })}
       <td style={{ textAlign: 'center' }}>
-        <button className="pc-act-btn del" onClick={() => onDelete(item.id)} title="Удалить" style={{ width: 32, height: 32, border: 'none', background: '#f3f4f6', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+        <button className="pc-act-btn del" onClick={() => onDelete(item.id)} title="Удалить" style={{ width: 32, height: 32, border: 'none', background: 'var(--n-100)', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-500)' }}>
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 18, height: 18 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
         </button>
       </td>
@@ -6936,26 +6936,26 @@ export function TabServices() {
     const svcs = clinicInp.trim().length >= 2 ? clinicSvcRes.slice(0, 20) : [];
     let gi = 0;
     return (
-      <div style={{ position: 'fixed', top: clinicDropPos.top, left: clinicDropPos.left, width: clinicDropPos.width, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 280, overflowY: 'auto', zIndex: 10002, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
+      <div style={{ position: 'fixed', top: clinicDropPos.top, left: clinicDropPos.left, width: clinicDropPos.width, background: 'var(--n-0)', border: '1px solid var(--n-300)', borderRadius: 8, maxHeight: 280, overflowY: 'auto', zIndex: 10002, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
         {cats.length > 0 && <>
-          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
           {cats.map((opt, oi) => { const i = gi++; return (
             <div key={opt.value ?? `cat-${oi}`} className={`pc-drop-item${opt.value === selClinicCat?.id ? ' selected-opt' : ''}${i === clinicHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectClinicCat(opt.value, opt.name, opt.allIds)}>{opt.text}</div>
           ); })}
         </>}
         {clinicInp.trim().length >= 2 && <>
-          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Услуги</div>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Услуги</div>
           {svcs.length === 0
-            ? <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Введите запрос или подождите...</div>
+            ? <div style={{ padding: 12, textAlign: 'center', color: 'var(--n-500)', fontSize: 13 }}>Введите запрос или подождите...</div>
             : svcs.map((svc, si) => { const i = gi++; return (
               <div key={si} className={`pc-drop-item${i === clinicHigh ? ' highlighted' : ''}`} data-level="service" style={{ padding: '8px 12px', cursor: 'pointer' }} onMouseDown={() => selectClinicSvc(svc)}>
-                <div style={{ fontWeight: 500, color: '#111827', marginBottom: 2 }}>{svc.title || 'Без названия'}</div>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>Код: {svc.code || '—'}{svc.price != null ? ` | ${pcFmt(svc.price)}` : ''}{svc.category ? ` | ${svc.category}` : ''}</div>
+                <div style={{ fontWeight: 500, color: 'var(--n-900)', marginBottom: 2 }}>{svc.title || 'Без названия'}</div>
+                <div style={{ fontSize: 11, color: 'var(--n-600)' }}>Код: {svc.code || '—'}{svc.price != null ? ` | ${pcFmt(svc.price)}` : ''}{svc.category ? ` | ${svc.category}` : ''}</div>
               </div>
             ); })
           }
         </>}
-        {cats.length === 0 && clinicInp.trim().length < 2 && <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Ничего не найдено</div>}
+        {cats.length === 0 && clinicInp.trim().length < 2 && <div style={{ padding: 12, textAlign: 'center', color: 'var(--n-500)', fontSize: 13 }}>Ничего не найдено</div>}
       </div>
     );
   }
@@ -6966,26 +6966,26 @@ export function TabServices() {
     const svcs = labInp.trim().length >= 2 ? labSvcRes.slice(0, 20) : [];
     let gi = 0;
     return (
-      <div style={{ position: 'fixed', top: labDropPos.top, left: labDropPos.left, width: labDropPos.width, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 280, overflowY: 'auto', zIndex: 10002, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
+      <div style={{ position: 'fixed', top: labDropPos.top, left: labDropPos.left, width: labDropPos.width, background: 'var(--n-0)', border: '1px solid var(--n-300)', borderRadius: 8, maxHeight: 280, overflowY: 'auto', zIndex: 10002, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
         {cats.length > 0 && <>
-          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
           {cats.map(opt => { const i = gi++; return (
             <div key={opt.value} className={`pc-drop-item${opt.value === selLabCat?.id ? ' selected-opt' : ''}${i === labHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectLabCat(opt.value, opt.name, opt.allIds)}>{opt.text}</div>
           ); })}
         </>}
         {labInp.trim().length >= 2 && <>
-          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Услуги</div>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Услуги</div>
           {svcs.length === 0
-            ? <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Введите запрос или подождите...</div>
+            ? <div style={{ padding: 12, textAlign: 'center', color: 'var(--n-500)', fontSize: 13 }}>Введите запрос или подождите...</div>
             : svcs.map((svc, si) => { const i = gi++; return (
               <div key={si} className={`pc-drop-item${i === labHigh ? ' highlighted' : ''}`} data-level="service" style={{ padding: '8px 12px', cursor: 'pointer' }} onMouseDown={() => selectLabSvc(svc)}>
-                <div style={{ fontWeight: 500, color: '#111827', marginBottom: 2 }}>{svc.title || 'Без названия'}</div>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>{svc.oms_code ? `Код 804н: ${svc.oms_code}` : ''}{svc.lab ? ` | ${svc.lab}` : ''}</div>
+                <div style={{ fontWeight: 500, color: 'var(--n-900)', marginBottom: 2 }}>{svc.title || 'Без названия'}</div>
+                <div style={{ fontSize: 11, color: 'var(--n-600)' }}>{svc.oms_code ? `Код 804н: ${svc.oms_code}` : ''}{svc.lab ? ` | ${svc.lab}` : ''}</div>
               </div>
             ); })
           }
         </>}
-        {cats.length === 0 && labInp.trim().length < 2 && <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Ничего не найдено</div>}
+        {cats.length === 0 && labInp.trim().length < 2 && <div style={{ padding: 12, textAlign: 'center', color: 'var(--n-500)', fontSize: 13 }}>Ничего не найдено</div>}
       </div>
     );
   }
@@ -6993,10 +6993,10 @@ export function TabServices() {
   // ── Table ─────────────────────────────────────────────────────────────────
   function renderTableBody() {
     if (!comp || !allCols.length) {
-      return <tr><td colSpan={3} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Создайте сравнение или выберите существующее</td></tr>;
+      return <tr><td colSpan={3} style={{ textAlign: 'center', padding: 40, color: 'var(--n-500)' }}>Создайте сравнение или выберите существующее</td></tr>;
     }
     if (!filteredItems.length) {
-      return <tr><td colSpan={totalCols} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>{debFilter ? 'Ничего не найдено' : 'Нет услуг. Добавьте услугу для сравнения.'}</td></tr>;
+      return <tr><td colSpan={totalCols} style={{ textAlign: 'center', padding: 40, color: 'var(--n-500)' }}>{debFilter ? 'Ничего не найдено' : 'Нет услуг. Добавьте услугу для сравнения.'}</td></tr>;
     }
     return pagedItems.map(item => (
       <PcCompRow
@@ -7015,11 +7015,11 @@ export function TabServices() {
 
   const closeModal = () => setModal(null);
   const modalOverlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, backdropFilter: 'blur(4px)' };
-  const modalStyle        = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)', margin: 16 };
-  const modalHeadStyle    = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e5e7eb' };
-  const modalFootStyle    = { display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: '1px solid #e5e7eb', background: '#f9fafb' };
-  const inputStyle        = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' };
-  const closeBtnStyle     = { width: 32, height: 32, border: 'none', background: '#f3f4f6', borderRadius: 8, fontSize: 20, cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const modalStyle        = { background: 'var(--n-0)', borderRadius: 16, width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)', margin: 16 };
+  const modalHeadStyle    = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--n-200)' };
+  const modalFootStyle    = { display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: '1px solid var(--n-200)', background: 'var(--n-50)' };
+  const inputStyle        = { width: '100%', padding: '10px 12px', border: '1px solid var(--n-300)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' };
+  const closeBtnStyle     = { width: 32, height: 32, border: 'none', background: 'var(--n-100)', borderRadius: 8, fontSize: 20, cursor: 'pointer', color: 'var(--n-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
   // ── JSX ───────────────────────────────────────────────────────────────────
   return (
@@ -7089,10 +7089,10 @@ export function TabServices() {
 
       {/* Tooltip */}
       {ttip && (
-        <div style={{ position: 'fixed', left: ttip.x, top: ttip.y - 60, transform: 'translateX(-50%)', background: '#fff', color: '#1f2937', padding: '8px 12px', borderRadius: 6, fontSize: 12, zIndex: 10001, pointerEvents: 'none', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,.3)', border: '1px solid #d1d5db' }}>
+        <div style={{ position: 'fixed', left: ttip.x, top: ttip.y - 60, transform: 'translateX(-50%)', background: 'var(--n-0)', color: 'var(--n-800)', padding: '8px 12px', borderRadius: 6, fontSize: 12, zIndex: 10001, pointerEvents: 'none', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,.3)', border: '1px solid var(--n-300)' }}>
           <div style={{ fontWeight: 600, marginBottom: 2 }}>Последнее изменение:</div>
           <div>{ttip.user}</div>
-          <div style={{ color: '#9ca3af', fontSize: 11 }}>{ttip.date}</div>
+          <div style={{ color: 'var(--n-500)', fontSize: 11 }}>{ttip.date}</div>
         </div>
       )}
 
@@ -7114,7 +7114,7 @@ export function TabServices() {
             {comparisons.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <button className="pc-btn pc-btn-primary" onClick={() => { setNewName(''); setNewDesc(''); setModal('newComp'); }}>{Ico.plus} Новая страница</button>
-          <button className="pc-btn pc-btn-secondary" onClick={deleteComp} disabled={!comp} title="Удалить страницу" style={{ color: '#ef4444', padding: '10px 12px' }}>{Ico.trash}</button>
+          <button className="pc-btn pc-btn-secondary" onClick={deleteComp} disabled={!comp} title="Удалить страницу" style={{ color: 'var(--red-500)', padding: '10px 12px' }}>{Ico.trash}</button>
 
           <div className="pc-grow" />
 
@@ -7137,7 +7137,7 @@ export function TabServices() {
               const isBase   = col.name === baseCol;
               return (
                 <div key={col.name} className={`pc-chip ${col.type}${isHidden ? ' dimmed' : ''}`}
-                  style={{ padding: '6px 12px 6px 28px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, position: 'relative', cursor: 'pointer' }}
+                  style={{ padding: '6px 12px 6px 28px', background: 'var(--n-0)', border: '1px solid var(--n-300)', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, position: 'relative', cursor: 'pointer' }}
                   onClick={e => { if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('input')) return; toggleCol(col.name); }}>
                   <input type="radio" name="pc-base" checked={isBase} onChange={() => {}} onClick={e => { e.stopPropagation(); setBaseColVal(col.name); }}
                     style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', width: 14, height: 14, margin: 0, opacity: 1 }} />
@@ -7156,7 +7156,7 @@ export function TabServices() {
         <div className="pc-toolbar">
           <div className="pc-bar">
             <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 220 }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>{Ico.search}</span>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--n-500)', pointerEvents: 'none', display: 'flex' }}>{Ico.search}</span>
               <input type="text" className="pc-search" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="Поиск по названию, коду..." />
             </div>
             <button className="pc-btn pc-btn-primary" onClick={openAddSvcModal}>{Ico.plus} Добавить услугу</button>
@@ -7177,7 +7177,7 @@ export function TabServices() {
 
       {/* Scale tooltip */}
       {scaleTtip && (
-        <div style={{ position: 'fixed', left: scaleTtip.x + 14, top: scaleTtip.y - 8, background: '#1f2937', color: '#fff', padding: '7px 11px', borderRadius: 7, fontSize: 12, zIndex: 9999, pointerEvents: 'none', boxShadow: '0 4px 14px rgba(0,0,0,.3)', minWidth: 130 }}>
+        <div style={{ position: 'fixed', left: scaleTtip.x + 14, top: scaleTtip.y - 8, background: 'var(--surface-inverse)', color: 'var(--text-on-inverse)', padding: '7px 11px', borderRadius: 7, fontSize: 12, zIndex: 9999, pointerEvents: 'none', boxShadow: '0 4px 14px rgba(0,0,0,.3)', minWidth: 130 }}>
           <div style={{ fontWeight: 600, marginBottom: 2 }}>{scaleTtip.name}{scaleTtip.isBase ? ' (эталон)' : ''}</div>
           <div>{pcFmt(scaleTtip.val)}</div>
           {scaleTtip.diff && scaleTtip.diff.cls !== 'neutral' && (
@@ -7187,7 +7187,7 @@ export function TabServices() {
       )}
 
       {/* Table */}
-      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--n-0)', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid var(--n-200)', overflow: 'hidden' }}>
         <div style={{ maxHeight: 'calc(100vh - 150px)', overflow: 'auto' }}>
           <table className="pc-table">
             <thead>
@@ -7243,7 +7243,7 @@ export function TabServices() {
                       <ScaleRow label="Себестоимость"  allVals={costVals}   baseVal={baseCost}   onHover={onHover} onLeave={onLeave} />
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <button className="pc-act-btn del" onClick={() => deleteItem(item.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', padding: 4 }} onMouseEnter={e => e.currentTarget.style.color='#ef4444'} onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}>{Ico.trash}</button>
+                      <button className="pc-act-btn del" onClick={() => deleteItem(item.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--n-500)', padding: 4 }} onMouseEnter={e => e.currentTarget.style.color='#ef4444'} onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}>{Ico.trash}</button>
                     </td>
                   </tr>
                 );
@@ -7252,13 +7252,13 @@ export function TabServices() {
           </table>
         </div>
         {comp && filteredItems.length > PAGE_SIZE && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 16px', borderTop: '1px solid #e5e7eb', background: '#f8fafc', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, color: '#6b7280' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--n-200)', background: 'var(--n-50)', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: 'var(--n-600)' }}>
               {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filteredItems.length)} из {filteredItems.length.toLocaleString('ru-RU')}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="pc-btn pc-btn-secondary" style={{ padding: '6px 12px' }} disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>‹ Назад</button>
-              <span style={{ fontSize: 13, color: '#374151', minWidth: 90, textAlign: 'center' }}>Стр. {page} из {totalPages}</span>
+              <span style={{ fontSize: 13, color: 'var(--n-800)', minWidth: 90, textAlign: 'center' }}>Стр. {page} из {totalPages}</span>
               <button className="pc-btn pc-btn-secondary" style={{ padding: '6px 12px' }} disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Вперёд ›</button>
             </div>
           </div>
@@ -7270,17 +7270,17 @@ export function TabServices() {
         <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
           <div style={modalStyle}>
             <div style={modalHeadStyle}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Новая страница</h3>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--n-800)' }}>Новая страница</h3>
               <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
             </div>
             <form onSubmit={createComp}>
               <div style={{ padding: 24 }}>
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Название <span style={{ color: '#ef4444' }}>*</span></label>
+                  <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--n-800)' }}>Название <span style={{ color: 'var(--red-500)' }}>*</span></label>
                   <input type="text" required value={newName} onChange={e => setNewName(e.target.value)} placeholder="Страница сравнения январь 2026" style={inputStyle} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Описание</label>
+                  <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--n-800)' }}>Описание</label>
                   <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Дополнительная информация..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
                 </div>
               </div>
@@ -7298,12 +7298,12 @@ export function TabServices() {
         <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
           <div style={modalStyle}>
             <div style={modalHeadStyle}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Добавить услугу</h3>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--n-800)' }}>Добавить услугу</h3>
               <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
             </div>
             <div style={{ padding: 24 }}>
               <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Категория или название услуги <span style={{ color: '#ef4444' }}>*</span></label>
+                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--n-800)' }}>Категория или название услуги <span style={{ color: 'var(--red-500)' }}>*</span></label>
                 <div style={{ position: 'relative' }}>
                   <input ref={clinicInputRef} type="text" value={clinicInp} onChange={e => handleClinicInput(e.target.value)} onFocus={handleClinicFocus} onBlur={handleClinicBlur} onKeyDown={handleClinicKey}
                     placeholder="Например: УЗИ или консультация терапевта" autoComplete="off" style={inputStyle} />
@@ -7311,9 +7311,9 @@ export function TabServices() {
                 </div>
               </div>
               {selClinicCat && (
-                <div style={{ padding: 12, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8 }}>
-                  <div style={{ fontSize: 13, color: '#0369a1' }}><strong>Выбрана категория:</strong> {selClinicCat.name}</div>
-                  <div style={{ fontSize: 12, color: '#075985', marginTop: 4 }}>Можно добавить сразу все услуги из этой категории.</div>
+                <div style={{ padding: 12, background: 'var(--accent-50)', border: '1px solid var(--accent-200)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, color: 'var(--accent-900)' }}><strong>Выбрана категория:</strong> {selClinicCat.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--accent-900)', marginTop: 4 }}>Можно добавить сразу все услуги из этой категории.</div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
                     <button className="pc-btn pc-btn-primary" onClick={addAllCatSvcs} disabled={addingCatSvcs}>
                       {addingCatSvcs ? <>{Ico.spin} Загрузка...</> : <>{Ico.plus} Добавить все услуги</>}
@@ -7331,12 +7331,12 @@ export function TabServices() {
         <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
           <div style={{ ...modalStyle, maxWidth: 700 }}>
             <div style={modalHeadStyle}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Загрузить услуги из МИС</h3>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--n-800)' }}>Загрузить услуги из МИС</h3>
               <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
             </div>
             <div style={{ padding: 24 }}>
               <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Категория или название услуги <span style={{ color: '#ef4444' }}>*</span></label>
+                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--n-800)' }}>Категория или название услуги <span style={{ color: 'var(--red-500)' }}>*</span></label>
                 <div style={{ position: 'relative' }}>
                   <input ref={labInputRef} type="text" value={labInp} onChange={e => handleLabInput(e.target.value)} onFocus={handleLabFocus} onBlur={handleLabBlur} onKeyDown={handleLabKey}
                     placeholder="Например: биохимия или общий анализ крови" autoComplete="off" style={inputStyle} />
@@ -7344,13 +7344,13 @@ export function TabServices() {
                 </div>
               </div>
               {labLoading && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 20, justifyContent: 'center', color: '#6b7280', fontSize: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 20, justifyContent: 'center', color: 'var(--n-600)', fontSize: 14 }}>
                   {Ico.spin} {labStatus}
                 </div>
               )}
               {labPreview && !labLoading && (
                 <>
-                  <div style={{ padding: 16, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, marginBottom: 12 }}>
+                  <div style={{ padding: 16, background: 'var(--accent-50)', border: '1px solid var(--accent-200)', borderRadius: 8, marginBottom: 12 }}>
                     <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 10 }}>
                       {[
                         { val: labPreview.groups.length, lbl: 'позиций' },
@@ -7360,34 +7360,34 @@ export function TabServices() {
                       ].map(s => (
                         <div key={s.lbl} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <div style={{ fontSize: 22, fontWeight: 700, color: s.warn ? '#d97706' : '#1e40af', lineHeight: 1 }}>{s.val}</div>
-                          <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{s.lbl}</div>
+                          <div style={{ fontSize: 11, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{s.lbl}</div>
                         </div>
                       ))}
                     </div>
-                    <div style={{ fontSize: 13, color: '#374151' }}>Лаборатории: <strong>{labPreview.labs.join(', ')}</strong></div>
+                    <div style={{ fontSize: 13, color: 'var(--n-800)' }}>Лаборатории: <strong>{labPreview.labs.join(', ')}</strong></div>
                   </div>
                   {labPreview.groups.length > 0 && (() => {
                     const preview = labPreview.groups.slice(0, 8);
                     const labs    = labPreview.labs;
                     return (
                       <div>
-                        <div style={{ fontSize: 12, color: '#6b7280', margin: '10px 0 6px' }}>Первые {preview.length} из {labPreview.groups.length} позиций:</div>
+                        <div style={{ fontSize: 12, color: 'var(--n-600)', margin: '10px 0 6px' }}>Первые {preview.length} из {labPreview.groups.length} позиций:</div>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                           <thead>
                             <tr>
-                              <th style={{ padding: '6px 8px', border: '1px solid #e5e7eb', background: '#f9fafb', fontWeight: 600, textAlign: 'left' }}>Код 804н</th>
-                              <th style={{ padding: '6px 8px', border: '1px solid #e5e7eb', background: '#f9fafb', fontWeight: 600, textAlign: 'left' }}>Название</th>
-                              {labs.map(l => <th key={l} style={{ padding: '6px 8px', border: '1px solid #e5e7eb', background: '#f9fafb', fontWeight: 600, textAlign: 'center' }}>{l}</th>)}
+                              <th style={{ padding: '6px 8px', border: '1px solid var(--n-200)', background: 'var(--n-50)', fontWeight: 600, textAlign: 'left' }}>Код 804н</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid var(--n-200)', background: 'var(--n-50)', fontWeight: 600, textAlign: 'left' }}>Название</th>
+                              {labs.map(l => <th key={l} style={{ padding: '6px 8px', border: '1px solid var(--n-200)', background: 'var(--n-50)', fontWeight: 600, textAlign: 'center' }}>{l}</th>)}
                             </tr>
                           </thead>
                           <tbody>
                             {preview.map((g, gi) => (
                               <tr key={gi}>
-                                <td style={{ padding: '6px 8px', border: '1px solid #e5e7eb', color: '#6b7280', whiteSpace: 'nowrap' }}>{g.serviceCode || '—'}</td>
-                                <td style={{ padding: '6px 8px', border: '1px solid #e5e7eb' }}>{g.groupName}</td>
+                                <td style={{ padding: '6px 8px', border: '1px solid var(--n-200)', color: 'var(--n-600)', whiteSpace: 'nowrap' }}>{g.serviceCode || '—'}</td>
+                                <td style={{ padding: '6px 8px', border: '1px solid var(--n-200)' }}>{g.groupName}</td>
                                 {labs.map(l => {
                                   const p = g.prices[l];
-                                  return <td key={l} style={{ padding: '6px 8px', border: '1px solid #e5e7eb', textAlign: 'center', color: p ? '#16a34a' : '#d1d5db', fontWeight: p ? 600 : 400 }}>{p ? p.toFixed(0) + '₽' : '—'}</td>;
+                                  return <td key={l} style={{ padding: '6px 8px', border: '1px solid var(--n-200)', textAlign: 'center', color: p ? '#16a34a' : '#d1d5db', fontWeight: p ? 600 : 400 }}>{p ? p.toFixed(0) + '₽' : '—'}</td>;
                                 })}
                               </tr>
                             ))}
@@ -7414,12 +7414,12 @@ export function TabServices() {
         <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
           <div style={{ ...modalStyle, maxWidth: 500 }}>
             <div style={modalHeadStyle}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Добавить конкурента</h3>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--n-800)' }}>Добавить конкурента</h3>
               <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
             </div>
             <form onSubmit={addCompetitor}>
               <div style={{ padding: 24 }}>
-                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Название конкурента <span style={{ color: '#ef4444' }}>*</span></label>
+                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: 'var(--n-800)' }}>Название конкурента <span style={{ color: 'var(--red-500)' }}>*</span></label>
                 <input type="text" required value={compName} onChange={e => setCompName(e.target.value)} placeholder="Неомед, МедГрад, АйКлиник..." style={inputStyle} />
               </div>
               <div style={modalFootStyle}>
@@ -7446,7 +7446,7 @@ const dateToRu = (d) => {
 };
 
 // Единый стиль ячеек таблицы задолженностей: один цвет, без жирного, белый фон
-const cell = { padding: '8px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-text)', background: '#fff' };
+const cell = { padding: '8px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-text)', background: 'var(--n-0)' };
 const cellNum = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 const cellCenter = { ...cell, textAlign: 'center' };
 const debtorLinkStyle = { color: 'var(--rb-primary)', textDecoration: 'none', cursor: 'pointer' };
@@ -7465,7 +7465,7 @@ const patientCardUrl = (patientId) => `${MIS_WEB_BASE}/patients/default/detail/i
 
 const pagerBtn = (disabled) => ({
   minWidth: 28, height: 28, padding: '0 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-  background: '#fff', cursor: disabled ? 'default' : 'pointer', fontSize: 14, fontFamily: 'inherit',
+  background: 'var(--n-0)', cursor: disabled ? 'default' : 'pointer', fontSize: 14, fontFamily: 'inherit',
   color: disabled ? '#c2c8d0' : 'var(--rb-text)', opacity: disabled ? 0.6 : 1,
 });
 
@@ -7492,7 +7492,7 @@ function TruncTick({ x, y, payload, max = 30 }) {
 
 function DebtPanel({ title, children, style, action }) {
   return (
-    <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', background: '#fff', padding: '14px 16px', ...style }}>
+    <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', background: 'var(--n-0)', padding: '14px 16px', ...style }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{title}</span>
         {action}
@@ -8025,7 +8025,7 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
       {loading && <Spinner text="Загрузка задолженностей из МИС…" />}
 
       {!loading && error && (
-        <div style={{ padding: '30px 0', textAlign: 'center', color: '#ef4444', fontSize: 13 }}>{error}</div>
+        <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--red-500)', fontSize: 13 }}>{error}</div>
       )}
 
       {!loading && !error && (
@@ -8040,12 +8040,12 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
                 <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--rb-text-secondary)', pointerEvents: 'none' }} />
                 <input value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Поиск: № карты, ФИО, телефон, компания…"
-                  style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px 0 34px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' }} />
+                  style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px 0 34px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--n-0)' }} />
               </div>
               <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Найдено: {displayRows.length}</span>
               <button onClick={exportXlsx} disabled={!displayRows.length}
                 title="Скачать таблицу в Excel (текущий фильтр)"
-                style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, background: '#fff', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
+                style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, background: 'var(--n-0)', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
                 <FileText size={14} /> Excel
               </button>
             </div>
@@ -8102,8 +8102,8 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
                       </td>
                       <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.mobile || ''}</td>
                       <td style={{ ...cellNum, color: r.balance < 0 ? '#ef4444' : '#10b981' }}>{r.balance != null ? fmtRubP(r.balance) : ''}</td>
-                      <td style={{ ...cellNum, color: '#ef4444' }}>{r.debt_individual ? fmtRubP(r.debt_individual) : ''}</td>
-                      <td style={{ ...cellNum, color: '#ef4444' }}>{r.debt_company ? fmtRubP(r.debt_company) : ''}</td>
+                      <td style={{ ...cellNum, color: 'var(--red-500)' }}>{r.debt_individual ? fmtRubP(r.debt_individual) : ''}</td>
+                      <td style={{ ...cellNum, color: 'var(--red-500)' }}>{r.debt_company ? fmtRubP(r.debt_company) : ''}</td>
                       <td style={{ ...cellNum, fontWeight: 600, color: r.net < 0 ? '#ef4444' : '#10b981' }}>{fmtRubP(r.net)}</td>
                     </tr>
                   ))}
@@ -8141,7 +8141,7 @@ const refundClinicColor = (id) => REFUND_CLINIC_COLOR[String(id)] || '#94a3b8';
 
 function refundKpiCard(label, value, sub, accent) {
   return (
-    <div style={{ flex: '1 1 180px', minWidth: 160, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px' }}>
+    <div style={{ flex: '1 1 180px', minWidth: 160, background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px' }}>
       <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, color: accent || 'var(--rb-text)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 4 }}>{sub}</div>}
@@ -8333,7 +8333,7 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
 
       {loading && <Spinner text="Загрузка возвратов…" />}
       {!loading && error && (
-        <div style={{ padding: '30px 0', textAlign: 'center', color: '#ef4444', fontSize: 13 }}>{error}</div>
+        <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--red-500)', fontSize: 13 }}>{error}</div>
       )}
 
       {!loading && !error && (
@@ -8356,7 +8356,7 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
             <>
               {/* По медцентрам + по способу оплаты */}
               <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 20 }}>
-                <div style={{ flex: '1 1 380px', minWidth: 300, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px' }}>
+                <div style={{ flex: '1 1 380px', minWidth: 300, background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Возвраты по медцентрам (кол-во)</div>
                   <ResponsiveContainer width="100%" height={Math.max(140, Math.min(byClinic.length, 12) * 28 + 20)}>
                     <BarChart data={byClinic} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
@@ -8371,14 +8371,14 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
                   </ResponsiveContainer>
                 </div>
 
-                <div style={{ flex: '1 1 360px', minWidth: 300, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px', overflowX: 'auto' }}>
+                <div style={{ flex: '1 1 360px', minWidth: 300, background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px', overflowX: 'auto' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>По способу оплаты</div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: 'var(--rb-text)' }}>
                     <thead>
                       <tr>
-                        <th style={{ ...cell, background: '#f8fafc', fontWeight: 600, textAlign: 'left' }}>Способ</th>
-                        <th style={{ ...cellNum, background: '#f8fafc', fontWeight: 600 }}>Кол-во</th>
-                        <th style={{ ...cellNum, background: '#f8fafc', fontWeight: 600 }}>Сумма</th>
+                        <th style={{ ...cell, background: 'var(--n-50)', fontWeight: 600, textAlign: 'left' }}>Способ</th>
+                        <th style={{ ...cellNum, background: 'var(--n-50)', fontWeight: 600 }}>Кол-во</th>
+                        <th style={{ ...cellNum, background: 'var(--n-50)', fontWeight: 600 }}>Сумма</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -8386,7 +8386,7 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
                         <tr key={a.name}>
                           <td style={cell}>{a.name}</td>
                           <td style={cellNum}>{fmt(a.count)}</td>
-                          <td style={{ ...cellNum, color: '#ef4444' }}>{fmtRubP(a.sum)}</td>
+                          <td style={{ ...cellNum, color: 'var(--red-500)' }}>{fmtRubP(a.sum)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -8395,7 +8395,7 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
               </div>
 
               {/* Динамика по дням */}
-              <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px', marginBottom: 20 }}>
+              <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px', marginBottom: 20 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Динамика возвратов по дням</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={timeline} margin={{ left: 0, right: 16, top: 6, bottom: 0 }}>
@@ -8414,12 +8414,12 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
                   <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--rb-text-secondary)', pointerEvents: 'none' }} />
                   <input value={search} onChange={e => setSearch(e.target.value)}
                     placeholder="Поиск: пациент, сотрудник, тип, счёт…"
-                    style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px 0 34px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' }} />
+                    style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px 0 34px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--n-0)' }} />
                 </div>
                 <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Найдено: {displayRows.length}</span>
                 <button onClick={exportXlsx} disabled={!displayRows.length}
                   title="Скачать таблицу в Excel (текущий фильтр)"
-                  style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, background: '#fff', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
+                  style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, background: 'var(--n-0)', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
                   <FileText size={14} /> Excel
                 </button>
               </div>
@@ -8465,7 +8465,7 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
                         </td>
                         <td style={cell}>{r.income_type_name || ''}</td>
                         <td style={cellCenter}>{r.invoice_number || ''}</td>
-                        <td style={{ ...cellNum, color: '#ef4444', fontWeight: 600 }}>{fmtRubP(refundAmount(r))}</td>
+                        <td style={{ ...cellNum, color: 'var(--red-500)', fontWeight: 600 }}>{fmtRubP(refundAmount(r))}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -8541,7 +8541,7 @@ export default function Directories({ doctors = [], excelSources = [] }) {
           type="month"
           value={monthKey}
           onChange={e => setMonthKey(e.target.value || monthKeyFromDate(new Date()))}
-          style={{ padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}
+          style={{ padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--n-0)' }}
         />
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{monthKeyToLabel(monthKey)}</span>
       </div>

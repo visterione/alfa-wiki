@@ -125,7 +125,7 @@ export default function StepDivisions({ doctors = [], readOnly }) {
               {!readOnly && (
                 <button
                   onClick={e => { e.stopPropagation(); handleDelete(div.id); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#dc2626', opacity: 0.6, flexShrink: 0 }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--red-600)', opacity: 0.6, flexShrink: 0 }}
                   title="Удалить"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
@@ -147,7 +147,7 @@ export default function StepDivisions({ doctors = [], readOnly }) {
               style={{
                 flex: 1, height: 30, padding: '0 8px', fontSize: 12,
                 border: '1px solid var(--rb-border)', borderRadius: 6,
-                background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
               }}
             />
             <button
@@ -207,7 +207,7 @@ export default function StepDivisions({ doctors = [], readOnly }) {
               style={{
                 width: '100%', boxSizing: 'border-box', height: 32, padding: '0 10px', fontSize: 13,
                 border: '1px solid var(--rb-border)', borderRadius: 7,
-                background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
               }}
             />
           </div>

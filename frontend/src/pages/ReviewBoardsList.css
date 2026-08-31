@@ -57,7 +57,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1.25rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--accent-500) 0%, var(--accent-600) 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -68,7 +68,7 @@
 }
 
 .reviews-boards-page .btn-create-board:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, var(--accent-600) 0%, var(--accent-700) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
@@ -120,7 +120,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--accent-500) 0%, var(--accent-600) 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -131,7 +131,7 @@
 }
 
 .reviews-boards-page .btn-create-first:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, var(--accent-600) 0%, var(--accent-700) 100%);
   transform: translateY(-1px);
 }
 
@@ -177,7 +177,7 @@
 }
 
 .review-board-card .board-card-header h3:hover {
-  color: #3b82f6;
+  color: var(--accent-500);
 }
 
 .board-assigned-badge {
@@ -185,9 +185,9 @@
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  background: #eff6ff;
-  color: #3b82f6;
-  border: 1px solid #bfdbfe;
+  background: var(--accent-50);
+  color: var(--accent-500);
+  border: 1px solid var(--accent-200);
   border-radius: 12px;
   font-size: 12px;
   font-weight: 600;
@@ -238,11 +238,11 @@
 }
 
 .review-board-card .board-actions .stat.rating {
-  color: #f59e0b;
+  color: var(--amber-500);
 }
 
 .review-board-card .board-actions .stat.rating svg {
-  fill: #f59e0b;
+  fill: var(--amber-500);
 }
 
 .review-board-card .board-actions .board-btns {
@@ -272,15 +272,15 @@
 }
 
 .review-board-card .board-actions .btn-icon.btn-danger:hover {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #dc2626;
+  background: var(--red-50);
+  border-color: var(--red-200);
+  color: var(--red-600);
 }
 
 .review-board-card .btn-open {
   margin-left: auto;
   padding: 0.5rem 1rem;
-  background: #3b82f6;
+  background: var(--accent-500);
   color: white;
   border: none;
   border-radius: 8px;
@@ -291,7 +291,7 @@
 }
 
 .review-board-card .btn-open:hover {
-  background: #2563eb;
+  background: var(--accent-600);
 }
 
 /* Modal */
@@ -352,9 +352,9 @@
 }
 
 .create-board-form .error-message {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #dc2626;
+  background: var(--red-50);
+  border: 1px solid var(--red-200);
+  color: var(--red-600);
   padding: 0.75rem 1rem;
   border-radius: 8px;
   margin-bottom: 1rem;
@@ -388,7 +388,7 @@
 .create-board-form input:focus,
 .create-board-form textarea:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--accent-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
@@ -428,7 +428,7 @@
 
 .btn-submit {
   padding: 0.625rem 1.25rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--accent-500) 0%, var(--accent-600) 100%);
   border: none;
   border-radius: 8px;
   color: white;
@@ -439,7 +439,7 @@
 }
 
 .btn-submit:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, var(--accent-600) 0%, var(--accent-700) 100%);
 }
 
 .btn-submit:disabled {

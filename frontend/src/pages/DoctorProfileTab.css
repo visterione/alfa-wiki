@@ -1,14 +1,14 @@
 .doctor-profile-tab { display: flex; flex-direction: column; gap: 16px; }
-.doctor-admin-picker { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 16px; background: #fff8e6; border: 1px solid #f3d898; border-radius: var(--radius-lg); }
+.doctor-admin-picker { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 16px; background: var(--amber-50); border: 1px solid var(--amber-200); border-radius: var(--radius-lg); }
 .doctor-admin-picker div { display: flex; flex-direction: column; gap: 2px; }
 .doctor-admin-picker span { font-size: 12px; color: var(--text-secondary); }
 .doctor-admin-picker select { min-width: 320px; max-width: 55%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); }
 .doctor-card-readonly { overflow: hidden; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 12px; }
 .doctor-clinics { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
-.doctor-clinics > span { min-width: 56px; padding: 4px 8px; border-radius: 6px; text-align: center; font-size: 11px; font-weight: 600; color: #fff; background: #cbd5e1; opacity: .55; }
+.doctor-clinics > span { min-width: 56px; padding: 4px 8px; border-radius: 6px; text-align: center; font-size: 11px; font-weight: 600; color: #fff; background: var(--n-300); opacity: .55; }
 .doctor-clinics > span.active { opacity: 1; }
 .doctor-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
-.doctor-tags em { padding: 4px 9px; background: #e0f2fe; color: #0369a1; border-radius: 12px; font-size: 11px; font-style: normal; }
+.doctor-tags em { padding: 4px 9px; background: var(--accent-100); color: var(--accent-900); border-radius: 12px; font-size: 11px; font-style: normal; }
 .doctor-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; }
 .doctor-card-heading h2 { margin: 0 0 4px; font-size: 20px; }
 .doctor-specialty { margin-bottom: 10px; color: var(--primary); font-size: 13px; font-weight: 600; }
@@ -28,27 +28,27 @@
 .doctor-profile-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .doctor-profile-table th { position: sticky; top: 0; padding: 8px 10px; text-align: left; background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
 .doctor-profile-table td { padding: 8px 10px; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
-.doctor-service-info { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; background: #dbeafe; color: #2563eb; font-size: 11px; font-weight: 700; cursor: help; }
-.doctor-calendar-title { padding: 12px; border-radius: 8px 8px 0 0; background: linear-gradient(135deg, var(--primary), #1d4ed8); color: #fff; text-align: center; font-size: 14px; font-weight: 600; text-transform: capitalize; }
+.doctor-service-info { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; background: var(--accent-100); color: var(--accent-600); font-size: 11px; font-weight: 700; cursor: help; }
+.doctor-calendar-title { padding: 12px; border-radius: 8px 8px 0 0; background: linear-gradient(135deg, var(--primary), var(--accent-700)); color: #fff; text-align: center; font-size: 14px; font-weight: 600; text-transform: capitalize; }
 .doctor-calendar-weekdays, .doctor-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding: 8px 4px 0; }
 .doctor-calendar-weekdays span { text-align: center; color: var(--text-secondary); font-size: 10px; font-weight: 700; }
 .doctor-calendar-grid button { min-height: 46px; border: 2px solid var(--border); border-radius: 10px; background: var(--bg-primary); color: var(--text-tertiary); font-weight: 600; }
 .doctor-calendar-grid button.available { color: var(--text-primary); cursor: pointer; }
-.doctor-calendar-grid button.available:hover { border-color: var(--primary); background: #eff6ff; }
+.doctor-calendar-grid button.available:hover { border-color: var(--primary); background: var(--accent-50); }
 .doctor-calendar-grid button.today { box-shadow: 0 0 0 2px rgba(37,99,235,.18); }
 .doctor-calendar-grid button.selected { border-color: var(--primary); background: var(--primary); color: #fff; }
 .doctor-day-details { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 .doctor-day-details h4 { margin: 0 0 12px; text-transform: capitalize; }
-.doctor-cancellation { margin-bottom: 10px; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 7px; background: #f1f5f9; color: #475569; font-size: 12px; }
+.doctor-cancellation { margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--n-300); border-radius: 7px; background: var(--n-100); color: var(--n-700); font-size: 12px; }
 .doctor-timeline-group { margin: 14px 0; }
 .doctor-timeline-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11px; color: var(--text-secondary); }
 .doctor-timeline-header b { padding: 3px 9px; border-radius: 12px; color: #fff; }
 .doctor-timeline-labels { display: flex; justify-content: space-between; margin-bottom: 3px; color: var(--text-secondary); font-size: 11px; }
-.doctor-timeline { position: relative; height: 34px; overflow: hidden; border: 1px solid #94a3b8; border-radius: 6px; background: #f1f5f9; }
+.doctor-timeline { position: relative; height: 34px; overflow: hidden; border: 1px solid var(--n-500); border-radius: 6px; background: var(--n-100); }
 .doctor-timeline i { position: absolute; top: 0; bottom: 0; display: block; }
-.doctor-timeline .work { z-index: 1; background: #c8e6c9; border: 1px solid #81c784; }
-.doctor-timeline .busy { z-index: 2; background: #ffcdd2; border-right: 1px solid #e57373; cursor: help; }
-.doctor-timeline .cancel { z-index: 3; background: repeating-linear-gradient(45deg,#cbd5e1,#cbd5e1 4px,#e2e8f0 4px,#e2e8f0 8px); border-left: 2px solid #64748b; border-right: 2px solid #64748b; }
+.doctor-timeline .work { z-index: 1; background: var(--n-300); border: 1px solid var(--n-500); }
+.doctor-timeline .busy { z-index: 2; background: var(--red-200); border-right: 1px solid var(--red-400); cursor: help; }
+.doctor-timeline .cancel { z-index: 3; background: repeating-linear-gradient(45deg,var(--n-300),var(--n-300) 4px,var(--n-200) 4px,var(--n-200) 8px); border-left: 2px solid var(--n-600); border-right: 2px solid var(--n-600); }
 @media (max-width: 700px) {
   .doctor-admin-picker { align-items: stretch; flex-direction: column; }
   .doctor-admin-picker select { min-width: 0; max-width: none; width: 100%; }

@@ -81,7 +81,7 @@ function CategoryDropdown({ onSelect }) {
   return (
     <div style={{ position: 'relative', marginBottom: 10 }}>
       <button ref={btnRef} type="button" className={`rb-cat-dropdown-btn${selectedLabel ? ' has-value' : ''}`} onClick={handleToggle}
-        style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, textAlign: 'left', color: selectedLabel ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+        style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, background: 'var(--n-0)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, textAlign: 'left', color: selectedLabel ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
       >
         <span>{selectedLabel || 'Выберите категорию...'}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }}>
@@ -89,7 +89,7 @@ function CategoryDropdown({ onSelect }) {
         </svg>
       </button>
       {open && (
-        <div ref={dropRef} style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
+        <div ref={dropRef} style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: 'var(--n-0)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--rb-border)' }}>
             <input
               ref={inputRef}
@@ -354,7 +354,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                 return (
                   <>
                     {/* Bulk bonus form — ABOVE list */}
-                    <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
+                    <div style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
                       <div className="rb-inline-toggle-wrap">
                         <div className="rb-exec-type-toggle">
                           <button className={`rb-exec-type-btn${catBulkType === 'percent' ? ' active' : ''}`} onClick={() => { setCatBulkType('percent'); setCatBulkValue(''); }}>%</button>
@@ -375,7 +375,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                     {/* Services list */}
                     <div style={{ border: '1px solid var(--rb-border)', borderRadius: 7 }}>
                       {/* Header: search + select-all */}
-                      <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', borderRadius: '7px 7px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', borderRadius: '7px 7px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <input
                           value={catFilter}
                           onChange={e => setCatFilter(e.target.value)}
@@ -414,10 +414,10 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                             >
                               {/* Blue toggle switch */}
                               <div style={{ width: 32, height: 18, borderRadius: 9, background: excluded ? '#cbd5e1' : 'var(--rb-primary)', position: 'relative', transition: 'background 0.18s', flexShrink: 0 }}>
-                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: excluded ? 2 : 16, transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--n-0)', position: 'absolute', top: 2, left: excluded ? 2 : 16, transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
                               </div>
                               <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: 11, color: '#000', flexShrink: 0 }}>{code}</span>
+                                <span style={{ fontSize: 11, color: 'var(--n-900)', flexShrink: 0 }}>{code}</span>
                                 <span className="rb-result-name">{svc.title}</span>
                               </div>
                               {svc.price != null && <div className="rb-result-price">{parseFloat(svc.price).toFixed(2)} ₽</div>}
@@ -434,7 +434,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
 
           {/* Selected service form */}
           {selectedSvc && (
-            <div style={{ border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '10px 12px', background: '#f8fafc' }}>
+            <div style={{ border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '10px 12px', background: 'var(--n-50)' }}>
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{selectedSvc.title}</div>
               <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 10 }}>Код: {svcCode(selectedSvc)}</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -452,7 +452,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                   style={{ padding: '5px 14px', background: 'var(--rb-primary)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                 >{saving ? '...' : 'Сохранить'}</button>
                 <button onClick={() => { setSelectedSvc(null); setValue(''); setSearchQuery(''); }}
-                  style={{ padding: '5px 10px', background: '#f1f5f9', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: 'var(--rb-text-secondary)' }}
+                  style={{ padding: '5px 10px', background: 'var(--n-100)', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: 'var(--rb-text-secondary)' }}
                 >Отмена</button>
               </div>
             </div>
@@ -507,7 +507,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                           </svg>
                         </button>
                         <button onClick={cancelEdit}
-                          style={{ background: '#f1f5f9', border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', color: 'var(--rb-text-secondary)', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Отмена"
+                          style={{ background: 'var(--n-100)', border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', color: 'var(--rb-text-secondary)', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Отмена"
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
                             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -524,7 +524,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                           </svg>
                         </button>
                         <button onClick={() => handleDelete(s.serviceCode)}
-                          style={{ background: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', color: '#fff', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Удалить"
+                          style={{ background: 'var(--red-500)', border: 'none', borderRadius: 6, cursor: 'pointer', color: '#fff', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Удалить"
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
                             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -698,7 +698,7 @@ function ServiceRow({ svc, idx, activeClinic, bonuses, globalCabinets, onReload 
         <td style={{ padding: '6px 10px' }}>
           {name}
           <span style={{ color: 'var(--rb-text-secondary)', fontSize: 11 }}>{price}</span>
-          {isFallback && <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8', background: '#f1f5f9', borderRadius: 4, padding: '1px 4px' }}>общий</span>}
+          {isFallback && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--n-500)', background: 'var(--n-100)', borderRadius: 4, padding: '1px 4px' }}>общий</span>}
         </td>
         <td style={{ padding: '6px 10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -717,7 +717,7 @@ function ServiceRow({ svc, idx, activeClinic, bonuses, globalCabinets, onReload 
         </td>
       </tr>
       {expanded && (
-        <tr style={{ background: '#f0f4ff', borderBottom: '1px solid var(--rb-border)' }}>
+        <tr style={{ background: 'var(--accent-50)', borderBottom: '1px solid var(--rb-border)' }}>
           <td colSpan="3" style={{ padding: '4px 10px 10px 36px' }}>
             <CabinetsSection
               cabinetBonuses={cabinetBonuses}
@@ -789,7 +789,7 @@ function CabinetsSection({ cabinetBonuses, globalCabinets, onSaveCab, onUpdateCa
           <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => { onSaveCab(cabForm); setShowAddForm(false); setCabForm({ name: '', val: '', type: 'pct' }); }} disabled={saving} title="Сохранить">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
-          <button className="rb-btn rb-btn-xs" onClick={() => setShowAddForm(false)} title="Отмена" style={{ color: '#94a3b8' }}>
+          <button className="rb-btn rb-btn-xs" onClick={() => setShowAddForm(false)} title="Отмена" style={{ color: 'var(--n-500)' }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -814,7 +814,7 @@ function CabEditItem({ cabName, existing, onUpdate, onDelete, saving }) {
   };
 
   return (
-    <div className="rb-exec-item" style={isSet ? { background: '#eff6ff' } : {}}>
+    <div className="rb-exec-item" style={isSet ? { background: 'var(--accent-50)' } : {}}>
       {editing ? (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
           <div className="rb-exec-item-name" style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 80 }}>
@@ -841,7 +841,7 @@ function CabEditItem({ cabName, existing, onUpdate, onDelete, saving }) {
           <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={commit} disabled={saving} title="Сохранить">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
-          <button className="rb-btn rb-btn-xs" onClick={() => setEditing(false)} title="Отмена" style={{ color: '#94a3b8' }}>
+          <button className="rb-btn rb-btn-xs" onClick={() => setEditing(false)} title="Отмена" style={{ color: 'var(--n-500)' }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -1058,9 +1058,9 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px 0 2px' }}>
         <button onClick={() => setPerfPage(1)} disabled={perfPageSafe === 1}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>«</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === 1 ? 'default' : 'pointer', background: 'var(--n-0)', color: perfPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>«</button>
         <button onClick={() => setPerfPage(p => Math.max(1, p - 1))} disabled={perfPageSafe === 1}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>‹</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === 1 ? 'default' : 'pointer', background: 'var(--n-0)', color: perfPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>‹</button>
         {Array.from({ length: perfTotalPages }, (_, i) => i + 1)
           .filter(n => n === 1 || n === perfTotalPages || Math.abs(n - perfPageSafe) <= 2)
           .reduce((acc, n, idx, arr) => { if (idx > 0 && n - arr[idx - 1] > 1) acc.push('…'); acc.push(n); return acc; }, [])
@@ -1072,9 +1072,9 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
               </button>
           )}
         <button onClick={() => setPerfPage(p => Math.min(perfTotalPages, p + 1))} disabled={perfPageSafe === perfTotalPages}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === perfTotalPages ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === perfTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>›</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === perfTotalPages ? 'default' : 'pointer', background: 'var(--n-0)', color: perfPageSafe === perfTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>›</button>
         <button onClick={() => setPerfPage(perfTotalPages)} disabled={perfPageSafe === perfTotalPages}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === perfTotalPages ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === perfTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>»</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === perfTotalPages ? 'default' : 'pointer', background: 'var(--n-0)', color: perfPageSafe === perfTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>»</button>
       </div>
     );
   }
@@ -1174,7 +1174,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
           ) : (
             <>
               {/* Quick-fill all services */}
-              <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
+              <div style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
                 <div className="rb-inline-toggle-wrap" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div className="rb-exec-type-toggle" style={{ height: 30 }}>
                     <button className={`rb-exec-type-btn${fillType === 'pct' ? ' active' : ''}`} onClick={() => { setFillType('pct'); setFillValue(''); }}>%</button>
@@ -1368,7 +1368,7 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
         <td style={{ padding: '6px 10px' }}>
           {name}
           <span style={{ color: 'var(--rb-text-secondary)', fontSize: 11 }}>{price}</span>
-          {isFallback && <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8', background: '#f1f5f9', borderRadius: 4, padding: '1px 4px' }}>общий</span>}
+          {isFallback && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--n-500)', background: 'var(--n-100)', borderRadius: 4, padding: '1px 4px' }}>общий</span>}
         </td>
         <td style={{ padding: '6px 10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1387,7 +1387,7 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
         </td>
       </tr>
       {expanded && (
-        <tr style={{ background: '#f0f4ff', borderBottom: '1px solid var(--rb-border)' }}>
+        <tr style={{ background: 'var(--accent-50)', borderBottom: '1px solid var(--rb-border)' }}>
           <td colSpan="3" style={{ padding: '4px 10px 10px 36px' }}>
             <CabinetsSection
               cabinetBonuses={cabinetBonuses}

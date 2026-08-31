@@ -72,7 +72,7 @@ function SearchableSelect({ value, onChange, options, placeholder = '— выб�
     <div ref={dropRef} style={{
       position: 'fixed', top: rect.bottom + 2, left: rect.left,
       width: Math.max(rect.width, 220), zIndex: 9999,
-      background: '#fff', border: '1px solid var(--rb-border)',
+      background: 'var(--n-0)', border: '1px solid var(--rb-border)',
       borderRadius: 7, boxShadow: '0 6px 20px rgba(0,0,0,.13)', overflow: 'hidden',
     }}>
       <div style={{ padding: '5px 6px', borderBottom: '1px solid var(--rb-border)' }}>
@@ -105,7 +105,7 @@ function SearchableSelect({ value, onChange, options, placeholder = '— выб�
     <div style={{ boxSizing: 'border-box', width: '100%' }}>
       <button ref={btnRef} type="button" onClick={open ? () => setOpen(false) : openDropdown}
         style={{ width: '100%', height: 28, padding: '0 8px', fontSize: 11,
-          border: '1px solid var(--rb-border)', borderRadius: 5, background: '#fff',
+          border: '1px solid var(--rb-border)', borderRadius: 5, background: 'var(--n-0)',
           color: value ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
           cursor: 'pointer', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis',
           whiteSpace: 'nowrap', boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }}>
@@ -123,7 +123,7 @@ function Avatar({ user }) {
   return src ? (
     <img src={src} alt={user.displayName} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
   ) : (
-    <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--n-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
       <svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" width="14" height="14">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
         <circle cx="12" cy="7" r="4"/>
@@ -529,7 +529,7 @@ export default function DivisionAccessPanel({
             onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setNameValue(divisionName); setEditingName(false); } }}
             onBlur={commitRename}
             disabled={nameSaving}
-            style={{ flex: 1, minWidth: 0, height: 26, padding: '0 6px', fontSize: 13, fontWeight: 600, border: '1px solid var(--rb-primary)', borderRadius: 5, outline: 'none', background: '#f0f7ff' }}
+            style={{ flex: 1, minWidth: 0, height: 26, padding: '0 6px', fontSize: 13, fontWeight: 600, border: '1px solid var(--rb-primary)', borderRadius: 5, outline: 'none', background: 'var(--accent-50)' }}
           />
         ) : (
           <span
@@ -554,10 +554,10 @@ export default function DivisionAccessPanel({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск по имени..."
-            style={{ width: '100%', height: 30, padding: '0 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+            style={{ width: '100%', height: 30, padding: '0 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none', background: 'var(--n-0)', boxSizing: 'border-box' }}
           />
           {search.trim() && (
-            <div style={{ marginTop: 4, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
+            <div style={{ marginTop: 4, border: '1px solid var(--rb-border)', borderRadius: 6, background: 'var(--n-0)', maxHeight: 180, overflowY: 'auto' }}>
               {availableUsers.length === 0 && (
                 <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Нет результатов</div>
               )}
@@ -589,12 +589,12 @@ export default function DivisionAccessPanel({
               <span style={{ fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--rb-text)' }}>
                 {accessData.owner.displayName}
               </span>
-              <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0, marginRight: 4 }}>Создатель</span>
+              <span style={{ fontSize: 11, color: 'var(--n-500)', flexShrink: 0, marginRight: 4 }}>Создатель</span>
               <button
                 onClick={() => handleRemove(accessData.owner.id)}
                 disabled={saving === accessData.owner.id}
                 title="Исключить создателя"
-                style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: saving === accessData.owner.id ? 0.6 : 1 }}
+                style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: 'var(--red-600)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: saving === accessData.owner.id ? 0.6 : 1 }}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
@@ -634,7 +634,7 @@ export default function DivisionAccessPanel({
                 onClick={() => handleRemove(a.userId)}
                 disabled={saving === a.userId}
                 title="Убрать доступ"
-                style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: saving === a.userId ? 0.6 : 1 }}
+                style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: 'var(--red-600)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: saving === a.userId ? 0.6 : 1 }}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
@@ -690,7 +690,7 @@ export default function DivisionAccessPanel({
                         onClick={() => startEditRate(entry)}
                         disabled={isRemoving}
                         title="Редактировать"
-                        style={{ width: 22, height: 22, borderRadius: 5, border: '1px solid var(--rb-border)', cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: isRemoving ? 0.4 : 1 }}
+                        style={{ width: 22, height: 22, borderRadius: 5, border: '1px solid var(--rb-border)', cursor: 'pointer', background: 'var(--n-0)', color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: isRemoving ? 0.4 : 1 }}
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -701,10 +701,10 @@ export default function DivisionAccessPanel({
                         onClick={() => removeRate(entry)}
                         disabled={isRemoving}
                         title="Удалить ставку у всех сотрудников"
-                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: isRemoving ? 0.5 : 1 }}
+                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: 'var(--red-600)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: isRemoving ? 0.5 : 1 }}
                       >
                         {isRemoving
-                          ? <div style={{ width: 8, height: 8, border: '1.5px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                          ? <div style={{ width: 8, height: 8, border: '1.5px solid rgba(255,255,255,0.4)', borderTopColor: 'var(--n-0)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
                           : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
                               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
                               <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -722,14 +722,14 @@ export default function DivisionAccessPanel({
               const fldLabel = txt => (
                 <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.3 }}>{txt}</div>
               );
-              const selStyle = { width: '100%', height: 28, padding: '0 5px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 5, background: '#fff', color: 'var(--rb-text)', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' };
+              const selStyle = { width: '100%', height: 28, padding: '0 5px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 5, background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' };
               const opts = rateType === 'category'
                 ? scheduleCategories.map(c => ({ value: c.id, label: c.name }))
                 : rateType === 'role'
                 ? allRoles.map(r => ({ value: r, label: r }))
                 : allProfessions.map(p => ({ value: p, label: p }));
               return (
-                <div style={{ padding: '8px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#f8fafc' }}>
+                <div style={{ padding: '8px', borderRadius: 6, border: '1px solid var(--rb-border)', background: 'var(--n-50)' }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text)', marginBottom: 8 }}>
                     {editingRateId ? 'Редактировать ставку' : 'Новая ставка'}
                   </div>
@@ -787,7 +787,7 @@ export default function DivisionAccessPanel({
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
                       onClick={cancelEdit}
-                      style={{ flex: '0 0 auto', height: 28, padding: '0 12px', fontSize: 12, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)', boxSizing: 'border-box' }}>
+                      style={{ flex: '0 0 auto', height: 28, padding: '0 12px', fontSize: 12, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'var(--n-0)', color: 'var(--rb-text-secondary)', boxSizing: 'border-box' }}>
                       Отмена
                     </button>
                     <button
@@ -825,19 +825,19 @@ export default function DivisionAccessPanel({
 
           {/* Меню добавления — над списком */}
           {showAddMember && (
-            <div style={{ marginBottom: 8, padding: '8px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#f0f6ff' }}>
+            <div style={{ marginBottom: 8, padding: '8px', borderRadius: 6, border: '1px solid var(--rb-border)', background: 'var(--accent-50)' }}>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
                   autoFocus
                   value={memberSearch}
                   onChange={e => setMemberSearch(e.target.value)}
                   placeholder="Поиск по ФИО..."
-                  style={{ flex: 1, minWidth: 0, height: 30, padding: '0 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+                  style={{ flex: 1, minWidth: 0, height: 30, padding: '0 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none', background: 'var(--n-0)', boxSizing: 'border-box' }}
                 />
                 <select
                   value={memberFilterClinic}
                   onChange={e => setMemberFilterClinic(e.target.value)}
-                  style={{ width: 120, flexShrink: 0, height: 30, padding: '0 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', color: 'var(--rb-text)', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                  style={{ width: 120, flexShrink: 0, height: 30, padding: '0 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                   <option value="">Все МЦ</option>
                   {memberClinicIds.map(cId => (
@@ -847,7 +847,7 @@ export default function DivisionAccessPanel({
               </div>
               <div
                 onScroll={onCandidatesScroll}
-                style={{ marginTop: 6, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', maxHeight: 240, overflowY: 'auto' }}
+                style={{ marginTop: 6, border: '1px solid var(--rb-border)', borderRadius: 6, background: 'var(--n-0)', maxHeight: 240, overflowY: 'auto' }}
               >
                 {memberCandidates.length === 0 && (
                   <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Нет результатов</div>
@@ -876,7 +876,7 @@ export default function DivisionAccessPanel({
                   <button
                     type="button"
                     onClick={() => setMemberVisible(v => v + MEMBER_PAGE)}
-                    style={{ width: '100%', padding: '7px 10px', fontSize: 11, fontWeight: 600, border: 'none', background: '#f8fafc', color: 'var(--rb-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
+                    style={{ width: '100%', padding: '7px 10px', fontSize: 11, fontWeight: 600, border: 'none', background: 'var(--n-50)', color: 'var(--rb-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
                   >
                     Показать ещё · {memberShown.length} из {memberCandidates.length}
                   </button>
@@ -917,7 +917,7 @@ export default function DivisionAccessPanel({
                   onClick={() => toggleMember(d.id)}
                   disabled={memberSaving}
                   title="Убрать из подразделения"
-                  style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: memberSaving ? 0.6 : 1 }}
+                  style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: 'var(--red-600)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: memberSaving ? 0.6 : 1 }}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
@@ -931,8 +931,8 @@ export default function DivisionAccessPanel({
 
         {/* Удаление — в самом низу, ниже состава: сюда ещё надо доскроллить */}
         {canDelete && (
-          <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px dashed #fecaca' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#dc2626', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px dashed var(--red-200)' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--red-600)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
               Опасная зона
             </div>
             <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.45, marginBottom: 8 }}>
@@ -944,8 +944,8 @@ export default function DivisionAccessPanel({
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 height: 28, padding: '0 10px', fontSize: 12, fontWeight: 500,
-                borderRadius: 6, border: '1px solid #fca5a5', background: '#fff',
-                color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
+                borderRadius: 6, border: '1px solid var(--red-300)', background: 'var(--n-0)',
+                color: 'var(--red-600)', cursor: 'pointer', fontFamily: 'inherit',
               }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
@@ -964,11 +964,11 @@ export default function DivisionAccessPanel({
         <div className="rb-modal-overlay" onClick={closeDeleteModal}>
           <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="rb-modal-header">
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#dc2626' }}>Удалить подразделение?</h3>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--red-600)' }}>Удалить подразделение?</h3>
               <button className="rb-modal-close" onClick={closeDeleteModal} disabled={deleting}>×</button>
             </div>
             <div className="rb-modal-body" style={{ padding: '8px 16px 16px' }}>
-              <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fef2f2', borderLeft: '3px solid #dc2626', marginBottom: 12 }}>
+              <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--red-50)', borderLeft: '3px solid var(--red-600)', marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', marginBottom: 6 }}>
                   «{currentName}»
                 </div>
@@ -992,7 +992,7 @@ export default function DivisionAccessPanel({
                 placeholder={currentName}
                 style={{
                   width: '100%', height: 32, padding: '0 10px', fontSize: 13,
-                  border: `1px solid ${deleteConfirmed ? '#dc2626' : 'var(--rb-border)'}`,
+                  border: `1px solid ${deleteConfirmed ? 'var(--red-600)' : 'var(--rb-border)'}`,
                   borderRadius: 6, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
                 }}
               />

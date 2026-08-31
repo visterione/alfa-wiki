@@ -1,58 +1,288 @@
 /* Apple-like Design System for Alfa Wiki */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* ── Токены оформления ──────────────────────────────────────────────────────
+ *
+ * Цвета описаны рампами, а не отдельными значениями. Причина историческая:
+ * в вёрстке было около трёх тысяч цветов, вбитых руками, и разложить их по
+ * смыслу («это фон карточки, а это подложка предупреждения») значило принять
+ * три тысячи спорных решений. Рампа решает задачу механически — каждый цвет
+ * попадает на свою ступень по светлоте, а в тёмной теме ступени переворачиваются.
+ *
+ * Направление ступеней в темах противоположное. В светлой чем больше номер,
+ * тем темнее цвет: он ложится текстом на белое. В тёмной — наоборот, потому
+ * что текст лежит на почти чёрном. Пара «фон 50 + текст 700» поэтому остаётся
+ * читаемой в обеих темах без единой правки в разметке.
+ *
+ * Синяя рампа тут отсутствует намеренно: её место занял акцент (--accent-*),
+ * который зависит от выбора человека и выставляется из ThemeContext.
+ *
+ * Тёмные фоны не чёрные, а тёмно-серые: на OLED чистый чёрный даёт заметный
+ * ореол вокруг светлого текста. Значения совпадают с мобильным приложением.
+ */
 :root {
-  /* Colors - Blue Theme */
-  --primary: #007AFF;
-  --primary-hover: #0056CC;
-  --primary-light: #E5F2FF;
-  --secondary: #5856D6;
-  --accent: #34C759;
-  
-  /* Neutrals */
-  --bg-primary: #FFFFFF;
-  --bg-secondary: #F5F5F7;
-  --bg-tertiary: #E8E8ED;
-  --bg-hover: #EFEFF4;
-  --text-primary: #1D1D1F;
-  --text-secondary: #86868B;
-  --text-tertiary: #AEAEB2;
-  --text-disabled: #C7C7CC;
-  --border: #D2D2D7;
-  --border-light: #E5E5EA;
-  
-  /* Semantic */
-  --success: #34C759;
-  --warning: #FF9500;
-  --error: #FF3B30;
-  --danger: #FF3B30;
-  --info: #5AC8FA;
+  color-scheme: light;
 
-  /* Компоненты просят --primary-rgb для rgba(): без него подсветки в редакторе
-     и на карточках курсов просто не отрисовывались. */
+  /* Нейтральная рампа */
+  --n-0: #FFFFFF;
+  --n-25: #FBFCFD;
+  --n-50: #F7F8FA;
+  --n-100: #F1F3F6;
+  --n-150: #E9ECF0;
+  --n-200: #E2E5EA;
+  --n-300: #D2D6DC;
+  --n-400: #B3B8C0;
+  --n-500: #8E949E;
+  --n-600: #6B7280;
+  --n-700: #4A5462;
+  --n-800: #2C3440;
+  --n-900: #14181F;
+
+  /* Красная рампа — ошибки, удаление, просрочка */
+  --red-50: #FEF2F2;
+  --red-100: #FEE2E2;
+  --red-200: #FECACA;
+  --red-300: #FCA5A5;
+  --red-400: #F87171;
+  --red-500: #EF4444;
+  --red-600: #DC2626;
+  --red-700: #B91C1C;
+  --red-800: #991B1B;
+
+  /* Зелёная рампа — успех, готово, рост */
+  --green-50: #F0FDF4;
+  --green-100: #DCFCE7;
+  --green-200: #BBF7D0;
+  --green-300: #86EFAC;
+  --green-400: #4ADE80;
+  --green-500: #22C55E;
+  --green-600: #16A34A;
+  --green-700: #15803D;
+  --green-800: #166534;
+
+  /* Янтарная рампа — предупреждения, ожидание */
+  --amber-50: #FFFBEB;
+  --amber-100: #FEF3C7;
+  --amber-200: #FDE68A;
+  --amber-300: #FCD34D;
+  --amber-400: #FBBF24;
+  --amber-500: #F59E0B;
+  --amber-600: #D97706;
+  --amber-700: #B45309;
+  --amber-800: #92400E;
+
+  /* Фиолетовая рампа */
+  --violet-50: #F5F3FF;
+  --violet-100: #EDE9FE;
+  --violet-200: #DDD6FE;
+  --violet-300: #C4B5FD;
+  --violet-400: #A78BFA;
+  --violet-500: #8B5CF6;
+  --violet-600: #7C3AED;
+  --violet-700: #6D28D9;
+  --violet-800: #5B21B6;
+
+  /* Бирюзовая рампа */
+  --cyan-50: #ECFEFF;
+  --cyan-100: #CFFAFE;
+  --cyan-200: #A5F3FC;
+  --cyan-500: #06B6D4;
+  --cyan-600: #0891B2;
+  --cyan-700: #0E7490;
+
+  /* Розовая рампа */
+  --pink-50: #FDF2F8;
+  --pink-100: #FCE7F3;
+  --pink-200: #FBCFE8;
+  --pink-500: #EC4899;
+  --pink-600: #DB2777;
+  --pink-700: #BE185D;
+
+  /* Прозрачные — для теней и накладок. В тёмной теме инвертируются,
+     иначе подсветка «белым по светлому» на тёмном фоне не видна вовсе */
+  --overlay-ink: 0, 0, 0;
+  --overlay-paper: 255, 255, 255;
+
+  /* Поверхности, которые остаются тёмными в обеих темах: всплывающие
+     уведомления, подсказки, блоки кода. Инвертировать их вместе с остальным
+     нельзя — они читаются как наложение поверх интерфейса именно за счёт того,
+     что противоположны ему по светлоте, и в тёмной теме просто слились бы с ним */
+  --surface-inverse: #1D1D1F;
+  --text-on-inverse: #FFFFFF;
+
+  /* Семантические имена поверх рамп. Дальше в вёрстке используются они —
+     рампа нужна там, где оттенок выбран ради вида, а не ради смысла */
+  --bg-primary: var(--n-0);
+  --bg-secondary: var(--n-50);
+  --bg-tertiary: var(--n-150);
+  --bg-hover: var(--n-100);
+  --text-primary: var(--n-900);
+  --text-secondary: var(--n-600);
+  --text-tertiary: var(--n-500);
+  --text-disabled: var(--n-400);
+  --border: var(--n-300);
+  --border-light: var(--n-200);
+
+  --secondary: #5856D6;
+  --success: var(--green-600);
+  --warning: var(--amber-500);
+  --error: var(--red-500);
+  --danger: var(--red-500);
+  --info: var(--cyan-500);
+
+  /* Акцент. Значения по умолчанию — фирменный синий; ThemeContext перезапишет
+     их выбором пользователя ещё до первой отрисовки */
+  --accent-50: #F2F8FE;
+  --accent-100: #E0EDFB;
+  --accent-200: #C1CCD8;
+  --accent-300: #6CB0FF;
+  --accent-400: #3395FF;
+  --accent-500: #007AFF;
+  --accent-600: #0068D9;
+  --accent-700: #0055B3;
+  --accent-800: #00438C;
+  --accent-900: #003166;
+  --primary: var(--accent-500);
+  --primary-hover: var(--accent-600);
+  --primary-light: var(--accent-100);
   --primary-rgb: 0, 122, 255;
-  
+  --header-gradient-start: var(--accent-700);
+  --header-gradient-end: var(--accent-500);
+
   /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
-  
+  --shadow-sm: 0 1px 2px rgba(var(--overlay-ink), 0.04);
+  --shadow-md: 0 4px 12px rgba(var(--overlay-ink), 0.08);
+  --shadow-lg: 0 8px 24px rgba(var(--overlay-ink), 0.12);
+  --shadow-xl: 0 16px 48px rgba(var(--overlay-ink), 0.16);
+
+  /* Масштаб текста в переписке. Отдельно от системного размера шрифта: люди
+     нередко не трогают системные настройки, но в чате им нужен текст крупнее */
+  --chat-font-scale: 1;
+
   /* Spacing */
   --header-height: 56px;
   --sidebar-width: 280px;
   --sidebar-collapsed: 0px;
-  
+
   /* Transitions */
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 350ms ease;
-  
+
   /* Border Radius */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;
+}
+
+/* Тёмная тема. Переопределяются только значения рамп — семантические имена
+   выше ссылаются на них через var() и подхватывают новые сами.
+
+   Селектор на атрибуте, а не на медиазапросе: «как в системе» разворачивается
+   в конкретное light/dark в ThemeContext, потому что тот же выбор приезжает с
+   телефона и в системе браузера может не отражаться никак. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --n-0: #1C1C1E;
+  --n-25: #1F1F22;
+  --n-50: #232326;
+  --n-100: #2A2A2E;
+  --n-150: #303036;
+  --n-200: #36363C;
+  --n-300: #42424A;
+  --n-400: #55555E;
+  --n-500: #7C7C86;
+  --n-600: #98989F;
+  --n-700: #BFBFC6;
+  --n-800: #E2E2E7;
+  --n-900: #F2F2F7;
+
+  --red-50: #3A1D1D;
+  --red-100: #4A2222;
+  --red-200: #5E2A2A;
+  --red-300: #7A3634;
+  --red-400: #C9534A;
+  --red-500: #FF544A;
+  --red-600: #FF6A60;
+  --red-700: #FF8A80;
+  --red-800: #FFA9A1;
+
+  --green-50: #16301F;
+  --green-100: #1B3D28;
+  --green-200: #234E33;
+  --green-300: #2E6842;
+  --green-400: #34A862;
+  --green-500: #30D158;
+  --green-600: #45DC6D;
+  --green-700: #6FE894;
+  --green-800: #9BF2B8;
+
+  --amber-50: #35270F;
+  --amber-100: #45320F;
+  --amber-200: #57401A;
+  --amber-300: #7A5A1F;
+  --amber-400: #D0932A;
+  --amber-500: #FF9F0A;
+  --amber-600: #FFB340;
+  --amber-700: #FFC76B;
+  --amber-800: #FFDA9B;
+
+  --violet-50: #241E3D;
+  --violet-100: #2E2650;
+  --violet-200: #3B3166;
+  --violet-300: #514486;
+  --violet-400: #8E77E0;
+  --violet-500: #A78BFA;
+  --violet-600: #B79EFC;
+  --violet-700: #C9B6FD;
+  --violet-800: #DBCCFE;
+
+  --cyan-50: #103038;
+  --cyan-100: #143C46;
+  --cyan-200: #1D5866;
+  --cyan-500: #22D3EE;
+  --cyan-600: #4DDDF2;
+  --cyan-700: #7BE8F7;
+
+  --pink-50: #3A1B2C;
+  --pink-100: #4A2238;
+  --pink-200: #63304A;
+  --pink-500: #F472B6;
+  --pink-600: #F78FC7;
+  --pink-700: #FAAED7;
+
+  --overlay-ink: 0, 0, 0;
+  --overlay-paper: 255, 255, 255;
+
+  --secondary: #5E5CE6;
+
+  /* Акцент по умолчанию для тёмной темы — тот же фирменный синий.
+     Здесь он нужен ровно до первой отрисовки: дальше AppearanceContext
+     перезапишет переменные выбором пользователя. Без этого блока страница
+     между применением темы (оно происходит ещё до загрузки бандла) и запуском
+     React показывала бы светлые акцентные плашки на тёмном фоне. */
+  --accent-50: #122437;
+  --accent-100: #1C3854;
+  --accent-200: #375069;
+  --accent-300: #075CB3;
+  --accent-400: #0970D9;
+  --accent-500: #0A84FF;
+  --accent-600: #2C95FF;
+  --accent-700: #54A9FF;
+  --accent-800: #7BBDFF;
+  --accent-900: #A2D0FF;
+  --primary-rgb: 10, 132, 255;
+
+  /* Тёмное на тёмном не читается как наложение — поднимаем на пару ступеней */
+  --surface-inverse: #3A3A3E;
+
+  /* Тени на тёмном фоне почти не читаются, поэтому берутся плотнее */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.65);
 }
 
 * {
@@ -150,7 +380,7 @@ a:hover {
 }
 
 .btn-danger:hover {
-  background: #E6352B;
+  background: var(--red-600);
 }
 
 .btn-sm {
@@ -257,23 +487,23 @@ input[type="radio"] {
 }
 
 .badge-success {
-  background: #E8F9ED;
+  background: var(--green-100);
   color: var(--success);
 }
 
 .badge-warning {
-  background: #FFF4E5;
+  background: var(--amber-50);
   color: var(--warning);
 }
 
 .badge-error {
-  background: #FFEBEA;
+  background: var(--red-50);
   color: var(--error);
 }
 
 .badge-info {
-  background: #EFF6FF;
-  color: #3b82f6;
+  background: var(--accent-50);
+  color: var(--accent-500);
 }
 
 .badge-secondary {
@@ -425,7 +655,7 @@ input[type="radio"] {
   html, body {
     height: auto !important;
     overflow: visible !important;
-    background: white !important;
+    background: var(--n-0) !important;
     font-size: 12pt;
     line-height: 1.5;
   }
@@ -449,7 +679,7 @@ input[type="radio"] {
 
   .main-content {
     margin-left: 0 !important;
-    background: white !important;
+    background: var(--n-0) !important;
     min-height: auto !important;
     height: auto !important;
     overflow: visible !important;
@@ -474,7 +704,7 @@ input[type="radio"] {
   .card {
     box-shadow: none !important;
     border: none !important;
-    background: white !important;
+    background: var(--n-0) !important;
   }
 
   /* Контент страницы - ЯВНО показываем */
@@ -486,7 +716,7 @@ input[type="radio"] {
     padding: 0 !important;
     max-width: 100% !important;
     overflow: visible !important;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   /* Все дочерние элементы контента должны быть видимы */
@@ -500,28 +730,28 @@ input[type="radio"] {
   .lesson-content h1 {
     font-size: 22pt !important;
     page-break-after: avoid;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   .page-content h2,
   .lesson-content h2 {
     font-size: 18pt !important;
     page-break-after: avoid;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   .page-content h3,
   .lesson-content h3 {
     font-size: 14pt !important;
     page-break-after: avoid;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   .page-content p,
   .lesson-content p {
     orphans: 3;
     widows: 3;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   /* Изображения */
@@ -552,9 +782,9 @@ input[type="radio"] {
   .page-content th,
   .lesson-content td,
   .lesson-content th {
-    color: black !important;
+    color: var(--n-900) !important;
     padding: 6px 8px !important;
-    border: 1px solid #ccc !important;
+    border: 1px solid var(--n-300) !important;
   }
 
   /* Код */
@@ -563,16 +793,16 @@ input[type="radio"] {
     page-break-inside: avoid;
     white-space: pre-wrap;
     word-wrap: break-word;
-    background: #f5f5f5 !important;
-    color: #333 !important;
-    border: 1px solid #ddd !important;
+    background: var(--n-100) !important;
+    color: var(--n-800) !important;
+    border: 1px solid var(--n-300) !important;
     padding: 10px !important;
     font-size: 9pt !important;
   }
 
   .page-content code,
   .lesson-content code {
-    color: #333 !important;
+    color: var(--n-800) !important;
   }
 
   /* Списки */
@@ -582,7 +812,7 @@ input[type="radio"] {
   .lesson-content ul,
   .lesson-content ol,
   .lesson-content li {
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   /* Скрываем видео и iframe */
@@ -596,7 +826,7 @@ input[type="radio"] {
   /* Ссылки */
   .page-content a,
   .lesson-content a {
-    color: #333 !important;
+    color: var(--n-800) !important;
     text-decoration: underline !important;
   }
 }

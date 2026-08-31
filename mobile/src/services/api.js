@@ -89,7 +89,9 @@ export const auth = {
   resend2FA: userId =>
     api.post('/auth/resend-2fa', {userId}),
   updateProfile: data => api.put('/auth/profile', data),
-  updateMobileSettings: data => api.patch('/auth/mobile-settings', data),
+  // Оформление общее с веб-версией: сервер держит его в
+  // users.settings.appearance и рассылает по сокету на другие устройства
+  updatePreferences: data => api.patch('/auth/preferences', data),
   changePassword: (currentPassword, newPassword) =>
     api.post('/auth/change-password', {currentPassword, newPassword}),
 };

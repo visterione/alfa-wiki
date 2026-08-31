@@ -1270,9 +1270,9 @@ const SpreadsheetEditor = forwardRef(({
               <div style={{
                 position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: '#fff', zIndex: 1000, pointerEvents: 'none'
+                background: 'var(--n-0)', zIndex: 1000, pointerEvents: 'none'
               }}>
-                <div style={{ textAlign: 'center', color: '#666', pointerEvents: 'auto' }}>
+                <div style={{ textAlign: 'center', color: 'var(--n-600)', pointerEvents: 'auto' }}>
                   <div className="loading-spinner-small" style={{ margin: '0 auto 16px', width: '32px', height: '32px' }} />
                   <p>Загрузка таблицы...</p>
                 </div>

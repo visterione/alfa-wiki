@@ -161,7 +161,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
               title="Список сотрудников"
               style={{
                 width: 26, height: 26, borderRadius: 6, border: 'none',
-                background: '#64748b', color: '#fff', cursor: 'pointer',
+                background: 'var(--n-600)', color: '#fff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
@@ -186,7 +186,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
             style={{
               flex: 1, height: 30, padding: '0 8px', fontSize: 12,
               border: '1px solid var(--rb-border)', borderRadius: 6,
-              background: '#fff', color: 'var(--rb-text)', outline: 'none',
+              background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
             }}
           />
           <button
@@ -296,7 +296,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
 
               {/* Expanded */}
               {isOpen && (
-                <div style={{ background: 'var(--rb-bg-alt, #f8fafc)' }}>
+                <div style={{ background: 'var(--rb-bg-alt, var(--n-50))' }}>
 
                   {members.length === 0 && (
                     <div style={{ padding: '6px 20px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Нет сотрудников</div>

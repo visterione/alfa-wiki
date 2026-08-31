@@ -361,7 +361,7 @@ const ReviewStatistics = () => {
                       className="bar"
                       style={{
                         width: `${(platform.count / chartData.maxPlatform) * 100}%`,
-                        background: '#3b82f6'
+                        background: 'var(--accent-500)'
                       }}
                     />
                   </div>
@@ -397,7 +397,7 @@ const ReviewStatistics = () => {
                       <div className="bar-wrapper">
                         <div
                           className="bar"
-                          style={{ width: `${pct}%`, background: '#3b82f6' }}
+                          style={{ width: `${pct}%`, background: 'var(--accent-500)' }}
                         />
                       </div>
                       <div className="bar-value">{count}</div>

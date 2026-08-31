@@ -76,6 +76,55 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 /**
+ * Загрузка всех людей в области видимости — та же таблица, что у команды.
+ *
+ * Появилась потому, что человек редко состоит в одной команде: чтобы понять,
+ * кому можно поручить работу, руководителю приходилось обходить карточки команд
+ * по очереди и складывать одного и того же сотрудника в уме. Здесь он строкой
+ * один раз, со всеми своими часами сразу.
+ *
+ * Область видимости — та же, что у списка людей: peopleInScope собирает
+ * участников команд, чью загрузку человеку открыли. Отдельного права у вкладки
+ * нет намеренно, иначе она стала бы обходом настроек команд.
+ */
+router.get('/load', authenticate, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ error: 'Нужен период: start и end' });
+
+    const all = await context.loadTeams();
+    const scope = teams.peopleInScope(all, req.user.id, req.user.isAdmin);
+    const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
+    const matrix = await loadQuery.loadMatrix(scope, start, end, viewer);
+
+    const users = await User.findAll({
+      // position — должность из профиля: в общем списке без деления на команды
+      // «кто это вообще» перестаёт быть очевидным по одному имени.
+      attributes: ['id', 'displayName', 'username', 'avatar', 'position', 'taskWorkSchedule'],
+      where: { id: scope },
+      raw: true,
+    });
+    const byId = new Map(users.map(u => [u.id, u]));
+
+    const rows = loadQuery.toRows(matrix).map(row => ({
+      ...row,
+      user: byId.get(row.userId) || null,
+      // Команды человека — только те, о которых знает смотрящий: подпись
+      // «Найм и офферы» под именем рассказала бы о скрытой команде больше, чем
+      // список команд, куда она не попала.
+      teams: all
+        .filter(t => teams.isMember(t, row.userId) && teams.canSeeTeam(t, req.user.id, req.user.isAdmin))
+        .map(t => ({ id: t.id, name: t.name })),
+    }));
+
+    res.json({ rows, summary: loadQuery.summarize(matrix) });
+  } catch (error) {
+    console.error('Загрузка людей:', error);
+    res.status(500).json({ error: 'Не удалось посчитать загрузку' });
+  }
+});
+
+/**
  * Загрузка одного человека за период — часы и цвет, без содержания дел.
  *
  * Даже собственный руководитель не получает отсюда названий: для этого есть

@@ -57,7 +57,7 @@ function TabelPeriodPicker({ year, month, onYearChange, onMonthChange, onReset }
       <button type="button" onClick={openPicker} style={{
         ...btnBase, height: 34, padding: '0 10px', gap: 6,
         border: '1px solid var(--rb-border-dark)',
-        background: '#fff', color: year || month ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
+        background: 'var(--n-0)', color: year || month ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
         minWidth: 150,
       }}>
         <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
@@ -77,7 +77,7 @@ function TabelPeriodPicker({ year, month, onYearChange, onMonthChange, onReset }
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 300,
-          background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+          background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12,
           boxShadow: '0 8px 32px rgba(0,0,0,0.14)', padding: '14px 16px', minWidth: 232,
         }}>
           {step === 'year' ? (
@@ -111,7 +111,7 @@ function TabelPeriodPicker({ year, month, onYearChange, onMonthChange, onReset }
                   style={{ ...btnBase, background: 'var(--rb-primary)', width: 26, height: 26, fontSize: 14, color: '#fff' }}>‹</button>
                 <span style={{ fontWeight: 700, fontSize: 15 }}>{navYear}</span>
                 <button onClick={() => { onMonthChange(''); setOpen(false); }}
-                  style={{ ...btnBase, background: '#f1f5f9', color: 'var(--rb-text-secondary)', height: 26, padding: '0 8px', fontSize: 11, borderRadius: 6 }}>
+                  style={{ ...btnBase, background: 'var(--n-100)', color: 'var(--rb-text-secondary)', height: 26, padding: '0 8px', fontSize: 11, borderRadius: 6 }}>
                   Все мес.
                 </button>
               </div>
@@ -194,8 +194,8 @@ function EditHistoryBadge({ editHistory }) {
         style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 15, height: 15, borderRadius: '50%', background: open ? '#fde047' : '#fef9c3',
-          border: `1px solid ${open ? '#ca8a04' : '#fde047'}`,
-          color: '#b45309', fontSize: 9, fontWeight: 700, cursor: 'pointer', lineHeight: 1, flexShrink: 0,
+          border: `1px solid ${open ? 'var(--amber-700)' : 'var(--amber-300)'}`,
+          color: 'var(--amber-700)', fontSize: 9, fontWeight: 700, cursor: 'pointer', lineHeight: 1, flexShrink: 0,
         }}
       >✎</span>
       {open && (
@@ -203,19 +203,19 @@ function EditHistoryBadge({ editHistory }) {
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
           <div style={{
             position: 'fixed', left: pos.x + 14, top: pos.y - 10, zIndex: 9999,
-            background: '#fff', color: '#1e293b', borderRadius: 10, width: 360,
+            background: 'var(--n-0)', color: 'var(--n-800)', borderRadius: 10, width: 360,
             boxShadow: '0 4px 6px -1px rgba(0,0,0,.08), 0 12px 32px -4px rgba(0,0,0,.18)',
-            border: '1px solid #e2e8f0', overflow: 'hidden',
+            border: '1px solid var(--n-200)', overflow: 'hidden',
           }}>
             {/* header */}
-            <div style={{ padding: '9px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '9px 14px', background: 'var(--n-50)', borderBottom: '1px solid var(--n-200)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--n-500)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
                   История изменений · {editHistory.length}
                 </span>
               </div>
-              <span onClick={() => setOpen(false)} style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>✕</span>
+              <span onClick={() => setOpen(false)} style={{ cursor: 'pointer', color: 'var(--n-500)', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>✕</span>
             </div>
             {/* entries */}
             <div style={{ maxHeight: 420, overflowY: 'auto' }}>
@@ -224,31 +224,31 @@ function EditHistoryBadge({ editHistory }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 24, height: 24, borderRadius: '50%', background: '#eff6ff',
-                      color: '#3b82f6', fontSize: 10, fontWeight: 800, flexShrink: 0,
+                      width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-50)',
+                      color: 'var(--accent-500)', fontSize: 10, fontWeight: 800, flexShrink: 0,
                     }}>
                       {(entry.editedBy || '?').charAt(0).toUpperCase()}
                     </span>
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', lineHeight: 1.2 }}>{entry.editedBy || '?'}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.2 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--n-800)', lineHeight: 1.2 }}>{entry.editedBy || '?'}</div>
+                      <div style={{ fontSize: 10, color: 'var(--n-500)', lineHeight: 1.2 }}>
                         {entry.editedAt ? new Date(entry.editedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                       </div>
                     </div>
                   </div>
                   {Object.entries(entry.changes || {}).map(([field, { from, to }]) => (
-                    <div key={field} style={{ marginBottom: 6, background: '#f8fafc', borderRadius: 6, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                      <div style={{ padding: '4px 10px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                    <div key={field} style={{ marginBottom: 6, background: 'var(--n-50)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--n-200)' }}>
+                      <div style={{ padding: '4px 10px', background: 'var(--n-100)', borderBottom: '1px solid var(--n-200)', fontSize: 10, fontWeight: 600, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
                         {FIELD_LABELS[field] || field}
                       </div>
                       <div style={{ padding: '6px 10px' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 3 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', flexShrink: 0, width: 12 }}>−</span>
-                          <span style={{ fontSize: 12, color: '#ef4444', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, from)}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--red-500)', flexShrink: 0, width: 12 }}>−</span>
+                          <span style={{ fontSize: 12, color: 'var(--red-500)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, from)}</span>
                         </div>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', flexShrink: 0, width: 12 }}>+</span>
-                          <span style={{ fontSize: 12, color: '#16a34a', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, to)}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--green-600)', flexShrink: 0, width: 12 }}>+</span>
+                          <span style={{ fontSize: 12, color: 'var(--green-600)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, to)}</span>
                         </div>
                       </div>
                     </div>
@@ -372,7 +372,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
           ].map(({ label, value, color }) => (
             <div key={label} style={{ display: 'flex', alignItems: 'baseline' }}>
               <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{label}</span>
-              <span style={{ flex: 1, borderBottom: '1px dotted #cbd5e1', margin: '0 5px 3px' }} />
+              <span style={{ flex: 1, borderBottom: '1px dotted var(--n-300)', margin: '0 5px 3px' }} />
               <span style={{ fontSize: 12, fontWeight: 600, color: color || 'var(--rb-text)', flexShrink: 0 }}>{value}</span>
             </div>
           ))}
@@ -415,10 +415,10 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
             );
           })}
           {cashPayments.length > 0 && (
-            <div style={{ borderTop: '2px dashed #bbf7d0', marginTop: 8, paddingTop: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
+            <div style={{ borderTop: '2px dashed var(--green-200)', marginTop: 8, paddingTop: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green-700)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
               {cashPayments.map(p => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f0fdf4', flexWrap: 'wrap' }}>
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--green-50)', flexWrap: 'wrap' }}>
                   <span style={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
                     <EditHistoryBadge editHistory={p.editHistory} />
                   </span>
@@ -431,7 +431,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                         type="number" min="0" step="0.01"
                         value={editAmount}
                         onChange={e => setEditAmount(e.target.value)}
-                        style={{ width: 90, padding: '2px 6px', fontSize: 12, border: '1px solid #16a34a', borderRadius: 4, boxSizing: 'border-box' }}
+                        style={{ width: 90, padding: '2px 6px', fontSize: 12, border: '1px solid var(--green-600)', borderRadius: 4, boxSizing: 'border-box' }}
                       />
                       <input
                         type="text"
@@ -448,7 +448,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                         style={{ flex: 1, minWidth: 80, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }}
                       />
                       <button onClick={() => saveEdit(p)} disabled={editSaving || !editAmount}
-                        style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: '#16a34a', color: '#fff', opacity: editSaving ? 0.6 : 1 }}>
+                        style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'var(--green-600)', color: '#fff', opacity: editSaving ? 0.6 : 1 }}>
                         {editSaving ? '...' : 'Сохр.'}
                       </button>
                       <button onClick={cancelEdit}
@@ -458,7 +458,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                     </>
                   ) : (
                     <>
-                      <span style={{ fontWeight: 600, color: '#16a34a', flex: 1 }}>−{fmtRub(p.amount)}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--green-600)', flex: 1 }}>−{fmtRub(p.amount)}</span>
                       <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
                       {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
                       {onCashEdit && (
@@ -469,7 +469,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                       )}
                       {onCashDelete && (
                         <button onClick={() => onCashDelete(p.id)} title="Удалить"
-                          style={{ padding: '1px 5px', fontSize: 11, border: '1px solid #fca5a5', borderRadius: 4, cursor: 'pointer', background: 'none', color: '#ef4444', display: 'flex', alignItems: 'center' }}>
+                          style={{ padding: '1px 5px', fontSize: 11, border: '1px solid var(--red-300)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--red-500)', display: 'flex', alignItems: 'center' }}>
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                         </button>
                       )}
@@ -479,7 +479,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
               ))}
               <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12 }}>
                 <span style={{ color: 'var(--rb-text-secondary)' }}>Итого к выплате: <strong>{fmtRub(totalRemainder)}</strong></span>
-                <span style={{ color: '#15803d' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
+                <span style={{ color: 'var(--green-700)' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
                 <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
                   Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
                 </span>
@@ -511,29 +511,29 @@ function StandalonePaymentsSection({ payments, fmtRub, readOnly, onCashDelete, o
   const total = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
 
   return (
-    <div style={{ margin: '0 0 12px', padding: '12px 16px', background: '#fff9f0', border: '1.5px dashed #fb923c', borderRadius: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>
+    <div style={{ margin: '0 0 12px', padding: '12px 16px', background: 'var(--amber-50)', border: '1.5px dashed var(--amber-300)', borderRadius: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber-700)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>
         Выплаты без зарплатного листа
       </div>
       {payments.map(p => (
-        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid #fed7aa', flexWrap: 'wrap' }}>
+        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--amber-100)', flexWrap: 'wrap' }}>
           <span style={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
             <EditHistoryBadge editHistory={p.editHistory} />
           </span>
           <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120, flexShrink: 0 }}>
             {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
-          {p.periodLabel && <span style={{ fontSize: 11, background: '#ffedd5', borderRadius: 4, padding: '1px 6px', color: '#9a3412', flexShrink: 0 }}>{p.periodLabel}</span>}
+          {p.periodLabel && <span style={{ fontSize: 11, background: 'var(--amber-100)', borderRadius: 4, padding: '1px 6px', color: 'var(--amber-800)', flexShrink: 0 }}>{p.periodLabel}</span>}
           {editingId === p.id ? (
             <>
               <input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)}
-                style={{ width: 90, padding: '2px 6px', fontSize: 12, border: '1px solid #fb923c', borderRadius: 4, boxSizing: 'border-box' }} />
+                style={{ width: 90, padding: '2px 6px', fontSize: 12, border: '1px solid var(--amber-300)', borderRadius: 4, boxSizing: 'border-box' }} />
               <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Выдал..."
                 style={{ width: 110, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }} />
               <input type="text" value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="Примечание..."
                 style={{ flex: 1, minWidth: 80, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }} />
               <button onClick={() => saveEdit(p)} disabled={editSaving || !editAmount}
-                style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: '#fb923c', color: '#fff', opacity: editSaving ? 0.6 : 1 }}>
+                style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'var(--amber-300)', color: '#fff', opacity: editSaving ? 0.6 : 1 }}>
                 {editSaving ? '...' : 'Сохр.'}
               </button>
               <button onClick={cancelEdit}
@@ -543,7 +543,7 @@ function StandalonePaymentsSection({ payments, fmtRub, readOnly, onCashDelete, o
             </>
           ) : (
             <>
-              <span style={{ fontWeight: 600, color: '#c2410c', flex: 1 }}>−{fmtRub(p.amount)}</span>
+              <span style={{ fontWeight: 600, color: 'var(--amber-700)', flex: 1 }}>−{fmtRub(p.amount)}</span>
               <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
               {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
               {!readOnly && onCashEdit && (
@@ -554,7 +554,7 @@ function StandalonePaymentsSection({ payments, fmtRub, readOnly, onCashDelete, o
               )}
               {!readOnly && onCashDelete && (
                 <button onClick={() => onCashDelete(p.id)} title="Удалить"
-                  style={{ padding: '1px 5px', fontSize: 11, border: '1px solid #fca5a5', borderRadius: 4, cursor: 'pointer', background: 'none', color: '#ef4444', display: 'flex', alignItems: 'center' }}>
+                  style={{ padding: '1px 5px', fontSize: 11, border: '1px solid var(--red-300)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--red-500)', display: 'flex', alignItems: 'center' }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                 </button>
               )}
@@ -562,7 +562,7 @@ function StandalonePaymentsSection({ payments, fmtRub, readOnly, onCashDelete, o
           )}
         </div>
       ))}
-      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: '#c2410c' }}>
+      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: 'var(--amber-700)' }}>
         Итого: −{fmtRub(total)}
       </div>
     </div>
@@ -589,7 +589,7 @@ function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setC
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: '#fff', borderRadius: 12, width: 420, padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,.18)' }}>
+      <div style={{ background: 'var(--n-0)', borderRadius: 12, width: 420, padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,.18)' }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Выдача из кассы</div>
         <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 16 }}>{subtitle}</div>
 
@@ -607,10 +607,10 @@ function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setC
                   style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', color: 'var(--rb-text-secondary)', fontSize: 16, lineHeight: 1 }}>×</span>
               )}
               {dropOpen && !cashStandaloneDoctor && filteredDocs.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.1)', maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.1)', maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
                   {filteredDocs.map(d => (
                     <div key={d.id} onMouseDown={() => { setCashStandaloneDoctor({ id: d.id, name: d.name }); setDropOpen(false); setDoctorSearch(''); }}
-                      style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                      style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--n-100)' }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
                       onMouseLeave={e => e.currentTarget.style.background = ''}>
                       {d.name}
@@ -623,7 +623,7 @@ function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setC
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Период (необязательно)</label>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
               <select value={cashStandalonePeriod.month} onChange={e => setCashStandalonePeriod(p => ({ ...p, month: e.target.value }))}
-                style={{ flex: 2, padding: '7px 8px', fontSize: 13, border: '1.5px solid var(--rb-border)', borderRadius: 6, background: '#fff' }}>
+                style={{ flex: 2, padding: '7px 8px', fontSize: 13, border: '1.5px solid var(--rb-border)', borderRadius: 6, background: 'var(--n-0)' }}>
                 <option value="">— месяц —</option>
                 {MODAL_MONTHS.map((m, i) => <option key={i} value={String(i + 1)}>{m}</option>)}
               </select>
@@ -662,7 +662,7 @@ function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setC
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
       {payload.filter((p, i, arr) => p.value != null && arr.findIndex(x => x.name === p.name) === i).map((p, i) => {
         const isSingle = p.name === 'value';
@@ -747,7 +747,7 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
   return (
     <>
       {/* Compare header */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--rb-border)', background: 'linear-gradient(135deg, #eff6ff, #fff7ed)' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--rb-border)', background: 'linear-gradient(135deg, var(--accent-50), var(--amber-50))' }}>
         <div style={{ display: 'flex', justifyContent: 'space-evenly' }}>
           {[{ doc: docA, id: pinnedForCompare[0], letter: 'А', color: COLOR_A }, { doc: docB, id: pinnedForCompare[1], letter: 'Б', color: COLOR_B }].map(({ doc, id, letter, color }) => (
             <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -760,7 +760,7 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
 
       {/* Year + Quarter tabs combined */}
       {(multiYear || showQuarterTabs) && (
-        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)' }}>
           {multiYear && (
             <div style={{ display: 'flex', flex: 1 }}>
               {years.map(y => (
@@ -791,9 +791,9 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, border: '1px solid var(--rb-border)' }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', fontWeight: 600, color: 'var(--rb-text)', fontSize: 12, padding: '7px 10px', border: '1px solid var(--rb-border)', background: '#f1f5f9' }}>Метрика</th>
+              <th style={{ textAlign: 'left', fontWeight: 600, color: 'var(--rb-text)', fontSize: 12, padding: '7px 10px', border: '1px solid var(--rb-border)', background: 'var(--n-100)' }}>Метрика</th>
               {[{ letter: 'А', color: COLOR_A, name: nameA }, { letter: 'Б', color: COLOR_B, name: nameB }].map(({ letter, color, name }) => (
-                <th key={letter} style={{ textAlign: 'center', padding: '7px 10px', width: '36%', border: '1px solid var(--rb-border)', background: '#f1f5f9' }}>
+                <th key={letter} style={{ textAlign: 'center', padding: '7px 10px', width: '36%', border: '1px solid var(--rb-border)', background: 'var(--n-100)' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color }}>
                     <Dot letter={letter} color={color} />
                     {name.split(' ')[0]}
@@ -811,7 +811,7 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
               const aWins = row.a > 0 && row.a > row.b;
               const bWins = row.b > 0 && row.b > row.a;
               return (
-                <tr key={i} style={{ background: '#fff' }}>
+                <tr key={i} style={{ background: 'var(--n-0)' }}>
                   <td style={{ padding: '7px 10px', fontSize: 12, color: 'var(--rb-text)', fontWeight: 500, border: '1px solid var(--rb-border)' }}>{row.label}</td>
                   <td style={{ textAlign: 'center', padding: '7px 10px', fontSize: 13, fontWeight: 700, color: aWins ? COLOR_A : 'var(--rb-text)', border: '1px solid var(--rb-border)' }}>
                     {fmtRub(row.a)}{aWins ? ' ▲' : ''}
@@ -829,8 +829,8 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
       {/* Comparison chart */}
       {chartData.length >= 1 && (
         <div className="rb-hist-chart-wrap">
-          <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--rb-border)', padding: '8px 0', position: 'relative' }}>
-            <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#000', paddingTop: 6, paddingBottom: 2 }}>Динамика заработной платы</div>
+          <div style={{ background: 'var(--n-0)', borderRadius: 8, border: '1px solid var(--rb-border)', padding: '8px 0', position: 'relative' }}>
+            <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--n-900)', paddingTop: 6, paddingBottom: 2 }}>Динамика заработной платы</div>
             <ResponsiveContainer width="100%" height={260}>
               <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }} barCategoryGap="40%" barGap={2}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
@@ -1352,7 +1352,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     const inputStyle = {
       height: 32, border: '1px solid var(--rb-border-dark)', borderRadius: 7,
       padding: '0 10px', fontSize: 13, fontFamily: 'inherit',
-      background: '#fff', color: 'var(--rb-text)', outline: 'none', boxSizing: 'border-box',
+      background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none', boxSizing: 'border-box',
     };
     const canEdit = permSources === 'edit' && !readOnly;
 
@@ -1362,7 +1362,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
         {/* ── Add form ── */}
         {canEdit && (
-          <div style={{ margin: '0 12px 8px', padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid var(--rb-border)', flexShrink: 0 }}>
+          <div style={{ margin: '0 12px 8px', padding: '12px 16px', background: 'var(--n-50)', borderRadius: 10, border: '1px solid var(--rb-border)', flexShrink: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
               Добавить источник
             </div>
@@ -1378,7 +1378,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Файл Excel</span>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button onClick={() => srcFileRef.current?.click()} style={{ height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: srcFile ? '#16a34a' : 'var(--rb-text)', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <button onClick={() => srcFileRef.current?.click()} style={{ height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: 'var(--n-0)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: srcFile ? '#16a34a' : 'var(--rb-text)', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {srcFile ? srcFile.name : 'Выбрать файл…'}
                   </button>
                   {srcFile && <button onClick={() => setSrcFile(null)} style={{ width: 26, height: 26, border: 'none', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--rb-text-secondary)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
@@ -1419,7 +1419,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               placeholder="Поиск по названию или файлу…"
               value={srcSearch}
               onChange={e => setSrcSearch(e.target.value)}
-              style={{ width: '100%', height: 28, paddingLeft: 28, paddingRight: srcSearch ? 26 : 8, border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', outline: 'none', background: '#fff', color: 'var(--rb-text)', boxSizing: 'border-box' }}
+              style={{ width: '100%', height: 28, paddingLeft: 28, paddingRight: srcSearch ? 26 : 8, border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', outline: 'none', background: 'var(--n-0)', color: 'var(--rb-text)', boxSizing: 'border-box' }}
             />
             {srcSearch && (
               <button onClick={() => setSrcSearch('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 16, height: 16, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--rb-text-secondary)', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>×</button>
@@ -1447,7 +1447,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 {byYear[yr].map(src => {
                   const isEditing = srcEditId === src.id;
                   return (
-                    <div key={src.id} style={{ background: '#fff', border: `1px solid ${isEditing ? 'var(--rb-primary)' : 'var(--rb-border)'}`, borderRadius: 10, overflow: 'hidden', transition: 'border-color .15s' }}>
+                    <div key={src.id} style={{ background: 'var(--n-0)', border: `1px solid ${isEditing ? 'var(--rb-primary)' : 'var(--rb-border)'}`, borderRadius: 10, overflow: 'hidden', transition: 'border-color .15s' }}>
                       {/* Normal row */}
                       {!isEditing && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', fontSize: 13 }}>
@@ -1468,14 +1468,14 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                             {src.uploadedBy && <div style={{ fontWeight: 500, color: 'var(--rb-text)' }}>{src.uploadedBy}</div>}
                           </div>
                           {/* Download */}
-                          <button onClick={() => handleDownload(src)} title="Скачать файл" style={{ width: 28, height: 28, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#16a34a' }}>
+                          <button onClick={() => handleDownload(src)} title="Скачать файл" style={{ width: 28, height: 28, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: 'var(--n-0)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--green-600)' }}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
                               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                             </svg>
                           </button>
                           {/* Edit */}
                           {canEdit && (
-                            <button onClick={() => handleStartEdit(src)} title="Редактировать период" style={{ width: 28, height: 28, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--rb-text-secondary)' }}>
+                            <button onClick={() => handleStartEdit(src)} title="Редактировать период" style={{ width: 28, height: 28, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: 'var(--n-0)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--rb-text-secondary)' }}>
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                               </svg>
@@ -1483,7 +1483,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                           )}
                           {/* Delete */}
                           {canEdit && (
-                            <button onClick={() => handleDeleteSource(src.id, src.fileName)} title="Удалить источник" style={{ width: 28, height: 28, border: '1px solid #fca5a5', borderRadius: 7, background: '#fff5f5', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <button onClick={() => handleDeleteSource(src.id, src.fileName)} title="Удалить источник" style={{ width: 28, height: 28, border: '1px solid var(--red-300)', borderRadius: 7, background: 'var(--red-50)', color: 'var(--red-500)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
                                 <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
                               </svg>
@@ -1494,7 +1494,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
                       {/* Inline edit row */}
                       {isEditing && (
-                        <div style={{ padding: '12px 14px', background: '#f0f7ff', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+                        <div style={{ padding: '12px 14px', background: 'var(--accent-50)', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Период</span>
                             <DateRangePicker dateFrom={srcEditFrom} setDateFrom={setSrcEditFrom} dateTo={srcEditTo} setDateTo={setSrcEditTo} />
@@ -1523,7 +1523,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                             <button onClick={() => handleSaveEdit(src)} disabled={srcEditSaving} style={{ height: 32, padding: '0 14px', border: 'none', borderRadius: 7, background: 'var(--rb-primary)', color: '#fff', fontSize: 13, cursor: srcEditSaving ? 'default' : 'pointer', fontFamily: 'inherit', opacity: srcEditSaving ? 0.6 : 1 }}>
                               {srcEditSaving ? 'Сохранение…' : 'Сохранить'}
                             </button>
-                            <button onClick={handleCancelEdit} style={{ height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', color: 'var(--rb-text-secondary)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            <button onClick={handleCancelEdit} style={{ height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: 'var(--n-0)', color: 'var(--rb-text-secondary)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                               Отмена
                             </button>
                           </div>
@@ -1637,7 +1637,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
           {/* Toolbar */}
           <div style={{
             padding: '10px 16px', borderBottom: '1px solid var(--rb-border)',
-            display: 'flex', alignItems: 'center', gap: 10, background: '#fafafa', flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 10, background: 'var(--n-50)', flexShrink: 0,
           }}>
             <button
               onClick={closeTabelBatch}
@@ -1667,7 +1667,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               Загрузка...
             </div>
           ) : (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', background: '#f1f5f9' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', background: 'var(--n-100)' }}>
               <div className="tabel-doc">
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
@@ -1681,15 +1681,15 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                       <tbody>
                         <tr>
                           <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}></td>
-                          <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>Код</td>
+                          <td style={{ border: '1px solid var(--n-900)', padding: '2px 8px', textAlign: 'center' }}>Код</td>
                         </tr>
                         <tr>
                           <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>Форма по ОКУД</td>
-                          <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>0301008</td>
+                          <td style={{ border: '1px solid var(--n-900)', padding: '2px 8px', textAlign: 'center' }}>0301008</td>
                         </tr>
                         <tr>
                           <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>по ОКПО</td>
-                          <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}></td>
+                          <td style={{ border: '1px solid var(--n-900)', padding: '2px 8px', textAlign: 'center' }}></td>
                         </tr>
                       </tbody>
                     </table>
@@ -1698,19 +1698,19 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
                 <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460 }}>
-                    <div style={{ borderBottom: '1px solid #000', width: '100%', minHeight: 22, paddingBottom: 2, textAlign: 'center', fontSize: 13, fontFamily: 'Times New Roman, serif' }}>
+                    <div style={{ borderBottom: '1px solid var(--n-900)', width: '100%', minHeight: 22, paddingBottom: 2, textAlign: 'center', fontSize: 13, fontFamily: 'Times New Roman, serif' }}>
                       {doc.orgName}
                     </div>
-                    <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>(наименование организации)</span>
+                    <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: 'var(--n-900)', marginTop: 2 }}>(наименование организации)</span>
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'center', marginTop: 10, marginBottom: 12 }}>
                   <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460 }}>
-                    <div style={{ borderBottom: '1px solid #000', width: '100%', minHeight: 22, textAlign: 'center', fontSize: 13, fontFamily: 'Times New Roman, serif', paddingBottom: 2 }}>
+                    <div style={{ borderBottom: '1px solid var(--n-900)', width: '100%', minHeight: 22, textAlign: 'center', fontSize: 13, fontFamily: 'Times New Roman, serif', paddingBottom: 2 }}>
                       {doc.subdivision}
                     </div>
-                    <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>(структурное подразделение)</span>
+                    <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: 'var(--n-900)', marginTop: 2 }}>(структурное подразделение)</span>
                   </div>
                 </div>
 
@@ -1787,14 +1787,14 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
     const selectStyle = {
       height: 34, padding: '0 8px', borderRadius: 7, border: '1px solid var(--rb-border-dark)',
-      fontSize: 12, background: '#fff', color: 'var(--rb-text)', cursor: 'pointer', outline: 'none',
+      fontSize: 12, background: 'var(--n-0)', color: 'var(--rb-text)', cursor: 'pointer', outline: 'none',
     };
 
     return (
       <>
         {viewToggle}
 
-        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Period picker */}
           <TabelPeriodPicker
             year={tabelFilterYear}
@@ -1833,7 +1833,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 const btnStyle = { fontSize: 11, fontWeight: 600, width: 76, height: 26, padding: 0, border: 'none', borderRadius: 5, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', flexShrink: 0 };
                 const title = [rec.docNumber ? `№ ${rec.docNumber}` : null, rec.subdivision || rec.orgName || null].filter(Boolean).join(' : ');
                 return (
-                  <div key={rec.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--rb-border)', overflow: 'hidden' }}>
+                  <div key={rec.id} style={{ background: 'var(--n-0)', borderRadius: 10, border: '1px solid var(--rb-border)', overflow: 'hidden' }}>
                     <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1869,7 +1869,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               <button
                 onClick={() => setTabelPage(p => Math.max(1, p - 1))}
                 disabled={tabelPageSafe === 1}
-                style={{ height: 28, width: 28, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', cursor: tabelPageSafe === 1 ? 'default' : 'pointer', opacity: tabelPageSafe === 1 ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                style={{ height: 28, width: 28, border: '1px solid var(--rb-border)', borderRadius: 6, background: 'var(--n-0)', cursor: tabelPageSafe === 1 ? 'default' : 'pointer', opacity: tabelPageSafe === 1 ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
               <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', minWidth: 80, textAlign: 'center' }}>
@@ -1878,7 +1878,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               <button
                 onClick={() => setTabelPage(p => Math.min(tabelTotalPages, p + 1))}
                 disabled={tabelPageSafe === tabelTotalPages}
-                style={{ height: 28, width: 28, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', cursor: tabelPageSafe === tabelTotalPages ? 'default' : 'pointer', opacity: tabelPageSafe === tabelTotalPages ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                style={{ height: 28, width: 28, border: '1px solid var(--rb-border)', borderRadius: 6, background: 'var(--n-0)', cursor: tabelPageSafe === tabelTotalPages ? 'default' : 'pointer', opacity: tabelPageSafe === tabelTotalPages ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
@@ -1906,7 +1906,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     return (
       <>
         {viewToggle}
-        <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa' }}>
+        <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {/* New standalone payment button */}
             {!viewReadOnly && (
@@ -1934,7 +1934,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             <button
               onClick={() => { setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc'); setKassaPage(1); }}
               title={kassaSortDir === 'desc' ? 'Сначала новые' : 'Сначала старые'}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 12, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 12, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'var(--n-0)', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
                 {kassaSortDir === 'desc'
@@ -1946,7 +1946,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             </button>
             {kassaSearch && (
               <button onClick={() => { setKassaSearch(''); setKassaPage(1); }}
-                style={{ fontSize: 11, padding: '5px 8px', border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)' }}>
+                style={{ fontSize: 11, padding: '5px 8px', border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'var(--n-0)', color: 'var(--rb-text-secondary)' }}>
                 Сбросить
               </button>
             )}
@@ -2063,11 +2063,11 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             {kassaTotalPages > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 12 }}>
                 <button onClick={() => setKassaPage(1)} disabled={kassaPageSafe === 1}
-                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === 1 ? 'default' : 'pointer', background: 'var(--n-0)', color: kassaPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
                   «
                 </button>
                 <button onClick={() => setKassaPage(p => Math.max(1, p - 1))} disabled={kassaPageSafe === 1}
-                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === 1 ? 'default' : 'pointer', background: 'var(--n-0)', color: kassaPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
                   ‹
                 </button>
                 {Array.from({ length: kassaTotalPages }, (_, i) => i + 1)
@@ -2085,11 +2085,11 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                       </button>
                   )}
                 <button onClick={() => setKassaPage(p => Math.min(kassaTotalPages, p + 1))} disabled={kassaPageSafe === kassaTotalPages}
-                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === kassaTotalPages ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === kassaTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === kassaTotalPages ? 'default' : 'pointer', background: 'var(--n-0)', color: kassaPageSafe === kassaTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
                   ›
                 </button>
                 <button onClick={() => setKassaPage(kassaTotalPages)} disabled={kassaPageSafe === kassaTotalPages}
-                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === kassaTotalPages ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === kassaTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === kassaTotalPages ? 'default' : 'pointer', background: 'var(--n-0)', color: kassaPageSafe === kassaTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
                   »
                 </button>
               </div>
@@ -2169,7 +2169,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       </div>
 
       {years.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', gap: 8 }}>
           {multiYear && (
             <div style={{ display: 'flex', flex: 1 }}>
               {years.map(y => (
@@ -2207,8 +2207,8 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
           {filteredRecords.length >= 2 && (
             <div className="rb-hist-chart-wrap">
-              <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--rb-border)', padding: '8px 0' }}>
-                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#000', paddingTop: 6, paddingBottom: 2 }}>Динамика заработной платы</div>
+              <div style={{ background: 'var(--n-0)', borderRadius: 8, border: '1px solid var(--rb-border)', padding: '8px 0' }}>
+                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--n-900)', paddingTop: 6, paddingBottom: 2 }}>Динамика заработной платы</div>
                 <ResponsiveContainer width="100%" height={240}>
                   <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />

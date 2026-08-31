@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { SocketProvider } from './context/SocketContext';
+import { AppearanceProvider } from './context/AppearanceContext';
 import { MedCentersProvider } from './context/MedCentersContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -107,7 +108,7 @@ function AppRoutes() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0a3d62 0%, #1e3799 50%, #4a148c 100%)'
+        background: 'linear-gradient(135deg, var(--accent-900) 0%, var(--accent-900) 50%, var(--violet-800) 100%)'
       }}>
         <div className="loading-spinner" style={{ width: 48, height: 48 }} />
       </div>
@@ -283,24 +284,26 @@ function AppContent() {
   return (
     <AuthProvider>
       <SocketProvider>
-        <ThemeProvider>
-          <MedCentersProvider>
-            <AppRoutes />
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                duration: 3000,
-                style: {
-                  borderRadius: '10px',
-                  background: '#1D1D1F',
-                  color: '#fff',
-                  padding: '12px 20px',
-                  fontSize: '14px'
-                }
-              }}
-            />
-          </MedCentersProvider>
-        </ThemeProvider>
+        <AppearanceProvider>
+          <ThemeProvider>
+            <MedCentersProvider>
+              <AppRoutes />
+              <Toaster
+                position="top-right"
+                toastOptions={{
+                  duration: 3000,
+                  style: {
+                    borderRadius: '10px',
+                    background: 'var(--surface-inverse)',
+                    color: 'var(--text-on-inverse)',
+                    padding: '12px 20px',
+                    fontSize: '14px'
+                  }
+                }}
+              />
+            </MedCentersProvider>
+          </ThemeProvider>
+        </AppearanceProvider>
       </SocketProvider>
     </AuthProvider>
   );

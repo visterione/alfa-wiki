@@ -109,8 +109,6 @@ router.post('/init', authenticate, requireAdminAccess('settings'), async (req, r
       siteName: { value: 'Alfa Wiki', description: 'Site name' },
       siteDescription: { value: 'Medical knowledge base', description: 'Site description' },
       logo: { value: null, description: 'Logo URL' },
-      primaryColor: { value: '#007AFF', description: 'Primary color' },
-      accentColor: { value: '#5856D6', description: 'Accent color' },
       defaultRole: { value: null, description: 'Default role for new users' },
       allowRegistration: { value: false, description: 'Allow public registration' },
       maintenanceMode: { value: false, description: 'Maintenance mode' },

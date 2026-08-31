@@ -159,21 +159,21 @@
 }
 
 .editor-content .ProseMirror blockquote.blockquote-default {
-  border-left: 4px solid #6B7280;
-  background: #F9FAFB;
-  color: #374151;
+  border-left: 4px solid var(--n-600);
+  background: var(--n-50);
+  color: var(--n-800);
 }
 
 .editor-content .ProseMirror blockquote.blockquote-warning {
-  border-left: 4px solid #F59E0B;
-  background: #FFFBEB;
-  color: #92400E;
+  border-left: 4px solid var(--amber-500);
+  background: var(--amber-50);
+  color: var(--amber-800);
 }
 
 .editor-content .ProseMirror blockquote.blockquote-danger {
-  border-left: 4px solid #EF4444;
-  background: #FEF2F2;
-  color: #991B1B;
+  border-left: 4px solid var(--red-500);
+  background: var(--red-50);
+  color: var(--red-800);
 }
 
 .editor-content .ProseMirror pre {
@@ -301,7 +301,7 @@
   width: 12px;
   height: 12px;
   background: var(--primary);
-  border: 2px solid white;
+  border: 2px solid var(--n-0);
   border-radius: 50%;
   cursor: nwse-resize;
   z-index: 10;
@@ -695,11 +695,11 @@
 }
 
 .table-menu-item--danger {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .table-menu-item--danger:hover:not(:disabled) {
-  background: #fee2e2;
+  background: var(--red-100);
 }
 
 /* Переключатель "строка заголовков" в меню создания таблицы */
@@ -892,12 +892,12 @@
 }
 
 .itable-btn--danger {
-  color: var(--danger, #e53e3e);
+  color: var(--danger, var(--red-500));
 }
 
 .itable-btn--danger:hover:not(:disabled) {
-  background: #fff5f5;
-  border-color: var(--danger, #e53e3e);
+  background: var(--red-50);
+  border-color: var(--danger, var(--red-500));
 }
 
 .itable-btn--active {
@@ -1283,9 +1283,9 @@
 }
 
 .table-float-btn--danger {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .table-float-btn--danger:hover {
-  background: #fee2e2;
+  background: var(--red-100);
 }

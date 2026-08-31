@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { auth as authApi } from '../services/api';
-import { Eye, EyeOff, Shield, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, Shield, User, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Login.css';
 
@@ -34,6 +34,12 @@ export default function Login() {
   const [attemptsLeft, setAttemptsLeft] = useState(5);
   const [codeStatus, setCodeStatus] = useState(''); // '' | 'success' | 'error'
   const inputRefs = useRef([]);
+  const usernameRef = useRef(null);
+  // Оба шага отрисованы одновременно и лежат в «ленте», которую двигает
+  // transform. Ссылки нужны, чтобы измерить активный шаг: высота карточки
+  // едет вместе со сдвигом, иначе на переходе она прыгала бы рывком.
+  const viewportRef = useRef(null);
+  const stepRefs = useRef([]);
   const location = useLocation();
   // Куда возвращаться после входа. Адрес приходит двумя путями, и оба нужны:
   // ProtectedRoute кладёт его в состояние навигации (переход внутри приложения,
@@ -57,9 +63,9 @@ export default function Login() {
     try {
       // Используем API напрямую
       const { data } = await authApi.login(username, password);
-      
+
       console.log('Login response:', data); // Debug
-      
+
       // Проверяем, требуется ли 2FA
       if (data.requiresTwoFactor) {
         setUserId(data.userId);
@@ -251,6 +257,50 @@ export default function Login() {
     }
   }, [twoFactorCode]);
 
+  const activeIndex = step === 'twoFactor' ? 1 : 0;
+
+  // Высота «окна» равна высоте активного шага. Наблюдатель, а не разовый замер:
+  // внутри шага появляется подсказка про оставшиеся попытки, и без него окно
+  // обрезало бы её.
+  useEffect(() => {
+    const panel = stepRefs.current[activeIndex];
+    const viewport = viewportRef.current;
+    if (!panel || !viewport) return;
+
+    const apply = () => { viewport.style.height = `${panel.offsetHeight}px`; };
+    apply();
+
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(apply);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [activeIndex]);
+
+  // Неактивный шаг остаётся в разметке ради анимации, поэтому его надо убрать
+  // из фокуса и из дерева доступности — иначе Tab с формы логина уезжал бы в
+  // невидимые клеточки кода.
+  useEffect(() => {
+    stepRefs.current.forEach((panel, index) => {
+      if (panel) panel.inert = index !== activeIndex;
+    });
+  }, [activeIndex]);
+
+  // Фокус переносим после того, как проедет анимация: если сделать это сразу,
+  // браузер подтягивает вид к ещё уезжающему полю и лента дёргается.
+  const focusedStep = useRef(activeIndex);
+  useEffect(() => {
+    if (focusedStep.current === activeIndex) return undefined;
+    focusedStep.current = activeIndex;
+
+    const timer = setTimeout(() => {
+      if (activeIndex === 1) inputRefs.current[0]?.focus();
+      else usernameRef.current?.focus();
+    }, 420);
+    return () => clearTimeout(timer);
+  }, [activeIndex]);
+
+  const setStepRef = useCallback((index) => (el) => { stepRefs.current[index] = el; }, []);
+
   return (
     <div className="login-page">
       <div className="lava-blob lava-blob-1"></div>
@@ -259,130 +309,129 @@ export default function Login() {
       <div className="login-container">
         <div className="login-card">
           <div className="login-header">
-            <div className="login-logo">
-              <div className="login-logo-icon">
-                <img 
-                  src={loginLogo} 
-                  alt="Альфа Вики" 
-                  style={{ width: '48px', height: '48px', objectFit: 'contain' }}
-                />
-              </div>
+            <div className="login-logo-icon">
+              <img src={loginLogo} alt="Альфа Вики" />
             </div>
             <h1>Альфа Вики</h1>
-            <p>
-              {step === 'twoFactor' 
-                ? 'Подтверждение входа' 
-                : 'База знаний медицинского центра'}
-            </p>
           </div>
 
-          {step === 'credentials' ? (
-            <form onSubmit={handleCredentialsSubmit} className="login-form">
-              <div className="form-group">
-                <label className="form-label">Логин</label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Введите логин"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoFocus
-                  disabled={loading}
-                />
-              </div>
+          <div className="login-viewport" ref={viewportRef}>
+            <div className={`login-track step-${activeIndex}`}>
+              <div className="login-step" ref={setStepRef(0)}>
+                <form onSubmit={handleCredentialsSubmit} className="login-form">
+                  <div className="form-group">
+                    <label className="form-label">Логин</label>
+                    <div className="login-field">
+                      <User size={18} className="login-field-icon" />
+                      <input
+                        ref={usernameRef}
+                        type="text"
+                        className="input"
+                        placeholder="Введите логин"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        autoFocus
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
 
-              <div className="form-group">
-                <label className="form-label">Пароль</label>
-                <div className="password-input">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    className="input"
-                    placeholder="Введите пароль"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
-                  />
+                  <div className="form-group">
+                    <label className="form-label">Пароль</label>
+                    <div className="login-field">
+                      <Lock size={18} className="login-field-icon" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        className="input has-action"
+                        placeholder="Введите пароль"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        disabled={loading}
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                        aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
                   <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    tabIndex={-1}
+                    type="submit"
+                    className="btn btn-primary login-btn"
+                    disabled={loading}
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {loading ? (
+                      <div className="loading-spinner" style={{ width: 20, height: 20 }} />
+                    ) : (
+                      'Войти'
+                    )}
                   </button>
-                </div>
+                </form>
               </div>
 
-              <button 
-                type="submit" 
-                className="btn btn-primary login-btn"
-                disabled={loading}
-              >
-                {loading ? (
-                  <div className="loading-spinner" style={{ width: 20, height: 20 }} />
-                ) : (
-                  'Войти'
-                )}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleTwoFactorSubmit} className="login-form">
-              <div className="two-factor-info">
-                <Shield size={48} />
-                <p>
-                  Введите 6-значный код подтверждения, отправленный на вашу почту
-                </p>
-              </div>
+              <div className="login-step" ref={setStepRef(1)}>
+                <form onSubmit={handleTwoFactorSubmit} className="login-form">
+                  <div className="two-factor-info">
+                    <div className="two-factor-badge">
+                      <Shield size={22} />
+                    </div>
+                    <h2>Подтверждение входа</h2>
+                    <p>Введите код, отправленный на почту</p>
+                  </div>
 
-              <div className="form-group">
-                <label className="form-label">Код подтверждения</label>
-                <div className={`code-input-grid ${codeStatus}`}>
-                  {twoFactorCode.map((digit, index) => (
-                    <input
-                      key={index}
-                      ref={(el) => (inputRefs.current[index] = el)}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="\d*"
-                      maxLength={1}
-                      className="code-digit-input"
-                      value={digit}
-                      onChange={(e) => handleCodeInput(index, e.target.value)}
-                      onKeyDown={(e) => handleCodeKeyDown(index, e)}
-                      onPaste={handleCodePaste}
-                      autoFocus={index === 0}
+                  <div className="form-group">
+                    <div className={`code-input-grid ${codeStatus}`}>
+                      {twoFactorCode.map((digit, index) => (
+                        <input
+                          key={index}
+                          ref={(el) => (inputRefs.current[index] = el)}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="\d*"
+                          maxLength={1}
+                          className="code-digit-input"
+                          value={digit}
+                          onChange={(e) => handleCodeInput(index, e.target.value)}
+                          onKeyDown={(e) => handleCodeKeyDown(index, e)}
+                          onPaste={handleCodePaste}
+                          disabled={loading || codeStatus !== ''}
+                        />
+                      ))}
+                    </div>
+                    {attemptsLeft < 5 && (
+                      <small className="form-hint text-warning">
+                        Осталось попыток: {attemptsLeft}
+                      </small>
+                    )}
+                  </div>
+
+                  <div className="two-factor-actions">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={handleResendCode}
                       disabled={loading || codeStatus !== ''}
-                    />
-                  ))}
-                </div>
-                {attemptsLeft < 5 && (
-                  <small className="form-hint text-warning">
-                    Осталось попыток: {attemptsLeft}
-                  </small>
-                )}
+                    >
+                      Отправить ещё раз
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm login-back-btn"
+                      onClick={handleBackToLogin}
+                      disabled={loading || codeStatus !== ''}
+                    >
+                      Назад
+                    </button>
+                  </div>
+                </form>
               </div>
-
-              <div className="two-factor-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={handleResendCode}
-                  disabled={loading || codeStatus !== ''}
-                >
-                  <RefreshCw size={16} />
-                  Отправить код повторно
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={handleBackToLogin}
-                  disabled={loading || codeStatus !== ''}
-                >
-                  Назад к входу
-                </button>
-              </div>
-            </form>
-          )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

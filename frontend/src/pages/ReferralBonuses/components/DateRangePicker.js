@@ -33,7 +33,7 @@ function CalendarPopover({ dateFrom, dateTo, focusField, onSelect }) {
   };
 
   return (
-    <div style={{ position: 'fixed', zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,.14)', padding: '12px 10px', width: 252, top: 'var(--cal-top)', left: 'var(--cal-left)' }}>
+    <div style={{ position: 'fixed', zIndex: 9999, background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,.14)', padding: '12px 10px', width: 252, top: 'var(--cal-top)', left: 'var(--cal-left)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 8px', borderRadius: 5, fontSize: 16, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>‹</button>
         <span style={{ fontWeight: 600, fontSize: 13 }}>{MONTHS_RU[viewMonth]} {viewYear}</span>
@@ -172,7 +172,7 @@ export default function DateRangePicker({ dateFrom, setDateFrom, dateTo, setDate
 
   return (
     <div ref={wrapRef} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>с <span style={{ color: '#ef4444' }}>*</span></span>
+      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>с <span style={{ color: 'var(--red-500)' }}>*</span></span>
       <DateField
         anchorRef={fromAnchor}
         value={dateFrom}
@@ -186,7 +186,7 @@ export default function DateRangePicker({ dateFrom, setDateFrom, dateTo, setDate
           <CalendarPopover dateFrom={dateFrom} dateTo={dateTo} focusField="from" onSelect={handleSelect} />
         </div>
       )}
-      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>по <span style={{ color: '#ef4444' }}>*</span></span>
+      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>по <span style={{ color: 'var(--red-500)' }}>*</span></span>
       <DateField
         anchorRef={toAnchor}
         inputRef={toRef}

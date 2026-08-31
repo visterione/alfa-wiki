@@ -1285,7 +1285,7 @@ export default function ReferralBonusesPage() {
               <button
                 className="rb-btn"
                 disabled={!resetPreview || resetPreview.employeeCount === 0 || resetting}
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: resetPreview?.employeeCount && !resetting ? 'pointer' : 'not-allowed', fontSize: 13, opacity: resetPreview?.employeeCount && !resetting ? 1 : 0.45 }}
+                style={{ background: 'var(--red-500)', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: resetPreview?.employeeCount && !resetting ? 'pointer' : 'not-allowed', fontSize: 13, opacity: resetPreview?.employeeCount && !resetting ? 1 : 0.45 }}
                 onClick={handleConfirmReset}
               >
                 {resetting ? 'Сбрасываем…' : 'Сбросить выбранное'}
@@ -1336,12 +1336,12 @@ export default function ReferralBonusesPage() {
                   if (ndfl)        valueParts.push(`НДФЛ: ${ndfl.toLocaleString('ru-RU')} ₽`);
                   const hasDup = options.some(opt => isDuplicate(doctor.id, opt.id, idx));
                   return (
-                    <div key={idx} style={{ marginBottom: 12, padding: '12px 14px', border: `1px solid ${hasDup ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 8, background: hasDup ? '#fff7f7' : '#f8fafc' }}>
+                    <div key={idx} style={{ marginBottom: 12, padding: '12px 14px', border: `1px solid ${hasDup ? 'var(--red-300)' : 'var(--n-200)'}`, borderRadius: 8, background: hasDup ? '#fff7f7' : '#f8fafc' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: '#1e293b' }}>{doctor.name}</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Группа: <b>{groupLabel}</b></div>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--n-800)' }}>{doctor.name}</div>
+                        <div style={{ fontSize: 12, color: 'var(--n-600)' }}>Группа: <b>{groupLabel}</b></div>
                       </div>
-                      <div style={{ fontSize: 12, color: '#0369a1', background: '#f0f9ff', borderRadius: 5, padding: '4px 8px', marginBottom: 10, display: 'inline-block' }}>
+                      <div style={{ fontSize: 12, color: 'var(--accent-900)', background: 'var(--accent-50)', borderRadius: 5, padding: '4px 8px', marginBottom: 10, display: 'inline-block' }}>
                         {valueParts.join(' · ') || '—'}
                       </div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1364,7 +1364,7 @@ export default function ReferralBonusesPage() {
                           );
                         })}
                       </div>
-                      {hasDup && <div style={{ marginTop: 6, fontSize: 12, color: '#dc2626' }}>Этот медцентр уже выбран для другой записи этого врача</div>}
+                      {hasDup && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--red-600)' }}>Этот медцентр уже выбран для другой записи этого врача</div>}
                     </div>
                   );
                 });
@@ -1403,7 +1403,7 @@ export default function ReferralBonusesPage() {
               <p style={{ fontSize: 14, color: 'var(--rb-text)', marginBottom: 10 }}>
                 У следующих сотрудников уже есть <strong>заблокированные</strong> записи:
               </p>
-              <div style={{ maxHeight: 200, overflowY: 'auto', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
+              <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--amber-50)', border: '1px solid var(--amber-500)', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
                 {ndflModal.conflicts.map(({ doctor, clinicId, mainPayment, advance, ndfl }, idx) => {
                   const targetKey = clinicId || 'global';
                   const clinicData = ndflModal.settingsMap[doctor.id]?.clinicSettings?.[targetKey] || {};
@@ -1415,8 +1415,8 @@ export default function ReferralBonusesPage() {
                   const clinicLabel = clinicId ? rbGetClinicName(clinicId) : null;
                   return (
                     <div key={`${doctor.id}_${idx}`} style={{ fontSize: 13, padding: '3px 0', color: 'var(--rb-text)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span>🔒 {doctor.name}{clinicLabel && <span style={{ color: '#64748b', marginLeft: 5 }}>({clinicLabel})</span>}</span>
-                      <span style={{ color: '#92400e', fontWeight: 500 }}>{locked.join(', ')}</span>
+                      <span>🔒 {doctor.name}{clinicLabel && <span style={{ color: 'var(--n-600)', marginLeft: 5 }}>({clinicLabel})</span>}</span>
+                      <span style={{ color: 'var(--amber-800)', fontWeight: 500 }}>{locked.join(', ')}</span>
                     </div>
                   );
                 })}
@@ -1435,7 +1435,7 @@ export default function ReferralBonusesPage() {
               </button>
               <button
                 className="rb-btn"
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                style={{ background: 'var(--red-500)', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
                 onClick={() => applyNdflImport('overwrite', ndflModal.matched, ndflModal.settingsMap)}
               >
                 Перезаписать всех
@@ -1471,7 +1471,7 @@ export default function ReferralBonusesPage() {
               </button>
               <button
                 className="rb-btn"
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                style={{ background: 'var(--red-500)', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
                 onClick={() => { setStep1Dirty(false); pendingNav.action(); setPendingNav(null); }}
               >
                 Уйти без сохранения
@@ -1484,7 +1484,7 @@ export default function ReferralBonusesPage() {
       {/* PDF parsing overlay */}
       {pdfParsing && (
         <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
-          <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
+          <div style={{ background: 'var(--n-0)', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
             <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
             <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Чтение PDF...</div>
           </div>
@@ -1555,7 +1555,7 @@ export default function ReferralBonusesPage() {
         };
 
         const fmt = (v) => v != null ? v.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—';
-        const COL = { border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left' };
+        const COL = { border: '1px solid var(--n-200)', padding: '6px 10px', textAlign: 'left' };
         const COLR = { ...COL, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
         // Числовые столбцы можно отключать (напр. НДФЛ за первую половину месяца) — отключённые не импортируются
         const NUM_FIELDS = [
@@ -1582,7 +1582,7 @@ export default function ReferralBonusesPage() {
 
             if (isFirst) {
               tableRows.push(
-                <tr key={`sh-${i}`} style={{ background: '#f3f4f6', opacity: doctorSelected ? 1 : 0.5 }}>
+                <tr key={`sh-${i}`} style={{ background: 'var(--n-100)', opacity: doctorSelected ? 1 : 0.5 }}>
                   <td style={{ ...COL, textAlign: 'center' }}>
                     <input
                       type="checkbox"
@@ -1591,9 +1591,9 @@ export default function ReferralBonusesPage() {
                       style={{ accentColor: 'var(--rb-primary)', cursor: 'pointer' }}
                     />
                   </td>
-                  <td style={{ ...COL, fontWeight: 700, color: '#111827' }}>{doctor.name}</td>
-                  <td style={{ ...COL, color: '#374151', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfSubdivision || ''}>{pdfSubdivision}</td>
-                  <td style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>↕ итого</td>
+                  <td style={{ ...COL, fontWeight: 700, color: 'var(--n-900)' }}>{doctor.name}</td>
+                  <td style={{ ...COL, color: 'var(--n-800)', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfSubdivision || ''}>{pdfSubdivision}</td>
+                  <td style={{ ...COL, fontSize: 11, color: 'var(--n-600)', fontStyle: 'italic' }}>↕ итого</td>
                   <td style={{ ...COLR, ...dimCol('mainPayment') }}>{fmt(refMainPayment)}</td>
                   <td style={{ ...COLR, ...dimCol('advance') }}>{fmt(refAdvance)}</td>
                   <td style={{ ...COLR, ...dimCol('vacation') }}>{fmt(refVacation)}</td>
@@ -1611,18 +1611,18 @@ export default function ReferralBonusesPage() {
                 value={sv[field] !== undefined ? sv[field] : ''}
                 disabled={!doctorSelected}
                 onChange={ev => setSplitEditValues(prev => ({ ...prev, [i]: { ...(prev[i] || {}), [field]: ev.target.value } }))}
-                style={{ width: 98, padding: '3px 6px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 3, textAlign: 'right', background: doctorSelected ? '#fff' : '#f3f4f6', color: doctorSelected ? '#111827' : '#9ca3af', outline: 'none' }}
+                style={{ width: 98, padding: '3px 6px', fontSize: 12, border: '1px solid var(--n-300)', borderRadius: 3, textAlign: 'right', background: doctorSelected ? '#fff' : '#f3f4f6', color: doctorSelected ? '#111827' : '#9ca3af', outline: 'none' }}
               />
             );
             tableRows.push(
-              <tr key={i} style={{ background: '#fafafa', opacity: doctorSelected ? 1 : 0.5 }}>
+              <tr key={i} style={{ background: 'var(--n-50)', opacity: doctorSelected ? 1 : 0.5 }}>
                 <td style={COL} />
-                <td style={{ ...COL, paddingLeft: 22, color: '#4b5563', fontSize: 11 }}>↳ {doctor.name}</td>
+                <td style={{ ...COL, paddingLeft: 22, color: 'var(--n-700)', fontSize: 11 }}>↳ {doctor.name}</td>
                 <td style={COL} />
                 <td style={COL}>
                   {clinicId
                     ? <span style={{ background: getClinicColor(clinicId), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{cliName}</span>
-                    : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Общий</span>}
+                    : <span style={{ color: 'var(--n-500)', fontStyle: 'italic' }}>Общий</span>}
                 </td>
                 <td style={{ ...COL, textAlign: 'right', ...dimCol('mainPayment') }}>{mkInput('mainPayment', refMainPayment)}</td>
                 <td style={{ ...COL, textAlign: 'right', ...dimCol('advance') }}>{mkInput('advance', refAdvance)}</td>
@@ -1638,9 +1638,9 @@ export default function ReferralBonusesPage() {
                 return <span style={{ color: r < -0.005 ? '#dc2626' : r > 0.005 ? '#374151' : '#9ca3af', fontWeight: r !== 0 ? 600 : 400 }}>{fmt(r)}</span>;
               };
               tableRows.push(
-                <tr key={`rem-${i}`} style={{ background: '#f9fafb', borderBottom: '2px solid #d1d5db' }}>
+                <tr key={`rem-${i}`} style={{ background: 'var(--n-50)', borderBottom: '2px solid var(--n-300)' }}>
                   <td style={COL} />
-                  <td colSpan={2} style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>Остаток → пустые поля</td>
+                  <td colSpan={2} style={{ ...COL, fontSize: 11, color: 'var(--n-600)', fontStyle: 'italic' }}>Остаток → пустые поля</td>
                   <td style={COL} />
                   <td style={{ ...COLR, fontSize: 11, ...dimCol('mainPayment') }}>{remStyle('mainPayment')}</td>
                   <td style={{ ...COLR, fontSize: 11, ...dimCol('advance') }}>{remStyle('advance')}</td>
@@ -1671,7 +1671,7 @@ export default function ReferralBonusesPage() {
                 <td style={COL}>
                   {clinicId
                     ? <span style={{ background: getClinicColor(clinicId), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{clinicName}</span>
-                    : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>{subdivisionResolved ? 'Общий' : '—'}</span>}
+                    : <span style={{ color: 'var(--n-500)', fontStyle: 'italic' }}>{subdivisionResolved ? 'Общий' : '—'}</span>}
                 </td>
                 <td style={{ ...COLR, ...dimCol('mainPayment') }}>{mainPayment != null ? fmt(mainPayment) : <span style={{ opacity: 0.35 }}>—</span>}</td>
                 <td style={{ ...COLR, ...dimCol('advance') }}>{advance    != null ? fmt(advance)    : <span style={{ opacity: 0.35 }}>—</span>}</td>
@@ -1692,13 +1692,13 @@ export default function ReferralBonusesPage() {
               <div className="rb-modal-body" style={{ padding: '12px 18px' }}>
 
                 {/* Stats */}
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: '0 14px' }}>
-                  <span>Найдено: <b style={{ color: '#111827' }}>{normalCount}</b> сотр.</span>
-                  {splitDoctorCount > 0 && <span style={{ color: '#374151', fontWeight: 600 }}>Разделить вручную: <b>{splitDoctorCount}</b></span>}
-                  {pdfPreviewModal.unmatchedNames.length > 0 && <span style={{ color: '#92400e' }}>Не найдено: <b>{pdfPreviewModal.unmatchedNames.length}</b></span>}
+                <div style={{ fontSize: 12, color: 'var(--n-600)', marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: '0 14px' }}>
+                  <span>Найдено: <b style={{ color: 'var(--n-900)' }}>{normalCount}</b> сотр.</span>
+                  {splitDoctorCount > 0 && <span style={{ color: 'var(--n-800)', fontWeight: 600 }}>Разделить вручную: <b>{splitDoctorCount}</b></span>}
+                  {pdfPreviewModal.unmatchedNames.length > 0 && <span style={{ color: 'var(--amber-800)' }}>Не найдено: <b>{pdfPreviewModal.unmatchedNames.length}</b></span>}
                   {pdfPreviewModal.noSubdivision.length > 0 && <span>Без Подразд.: <b>{pdfPreviewModal.noSubdivision.length}</b></span>}
                   {NUM_FIELDS.some(f => !pdfEnabledCols[f.key]) && (
-                    <span style={{ color: '#92400e' }}>Не импортируются: <b>{NUM_FIELDS.filter(f => !pdfEnabledCols[f.key]).map(f => f.label).join(', ')}</b></span>
+                    <span style={{ color: 'var(--amber-800)' }}>Не импортируются: <b>{NUM_FIELDS.filter(f => !pdfEnabledCols[f.key]).map(f => f.label).join(', ')}</b></span>
                   )}
                 </div>
 
@@ -1736,7 +1736,7 @@ export default function ReferralBonusesPage() {
                     placeholder="Поиск по сотруднику или подразделению..."
                     value={pdfModalSearch}
                     onChange={e => setPdfModalSearch(e.target.value)}
-                    style={{ flex: 1, minWidth: 220, padding: '6px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', color: '#111827', background: '#fff', boxSizing: 'border-box' }}
+                    style={{ flex: 1, minWidth: 220, padding: '6px 10px', fontSize: 12, border: '1px solid var(--n-300)', borderRadius: 6, outline: 'none', color: 'var(--n-900)', background: 'var(--n-0)', boxSizing: 'border-box' }}
                   />
                   <select
                     value={pdfClinicFilter}
@@ -1751,7 +1751,7 @@ export default function ReferralBonusesPage() {
                         ));
                       }
                     }}
-                    style={{ width: 220, padding: '6px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', color: '#374151', background: '#fff' }}
+                    style={{ width: 220, padding: '6px 10px', fontSize: 12, border: '1px solid var(--n-300)', borderRadius: 6, outline: 'none', color: 'var(--n-800)', background: 'var(--n-0)' }}
                     title="Фильтр по клинике"
                   >
                     <option value="">Все клиники</option>
@@ -1762,22 +1762,22 @@ export default function ReferralBonusesPage() {
                 </div>
 
                 {/* Table */}
-                <div style={{ overflowX: 'auto', maxHeight: 430, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+                <div style={{ overflowX: 'auto', maxHeight: 430, overflowY: 'auto', border: '1px solid var(--n-200)', borderRadius: 6 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
-                      <tr style={{ background: '#f9fafb', position: 'sticky', top: 0, zIndex: 1 }}>
+                      <tr style={{ background: 'var(--n-50)', position: 'sticky', top: 0, zIndex: 1 }}>
                         {[
                           ['',                34],
                           ['Сотрудник',     200],
                           ['Подразд. (1С)', 170],
                           ['Клиника',        90],
                         ].map(([h, w]) => (
-                          <th key={h} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap', fontSize: 11, border: '1px solid #e5e7eb', minWidth: w }}>{h}</th>
+                          <th key={h} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--n-600)', whiteSpace: 'nowrap', fontSize: 11, border: '1px solid var(--n-200)', minWidth: w }}>{h}</th>
                         ))}
                         {NUM_FIELDS.map(({ key, label }) => {
                           const on = pdfEnabledCols[key];
                           return (
-                            <th key={key} style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: on ? '#6b7280' : '#c4c9d1', whiteSpace: 'nowrap', fontSize: 11, border: '1px solid #e5e7eb', minWidth: 110 }}>
+                            <th key={key} style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: on ? '#6b7280' : '#c4c9d1', whiteSpace: 'nowrap', fontSize: 11, border: '1px solid var(--n-200)', minWidth: 110 }}>
                               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', justifyContent: 'flex-end', userSelect: 'none' }} title={on ? 'Не импортировать этот столбец' : 'Импортировать этот столбец'}>
                                 <input type="checkbox" checked={on} onChange={() => toggleCol(key)} style={{ accentColor: 'var(--rb-primary)', cursor: 'pointer' }} />
                                 <span style={{ textDecoration: on ? 'none' : 'line-through' }}>{label}</span>
@@ -1790,20 +1790,20 @@ export default function ReferralBonusesPage() {
                     <tbody>
                       {tableRows.length > 0
                         ? tableRows
-                        : <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>Ничего не найдено</td></tr>}
+                        : <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: 'var(--n-500)' }}>Ничего не найдено</td></tr>}
                     </tbody>
                   </table>
                 </div>
 
                 {/* Warnings */}
                 {pdfPreviewModal.unmatchedNames.length > 0 && (
-                  <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', marginBottom: 3 }}>
+                  <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--amber-50)', border: '1px solid var(--amber-300)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber-800)', marginBottom: 3 }}>
                       Не найдено в списке сотрудников ({pdfPreviewModal.unmatchedNames.length}):
                     </div>
                     <div style={{
                       fontSize: 12,
-                      color: '#78350f',
+                      color: 'var(--amber-800)',
                       lineHeight: 1.6,
                       ...(!pdfUnmatchedExpanded ? {
                         display: '-webkit-box',
@@ -1817,20 +1817,20 @@ export default function ReferralBonusesPage() {
                     <button
                       type="button"
                       onClick={() => setPdfUnmatchedExpanded(v => !v)}
-                      style={{ marginTop: 5, padding: 0, border: 'none', background: 'transparent', color: '#92400e', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                      style={{ marginTop: 5, padding: 0, border: 'none', background: 'transparent', color: 'var(--amber-800)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
                     >
                       {pdfUnmatchedExpanded ? 'Свернуть' : 'Показать полностью'}
                     </button>
                   </div>
                 )}
                 {pdfPreviewModal.noSubdivision.length > 0 && (
-                  <div style={{ marginTop: 8, padding: '8px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 3 }}>
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--n-50)', border: '1px solid var(--n-200)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--n-800)', marginBottom: 3 }}>
                       Подразделение (1С) не настроено ({pdfPreviewModal.noSubdivision.length}) — данные запишутся в «Общий» тариф:
                     </div>
                     <div style={{
                       fontSize: 12,
-                      color: '#6b7280',
+                      color: 'var(--n-600)',
                       lineHeight: 1.6,
                       ...(!pdfSubdivisionExpanded ? {
                         display: '-webkit-box',
@@ -1844,7 +1844,7 @@ export default function ReferralBonusesPage() {
                     <button
                       type="button"
                       onClick={() => setPdfSubdivisionExpanded(v => !v)}
-                      style={{ marginTop: 5, padding: 0, border: 'none', background: 'transparent', color: '#4b5563', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                      style={{ marginTop: 5, padding: 0, border: 'none', background: 'transparent', color: 'var(--n-700)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
                     >
                       {pdfSubdivisionExpanded ? 'Свернуть' : 'Показать полностью'}
                     </button>
@@ -1877,7 +1877,7 @@ export default function ReferralBonusesPage() {
                 <button
                   className="rb-btn"
                   disabled={selectedDoctorCount === 0}
-                  style={{ background: '#1f2937', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: 8, fontWeight: 600, cursor: selectedDoctorCount ? 'pointer' : 'not-allowed', fontSize: 13, opacity: selectedDoctorCount ? 1 : 0.45 }}
+                  style={{ background: 'var(--surface-inverse)', color: 'var(--text-on-inverse)', border: 'none', padding: '8px 22px', borderRadius: 8, fontWeight: 600, cursor: selectedDoctorCount ? 'pointer' : 'not-allowed', fontSize: 13, opacity: selectedDoctorCount ? 1 : 0.45 }}
                   onClick={confirmPdfImport}
                 >
                   Применить ({selectedDoctorCount})
@@ -1891,7 +1891,7 @@ export default function ReferralBonusesPage() {
       {/* PDF import loading overlay */}
       {pdfImporting && (
         <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
-          <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
+          <div style={{ background: 'var(--n-0)', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
             <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
             <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Импорт расчётных листков...</div>
           </div>
@@ -1901,7 +1901,7 @@ export default function ReferralBonusesPage() {
       {/* НДФЛ import loading overlay */}
       {ndflImporting && (
         <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
-          <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
+          <div style={{ background: 'var(--n-0)', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
             <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
             <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Импорт НДФЛ...</div>
           </div>
@@ -2075,7 +2075,7 @@ function DoctorsList({
               title="По подразделениям"
               style={{
                 width: 26, height: 26, borderRadius: 6, border: 'none',
-                background: '#64748b', color: '#fff', cursor: 'pointer',
+                background: 'var(--n-600)', color: '#fff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
@@ -2105,7 +2105,7 @@ function DoctorsList({
             <button
               onClick={onGlobalReset}
               title="Сбросить"
-              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: 'var(--red-500)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="15" height="15">
                 <polyline points="1 4 1 10 7 10"/>
@@ -2129,7 +2129,7 @@ function DoctorsList({
             <button
               onClick={() => importFileRef.current?.click()}
               title="Импорт зарплат (Excel)"
-              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: '#16a34a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: 'var(--green-600)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="15" height="15">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -2142,7 +2142,7 @@ function DoctorsList({
             <button
               onClick={() => importPdfFileRef.current?.click()}
               title="Импорт расчётных листков (PDF)"
-              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: '#7c3aed', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: 'var(--violet-600)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="15" height="15">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -2177,7 +2177,7 @@ function DoctorsList({
             </button>
             <button
               title="Сбросить выбор"
-              style={{ flexShrink: 0, width: 30, height: 30, padding: 0, border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rb-text-secondary)' }}
+              style={{ flexShrink: 0, width: 30, height: 30, padding: 0, border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: 'var(--n-0)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rb-text-secondary)' }}
               onClick={clearBulk}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">

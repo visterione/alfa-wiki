@@ -28,7 +28,14 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; background: var(--dc-bg); color: var(--dc-text); }
 input, select, textarea, button { font-family: inherit; }
-#doctors-app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+/* Вики-страница отдаёт под контент всю рабочую область (см.
+   .content-wrapper:has(.page-view) в Layout.css), и прежний лимит в 1200 px
+   оставлял по краям на 1920 почти по 300 px пустоты, а на 2560 — по 600.
+   padding остаётся ради открытия файла напрямую, без вики. */
+#doctors-app { max-width: none; margin: 0; padding: 20px; }
+/* Внутри вики поля уже даёт сама страница: 24 px обёртка и 32 px .page-content.
+   Свои снимаем, иначе складываются втрое. */
+.page-content #doctors-app { padding: 0; }
 
 .dc-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
 .dc-header h1 { font-size: 24px; font-weight: 700; flex: 1; min-width: 200px; display: flex; align-items: center; gap: 10px; }
@@ -69,10 +76,14 @@ input, select, textarea, button { font-family: inherit; }
 
 .dc-cards { display: flex; flex-direction: column; gap: 16px; }
 /* Compact two-column grid */
-.dc-cards.compact { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* Раньше было жёстко две колонки: при ширине приложения в 1200 px это давало
+   карточки по 590 px. Теперь ширина не ограничена, и две колонки растянулись бы
+   до 1200 каждая, поэтому колонок столько, сколько влезает по 560 px. */
+.dc-cards.compact { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 16px; }
 .dc-cards.compact .dc-notes-content { max-height: 60px; }
 .dc-cards.compact .dc-notes-content.expanded { max-height: 2000px; }
-@media (max-width: 900px) { .dc-cards.compact { grid-template-columns: 1fr; } }
+/* Отдельного правила для узкого экрана больше не нужно: auto-fill сам сходится
+   в одну колонку, когда на две не хватает 560 px. */
 
 /* Compact view: smaller fonts and tighter spacing */
 .dc-cards.compact .dc-card-top { padding: 8px 12px; }
@@ -126,7 +137,10 @@ input, select, textarea, button { font-family: inherit; }
 .dc-card-body { padding: 16px; border-top: 1px solid var(--dc-border); }
 .dc-tab-content { display: none; }
 .dc-tab-content.active { display: block; }
-.dc-notes { font-size: 13px; color: var(--dc-text-secondary); line-height: 1.6; margin-bottom: 12px; }
+/* Заметки — сплошной текст, и во всю ширину карточки на широком мониторе строка
+   получается на две сотни символов. Ограничиваем колонку, остальное содержимое
+   карточки (таблицы, таймлайны) ширину по-прежнему использует целиком. */
+.dc-notes { font-size: 13px; color: var(--dc-text-secondary); line-height: 1.6; margin-bottom: 12px; max-width: 95ch; }
 .dc-notes p { margin: 0 0 8px 0; }
 .dc-notes ul, .dc-notes ol { margin: 0 0 8px 20px; }
 
@@ -153,7 +167,19 @@ input, select, textarea, button { font-family: inherit; }
 .dc-timeline-busy { position: absolute; height: 100%; background: #ffcdd2; border: 2px solid #e57373; border-radius: 4px; z-index: 10; cursor: pointer; }
 
 /* Calendar View */
-.dc-calendar-view { display: flex; flex-direction: column; gap: 10px; }
+/* Ширина ограничена намеренно: у .dc-calendar-day стоит aspect-ratio: 1, и на
+   карточке во всю ширину экрана клетки календаря вырастали в квадраты по 300 px.
+   520 px дают клетку около 66 px — размер обычного календаря. */
+.dc-calendar-view { display: flex; flex-direction: column; gap: 10px; max-width: 520px; }
+
+/* Расписание: календарь слева, таймлайн выбранного дня справа. Раскладка
+   включается по ширине окна, а не карточки: в компактном режиме карточек две
+   и больше в ряд, там места на две колонки нет — ниже это отменяется. */
+.dc-schedule-container { display: grid; gap: 16px; align-items: start; }
+@media (min-width: 1300px) {
+  .dc-schedule-container { grid-template-columns: 520px minmax(0, 1fr); }
+  .dc-cards.compact .dc-schedule-container { grid-template-columns: minmax(0, 1fr); }
+}
 .dc-calendar-header { display: flex; justify-content: center; align-items: center; padding: 12px; background: linear-gradient(135deg, var(--dc-primary) 0%, #1d4ed8 100%); border-radius: 8px 8px 0 0; box-shadow: 0 2px 4px rgba(37,99,235,0.1); }
 .dc-calendar-header h4 { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .dc-calendar-title { font-size: 15px; font-weight: 600; color: white; display: flex; align-items: center; gap: 8px; }
@@ -189,7 +215,13 @@ input, select, textarea, button { font-family: inherit; }
 .dc-cancellation-block-desc { font-size: 12px; color: #475569; }
 
 /* Day Schedule View */
-.dc-day-schedule-view { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; border-top: 2px solid var(--dc-border); margin-top: 16px; }
+.dc-day-schedule-view { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; border-top: 2px solid var(--dc-border); }
+/* Во второй колонке линия сверху лишняя — она отделяла таймлайн от календаря,
+   когда он стоял под ним. В компактном режиме колонка одна, и линия нужна. */
+@media (min-width: 1300px) {
+  .dc-day-schedule-view { border-top: none; padding-top: 0; }
+  .dc-cards.compact .dc-day-schedule-view { border-top: 2px solid var(--dc-border); padding-top: 16px; }
+}
 .dc-day-schedule-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; background: transparent; border: none; }
 .dc-day-schedule-header h4 { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .dc-day-title { font-size: 14px; font-weight: 600; color: var(--dc-text); }
@@ -1070,14 +1102,16 @@ window.dcApp = (function() {
                 '</div>' +
                 '<div class="dc-calendar-grid" id="calendar-grid-' + card.id + '"></div>' +
                 '<div id="calendar-legend-' + card.id + '"></div>' +
-                // Day Schedule View (shows after day click, now inside calendar view)
-                '<div class="dc-day-schedule-view" id="day-schedule-view-' + card.id + '" style="display: none;">' +
-                  '<div class="dc-day-schedule-header">' +
-                    '<span class="dc-day-title" id="day-title-' + card.id + '"></span>' +
-                    '<button class="dc-close-schedule-btn" onclick="dcApp.backToCalendar(\'' + card.id + '\')" title="Закрыть расписание">✕</button>' +
-                  '</div>' +
-                  '<div id="day-schedule-content-' + card.id + '"></div>' +
+              '</div>' +
+              // Таймлайн выбранного дня — сосед календаря, а не его потомок:
+              // на широкой карточке они встают в две колонки (сетка
+              // .dc-schedule-container), на узкой — друг под другом.
+              '<div class="dc-day-schedule-view" id="day-schedule-view-' + card.id + '" style="display: none;">' +
+                '<div class="dc-day-schedule-header">' +
+                  '<span class="dc-day-title" id="day-title-' + card.id + '"></span>' +
+                  '<button class="dc-close-schedule-btn" onclick="dcApp.backToCalendar(\'' + card.id + '\')" title="Закрыть расписание">✕</button>' +
                 '</div>' +
+                '<div id="day-schedule-content-' + card.id + '"></div>' +
               '</div>' +
             '</div>' +
           '</div>' +

@@ -7,7 +7,7 @@
   width: 100%;
   height: 100%;
   position: relative;
-  background: #f8f8f8;
+  background: var(--n-50);
 }
 
 /* Top row: corner + col-group-panel */
@@ -20,9 +20,9 @@
 /* Corner square (top-left) */
 .sg-corner {
   flex-shrink: 0;
-  background: #f0f0f0;
-  border-right: 1px solid #d0d0d0;
-  border-bottom: 1px solid #d0d0d0;
+  background: var(--n-150);
+  border-right: 1px solid var(--n-300);
+  border-bottom: 1px solid var(--n-300);
 }
 
 /* Main row: row-group-panel + univer-container */
@@ -39,8 +39,8 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: #f0f0f0;
-  border-right: 1px solid #d0d0d0;
+  background: var(--n-150);
+  border-right: 1px solid var(--n-300);
   user-select: none;
   overflow: hidden;
   position: relative;
@@ -53,7 +53,7 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  border-bottom: 1px solid #d0d0d0;
+  border-bottom: 1px solid var(--n-300);
   flex-shrink: 0;
   padding: 0 2px;
 }
@@ -71,8 +71,8 @@
   position: relative;
   display: flex;
   flex-direction: row;
-  background: #f0f0f0;
-  border-bottom: 1px solid #d0d0d0;
+  background: var(--n-150);
+  border-bottom: 1px solid var(--n-300);
   user-select: none;
   overflow: hidden;
   flex-shrink: 0;
@@ -86,7 +86,7 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  border-right: 1px solid #d0d0d0;
+  border-right: 1px solid var(--n-300);
   padding: 2px 0;
 }
 
@@ -104,12 +104,12 @@
 .sg-level-btn {
   width: 14px;
   height: 14px;
-  border: 1px solid #aaa;
+  border: 1px solid var(--n-400);
   border-radius: 2px;
-  background: #fff;
+  background: var(--n-0);
   font-size: 9px;
   font-weight: 600;
-  color: #333;
+  color: var(--n-800);
   cursor: pointer;
   padding: 0;
   line-height: 1;
@@ -121,9 +121,9 @@
 }
 
 .sg-level-btn:hover {
-  background: #0066cc;
+  background: var(--accent-600);
   color: #fff;
-  border-color: #0066cc;
+  border-color: var(--accent-600);
 }
 
 /* ─── Group bar primitives ────────────────────────────────────────────── */
@@ -139,7 +139,7 @@
   position: absolute;
   top: 0;
   width: 1px;
-  background: #666;
+  background: var(--n-600);
 }
 
 /* Horizontal line */
@@ -147,44 +147,44 @@
   position: absolute;
   left: 0;
   height: 1px;
-  background: #666;
+  background: var(--n-600);
 }
 
 /* Horizontal end-cap at the bottom of a row-group bar */
 .sg-cap-h {
   position: absolute;
   height: 1px;
-  background: #666;
+  background: var(--n-600);
 }
 
 /* Vertical end-cap at the right of a col-group bar */
 .sg-cap-v {
   position: absolute;
   width: 1px;
-  background: #666;
+  background: var(--n-600);
 }
 
 /* Short tick showing where collapsed rows/cols were */
 .sg-tick-h {
   position: absolute;
   height: 1px;
-  background: #999;
+  background: var(--n-500);
 }
 
 .sg-tick-v {
   position: absolute;
   width: 1px;
-  background: #999;
+  background: var(--n-500);
 }
 
 /* ─── Toggle buttons [+] / [−] ────────────────────────────────────────── */
 
 .sg-btn {
   position: absolute;
-  border: 1px solid #888;
+  border: 1px solid var(--n-500);
   border-radius: 2px;
-  background: #fff;
-  color: #333;
+  background: var(--n-0);
+  color: var(--n-800);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -198,17 +198,17 @@
 }
 
 .sg-btn:hover {
-  background: #0066cc;
+  background: var(--accent-600);
   color: #fff;
-  border-color: #0066cc;
+  border-color: var(--accent-600);
 }
 
 .sg-btn-collapse {
-  color: #222;
+  color: var(--n-900);
 }
 
 .sg-btn-expand {
-  color: #0066cc;
+  color: var(--accent-600);
 }
 
 /* ─── Right-click context menu ─────────────────────────────────────────── */
@@ -216,8 +216,8 @@
 .sg-ctx-menu {
   position: absolute;
   z-index: 9999;
-  background: #fff;
-  border: 1px solid #d0d0d0;
+  background: var(--n-0);
+  border: 1px solid var(--n-300);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.18);
   padding: 4px 0;
@@ -231,7 +231,7 @@
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #888;
+  color: var(--n-500);
   letter-spacing: 0.05em;
 }
 
@@ -243,18 +243,18 @@
   border: none;
   text-align: left;
   cursor: pointer;
-  color: #222;
+  color: var(--n-900);
   font-size: 13px;
   transition: background 0.1s;
 }
 
 .sg-ctx-item:hover {
-  background: #f0f4ff;
-  color: #0066cc;
+  background: var(--accent-50);
+  color: var(--accent-600);
 }
 
 .sg-ctx-divider {
   height: 1px;
-  background: #e8e8e8;
+  background: var(--n-200);
   margin: 4px 0;
 }

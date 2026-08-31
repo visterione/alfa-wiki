@@ -45,13 +45,13 @@ export function UnderlineField({ label, value, minWidth = 140 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: minWidth || undefined, width: minWidth ? undefined : '100%' }}>
       <div style={{
-        borderBottom: '1px solid #000', width: '100%',
+        borderBottom: '1px solid var(--n-900)', width: '100%',
         minHeight: 22, paddingBottom: 2, textAlign: 'center',
         fontSize: 13, fontFamily: 'Times New Roman, serif',
       }}>
         {value}
       </div>
-      <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>
+      <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: 'var(--n-900)', marginTop: 2 }}>
         ({label})
       </span>
     </div>
@@ -104,8 +104,8 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
   const lastDay = new Date(year, month, 0).getDate();
   const isNormalized = variant === 'normalized';
   // Нормированные часы — красным; в нормированном табеле они идут верхней строкой
-  const normInputStyle = { color: '#dc2626', fontWeight: 600 };
-  const normCellStyle  = { color: '#dc2626' };
+  const normInputStyle = { color: 'var(--red-600)', fontWeight: 600 };
+  const normCellStyle  = { color: 'var(--red-600)' };
 
   // Half-period edit locks. Bypassed by admins or holders of bypassPeriodLock.
   const canBypassFreeze = isAdmin || canEditFrozen;
@@ -213,7 +213,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
   }, [picker]);
 
   return (
-    <div style={{ overflowX: 'auto', position: 'relative', borderRight: '1px solid #000' }}>
+    <div style={{ overflowX: 'auto', position: 'relative', borderRight: '1px solid var(--n-900)' }}>
 
       {picker && (
         <div className="tabel-picker" style={{
@@ -314,7 +314,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
           {selectedDoctors.length === 0 && (
             <tr>
               <td colSpan={dayColCount + 15} className="tt-td"
-                style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>
+                style={{ textAlign: 'center', padding: 24, color: 'var(--n-500)', fontSize: 13 }}>
                 Сотрудники не выбраны
               </td>
             </tr>
@@ -343,8 +343,8 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                   <td className="tt-td tt-center" rowSpan={4}>{idx + 1}</td>
                   <td className="tt-td tt-name" rowSpan={4}>
                     <div style={{ lineHeight: 1.3 }}>{displayName}</div>
-                    {role && <div style={{ fontSize: 10, color: '#555', marginTop: 2, lineHeight: 1.2 }}>{role}</div>}
-                    {doc.categoryLabel && <div style={{ fontSize: 10, color: '#555', marginTop: 2, lineHeight: 1.2 }}>{doc.categoryLabel}</div>}
+                    {role && <div style={{ fontSize: 10, color: 'var(--n-700)', marginTop: 2, lineHeight: 1.2 }}>{role}</div>}
+                    {doc.categoryLabel && <div style={{ fontSize: 10, color: 'var(--n-700)', marginTop: 2, lineHeight: 1.2 }}>{doc.categoryLabel}</div>}
                   </td>
                   <td className="tt-td tt-center" rowSpan={4}>{doc.tabelNumber || ''}</td>
 

@@ -3,8 +3,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0a3d62 0%, #1e3799 50%, #4a148c 100%);
-  padding: 20px;
+  background: linear-gradient(150deg, #050b25 0%, #14225c 45%, #35146b 100%);
+  padding: 24px;
   position: relative;
   overflow: hidden;
 }
@@ -15,8 +15,8 @@
   content: '';
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.5;
+  filter: blur(70px);
+  opacity: 0.45;
   will-change: transform;
   pointer-events: none;
 }
@@ -67,8 +67,8 @@
 .lava-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.4;
+  filter: blur(80px);
+  opacity: 0.35;
   will-change: transform;
   pointer-events: none;
 }
@@ -147,173 +147,255 @@
 
 .login-container {
   width: 100%;
-  max-width: 420px;
+  max-width: 400px;
   position: relative;
   z-index: 1;
 }
 
 .login-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3),
-              0 0 1px rgba(0, 0, 0, 0.1);
-  padding: 48px 40px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  animation: cardSlideIn 0.5s ease-out;
+  position: relative;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border-radius: 28px;
+  box-shadow: 0 32px 80px rgba(4, 8, 32, 0.45),
+              0 2px 8px rgba(4, 8, 32, 0.12);
+  padding: 40px 32px 36px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  animation: cardSlideIn 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Тонкий блик по верхней кромке: именно он читается как «стекло», без него
+   карточка на размытом фоне выглядит плоской заливкой. */
+.login-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 45%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 @keyframes cardSlideIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(24px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 .login-header {
   text-align: center;
-  margin-bottom: 36px;
-}
-
-.login-logo {
-  margin-bottom: 20px;
+  margin-bottom: 32px;
 }
 
 .login-logo-icon {
-  width: 72px;
-  height: 72px;
-  margin: 0 auto;
-  background: #007AFF;
-  border-radius: 18px;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 18px;
+  background: linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%);
+  border-radius: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  box-shadow: 0 10px 30px rgba(0, 122, 255, 0.4),
-              0 0 0 1px rgba(255, 255, 255, 0.1);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
+  box-shadow: 0 12px 28px rgba(0, 122, 255, 0.35);
+  transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.login-logo-icon img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
 }
 
 .login-logo-icon:hover {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 15px 40px rgba(0, 122, 255, 0.5);
+  transform: translateY(-3px) rotate(-3deg);
 }
 
 .login-header h1 {
-  font-size: 32px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  background: linear-gradient(135deg, #1D1D1F 0%, #007AFF 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 27px;
+  font-weight: 650;
+  margin: 0;
+  color: var(--text-primary);
   letter-spacing: -0.5px;
 }
 
-.login-header p {
-  color: var(--text-secondary);
-  font-size: 15px;
-  font-weight: 500;
+/* Окно, в котором едет лента шагов.
+   Отрицательные поля с равной внутренней отбивкой гасят друг друга, так что на
+   раскладку эти числа не влияют вовсе — они лишь отодвигают край обрезки.
+   Отбивка должна перекрывать самую размашистую тень внутри окна (свечение под
+   кнопкой «Войти» на наведении: 8px вниз + 20px размытия), иначе overflow
+   срезает её ровной линией и по краю кнопки идёт резкий скачок цвета.
+   По бокам отбивка ровно по радиусу размытия и ни пикселем больше: там тень
+   уже прозрачна, а лишняя ширина только шире приоткрывает соседний шаг,
+   который проезжает мимо. */
+.login-viewport {
+  box-sizing: content-box;
+  overflow: hidden;
+  margin: -32px -20px;
+  padding: 32px 20px;
+  transition: height 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.login-track {
+  display: flex;
+  align-items: flex-start;
+  width: 200%;
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.login-track.step-1 {
+  transform: translateX(-50%);
+}
+
+.login-step {
+  flex: 0 0 50%;
+  width: 50%;
+  /* Уехавший шаг гасим, иначе он просвечивает краем во время сдвига. */
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.login-track.step-0 .login-step:first-child,
+.login-track.step-1 .login-step:last-child {
+  opacity: 1;
 }
 
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
-.password-input {
+.login-form .form-group {
+  margin: 0;
+}
+
+.login-form .form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Поле с иконкой */
+.login-field {
   position: relative;
 }
 
-.password-input .input {
+.login-field-icon {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+  transition: color 0.25s ease;
+}
+
+.login-field:focus-within .login-field-icon {
+  color: var(--primary);
+}
+
+.login-form .input {
+  height: 52px;
+  padding-left: 44px;
+  font-size: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: rgba(118, 118, 128, 0.13);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.login-form .input.has-action {
   padding-right: 48px;
+}
+
+.login-form .input:focus {
+  border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.14);
 }
 
 .password-toggle {
   position: absolute;
-  right: 4px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: none;
   border: none;
+  border-radius: 10px;
   color: var(--text-tertiary);
   cursor: pointer;
-  transition: color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .password-toggle:hover {
   color: var(--text-secondary);
+  background: rgba(118, 118, 128, 0.12);
 }
 
-.login-form .input {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 2px solid var(--border-color);
-  height: 52px;
-  font-size: 16px;
-  background: #F5F5F7;
-}
-
-.login-form .input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
-  transform: translateY(-1px);
-  background: #FAFAFA;
-}
-
-.login-btn {
+.login-form .login-btn {
   width: 100%;
   height: 52px;
+  margin-top: 6px;
   font-size: 16px;
   font-weight: 600;
-  margin-top: 8px;
-  background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%);
   border: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+  box-shadow: 0 4px 14px rgba(10, 132, 255, 0.28);
+  transition: transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
+              box-shadow 0.25s ease, opacity 0.25s ease;
 }
 
-.login-btn:hover:not(:disabled) {
+.login-form .login-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 122, 255, 0.4);
+  box-shadow: 0 8px 20px rgba(10, 132, 255, 0.34);
 }
 
-.login-btn:active:not(:disabled) {
-  transform: translateY(0);
+.login-form .login-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
 }
 
-.login-footer {
-  text-align: center;
-  margin-top: 28px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 14px;
-  font-weight: 500;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.login-form .login-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
-/* 2FA Specific Styles */
+/* 2FA */
 .two-factor-info {
   text-align: center;
-  padding: 24px 0;
-  color: var(--text-secondary);
-  animation: fadeIn 0.5s ease;
+  padding-bottom: 4px;
 }
 
-.two-factor-info svg {
+.two-factor-badge {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
   color: var(--primary);
-  margin-bottom: 16px;
-  filter: drop-shadow(0 4px 8px rgba(0, 122, 255, 0.2));
-  animation: iconFloat 3s ease-in-out infinite;
+  background: rgba(0, 122, 255, 0.12);
+  animation: iconFloat 3.5s ease-in-out infinite;
 }
 
 @keyframes iconFloat {
@@ -321,26 +403,23 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-5px);
+    transform: translateY(-4px);
   }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.two-factor-info h2 {
+  margin: 0 0 6px;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
 }
 
 .two-factor-info p {
-  font-size: 15px;
-  line-height: 1.6;
   margin: 0;
-  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }
 
 /* Code input grid with 6 cells */
@@ -348,19 +427,18 @@
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
-  max-width: 360px;
-  margin: 0 auto;
 }
 
 .code-digit-input {
   width: 100%;
   aspect-ratio: 1;
-  font-size: 28px;
+  padding: 0;
+  font-size: 26px;
   font-weight: 600;
   text-align: center;
-  border: 2px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: var(--bg-primary);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: rgba(118, 118, 128, 0.13);
   color: var(--text-primary);
   transition: all 0.2s ease;
   outline: none;
@@ -369,8 +447,8 @@
 
 .code-digit-input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
-  transform: scale(1.05);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.14);
 }
 
 .code-digit-input:disabled {
@@ -381,7 +459,7 @@
 /* Success state - green */
 .code-input-grid.success .code-digit-input {
   border-color: #34C759;
-  background: rgba(52, 199, 89, 0.1);
+  background: rgba(52, 199, 89, 0.12);
   color: #34C759;
   animation: successPulse 0.5s ease;
 }
@@ -389,7 +467,7 @@
 /* Error state - red with shake */
 .code-input-grid.error .code-digit-input {
   border-color: #FF3B30;
-  background: rgba(255, 59, 48, 0.1);
+  background: rgba(255, 59, 48, 0.12);
   color: #FF3B30;
   animation: errorShake 0.5s ease;
 }
@@ -418,26 +496,45 @@
 .two-factor-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 2px;
 }
 
 .two-factor-actions .btn {
   width: 100%;
+  height: 46px;
   justify-content: center;
+  font-size: 14px;
   font-weight: 500;
+  border-radius: 14px;
+  color: var(--primary);
+  background: rgba(0, 122, 255, 0.08);
   transition: all 0.2s ease;
-  height: 44px;
 }
 
-.two-factor-actions .btn:hover:not(:disabled) {
-  background: rgba(0, 122, 255, 0.08);
+.two-factor-actions .btn.btn-ghost:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.16);
   transform: translateY(-1px);
+}
+
+.two-factor-actions .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.two-factor-actions .login-back-btn {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.two-factor-actions .login-back-btn:hover:not(:disabled) {
+  background: rgba(118, 118, 128, 0.12);
 }
 
 .form-hint {
   display: block;
-  margin-top: 6px;
+  margin-top: 10px;
+  text-align: center;
   font-size: 12px;
   color: var(--text-tertiary);
 }
@@ -449,91 +546,142 @@
 
 
 /* Dark Theme Support */
-@media (prefers-color-scheme: dark) {
-  .login-card {
-    background: rgba(28, 28, 30, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
+/* Тёмная тема. Раньше блок висел на @media (prefers-color-scheme), то есть
+   следовал за системой. Теперь тему выбирает человек, и тот же выбор
+   приезжает с телефона — системная настройка браузера тут ни при чём.
 
-  .login-header h1 {
-    background: linear-gradient(135deg, #F5F5F7 0%, #007AFF 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+   Цвета внутри намеренно записаны значениями, а не токенами рамп: они
+   уже подобраны под тёмный фон, и токен, который в светлой теме светлый,
+   здесь перевернулся бы и дал тёмное на тёмном. */
+:root[data-theme='dark'] .login-card {
+  background: rgba(28, 28, 30, 0.82);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6),
+              0 2px 8px rgba(0, 0, 0, 0.3);
+}
 
-  /* Тёмный фон инпутов — включая состояние autofill */
-  .login-form .input {
-    color-scheme: dark;
-    background: #2C2C2E !important;
-    color: #F5F5F7;
-    border-color: rgba(255, 255, 255, 0.15);
-  }
+:root[data-theme='dark'] .login-card::before {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%);
+}
 
-  .login-form .input:focus {
-    background: #3A3A3C !important;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
-  }
+:root[data-theme='dark'] .login-header h1 {
+  color: #F5F5F7;
+}
 
-  /* Перебиваем браузерный autofill (Chrome/Edge окрашивает поля своим цветом) */
-  .login-form .input:-webkit-autofill,
-  .login-form .input:-webkit-autofill:hover,
-  .login-form .input:-webkit-autofill:focus {
-    -webkit-box-shadow: 0 0 0 1000px #2C2C2E inset !important;
-    -webkit-text-fill-color: #F5F5F7 !important;
-    caret-color: #F5F5F7;
-    border-color: rgba(255, 255, 255, 0.15) !important;
-  }
+:root[data-theme='dark'] .two-factor-info h2 {
+  color: #F5F5F7;
+}
 
-  .code-digit-input {
-    color-scheme: dark;
-    background: #2C2C2E;
-    color: #F5F5F7;
-    border-color: rgba(255, 255, 255, 0.15);
-  }
+/* Тёмный фон инпутов — включая состояние autofill */
+:root[data-theme='dark'] .login-form .input {
+  color-scheme: dark;
+  background: rgba(118, 118, 128, 0.24) !important;
+  color: #F5F5F7;
+  border-color: rgba(255, 255, 255, 0.12);
+}
 
-  .code-digit-input:focus {
-    background: #3A3A3C;
-    border-color: var(--primary);
-  }
+:root[data-theme='dark'] .login-form .input:focus {
+  background: rgba(118, 118, 128, 0.36) !important;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.2);
+}
+
+/* Перебиваем браузерный autofill (Chrome/Edge окрашивает поля своим цветом) */
+:root[data-theme='dark'] .login-form .input:-webkit-autofill,
+:root[data-theme='dark'] .login-form .input:-webkit-autofill:hover,
+:root[data-theme='dark'] .login-form .input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #2C2C2E inset !important;
+  -webkit-text-fill-color: #F5F5F7 !important;
+  caret-color: #F5F5F7;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+:root[data-theme='dark'] .code-digit-input {
+  color-scheme: dark;
+  background: rgba(118, 118, 128, 0.24);
+  color: #F5F5F7;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme='dark'] .code-digit-input:focus {
+  background: rgba(118, 118, 128, 0.36);
+  border-color: var(--primary);
+}
+
+:root[data-theme='dark'] .password-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-theme='dark'] .two-factor-actions .login-back-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 
 /* Responsive */
 @media (max-width: 480px) {
+  .login-page {
+    padding: 16px;
+  }
+
   .login-card {
-    padding: 40px 32px;
-    border-radius: 20px;
+    padding: 32px 22px 28px;
+    border-radius: 24px;
   }
 
   .login-header h1 {
-    font-size: 26px;
+    font-size: 24px;
   }
 
   .login-logo-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+  }
+
+  .login-logo-icon img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .login-viewport {
+    margin: -32px -16px;
+    padding: 32px 16px;
   }
 
   .code-input-grid {
     gap: 6px;
-    max-width: 100%;
   }
 
   .code-digit-input {
-    font-size: 24px;
+    font-size: 22px;
     border-radius: 12px;
   }
 
   .login-form .input {
-    height: 48px;
-    font-size: 15px;
+    height: 50px;
+    font-size: 16px;
   }
 
-  .login-btn {
-    height: 48px;
+  .login-form .login-btn {
+    height: 50px;
     font-size: 15px;
+  }
+}
+
+/* Уважение к системной настройке: фоновая «лава» и слайд шагов — украшение,
+   при отключённой анимации они только мешают. */
+@media (prefers-reduced-motion: reduce) {
+  .login-page::before,
+  .login-page::after,
+  .lava-blob,
+  .two-factor-badge,
+  .login-card {
+    animation: none;
+  }
+
+  .login-viewport,
+  .login-track,
+  .login-step {
+    transition: none;
   }
 }

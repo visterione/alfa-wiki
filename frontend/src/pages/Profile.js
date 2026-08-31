@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { User, Lock, Camera, Save, Eye, EyeOff, Phone, Briefcase, FileText, Building2, Calendar, Monitor, Smartphone, LogOut, Stethoscope } from 'lucide-react';
+import { User, Lock, Camera, Save, Eye, EyeOff, Phone, Briefcase, FileText, Building2, Calendar, Monitor, Smartphone, LogOut, Stethoscope, Palette } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { auth, media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './Profile.css';
 import DoctorProfileTab from './DoctorProfileTab';
+import AppearanceTab from './AppearanceTab';
 
 function getPasswordStrength(password) {
   if (!password) return null;
@@ -258,6 +259,13 @@ export default function Profile() {
           <Lock size={16} />
           Безопасность
         </button>
+        <button
+          className={`profile-tab ${activeTab === 'appearance' ? 'active' : ''}`}
+          onClick={() => setActiveTab('appearance')}
+        >
+          <Palette size={16} />
+          Оформление
+        </button>
         {canViewDoctorTab && (
           <button
             className={`profile-tab ${activeTab === 'doctor' ? 'active' : ''}`}
@@ -272,6 +280,8 @@ export default function Profile() {
       <div className="profile-content">
 
         {activeTab === 'doctor' && <DoctorProfileTab isAdmin={Boolean(user?.isAdmin)} />}
+
+        {activeTab === 'appearance' && <AppearanceTab />}
 
         {/* Таб: Профиль */}
         {activeTab === 'profile' && (

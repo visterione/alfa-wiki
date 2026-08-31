@@ -63,7 +63,7 @@ function Toggle({ checked, indeterminate, onToggle }) {
   const knobLeft = isPartial ? 7 : checked ? 14 : 2;
   return (
     <div onClick={onToggle} style={{ width: 30, height: 17, borderRadius: 9, background: bg, position: 'relative', cursor: 'pointer', flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}>
-      <div style={{ position: 'absolute', top: 2, left: knobLeft, width: 13, height: 13, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
+      <div style={{ position: 'absolute', top: 2, left: knobLeft, width: 13, height: 13, borderRadius: '50%', background: 'var(--n-0)', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
     </div>
   );
 }
@@ -234,9 +234,9 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
 
   const fmt = n => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const thStyle  = { padding: '9px 8px', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap', background: '#f8fafc', border: '1px solid #e2e8f0' };
+  const thStyle  = { padding: '9px 8px', textAlign: 'center', fontWeight: 600, color: 'var(--n-700)', whiteSpace: 'nowrap', background: 'var(--n-50)', border: '1px solid var(--n-200)' };
   const thRStyle = { ...thStyle, textAlign: 'right' };
-  const tdStyle   = { padding: '7px 8px', color: '#334155', fontSize: 13, border: '1px solid #e2e8f0' };
+  const tdStyle   = { padding: '7px 8px', color: 'var(--n-800)', fontSize: 13, border: '1px solid var(--n-200)' };
   const tdNowrap  = { ...tdStyle, whiteSpace: 'nowrap' };
   const tdCenter  = { ...tdNowrap, textAlign: 'center' };
 
@@ -291,8 +291,8 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             const isChecked = selected.has(r.key);
             return (
               <tr key={r.key} onClick={() => toggle(r.key)}
-                style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isChecked ? '#f0f9ff' : '#fff', transition: 'background 0.1s' }}>
-                <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+                style={{ cursor: 'pointer', borderBottom: '1px solid var(--n-100)', background: isChecked ? '#f0f9ff' : '#fff', transition: 'background 0.1s' }}>
+                <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid var(--n-200)' }}>
                   <Toggle checked={isChecked} onToggle={e => { e.stopPropagation(); toggle(r.key); }} />
                 </td>
                 <td style={tdCenter}>{r.date || '—'}</td>
@@ -333,16 +333,16 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
     const groupAmt = buildDisplayRows(rows).filter(r => selected.has(r.key)).reduce((s, r) => s + r.amount, 0);
 
     return (
-      <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
+      <div style={{ border: '1px solid var(--n-200)', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--n-50)', cursor: 'pointer', userSelect: 'none' }}
           onClick={() => toggleDoctor(doctor.name)}>
           <Toggle checked={allIn} indeterminate={someIn && !allIn} onToggle={e => { e.stopPropagation(); toggleGroup(rows); }} />
-          <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: '#1e293b' }}>{doctor.name}</span>
-          <span style={{ fontSize: 12, color: '#64748b' }}>
+          <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: 'var(--n-800)' }}>{doctor.name}</span>
+          <span style={{ fontSize: 12, color: 'var(--n-600)' }}>
             {countIn} / {rows.length} выбрано
-            {groupAmt > 0 && <span style={{ marginLeft: 6, color: '#0369a1' }}>· {fmt(groupAmt)} ₽</span>}
+            {groupAmt > 0 && <span style={{ marginLeft: 6, color: 'var(--accent-900)' }}>· {fmt(groupAmt)} ₽</span>}
           </span>
-          <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>{isOpen ? '▲' : '▼'}</span>
+          <span style={{ fontSize: 11, color: 'var(--n-500)', marginLeft: 4 }}>{isOpen ? '▲' : '▼'}</span>
         </div>
         {isOpen && (
           <div style={{ overflowX: 'auto' }}>
@@ -365,57 +365,57 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
     return (
       <div ref={filterDropdownRef} style={{
         position: 'fixed', top: filterPos.top, left: filterPos.left,
-        zIndex: 9999, background: '#fff',
-        border: '1px solid #e2e8f0', borderRadius: 8,
+        zIndex: 9999, background: 'var(--n-0)',
+        border: '1px solid var(--n-200)', borderRadius: 8,
         boxShadow: '0 4px 24px rgba(0,0,0,0.14)',
         minWidth: f.type === 'dateRange' ? 200 : 250,
         maxHeight: 360, display: 'flex', flexDirection: 'column',
         fontFamily: 'inherit', fontSize: 13,
       }}>
         {/* Header */}
-        <div style={{ padding: '9px 12px 7px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontWeight: 600, color: '#1e293b', fontSize: 12 }}>{FILTER_LABELS[openFilter]}</span>
+        <div style={{ padding: '9px 12px 7px', borderBottom: '1px solid var(--n-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontWeight: 600, color: 'var(--n-800)', fontSize: 12 }}>{FILTER_LABELS[openFilter]}</span>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             {isFilterActive(openFilter) && (
               <button onClick={() => clearFilter(openFilter)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: 11, padding: '2px 5px', borderRadius: 4, fontFamily: 'inherit' }}>
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red-600)', fontSize: 11, padding: '2px 5px', borderRadius: 4, fontFamily: 'inherit' }}>
                 Сбросить
               </button>
             )}
             <button onClick={() => setOpenFilter(null)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 16, padding: '0 3px', lineHeight: 1 }}>×</button>
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n-500)', fontSize: 16, padding: '0 3px', lineHeight: 1 }}>×</button>
           </div>
         </div>
 
         {f.type === 'dateRange' ? (
           <div style={{ padding: '12px 14px' }}>
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>С</div>
+              <div style={{ fontSize: 11, color: 'var(--n-600)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>С</div>
               <input type="text" placeholder="ДД.ММ.ГГГГ" value={f.from}
                 onChange={e => setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], from: e.target.value } }))}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid var(--n-200)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
               />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>По</div>
+              <div style={{ fontSize: 11, color: 'var(--n-600)', marginBottom: 5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>По</div>
               <input type="text" placeholder="ДД.ММ.ГГГГ" value={f.to}
                 onChange={e => setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], to: e.target.value } }))}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid var(--n-200)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
               />
             </div>
           </div>
         ) : (
           <>
             {/* Search within options */}
-            <div style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ padding: '7px 10px', borderBottom: '1px solid var(--n-100)' }}>
               <input type="text" placeholder="Поиск..." value={filterSearch} autoFocus
                 onChange={e => setFilterSearch(e.target.value)}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', outline: 'none' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', border: '1px solid var(--n-200)', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', outline: 'none' }}
               />
             </div>
             {/* Select all */}
-            <div style={{ padding: '5px 10px', borderBottom: '1px solid #f1f5f9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: '#475569', userSelect: 'none' }}
+            <div style={{ padding: '5px 10px', borderBottom: '1px solid var(--n-100)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--n-700)', userSelect: 'none' }}
                 onClick={() => setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: prev[openFilter].selected === null ? new Set() : null } }))}>
                 <Toggle checked={f.selected === null} onToggle={e => { e.stopPropagation(); setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: prev[openFilter].selected === null ? new Set() : null } })); }} />
                 <span style={{ fontStyle: 'italic' }}>(Выбрать все)</span>
@@ -441,7 +441,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                 };
                 return (
                   <div key={v}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: '#334155', userSelect: 'none' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--n-800)', userSelect: 'none' }}
                     onClick={handleToggle}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = ''}
@@ -466,32 +466,32 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
-        background: '#fff', borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+        background: 'var(--n-0)', borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
         width: 'min(1800px, 99vw)', maxHeight: '92vh',
         display: 'flex', flexDirection: 'column',
         fontFamily: 'inherit',
       }}>
         {/* Header */}
-        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #e2e8f0' }}>
+        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--n-200)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#1e293b' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--n-800)' }}>
                 Оплаты юридическими компаниями
               </div>
               {isBulk && (
-                <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>
+                <div style={{ fontSize: 13, color: 'var(--n-600)', marginTop: 3 }}>
                   {`Найдено ${corpRows.length} транзакций по ${(corpByDoctor || []).length} врачам. Выберите какие учитывать в зарплате.`}
                 </div>
               )}
             </div>
             {isBulk && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#475569', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--n-700)', flexShrink: 0 }}>
                 <Toggle checked={allChecked} indeterminate={!noneChecked && !allChecked} onToggle={toggleAll} />
                 <span>Все врачи</span>
               </div>
             )}
             <button onClick={onCancel}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#94a3b8', fontSize: 20, lineHeight: 1, flexShrink: 0 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--n-500)', fontSize: 20, lineHeight: 1, flexShrink: 0 }}
               title="Отмена">×</button>
           </div>
 
@@ -504,16 +504,16 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
               </svg>
               <input type="text" placeholder="Поиск по пациенту, услуге, юр. компании, дате..."
                 value={search} onChange={e => setSearch(e.target.value)}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 32px 8px 32px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: search ? '#f0f9ff' : '#f8fafc', color: '#1e293b' }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 32px 8px 32px', border: '1px solid var(--n-200)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: search ? '#f0f9ff' : '#f8fafc', color: 'var(--n-800)' }}
               />
               {search && (
                 <button onClick={() => setSearch('')}
-                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 16, lineHeight: 1, padding: 2 }}>×</button>
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n-500)', fontSize: 16, lineHeight: 1, padding: 2 }}>×</button>
               )}
             </div>
             {anyFilterActive && (
               <button onClick={clearAllFilters}
-                style={{ padding: '7px 12px', fontSize: 12, border: '1px solid #bfdbfe', borderRadius: 7, background: '#eff6ff', color: '#007AFF', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>
+                style={{ padding: '7px 12px', fontSize: 12, border: '1px solid var(--accent-200)', borderRadius: 7, background: 'var(--accent-50)', color: 'var(--accent-500)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>
                 Сбросить фильтры
               </button>
             )}
@@ -554,8 +554,8 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                     const isChecked = selected.has(r.key);
                     return (
                       <tr key={r.key} onClick={() => toggle(r.key)}
-                        style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isChecked ? '#f0f9ff' : '#fff', transition: 'background 0.1s' }}>
-                        <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+                        style={{ cursor: 'pointer', borderBottom: '1px solid var(--n-100)', background: isChecked ? '#f0f9ff' : '#fff', transition: 'background 0.1s' }}>
+                        <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid var(--n-200)' }}>
                           <Toggle checked={isChecked} onToggle={e => { e.stopPropagation(); toggle(r.key); }} />
                         </td>
                         <td style={tdNowrap}>{r.date || '—'}</td>
@@ -583,15 +583,15 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '14px 22px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, fontSize: 13, color: '#475569' }}>
-            Выбрано: <b style={{ color: '#1e293b' }}>{selected.size}</b> из {corpRows.length}
+        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--n-200)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, fontSize: 13, color: 'var(--n-700)' }}>
+            Выбрано: <b style={{ color: 'var(--n-800)' }}>{selected.size}</b> из {corpRows.length}
             {totalAmount > 0 && (
-              <span style={{ marginLeft: 8, color: '#0369a1' }}>· {fmt(totalAmount)} ₽</span>
+              <span style={{ marginLeft: 8, color: 'var(--accent-900)' }}>· {fmt(totalAmount)} ₽</span>
             )}
           </div>
           <button onClick={onCancel}
-            style={{ padding: '8px 0', width: 120, fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer' }}>
+            style={{ padding: '8px 0', width: 120, fontSize: 13, border: '1px solid var(--n-200)', borderRadius: 8, background: 'var(--n-0)', color: 'var(--n-600)', cursor: 'pointer' }}>
             Отмена
           </button>
           <button onClick={() => onConfirm(selected)}

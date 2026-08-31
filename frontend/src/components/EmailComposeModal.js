@@ -591,7 +591,7 @@ const EmailComposeModal = ({ onClose }) => {
                           onClick={() => addRecipient({ email: fav.email, displayName: fav.displayName })}
                         >
                           <div className="email-user-name">
-                            <Star size={12} className="email-fav-star filled" style={{ color: '#FF9500', marginRight: 4, flexShrink: 0 }} />
+                            <Star size={12} className="email-fav-star filled" style={{ color: 'var(--amber-500)', marginRight: 4, flexShrink: 0 }} />
                             {fav.displayName || fav.email}
                           </div>
                           <div className="email-user-actions">
@@ -631,7 +631,7 @@ const EmailComposeModal = ({ onClose }) => {
                             onClick={() => addUserRecipient(user)}
                           >
                             <div className="email-user-name">
-                              {isFav && <Star size={12} style={{ color: '#FF9500', marginRight: 4, flexShrink: 0 }} />}
+                              {isFav && <Star size={12} style={{ color: 'var(--amber-500)', marginRight: 4, flexShrink: 0 }} />}
                               {user.displayName || user.username}
                             </div>
                             <div className="email-user-actions">
@@ -770,7 +770,7 @@ const EmailComposeModal = ({ onClose }) => {
                             onClick={() => applyTemplate(template)}
                           >
                             <div className="email-template-name">
-                              {isFavTemplate && <Star size={11} style={{ color: '#FF9500', marginRight: 4, flexShrink: 0 }} />}
+                              {isFavTemplate && <Star size={11} style={{ color: 'var(--amber-500)', marginRight: 4, flexShrink: 0 }} />}
                               {template.name}
                             </div>
                             <div className="email-template-subject">{template.subject}</div>

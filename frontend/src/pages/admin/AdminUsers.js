@@ -161,7 +161,7 @@ function PermControl({ value, onChange, disabled }) {
         background: disabled ? '#3b82f6' : COLOR[cur],
         position: 'relative', cursor: disabled ? 'default' : 'pointer',
         opacity: disabled ? 0.55 : 1, transition: 'background 0.2s',
-        boxShadow: `0 0 0 2px ${disabled ? '#3b82f6' : COLOR[cur]}33`,
+        boxShadow: `0 0 0 2px ${disabled ? 'var(--accent-500)' : COLOR[cur]}33`,
       }}
     >
       {STATES.map((s, i) => (
@@ -175,7 +175,7 @@ function PermControl({ value, onChange, disabled }) {
       <div style={{
         position: 'absolute', pointerEvents: 'none',
         top: 2, left: thumbLeft, width: 20, height: 20, borderRadius: '50%',
-        background: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.28)',
+        background: 'var(--n-0)', boxShadow: '0 1px 4px rgba(0,0,0,0.28)',
         transition: 'left 0.2s',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: disabled ? '#3b82f6' : COLOR[cur],
@@ -1035,7 +1035,7 @@ export default function AdminUsers() {
                               onClick={searchRenovatio}
                               disabled={misDropdown.searching}
                               style={{
-                                background: '#90bc38', color: '#fff', border: 'none',
+                                background: 'var(--green-500)', color: '#fff', border: 'none',
                                 borderRadius: 'var(--radius-md)', padding: '0 14px',
                                 cursor: 'pointer', fontSize: 13, fontWeight: 500,
                                 flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6
@@ -1172,7 +1172,7 @@ export default function AdminUsers() {
                               style={{ flex: 1, background: 'var(--bg-secondary)' }}
                             />
                             <button type="button" disabled title="2FA включена по умолчанию для новых пользователей"
-                              style={{ width: 40, height: 40, padding: 0, flexShrink: 0, background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary, #2563eb)', opacity: 0.5, cursor: 'default' }}>
+                              style={{ width: 40, height: 40, padding: 0, flexShrink: 0, background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary, var(--accent-600))', opacity: 0.5, cursor: 'default' }}>
                               <Shield size={18} />
                             </button>
                           </div>

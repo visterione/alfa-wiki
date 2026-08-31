@@ -95,8 +95,8 @@
 
 .whatsnew-star {
   flex-shrink: 0;
-  color: #f59e0b;
-  fill: #f59e0b;
+  color: var(--amber-500);
+  fill: var(--amber-500);
 }
 
 

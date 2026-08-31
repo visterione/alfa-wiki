@@ -101,7 +101,7 @@ export default function DatePickerInput({ value, onChange, placeholder = 'Выб
   const navBtn = {
     ...btn,
     width: 26, height: 26, fontSize: 16, fontWeight: 700,
-    background: 'var(--primary, #2563eb)', color: '#fff', borderRadius: 7,
+    background: 'var(--primary, var(--accent-600))', color: '#fff', borderRadius: 7,
   };
 
   return (

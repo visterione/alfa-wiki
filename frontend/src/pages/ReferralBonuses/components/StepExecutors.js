@@ -139,7 +139,7 @@ function ItemsList({ items, section, onDelete, onUpdate, readOnly }) {
   return (
     <div className="rb-exec-items">
       {items.map((item, i) => (
-        <div key={i} className="rb-exec-item" style={item.locked ? { background: '#eff6ff' } : {}}>
+        <div key={i} className="rb-exec-item" style={item.locked ? { background: 'var(--accent-50)' } : {}}>
           {editIdx === i ? (
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
               <input
@@ -170,7 +170,7 @@ function ItemsList({ items, section, onDelete, onUpdate, readOnly }) {
               <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
-              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: 'var(--n-500)' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -241,7 +241,7 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
   return (
     <div className="rb-exec-items">
       {extras.map((e, i) => (
-        <div key={i} className="rb-exec-item" style={e.locked ? { background: '#eff6ff' } : {}}>
+        <div key={i} className="rb-exec-item" style={e.locked ? { background: 'var(--accent-50)' } : {}}>
           {editIdx === i ? (
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
               <input
@@ -271,7 +271,7 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
               <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
-              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: 'var(--n-500)' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -288,7 +288,7 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
                 onClick={() => !readOnly && startEdit(i)}
               >
                 {e.hours > 0 && (
-                  <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap', width: 44, textAlign: 'right', display: 'inline-block' }}>{e.hours} ч.</span>
+                  <span style={{ fontSize: 12, color: 'var(--n-500)', whiteSpace: 'nowrap', width: 44, textAlign: 'right', display: 'inline-block' }}>{e.hours} ч.</span>
                 )}
                 <span style={{ fontSize: 12, color: 'var(--rb-success)', fontWeight: 600, whiteSpace: 'nowrap', width: 70, textAlign: 'right', display: 'inline-block' }}>{e.amount} ₽</span>
               </div>
@@ -370,7 +370,7 @@ function SmallPopoverSelect({ value, onChange, items, placeholder, renderDot, re
     <div ref={wrapRef} style={{
       position: 'fixed', top: dropPos.top, bottom: dropPos.bottom, left: dropPos.left,
       width: dropPos.width, maxHeight: dropPos.maxH || 220,
-      zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)',
+      zIndex: 9999, background: 'var(--n-0)', border: '1px solid var(--rb-border)',
       borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', fontFamily: 'Inter, sans-serif',
       display: 'flex', flexDirection: 'column',
     }}>
@@ -474,7 +474,7 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly, roles, professi
       {items.map((item, i) => {
         const itemCat = item.categoryId ? (categories || []).find(c => c.id === item.categoryId) : null;
         return (
-        <div key={i} className="rb-exec-item" style={item.locked ? { background: '#eff6ff' } : {}}>
+        <div key={i} className="rb-exec-item" style={item.locked ? { background: 'var(--accent-50)' } : {}}>
           {editIdx === i ? (
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
               <input autoFocus value={editName} onChange={ev => setEditName(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="Деятельность" style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
@@ -504,7 +504,7 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly, roles, professi
               <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
-              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: 'var(--n-500)' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -512,7 +512,7 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly, roles, professi
             <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
               <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.name}</span>
               {item.roleTitle && (
-                <span style={{ marginLeft: 5, fontSize: 10, background: '#eff6ff', color: 'var(--rb-primary)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>{item.roleTitle}</span>
+                <span style={{ marginLeft: 5, fontSize: 10, background: 'var(--accent-50)', color: 'var(--rb-primary)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>{item.roleTitle}</span>
               )}
               {itemCat && (
                 <span style={{ marginLeft: 5, fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 3, background: itemCat.color + '22', color: itemCat.color, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>
@@ -520,7 +520,7 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly, roles, professi
                 </span>
               )}
               <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-                {item.lockedRate && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.rate} ₽/ч × {item.lockedHours && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.hours} ч.
+                {item.lockedRate && <span style={{ color: 'var(--accent-500)', marginRight: 2 }}>🔒</span>}{item.rate} ₽/ч × {item.lockedHours && <span style={{ color: 'var(--accent-500)', marginRight: 2 }}>🔒</span>}{item.hours} ч.
               </span>
               <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--rb-success)', fontWeight: 600 }}>= {((parseFloat(item.rate) || 0) * (parseFloat(item.hours) || 0)).toFixed(2)} ₽</span>
             </div>
@@ -701,7 +701,7 @@ function RoleRatesList({ items, onDelete, onUpdate, readOnly, roles, professions
                 <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
-                <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: 'var(--n-500)' }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -868,7 +868,7 @@ function RoleNormsList({ items, onDelete, onUpdate, readOnly, roles, professions
               <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
-              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: 'var(--n-500)' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -986,10 +986,10 @@ function SvcMaterialsList({ items, onDelete, onUpdate, readOnly }) {
         const svcLabel = item.serviceName || item.serviceCode || '—';
         const matLabel = item.name && item.name !== svcLabel ? item.name : null;
         return (
-          <div key={i} className="rb-exec-item" style={item.locked ? { background: '#eff6ff' } : {}}>
+          <div key={i} className="rb-exec-item" style={item.locked ? { background: 'var(--accent-50)' } : {}}>
             {editIdx === i ? (
               <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
-                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{svcLabel}</span>
+                <span style={{ fontSize: 11, color: 'var(--n-500)', flexShrink: 0 }}>{svcLabel}</span>
                 <input
                   autoFocus
                   value={editName}
@@ -1012,13 +1012,13 @@ function SvcMaterialsList({ items, onDelete, onUpdate, readOnly }) {
                 <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
-                <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: 'var(--n-500)' }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
             ) : (
               <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>{svcLabel}</span>
+                <span style={{ fontSize: 11, color: 'var(--n-500)' }}>{svcLabel}</span>
                 {matLabel && (
                   <span
                     onClick={() => !readOnly && startEdit(i)}
@@ -1034,8 +1034,8 @@ function SvcMaterialsList({ items, onDelete, onUpdate, readOnly }) {
                   {item.valueType === 'percent' ? `${item.value}%` : `${item.value} ₽`}
                 </span>
                 {item.deductionType === 'turnover'
-                  ? <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
-                  : <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#fff7ed', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
+                  ? <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--n-600)', background: 'var(--n-100)', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
+                  : <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--n-600)', background: 'var(--amber-50)', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
                 }
               </div>
             )}
@@ -2083,10 +2083,10 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 <p style={{ fontSize: 14, color: 'var(--rb-text)', lineHeight: 1.6, margin: 0 }}>
                   Тип оплаты врача <strong>{selectedDoctor?.name}</strong> будет изменён:
                 </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                  <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}>{PAY_TYPE_LABELS[pendingPayType.from]}</span>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0, color: '#94a3b8' }}><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
-                  <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}>{PAY_TYPE_LABELS[pendingPayType.to]}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', padding: '10px 14px', background: 'var(--n-50)', borderRadius: 8, border: '1px solid var(--n-200)' }}>
+                  <span style={{ background: 'var(--red-100)', color: 'var(--red-600)', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}>{PAY_TYPE_LABELS[pendingPayType.from]}</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0, color: 'var(--n-500)' }}><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+                  <span style={{ background: 'var(--green-100)', color: 'var(--green-600)', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}>{PAY_TYPE_LABELS[pendingPayType.to]}</span>
                 </div>
               </div>
               <div className="rb-modal-footer">
@@ -2136,7 +2136,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                     style={{
                       width: '100%', height: 26, padding: '0 8px', fontSize: 12,
                       border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                      background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                      background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
                       boxSizing: 'border-box',
                     }}
                   />
@@ -2195,7 +2195,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                         style={{
                           width: '100%', height: 26, padding: '0 8px', fontSize: 12,
                           border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                          background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                          background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
                           boxSizing: 'border-box',
                         }}
                       />
@@ -2203,7 +2203,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                         <div ref={employmentPlaceWrapRef} style={{
                           position: 'absolute', top: '100%', left: 0, marginTop: 2,
                           width: '100%', maxHeight: 180, overflowY: 'auto',
-                          background: '#fff', border: '1px solid var(--rb-border)',
+                          background: 'var(--n-0)', border: '1px solid var(--rb-border)',
                           borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
                           zIndex: 9999, fontFamily: 'inherit',
                         }}>
@@ -2251,7 +2251,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                           display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center',
                           minHeight: 26, padding: '2px 6px', fontSize: 12,
                           border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                          background: '#fff', color: 'var(--rb-text)',
+                          background: 'var(--n-0)', color: 'var(--rb-text)',
                           boxSizing: 'border-box', cursor: 'text',
                         }}
                       >
@@ -2261,14 +2261,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 4,
                               padding: '1px 6px', borderRadius: 10, fontSize: 11,
-                              background: '#EFF6FF', color: '#1d4ed8', maxWidth: '100%',
+                              background: 'var(--accent-50)', color: 'var(--accent-700)', maxWidth: '100%',
                             }}
                           >
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chip}</span>
                             <button
                               type="button"
                               onClick={e => { e.stopPropagation(); removePdfSubdivision(chip); }}
-                              style={{ border: 'none', background: 'transparent', color: '#1d4ed8', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}
+                              style={{ border: 'none', background: 'transparent', color: 'var(--accent-700)', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}
                               title="Убрать"
                             >×</button>
                           </span>
@@ -2293,7 +2293,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                         <div ref={pdfSubdivisionWrapRef} style={{
                           position: 'absolute', top: '100%', left: 0, marginTop: 2,
                           width: '100%', maxHeight: 180, overflowY: 'auto',
-                          background: '#fff', border: '1px solid var(--rb-border)',
+                          background: 'var(--n-0)', border: '1px solid var(--rb-border)',
                           borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
                           zIndex: 9999, fontFamily: 'inherit',
                         }}>
@@ -2327,7 +2327,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 title={panelCollapsed ? 'Свернуть' : 'На всю ширину'}
                 style={{
                   width: 30, height: 30, padding: 0, border: 'none', borderRadius: 7, cursor: 'pointer',
-                  background: '#e2e8f0', color: '#64748b',
+                  background: 'var(--n-200)', color: 'var(--n-600)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.2s', flexShrink: 0,
                 }}
@@ -2350,7 +2350,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 style={{
                   flex: 1, padding: '4px 8px', fontSize: 12,
                   border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                  background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                  background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
                   resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5,
                   minHeight: 44,
                 }}
@@ -2407,9 +2407,9 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
       {/* Плашка секретной клиники АУП с кнопкой снятия */}
       {activeClinic === 'aup' && canSeeAup && (
-        <div style={{ margin: '12px 12px 0', padding: '10px 14px', borderRadius: 8, background: '#1a1a1a', border: '1px solid #8a6d1f', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ margin: '12px 12px 0', padding: '10px 14px', borderRadius: 8, background: 'var(--n-900)', border: '1px solid var(--amber-800)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span className="rb-aup-text" style={{ fontSize: 13 }}>АУП — секретная клиника</span>
-          <span style={{ fontSize: 12, color: '#c9c9c9', flex: 1, minWidth: 140 }}>
+          <span style={{ fontSize: 12, color: 'var(--n-300)', flex: 1, minWidth: 140 }}>
             Видна только допущенным. Данные скрыты от всех остальных, включая администраторов.
           </span>
           {!readOnly && (
@@ -2417,7 +2417,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               type="button"
               onClick={handleRemoveAup}
               disabled={saving}
-              style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 6, border: '1px solid #b45454', background: 'transparent', color: '#e88', fontSize: 12, fontWeight: 600, cursor: saving ? 'default' : 'pointer' }}
+              style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--n-600)', background: 'transparent', color: 'var(--red-400)', fontSize: 12, fontWeight: 600, cursor: saving ? 'default' : 'pointer' }}
               title="Полностью удалить клинику АУП у этого сотрудника"
             >
               Убрать АУП у сотрудника
@@ -2461,7 +2461,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             </div>
 
             {pt === 'salary' && (
-              <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+              <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: 'var(--accent-50)', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <label style={{ marginBottom: 0 }}>Фиксированный оклад, ₽</label>
                   {!readOnly && <LockBtn locked={!!data.lockedFixedSalary} onClick={handleToggleFixedSalaryLock} />}
@@ -2476,7 +2476,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             )}
 
             {(pt === 'normed' || pt === 'prorated') && (
-              <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+              <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: 'var(--accent-50)', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <label style={{ marginBottom: 0 }}>Оклад, ₽</label>
                   {!readOnly && <LockBtn locked={!!data.lockedFixedSalary} onClick={handleToggleFixedSalaryLock} />}
@@ -2549,7 +2549,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   <option value="cash">Наличные</option>
                 </select>
               </div>
-              <div className="rb-exec-field" style={data.lockedAdvance ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+              <div className="rb-exec-field" style={data.lockedAdvance ? { background: 'var(--accent-50)', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 20 }}>
                   <label style={{ marginBottom: 0 }}>Аванс, ₽</label>
                   {!readOnly && <LockBtn locked={!!data.lockedAdvance} onClick={handleToggleAdvanceLock} />}
@@ -2571,7 +2571,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   <option value="cash">Наличные</option>
                 </select>
               </div>
-              <div className="rb-exec-field" style={data.lockedMainPayment ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+              <div className="rb-exec-field" style={data.lockedMainPayment ? { background: 'var(--accent-50)', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 20 }}>
                   <label style={{ marginBottom: 0 }}>Основная ЗП, ₽</label>
                   {!readOnly && <LockBtn locked={!!data.lockedMainPayment} onClick={handleToggleMainPaymentLock} />}
@@ -2586,7 +2586,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
               {/* Extra payments */}
               {(data.extraPayments || []).map((ep, idx) => (
-                <div key={idx} className="rb-exec-field" style={{ gridColumn: '1 / -1', ...(ep.locked ? { background: '#eff6ff', borderRadius: 6 } : {}) }}>
+                <div key={idx} className="rb-exec-field" style={{ gridColumn: '1 / -1', ...(ep.locked ? { background: 'var(--accent-50)', borderRadius: 6 } : {}) }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                     <label style={{ marginBottom: 0 }}>Доп. выплата {idx + 1}</label>
                     {!readOnly && (
@@ -2676,7 +2676,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   onChange={e => handlePaymentFieldChange('hourlyRate', parseFloat(e.target.value) || 0)}
                 />
               </div>
-              <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+              <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: 'var(--accent-50)', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                   <label style={{ marginBottom: 0 }}>Часов за период</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2697,7 +2697,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   </div>
                 </div>
                 {data.hoursFromSchedule ? (
-                  <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--rb-bg-alt, #f8fafc)' }}>
+                  <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--rb-bg-alt, var(--n-50))' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: schedLoading ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }}>
                       {schedLoading ? '...' : `${Number.isInteger(globalRateHours) ? globalRateHours : globalRateHours.toFixed(1)} ч`}
                     </span>
@@ -2721,7 +2721,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
                   <label style={{ marginBottom: 0 }}>Итого</label>
                 </div>
-                <div style={{ padding: '0 10px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: '#eff6ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {hourlyTotal.toFixed(2)} ₽</div>
+                <div style={{ padding: '0 10px', border: '1px solid var(--accent-200)', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: 'var(--accent-50)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {hourlyTotal.toFixed(2)} ₽</div>
               </div>
             </div>
             <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} schedByRole={scheduleHoursData.byRole} schedByCategory={scheduleHoursData.byCategory} schedLoading={schedLoading} hoursFromSchedule={!!data.hoursFromSchedule} />
@@ -2784,7 +2784,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
             </div>
             <div className="rb-exec-fields-grid" style={{ gridTemplateColumns: proratedExceeded ? '1fr 1fr' : '1fr 1fr 1fr', padding: '0 12px 10px' }}>
-              <div className="rb-exec-field" style={data.lockedProratedNorm ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+              <div className="rb-exec-field" style={data.lockedProratedNorm ? { background: 'var(--accent-50)', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <label style={{ marginBottom: 0 }}>Норма часов</label>
                   {!readOnly && <LockBtn locked={!!data.lockedProratedNorm} onClick={handleToggleProratedNormLock} />}
@@ -2796,7 +2796,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   disabled={!!data.lockedProratedNorm}
                 />
               </div>
-              <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+              <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: 'var(--accent-50)', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                   <label style={{ marginBottom: 0 }}>Отработано, ч</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2817,7 +2817,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   </div>
                 </div>
                 {data.hoursFromSchedule ? (
-                  <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--rb-bg-alt, #f8fafc)' }}>
+                  <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--rb-bg-alt, var(--n-50))' }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: schedLoading ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }}>
                       {schedLoading ? '...' : `${Number.isInteger(effectiveHoursWorked) ? effectiveHoursWorked : effectiveHoursWorked.toFixed(1)} ч`}
                     </span>
@@ -2842,7 +2842,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
                     <label style={{ marginBottom: 0 }}>Итого</label>
                   </div>
-                  <div style={{ padding: '0 10px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: '#eff6ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {proratedTotal.toFixed(2)} ₽</div>
+                  <div style={{ padding: '0 10px', border: '1px solid var(--accent-200)', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: 'var(--accent-50)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {proratedTotal.toFixed(2)} ₽</div>
                 </div>
               )}
             </div>
@@ -2868,7 +2868,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                       <td style={{ padding: '5px 8px' }}>Переработка</td>
                       <td style={{ textAlign: 'center', padding: '5px 8px' }}>{fmtProratedH(data.proratedNorm || 0)}</td>
                       <td style={{ textAlign: 'center', padding: '5px 8px' }}>{fmtProratedH(proratedOverHours)}</td>
-                      <td style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 700, color: 'var(--rb-success, #16a34a)' }}>{proratedPremiumAmount.toFixed(2)} ₽</td>
+                      <td style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 700, color: 'var(--rb-success, var(--green-600))' }}>{proratedPremiumAmount.toFixed(2)} ₽</td>
                     </tr>
                   </tbody>
                 </table>
@@ -3070,7 +3070,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                     {globalCabinets.map((cab, i) => {
                       const isLocked = lockedCabs.includes(cab);
                       return (
-                      <div key={i} className="rb-exec-item" style={isLocked ? { background: '#eff6ff' } : {}}>
+                      <div key={i} className="rb-exec-item" style={isLocked ? { background: 'var(--accent-50)' } : {}}>
                         <div className="rb-exec-item-name" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
                           <svg viewBox="0 0 24 24" fill="none" stroke="#007AFF" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0 }}>
                             <rect x="4" y="2" width="16" height="20" rx="1"/>
@@ -3206,7 +3206,7 @@ function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly, doctorSe
   return (
     <div>
       <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 11, color: 'var(--n-500)', marginBottom: 8, lineHeight: 1.4 }}>
             <strong>Услуга</strong> — точное название как в Excel-файле (используется для сопоставления).
             <br/><strong>Расходник</strong> — отображаемое название в отчёте (можно оставить пустым).
           </div>
@@ -3222,16 +3222,16 @@ function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly, doctorSe
                 onFocus={() => svcSuggestions.length > 0 && setSvcOpen(true)}
               />
               {svcOpen && svcSuggestions.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: 180, overflowY: 'auto' }}>
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--n-0)', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: 180, overflowY: 'auto' }}>
                   {svcSuggestions.map((s, i) => (
                     <div
                       key={i}
                       onMouseDown={() => handleSvcSelect(s)}
-                      style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f1f5f9' }}
+                      style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--n-100)' }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
                       onMouseLeave={e => e.currentTarget.style.background = ''}
                     >
-                      {s.code && <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#94a3b8', marginRight: 6 }}>{s.code}</span>}
+                      {s.code && <span style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--n-500)', marginRight: 6 }}>{s.code}</span>}
                       {s.name}
                     </div>
                   ))}
@@ -3367,12 +3367,12 @@ function AssistantAddForm({ doctors, onAdd, saving, readOnly, visible, onToggle 
           style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
         />
         {open && suggestions.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--n-0)', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
             {suggestions.map(d => (
               <div
                 key={d.id}
                 onMouseDown={() => handleSelect(d.name)}
-                style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f1f5f9' }}
+                style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--n-100)' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
                 onMouseLeave={e => e.currentTarget.style.background = ''}
               >
@@ -3445,7 +3445,7 @@ function AnesthesiologistsList({ anesthesiologists, onDelete, onReorderRules, on
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
       {anesthesiologists.map((a, i) => (
-        <div key={i} style={{ border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 10px', background: '#f8fafc' }}>
+        <div key={i} style={{ border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 10px', background: 'var(--n-50)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text)' }}>{a.name}</div>
             {!readOnly && (
@@ -3461,20 +3461,20 @@ function AnesthesiologistsList({ anesthesiologists, onDelete, onReorderRules, on
               const isEditing = editKey === key;
               return isEditing ? (
                 <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0', borderTop: '2px solid transparent' }}>
-                  <span style={{ color: '#94a3b8', minWidth: 14, textAlign: 'right', flexShrink: 0, fontSize: 11 }}>{j + 1}.</span>
+                  <span style={{ color: 'var(--n-500)', minWidth: 14, textAlign: 'right', flexShrink: 0, fontSize: 11 }}>{j + 1}.</span>
                   <input
                     autoFocus
                     value={editContains}
                     onChange={e => setEditContains(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') saveEdit(i, j); if (e.key === 'Escape') cancelEdit(); }}
-                    style={{ flex: 1, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+                    style={{ flex: 1, padding: '3px 7px', border: '1px solid var(--accent-500)', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
                   />
                   <input
                     type="number" min="0" step="0.1"
                     value={editValue}
                     onChange={e => setEditValue(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') saveEdit(i, j); if (e.key === 'Escape') cancelEdit(); }}
-                    style={{ width: 65, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+                    style={{ width: 65, padding: '3px 7px', border: '1px solid var(--accent-500)', borderRadius: 5, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
                   />
                   <div className="rb-exec-type-toggle">
                     <button className={`rb-exec-type-btn${editValueType === 'percent' ? ' active' : ''}`} onClick={() => setEditValueType('percent')}>%</button>
@@ -3498,7 +3498,7 @@ function AnesthesiologistsList({ anesthesiologists, onDelete, onReorderRules, on
                   style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--rb-text-secondary)', padding: '2px 0', borderTop: '2px solid transparent', cursor: readOnly ? 'default' : 'grab' }}
                 >
                   {!readOnly && (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: '#cbd5e1', flexShrink: 0 }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: 'var(--n-300)', flexShrink: 0 }}>
                       <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/>
                       <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/>
                       <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
@@ -3507,10 +3507,10 @@ function AnesthesiologistsList({ anesthesiologists, onDelete, onReorderRules, on
                       <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/>
                     </svg>
                   )}
-                  <span style={{ color: '#94a3b8', minWidth: 14, textAlign: 'right', flexShrink: 0 }}>{j + 1}.</span>
-                  <span style={{ color: '#64748b' }}>содержит </span>
+                  <span style={{ color: 'var(--n-500)', minWidth: 14, textAlign: 'right', flexShrink: 0 }}>{j + 1}.</span>
+                  <span style={{ color: 'var(--n-600)' }}>содержит </span>
                   <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>«{r.contains}»</span>
-                  <span style={{ color: '#64748b' }}> → </span>
+                  <span style={{ color: 'var(--n-600)' }}> → </span>
                   <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
                   {!readOnly && (
                     <button className="rb-btn rb-btn-secondary rb-btn-xs" style={{ marginLeft: 'auto', flexShrink: 0 }} onClick={() => startEdit(i, j, r)} title="Редактировать">
@@ -3583,7 +3583,7 @@ function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
   }
 
   return (
-    <div style={{ border: '1px dashed var(--rb-border-dark)', borderRadius: 8, padding: 12, marginTop: 6, background: '#f0f7ff' }}>
+    <div style={{ border: '1px dashed var(--rb-border-dark)', borderRadius: 8, padding: 12, marginTop: 6, background: 'var(--accent-50)' }}>
       {/* Doctor name */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Врач-анестезиолог</div>
@@ -3598,10 +3598,10 @@ function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
             style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
           />
           {open && suggestions.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--n-0)', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
               {suggestions.map(d => (
                 <div key={d.id} onMouseDown={() => { setName(d.name); setSuggestions([]); setOpen(false); }}
-                  style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f1f5f9' }}
+                  style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--n-100)' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>{d.name}</div>
               ))}
@@ -3635,9 +3635,9 @@ function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
                     });
                   }
                 }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '4px 8px', cursor: 'grab', borderTop: '2px solid transparent' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '4px 8px', cursor: 'grab', borderTop: '2px solid transparent' }}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: '#cbd5e1', flexShrink: 0 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: 'var(--n-300)', flexShrink: 0 }}>
                   <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/>
                   <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/>
                   <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
@@ -3645,10 +3645,10 @@ function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
                   <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/>
                   <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/>
                 </svg>
-                <span style={{ color: '#94a3b8', minWidth: 14, textAlign: 'right' }}>{i + 1}.</span>
-                <span style={{ color: '#64748b' }}>содержит</span>
+                <span style={{ color: 'var(--n-500)', minWidth: 14, textAlign: 'right' }}>{i + 1}.</span>
+                <span style={{ color: 'var(--n-600)' }}>содержит</span>
                 <span style={{ fontWeight: 600 }}>«{r.contains}»</span>
-                <span style={{ color: '#64748b' }}>→</span>
+                <span style={{ color: 'var(--n-600)' }}>→</span>
                 <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
                 <button className="rb-btn rb-btn-danger rb-btn-xs" style={{ marginLeft: 'auto' }} onClick={() => handleDeleteRule(i)}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">

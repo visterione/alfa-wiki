@@ -113,9 +113,9 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px 0 2px' }}>
         <button onClick={() => setRefPage(1)} disabled={refPageSafe === 1}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: refPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>«</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === 1 ? 'default' : 'pointer', background: 'var(--n-0)', color: refPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>«</button>
         <button onClick={() => setRefPage(p => Math.max(1, p - 1))} disabled={refPageSafe === 1}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: refPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>‹</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === 1 ? 'default' : 'pointer', background: 'var(--n-0)', color: refPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>‹</button>
         {Array.from({ length: refTotalPages }, (_, i) => i + 1)
           .filter(n => n === 1 || n === refTotalPages || Math.abs(n - refPageSafe) <= 2)
           .reduce((acc, n, idx, arr) => { if (idx > 0 && n - arr[idx - 1] > 1) acc.push('…'); acc.push(n); return acc; }, [])
@@ -127,9 +127,9 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
               </button>
           )}
         <button onClick={() => setRefPage(p => Math.min(refTotalPages, p + 1))} disabled={refPageSafe === refTotalPages}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === refTotalPages ? 'default' : 'pointer', background: '#fff', color: refPageSafe === refTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>›</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === refTotalPages ? 'default' : 'pointer', background: 'var(--n-0)', color: refPageSafe === refTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>›</button>
         <button onClick={() => setRefPage(refTotalPages)} disabled={refPageSafe === refTotalPages}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === refTotalPages ? 'default' : 'pointer', background: '#fff', color: refPageSafe === refTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>»</button>
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === refTotalPages ? 'default' : 'pointer', background: 'var(--n-0)', color: refPageSafe === refTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>»</button>
       </div>
     );
   }

@@ -73,8 +73,8 @@ function ColorPicker({ value, onChange }) {
           value={value}
           onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) onChange(e.target.value); }}
           style={{
-            flex: 1, padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: 7,
-            fontSize: 13, fontFamily: 'monospace', background: 'white', color: '#1e293b',
+            flex: 1, padding: '5px 9px', border: '1px solid var(--n-200)', borderRadius: 7,
+            fontSize: 13, fontFamily: 'monospace', background: 'var(--n-0)', color: 'var(--n-800)',
             outline: 'none', letterSpacing: 1,
           }}
           maxLength={7}
@@ -89,8 +89,8 @@ function ColorPicker({ value, onChange }) {
           />
           <span style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 30, height: 30, borderRadius: 7, border: '1px solid #e2e8f0',
-            background: 'white', cursor: 'pointer',
+            width: 30, height: 30, borderRadius: 7, border: '1px solid var(--n-200)',
+            background: 'var(--n-0)', cursor: 'pointer',
           }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" width="15" height="15">
               <path d="M12 22a8 8 0 0 1-8-8c0-4.1 6-10 8-12 2 2 8 7.9 8 12a8 8 0 0 1-8 8z"/>
@@ -142,14 +142,14 @@ function ClinicToggle({ checked, color }) {
   return (
     <div style={{
       width: 42, height: 24, borderRadius: 12,
-      background: checked ? color : '#d1d5db',
+      background: checked ? color : 'var(--n-300)',
       cursor: 'pointer', position: 'relative',
       transition: 'background 0.22s', flexShrink: 0,
       boxShadow: checked ? `0 0 0 2px ${color}44` : 'inset 0 1px 2px rgba(0,0,0,0.08)',
     }}>
       <div style={{
         position: 'absolute', top: 3, left: checked ? 21 : 3,
-        width: 18, height: 18, borderRadius: '50%', background: 'white',
+        width: 18, height: 18, borderRadius: '50%', background: 'var(--n-0)',
         boxShadow: '0 1px 4px rgba(0,0,0,0.28)', transition: 'left 0.22s',
       }} />
     </div>
@@ -165,14 +165,14 @@ function PermSummary({ perm }) {
   const parts = [
     ...clinics.map((c, i) => <span key={`cl-${i}`} style={{ color: c.color }}>{c.name}</span>),
     ...restricted.map(t => <span key={t.key} style={{ color: PERM_DOT_COLOR[perm[t.key]] }}>{t.label}</span>),
-    ...(perm.bypassPeriodLock ? [<span key="bypass" style={{ color: '#16a34a' }}>Без блокировки периодов</span>] : []),
-    ...(dcLabel ? [<span key="dc" style={{ color: '#64748b' }}>По умолч.: {dcLabel}</span>] : []),
+    ...(perm.bypassPeriodLock ? [<span key="bypass" style={{ color: 'var(--green-600)' }}>Без блокировки периодов</span>] : []),
+    ...(dcLabel ? [<span key="dc" style={{ color: 'var(--n-600)' }}>По умолч.: {dcLabel}</span>] : []),
   ];
   return (
     <>
       {parts.map((el, i) => (
         <React.Fragment key={i}>
-          {i > 0 && <span style={{ color: '#cbd5e1', margin: '0 4px' }}>|</span>}
+          {i > 0 && <span style={{ color: 'var(--n-300)', margin: '0 4px' }}>|</span>}
           {el}
         </React.Fragment>
       ))}
@@ -208,15 +208,15 @@ function UserRow({ user, onSaved }) {
   };
 
   return (
-    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
+    <div style={{ border: '1px solid var(--n-200)', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
       <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: open ? '#f8fafc' : 'white', userSelect: 'none' }}>
         {user.avatar
           ? <img src={user.avatar.startsWith('http') ? user.avatar : `${BASE_URL}/${user.avatar}`} alt={user.displayName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-          : <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', flexShrink: 0 }}><User size={18} /></div>
+          : <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--n-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--n-500)', flexShrink: 0 }}><User size={18} /></div>
         }
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{user.displayName || user.username}</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 12, color: 'var(--n-600)', marginTop: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
             <PermSummary perm={perm} />
           </div>
         </div>
@@ -224,14 +224,14 @@ function UserRow({ user, onSaved }) {
       </div>
 
       {open && (
-        <div style={{ padding: '16px 20px 20px', background: '#fafafa', borderTop: '1px solid #e2e8f0' }}>
+        <div style={{ padding: '16px 20px 20px', background: 'var(--n-50)', borderTop: '1px solid var(--n-200)' }}>
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Медцентры</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--n-600)', marginBottom: 4 }}>Медцентры</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {CLINICS.map(c => {
                 const checked = (perm.clinics || []).includes(c.id);
                 return (
-                  <div key={c.id} onClick={() => toggleClinic(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', border: `1px solid ${checked ? c.color : '#e2e8f0'}`, borderRadius: 20, cursor: 'pointer', background: checked ? `${c.color}12` : 'white', transition: 'all 0.15s', userSelect: 'none' }}>
+                  <div key={c.id} onClick={() => toggleClinic(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', border: `1px solid ${checked ? c.color : 'var(--n-200)'}`, borderRadius: 20, cursor: 'pointer', background: checked ? `${c.color}12` : 'white', transition: 'all 0.15s', userSelect: 'none' }}>
                     <ClinicToggle checked={checked} color={c.color} />
                     <span style={{ fontSize: 12, fontWeight: checked ? 600 : 500, color: checked ? '#1e293b' : '#64748b', fontFamily: FONT }}>{c.name}</span>
                   </div>
@@ -241,8 +241,8 @@ function UserRow({ user, onSaved }) {
           </div>
 
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Клиника по умолчанию во вкладке «Сотрудники»</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>Какой медцентр открывается сразу при выборе сотрудника (вместо «Общие»)</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--n-600)', marginBottom: 4 }}>Клиника по умолчанию во вкладке «Сотрудники»</div>
+            <div style={{ fontSize: 11, color: 'var(--n-500)', marginBottom: 8 }}>Какой медцентр открывается сразу при выборе сотрудника (вместо «Общие»)</div>
             {(() => {
               const availableClinics = (perm.clinics && perm.clinics.length)
                 ? CLINICS.filter(c => perm.clinics.includes(c.id))
@@ -266,11 +266,11 @@ function UserRow({ user, onSaved }) {
               const rows = [];
               TAB_DEFS.forEach((tab, idx) => {
                 const isGroupStart = tab.group && (idx === 0 || TAB_DEFS[idx - 1]?.group !== tab.group);
-                if (isGroupStart) rows.push(<div key={`group-${tab.group}`} style={{ fontSize: 13, color: '#475569', marginTop: 4, marginBottom: -2 }}>{tab.group}</div>);
+                if (isGroupStart) rows.push(<div key={`group-${tab.group}`} style={{ fontSize: 13, color: 'var(--n-700)', marginTop: 4, marginBottom: -2 }}>{tab.group}</div>);
                 rows.push(
                   <div key={tab.key} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ minWidth: 220, fontSize: tab.group ? 11 : 13, color: tab.group ? '#94a3b8' : '#475569' }}>{tab.label}</div>
-                    <div style={{ display: 'flex', border: '1px solid #94a3b8', borderRadius: 7, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', border: '1px solid var(--n-500)', borderRadius: 7, overflow: 'hidden' }}>
                       {PERM_OPTIONS.map(opt => {
                         const active = perm[tab.key] === opt.value;
                         return (
@@ -287,20 +287,20 @@ function UserRow({ user, onSaved }) {
 
           <div
             onClick={() => setPerm(p => ({ ...p, bypassPeriodLock: !p.bypassPeriodLock }))}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, padding: '10px 12px', border: `1px solid ${perm.bypassPeriodLock ? '#16a34a' : '#e2e8f0'}`, borderRadius: 8, background: perm.bypassPeriodLock ? '#16a34a10' : 'white', cursor: 'pointer', userSelect: 'none' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, padding: '10px 12px', border: `1px solid ${perm.bypassPeriodLock ? 'var(--green-600)' : 'var(--n-200)'}`, borderRadius: 8, background: perm.bypassPeriodLock ? '#16a34a10' : 'white', cursor: 'pointer', userSelect: 'none' }}
           >
             <ClinicToggle checked={!!perm.bypassPeriodLock} color="#16a34a" />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>Редактирование закрытых периодов</div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Игнорировать блокировку дат (2× в месяц) в Расписании и Учёте рабочего времени</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--n-800)' }}>Редактирование закрытых периодов</div>
+              <div style={{ fontSize: 11, color: 'var(--n-500)', marginTop: 2 }}>Игнорировать блокировку дат (2× в месяц) в Расписании и Учёте рабочего времени</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, paddingTop: 14, borderTop: '1px dashed #e2e8f0' }}>
-            <button onClick={handleSave} disabled={saving} style={{ padding: '7px 16px', background: '#007AFF', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, paddingTop: 14, borderTop: '1px dashed var(--n-200)' }}>
+            <button onClick={handleSave} disabled={saving} style={{ padding: '7px 16px', background: 'var(--accent-500)', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
               {saving ? 'Сохранение...' : 'Сохранить'}
             </button>
-            {saved && <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#16a34a', fontWeight: 500 }}><Check size={13} /> Сохранено</span>}
+            {saved && <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--green-600)', fontWeight: 500 }}><Check size={13} /> Сохранено</span>}
           </div>
         </div>
       )}
@@ -310,18 +310,18 @@ function UserRow({ user, onSaved }) {
 
 // ── Dictionaries tab ──────────────────────────────────────────────────────────
 const inputStyle = {
-  padding: '7px 11px', border: '1px solid #e2e8f0', borderRadius: 8,
-  fontSize: 13, background: 'white', color: '#1e293b', outline: 'none', fontFamily: FONT,
+  padding: '7px 11px', border: '1px solid var(--n-200)', borderRadius: 8,
+  fontSize: 13, background: 'var(--n-0)', color: 'var(--n-800)', outline: 'none', fontFamily: FONT,
 };
 const btnPrimary = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-  padding: '8px 18px', background: '#007AFF', color: 'white',
+  padding: '8px 18px', background: 'var(--accent-500)', color: 'white',
   border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
   cursor: 'pointer', fontFamily: FONT, transition: 'opacity .15s',
 };
 const btnSecondary = {
-  padding: '7px 14px', background: 'white', color: '#64748b',
-  border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12,
+  padding: '7px 14px', background: 'var(--n-0)', color: 'var(--n-600)',
+  border: '1px solid var(--n-200)', borderRadius: 8, fontSize: 12,
   cursor: 'pointer', fontFamily: FONT,
 };
 
@@ -385,15 +385,15 @@ function HolidaysTab() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20, alignItems: 'start' }}>
       {/* Add form */}
-      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 7 }}>
+      <div style={{ background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', background: 'var(--n-50)', borderBottom: '1px solid var(--n-200)' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--n-800)', display: 'flex', alignItems: 'center', gap: 7 }}>
             <Plus size={14} color="#007AFF" /> Добавить праздник
           </span>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Дата</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--n-500)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Дата</div>
             <input
               type="date"
               value={newDate}
@@ -402,7 +402,7 @@ function HolidaysTab() {
             />
           </div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Название (необязательно)</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--n-500)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Название (необязательно)</div>
             <input
               value={newName}
               onChange={e => setNewName(e.target.value)}
@@ -421,22 +421,22 @@ function HolidaysTab() {
       </div>
 
       {/* List */}
-      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+      <div style={{ background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', background: 'var(--n-50)', borderBottom: '1px solid var(--n-200)' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--n-800)' }}>
             Праздничные дни
-            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: '#94a3b8' }}>{list.length}</span>
+            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: 'var(--n-500)' }}>{list.length}</span>
           </span>
         </div>
         {loading ? (
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Загрузка...</div>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--n-500)', fontSize: 13 }}>Загрузка...</div>
         ) : list.length === 0 ? (
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Праздники не добавлены</div>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--n-500)', fontSize: 13 }}>Праздники не добавлены</div>
         ) : (
           <div>
             {Object.entries(byYear).sort((a, b) => b[0].localeCompare(a[0])).map(([year, items]) => (
               <div key={year}>
-                <div style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: '#94a3b8', background: '#f8fafc', borderBottom: '1px solid #f1f5f9', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <div style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: 'var(--n-500)', background: 'var(--n-50)', borderBottom: '1px solid var(--n-100)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   {year} · {items.length} дн.
                 </div>
                 {items.map((h, i) => (
@@ -447,12 +447,12 @@ function HolidaysTab() {
                   >
                     <Calendar size={14} color="#ef4444" style={{ flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{formatDate(h.date)}</div>
-                      {h.name && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{h.name}</div>}
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--n-800)' }}>{formatDate(h.date)}</div>
+                      {h.name && <div style={{ fontSize: 11, color: 'var(--n-600)', marginTop: 2 }}>{h.name}</div>}
                     </div>
                     <button
                       onClick={() => del(h.id, h.date)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#94a3b8', display: 'flex', transition: 'color .15s' }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: 'var(--n-500)', display: 'flex', transition: 'color .15s' }}
                       onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
                       onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
                       title="Удалить"
@@ -587,7 +587,7 @@ function DictsTab() {
       {/* Sub-tab bar — rb-clinic-tab-wrap style */}
       <div style={{
         position: 'relative', display: 'flex', gap: 4,
-        background: 'white', border: '1px solid #e2e8f0', borderRadius: 10,
+        background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 10,
         padding: '6px 8px', marginBottom: 24,
       }}>
         {[['categories','Категории расписания'],['cabinets','Кабинеты']].map(([key, label]) => {
@@ -609,15 +609,15 @@ function DictsTab() {
         <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20, alignItems: 'start' }}>
 
           {/* Add form — left column */}
-          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div style={{ background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--n-50)', borderBottom: '1px solid var(--n-200)' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--n-800)', display: 'flex', alignItems: 'center', gap: 7 }}>
                 <Plus size={14} color="#007AFF" /> Новая категория
               </span>
             </div>
             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Название</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--n-500)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Название</div>
                 <input
                   style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
                   value={newCatName}
@@ -627,7 +627,7 @@ function DictsTab() {
                 />
               </div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>Цвет метки</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--n-500)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>Цвет метки</div>
                 <ColorPicker value={newCatColor} onChange={setNewCatColor} />
               </div>
               <button
@@ -640,25 +640,25 @@ function DictsTab() {
           </div>
 
           {/* List — right column */}
-          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+          <div style={{ background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--n-50)', borderBottom: '1px solid var(--n-200)' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--n-800)' }}>
                 Все категории
-                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: '#94a3b8' }}>{catList.length}</span>
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: 'var(--n-500)' }}>{catList.length}</span>
               </span>
             </div>
 
             {catList.length === 0 ? (
-              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Нет категорий</div>
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--n-500)', fontSize: 13 }}>Нет категорий</div>
             ) : (
               <div>
                 {catList.map((cat, i) => (
                   <div key={cat.id} style={{ borderBottom: i < catList.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                     {editCatId === cat.id ? (
-                      <div style={{ padding: '14px 16px', background: '#f0f7ff', borderLeft: `3px solid #007AFF` }}>
+                      <div style={{ padding: '14px 16px', background: 'var(--accent-50)', borderLeft: `3px solid var(--accent-500)` }}>
                         <div style={{ marginBottom: 12 }}>
                           <input
-                            style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', border: '1.5px solid #007AFF' }}
+                            style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', border: '1.5px solid var(--accent-500)' }}
                             value={editCatName}
                             onChange={e => setEditCatName(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') saveCat(cat.id); if (e.key === 'Escape') setEditCatId(null); }}
@@ -669,7 +669,7 @@ function DictsTab() {
                           <ColorPicker value={editCatColor} onChange={setEditCatColor} />
                         </div>
                         <div style={{ marginBottom: 14 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>ID категории в МИС</div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--n-500)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>ID категории в МИС</div>
                           <input
                             style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
                             value={editMisId}
@@ -689,16 +689,16 @@ function DictsTab() {
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
                         <span style={{ width: 16, height: 16, borderRadius: '50%', background: cat.color, flexShrink: 0, boxShadow: `0 0 0 3px ${cat.color}30` }} />
-                        <span style={{ flex: 1, fontSize: 14, color: '#1e293b', fontWeight: 500 }}>{cat.name}</span>
-                        <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{cat.color}</span>
+                        <span style={{ flex: 1, fontSize: 14, color: 'var(--n-800)', fontWeight: 500 }}>{cat.name}</span>
+                        <span style={{ fontSize: 11, color: 'var(--n-500)', fontFamily: 'monospace' }}>{cat.color}</span>
                         {catMisMap[cat.id] != null && (
-                          <span style={{ fontSize: 11, color: '#475569', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '1px 6px', borderRadius: 4, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: 11, color: 'var(--n-700)', background: 'var(--n-100)', border: '1px solid var(--n-200)', padding: '1px 6px', borderRadius: 4, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                             МИС: {catMisMap[cat.id]}
                           </span>
                         )}
                         <button
                           onClick={() => { setEditCatId(cat.id); setEditCatName(cat.name); setEditCatColor(cat.color); setEditMisId(catMisMap[cat.id] != null ? String(catMisMap[cat.id]) : ''); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#94a3b8', display: 'flex', transition: 'color .15s' }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: 'var(--n-500)', display: 'flex', transition: 'color .15s' }}
                           onMouseEnter={e => e.currentTarget.style.color = '#007AFF'}
                           onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
                           title="Редактировать"
@@ -707,7 +707,7 @@ function DictsTab() {
                         </button>
                         <button
                           onClick={() => delCat(cat.id, cat.name)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#94a3b8', display: 'flex', transition: 'color .15s' }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: 'var(--n-500)', display: 'flex', transition: 'color .15s' }}
                           onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
                           onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
                           title="Удалить"
@@ -729,21 +729,21 @@ function DictsTab() {
         <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20, alignItems: 'start' }}>
 
           {/* Add form — left column */}
-          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div style={{ background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--n-50)', borderBottom: '1px solid var(--n-200)' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--n-800)', display: 'flex', alignItems: 'center', gap: 7 }}>
                 <Plus size={14} color="#007AFF" /> Новый кабинет
               </span>
             </div>
             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Медцентр</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--n-500)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Медцентр</div>
                 <select value={newCabClinic} onChange={e => setNewCabClinic(e.target.value)} style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}>
                   {CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Название</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--n-500)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Название</div>
                 <input
                   style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
                   value={newCabName}
@@ -772,7 +772,7 @@ function DictsTab() {
                 return next;
               });
               return (
-                <div key={cl.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                <div key={cl.id} style={{ background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 10, overflow: 'hidden' }}>
                   {/* Accordion header */}
                   <button
                     onClick={toggle}
@@ -783,9 +783,9 @@ function DictsTab() {
                     }}
                   >
                     <span style={{ width: 10, height: 10, borderRadius: '50%', background: cl.color, flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#1e293b', textAlign: 'left' }}>{cl.name}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--n-800)', textAlign: 'left' }}>{cl.name}</span>
                     <span style={{
-                      fontSize: 11, fontWeight: 500, color: 'white', background: clCabs.length ? cl.color : '#cbd5e1',
+                      fontSize: 11, fontWeight: 500, color: 'white', background: clCabs.length ? cl.color : 'var(--n-300)',
                       borderRadius: 20, padding: '1px 8px', minWidth: 20, textAlign: 'center',
                     }}>{clCabs.length}</span>
                     <ChevronDown size={15} color="#94a3b8" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }} />
@@ -793,20 +793,20 @@ function DictsTab() {
 
                   {/* Accordion body */}
                   {isOpen && (
-                    <div style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <div style={{ borderTop: '1px solid var(--n-100)' }}>
                       {clCabs.length === 0 ? (
-                        <div style={{ padding: '14px 16px', fontSize: 13, color: '#94a3b8', fontStyle: 'italic' }}>Нет кабинетов</div>
+                        <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--n-500)', fontStyle: 'italic' }}>Нет кабинетов</div>
                       ) : (
                         clCabs.map((cab, i, arr) => (
                           <div key={cab.id} style={{ borderBottom: i < arr.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                             {editCabId === cab.id ? (
-                              <div style={{ padding: '12px 14px', background: '#f0f7ff' }}>
+                              <div style={{ padding: '12px 14px', background: 'var(--accent-50)' }}>
                                 <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
                                   <select value={editCabClinic} onChange={e => setEditCabClinic(e.target.value)} style={{ ...inputStyle, flex: '0 0 auto' }}>
                                     {CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                   </select>
                                   <input
-                                    style={{ ...inputStyle, flex: 1, minWidth: 120, border: '1.5px solid #007AFF' }}
+                                    style={{ ...inputStyle, flex: 1, minWidth: 120, border: '1.5px solid var(--accent-500)' }}
                                     value={editCabName}
                                     onChange={e => setEditCabName(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Enter') saveCab(cab.id); if (e.key === 'Escape') setEditCabId(null); }}
@@ -824,17 +824,17 @@ function DictsTab() {
                                 onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'white'}
                               >
-                                <span style={{ flex: 1, fontSize: 14, color: '#1e293b', fontWeight: 500 }}>{cab.name}</span>
+                                <span style={{ flex: 1, fontSize: 14, color: 'var(--n-800)', fontWeight: 500 }}>{cab.name}</span>
                                 <button
                                   onClick={() => { setEditCabId(cab.id); setEditCabName(cab.name); setEditCabClinic(cab.clinicId); }}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#94a3b8', display: 'flex', transition: 'color .15s' }}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: 'var(--n-500)', display: 'flex', transition: 'color .15s' }}
                                   onMouseEnter={e => e.currentTarget.style.color = '#007AFF'}
                                   onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
                                   title="Редактировать"
                                 ><Pencil size={14} /></button>
                                 <button
                                   onClick={() => delCab(cab.id, cab.name)}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#94a3b8', display: 'flex', transition: 'color .15s' }}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: 'var(--n-500)', display: 'flex', transition: 'color .15s' }}
                                   onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
                                   onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
                                   title="Удалить"
@@ -890,7 +890,7 @@ export default function AdminRbAccess() {
       {/* Page-level tab bar — pill style matching rb-wizard-nav aesthetic */}
       <div style={{
         position: 'relative', display: 'flex', alignItems: 'center', gap: 4,
-        background: 'white', border: '1px solid #e2e8f0', borderRadius: 10,
+        background: 'var(--n-0)', border: '1px solid var(--n-200)', borderRadius: 10,
         padding: '8px 10px', marginBottom: 24,
         boxShadow: '0 1px 3px rgba(0,0,0,.06)',
       }}>
@@ -928,12 +928,12 @@ export default function AdminRbAccess() {
               <Users size={16} />
               <input placeholder="Поиск по имени..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <span style={{ fontSize: 13, color: '#64748b' }}>{filtered.length} пользователей</span>
+            <span style={{ fontSize: 13, color: 'var(--n-600)' }}>{filtered.length} пользователей</span>
           </div>
           {loading
             ? <div className="admin-loading"><div className="loading-spinner" /></div>
             : filtered.length === 0
-              ? <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>Нет пользователей</div>
+              ? <div style={{ textAlign: 'center', padding: 60, color: 'var(--n-600)' }}>Нет пользователей</div>
               : filtered.map(u => <UserRow key={u.id} user={u} onSaved={handleSaved} />)
           }
         </>

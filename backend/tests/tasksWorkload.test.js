@@ -202,3 +202,56 @@ test('цикл в связях «после» находится до сохра
   assert.ok(parts.findCycle(list, deps), 'цикл должен быть найден');
   assert.equal(parts.findCycle(list, [{ partId: 'b', afterPartId: 'a' }]), null);
 });
+
+/**
+ * Свод по матрице загрузки.
+ *
+ * С появлением вкладки «Сотрудники» те же цифры считают два маршрута — команда
+ * и сплошной список людей, — поэтому свод переехал в loadQuery. Проверяется то,
+ * ради чего он там: процент от суммы личных норм, а не от «людей × 8 ч», и
+ * непопадание в знаменатель дней, которых у человека нет.
+ */
+const loadQuery = require('../services/tasks/loadQuery');
+
+const matrixOf = perUser => new Map(Object.entries(perUser).map(
+  ([userId, days]) => [userId, new Map(days.map((day, index) => [`2026-08-1${index}`, day]))]
+));
+
+test('процент считается от суммы личных норм, а не от числа людей', () => {
+  // Полный день у одного и половина ставки у другого: 12 из 12 — это сто
+  // процентов, а не «двое по восемь часов недобрали до шестнадцати».
+  const summary = loadQuery.summarize(matrixOf({
+    full: [{ hours: 8, norm: 8, free: 0, color: wl.COLORS.TIGHT }],
+    part: [{ hours: 4, norm: 4, free: 0, color: wl.COLORS.TIGHT }],
+  }));
+  assert.equal(summary.capacity, 12);
+  assert.equal(summary.percent, 100);
+  assert.equal(summary.freeHours, 0);
+});
+
+test('выходные и отпуск не попадают ни в часы, ни в норму', () => {
+  const summary = loadQuery.summarize(matrixOf({
+    u: [
+      { hours: 6, norm: 8, free: 2, color: wl.COLORS.FREE },
+      { hours: 0, norm: null, free: 0, onVacation: true },
+      { hours: 0, norm: 0, free: 0, onDayOff: true },
+    ],
+  }));
+  assert.equal(summary.hours, 6);
+  assert.equal(summary.capacity, 8);
+  assert.equal(summary.freeHours, 2);
+});
+
+test('в своде каждого человека есть его собственный процент — по нему строится список сотрудников', () => {
+  const summary = loadQuery.summarize(matrixOf({
+    over: [{ hours: 10, norm: 8, free: 0, color: wl.COLORS.OVER }],
+    // Человек без расписания сравнивать не с чем: у него не ноль процентов, а
+    // ничего, иначе в общем списке он встал бы рядом с недозагруженными.
+    noSchedule: [{ hours: 0, norm: null, free: 0 }],
+  }));
+  const byUser = Object.fromEntries(summary.perUser.map(u => [u.userId, u]));
+  assert.equal(byUser.over.percent, 125);
+  assert.equal(byUser.over.overloadedDays, 1);
+  assert.equal(byUser.noSchedule.percent, null);
+  assert.equal(summary.overloadedDays, 1);
+});

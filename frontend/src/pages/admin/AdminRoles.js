@@ -195,7 +195,7 @@ export default function AdminRoles() {
                 <tr key={role.id} className="role-row" onClick={() => openModal(role)}>
                   <td>
                     <div className="role-cell-name">
-                      {role.isSystem && <Crown size={15} style={{ color: '#f59e0b', marginRight: 7, flexShrink: 0 }} />}
+                      {role.isSystem && <Crown size={15} style={{ color: 'var(--amber-500)', marginRight: 7, flexShrink: 0 }} />}
                       {role.name}
                     </div>
                     {role.description && <div className="role-cell-desc">{role.description}</div>}

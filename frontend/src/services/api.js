@@ -61,6 +61,9 @@ export const auth = {
   revokeAllSessions: () => api.post('/auth/sessions/revoke-all'),
   changePassword: (currentPassword, newPassword) => api.post('/auth/change-password', { currentPassword, newPassword }),
   updateProfile: (data) => api.put('/auth/profile', data),
+  // Оформление общее с мобильным приложением: сервер кладёт его в
+  // users.settings.appearance и рассылает по сокету на другие устройства
+  updatePreferences: (data) => api.patch('/auth/preferences', data),
   uploadAvatar: (file) => {
     const formData = new FormData();
     formData.append('avatar', file);
@@ -519,6 +522,10 @@ export const tasks = {
 
   // === ЛЮДИ И НОРМЫ ===
   getPeople: (params) => api.get('/tasks/people', { params }),
+  // Загрузка всех людей области видимости одной таблицей — вкладка
+  // «Сотрудники» на экране загрузки, где команды не разделяют людей.
+  getPeopleLoad: (start, end) =>
+    api.get('/tasks/people/load', { params: { start, end } }),
   getPersonLoad: (id, start, end) =>
     api.get(`/tasks/people/${id}/load`, { params: { start, end } }),
   getPersonSlots: (id, date) => api.get(`/tasks/people/${id}/slots`, { params: { date } }),

@@ -67,7 +67,7 @@ function EmpSelect({ doctors, selectedIds, onChange, clinics = [], getClinicName
   const selStyle = {
     boxSizing: 'border-box', width: '100%', padding: '4px 8px', fontSize: 12,
     border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none',
-    background: '#fff', color: 'var(--rb-text)', height: 28,
+    background: 'var(--n-0)', color: 'var(--rb-text)', height: 28,
   };
 
   return (
@@ -75,7 +75,7 @@ function EmpSelect({ doctors, selectedIds, onChange, clinics = [], getClinicName
       <button type="button" onClick={() => setOpen(v => !v)} style={{
         display: 'flex', alignItems: 'center', gap: 6, height: 34,
         padding: '0 10px 0 12px', borderRadius: 8, border: '1px solid var(--rb-border-dark)',
-        background: '#fff', cursor: 'pointer', fontSize: 13,
+        background: 'var(--n-0)', cursor: 'pointer', fontSize: 13,
         color: selectedIds.size === 0 ? 'var(--rb-text-secondary)' : 'var(--rb-text)',
         minWidth: 200, whiteSpace: 'nowrap',
       }}>
@@ -89,7 +89,7 @@ function EmpSelect({ doctors, selectedIds, onChange, clinics = [], getClinicName
       {open && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, zIndex: 200,
-          background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10,
+          background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10,
           boxShadow: '0 8px 28px rgba(0,0,0,.13)', minWidth: 300, maxWidth: 380,
           marginTop: 4, overflow: 'hidden',
         }}>
@@ -180,7 +180,7 @@ function ClinicMultiSelect({ clinics, selectedIds, onChange, getClinicName }) {
       <button type="button" onClick={() => setOpen(v => !v)} style={{
         display: 'flex', alignItems: 'center', gap: 6, height: 34, width: '100%',
         padding: '0 10px 0 12px', borderRadius: 8, border: '1px solid var(--rb-border-dark)',
-        background: '#fff', cursor: 'pointer', fontSize: 13,
+        background: 'var(--n-0)', cursor: 'pointer', fontSize: 13,
         color: selectedIds.size === 0 ? 'var(--rb-text-secondary)' : 'var(--rb-text)',
         whiteSpace: 'nowrap',
       }}>
@@ -194,7 +194,7 @@ function ClinicMultiSelect({ clinics, selectedIds, onChange, getClinicName }) {
       {open && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, zIndex: 200,
-          background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10,
+          background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10,
           boxShadow: '0 8px 28px rgba(0,0,0,.13)', minWidth: 220, maxWidth: 320,
           marginTop: 4, overflow: 'hidden',
         }}>
@@ -913,7 +913,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
 
       {/* ── Document view ── */}
       {showDoc ? (
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', background: '#f1f5f9' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', background: 'var(--n-100)' }}>
           <div className="tabel-doc">
 
             {/* 0. Шапка — форма Т-13, правый угол */}
@@ -928,15 +928,15 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
                   <tbody>
                     <tr>
                       <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}></td>
-                      <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>Код</td>
+                      <td style={{ border: '1px solid var(--n-900)', padding: '2px 8px', textAlign: 'center' }}>Код</td>
                     </tr>
                     <tr>
                       <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>Форма по ОКУД</td>
-                      <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>0301008</td>
+                      <td style={{ border: '1px solid var(--n-900)', padding: '2px 8px', textAlign: 'center' }}>0301008</td>
                     </tr>
                     <tr>
                       <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>по ОКПО</td>
-                      <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}></td>
+                      <td style={{ border: '1px solid var(--n-900)', padding: '2px 8px', textAlign: 'center' }}></td>
                     </tr>
                   </tbody>
                 </table>
@@ -947,13 +947,13 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
             <div style={{ textAlign: 'center', marginBottom: 8 }}>
               <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460 }}>
                 <div style={{
-                  borderBottom: '1px solid #000', width: '100%',
+                  borderBottom: '1px solid var(--n-900)', width: '100%',
                   minHeight: 22, paddingBottom: 2, textAlign: 'center',
                   fontSize: 13, fontFamily: 'Times New Roman, serif',
                 }}>
                   {orgName}
                 </div>
-                <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>
+                <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: 'var(--n-900)', marginTop: 2 }}>
                   (наименование организации)
                 </span>
               </div>
@@ -965,13 +965,13 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
                 display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460,
               }}>
                 <div style={{
-                  borderBottom: '1px solid #000', width: '100%', minHeight: 22,
+                  borderBottom: '1px solid var(--n-900)', width: '100%', minHeight: 22,
                   textAlign: 'center', fontSize: 13,
                   fontFamily: 'Times New Roman, serif', paddingBottom: 2,
                 }}>
                   {subdivision}
                 </div>
-                <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>
+                <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: 'var(--n-900)', marginTop: 2 }}>
                   (структурное подразделение)
                 </span>
               </div>

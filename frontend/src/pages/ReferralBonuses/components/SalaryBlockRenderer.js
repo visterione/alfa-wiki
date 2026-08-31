@@ -401,7 +401,7 @@ export default function SalaryBlock({ salary }) {
                         <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{Math.round(row.pay).toLocaleString('ru-RU')} ₽</td>
                       </tr>
                       {premiumItem && (
-                        <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                        <tr style={{ borderTop: '1px dashed var(--n-200)' }}>
                           <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
                             * Премия ({row.label}): {premiumItem.workedHours} ч / {premiumItem.norm} ч → {premiumItem.premiumAmount.toFixed(2)} ₽
                           </td>
@@ -425,14 +425,14 @@ export default function SalaryBlock({ salary }) {
                   </tr>
                 ))}
                 {hourlyRatesBreakdown.length === 0 && normPremiumAmount > 0 && normPremiumByRole.length === 0 && normHoursForPeriod != null && (
-                  <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                  <tr style={{ borderTop: '1px dashed var(--n-200)' }}>
                     <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
                       * Из них премия за переработку ({_hoursWorked} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 )}
                 {holidaySurchargeBreakdown.map((row, i) => (
-                  <tr key={`holiday-${i}`} style={{ borderTop: i === 0 ? '1px solid #fecaca' : undefined, background: '#fff5f5' }}>
+                  <tr key={`holiday-${i}`} style={{ borderTop: i === 0 ? '1px solid #fecaca' : undefined, background: 'var(--red-50)' }}>
                     <td>Доплата за работу в праздничные дни{row.label ? ` (${row.label})` : ''}</td>
                     <td style={{ textAlign: 'center' }}>{row.rate.toFixed(2)} ₽</td>
                     <td style={{ textAlign: 'center' }}>{Number.isInteger(row.hours) ? row.hours : row.hours.toFixed(1)}</td>
@@ -461,7 +461,7 @@ export default function SalaryBlock({ salary }) {
                     <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{fmtMoney(baseTotal)} ₽</td>
                   </tr>
                   {hasPremium && (
-                    <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                    <tr style={{ borderTop: '1px dashed var(--n-200)' }}>
                       <td>Переработка</td>
                       <td style={{ textAlign: 'center' }}>{proratedNorm ? fmtH(proratedNorm) : '—'}</td>
                       <td style={{ textAlign: 'center' }}>{fmtH(overHours)}</td>
@@ -508,14 +508,14 @@ export default function SalaryBlock({ salary }) {
                   </tr>
                 ))}
                 {normPremiumAmount > 0 && normPremiumByRole.length === 0 && normHoursForPeriod != null && (
-                  <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                  <tr style={{ borderTop: '1px dashed var(--n-200)' }}>
                     <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
                       * Из них премия за переработку ({normTotalHours} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 )}
                 {holidaySurchargeBreakdown.map((row, i) => (
-                  <tr key={`holiday-${i}`} style={{ borderTop: i === 0 ? '1px solid #fecaca' : undefined, background: '#fff5f5' }}>
+                  <tr key={`holiday-${i}`} style={{ borderTop: i === 0 ? '1px solid #fecaca' : undefined, background: 'var(--red-50)' }}>
                     <td>Доплата за работу в праздничные дни{row.label ? ` (${row.label})` : ''}</td>
                     <td style={{ textAlign: 'right' }}>{row.rate.toFixed(2)} ₽</td>
                     <td style={{ textAlign: 'center' }}>{Number.isInteger(row.hours) ? row.hours : row.hours.toFixed(1)}</td>
@@ -654,8 +654,8 @@ export default function SalaryBlock({ salary }) {
                     <td>{d.name}{isTurnover ? '*' : ''}</td>
                     <td style={{ textAlign: 'center' }}>
                       {isTurnover
-                        ? <span style={{ fontSize: 10, background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от оборота</span>
-                        : <span style={{ fontSize: 10, background: '#fff7ed', color: '#c2410c', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от з/п</span>}
+                        ? <span style={{ fontSize: 10, background: 'var(--accent-100)', color: 'var(--accent-900)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от оборота</span>
+                        : <span style={{ fontSize: 10, background: 'var(--amber-50)', color: 'var(--amber-700)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от з/п</span>}
                     </td>
                     <td style={{ textAlign: 'center' }}>{d.valueType === 'percent' ? `${_v}%` : `${_v.toFixed(2)} ₽`}</td>
                     <td style={{ fontWeight: 600, color: isTurnover ? 'var(--rb-text-secondary)' : 'var(--rb-danger)', textAlign: 'right' }}>−{_rub.toFixed(2)} ₽</td>
@@ -666,7 +666,7 @@ export default function SalaryBlock({ salary }) {
                 ? assistanceSections.map((s, i) => (
                   <tr key={`asst-${i}`} style={{ opacity: 0.7 }}>
                     <td>Услуги ассистирования {s.name}*</td>
-                    <td><span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>ассистент</span></td>
+                    <td><span style={{ fontSize: 10, background: 'var(--amber-100)', color: 'var(--amber-800)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>ассистент</span></td>
                     <td style={{ textAlign: 'right' }}>—</td>
                     <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{s.total.toFixed(2)} ₽</td>
                   </tr>
@@ -674,7 +674,7 @@ export default function SalaryBlock({ salary }) {
                 : (assistancePaidTotal || 0) > 0 && (
                   <tr style={{ opacity: 0.7 }}>
                     <td>Услуги ассистирования*</td>
-                    <td><span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>ассистент</span></td>
+                    <td><span style={{ fontSize: 10, background: 'var(--amber-100)', color: 'var(--amber-800)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>ассистент</span></td>
                     <td style={{ textAlign: 'right' }}>—</td>
                     <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{assistancePaidTotal.toFixed(2)} ₽</td>
                   </tr>
@@ -684,7 +684,7 @@ export default function SalaryBlock({ salary }) {
                 ? anesthesiologistSections.map((s, i) => (
                   <tr key={`anest-${i}`} style={{ opacity: 0.7 }}>
                     <td>Услуги анестезиолога {s.name}*</td>
-                    <td><span style={{ fontSize: 10, background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>анестезиолог</span></td>
+                    <td><span style={{ fontSize: 10, background: 'var(--accent-100)', color: 'var(--accent-900)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>анестезиолог</span></td>
                     <td style={{ textAlign: 'right' }}>—</td>
                     <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{s.total.toFixed(2)} ₽</td>
                   </tr>
@@ -692,7 +692,7 @@ export default function SalaryBlock({ salary }) {
                 : (anesthesiologistPaidTotal || 0) > 0 && (
                   <tr style={{ opacity: 0.7 }}>
                     <td>Услуги анестезиолога*</td>
-                    <td><span style={{ fontSize: 10, background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>анестезиолог</span></td>
+                    <td><span style={{ fontSize: 10, background: 'var(--accent-100)', color: 'var(--accent-900)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>анестезиолог</span></td>
                     <td style={{ textAlign: 'right' }}>—</td>
                     <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{anesthesiologistPaidTotal.toFixed(2)} ₽</td>
                   </tr>
@@ -702,7 +702,7 @@ export default function SalaryBlock({ salary }) {
                 ? nurseSections.map((s, i) => (
                   <tr key={`nurse-${i}`} style={{ opacity: 0.7 }}>
                     <td>Услуги медсестры {s.name}*</td>
-                    <td><span style={{ fontSize: 10, background: '#fdf4ff', color: '#7e22ce', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>медсестра</span></td>
+                    <td><span style={{ fontSize: 10, background: 'var(--violet-50)', color: 'var(--violet-700)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>медсестра</span></td>
                     <td style={{ textAlign: 'right' }}>—</td>
                     <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{s.total.toFixed(2)} ₽</td>
                   </tr>
@@ -710,7 +710,7 @@ export default function SalaryBlock({ salary }) {
                 : (nursePaidTotal || 0) > 0 && (
                   <tr style={{ opacity: 0.7 }}>
                     <td>Услуги медсестры*</td>
-                    <td><span style={{ fontSize: 10, background: '#fdf4ff', color: '#7e22ce', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>медсестра</span></td>
+                    <td><span style={{ fontSize: 10, background: 'var(--violet-50)', color: 'var(--violet-700)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>медсестра</span></td>
                     <td style={{ textAlign: 'right' }}>—</td>
                     <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{nursePaidTotal.toFixed(2)} ₽</td>
                   </tr>
@@ -743,8 +743,8 @@ export default function SalaryBlock({ salary }) {
                     <td>{m.name}{isTurnover ? '*' : ''}</td>
                     <td>
                       {isTurnover
-                        ? <span style={{ fontSize: 10, background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от оборота</span>
-                        : <span style={{ fontSize: 10, background: '#fff7ed', color: '#c2410c', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от з/п</span>}
+                        ? <span style={{ fontSize: 10, background: 'var(--accent-100)', color: 'var(--accent-900)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от оборота</span>
+                        : <span style={{ fontSize: 10, background: 'var(--amber-50)', color: 'var(--amber-700)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от з/п</span>}
                     </td>
                     <td style={{ textAlign: 'right' }}>{m.valueType === 'percent' ? `${_v}%` : `${_v.toFixed(2)} ₽`}</td>
                     <td style={{ fontWeight: 600, color: isTurnover ? 'var(--rb-text-secondary)' : 'var(--rb-danger)', textAlign: 'right' }}>−{_rub.toFixed(2)} ₽</td>
@@ -754,7 +754,7 @@ export default function SalaryBlock({ salary }) {
               {svcMatBreakdown.map((m, i) => (
                 <tr key={`svc-${i}`}>
                   <td>{m.name} <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>({m.serviceName || m.serviceCode})</span></td>
-                  <td><span style={{ fontSize: 10, background: '#fdf4ff', color: '#7e22ce', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>по услуге</span></td>
+                  <td><span style={{ fontSize: 10, background: 'var(--violet-50)', color: 'var(--violet-700)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>по услуге</span></td>
                   <td style={{ textAlign: 'right' }}>{m.valueType === 'percent' ? `${parseFloat(m.value)}%` : `${parseFloat(m.value).toFixed(2)} ₽`}</td>
                   <td style={{ fontWeight: 600, color: 'var(--rb-danger)', textAlign: 'right' }}>−{m.rub.toFixed(2)} ₽</td>
                 </tr>
@@ -762,7 +762,7 @@ export default function SalaryBlock({ salary }) {
               {svcMatTurnoverBreakdown.map((m, i) => (
                 <tr key={`svct-${i}`} style={{ opacity: 0.7 }}>
                   <td>{m.name}* <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>({m.serviceName || m.serviceCode})</span></td>
-                  <td><span style={{ fontSize: 10, background: '#f0fdf4', color: '#15803d', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>оборот по услуге</span></td>
+                  <td><span style={{ fontSize: 10, background: 'var(--green-50)', color: 'var(--green-700)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>оборот по услуге</span></td>
                   <td style={{ textAlign: 'right' }}>{m.valueType === 'percent' ? `${parseFloat(m.value)}%` : `${parseFloat(m.value).toFixed(2)} ₽`}</td>
                   <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{m.rub.toFixed(2)} ₽</td>
                 </tr>
@@ -773,7 +773,7 @@ export default function SalaryBlock({ salary }) {
             <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', paddingTop: 4, fontStyle: 'italic' }}>* Уже учтено при расчёте бонусов за выполнение услуг</div>
           )}
           {serviceMaterials.length > 0 && svcMatBreakdown.length === 0 && svcMatTurnoverBreakdown.length === 0 && (
-            <div style={{ fontSize: 11, color: '#d97706', paddingTop: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ fontSize: 11, color: 'var(--amber-600)', paddingTop: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               Индивидуальные расходники настроены ({serviceMaterials.length} шт.), но ни один не совпал с услугами в Excel. Проверьте точность названий услуг.
             </div>
@@ -820,14 +820,14 @@ export default function SalaryBlock({ salary }) {
         return (
           <>
             <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
-              <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+              <div className="rb-salary-row" style={{ background: 'var(--n-50)', alignItems: 'center' }}>
                 <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Начислено</div></div>
                 <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>
                   {grossDisplayFinalSalary < 0 ? '−' : ''}{fmtRub(Math.abs(grossDisplayFinalSalary))}
                 </div>
               </div>
               {totalUderzhano > 0 && (
-                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                <div className="rb-salary-row" style={{ background: 'var(--n-50)', alignItems: 'center' }}>
                   <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Удержано</div></div>
                   <div className="rb-salary-row-value" style={{ color: 'var(--rb-danger)' }}>
                     −{fmtRub(totalUderzhano)}
@@ -835,7 +835,7 @@ export default function SalaryBlock({ salary }) {
                 </div>
               )}
               {effectiveNdflTotal > 0 && (
-                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                <div className="rb-salary-row" style={{ background: 'var(--n-50)', alignItems: 'center' }}>
                   <div className="rb-salary-row-body">
                     <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)', opacity: 0.7 }}>НДФЛ*</div>
                   </div>
@@ -845,21 +845,21 @@ export default function SalaryBlock({ salary }) {
                 </div>
               )}
               {(advance || 0) > 0 && (
-                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                <div className="rb-salary-row" style={{ background: 'var(--n-50)', alignItems: 'center' }}>
                   <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Аванс</div></div>
                   <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{paymentMethod ? fmtMethod(paymentMethod) : ''}</div>
                   <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(advance)}</div>
                 </div>
               )}
               {((mainPayment || 0) + extraTotal - vacationPayTotal) > 0 && (
-                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                <div className="rb-salary-row" style={{ background: 'var(--n-50)', alignItems: 'center' }}>
                   <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Основная ЗП</div></div>
                   <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
                   <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub((mainPayment || 0) + extraTotal - vacationPayTotal)}</div>
                 </div>
               )}
               {normPremiumAmount > 0 && (
-                <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
+                <div className="rb-salary-row" style={{ background: 'var(--n-50)' }}>
                   <div className="rb-salary-row-body">
                     <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Премия</div>
                   </div>
@@ -867,7 +867,7 @@ export default function SalaryBlock({ salary }) {
                 </div>
               )}
               {vacationPayTotal > 0 && (
-                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                <div className="rb-salary-row" style={{ background: 'var(--n-50)', alignItems: 'center' }}>
                   <div className="rb-salary-row-body">
                     <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Отпускные</div>
                   </div>

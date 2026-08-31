@@ -94,7 +94,7 @@ const fmtDate = s => {
 function Toggle({ checked, onChange }) {
   return (
     <div onClick={onChange} style={{ width: 28, height: 16, borderRadius: 8, background: checked ? 'var(--rb-primary)' : '#d1d5db', cursor: 'pointer', flexShrink: 0, position: 'relative', transition: 'background .15s' }}>
-      <div style={{ position: 'absolute', top: 2, left: checked ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left .15s' }} />
+      <div style={{ position: 'absolute', top: 2, left: checked ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: 'var(--n-0)', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left .15s' }} />
     </div>
   );
 }
@@ -127,14 +127,14 @@ function MultiSelect({ options, value, onChange, placeholder, renderLabel, rende
     : value.length === 0 ? placeholder : value.length === 1 ? (renderOption ? renderOption(value[0]) : value[0]) : `${value.length} выбрано`;
   return (
     <div ref={ref} style={{ width: '100%' }}>
-      <button ref={btnRef} onClick={handleOpen} style={{ width: '100%', padding: '4px 7px', border: `1px solid ${value.length ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: value.length ? '#eff6ff' : '#fff', color: value.length ? 'var(--rb-primary)' : '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, textAlign: 'left', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}>
+      <button ref={btnRef} onClick={handleOpen} style={{ width: '100%', padding: '4px 7px', border: `1px solid ${value.length ? 'var(--rb-primary)' : 'var(--n-300)'}`, borderRadius: 5, fontSize: 12, background: value.length ? '#eff6ff' : '#fff', color: value.length ? 'var(--rb-primary)' : '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, textAlign: 'left', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLabel}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }}><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
       </button>
       {open && ReactDOM.createPortal(
-        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: 'var(--n-0)', border: '1px solid var(--n-300)', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
           {value.length > 0 && (
-            <div onClick={() => onChange([])} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>Сбросить</div>
+            <div onClick={() => onChange([])} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid var(--n-100)', fontWeight: 500 }}>Сбросить</div>
           )}
           {options.map(opt => (
             <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => toggle(opt)}>
@@ -195,7 +195,7 @@ function SpecialtyFilter({ options, value, onChange }) {
           value={displayText}
           onChange={handleText}
           placeholder="Все"
-          style={{ flex: 1, minWidth: 0, padding: '4px 6px', border: `1px solid ${active ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: active ? '#eff6ff' : '#fff', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', color: active ? 'var(--rb-primary)' : '#374151' }}
+          style={{ flex: 1, minWidth: 0, padding: '4px 6px', border: `1px solid ${active ? 'var(--rb-primary)' : 'var(--n-300)'}`, borderRadius: 5, fontSize: 12, background: active ? '#eff6ff' : '#fff', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', color: active ? 'var(--rb-primary)' : '#374151' }}
         />
         <button ref={btnRef} onClick={() => {
           if (!open && btnRef.current) {
@@ -203,12 +203,12 @@ function SpecialtyFilter({ options, value, onChange }) {
             setPos({ top: r.bottom + 2, left: r.right - Math.max(r.width * 4, 180), width: Math.max(r.width * 4, 180) });
           }
           setOpen(v => !v);
-        }} style={{ flexShrink: 0, padding: '4px 5px', border: `1px solid ${open ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, background: open ? '#eff6ff' : '#f9fafb', cursor: 'pointer', color: '#6b7280', fontSize: 10, lineHeight: 1 }}>▾</button>
+        }} style={{ flexShrink: 0, padding: '4px 5px', border: `1px solid ${open ? 'var(--rb-primary)' : 'var(--n-300)'}`, borderRadius: 5, background: open ? '#eff6ff' : '#f9fafb', cursor: 'pointer', color: 'var(--n-600)', fontSize: 10, lineHeight: 1 }}>▾</button>
       </div>
       {open && ReactDOM.createPortal(
-        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: 'var(--n-0)', border: '1px solid var(--n-300)', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
           {value.length > 0 && (
-            <div onClick={() => { onChange([]); setText(''); }} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>Сбросить</div>
+            <div onClick={() => { onChange([]); setText(''); }} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid var(--n-100)', fontWeight: 500 }}>Сбросить</div>
           )}
           {filtered.map(opt => (
             <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => toggle(opt)}>
@@ -263,7 +263,7 @@ function AutocompleteInput({ value, onChange, suggestions, placeholder, inputSty
         style={inputStyle}
       />
       {open && matches.length > 0 && ReactDOM.createPortal(
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, maxHeight: 220, overflowY: 'auto', background: 'var(--n-0)', border: '1px solid var(--n-300)', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
           {matches.map(s => (
             <div
               key={s}
@@ -324,26 +324,26 @@ function PeriodMultiFilter({ value, onChange, allYears }) {
 
   return (
     <div ref={ref} style={{ width: '100%' }}>
-      <button ref={btnRef} onClick={handleOpen} style={{ width: '100%', padding: '4px 7px', border: `1px solid ${value.length ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: value.length ? '#eff6ff' : '#fff', color: value.length ? 'var(--rb-primary)' : '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, textAlign: 'left', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}>
+      <button ref={btnRef} onClick={handleOpen} style={{ width: '100%', padding: '4px 7px', border: `1px solid ${value.length ? 'var(--rb-primary)' : 'var(--n-300)'}`, borderRadius: 5, fontSize: 12, background: value.length ? '#eff6ff' : '#fff', color: value.length ? 'var(--rb-primary)' : '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, textAlign: 'left', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLabel}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }}><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
       </button>
       {open && ReactDOM.createPortal(
-        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 420, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999, padding: 10 }}>
+        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 420, overflowY: 'auto', background: 'var(--n-0)', border: '1px solid var(--n-300)', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999, padding: 10 }}>
           {value.length > 0 && (
-            <div onClick={() => onChange([])} style={{ padding: '4px 2px', marginBottom: 8, fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', fontWeight: 500, borderBottom: '1px solid #f3f4f6', paddingBottom: 8 }}>
+            <div onClick={() => onChange([])} style={{ padding: '4px 2px', marginBottom: 8, fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', fontWeight: 500, borderBottom: '1px solid var(--n-100)', paddingBottom: 8 }}>
               Сбросить ({value.length})
             </div>
           )}
           {years.map(year => (
             <div key={year} style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5 }}>{year}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--n-600)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5 }}>{year}</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
                 {MONTHS_SHORT.map((m, i) => {
                   const period = `${year}-${String(i + 1).padStart(2, '0')}`;
                   const sel = value.includes(period);
                   return (
-                    <button key={period} onClick={() => toggle(period)} style={{ padding: '4px 2px', fontSize: 11, border: `1px solid ${sel ? 'var(--rb-primary)' : '#e5e7eb'}`, borderRadius: 4, background: sel ? 'var(--rb-primary)' : '#fff', color: sel ? '#fff' : '#374151', cursor: 'pointer', fontWeight: sel ? 600 : 400, fontFamily: 'inherit' }}>
+                    <button key={period} onClick={() => toggle(period)} style={{ padding: '4px 2px', fontSize: 11, border: `1px solid ${sel ? 'var(--rb-primary)' : 'var(--n-200)'}`, borderRadius: 4, background: sel ? 'var(--rb-primary)' : '#fff', color: sel ? '#fff' : '#374151', cursor: 'pointer', fontWeight: sel ? 600 : 400, fontFamily: 'inherit' }}>
                       {m}
                     </button>
                   );
@@ -1120,7 +1120,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         return (
         <>
         {/* ── Totals bar — всегда виден ── */}
-        <div style={{ borderBottom: '2px solid var(--rb-border)', background: '#f8fafc', padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0, minHeight: 56 }}>
+        <div style={{ borderBottom: '2px solid var(--rb-border)', background: 'var(--n-50)', padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0, minHeight: 56 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>
             Сводка
           </span>
@@ -1137,7 +1137,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             ].map(({ label, value, color, prefix }) => (
               <div key={label}>
                 <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2, whiteSpace: 'nowrap' }}>{label}</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: dataLoaded ? color : '#d1d5db' }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: dataLoaded ? color : 'var(--n-300)' }}>
                   {dataLoaded ? `${prefix || ''}${fmtRub(value)}` : '—'}
                 </div>
               </div>
@@ -1171,16 +1171,16 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                   return (
                     <th key={label}
                       onClick={handleSort}
-                      style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', textAlign: 'center', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--rb-border)', borderRight: '1px solid #c8d3e0', whiteSpace: 'nowrap', cursor: col ? 'pointer' : 'default', userSelect: 'none' }}>
+                      style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--n-100)', textAlign: 'center', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--rb-border)', borderRight: '1px solid var(--n-300)', whiteSpace: 'nowrap', cursor: col ? 'pointer' : 'default', userSelect: 'none' }}>
                       {label}{col && <span style={{ marginLeft: 4, opacity: active ? 1 : 0.3 }}>{isAsc ? '↑' : '↓'}</span>}
                     </th>
                   );
                 })}
-                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', width: 36, borderBottom: '1px solid var(--rb-border)', textAlign: 'center', padding: '0 4px' }}>
+                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--n-100)', width: 36, borderBottom: '1px solid var(--rb-border)', textAlign: 'center', padding: '0 4px' }}>
                   <button
                     onClick={loadData}
                     title="Загрузить данные"
-                    style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#e2e8f0', color: '#475569', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--n-300)', background: 'var(--n-200)', color: 'var(--n-700)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
                       <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1188,9 +1188,9 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                   </button>
                 </th>
               </tr>
-              <tr onClick={e => e.stopPropagation()} style={{ background: '#fff' }}>
+              <tr onClick={e => e.stopPropagation()} style={{ background: 'var(--n-0)' }}>
                 {/* ФИО */}
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid var(--n-300)' }}>
                   <AutocompleteInput
                     value={searchName}
                     onChange={setSearchName}
@@ -1200,25 +1200,25 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                   />
                 </th>
                 {/* Медцентр */}
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid var(--n-300)' }}>
                   <MultiSelect options={clinics.filter(c => String(c.id) !== '8').map(c => c.id)} value={filterClinics} onChange={setFilterClinics} placeholder="Все"
                     renderLabel={v => v.length === 0 ? 'Все' : v.length === 1 ? (clinics.find(c => String(c.id) === String(v[0]))?.name || v[0]) : `${v.length} выбрано`}
                     renderOption={id => clinics.find(c => String(c.id) === String(id))?.name || id}
                   />
                 </th>
                 {/* Специальность */}
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid var(--n-300)' }}>
                   <MultiSelect options={allSpecialties} value={filterSpecialties} onChange={setFilterSpecialties} placeholder="Все" />
                 </th>
                 {/* Дата */}
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid var(--n-300)' }}>
                   <PeriodMultiFilter value={filterPeriods} onChange={setFilterPeriods} allYears={allYears} />
                 </th>
                 {/* НДФЛ, Зарплата, Комментарий — пусто */}
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
-                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)' }} />
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid var(--n-300)' }} />
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid var(--n-300)' }} />
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid var(--n-300)' }} />
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: 'var(--n-0)', borderBottom: '2px solid var(--rb-border)' }} />
               </tr>
             </thead>
             <tbody>
@@ -1261,7 +1261,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                   <React.Fragment key={key}>
                     <tr
                       onClick={() => setExpandedKey(isOpen ? null : key)}
-                      style={{ cursor: 'pointer', background: '#fff', borderBottom: isOpen ? 'none' : '1px solid var(--rb-border)', transition: 'background .1s' }}
+                      style={{ cursor: 'pointer', background: 'var(--n-0)', borderBottom: isOpen ? 'none' : '1px solid var(--rb-border)', transition: 'background .1s' }}
                       onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = '#f8fafc'; }}
                       onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = '#fff'; }}
                     >
@@ -1282,10 +1282,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                         {dateLabel}
                       </td>
                       <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                        {(() => { const n = getNdflAmount(s); return n > 0 ? <span style={{ color: '#dc2626', fontWeight: 600 }}>−{fmtRub(n)}</span> : <span style={{ color: 'var(--rb-text-secondary)' }}>—</span>; })()}
+                        {(() => { const n = getNdflAmount(s); return n > 0 ? <span style={{ color: 'var(--red-600)', fontWeight: 600 }}>−{fmtRub(n)}</span> : <span style={{ color: 'var(--rb-text-secondary)' }}>—</span>; })()}
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontWeight: 700, color: '#1e40af' }}>{fmtRub(total)}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--accent-800)' }}>{fmtRub(total)}</div>
                         {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0 || (() => { const rowCash = cashPaymentsMap[rec.id] || []; return rowCash.length > 0; })()) && (
                           <div style={{ fontSize: 11, color: 'var(--rb-text)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
@@ -1297,7 +1297,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                   onClick={e => { e.stopPropagation(); handleBonusCarry(rec, recalcKey, bonus, dateLabel, cr?.clinicId); }}
                                   disabled={!!bonusCarryLoading[recalcKey]}
                                   title={bonusCarryDone[recalcKey] ? 'Премия перенесена на следующий месяц (можно повторить)' : 'Перенести премию на следующий месяц (в дополнительно)'}
-                                  style={{ padding: '3px 5px', background: bonusCarryDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${bonusCarryDone[recalcKey] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: bonusCarryLoading[recalcKey] ? 0.4 : 1 }}
+                                  style={{ padding: '3px 5px', background: bonusCarryDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${bonusCarryDone[recalcKey] ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: bonusCarryLoading[recalcKey] ? 0.4 : 1 }}
                                 >
                                   {bonusCarryDone[recalcKey] ? (
                                     <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13">
@@ -1314,7 +1314,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                   onClick={e => { e.stopPropagation(); handleBonusWriteOff(rec, recalcKey); }}
                                   disabled={!!bonusWriteOffLoading[recalcKey]}
                                   title={bonusWriteOffDone[recalcKey] ? 'Премия списана — нажмите, чтобы отменить' : 'Списать премию (отказаться от остатка)'}
-                                  style={{ padding: '3px 5px', background: bonusWriteOffDone[recalcKey] ? '#fef2f2' : '#f8fafc', border: `1px solid ${bonusWriteOffDone[recalcKey] ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: bonusWriteOffLoading[recalcKey] ? 0.4 : 1 }}
+                                  style={{ padding: '3px 5px', background: bonusWriteOffDone[recalcKey] ? '#fef2f2' : '#f8fafc', border: `1px solid ${bonusWriteOffDone[recalcKey] ? 'var(--red-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: bonusWriteOffLoading[recalcKey] ? 0.4 : 1 }}
                                 >
                                   <svg viewBox="0 0 24 24" fill="none" stroke={bonusWriteOffDone[recalcKey] ? '#dc2626' : '#94a3b8'} strokeWidth={bonusWriteOffDone[recalcKey] ? '2.5' : '2'} width="13" height="13">
                                     <circle cx="12" cy="12" r="10"/>
@@ -1334,7 +1334,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                               const netRem = allRem - rowCashTotal;
                               return (
                                 <>
-                                  <span style={{ color: '#15803d' }}>Касса: −{fmtRub(rowCashTotal)}</span>
+                                  <span style={{ color: 'var(--green-700)' }}>Касса: −{fmtRub(rowCashTotal)}</span>
                                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <span style={{ color: netRem < 0 ? (cashOverpayDone[rec.id] ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
                                     {netRem !== 0 && (
@@ -1344,7 +1344,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                         title={cashOverpayDone[rec.id]
                                           ? 'Уже зафиксировано (можно повторить)'
                                           : netRem < 0 ? 'Добавить переплату в расходники' : 'Добавить остаток в дополнительно'}
-                                        style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
+                                        style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
                                       >
                                         {cashOverpayDone[rec.id] ? (
                                           <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1364,7 +1364,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                   onClick={e => { e.stopPropagation(); handleRecalculate(rec, recalcKey, overpay, dateLabel, cr?.clinicId); }}
                                   disabled={!!recalcLoading[recalcKey]}
                                   title={recalcDone[recalcKey] ? 'Переплата зафиксирована (можно повторить)' : 'Зафиксировать переплату в расходниках сотрудника'}
-                                  style={{ padding: '3px 5px', background: recalcDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${recalcDone[recalcKey] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: recalcLoading[recalcKey] ? 0.4 : 1 }}
+                                  style={{ padding: '3px 5px', background: recalcDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${recalcDone[recalcKey] ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: recalcLoading[recalcKey] ? 0.4 : 1 }}
                                 >
                                   {recalcDone[recalcKey] ? (
                                     <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13">
@@ -1381,7 +1381,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                   onClick={e => { e.stopPropagation(); handleOverpayWriteOff(rec, recalcKey); }}
                                   disabled={!!overpayWriteOffLoading[recalcKey]}
                                   title={overpayWriteOffDone[recalcKey] ? 'Переплата списана — нажмите, чтобы отменить' : 'Списать переплату (отказаться от остатка)'}
-                                  style={{ padding: '3px 5px', background: overpayWriteOffDone[recalcKey] ? '#fef2f2' : '#f8fafc', border: `1px solid ${overpayWriteOffDone[recalcKey] ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: overpayWriteOffLoading[recalcKey] ? 0.4 : 1 }}
+                                  style={{ padding: '3px 5px', background: overpayWriteOffDone[recalcKey] ? '#fef2f2' : '#f8fafc', border: `1px solid ${overpayWriteOffDone[recalcKey] ? 'var(--red-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: overpayWriteOffLoading[recalcKey] ? 0.4 : 1 }}
                                 >
                                   <svg viewBox="0 0 24 24" fill="none" stroke={overpayWriteOffDone[recalcKey] ? '#dc2626' : '#94a3b8'} strokeWidth={overpayWriteOffDone[recalcKey] ? '2.5' : '2'} width="13" height="13">
                                     <circle cx="12" cy="12" r="10"/>
@@ -1402,17 +1402,17 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                               onChange={e => setEditingCommentValue(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Escape') { setEditingCommentId(null); } }}
                               rows={3}
-                              style={{ width: '100%', fontSize: 12, padding: '5px 7px', border: '1px solid #93c5fd', borderRadius: 6, resize: 'none', lineHeight: 1.5, boxSizing: 'border-box', outline: 'none', background: '#f8fafc' }}
+                              style={{ width: '100%', fontSize: 12, padding: '5px 7px', border: '1px solid var(--accent-300)', borderRadius: 6, resize: 'none', lineHeight: 1.5, boxSizing: 'border-box', outline: 'none', background: 'var(--n-50)' }}
                             />
                             <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
                               <button
                                 onClick={() => setEditingCommentId(null)}
-                                style={{ padding: '3px 8px', fontSize: 11, background: '#f1f5f9', border: '1px solid var(--rb-border)', borderRadius: 5, cursor: 'pointer', color: 'var(--rb-text-secondary)' }}
+                                style={{ padding: '3px 8px', fontSize: 11, background: 'var(--n-100)', border: '1px solid var(--rb-border)', borderRadius: 5, cursor: 'pointer', color: 'var(--rb-text-secondary)' }}
                               >Отмена</button>
                               <button
                                 disabled={!!commentSaving[rec.id]}
                                 onClick={async () => { await handleSaveComment(rec, editingCommentValue); setEditingCommentId(null); }}
-                                style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: '#007AFF', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: commentSaving[rec.id] ? 0.5 : 1 }}
+                                style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: 'var(--accent-500)', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: commentSaving[rec.id] ? 0.5 : 1 }}
                               >{commentSaving[rec.id] ? '...' : 'Сохранить'}</button>
                             </div>
                           </div>
@@ -1446,7 +1446,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       }, 0);
                       const netRemainder = allClinicRemainder - cashPaidTotal;
                       return (
-                        <tr style={{ background: '#fff' }}>
+                        <tr style={{ background: 'var(--n-0)' }}>
                           <td colSpan={8} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
                             <div style={{ paddingTop: 14 }}>
                               {cr?.salary
@@ -1455,21 +1455,21 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                               }
                             </div>
                             {recCashPayments.length > 0 && (
-                              <div style={{ borderTop: '2px dashed #bbf7d0', marginTop: 8, paddingTop: 10 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
+                              <div style={{ borderTop: '2px dashed var(--green-200)', marginTop: 8, paddingTop: 10 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green-700)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
                                 {recCashPayments.map(p => (
-                                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0', borderBottom: '1px solid #f0fdf4' }}>
+                                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--green-50)' }}>
                                     <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120 }}>
                                       {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                     </span>
-                                    <span style={{ fontWeight: 600, color: '#16a34a', flex: 1 }}>−{fmtRub(p.amount)}</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--green-600)', flex: 1 }}>−{fmtRub(p.amount)}</span>
                                     <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
                                     {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
                                   </div>
                                 ))}
                                 <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12 }}>
                                   <span style={{ color: 'var(--rb-text-secondary)' }}>Итого к выплате: <strong>{fmtRub(allClinicRemainder)}</strong></span>
-                                  <span style={{ color: '#15803d' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
+                                  <span style={{ color: 'var(--green-700)' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
                                   <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
                                     Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
                                   </span>

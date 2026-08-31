@@ -194,12 +194,12 @@
   height: 15px;
   border-radius: 50%;
   border: 2.5px solid var(--bg-primary);
-  background: #22c55e;
+  background: var(--green-500);
   pointer-events: none;
 }
 
 .chat-item.active .chat-item-status-dot {
-  border-color: var(--primary-light, #eff6ff);
+  border-color: var(--primary-light, var(--accent-50));
 }
 
 .chat-item-content {
@@ -415,12 +415,12 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #22c55e;
+  background: var(--green-500);
   flex-shrink: 0;
 }
 
 .chat-main-status:has(.online-dot) {
-  color: #22c55e;
+  color: var(--green-500);
   font-weight: 500;
 }
 
@@ -436,6 +436,10 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Узор переписки. Значение подставляет AppearanceContext — тем же выбором,
+     что применяется в мобильном приложении. Узор повторяется плиткой, поэтому
+     размер задавать не нужно: он вшит в сам SVG */
+  background-image: var(--chat-pattern, none);
 }
 
 .chat-no-messages {
@@ -523,7 +527,10 @@
 }
 
 .message-content {
-  font-size: 15px;
+  /* Множитель личный: люди нередко не трогают масштаб страницы, но в переписке
+     им нужен текст крупнее. Множитель применяется только здесь, чтобы
+     увеличенный шрифт не разъезжался по всему интерфейсу */
+  font-size: calc(15px * var(--chat-font-scale, 1));
   line-height: 1.4;
   white-space: pre-wrap;
 }
@@ -2276,7 +2283,7 @@
 /* Контекстное меню реакций */
 .reaction-menu {
   position: fixed;
-  background: white;
+  background: var(--n-0);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.15);
   padding: 8px;
@@ -2301,7 +2308,7 @@
 }
 
 .reaction-menu-item:hover {
-  background: #f3f4f6;
+  background: var(--n-100);
   transform: scale(1.2);
 }
 
@@ -2385,13 +2392,13 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--border-color, #e2e8f0);
+  background: var(--border-color, var(--n-200));
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 9px;
   font-weight: 700;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, var(--n-600));
   flex-shrink: 0;
   margin-left: 1px;
 }
@@ -2409,7 +2416,7 @@
 }
 
 .reaction-details-modal {
-  background: white;
+  background: var(--n-0);
   border-radius: 16px;
   width: 100%;
   max-width: 400px;
@@ -2425,24 +2432,24 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--n-200);
 }
 
 .reaction-details-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--n-800);
 }
 
 .reaction-details-close {
   width: 32px;
   height: 32px;
   border: none;
-  background: #f3f4f6;
+  background: var(--n-100);
   border-radius: 8px;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--n-600);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2450,7 +2457,7 @@
 }
 
 .reaction-details-close:hover {
-  background: #e5e7eb;
+  background: var(--n-200);
 }
 
 .reaction-details-content {
@@ -2471,7 +2478,7 @@
   gap: 8px;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--n-200);
 }
 
 .emoji-large {
@@ -2481,7 +2488,7 @@
 .reaction-emoji-header .count {
   font-size: 16px;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--n-600);
 }
 
 .users-list {
@@ -2500,7 +2507,7 @@
 }
 
 .user-item:hover {
-  background: #f9fafb;
+  background: var(--n-50);
 }
 
 .user-item img {
@@ -2508,7 +2515,7 @@
   height: 32px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--n-200);
   flex-shrink: 0;
 }
 
@@ -2516,25 +2523,25 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #f1f5f9;
-  border: 1px solid #e5e7eb;
+  background: var(--n-100);
+  border: 1px solid var(--n-200);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #94a3b8;
+  color: var(--n-500);
 }
 
 .user-item span {
   font-size: 14px;
-  color: #374151;
+  color: var(--n-800);
   font-weight: 500;
 }
 
 .reaction-details-empty {
   text-align: center;
   padding: 40px 20px;
-  color: #9ca3af;
+  color: var(--n-500);
 }
 
 .reaction-details-empty p {
@@ -2671,7 +2678,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: white;
+  background: var(--n-0);
 }
 
 /* Панель действий над полем ввода: что делать с выделенным */
@@ -2957,7 +2964,7 @@
   border: none;
   background: none;
   cursor: pointer;
-  color: #ffd0cc;
+  color: var(--red-200);
   font-size: 11px;
   font-family: inherit;
 }

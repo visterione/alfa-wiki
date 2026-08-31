@@ -297,11 +297,11 @@
 }
 
 .strength-weak .password-strength-fill,
-.password-strength-fill.strength-weak  { background: #ef4444; }
+.password-strength-fill.strength-weak  { background: var(--red-500); }
 .strength-medium .password-strength-fill,
-.password-strength-fill.strength-medium { background: #f59e0b; }
+.password-strength-fill.strength-medium { background: var(--amber-500); }
 .strength-strong .password-strength-fill,
-.password-strength-fill.strength-strong { background: #22c55e; }
+.password-strength-fill.strength-strong { background: var(--green-500); }
 
 .password-strength-label {
   font-size: 12px;
@@ -309,9 +309,9 @@
   flex-shrink: 0;
 }
 
-.password-strength-label.strength-weak   { color: #ef4444; }
-.password-strength-label.strength-medium { color: #f59e0b; }
-.password-strength-label.strength-strong { color: #22c55e; }
+.password-strength-label.strength-weak   { color: var(--red-500); }
+.password-strength-label.strength-medium { color: var(--amber-500); }
+.password-strength-label.strength-strong { color: var(--green-500); }
 
 /* ─── Активные сессии ───────────────────────────────────── */
 .profile-sessions-header {
@@ -395,7 +395,7 @@
 
 .profile-session-revoke:hover {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--red-500);
 }
 
 .profile-sessions-empty {

@@ -1,5 +1,5 @@
 .course-editor {
-  background: white;
+  background: var(--n-0);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: visible;
@@ -8,7 +8,7 @@
 .course-editor-tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
-  background: white;
+  background: var(--n-0);
   padding: 0 24px;
 }
 
@@ -44,7 +44,7 @@
 
 .course-editor-content {
   padding: 32px;
-  background: white;
+  background: var(--n-0);
 }
 
 .editor-section h2 {
@@ -71,7 +71,7 @@
 
 /* Белый фон и границы для полей ввода */
 .editor-section .input {
-  background: white;
+  background: var(--n-0);
   border: 1px solid var(--border);
 }
 
@@ -213,17 +213,17 @@
 
 .access-chip--role {
   background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: var(--accent-500);
 }
 
 .access-chip--mc {
   background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  color: var(--green-600);
 }
 
 .access-chip--user {
   background: rgba(139, 92, 246, 0.1);
-  color: #8b5cf6;
+  color: var(--violet-500);
 }
 
 /* Lessons list */
@@ -302,8 +302,8 @@
 
 .question-option.correct {
   background: rgba(52, 211, 153, 0.1);
-  border-color: #10b981;
-  color: #10b981;
+  border-color: var(--green-600);
+  color: var(--green-600);
   font-weight: 500;
 }
 

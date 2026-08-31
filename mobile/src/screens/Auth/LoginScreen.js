@@ -11,10 +11,11 @@ import {
   Alert,
   ScrollView,
   Animated,
+  Easing,
   Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {Eye, EyeOff, ShieldCheck, ArrowLeft} from 'lucide-react-native';
+import {Eye, EyeOff, ShieldCheck} from 'lucide-react-native';
 import * as Keychain from 'react-native-keychain';
 import {auth as authApi, setCachedToken} from '../../services/api';
 import SocketService from '../../services/socket';
@@ -55,6 +56,79 @@ export default function LoginScreen() {
   const cardTranslate = useRef(new Animated.Value(24)).current;
   // Shield float animation
   const shieldY = useRef(new Animated.Value(0)).current;
+
+  // Лента шагов.
+  //
+  // Оба шага висят в разметке одновременно и лежат в строке вдвое шире окна,
+  // которую двигает translateX. Ширину берём замером, а не из Dimensions:
+  // у карточки свои поля, и высчитывать их вторым способом — верный путь к
+  // расхождению на пиксель при смене отступов.
+  const activeIndex = step === 'twoFactor' ? 1 : 0;
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const slideX = useRef(new Animated.Value(0)).current;
+  const viewportHeight = useRef(new Animated.Value(0)).current;
+  const stepHeights = useRef([0, 0]);
+  const [measured, setMeasured] = useState(false);
+
+  // Высота окна равна высоте активного шага и едет вместе со сдвигом, иначе
+  // карточка меняла бы размер рывком. Двигать height нативным драйвером нельзя,
+  // поэтому у сдвига и у высоты разные значения и разные драйверы.
+  const applyStepHeight = useCallback(
+    (index, animate) => {
+      const target = stepHeights.current[index];
+      if (!target) return;
+      if (!animate) {
+        viewportHeight.setValue(target);
+        return;
+      }
+      Animated.timing(viewportHeight, {
+        toValue: target,
+        duration: 420,
+        easing: Easing.bezier(0.22, 0.61, 0.36, 1),
+        useNativeDriver: false,
+      }).start();
+    },
+    [viewportHeight],
+  );
+
+  const handleStepLayout = useCallback(
+    (index, height) => {
+      // Первый проход раскладки идёт с нулевой шириной — ширину окна мы ещё не
+      // замерили. Высота на нём получается от переносов текста и к делу не
+      // относится: приняв её, экран потом «доезжал» бы до настоящей анимацией.
+      if (!viewportWidth) return;
+      if (Math.abs(stepHeights.current[index] - height) < 0.5) return;
+      stepHeights.current[index] = height;
+      if (index !== activeIndex) return;
+      applyStepHeight(index, measured);
+      if (!measured) setMeasured(true);
+    },
+    [activeIndex, applyStepHeight, measured, viewportWidth],
+  );
+
+  useEffect(() => {
+    if (!viewportWidth) return;
+    Animated.timing(slideX, {
+      toValue: -activeIndex * viewportWidth,
+      duration: 420,
+      easing: Easing.bezier(0.22, 0.61, 0.36, 1),
+      useNativeDriver: true,
+    }).start();
+    applyStepHeight(activeIndex, true);
+  }, [activeIndex, viewportWidth, slideX, applyStepHeight]);
+
+  // Фокус переносим после того, как проедет анимация: если дать его сразу,
+  // клавиатура выезжает поверх ещё едущей ленты и сбивает замер высоты.
+  // На шаге логина, наоборот, ничего не фокусируем — иначе клавиатура
+  // открывалась бы сама при каждом запуске приложения.
+  useEffect(() => {
+    if (activeIndex !== 1) {
+      codeInputRef.current?.blur();
+      return undefined;
+    }
+    const timer = setTimeout(() => codeInputRef.current?.focus(), 440);
+    return () => clearTimeout(timer);
+  }, [activeIndex]);
 
   useEffect(() => {
     Animated.parallel([
@@ -232,166 +306,182 @@ export default function LoginScreen() {
               {opacity: cardOpacity, transform: [{translateY: cardTranslate}]},
             ]}>
 
-            {step === 'credentials' ? (
-              <>
-                {/* Logo */}
-                <View style={styles.logoWrap}>
-                  <LinearGradient
-                    colors={[c.headerGradientStart, c.headerGradientEnd]}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 1}}
-                    style={styles.logoBg}>
-                    <Image
-                      source={require('../../../assets/images/logo.png')}
-                      style={styles.logoIcon}
-                      resizeMode="contain"
-                    />
-                  </LinearGradient>
-                </View>
+            {/* Logo */}
+            <View style={styles.logoWrap}>
+              <LinearGradient
+                colors={[c.headerGradientStart, c.headerGradientEnd]}
+                start={{x: 0, y: 0}}
+                end={{x: 1, y: 1}}
+                style={styles.logoBg}>
+                <Image
+                  source={require('../../../assets/images/logo.png')}
+                  style={styles.logoIcon}
+                  resizeMode="contain"
+                />
+              </LinearGradient>
+            </View>
 
-                <Text style={styles.title}>Альфа Вики</Text>
-                <Text style={styles.subtitle}>Войдите с помощью Альфа ID</Text>
+            <Text style={styles.title}>Альфа Вики</Text>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Логин</Text>
-                  {/* textContentType обязателен, а не для порядка: без него iOS
-                      подставляет пароль из связки ключей мимо React, состояние
-                      остаётся пустым, и первое подтверждение по FaceID выглядит
-                      как «ничего не произошло» — заполнялось лишь со второго раза */}
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Введите логин"
-                    placeholderTextColor={c.textTertiary}
-                    value={username}
-                    onChangeText={setUsername}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    textContentType="username"
-                    autoComplete="username"
-                    returnKeyType="next"
-                    onSubmitEditing={() => passwordRef.current?.focus()}
-                    submitBehavior="submit"
-                  />
-                </View>
+            <Animated.View
+              style={[styles.viewport, measured && {height: viewportHeight}]}
+              onLayout={e => setViewportWidth(e.nativeEvent.layout.width)}>
+              <Animated.View
+                style={[styles.track, {transform: [{translateX: slideX}]}]}>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Пароль</Text>
-                  <View style={styles.passwordWrap}>
+                {/* Шаг 1 — логин и пароль */}
+                <View
+                  style={{width: viewportWidth}}
+                  onLayout={e => handleStepLayout(0, e.nativeEvent.layout.height)}
+                  pointerEvents={activeIndex === 0 ? 'auto' : 'none'}
+                  accessibilityElementsHidden={activeIndex !== 0}
+                  importantForAccessibility={
+                    activeIndex === 0 ? 'auto' : 'no-hide-descendants'
+                  }>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Логин</Text>
+                    {/* textContentType обязателен, а не для порядка: без него iOS
+                        подставляет пароль из связки ключей мимо React, состояние
+                        остаётся пустым, и первое подтверждение по FaceID выглядит
+                        как «ничего не произошло» — заполнялось лишь со второго раза */}
                     <TextInput
-                      ref={passwordRef}
-                      style={styles.passwordInput}
-                      placeholder="Введите пароль"
+                      style={styles.input}
+                      placeholder="Введите логин"
                       placeholderTextColor={c.textTertiary}
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry={!showPassword}
-                      textContentType="password"
-                      autoComplete="password"
+                      value={username}
+                      onChangeText={setUsername}
                       autoCapitalize="none"
                       autoCorrect={false}
-                      returnKeyType="done"
-                      onSubmitEditing={handleCredentialsSubmit}
+                      textContentType="username"
+                      autoComplete="username"
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      submitBehavior="submit"
                     />
-                    <TouchableOpacity
-                      style={styles.eyeBtn}
-                      onPress={() => setShowPassword(v => !v)}>
-                      {showPassword
-                        ? <EyeOff size={20} color={c.textTertiary} />
-                        : <Eye size={20} color={c.textTertiary} />}
-                    </TouchableOpacity>
                   </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Пароль</Text>
+                    <View style={styles.passwordWrap}>
+                      <TextInput
+                        ref={passwordRef}
+                        style={styles.passwordInput}
+                        placeholder="Введите пароль"
+                        placeholderTextColor={c.textTertiary}
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!showPassword}
+                        textContentType="password"
+                        autoComplete="password"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        returnKeyType="done"
+                        onSubmitEditing={handleCredentialsSubmit}
+                      />
+                      <TouchableOpacity
+                        style={styles.eyeBtn}
+                        onPress={() => setShowPassword(v => !v)}>
+                        {showPassword
+                          ? <EyeOff size={20} color={c.textTertiary} />
+                          : <Eye size={20} color={c.textTertiary} />}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={handleCredentialsSubmit}
+                    disabled={loading}
+                    activeOpacity={0.85}>
+                    <LinearGradient
+                      colors={[c.primaryHover, c.primary]}
+                      start={{x: 0, y: 0}}
+                      end={{x: 1, y: 0}}
+                      style={[styles.button, loading && styles.buttonLoading]}>
+                      {loading
+                        ? <LogoLoader width={52} color="#FFFFFF" />
+                        : <Text style={styles.buttonText}>Войти</Text>}
+                    </LinearGradient>
+                  </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  onPress={handleCredentialsSubmit}
-                  disabled={loading}
-                  activeOpacity={0.85}>
-                  <LinearGradient
-                    colors={[c.primaryHover, c.primary]}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 0}}
-                    style={[styles.button, loading && styles.buttonLoading]}>
-                    {loading
-                      ? <LogoLoader width={52} color="#FFFFFF" />
-                      : <Text style={styles.buttonText}>Войти</Text>}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Animated.View style={[styles.shieldWrap, {transform: [{translateY: shieldY}]}]}>
-                  <LinearGradient
-                    colors={[c.primaryHover, c.primary]}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 1}}
-                    style={styles.shieldIcon}>
-                    <ShieldCheck size={36} color="#FFFFFF" />
-                  </LinearGradient>
-                </Animated.View>
-
-                <Text style={styles.title}>Двухфакторная аутентификация</Text>
-                <Text style={styles.tfaHint}>
-                  Введите 6-значный код, отправленный на вашу почту
-                </Text>
-
-                {/* Ячейки — обычные View, поверх них лежит одно прозрачное поле
-                    во всю строку. Отсюда и вставка: долгое нажатие в любом месте
-                    строки вызывает «Вставить», и код приходит целиком. Оно же
-                    ловит автозаполнение кода из почты (textContentType). */}
-                <Pressable
-                  style={styles.codeRow}
-                  onPress={() => codeInputRef.current?.focus()}>
-                  {Array.from({length: CODE_LENGTH}, (_, i) => (
-                    <View
-                      key={i}
-                      style={[
-                        styles.codeCell,
-                        i < code.length && styles.codeCellFilled,
-                        i === code.length && styles.codeCellActive,
-                        codeStatus === 'error' && styles.codeCellError,
-                      ]}>
-                      <Text style={styles.codeDigit}>{code[i] ?? ''}</Text>
+                {/* Шаг 2 — код подтверждения */}
+                <View
+                  style={{width: viewportWidth}}
+                  onLayout={e => handleStepLayout(1, e.nativeEvent.layout.height)}
+                  pointerEvents={activeIndex === 1 ? 'auto' : 'none'}
+                  accessibilityElementsHidden={activeIndex !== 1}
+                  importantForAccessibility={
+                    activeIndex === 1 ? 'auto' : 'no-hide-descendants'
+                  }>
+                  <Animated.View style={[styles.shieldWrap, {transform: [{translateY: shieldY}]}]}>
+                    <View style={styles.shieldIcon}>
+                      <ShieldCheck size={26} color={c.primary} />
                     </View>
-                  ))}
-                  <TextInput
-                    ref={codeInputRef}
-                    style={styles.codeInput}
-                    value={code}
-                    onChangeText={handleCodeChange}
-                    keyboardType="number-pad"
-                    textContentType="oneTimeCode"
-                    autoComplete="one-time-code"
-                    maxLength={CODE_LENGTH}
-                    autoFocus
-                    caretHidden
-                    editable={!loading && !codeStatus}
-                  />
-                </Pressable>
+                  </Animated.View>
 
-                {attemptsLeft < 5 && (
-                  <Text style={styles.attemptsText}>
-                    Осталось попыток: {attemptsLeft}
+                  <Text style={styles.stepTitle}>Подтверждение входа</Text>
+                  <Text style={styles.tfaHint}>
+                    Введите код, отправленный на почту
                   </Text>
-                )}
 
-                {loading && <LogoLoader width={64} color={c.primary} style={styles.codeLoader} />}
+                  {/* Ячейки — обычные View, поверх них лежит одно прозрачное поле
+                      во всю строку. Отсюда и вставка: долгое нажатие в любом месте
+                      строки вызывает «Вставить», и код приходит целиком. Оно же
+                      ловит автозаполнение кода из почты (textContentType). */}
+                  <Pressable
+                    style={styles.codeRow}
+                    onPress={() => codeInputRef.current?.focus()}>
+                    {Array.from({length: CODE_LENGTH}, (_, i) => (
+                      <View
+                        key={i}
+                        style={[
+                          styles.codeCell,
+                          i < code.length && styles.codeCellFilled,
+                          i === code.length && styles.codeCellActive,
+                          codeStatus === 'error' && styles.codeCellError,
+                        ]}>
+                        <Text style={styles.codeDigit}>{code[i] ?? ''}</Text>
+                      </View>
+                    ))}
+                    <TextInput
+                      ref={codeInputRef}
+                      style={styles.codeInput}
+                      value={code}
+                      onChangeText={handleCodeChange}
+                      keyboardType="number-pad"
+                      textContentType="oneTimeCode"
+                      autoComplete="one-time-code"
+                      maxLength={CODE_LENGTH}
+                      caretHidden
+                      editable={!loading && !codeStatus}
+                    />
+                  </Pressable>
 
-                <TouchableOpacity
-                  style={styles.resendBtn}
-                  onPress={handleResendCode}
-                  disabled={loading}>
-                  <Text style={styles.resendText}>Отправить код повторно</Text>
-                </TouchableOpacity>
+                  {attemptsLeft < 5 && (
+                    <Text style={styles.attemptsText}>
+                      Осталось попыток: {attemptsLeft}
+                    </Text>
+                  )}
 
-                <TouchableOpacity
-                  style={styles.backBtn}
-                  onPress={handleBackToLogin}
-                  disabled={loading}>
-                  <ArrowLeft size={15} color={c.textTertiary} style={styles.backIcon} />
-                  <Text style={styles.backText}>Вернуться к входу</Text>
-                </TouchableOpacity>
-              </>
-            )}
+                  {loading && <LogoLoader width={64} color={c.primary} style={styles.codeLoader} />}
+
+                  <TouchableOpacity
+                    style={styles.resendBtn}
+                    onPress={handleResendCode}
+                    disabled={loading}>
+                    <Text style={styles.resendText}>Отправить ещё раз</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.backBtn}
+                    onPress={handleBackToLogin}
+                    disabled={loading}>
+                    <Text style={styles.backText}>Назад</Text>
+                  </TouchableOpacity>
+                </View>
+
+              </Animated.View>
+            </Animated.View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -452,14 +542,21 @@ const makeStyles = c => StyleSheet.create({
     fontFamily: font.bold,
     color: c.textPrimary,
     textAlign: 'center',
-    marginBottom: 6,
   },
-  subtitle: {
-    fontSize: 15,
-    color: c.textSecondary,
+
+  // Окно, в котором едет лента шагов. Ширину задаёт раскладка, высоту —
+  // анимация по активному шагу.
+  viewport: {overflow: 'hidden', marginTop: 28},
+  track: {flexDirection: 'row', alignItems: 'flex-start'},
+
+  // Подзаголовок шага. Мельче и тише общего «Альфа Вики» над лентой — тот
+  // теперь стоит на обоих шагах и главным быть перестал.
+  stepTitle: {
+    fontSize: 19,
+    fontFamily: font.semiBold,
+    color: c.textPrimary,
     textAlign: 'center',
-    marginBottom: 28,
-    fontFamily: font.medium,
+    marginBottom: 6,
   },
 
   // Form
@@ -511,11 +608,12 @@ const makeStyles = c => StyleSheet.create({
   buttonText: {color: '#FFFFFF', fontSize: 16, fontFamily: font.semiBold},
 
   // 2FA
-  shieldWrap: {alignItems: 'center', marginBottom: 20},
+  shieldWrap: {alignItems: 'center', marginBottom: 14},
   shieldIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: c.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -524,7 +622,7 @@ const makeStyles = c => StyleSheet.create({
     fontFamily: font.regular,
     color: c.textSecondary,
     textAlign: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
     lineHeight: 20,
   },
   codeRow: {
@@ -570,12 +668,6 @@ const makeStyles = c => StyleSheet.create({
   },
   resendBtn: {alignItems: 'center', paddingVertical: 14},
   resendText: {color: c.primary, fontSize: 15, fontFamily: font.medium},
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-  },
-  backIcon: {marginRight: 6},
+  backBtn: {alignItems: 'center', paddingVertical: 10},
   backText: {color: c.textSecondary, fontSize: 14, fontFamily: font.regular},
 });

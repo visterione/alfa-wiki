@@ -144,4 +144,60 @@ async function daysOf(userId, start, end, viewer) {
   }));
 }
 
-module.exports = { VACATION_TYPE, LOAD_FIELDS, daysBetween, toKey, loadMatrix, toRows, daysOf };
+
+/**
+ * Свод по уже посчитанной матрице: часы, суммарная норма, процент.
+ *
+ * Считается по готовым числам, а не пересчётом из событий: второй проход по
+ * календарю ради тех же цифр — лишний запрос и лишний способ разойтись с
+ * таблицей, которую пользователь видит рядом.
+ *
+ * Процент — от суммы личных норм, а не от «людей × 8 ч»: команда из
+ * подрядчиков на part-time иначе выглядела бы вечно недозагруженной. По той же
+ * причине свод живёт здесь, а не в маршруте команд: с приходом вкладки
+ * «Сотрудники» те же цифры считает второй маршрут, и разойтись они не должны.
+ */
+function summarize(matrix) {
+  let hours = 0;
+  let capacity = 0;
+  let overloadedDays = 0;
+  const perUser = [];
+
+  for (const [userId, perDay] of matrix) {
+    let userHours = 0;
+    let userCapacity = 0;
+    let free = 0;
+    let over = 0;
+    for (const [, load] of perDay) {
+      if (load.onVacation || load.onDayOff || load.norm === null) continue;
+      userHours += load.hours;
+      userCapacity += load.norm;
+      free += load.free;
+      if (load.color === workload.COLORS.OVER) over += 1;
+    }
+    hours += userHours;
+    capacity += userCapacity;
+    overloadedDays += over;
+    perUser.push({
+      userId,
+      hours: round(userHours),
+      capacity: round(userCapacity),
+      percent: userCapacity ? Math.round((userHours / userCapacity) * 100) : null,
+      freeHours: round(free),
+      overloadedDays: over,
+    });
+  }
+
+  return {
+    hours: round(hours),
+    capacity: round(capacity),
+    percent: capacity ? Math.round((hours / capacity) * 100) : 0,
+    freeHours: round(Math.max(0, capacity - hours)),
+    overloadedDays,
+    perUser: perUser.sort((a, b) => b.freeHours - a.freeHours),
+  };
+}
+
+const round = v => Math.round(v * 100) / 100;
+
+module.exports = { VACATION_TYPE, LOAD_FIELDS, daysBetween, toKey, loadMatrix, toRows, daysOf, summarize };

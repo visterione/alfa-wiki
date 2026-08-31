@@ -259,11 +259,11 @@
 }
 
 .tsk-badge-muted { background: var(--bg-tertiary); color: var(--text-secondary); }
-.tsk-badge-ok { background: rgba(52, 199, 89, 0.14); color: #1f8f3f; }
-.tsk-badge-warn { background: rgba(255, 149, 0, 0.16); color: #a35f00; }
-.tsk-badge-bad { background: rgba(255, 59, 48, 0.13); color: #c1271d; }
+.tsk-badge-ok { background: rgba(52, 199, 89, 0.14); color: var(--green-600); }
+.tsk-badge-warn { background: rgba(255, 149, 0, 0.16); color: var(--amber-800); }
+.tsk-badge-bad { background: rgba(255, 59, 48, 0.13); color: var(--red-700); }
 .tsk-badge-info { background: var(--primary-light); color: var(--primary-hover); }
-.tsk-badge-violet { background: rgba(88, 86, 214, 0.13); color: #4442ad; }
+.tsk-badge-violet { background: rgba(88, 86, 214, 0.13); color: var(--accent-700); }
 
 /* ── Аватарки ──────────────────────────────────────────────────────────── */
 
@@ -505,11 +505,11 @@
  * Из --col выводится всё остальное — подложка, рамка и текст шапки, — чтобы
  * колонка перекрашивалась одной строкой.
  */
-.tsk-col.is-new { --col: #2F7DE0; }
-.tsk-col.is-stuck { --col: #E0453F; }
-.tsk-col.is-work { --col: #EE8412; }
-.tsk-col.is-review { --col: #E0AC00; }
-.tsk-col.is-done { --col: #2CA24C; }
+.tsk-col.is-new { --col: var(--accent-500); }
+.tsk-col.is-stuck { --col: var(--red-500); }
+.tsk-col.is-work { --col: var(--amber-500); }
+.tsk-col.is-review { --col: var(--amber-600); }
+.tsk-col.is-done { --col: var(--green-600); }
 
 .tsk-col {
   --col: var(--text-tertiary);
@@ -530,7 +530,7 @@
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--col) 62%, #16233a);
+  color: color-mix(in srgb, var(--col) 62%, var(--accent-900));
   margin-bottom: 10px;
 }
 /* Счётчик строго квадратный при любом числе: ряд из пяти колонок читается как
@@ -713,8 +713,8 @@
   font-size: 13px;
   line-height: 1.55;
 }
-.tsk-fit.is-ok { background: rgba(52, 199, 89, 0.1); color: #1f6f38; }
-.tsk-fit.is-bad { background: rgba(255, 59, 48, 0.09); color: #a8241b; }
+.tsk-fit.is-ok { background: rgba(52, 199, 89, 0.1); color: var(--green-700); }
+.tsk-fit.is-bad { background: rgba(255, 59, 48, 0.09); color: var(--red-800); }
 
 .tsk-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 
@@ -1129,7 +1129,7 @@
   border: 1px solid var(--primary);
   border-radius: var(--radius-md);
 }
-.tsk-scheme-node.is-shared { border-color: #5856d6; box-shadow: inset 0 0 0 1px rgba(88, 86, 214, .12); }
+.tsk-scheme-node.is-shared { border-color: var(--secondary); box-shadow: inset 0 0 0 1px rgba(88, 86, 214, .12); }
 .tsk-scheme-title { font-size: 13.5px; font-weight: 600; }
 .tsk-scheme-meta, .tsk-scheme-deps { margin-top: 5px; color: var(--text-secondary); font-size: 11.5px; line-height: 1.45; }
 .tsk-scheme-deps { color: var(--primary); }
@@ -1508,8 +1508,8 @@
 }
 .tsk-btn:active { transform: translateY(1px) scale(.985); box-shadow: inset 0 2px 5px rgba(24,35,54,.1); }
 .tsk-btn.is-primary {
-  border-color: color-mix(in srgb, var(--primary) 76%, white);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 84%, white), var(--primary));
+  border-color: color-mix(in srgb, var(--primary) 76%, var(--n-0));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 84%, var(--n-0)), var(--primary));
   box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 24%, transparent), inset 0 1px 0 rgba(255,255,255,.42);
 }
 
@@ -1754,6 +1754,41 @@
   font-size: 12px;
 }
 .tsk-period-actions button:hover { color: var(--text-primary); background: var(--bg-secondary); }
+
+/* Переключатель режима просмотра на «Загрузке»: те же сегменты, что у периода,
+   но иконками и справа. Симметрия здесь смысловая, а не декоративная — слева
+   выбирают, за какой срок смотреть, справа — на кого; подписей нет, потому что
+   рядом с «Неделя/Месяц» слова «Команды/Сотрудники» читались бы как ещё один
+   период. */
+.tsk-modeswitch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+  box-shadow: inset 0 1px 3px rgba(18,27,43,.07);
+}
+
+.tsk-period-actions .tsk-modeswitch button {
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.tsk-period-actions .tsk-modeswitch button:hover { color: var(--text-secondary); background: transparent; }
+
+.tsk-period-actions .tsk-modeswitch button.is-on {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  box-shadow: 0 3px 9px rgba(20,29,45,.09), inset 0 1px 0 rgba(255,255,255,.55);
+}
 
 /* Настоящий popover вместо системного select. */
 .tsk-custom-select {

@@ -3,10 +3,10 @@
 .wf-editor {
   display: flex;
   height: 600px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--n-200);
   border-radius: 12px;
   overflow: hidden;
-  background: #f8fafc;
+  background: var(--n-50);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -25,8 +25,8 @@
 .wf-sidebar {
   width: 200px;
   min-width: 200px;
-  background: #fff;
-  border-right: 1px solid #e2e8f0;
+  background: var(--n-0);
+  border-right: 1px solid var(--n-200);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -35,7 +35,7 @@
 
 .wf-sidebar__section {
   padding: 12px 10px 8px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--n-100);
 }
 
 .wf-sidebar__title {
@@ -43,7 +43,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: #94a3b8;
+  color: var(--n-500);
   margin-bottom: 6px;
 }
 
@@ -55,13 +55,13 @@
   border-radius: 7px;
   cursor: grab;
   margin-bottom: 4px;
-  background: #f8fafc;
-  border-left: 3px solid var(--node-color, #94a3b8);
+  background: var(--n-50);
+  border-left: 3px solid var(--node-color, var(--n-500));
   transition: background 0.12s;
 }
 
 .wf-sidebar__node:hover {
-  background: #f1f5f9;
+  background: var(--n-100);
 }
 
 .wf-sidebar__node:active {
@@ -77,13 +77,13 @@
 .wf-sidebar__label {
   font-size: 12px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--n-800);
   line-height: 1.3;
 }
 
 .wf-sidebar__desc {
   font-size: 10px;
-  color: #64748b;
+  color: var(--n-600);
   line-height: 1.3;
   margin-top: 1px;
 }
@@ -91,7 +91,7 @@
 .wf-sidebar__hint {
   padding: 10px;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--n-500);
   text-align: center;
   line-height: 1.5;
   margin-top: auto;
@@ -113,8 +113,8 @@
   align-items: center;
   gap: 4px;
   padding: 8px 12px 0;
-  background: #fff;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--n-0);
+  border-bottom: 1px solid var(--n-200);
   overflow-x: auto;
   flex-shrink: 0;
 }
@@ -127,25 +127,25 @@
   border-radius: 7px 7px 0 0;
   border: 1px solid transparent;
   border-bottom: none;
-  background: #f1f5f9;
+  background: var(--n-100);
   cursor: pointer;
   font-size: 12px;
-  color: #64748b;
+  color: var(--n-600);
   transition: background 0.12s, color 0.12s;
   white-space: nowrap;
   user-select: none;
 }
 
 .wf-scenario-tab:hover {
-  background: #e2e8f0;
-  color: #334155;
+  background: var(--n-200);
+  color: var(--n-800);
 }
 
 .wf-scenario-tab--active {
-  background: #fff;
-  color: #1e293b;
+  background: var(--n-0);
+  color: var(--n-800);
   font-weight: 600;
-  border-color: #e2e8f0;
+  border-color: var(--n-200);
   box-shadow: 0 -1px 3px rgba(0,0,0,0.04);
   position: relative;
   z-index: 1;
@@ -159,7 +159,7 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: #fff;
+  background: var(--n-0);
 }
 
 .wf-scenario-tab__name {
@@ -174,7 +174,7 @@
   background: transparent;
   font-size: 12px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--n-800);
   width: 120px;
   padding: 0;
 }
@@ -183,7 +183,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: #94a3b8;
+  color: var(--n-500);
   padding: 2px;
   border-radius: 3px;
   display: flex;
@@ -198,17 +198,17 @@
 }
 
 .wf-scenario-tab__action:hover {
-  color: #475569;
-  background: #e2e8f0;
+  color: var(--n-700);
+  background: var(--n-200);
 }
 
 .wf-scenario-tab__action--delete:hover {
-  color: #ef4444;
-  background: #fef2f2;
+  color: var(--red-500);
+  background: var(--red-50);
 }
 
 .wf-scenario-tab__action--confirm {
-  color: #16a34a;
+  color: var(--green-600);
   opacity: 1 !important;
 }
 
@@ -218,9 +218,9 @@
   gap: 4px;
   padding: 5px 10px;
   background: none;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--n-300);
   border-radius: 6px;
-  color: #64748b;
+  color: var(--n-600);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
@@ -229,9 +229,9 @@
 }
 
 .wf-scenario-add:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
+  background: var(--n-100);
+  border-color: var(--n-500);
+  color: var(--n-800);
 }
 
 .wf-scenario-add--large {
@@ -252,7 +252,7 @@
   align-items: center;
   gap: 5px;
   padding: 6px 14px;
-  background: #2563eb;
+  background: var(--accent-600);
   color: #fff;
   border: none;
   border-radius: 7px;
@@ -264,7 +264,7 @@
 }
 
 .wf-save-btn:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--accent-700);
 }
 
 .wf-save-btn:disabled {
@@ -273,7 +273,7 @@
 }
 
 .wf-save-btn--saving {
-  background: #3b82f6;
+  background: var(--accent-500);
 }
 
 /* ─── Canvas wrap ─────────────────────────────────────────────────────── */
@@ -319,20 +319,20 @@
 .wf-empty__text {
   font-size: 14px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--n-500);
   margin-bottom: 4px;
 }
 
 .wf-empty__sub {
   font-size: 12px;
-  color: #cbd5e1;
+  color: var(--n-300);
 }
 
 /* ─── Custom Nodes ────────────────────────────────────────────────────── */
 
 .wf-node {
-  background: #fff;
-  border: 1.5px solid #e2e8f0;
+  background: var(--n-0);
+  border: 1.5px solid var(--n-200);
   border-radius: 10px;
   min-width: 190px;
   max-width: 230px;
@@ -346,8 +346,8 @@
 }
 
 .wf-node--selected {
-  border-color: var(--node-color, #2563eb);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color, #2563eb) 18%, transparent);
+  border-color: var(--node-color, var(--accent-600));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color, var(--accent-600)) 18%, transparent);
 }
 
 .wf-node__header {
@@ -361,8 +361,8 @@
   color: #fff;
 }
 
-.wf-node__header--trigger { background: var(--node-color, #16a34a); }
-.wf-node__header--action  { background: var(--node-color, #2563eb); }
+.wf-node__header--trigger { background: var(--node-color, var(--green-600)); }
+.wf-node__header--action  { background: var(--node-color, var(--accent-600)); }
 
 .wf-node__body {
   padding: 7px 11px 9px;
@@ -370,21 +370,21 @@
 
 .wf-node__prop {
   font-size: 11px;
-  color: #64748b;
+  color: var(--n-600);
   line-height: 1.7;
 }
 
 .wf-node__prop strong {
-  color: #1e293b;
+  color: var(--n-800);
 }
 
 .wf-node__prop--tag {
   display: inline-block;
-  background: #f1f5f9;
+  background: var(--n-100);
   border-radius: 4px;
   padding: 1px 6px;
   font-size: 10px;
-  color: #64748b;
+  color: var(--n-600);
   margin-top: 3px;
 }
 
@@ -393,9 +393,9 @@
 .wf-handle {
   width: 10px !important;
   height: 10px !important;
-  background: #2563eb !important;
-  border: 2px solid #fff !important;
-  box-shadow: 0 0 0 1px #2563eb !important;
+  background: var(--accent-600) !important;
+  border: 2px solid var(--n-0) !important;
+  box-shadow: 0 0 0 1px var(--accent-600) !important;
 }
 
 /* ─── Config Panel ────────────────────────────────────────────────────── */
@@ -403,8 +403,8 @@
 .wf-config-panel {
   width: 250px;
   min-width: 250px;
-  background: #fff;
-  border-left: 1px solid #e2e8f0;
+  background: var(--n-0);
+  border-left: 1px solid var(--n-200);
   display: flex;
   flex-direction: column;
 }
@@ -414,13 +414,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px 10px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--n-100);
 }
 
 .wf-config-panel__title {
   font-size: 13px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--n-800);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -429,7 +429,7 @@
 .wf-config-panel__close {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--n-500);
   cursor: pointer;
   padding: 2px;
   border-radius: 4px;
@@ -438,8 +438,8 @@
 }
 
 .wf-config-panel__close:hover {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--n-100);
+  color: var(--n-700);
 }
 
 .wf-config-panel__body {
@@ -460,7 +460,7 @@
 .wf-config__field label {
   font-size: 11px;
   font-weight: 600;
-  color: #475569;
+  color: var(--n-700);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -468,11 +468,11 @@
 .wf-config__field select,
 .wf-config__field input[type="number"] {
   padding: 7px 9px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--n-200);
   border-radius: 7px;
   font-size: 12px;
-  color: #1e293b;
-  background: #f8fafc;
+  color: var(--n-800);
+  background: var(--n-50);
   outline: none;
   transition: border-color 0.12s;
   width: 100%;
@@ -480,13 +480,13 @@
 
 .wf-config__field select:focus,
 .wf-config__field input:focus {
-  border-color: #2563eb;
-  background: #fff;
+  border-color: var(--accent-600);
+  background: var(--n-0);
 }
 
 .wf-config__hint {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--n-500);
   font-style: italic;
   line-height: 1.4;
 }
@@ -497,10 +497,10 @@
   gap: 4px;
   max-height: 140px;
   overflow-y: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--n-200);
   border-radius: 7px;
   padding: 6px 8px;
-  background: #f8fafc;
+  background: var(--n-50);
 }
 
 .wf-config__check {
@@ -508,21 +508,21 @@
   align-items: center;
   gap: 7px;
   font-size: 12px;
-  color: #334155;
+  color: var(--n-800);
   cursor: pointer;
   padding: 2px 0;
 }
 
 .wf-config__check input[type="checkbox"] {
   cursor: pointer;
-  accent-color: #2563eb;
+  accent-color: var(--accent-600);
 }
 
 .wf-config__info {
   font-size: 11px;
-  color: #db2777;
-  background: #fdf2f8;
-  border: 1px solid #fbcfe8;
+  color: var(--pink-600);
+  background: var(--pink-50);
+  border: 1px solid var(--pink-200);
   border-radius: 7px;
   padding: 8px 10px;
   line-height: 1.5;
@@ -530,7 +530,7 @@
 
 .wf-config-panel__footer {
   padding: 10px 14px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--n-100);
 }
 
 .wf-config-panel__delete {
@@ -538,8 +538,8 @@
   align-items: center;
   gap: 5px;
   background: none;
-  border: 1px solid #fca5a5;
-  color: #ef4444;
+  border: 1px solid var(--red-300);
+  color: var(--red-500);
   font-size: 12px;
   font-weight: 500;
   padding: 6px 10px;
@@ -551,7 +551,7 @@
 }
 
 .wf-config-panel__delete:hover {
-  background: #fef2f2;
+  background: var(--red-50);
 }
 
 /* ─── ReactFlow overrides ─────────────────────────────────────────────── */
@@ -569,5 +569,5 @@
 }
 
 .react-flow__controls button {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--n-200);
 }

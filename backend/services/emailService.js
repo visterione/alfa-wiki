@@ -1,4 +1,6 @@
 const nodemailer = require('nodemailer');
+const path = require('path');
+const fs = require('fs');
 
 // Создаём транспортер для системных писем (2FA, учётные данные)
 const createTransporter = () => {
@@ -61,6 +63,109 @@ const createBroadcastTransporter = () => {
 };
 
 /**
+ * Экранирование значений, которые приезжают из БД (имя, логин).
+ *
+ * Письмо — это HTML, и «<» в отображаемом имени разъедет вёрстку, а в худшем
+ * случае утащит в письмо чужую разметку.
+ */
+const esc = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+const BRAND = 'Альфа Вики';
+
+/**
+ * Логотип вкладывается в письмо, а не тянется ссылкой.
+ *
+ * Внешняя картинка требует публичного адреса и всё равно режется клиентами,
+ * которые по умолчанию не грузят удалённые изображения. Вложение с cid едет
+ * вместе с письмом и показывается сразу. Файл лежит в самом бэкенде, а не
+ * берётся из frontend/src: тем каталогом распоряжается сборка, и путь там
+ * может измениться в любой момент.
+ */
+const LOGO_CID = 'alfa-wiki-logo';
+const LOGO_PATH = path.join(__dirname, '..', 'assets', 'logo.png');
+
+// Если файла нет, письмо всё равно уходит: на месте картинки останется пустая
+// синяя плашка, а название и так стоит текстом под ней. Поэтому и alt пустой —
+// иначе клиент с заблокированными картинками нарисовал бы «Альфа Вики» дважды,
+// причём внутри плашки и с переносом.
+const logoAttachment = () => (fs.existsSync(LOGO_PATH)
+  ? [{ filename: 'logo.png', path: LOGO_PATH, cid: LOGO_CID }]
+  : []);
+
+// Отбивка после прехедера: без неё почтовый клиент дотягивает в превью текст,
+// который идёт следом за скрытым блоком, и обрезает главное.
+const PREHEADER_PAD = '&#847;&zwnj;&nbsp;'.repeat(60);
+
+/**
+ * Общий каркас системного письма.
+ *
+ * Таблицы и инлайновые стили — не архаика, а необходимость: Gmail на мобильных
+ * вырезает <style> из <head>, Outlook не понимает ни flex, ни grid. Всё, что
+ * должно доехать, написано прямо в атрибуте style.
+ *
+ * `preheader` — скрытый первый текст письма. Именно его почтовый клиент
+ * показывает в списке писем и в предпросмотре сразу после темы, поэтому туда
+ * вынесено главное. Раньше первым в письме шло «Здравствуйте, имя!», превью
+ * занимало приветствие, и код в него не попадал — приходилось открывать
+ * письмо целиком, чтобы его увидеть.
+ */
+const renderEmail = ({ preheader, heading, body }) => `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<title>${esc(heading)}</title>
+</head>
+<body style="margin:0;padding:0;background:#F2F2F7;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;mso-hide:all;">${preheader}${PREHEADER_PAD}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F2F2F7;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;background:#FFFFFF;border:1px solid #E5E5EA;border-radius:20px;">
+        <tr>
+          <td align="center" style="padding:36px 32px 0 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
+              <tr>
+                <td width="64" height="64" align="center" valign="middle" bgcolor="#0A84FF" style="width:64px;height:64px;border-radius:18px;">
+                  <img src="cid:${LOGO_CID}" width="38" height="38" alt="" style="display:block;border:0;outline:none;text-decoration:none;">
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:16px 32px 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:21px;font-weight:700;color:#1D1D1F;letter-spacing:-0.4px;">${BRAND}</td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:22px 32px 10px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:17px;font-weight:600;color:#6E6E73;letter-spacing:-0.2px;line-height:1.3;">${esc(heading)}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 32px 28px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">${body}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 32px;"><div style="height:1px;background:#E5E5EA;line-height:1px;font-size:1px;">&nbsp;</div></td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:18px 32px 26px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;line-height:1.6;color:#8E8E93;">
+            © ${new Date().getFullYear()} ${BRAND}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
+
+// Абзац основного текста письма
+const p = (html) => `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;color:#4A4A4F;">${html}</p>`;
+
+/**
  * Генерирует 6-значный код для 2FA
  */
 const generateCode = () => {
@@ -73,80 +178,35 @@ const generateCode = () => {
 const send2FACode = async (email, code, username) => {
   const transporter = createTransporter();
 
+  // В письме намеренно нет ничего, кроме кода: срок жизни и предупреждение
+  // «никому не сообщайте» вынесены в прехедер, а он и так виден в превью,
+  // то есть раньше, чем письмо открывают.
+  const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 4px 0;">
+      <tr>
+        <td align="center" bgcolor="#F2F5FA" style="padding:22px 12px;border:1px solid #E3E9F2;border-radius:14px;">
+          <div style="font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,'Courier New',monospace;font-size:36px;font-weight:700;letter-spacing:10px;text-indent:10px;color:#0A3D91;">${esc(code)}</div>
+        </td>
+      </tr>
+    </table>`;
+
   const mailOptions = {
-    from: process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+    // Код вынесен в самое начало темы: в списке писем и в баннере уведомления
+    // видно только её начало, и так код читается, не открывая письмо.
+    subject: `${code} — код для входа в ${BRAND}`,
+    from: process.env.SMTP_FROM || `"${BRAND}" <noreply@alfawiki.com>`,
     to: email,
-    subject: 'Код подтверждения входа - Alfa Wiki',
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f7; }
-          .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-          .header { background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%); padding: 40px 30px; text-align: center; }
-          .header h1 { margin: 0; color: white; font-size: 28px; font-weight: 700; }
-          .content { padding: 40px 30px; }
-          .code-box { background: #f5f5f7; border-radius: 12px; padding: 30px; text-align: center; margin: 30px 0; }
-          .code { font-size: 48px; font-weight: 700; color: #007AFF; letter-spacing: 8px; margin: 0; }
-          .info { color: #86868B; font-size: 14px; line-height: 1.6; margin-top: 20px; }
-          .footer { background: #f5f5f7; padding: 20px 30px; text-align: center; color: #86868B; font-size: 12px; }
-          .warning { background: #FFF4E5; border-left: 4px solid #FF9500; padding: 16px; border-radius: 8px; margin-top: 20px; }
-          .warning p { margin: 0; color: #1D1D1F; font-size: 14px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>🔐 Alfa Wiki</h1>
-          </div>
-          <div class="content">
-            <h2 style="color: #1D1D1F; margin-top: 0;">Код подтверждения входа</h2>
-            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
-              Здравствуйте, <strong>${username}</strong>!
-            </p>
-            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
-              Для завершения входа в систему используйте следующий код:
-            </p>
-            
-            <div class="code-box">
-              <p class="code">${code}</p>
-            </div>
-            
-            <div class="warning">
-              <p><strong>⚠️ Важно:</strong> Код действителен в течение 15 минут. Никому не сообщайте этот код!</p>
-            </div>
-            
-            <p class="info">
-              Если вы не пытались войти в систему, немедленно свяжитесь с администратором.
-            </p>
-          </div>
-          <div class="footer">
-            <p>Это автоматическое письмо. Пожалуйста, не отвечайте на него.</p>
-            <p>© ${new Date().getFullYear()} Alfa Wiki. Все права защищены.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `,
-    text: `
-      Alfa Wiki - Код подтверждения входа
-      
-      Здравствуйте, ${username}!
-      
-      Для завершения входа в систему используйте следующий код:
-      
-      ${code}
-      
-      ⚠️ ВАЖНО: Код действителен в течение 15 минут. Никому не сообщайте этот код!
-      
-      Если вы не пытались войти в систему, немедленно свяжитесь с администратором.
-      
-      ---
-      Это автоматическое письмо. Пожалуйста, не отвечайте на него.
-      © ${new Date().getFullYear()} Alfa Wiki
-    `
+    attachments: logoAttachment(),
+    html: renderEmail({
+      preheader: `Код ${esc(code)} — действует 15 минут.`,
+      heading: 'Код для входа',
+      body,
+    }),
+    text: [
+      `${code} — код для входа в ${BRAND}.`,
+      '',
+      '---',
+      `© ${new Date().getFullYear()} ${BRAND}`,
+    ].join('\n'),
   };
 
   try {
@@ -180,49 +240,27 @@ const send2FACode = async (email, code, username) => {
 const send2FADisabledNotification = async (email, username) => {
   const transporter = createTransporter();
 
+  const body = p('Администратор отключил двухфакторную аутентификацию для вашей учётной записи. Теперь для входа достаточно логина и пароля.');
+
   const mailOptions = {
-    from: process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+    subject: `Двухфакторная аутентификация отключена — ${BRAND}`,
+    from: process.env.SMTP_FROM || `"${BRAND}" <noreply@alfawiki.com>`,
     to: email,
-    subject: 'Двухфакторная аутентификация отключена - Alfa Wiki',
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f7; }
-          .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-          .header { background: linear-gradient(135deg, #FF9500 0%, #FF3B30 100%); padding: 40px 30px; text-align: center; }
-          .header h1 { margin: 0; color: white; font-size: 28px; font-weight: 700; }
-          .content { padding: 40px 30px; }
-          .footer { background: #f5f5f7; padding: 20px 30px; text-align: center; color: #86868B; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>⚠️ Alfa Wiki</h1>
-          </div>
-          <div class="content">
-            <h2 style="color: #1D1D1F; margin-top: 0;">Двухфакторная аутентификация отключена</h2>
-            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
-              Здравствуйте, <strong>${username}</strong>!
-            </p>
-            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
-              Администратор отключил двухфакторную аутентификацию для вашей учетной записи.
-              Теперь для входа в систему достаточно только логина и пароля.
-            </p>
-            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
-              Если вы не запрашивали это изменение, немедленно свяжитесь с администратором.
-            </p>
-          </div>
-          <div class="footer">
-            <p>© ${new Date().getFullYear()} Alfa Wiki. Все права защищены.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `
+    attachments: logoAttachment(),
+    html: renderEmail({
+      preheader: 'Теперь для входа достаточно логина и пароля.',
+      heading: 'Двухфакторная аутентификация отключена',
+      body,
+    }),
+    text: [
+      `${BRAND} — двухфакторная аутентификация отключена.`,
+      '',
+      'Администратор отключил двухфакторную аутентификацию для вашей учётной записи.',
+      'Теперь для входа достаточно логина и пароля.',
+      '',
+      '---',
+      `© ${new Date().getFullYear()} ${BRAND}`,
+    ].join('\n'),
   };
 
   try {
@@ -251,102 +289,53 @@ const send2FADisabledNotification = async (email, username) => {
 const sendCredentials = async (email, username, password, displayName, isPasswordChange = false) => {
   const transporter = createTransporter();
 
-  const subject = isPasswordChange
-    ? 'Пароль изменен - Alfa Wiki'
-    : 'Добро пожаловать в Alfa Wiki';
+  const heading = isPasswordChange ? 'Пароль изменён' : 'Доступ в портал';
+  const intro = isPasswordChange
+    ? 'Администратор изменил пароль от вашей учётной записи. Новые данные для входа:'
+    : `Для вас создана учётная запись в портале «${BRAND}». Данные для входа:`;
 
-  const greetingText = isPasswordChange
-    ? 'Ваш пароль был изменен администратором.'
-    : 'Для вас создана учетная запись в системе Alfa Wiki.';
+  // Пароль намеренно не попадает ни в тему, ни в прехедер: и то и другое видно
+  // в списке писем и во всплывающем уведомлении, то есть через чужое плечо.
+  const row = (label, value, last) => `<tr>
+        <td style="padding:11px 0;${last ? '' : 'border-bottom:1px solid #E5E5EA;'}font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;color:#8E8E93;">${label}</td>
+        <td align="right" style="padding:11px 0;${last ? '' : 'border-bottom:1px solid #E5E5EA;'}font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,'Courier New',monospace;font-size:15px;font-weight:600;color:#1D1D1F;">${esc(value)}</td>
+      </tr>`;
+
+  const body = [
+    p(intro),
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 16px 0;background:#F7F7FA;border:1px solid #E5E5EA;border-radius:14px;">
+      <tr><td style="padding:4px 18px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          ${row('Логин', username, false)}
+          ${row('Пароль', password, true)}
+        </table>
+      </td></tr>
+    </table>`,
+  ].join('');
 
   const mailOptions = {
-    from: process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+    subject: isPasswordChange ? `Пароль изменён — ${BRAND}` : `Доступ в портал ${BRAND}`,
+    from: process.env.SMTP_FROM || `"${BRAND}" <noreply@alfawiki.com>`,
     to: email,
-    subject: subject,
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f7; }
-          .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-          .header { background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%); padding: 40px 30px; text-align: center; }
-          .header h1 { margin: 0; color: white; font-size: 28px; font-weight: 700; }
-          .content { padding: 40px 30px; }
-          .credentials-box { background: #f5f5f7; border-radius: 12px; padding: 24px; margin: 24px 0; }
-          .credential-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e5e5e7; }
-          .credential-row:last-child { border-bottom: none; }
-          .credential-label { font-size: 13px; color: #86868B; font-weight: 500; }
-          .credential-value { font-size: 16px; color: #1D1D1F; font-weight: 600; }
-          .info { color: #86868B; font-size: 14px; line-height: 1.6; margin-top: 20px; }
-          .footer { background: #f5f5f7; padding: 20px 30px; text-align: center; color: #86868B; font-size: 12px; }
-          .warning { background: #FFF4E5; border-left: 4px solid #FF9500; padding: 16px; border-radius: 8px; margin-top: 20px; }
-          .warning p { margin: 0; color: #1D1D1F; font-size: 14px; }
-          .button { display: inline-block; padding: 12px 24px; background: #007AFF; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 20px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>🔐 Alfa Wiki</h1>
-          </div>
-          <div class="content">
-            <h2 style="color: #1D1D1F; margin-top: 0;">${isPasswordChange ? 'Пароль изменен' : 'Добро пожаловать!'}</h2>
-            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
-              Здравствуйте, <strong>${displayName || username}</strong>!
-            </p>
-            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
-              ${greetingText}
-            </p>
-
-            <div class="credentials-box">
-              <div class="credential-row">
-                <span class="credential-label">Логин:</span>
-                <span class="credential-value">${username}</span>
-              </div>
-              <div class="credential-row">
-                <span class="credential-label">Пароль:</span>
-                <span class="credential-value">${password}</span>
-              </div>
-            </div>
-
-            <div class="warning">
-              <p><strong>⚠️ Важно:</strong> Сохраните эти данные в надежном месте. Рекомендуем изменить пароль после первого входа в систему.</p>
-            </div>
-
-            <p class="info">
-              Используйте эти учетные данные для входа в систему Alfa Wiki.
-            </p>
-          </div>
-          <div class="footer">
-            <p>Это автоматическое письмо. Пожалуйста, не отвечайте на него.</p>
-            <p>© ${new Date().getFullYear()} Alfa Wiki. Все права защищены.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `,
-    text: `
-      Alfa Wiki - ${subject}
-
-      Здравствуйте, ${displayName || username}!
-
-      ${greetingText}
-
-      Ваши учетные данные для входа:
-
-      Логин: ${username}
-      Пароль: ${password}
-
-      ⚠️ ВАЖНО: Сохраните эти данные в надежном месте. Рекомендуем изменить пароль после первого входа в систему.
-
-      Используйте эти учетные данные для входа в систему Alfa Wiki.
-
-      ---
-      Это автоматическое письмо. Пожалуйста, не отвечайте на него.
-      © ${new Date().getFullYear()} Alfa Wiki
-    `
+    attachments: logoAttachment(),
+    html: renderEmail({
+      preheader: isPasswordChange
+        ? 'Логин и новый пароль — внутри письма.'
+        : 'Логин и пароль для первого входа — внутри письма.',
+      heading,
+      body,
+    }),
+    text: [
+      `${BRAND} — ${heading.toLowerCase()}.`,
+      '',
+      intro,
+      '',
+      `Логин: ${username}`,
+      `Пароль: ${password}`,
+      '',
+      '---',
+      `© ${new Date().getFullYear()} ${BRAND}`,
+    ].join('\n'),
   };
 
   try {

@@ -55,14 +55,14 @@
   flex: 1;
   min-width: 2px;
   border-radius: 2px;
-  background: var(--text-tertiary, #b0b0b8);
+  background: var(--text-tertiary, var(--n-400));
   transition: background 0.15s;
 }
 
 .voice-bar.played { background: var(--primary); }
 
 .voice-message.own .voice-bar { background: rgba(255, 255, 255, 0.45); }
-.voice-message.own .voice-bar.played { background: #fff; }
+.voice-message.own .voice-bar.played { background: var(--n-0); }
 
 .voice-time {
   flex-shrink: 0;
@@ -90,7 +90,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #e53e3e;
+  background: var(--red-500);
   animation: voice-blink 1s steps(2, start) infinite;
   flex-shrink: 0;
 }

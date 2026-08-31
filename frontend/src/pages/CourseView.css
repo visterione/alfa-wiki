@@ -137,7 +137,7 @@
 }
 
 .lesson-item.locked .lesson-item-icon {
-  color: #94a3b8;
+  color: var(--n-500);
 }
 
 .lesson-item.locked .lesson-item-title,
@@ -204,7 +204,7 @@
   gap: 8px;
   padding: 8px 16px;
   background: rgba(52, 211, 153, 0.1);
-  color: #10b981;
+  color: var(--green-600);
   border-radius: 20px;
   font-size: 14px;
   font-weight: 500;
@@ -317,7 +317,7 @@
 }
 
 .test-question {
-  background: #ffffff;
+  background: var(--n-0);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px;
@@ -337,7 +337,7 @@
 }
 
 .test-question-required {
-  color: #ef4444;
+  color: var(--red-500);
 }
 
 .test-question-text {
@@ -411,12 +411,12 @@
 
 .test-result-icon.success {
   background: rgba(52, 211, 153, 0.1);
-  color: #10b981;
+  color: var(--green-600);
 }
 
 .test-result-icon.failure {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--red-500);
 }
 
 .test-result-card h2 {
@@ -483,11 +483,11 @@
 }
 
 .question-result.correct .question-result-header {
-  color: #10b981;
+  color: var(--green-600);
 }
 
 .question-result.incorrect .question-result-header {
-  color: #ef4444;
+  color: var(--red-500);
 }
 
 .question-result-text {
@@ -592,7 +592,7 @@
     font-weight: 600;
     margin-bottom: 24px;
     margin-top: 0;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   .lesson-content {
@@ -614,12 +614,12 @@
   .lesson-content h2,
   .lesson-content h3 {
     page-break-after: avoid;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   .lesson-content p,
   .lesson-content li {
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   .lesson-content pre,

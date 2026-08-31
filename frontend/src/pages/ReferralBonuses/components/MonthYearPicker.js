@@ -49,7 +49,7 @@ export default function MonthYearPicker({ year, month, onChange, disabled, compa
         } : {
           ...btnBase, height: 34, padding: '0 12px', gap: 6,
           border: '1px solid var(--rb-border-dark)',
-          background: '#fff', color: 'var(--rb-text)',
+          background: 'var(--n-0)', color: 'var(--rb-text)',
           minWidth: 160,
         }}
       >
@@ -63,7 +63,7 @@ export default function MonthYearPicker({ year, month, onChange, disabled, compa
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 300,
-          background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+          background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12,
           boxShadow: '0 8px 32px rgba(0,0,0,0.14)', padding: '14px 16px', minWidth: 232,
         }}>
           {step === 'year' ? (

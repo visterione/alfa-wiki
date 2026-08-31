@@ -141,7 +141,7 @@ function buildDoctorHeatmapPdf(rows, periodStart, periodEnd, content) {
           fillColor: count ? blendHex(doc.color, ratio) : '#f8fafc',
           color: ratio > 0.6 ? '#fff' : '#333', border: [false,false,false,false] };
       }),
-      { text: String(doc.total), fontSize: 5, alignment: 'center', color: '#64748b', border: [false,false,false,false] },
+      { text: String(doc.total), fontSize: 5, alignment: 'center', color: 'var(--n-600)', border: [false,false,false,false] },
     ]);
   }
   content.push(heatTable(body, days, 90));
@@ -188,7 +188,7 @@ function buildStaffHeatmapPdf(rows, doctors, periodStart, periodEnd, content) {
           fillColor: count ? hslHex(hue, 82, lig) : '#f8fafc',
           color: ratio > 0.6 ? '#fff' : '#333', border: [false,false,false,false] };
       }),
-      { text: String(s.total), fontSize: 5, alignment: 'center', color: '#64748b', border: [false,false,false,false] },
+      { text: String(s.total), fontSize: 5, alignment: 'center', color: 'var(--n-600)', border: [false,false,false,false] },
     ]);
   }
   content.push(heatTable(body, days, 90));

@@ -925,12 +925,12 @@
 }
 
 .priority-badge.priority-high {
-  background: #f59e0b;
+  background: var(--amber-500);
   color: white;
 }
 
 .priority-badge.priority-urgent {
-  background: #ef4444;
+  background: var(--red-500);
   color: white;
 }
 
@@ -1171,12 +1171,12 @@
 }
 
 .btn-danger {
-  background: #ef4444;
+  background: var(--red-500);
   color: white;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #dc2626;
+  background: var(--red-600);
 }
 
 /* Event Modal Specific */
@@ -1308,12 +1308,12 @@
 }
 
 .btn-icon-danger {
-  background: #ef4444;
+  background: var(--red-500);
   padding: 6px;
 }
 
 .btn-icon-danger:hover {
-  background: #dc2626;
+  background: var(--red-600);
 }
 
 /* Add reminder button - compact icon-only design */

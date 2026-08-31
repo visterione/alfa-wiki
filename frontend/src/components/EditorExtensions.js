@@ -226,8 +226,8 @@ function ResizableImageComponent({ node, updateAttributes }) {
             bottom: '-4px',
             width: '12px',
             height: '12px',
-            background: '#3b82f6',
-            border: '2px solid white',
+            background: 'var(--accent-500)',
+            border: '2px solid var(--n-0)',
             borderRadius: '50%',
             cursor: 'nwse-resize',
             zIndex: 10
@@ -241,8 +241,8 @@ function ResizableImageComponent({ node, updateAttributes }) {
             top: '-4px',
             width: '12px',
             height: '12px',
-            background: '#3b82f6',
-            border: '2px solid white',
+            background: 'var(--accent-500)',
+            border: '2px solid var(--n-0)',
             borderRadius: '50%',
             cursor: 'nesw-resize',
             zIndex: 10
@@ -256,8 +256,8 @@ function ResizableImageComponent({ node, updateAttributes }) {
             bottom: '-4px',
             width: '12px',
             height: '12px',
-            background: '#3b82f6',
-            border: '2px solid white',
+            background: 'var(--accent-500)',
+            border: '2px solid var(--n-0)',
             borderRadius: '50%',
             cursor: 'nesw-resize',
             zIndex: 10
@@ -271,8 +271,8 @@ function ResizableImageComponent({ node, updateAttributes }) {
             top: '-4px',
             width: '12px',
             height: '12px',
-            background: '#3b82f6',
-            border: '2px solid white',
+            background: 'var(--accent-500)',
+            border: '2px solid var(--n-0)',
             borderRadius: '50%',
             cursor: 'nwse-resize',
             zIndex: 10

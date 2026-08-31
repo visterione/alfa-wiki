@@ -146,28 +146,28 @@
 }
 
 .page-content blockquote.blockquote-default {
-  border-left: 4px solid #6B7280;
-  background: #F9FAFB;
-  color: #374151;
+  border-left: 4px solid var(--n-600);
+  background: var(--n-50);
+  color: var(--n-800);
 }
 
 .page-content blockquote.blockquote-warning {
-  border-left: 4px solid #F59E0B;
-  background: #FFFBEB;
-  color: #92400E;
+  border-left: 4px solid var(--amber-500);
+  background: var(--amber-50);
+  color: var(--amber-800);
 }
 
 .page-content blockquote.blockquote-danger {
-  border-left: 4px solid #EF4444;
-  background: #FEF2F2;
-  color: #991B1B;
+  border-left: 4px solid var(--red-500);
+  background: var(--red-50);
+  color: var(--red-800);
 }
 
 /* Обратная совместимость - если нет класса типа, применяем серый стиль по умолчанию */
 .page-content blockquote:not([class*="blockquote-"]) {
-  border-left: 4px solid #6B7280;
-  background: #F9FAFB;
-  color: #374151;
+  border-left: 4px solid var(--n-600);
+  background: var(--n-50);
+  color: var(--n-800);
 }
 
 .page-content code {
@@ -179,8 +179,8 @@
 }
 
 .page-content pre {
-  background: #1D1D1F;
-  color: #fff;
+  background: var(--surface-inverse);
+  color: var(--text-on-inverse);
   padding: 1.5em;
   border-radius: var(--radius-md);
   overflow-x: auto;
@@ -235,7 +235,7 @@
 
 /* Fallback для mark без inline styles */
 .page-content mark:not([style*="background"]) {
-  background: #FFEB3B;
+  background: var(--amber-300);
 }
 
 .page-content video,
@@ -316,14 +316,14 @@
     font-size: 24pt !important;
     margin-bottom: 0.5em;
     font-weight: 600;
-    color: black !important;
+    color: var(--n-900) !important;
   }
 
   .printable-header .page-description {
     display: block !important;
     visibility: visible !important;
     font-size: 12pt !important;
-    color: #666 !important;
+    color: var(--n-600) !important;
   }
 
   .page-view > div {
@@ -337,7 +337,7 @@
     box-shadow: none !important;
     border: none !important;
     padding: 0 !important;
-    background: white !important;
+    background: var(--n-0) !important;
   }
 
   .page-view .page-content {
@@ -354,28 +354,28 @@
 
 /* Стили для подсветки поиска */
 .page-content mark.search-highlight {
-  background: #fef08a !important; /* Желтый светлый фон */
+  background: var(--amber-200) !important; /* Желтый светлый фон */
   padding: 0.1em 0.3em;
   border-radius: 3px;
   transition: background-color 0.3s ease;
 }
 
 .page-content mark.search-highlight-first {
-  background: #fde047 !important; /* Более яркий желтый для первого вхождения */
+  background: var(--amber-300) !important; /* Более яркий желтый для первого вхождения */
   animation: highlight-pulse 2s ease-out;
 }
 
 @keyframes highlight-pulse {
   0% {
-    background-color: #fde047;
+    background-color: var(--amber-300);
     box-shadow: 0 0 0 0 rgba(253, 224, 71, 0.7);
   }
   50% {
-    background-color: #fef08a;
+    background-color: var(--amber-200);
     box-shadow: 0 0 0 8px rgba(253, 224, 71, 0);
   }
   100% {
-    background-color: #fef08a;
+    background-color: var(--amber-200);
     box-shadow: 0 0 0 0 rgba(253, 224, 71, 0);
   }
 }
@@ -419,7 +419,7 @@
 .file-viewer-video {
   width: 100%;
   border-radius: 6px;
-  background: #000;
+  background: var(--n-900);
 }
 .file-viewer-audio {
   width: 100%;

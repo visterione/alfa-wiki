@@ -329,7 +329,7 @@
 }
 
 .sidebar-calendar-weekday.weekend {
-  color: #ef4444;
+  color: var(--red-500);
 }
 
 .sidebar-calendar-day {
@@ -521,81 +521,81 @@
 }
 
 .quick-access-btn.messages {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, var(--green-600) 0%, var(--green-700) 100%);
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
 .quick-access-btn.messages:hover {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  background: linear-gradient(135deg, var(--green-700) 0%, var(--green-800) 100%);
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.messages.active {
-  background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+  background: linear-gradient(135deg, var(--green-800) 0%, var(--green-800) 100%);
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4) inset;
 }
 
 .quick-access-btn.favorites {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, var(--amber-500) 0%, var(--amber-600) 100%);
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
 }
 
 .quick-access-btn.favorites:hover {
-  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  background: linear-gradient(135deg, var(--amber-600) 0%, var(--amber-700) 100%);
   box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.favorites.active {
-  background: linear-gradient(135deg, #b45309 0%, #92400e 100%);
+  background: linear-gradient(135deg, var(--amber-700) 0%, var(--amber-800) 100%);
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4) inset;
 }
 
 .quick-access-btn.explorer {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--accent-500) 0%, var(--accent-600) 100%);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
 }
 
 .quick-access-btn.explorer:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, var(--accent-600) 0%, var(--accent-700) 100%);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.explorer.active {
-  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  background: linear-gradient(135deg, var(--accent-700) 0%, var(--accent-800) 100%);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4) inset;
 }
 
 /* Второй ряд кнопок */
 .quick-access-btn.courses {
-  background: linear-gradient(135deg, #a16207 0%, #854d0e 100%);
+  background: linear-gradient(135deg, var(--amber-800) 0%, var(--amber-800) 100%);
   box-shadow: 0 2px 8px rgba(161, 98, 7, 0.2);
 }
 
 .quick-access-btn.courses:hover {
-  background: linear-gradient(135deg, #854d0e 0%, #713f12 100%);
+  background: linear-gradient(135deg, var(--amber-800) 0%, var(--amber-800) 100%);
   box-shadow: 0 4px 12px rgba(161, 98, 7, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.courses.active {
-  background: linear-gradient(135deg, #713f12 0%, #78350f 100%);
+  background: linear-gradient(135deg, var(--amber-800) 0%, var(--amber-800) 100%);
   box-shadow: 0 2px 8px rgba(161, 98, 7, 0.4) inset;
 }
 
 .quick-access-btn.map,
 .quick-access-btn.kanban,
 .quick-access-btn.warehouse {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--violet-500) 0%, var(--violet-600) 100%);
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
 }
 
 .quick-access-btn.map:hover,
 .quick-access-btn.kanban:hover,
 .quick-access-btn.warehouse:hover {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  background: linear-gradient(135deg, var(--violet-600) 0%, var(--violet-700) 100%);
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
   transform: translateY(-1px);
 }
@@ -603,90 +603,90 @@
 .quick-access-btn.map.active,
 .quick-access-btn.kanban.active,
 .quick-access-btn.warehouse.active {
-  background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+  background: linear-gradient(135deg, var(--violet-700) 0%, var(--violet-800) 100%);
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) inset;
 }
 
 .quick-access-btn.reviews {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: linear-gradient(135deg, var(--red-500) 0%, var(--red-600) 100%);
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
 }
 
 .quick-access-btn.reviews:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  background: linear-gradient(135deg, var(--red-600) 0%, var(--red-700) 100%);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.reviews.active {
-  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  background: linear-gradient(135deg, var(--red-700) 0%, var(--red-800) 100%);
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4) inset;
 }
 
 .quick-access-btn.salary {
-  background: linear-gradient(135deg, #00bfff 0%, #0284c7 100%);
+  background: linear-gradient(135deg, var(--cyan-500) 0%, var(--accent-800) 100%);
   box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
 }
 
 .quick-access-btn.salary:hover {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  background: linear-gradient(135deg, var(--accent-800) 0%, var(--accent-900) 100%);
   box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.salary.active {
-  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  background: linear-gradient(135deg, var(--accent-900) 0%, var(--accent-900) 100%);
   box-shadow: 0 2px 8px rgba(14, 165, 233, 0.4) inset;
 }
 
 .quick-access-btn.statistics {
-  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  background: linear-gradient(135deg, var(--green-400) 0%, var(--green-500) 100%);
   box-shadow: 0 2px 8px rgba(74, 222, 128, 0.2);
 }
 
 .quick-access-btn.statistics:hover {
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  background: linear-gradient(135deg, var(--green-500) 0%, var(--green-600) 100%);
   box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.statistics.active {
-  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  background: linear-gradient(135deg, var(--green-600) 0%, var(--green-700) 100%);
   box-shadow: 0 2px 8px rgba(74, 222, 128, 0.4) inset;
 }
 
 /* Модуль «Задачи» (ver. 6.75). Индиго — единственный незанятый в панели
    оттенок: синий у сообщений, зелёный у статистики, оранжевый у курсов. */
 .quick-access-btn.tasks {
-  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+  background: linear-gradient(135deg, var(--accent-300) 0%, var(--accent-400) 100%);
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
 }
 
 .quick-access-btn.tasks:hover {
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  background: linear-gradient(135deg, var(--accent-400) 0%, var(--accent-500) 100%);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.tasks.active {
-  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  background: linear-gradient(135deg, var(--accent-500) 0%, var(--accent-700) 100%);
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4) inset;
 }
 
 /* Онбординг врача — десятая кнопка, второй ряд пятиколоночной сетки */
 .quick-access-btn.onboarding {
-  background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
+  background: linear-gradient(135deg, var(--cyan-500) 0%, var(--cyan-500) 100%);
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.22);
 }
 
 .quick-access-btn.onboarding:hover {
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  background: linear-gradient(135deg, var(--cyan-500) 0%, var(--cyan-600) 100%);
   box-shadow: 0 4px 12px rgba(6, 182, 212, 0.32);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.onboarding.active {
-  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  background: linear-gradient(135deg, var(--cyan-600) 0%, var(--cyan-700) 100%);
   box-shadow: 0 2px 8px rgba(6, 182, 212, 0.4) inset;
 }
 
@@ -1079,7 +1079,7 @@
     margin-left: 0 !important;
     min-height: auto !important;
     height: auto !important;
-    background: white !important;
+    background: var(--n-0) !important;
     overflow: visible !important;
   }
 

@@ -1,9 +1,17 @@
 /**
- * «Загрузка» — сначала команды, потом внутрь конкретной.
+ * «Загрузка» — два взгляда на одни и те же часы: команды и сотрудники.
  *
- * При двух филиалах и пяти командах список всех сотрудников подряд нечитаем, а
- * при двухстах — бессмысленен. Руководитель сначала отвечает на вопрос «какая
- * команда в завале» и только потом проваливается в неё.
+ * Команды идут первыми и остаются режимом по умолчанию: при двух филиалах и
+ * пяти командах список всех сотрудников подряд нечитаем, а при двухстах —
+ * бессмысленен. Руководитель сначала отвечает на вопрос «какая команда в
+ * завале» и только потом проваливается в неё.
+ *
+ * Но человек редко состоит в одной команде, и вопрос «кому можно поручить»
+ * командами не решается: один и тот же сотрудник встречался в трёх карточках, и
+ * складывать его часы приходилось в уме. Для этого — второй режим, сплошной
+ * список людей области видимости. Переключатель иконочный и стоит в панели
+ * периода: это не два раздела меню, а один экран, на который смотрят с двух
+ * сторон.
  *
  * Процент считается от суммы личных норм участников, а не от числа людей: иначе
  * команда из подрядчиков на part-time выглядела бы вечно недозагруженной.
@@ -12,19 +20,31 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, dshort, hoursText, fromKey, scheduleWeeklyHours } from '../utils/dates';
-import { User } from 'lucide-react';
-import { userName, shortName, loadColor } from '../utils/labels';
-import { LoadBar, Avatar, Empty, Note } from './Bits';
+import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, hoursText } from '../utils/dates';
+import { User, Users } from 'lucide-react';
+import { loadColor } from '../utils/labels';
+import { LoadBar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
+import LoadTable from './LoadTable';
+
+// Режим — привычка человека, а не состояние экрана: тот, кто планирует людьми,
+// открывает загрузку людьми каждый день, и заставлять его переключаться при
+// каждом заходе значит спрашивать одно и то же. В URL режим не выносится:
+// ссылкой делятся на конкретную команду, а не на способ смотреть.
+const MODE_KEY = 'tsk-load-mode';
+const readMode = () => (localStorage.getItem(MODE_KEY) === 'people' ? 'people' : 'teams');
 
 export default function TeamsLoad({ ctx }) {
   const { cursor, setCursor } = ctx;
   const [view, setView] = useState('week');
+  const [mode, setMode] = useState(readMode);
   const [openTeam, setOpenTeam] = useState(ctx.selectedTeamId || null);
 
   useEffect(() => {
     setOpenTeam(ctx.selectedTeamId || null);
+    // Ссылка на конкретную команду сильнее сохранённой привычки: пришедший по
+    // ней ожидает увидеть её загрузку, а не общий список людей.
+    if (ctx.selectedTeamId) setMode('teams');
   }, [ctx.selectedTeamId]);
 
   const days = view === 'week' ? weekOf(cursor) : monthGrid(cursor).filter(Boolean);
@@ -35,6 +55,17 @@ export default function TeamsLoad({ ctx }) {
     ? addDays(cursor, back ? -7 : 7)
     : addMonths(cursor, back ? -1 : 1));
 
+  const switchMode = next => {
+    setMode(next);
+    localStorage.setItem(MODE_KEY, next);
+    // Выходя в «Сотрудников» из открытой команды, убираем её и из адреса:
+    // иначе возврат к командам показал бы таблицу, которую человек уже закрыл.
+    if (next === 'people' && openTeam) {
+      setOpenTeam(null);
+      ctx.go('load');
+    }
+  };
+
   const controls = (
     <PeriodControl
       views={[["week", "Неделя"], ["month", "Месяц"]]}
@@ -44,14 +75,53 @@ export default function TeamsLoad({ ctx }) {
       onPrevious={() => shift(true)}
       onNext={() => shift(false)}
       onPick={setCursor}
+      trailing={<ModeSwitch mode={mode} onMode={switchMode} />}
     />
   );
+
+  if (mode === 'people') {
+    return <PeopleLoad start={start} end={end} days={days} view={view} controls={controls} ctx={ctx} />;
+  }
 
   return openTeam
     ? <TeamDetail teamId={openTeam} start={start} end={end} days={days} view={view}
         controls={controls} onBack={() => { setOpenTeam(null); ctx.go('load'); }} ctx={ctx} />
     : <TeamCards start={start} end={end} controls={controls}
         onOpen={teamId => { setOpenTeam(teamId); ctx.go('load', { teamId }); }} ctx={ctx} />;
+}
+
+/**
+ * Переключатель режима — две иконки без подписей.
+ *
+ * Подписи «Команды» и «Сотрудники» рядом с сегментами «Неделя/Месяц» читались
+ * бы как ещё один период. Смысл держат сами значки: группа людей и один
+ * человек; названия остались в подсказках и в aria-label.
+ */
+function ModeSwitch({ mode, onMode }) {
+  return (
+    <div className="tsk-modeswitch" role="group" aria-label="Режим просмотра">
+      <button
+        type="button"
+        className={mode === 'teams' ? 'is-on' : ''}
+        onClick={() => onMode('teams')}
+        title="Команды"
+        aria-label="Команды"
+        aria-pressed={mode === 'teams'}
+      >
+        <Users size={16} />
+      </button>
+      <button
+        type="button"
+        className={mode === 'people' ? 'is-on' : ''}
+        onClick={() => onMode('people')}
+        title="Сотрудники"
+        aria-label="Сотрудники"
+        aria-pressed={mode === 'people'}
+      >
+        <User size={16} />
+      </button>
+    </div>
+  );
 }
 
 /* ─────────────────────────── список команд ─────────────────────────── */
@@ -163,7 +233,6 @@ function TeamCards({ start, end, controls, onOpen, ctx }) {
 
 function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
   const [data, setData] = useState(null);
-  const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -175,8 +244,6 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
 
   if (!data) return <>{controls}<Empty compact>Загружаем…</Empty></>;
 
-  const byUser = new Map(data.rows.map(r => [r.userId, r]));
-
   return (
     <>
       <div className="tsk-ctl">
@@ -185,58 +252,7 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
       </div>
       {controls}
 
-      <div className="tsk-scroll">
-        <table className="tsk-load">
-          <thead>
-            <tr>
-              <th />
-              {days.map(d => <th key={d}>{view === 'month' ? fromKey(d).getDate() : dshort(d)}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map(row => (
-              <tr key={row.userId} className={selected === row.userId ? 'is-sel' : ''}>
-                <td>
-                  <div className="tsk-person" onClick={() => setSelected(row.userId)} title={userName(row.user)}>
-                    <Avatar user={row.user} />
-                    <div>
-                      <div className="tsk-person-name">{shortName(row.user)}</div>
-                      <div className="tsk-person-sub">
-                        неделя {row.user?.taskWorkSchedule
-                          ? hoursText(scheduleWeeklyHours(row.user.taskWorkSchedule))
-                          : 'не настроена'}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                {days.map(date => {
-                  const day = row.days.find(d => d.date === date);
-                  return (
-                    <td key={date}>
-                      <div className="tsk-cell">
-                        <LoadBar {...(day || {})} />
-                        <div className="tsk-hours">
-                          {day?.onVacation ? 'отпуск' : day?.onDayOff ? 'вых.' : day?.hours ? day.hours.toFixed(1).replace('.', ',') : '—'}
-                        </div>
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            <tr className="tsk-total">
-              <td style={{ textAlign: 'left' }}>ИТОГО</td>
-              {days.map(date => {
-                const sum = data.rows.reduce((s, r) => {
-                  const day = r.days.find(d => d.date === date);
-                  return s + (day?.hours || 0);
-                }, 0);
-                return <td key={date}>{sum.toFixed(1).replace('.', ',')}</td>;
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <LoadTable rows={data.rows} days={days} view={view} ctx={ctx} />
 
       <Note>
         Норма у каждого своя, поэтому пунктир на каждой строке стоит в своём
@@ -246,15 +262,80 @@ function TeamDetail({ teamId, start, end, days, view, controls, onBack, ctx }) {
           <> Переработка суммарно: {data.summary.overloadedDays} человеко-дней.</>
         )}
       </Note>
+    </>
+  );
+}
 
-      {selected && (
-        <div style={{ marginTop: 16 }}>
-          <button className="tsk-btn is-primary"
-            onClick={() => ctx.newTask({ assignee: selected })}>
-            Поставить задачу: {shortName(byUser.get(selected)?.user)}
-          </button>
-        </div>
-      )}
+/* ─────────────────────────── сплошной список людей ─────────────────────────── */
+
+/**
+ * Все люди области видимости одной таблицей.
+ *
+ * Область та же, что у раздела «Люди»: участники команд, чью загрузку человеку
+ * открыли, плюс он сам. Отдельного права у режима нет намеренно — иначе он стал
+ * бы обходом настроек команд.
+ *
+ * Порядок — по проценту от нормы, сверху вниз. Алфавит здесь отвечал бы на
+ * вопрос «где Петров», а спрашивают у этого экрана другое: кто перегружен и у
+ * кого есть место. Люди без расписания уходят вниз: сравнивать их не с чем.
+ */
+function PeopleLoad({ start, end, days, view, controls, ctx }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    setData(null);
+    api.getPeopleLoad(start, end)
+      .then(res => { if (alive) setData(res.data); })
+      .catch(() => toast.error('Не удалось получить загрузку сотрудников'));
+    return () => { alive = false; };
+  }, [start, end]);
+
+  if (!data) return <>{controls}<Empty compact>Загружаем…</Empty></>;
+
+  const percentOf = new Map((data.summary.perUser || []).map(u => [u.userId, u.percent]));
+  const rows = [...data.rows].sort((a, b) => {
+    const left = percentOf.get(a.userId);
+    const right = percentOf.get(b.userId);
+    if (left === right) return 0;
+    if (left === null || left === undefined) return 1;
+    if (right === null || right === undefined) return -1;
+    return right - left;
+  });
+
+  if (!rows.length) {
+    return <>{controls}<Empty>В вашей области видимости нет людей.</Empty></>;
+  }
+
+  return (
+    <>
+      {controls}
+
+      {/* Подпись под именем — команды человека, а не часы недели: в общем
+          списке первым делом непонятно, откуда этот человек здесь взялся.
+          Показываются только те команды, о которых знает смотрящий. */}
+      <LoadTable
+        rows={rows}
+        days={days}
+        view={view}
+        ctx={ctx}
+        subtitle={row => {
+          const percent = percentOf.get(row.userId);
+          const load = percent === null || percent === undefined ? 'расписания нет' : `${percent}% нормы`;
+          const teams = (row.teams || []).map(t => t.name).join(', ');
+          return teams ? `${load} · ${teams}` : load;
+        }}
+      />
+
+      <Note>
+        {rows.length} человек из команд, чью загрузку вам открыли: тот, кто
+        состоит сразу в трёх, стоит здесь одной строкой со всеми своими часами.
+        Сверху — самые загруженные. Состав чужого дня не показывается: видны
+        только часы.
+        {data.summary.overloadedDays > 0 && (
+          <> Переработка суммарно: {data.summary.overloadedDays} человеко-дней.</>
+        )}
+      </Note>
     </>
   );
 }

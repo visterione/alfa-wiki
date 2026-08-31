@@ -1,6 +1,6 @@
 .spreadsheet-editor {
   width: 100%;
-  background: #fff;
+  background: var(--n-0);
   border-radius: 8px;
   /* overflow: hidden убран — обрезал выпадающие меню и попапы Univer */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -22,7 +22,7 @@
   height: 26px;
   padding: 0 10px;
   border-radius: 5px;
-  border: 1px solid #d0d0d0;
+  border: 1px solid var(--n-300);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(4px);
   cursor: pointer;
@@ -30,16 +30,16 @@
   align-items: center;
   gap: 5px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
-  color: #444;
+  color: var(--n-800);
   font-size: 12px;
   font-weight: 500;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
 }
 
 .spreadsheet-io-btn:hover:not(:disabled) {
-  background: #fff;
-  border-color: #0066cc;
-  color: #0066cc;
+  background: var(--n-0);
+  border-color: var(--accent-600);
+  color: var(--accent-600);
   box-shadow: 0 1px 6px rgba(0, 60, 180, 0.18);
 }
 
@@ -51,8 +51,8 @@
 .loading-spinner-small {
   width: 16px;
   height: 16px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #333;
+  border: 2px solid var(--n-100);
+  border-top: 2px solid var(--n-800);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -64,7 +64,7 @@
 
 /* Univer контейнер */
 .univer-container {
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--n-200);
   border-radius: 8px;
   position: relative;
   /* overflow: hidden убран — обрезал контекстные меню и тултипы Univer */
@@ -97,7 +97,7 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 1px solid #d0d0d0;
+  border: 1px solid var(--n-300);
   background: rgba(255, 255, 255, 0.90);
   backdrop-filter: blur(6px);
   cursor: pointer;
@@ -105,15 +105,15 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  color: #555;
+  color: var(--n-700);
   padding: 0;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
 }
 
 .spreadsheet-nav-btn:hover {
-  background: #fff;
-  border-color: #0066cc;
-  color: #0066cc;
+  background: var(--n-0);
+  border-color: var(--accent-600);
+  color: var(--accent-600);
   box-shadow: 0 2px 8px rgba(0, 60, 180, 0.22);
 }
 

@@ -18,12 +18,12 @@ const VideoComponent = ({ node }) => {
       <NodeViewWrapper>
         <div style={{
           padding: '20px',
-          background: '#fff3cd',
-          border: '2px solid #ffc107',
+          background: 'var(--amber-100)',
+          border: '2px solid var(--amber-500)',
           borderRadius: '8px',
           margin: '1rem 0',
           textAlign: 'center',
-          color: '#856404'
+          color: 'var(--amber-800)'
         }}>
           <p><strong>⚠️ Ошибка:</strong> Не указан путь к видео файлу</p>
         </div>
@@ -58,7 +58,7 @@ const VideoComponent = ({ node }) => {
           display: 'block',
           margin: '1rem 0',
           borderRadius: '8px',
-          backgroundColor: '#000',
+          backgroundColor: 'var(--n-900)',
           objectFit: 'contain'
         }}
       >

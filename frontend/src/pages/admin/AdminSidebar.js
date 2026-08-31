@@ -184,20 +184,20 @@ function getPageIcon(page) {
 function getPageIconStyle(page) {
   if (!page) return {};
   const { contentType, metadata } = page;
-  if (contentType === 'spreadsheet') return { background: '#dcfce7', color: '#22c55e' };
-  if (contentType === 'html')        return { background: '#ffedd5', color: '#f97316' };
+  if (contentType === 'spreadsheet') return { background: 'var(--green-100)', color: 'var(--green-500)' };
+  if (contentType === 'html')        return { background: 'var(--amber-100)', color: 'var(--amber-500)' };
   if (contentType === 'file') {
     const mime = metadata?.mimeType || '';
-    if (mime.startsWith('image/'))   return { background: '#cffafe', color: '#06b6d4' };
-    if (mime.startsWith('video/'))   return { background: '#ede9fe', color: '#8b5cf6' };
-    if (mime.startsWith('audio/'))   return { background: '#fce7f3', color: '#ec4899' };
-    if (mime === 'application/pdf')  return { background: '#fee2e2', color: '#ef4444' };
-    if (mime.includes('spreadsheet') || mime.includes('excel')) return { background: '#dcfce7', color: '#22c55e' };
-    if (mime.includes('word') || mime.includes('msword'))       return { background: '#dbeafe', color: '#3b82f6' };
+    if (mime.startsWith('image/'))   return { background: 'var(--cyan-100)', color: 'var(--cyan-500)' };
+    if (mime.startsWith('video/'))   return { background: 'var(--violet-100)', color: 'var(--violet-500)' };
+    if (mime.startsWith('audio/'))   return { background: 'var(--pink-100)', color: 'var(--pink-500)' };
+    if (mime === 'application/pdf')  return { background: 'var(--red-100)', color: 'var(--red-500)' };
+    if (mime.includes('spreadsheet') || mime.includes('excel')) return { background: 'var(--green-100)', color: 'var(--green-500)' };
+    if (mime.includes('word') || mime.includes('msword'))       return { background: 'var(--accent-100)', color: 'var(--accent-500)' };
     if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
-         'application/vnd.rar','application/x-7z-compressed'].includes(mime)) return { background: '#ede9fe', color: '#a78bfa' };
-    if (['application/x-msdownload','application/x-msi'].includes(mime)) return { background: '#f3f4f6', color: '#6b7280' };
-    return { background: '#f1f5f9', color: '#94a3b8' };
+         'application/vnd.rar','application/x-7z-compressed'].includes(mime)) return { background: 'var(--violet-100)', color: 'var(--violet-400)' };
+    if (['application/x-msdownload','application/x-msi'].includes(mime)) return { background: 'var(--n-100)', color: 'var(--n-600)' };
+    return { background: 'var(--n-100)', color: 'var(--n-500)' };
   }
   return {}; // wysiwyg — остаётся синим из CSS
 }

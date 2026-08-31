@@ -92,7 +92,7 @@ export default function StepRoleNorms({ readOnly }) {
         </div>
       </div>
 
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--n-50)' }}>
         <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text-secondary)', minWidth: 60 }}>Период:</label>
         <select
           className="rb-select"
@@ -113,7 +113,7 @@ export default function StepRoleNorms({ readOnly }) {
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         {hasPeriod && (
-          <span style={{ fontSize: 12, color: 'var(--rb-success, #16a34a)', fontWeight: 500 }}>
+          <span style={{ fontSize: 12, color: 'var(--rb-success, var(--green-600))', fontWeight: 500 }}>
             ✓ есть данные
           </span>
         )}
@@ -124,7 +124,7 @@ export default function StepRoleNorms({ readOnly }) {
           <div className="rb-loading"><span className="rb-spinner" />Загрузка...</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+            <thead style={{ position: 'sticky', top: 0, background: 'var(--n-50)', zIndex: 1 }}>
               <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
                 <th style={{ textAlign: 'left', padding: '8px 12px 8px 16px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
                   Роль

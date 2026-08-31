@@ -62,7 +62,7 @@ function TriCheckbox({ state, onToggle, disabled }) {
           <polyline points="20 6 9 17 4 12" />
         </svg>
       )}
-      {indet && <span style={{ width: 9, height: 2, background: '#fff', borderRadius: 1 }} />}
+      {indet && <span style={{ width: 9, height: 2, background: 'var(--n-0)', borderRadius: 1 }} />}
     </span>
   );
 }
@@ -359,7 +359,7 @@ export default function ServiceTree({ clinicId, onApplyBonus, readOnly }) {
                     >
                       <span style={{ width: 14, flexShrink: 0 }} />
                       <TriCheckbox state={sel ? 'checked' : 'unchecked'} onToggle={() => toggleService(svc, id)} disabled={readOnly} />
-                      <span style={{ fontSize: 11, color: '#000', flexShrink: 0 }}>{code}</span>
+                      <span style={{ fontSize: 11, color: 'var(--n-900)', flexShrink: 0 }}>{code}</span>
                       <span className="rb-result-name" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{svc.title}</span>
                       {svc.price != null && <span className="rb-result-price">{parseFloat(svc.price).toFixed(2)} ₽</span>}
                     </div>
@@ -376,7 +376,7 @@ export default function ServiceTree({ clinicId, onApplyBonus, readOnly }) {
   return (
     <div style={{ paddingBottom: 20 }}>
       {/* Bonus form + apply */}
-      <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
+      <div style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
         <div className="rb-inline-toggle-wrap">
           <div className="rb-exec-type-toggle">
             <button className={`rb-exec-type-btn${bonusType === 'pct' ? ' active' : ''}`} onClick={() => { setBonusType('pct'); setBonusValue(''); }}>%</button>

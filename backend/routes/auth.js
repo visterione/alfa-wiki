@@ -5,7 +5,7 @@ const { User, Role, MedCenter, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { generateCode, send2FACode } = require('../services/emailService');
 const sessions = require('../services/sessions');
-const { mergeMobilePreferences } = require('../services/mobilePreferences');
+const { mergePreferences, readPreferences } = require('../services/userPreferences');
 
 const router = express.Router();
 
@@ -414,22 +414,32 @@ router.put('/profile', authenticate, [
   }
 });
 
-// Настройки мобильного приложения синхронизируются между устройствами.
-// Они лежат в своём namespace, чтобы частичное обновление темы или звука не
-// затёрло настройки календаря и другие данные из users.settings.
-router.patch('/mobile-settings', authenticate, async (req, res) => {
+// Оформление синхронизируется между всеми устройствами человека — телефоном и
+// браузером. Сохранённый выбор тут же уезжает в его личную комнату сокета:
+// смена темы в браузере должна доехать до открытого на телефоне приложения без
+// перезапуска, иначе «общая настройка» ощущается как две разные.
+const savePreferences = async (req, res) => {
   try {
-    const settings = mergeMobilePreferences(req.user.settings, req.body);
+    const settings = mergePreferences(req.user.settings, req.body);
     await req.user.update({ settings });
-    res.json(settings.mobile);
+
+    const preferences = readPreferences(settings);
+    req.app.get('io')?.to(`user:${req.user.id}`).emit('preferences_updated', preferences);
+    res.json(preferences);
   } catch (error) {
     if (error instanceof TypeError) {
       return res.status(400).json({ error: error.message });
     }
-    console.error('Update mobile settings error:', error);
-    res.status(500).json({ error: 'Failed to update mobile settings' });
+    console.error('Update preferences error:', error);
+    res.status(500).json({ error: 'Failed to update preferences' });
   }
-});
+};
+
+router.patch('/preferences', authenticate, savePreferences);
+
+// Адрес, по которому ходят уже установленные сборки мобильного приложения.
+// Убрать его можно будет, когда на телефонах не останется версий до 7.60.
+router.patch('/mobile-settings', authenticate, savePreferences);
 
 // Verify token
 router.get('/verify', authenticate, (req, res) => {

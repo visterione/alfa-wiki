@@ -37,7 +37,7 @@
   border: 1px dashed var(--border);
   border-radius: 6px;
   cursor: pointer;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--n-500));
   transition: border-color 0.15s, background 0.15s;
 }
 
@@ -160,7 +160,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--n-500));
 }
 
 .ap-twist-on { cursor: pointer; }
@@ -309,7 +309,7 @@
 .ap-loc-pin {
   flex-shrink: 0;
   margin-top: 2px;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--n-500));
 }
 
 /* Цветом видно состояние точки, не читая подписей: серая — координат нет,
@@ -359,7 +359,7 @@
 
 .ap-map-hint {
   font-size: 12px;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--n-500));
 }
 
 /* Своя метка вместо стандартной картинки Leaflet: та тянет png с CDN
@@ -369,7 +369,7 @@
   height: 14px;
   border-radius: 50%;
   background: var(--primary);
-  border: 2px solid #fff;
+  border: 2px solid var(--n-0);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
@@ -387,7 +387,7 @@
 
 .ap-loc-addr {
   font-size: 13px;
-  color: var(--text-secondary, #6b7280);
+  color: var(--text-secondary, var(--n-600));
   margin-top: 1px;
   word-break: break-word;
 }
@@ -405,7 +405,7 @@
   padding: 28px 12px;
   text-align: center;
   font-size: 13px;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--n-500));
   border: 1px dashed var(--border);
   border-radius: var(--radius-md, 8px);
 }
@@ -463,5 +463,5 @@
   gap: 10px;
   margin-top: 5px;
   font-size: 12px;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--n-500));
 }

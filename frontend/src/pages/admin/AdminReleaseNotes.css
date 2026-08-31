@@ -98,8 +98,8 @@
 }
 
 .arn-badge-ver { background: var(--primary-light); color: var(--primary); }
-.arn-star { flex-shrink: 0; color: #f59e0b; fill: #f59e0b; vertical-align: middle; }
-.arn-badge-pub { background: #ecfdf5; color: #059669; }
+.arn-star { flex-shrink: 0; color: var(--amber-500); fill: var(--amber-500); vertical-align: middle; }
+.arn-badge-pub { background: var(--green-50); color: var(--green-700); }
 .arn-badge-draft { background: var(--bg-secondary); color: var(--text-secondary); }
 
 .arn-item-actions {
@@ -123,8 +123,8 @@
   transition: all var(--transition-fast);
 }
 .arn-icon-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
-.arn-icon-btn-pub:hover { color: #059669; border-color: #059669; }
-.arn-icon-btn-danger:hover { color: #e53e3e; border-color: #e53e3e; }
+.arn-icon-btn-pub:hover { color: var(--green-700); border-color: var(--green-700); }
+.arn-icon-btn-danger:hover { color: var(--red-500); border-color: var(--red-500); }
 
 /* Форма */
 .arn-form {
