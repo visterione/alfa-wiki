@@ -69,16 +69,20 @@ async function send(to, subject, html) {
 
 function layout(title, bodyHtml) {
   return `<!DOCTYPE html>
-<html lang="ru"><head><meta charset="utf-8"></head>
+<html lang="ru"><head><meta charset="utf-8">
+<!-- Без этой строки почтовые приложения раскладывают письмо на 980 px и потом
+     уменьшают целиком: текст становится нечитаемым, а кнопка «Вступить» —
+     размером с ноготь. -->
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
-  <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);">
-    <div style="background:linear-gradient(135deg,#007AFF,#5856D6);padding:32px 30px;">
-      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">${title}</h1>
+  <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);">
+    <div style="background:linear-gradient(135deg,#007AFF,#5856D6);padding:24px 26px;">
+      <h1 style="margin:0;color:#fff;font-size:21px;font-weight:700;">${title}</h1>
     </div>
-    <div style="padding:32px 30px;color:#1d1d1f;font-size:15px;line-height:1.6;">
+    <div style="padding:24px 26px;color:#1d1d1f;font-size:15px;line-height:1.6;">
       ${bodyHtml}
     </div>
-    <div style="padding:20px 30px;background:#f5f5f7;color:#86868B;font-size:12px;">
+    <div style="padding:18px 26px;background:#f5f5f7;color:#86868B;font-size:12px;">
       Письмо отправлено автоматически, отвечать на него не нужно.
     </div>
   </div>
@@ -141,30 +145,35 @@ async function sendServicesInvite(app) {
 /**
  * Всё закрыто — приветственное письмо со ссылками в рабочие чаты.
  *
- * Чаты — главное, ради чего письмо вообще читают: до ver. 7.64 ссылки кидали
- * руками, и врач регулярно оказывался не в том чате или ни в одном. Список
- * приходит из настроек филиала (services/onboarding/chatLinks.js).
+ * Чаты стоят первыми, сразу под одной строкой приветствия, а не в конце. Это
+ * не вопрос вкуса: письмо открывают с телефона, и всё, что ниже примерно 600
+ * точек, человек увидит, только если решит листать. Поздравление, ради которого
+ * листать не станут, отправляло карточки за сгиб — письмо читалось как «ну,
+ * поздравили» и закрывалось.
  *
+ * По той же причине подробности про учётку и «Реновацию» ушли вниз мелким: они
+ * ничего не требуют от врача, это справка.
+ *
+ * Список приходит из настроек филиала (services/onboarding/chatLinks.js).
  * Каждый чат — карточка с аватаркой, названием и кнопкой «Вступить», а не
- * строка «t.me/+AbCdEf». Причина простая: голую ссылку от незнакомого
- * отправителя человек не откроет, и правильно сделает. Из карточки видно, куда
- * именно ведёт кнопка, ещё до нажатия.
+ * строка «t.me/+AbCdEf»: голую ссылку от незнакомого отправителя человек не
+ * откроет, и правильно сделает.
  */
 async function sendWelcome(app, medCenterName, chats = []) {
-  const chatsBlock = chats.length ? `
-    <h2 style="margin:32px 0 6px;font-size:17px;font-weight:650;">Рабочие чаты</h2>
-    <p style="margin:0 0 16px;color:#86868B;font-size:13px;">
-      Здесь идёт работа: расписание, замены, объявления. Вступите${chats.length > 1 ? ' во все' : ''} —
-      это займёт минуту, иначе новости пройдут мимо.
-    </p>
-    ${chats.map(chatCard).join('')}
-  ` : '';
+  const lead = chats.length
+    ? `<p style="margin:0 0 18px;">Всё готово, можно выходить на приём. Остался один шаг — вступите в рабочие чаты:</p>
+       ${chats.map(chatCard).join('')}`
+    : '<p style="margin:0 0 4px;">Всё готово, можно выходить на приём: запись к вам уже доступна.</p>';
 
-  return send(app.email, 'Добро пожаловать в «Альфу»', layout('Всё готово', `
-    <p>Все подготовительные шаги закрыты: учётная запись создана, расписание открыто, услуги внесены${medCenterName ? `, филиал — ${escapeHtml(medCenterName)}` : ''}.</p>
-    <p>Можно выходить на приём — запись к вам уже доступна.</p>
-    <p style="color:#86868B;font-size:13px;">Логин и пароль к «Реновации» вам передаст администратор МИС отдельно.</p>
-    ${chatsBlock}
+  // Без названия сети в теме и заголовке: письмо уходит и врачам «Кидс», и
+  // «Смайла», и остальным — филиал у каждого свой, а «Альфа» из общего названия
+  // холдинга читается как название конкретного медцентра.
+  return send(app.email, 'Добро пожаловать в команду', layout('Добро пожаловать в команду', `
+    ${lead}
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e5ea;color:#86868B;font-size:12.5px;line-height:1.55;">
+      ${medCenterName ? `Филиал — ${escapeHtml(medCenterName)}. ` : ''}Учётная запись создана, расписание открыто, услуги внесены.<br>
+      Логин и пароль к «Реновации» вам передаст администратор МИС отдельно.
+    </div>
   `));
 }
 
