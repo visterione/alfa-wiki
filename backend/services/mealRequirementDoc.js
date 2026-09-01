@@ -188,10 +188,11 @@ function buildLayout({ department, reportDate, entries, nurseName, correction })
   text({ x: left, y, w: tableWidth, text: 'Постовая медицинская сестра', size: FS.footer });
   y += 34;
 
-  // Две полоски: слева под подпись от руки, справа — ФИО, оно же напечатано над линией
+  // Две полоски: слева под подпись от руки, справа — ФИО, оно же напечатано над
+  // линией. Правая прижата к краю таблицы, как в бумажном бланке.
   const signWidth = 150;
-  const nameX = left + signWidth + 45;
   const nameWidth = 230;
+  const nameX = left + tableWidth - nameWidth;
   text({ x: nameX, y: y - FS.footer - 3, w: nameWidth, text: nurseName || '', size: FS.footer, align: 'center' });
   items.push({ t: 'line', x1: left, y1: y, x2: left + signWidth, y2: y });
   items.push({ t: 'line', x1: nameX, y1: y, x2: nameX + nameWidth, y2: y });
@@ -245,12 +246,11 @@ function escapeXml(value) {
  * файла, а весит меньше сотни килобайт.
  */
 async function renderPng(day, { scale = 3 } = {}) {
-  const { items, contentHeight } = buildLayout(day);
+  const { items } = buildLayout(day);
+  // Полный лист А4, без обрезки пустого хвоста: в буфете привыкли к бумажному
+  // бланку, и картинка должна быть им же, а не выкадровкой по последней строке.
   const width = PAGE.width;
-  // Пустой хвост листа обрезаем: в ленте чата картинка ужимается по высоте, и
-  // половина белого поля превращает таблицу в нечитаемую полоску. Ширина и вся
-  // вёрстка при этом ровно те же, что на печатном А4.
-  const height = Math.min(PAGE.height, contentHeight);
+  const height = PAGE.height;
   const parts = [`<rect width="${width}" height="${height}" fill="#ffffff"/>`];
 
   items.forEach(item => {

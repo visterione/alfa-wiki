@@ -456,17 +456,12 @@ async function loadDelivery() {
   return { botId: bot.id, chatId };
 }
 
-function messageText({ department, date, version, sums }) {
-  const lines = [];
-  if (version > 1) lines.push('⚠️ Исправлено (версия ' + version + ') — заменяет предыдущее');
-  lines.push('Порционное требование');
-  lines.push(department.title + ' · на ' + mealDoc.formatDateShort(date));
-  lines.push(
-    'Завтраков ' + mealDoc.formatSum(sums.breakfast) + ' · ' +
-    'обедов ' + mealDoc.formatSum(sums.lunch) + ' · ' +
-    'ужинов ' + mealDoc.formatSum(sums.dinner)
-  );
-  return lines.join('\n');
+// Подпись к картинке — одной строкой. Всё остальное (итоги, состав палат) и так
+// написано в самом бланке, а в ленте чата дублирующий текст только отжимает
+// картинку вниз.
+function messageText({ department, date, version }) {
+  return mealDoc.formatDateShort(date) + ' | ' + department.title +
+    (version > 1 ? ' | исправлено' : '');
 }
 
 router.post('/day/send', authenticate, async (req, res) => {
@@ -523,7 +518,7 @@ router.post('/day/send', authenticate, async (req, res) => {
       sent = await sendBotMessage({
         botId: delivery.botId,
         chatId: delivery.chatId,
-        text: messageText({ department, date, version, sums }),
+        text: messageText({ department, date, version }),
         attachments: [attachment],
         io: req.app.get('io')
       });

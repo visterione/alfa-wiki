@@ -84,8 +84,11 @@ button, input, textarea, select { font-family: inherit; }
 
 .meal-signatures { margin-top: 34px; font-size: 14px; }
 .meal-signatures-title { margin-bottom: 26px; }
-.meal-sign-row { display: flex; gap: 48px; flex-wrap: wrap; }
-.meal-sign-cell { min-width: 200px; }
+/* Пропорции подписей те же, что в PDF: полоска под подпись слева, расшифровка
+   прижата к правому краю таблицы */
+.meal-sign-row { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.meal-sign-cell { flex: 0 1 auto; width: 29%; min-width: 180px; }
+.meal-sign-cell.meal-sign-name-cell { width: 45%; min-width: 240px; }
 .meal-sign-name { text-align: center; min-height: 20px; }
 .meal-sign-rule { border-bottom: 1px solid var(--meal-rule); }
 .meal-sign-caption { text-align: center; font-size: 11px; color: var(--meal-muted); margin-top: 3px; }
@@ -219,7 +222,7 @@ button, input, textarea, select { font-family: inherit; }
           <div class="meal-sign-rule"></div>
           <div class="meal-sign-caption">(подпись)</div>
         </div>
-        <div class="meal-sign-cell" style="min-width:280px">
+        <div class="meal-sign-cell meal-sign-name-cell">
           <div class="meal-sign-name" id="meal-nurse">&nbsp;</div>
           <div class="meal-sign-rule"></div>
           <div class="meal-sign-caption">(расшифровка подписи)</div>
