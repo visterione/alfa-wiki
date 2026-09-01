@@ -193,7 +193,7 @@ export default function PageEditor() {
   }
 
   return (
-    <div className={`page-editor${form.contentType === 'spreadsheet' ? ' spreadsheet-view' : ''}`}>
+    <div className={`page-editor${form.contentType === 'spreadsheet' ? ' spreadsheet-view' : ''}${form.contentType === 'html' ? ' page-editor-code' : ''}`}>
       <form onSubmit={handleSubmit}>
         <div className="editor-header">
           <button type="button" className="btn btn-primary editor-header-btn" onClick={() => navigate(-1)}>
@@ -324,7 +324,7 @@ export default function PageEditor() {
                   onChange={(content) => setForm({ ...form, content })}
                   language="html"
                   placeholder="<div>Ваш HTML код...</div>"
-                  height="500px"
+                  height="100%"
                 />
               </div>
             )}

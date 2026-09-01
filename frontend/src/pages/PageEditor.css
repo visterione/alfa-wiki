@@ -25,8 +25,13 @@
   flex-shrink: 0;
 }
 
+/* Высота кнопок шапки задана явно, а не набегает из padding у .btn: у кнопки
+   «•••» padding обнулён ради квадрата, и без height она сплющивалась до высоты
+   строки — 40 в ширину против 22 в высоту, вдвое ниже соседей. */
 .editor-header-btn {
   min-width: 100px;
+  height: 40px;
+  padding: 0 20px;
   justify-content: center;
 }
 
@@ -142,6 +147,55 @@
   background: var(--bg-primary);
   border-radius: var(--radius-md);
   overflow: hidden;
+}
+
+/* Режим HTML: редактор кода на всю высоту рабочей области.
+   Высоту сверху задаёт .content-wrapper:has(.page-editor-code) в Layout.css,
+   отсюда и до .cm-editor тянется цепочка height:100%. min-height:0 на каждом
+   flex-элементе обязателен: без него flex-элемент не сжимается меньше своего
+   содержимого, полотно распирает форму по высоте контента и внутренний скролл
+   CodeMirror не появляется вовсе. */
+.page-editor-code {
+  height: 100%;
+}
+
+.page-editor-code > form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.page-editor-code .editor-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.page-editor-code .editor-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-editor-code .html-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Между .code-editor-wrapper и .cm-editor свой div рисует сам
+   @uiw/react-codemirror (класс .cm-theme) — height ему никто не задаёт. Без
+   height:100% на нём цепочка обрывается: .cm-editor с height:100% упирается в
+   родителя высотой auto, вырастает по всему коду и обрезается overflow:hidden,
+   а внутренний скролл CodeMirror не появляется. */
+.page-editor-code .html-editor > .code-editor-wrapper,
+.page-editor-code .html-editor .cm-theme {
+  height: 100%;
+}
+
+/* Настройки в режиме кода прокручиваются сами: высота формы теперь ограничена
+   экраном, и длинная колонка иначе обрезалась бы снизу. */
+.page-editor-code .editor-sidebar {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .code-textarea {

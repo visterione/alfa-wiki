@@ -1,0 +1,997 @@
+/* ============================================================
+   Проводник — окно в духе Finder
+
+   Стили жили тремя блоками в Admin.css и успели разойтись: одна и та же
+   .explorer-item описывалась дважды с разными отступами и фоном, и что
+   именно применится, зависело от порядка правил в файле. Здесь всё
+   собрано в одном месте и подключается только AdminPages.js.
+
+   Язык оформления взят из уже сложившегося в проекте: полупрозрачные
+   поверхности с backdrop-filter, блик по верхней кромке и мягкая тень
+   — так же сделаны Tasks.css и карточка входа. Отличие проводника в
+   том, что здесь скевоморфизм несёт смысл: папка выглядит папкой, а
+   страница — листом бумаги, и тип объекта читается силуэтом раньше,
+   чем подписью.
+   ============================================================ */
+
+/* Страница проводника тянется во всю высоту рабочей области: ограничение
+   ставит .content-wrapper:has(.explorer-page) в Layout.css, а прокручивается
+   внутри только холст. */
+.explorer-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.explorer-window {
+  /* Стеклянные поверхности. Держим локальными переменными: одно окно —
+     один набор, и тёмная тема переопределяет их одним блоком ниже. */
+  --exp-glass: color-mix(in srgb, var(--bg-primary) 74%, transparent);
+  --exp-glass-strong: color-mix(in srgb, var(--bg-primary) 90%, transparent);
+  --exp-glass-sunken: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  --exp-hairline: color-mix(in srgb, var(--border-light) 78%, transparent);
+  --exp-sheen: rgba(255, 255, 255, 0.66);
+  --exp-sheen-soft: rgba(255, 255, 255, 0.34);
+  --exp-tint: color-mix(in srgb, var(--primary) 12%, transparent);
+  --exp-tint-soft: color-mix(in srgb, var(--primary) 7%, transparent);
+  --exp-shadow:
+    0 20px 48px rgba(19, 28, 45, 0.10),
+    0 2px 8px rgba(19, 28, 45, 0.06);
+  --exp-shadow-raised:
+    0 8px 20px rgba(19, 28, 45, 0.12),
+    0 1px 3px rgba(19, 28, 45, 0.08);
+  --exp-inset: inset 0 1px 2px rgba(19, 28, 45, 0.10);
+
+  /* Цвет папки идёт от акцента портала: акцент настраивается в оформлении,
+     и синие папки в зелёном интерфейсе смотрелись бы чужими. */
+  --exp-folder-back-1: color-mix(in srgb, var(--accent-300) 38%, #ffffff);
+  --exp-folder-back-2: color-mix(in srgb, var(--accent-400) 62%, #ffffff);
+  --exp-folder-front-1: color-mix(in srgb, var(--accent-300) 72%, #ffffff);
+  --exp-folder-front-2: var(--accent-500);
+  --exp-folder-front-3: color-mix(in srgb, var(--accent-600) 86%, #000000);
+  --exp-paper-1: #ffffff;
+  --exp-paper-2: #e9edf3;
+  --exp-paper-edge: rgba(19, 28, 45, 0.16);
+
+  --exp-radius: 18px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--exp-hairline);
+  border-radius: var(--exp-radius);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bg-primary) 92%, transparent),
+      color-mix(in srgb, var(--bg-primary) 78%, transparent));
+  box-shadow: var(--exp-shadow);
+  /* Окно намеренно не режет содержимое по overflow: меню «три точки» у
+     нижнего ряда и список создания выходят за его край, и клип съедал бы
+     их. Скругление держат сами края — панель сверху и строка состояния. */
+}
+
+:root[data-theme='dark'] .explorer-window {
+  --exp-sheen: rgba(255, 255, 255, 0.12);
+  --exp-sheen-soft: rgba(255, 255, 255, 0.06);
+  --exp-hairline: color-mix(in srgb, var(--n-400) 82%, transparent);
+  --exp-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.48),
+    0 2px 8px rgba(0, 0, 0, 0.34);
+  --exp-shadow-raised:
+    0 8px 20px rgba(0, 0, 0, 0.46),
+    0 1px 3px rgba(0, 0, 0, 0.32);
+  --exp-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+
+  --exp-folder-back-1: color-mix(in srgb, var(--accent-600) 58%, #ffffff);
+  --exp-folder-back-2: color-mix(in srgb, var(--accent-500) 80%, #ffffff);
+  --exp-folder-front-1: color-mix(in srgb, var(--accent-600) 72%, #ffffff);
+  --exp-folder-front-2: var(--accent-500);
+  --exp-folder-front-3: var(--accent-300);
+  /* Лист остаётся светлым и в тёмной теме — как в Finder, где документы
+     не перекрашиваются вместе с интерфейсом. Но чуть приглушён, иначе
+     сетка белых прямоугольников на тёмном фоне слепит. */
+  --exp-paper-1: #f0f2f6;
+  --exp-paper-2: #cfd5df;
+  --exp-paper-edge: rgba(0, 0, 0, 0.5);
+}
+
+/* Блик по верхней кромке окна: одна светлая линия поверх границы,
+   именно она отличает стекло от простой заливки с рамкой. */
+.explorer-window::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(160deg, var(--exp-sheen), transparent 42%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ── Панель инструментов ─────────────────────────────────────
+   Назад, путь, поиск, режим вида и «Создать» одной строкой.
+   Заголовка у модуля нет: путь сам сообщает, где пользователь. */
+.explorer-toolbar-bar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: calc(var(--exp-radius) - 1px) calc(var(--exp-radius) - 1px) 0 0;
+  background: var(--exp-glass);
+  -webkit-backdrop-filter: blur(26px) saturate(165%);
+  backdrop-filter: blur(26px) saturate(165%);
+  border-bottom: 1px solid var(--exp-hairline);
+  box-shadow: inset 0 1px 0 var(--exp-sheen-soft);
+}
+
+/* Кнопка «Назад» — круглая, как в панели окна Finder. */
+.explorer-back-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--exp-hairline);
+  border-radius: 50%;
+  background: var(--exp-glass-strong);
+  box-shadow: var(--exp-shadow-raised), inset 0 1px 0 var(--exp-sheen);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast),
+              color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.explorer-back-btn:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 70%, #000);
+  color: #fff;
+}
+
+.explorer-back-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  box-shadow: var(--exp-inset);
+}
+
+/* В корне подниматься некуда. Кнопку не убираем: иначе путь прыгал бы
+   влево-вправо при каждом входе в папку и выходе из неё. */
+.explorer-back-btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* Кнопка остаётся целью перетаскивания — так объект уходит на уровень
+   выше, как раньше делала карточка «Назад» внутри папки. */
+.explorer-back-btn.drag-over-target {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  transform: scale(1.12);
+  box-shadow: 0 0 0 4px var(--exp-tint);
+}
+
+/* Путь. Единственный тянущийся элемент строки: при длинном пути он
+   скроллится внутри себя, чтобы панель не переносилась на вторую строку. */
+.explorer-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.explorer-breadcrumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 220px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.breadcrumb-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breadcrumb-item svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.breadcrumb-item:hover {
+  background: var(--exp-glass-strong);
+  border-color: var(--exp-hairline);
+  color: var(--text-primary);
+  box-shadow: inset 0 1px 0 var(--exp-sheen);
+}
+
+/* Текущая папка подсвечена, но не залита акцентом целиком: в строке из
+   пяти крошек сплошная синяя плашка перетягивает на себя всё внимание. */
+.breadcrumb-item.active {
+  background: var(--exp-tint);
+  border-color: color-mix(in srgb, var(--primary) 26%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.breadcrumb-item.active svg {
+  opacity: 1;
+}
+
+.breadcrumb-separator {
+  flex-shrink: 0;
+  color: var(--text-disabled);
+}
+
+/* Поиск — утопленное поле со внутренней тенью. */
+.explorer-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 240px;
+  min-width: 130px;
+}
+
+.explorer-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.explorer-search-input {
+  width: 100%;
+  padding: 7px 30px 7px 30px;
+  border: 1px solid var(--exp-hairline);
+  border-radius: 999px;
+  background: var(--exp-glass-sunken);
+  box-shadow: var(--exp-inset);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.explorer-search-input::placeholder {
+  color: var(--text-disabled);
+}
+
+.explorer-search-input:focus {
+  border-color: var(--primary);
+  box-shadow: var(--exp-inset), 0 0 0 3px var(--exp-tint);
+}
+
+.explorer-search-clear {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--n-300);
+  color: var(--bg-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.explorer-search-clear:hover {
+  background: var(--text-secondary);
+}
+
+/* Переключатель вида — сегментированный контрол: утопленный жёлоб,
+   активный сегмент приподнят «пилюлей». */
+.explorer-view-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--exp-hairline);
+  border-radius: 9px;
+  background: var(--exp-glass-sunken);
+  box-shadow: var(--exp-inset);
+}
+
+.explorer-view-toggle .btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.explorer-view-toggle .btn-icon:hover {
+  color: var(--text-primary);
+}
+
+.explorer-view-toggle .btn-icon.active {
+  background: var(--bg-primary);
+  border-color: var(--exp-hairline);
+  color: var(--primary);
+  box-shadow: var(--exp-shadow-raised), inset 0 1px 0 var(--exp-sheen);
+}
+
+/* «Создать» — капсула с градиентом и бликом: главное действие панели. */
+.explorer-page-create {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.explorer-page-create > .btn-primary {
+  padding: 7px 16px;
+  border: 1px solid color-mix(in srgb, var(--primary) 72%, #000);
+  border-radius: 999px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 82%, #ffffff),
+    var(--primary));
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--primary) 34%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: filter var(--transition-fast), transform var(--transition-fast),
+              box-shadow var(--transition-fast);
+}
+
+.explorer-page-create > .btn-primary:hover {
+  filter: brightness(1.06);
+}
+
+.explorer-page-create > .btn-primary:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.22);
+}
+
+/* Меню создания — всплывающая панель того же стекла. */
+.explorer-type-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  min-width: 212px;
+  padding: 5px;
+  border: 1px solid var(--exp-hairline);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: 0 24px 56px rgba(8, 14, 24, 0.22), inset 0 1px 0 var(--exp-sheen);
+  overflow: hidden;
+  animation: explorer-pop-in 0.14s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes explorer-pop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.explorer-type-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.explorer-type-option:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.explorer-type-option:hover svg {
+  color: #fff !important;
+}
+
+/* ── Холст ───────────────────────────────────────────────── */
+.explorer-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: 0 0 calc(var(--exp-radius) - 1px) calc(var(--exp-radius) - 1px);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bg-primary) 70%, transparent),
+      color-mix(in srgb, var(--bg-secondary) 60%, transparent));
+}
+
+.explorer-canvas .admin-loading {
+  padding: 80px;
+}
+
+/* Строка состояния снизу — в Finder она же сообщает, сколько объектов
+   в папке. Здесь заодно снимает вопрос «поиск что-то отфильтровал?». */
+.explorer-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 0 0 calc(var(--exp-radius) - 1px) calc(var(--exp-radius) - 1px);
+  border-top: 1px solid var(--exp-hairline);
+  background: var(--exp-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: inset 0 1px 0 var(--exp-sheen-soft);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+/* ── Глифы: папка и лист ─────────────────────────────────── */
+.explorer-glyph-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.explorer-glyph {
+  flex-shrink: 0;
+}
+
+.explorer-glyph-folder {
+  filter: drop-shadow(0 4px 6px color-mix(in srgb, var(--accent-600) 30%, transparent));
+  transition: transform var(--transition-fast), filter var(--transition-fast);
+}
+
+/* Лист бумаги: срезанный угол сверху справа, под ним — «изнанка» загиба,
+   снизу — цветной корешок с типом. Тип красит currentColor, который приходит
+   от класса .explorer-icon-* на обёртке. */
+.explorer-glyph-doc {
+  position: relative;
+  display: inline-block;
+  width: calc(var(--exp-doc-size) * 0.78);
+  height: var(--exp-doc-size);
+  border-radius: 4px;
+  background: linear-gradient(158deg, var(--exp-paper-1), var(--exp-paper-2));
+  box-shadow:
+    0 4px 9px rgba(19, 28, 45, 0.18),
+    inset 0 0 0 1px var(--exp-paper-edge);
+  --exp-fold: calc(var(--exp-doc-size) * 0.26);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--exp-fold)) 0,
+    100% var(--exp-fold),
+    100% 100%,
+    0 100%);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.explorer-glyph-doc-fold {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--exp-fold);
+  height: var(--exp-fold);
+  background: linear-gradient(225deg,
+    color-mix(in srgb, var(--exp-paper-2) 42%, #000000),
+    color-mix(in srgb, var(--exp-paper-2) 88%, #000000));
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+/* Знак типа центрируется в бумаге над корешком, а не в листе целиком —
+   иначе он съезжает вниз и упирается в плашку. */
+.explorer-glyph-doc-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(var(--exp-doc-size) * 0.37);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.explorer-glyph-doc-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--exp-doc-size) * 0.13);
+  height: calc(var(--exp-doc-size) * 0.24);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Заливка идёт от currentColor, поэтому белым красится сама подпись,
+     а не корешок: цвет на элементе перебил бы фон. */
+  background: currentColor;
+}
+
+/* Лист остаётся светлым и в тёмной теме, а рампы в ней светлеют: яркий
+   бирюзовый или янтарный знак на светлой бумаге выцветает, а белая подпись
+   на таком же корешке не читается. Гасим цвет типа целиком — currentColor
+   в свойстве color берёт унаследованное значение, то есть цвет от
+   .explorer-icon-*, и притемняет именно его. */
+:root[data-theme='dark'] .explorer-glyph-doc {
+  color: color-mix(in srgb, currentColor 72%, #000000);
+}
+
+.explorer-glyph-doc-band > span {
+  color: #fff;
+  font-size: calc(var(--exp-doc-size) * 0.15);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+/* ── Сетка (режим галереи) ───────────────────────────────── */
+.explorer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 4px;
+  padding: 18px;
+  align-content: start;
+}
+
+.explorer-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  cursor: pointer;
+  user-select: none;
+  text-align: center;
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+              box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.explorer-item:hover {
+  background: var(--exp-glass-strong);
+  border-color: var(--exp-hairline);
+  box-shadow: var(--exp-shadow-raised), inset 0 1px 0 var(--exp-sheen);
+}
+
+.explorer-item:hover .explorer-glyph-folder {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 7px 10px color-mix(in srgb, var(--accent-600) 34%, transparent));
+}
+
+.explorer-item:hover .explorer-glyph-doc {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 12px rgba(19, 28, 45, 0.22), inset 0 0 0 1px var(--exp-paper-edge);
+}
+
+.explorer-item:active {
+  transform: scale(0.97);
+}
+
+.explorer-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 90px;
+}
+
+/* Цвет знака на листе — по типу содержимого. Цвета те же, что были у
+   контурных иконок, чтобы привычка «зелёное — таблица» не сломалась. */
+.explorer-icon-wysiwyg     { color: var(--accent-500); }
+.explorer-icon-spreadsheet { color: var(--green-600); }
+.explorer-icon-html        { color: var(--amber-600); }
+.explorer-icon-file-pdf     { color: var(--red-500); }
+.explorer-icon-file-image   { color: var(--cyan-600); }
+.explorer-icon-file-video   { color: var(--violet-500); }
+.explorer-icon-file-audio   { color: var(--pink-500); }
+.explorer-icon-file-doc     { color: var(--accent-500); }
+.explorer-icon-file-ppt     { color: var(--amber-600); }
+.explorer-icon-file-archive { color: var(--violet-400); }
+.explorer-icon-file-exe     { color: var(--n-600); }
+.explorer-icon-file-text    { color: var(--n-600); }
+.explorer-icon-file         { color: var(--n-500); }
+
+.explorer-item-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 7px;
+  font-size: 13px;
+  line-height: 1.34;
+  color: var(--text-primary);
+  word-break: break-word;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+/* Выделение как в Finder: подсвечивается подпись, а не вся плитка —
+   так видно, какой объект выбран, и иконка остаётся сама собой. */
+.explorer-item.selected .explorer-item-name {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.explorer-item.selected {
+  background: var(--exp-tint-soft);
+  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.explorer-item-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.explorer-item:hover .explorer-item-actions,
+.explorer-item.selected .explorer-item-actions {
+  opacity: 1;
+}
+
+.explorer-item-actions .actions-menu-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--exp-hairline);
+  border-radius: 50%;
+  background: var(--exp-glass-strong);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--exp-shadow-raised);
+  color: var(--text-secondary);
+}
+
+.explorer-item-actions .actions-menu-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Список ──────────────────────────────────────────────── */
+.explorer-list {
+  padding: 0;
+}
+
+.explorer-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 34px 1fr 112px 128px 104px;
+  column-gap: 10px;
+  align-items: center;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--exp-hairline);
+  background: var(--exp-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: inset 0 1px 0 var(--exp-sheen-soft);
+}
+
+.explorer-list-col-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.explorer-list-col-btn:hover,
+.explorer-list-col-btn.active {
+  color: var(--primary);
+}
+
+.explorer-list-type-col,
+.explorer-list-status-col {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
+.explorer-list-item {
+  display: grid;
+  grid-template-columns: 34px 1fr 112px 128px 104px;
+  column-gap: 10px;
+  align-items: center;
+  padding: 6px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+/* Чередование строк — приём из списка Finder: длинную таблицу так проще
+   вести глазом, и разделители между строками становятся не нужны. */
+.explorer-list-item:nth-child(even) {
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+.explorer-list-item:hover {
+  background: var(--exp-tint-soft);
+}
+
+.explorer-list-item.selected {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 92%, #ffffff),
+    var(--primary));
+  color: #fff;
+}
+
+.explorer-list-item.selected .explorer-list-name,
+.explorer-list-item.selected .explorer-list-type {
+  color: #fff;
+}
+
+.explorer-list-icon {
+  justify-self: center;
+  align-self: center;
+}
+
+.explorer-list-name {
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.explorer-list-type {
+  justify-self: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.explorer-list-status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.explorer-list-item .explorer-item-status {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.explorer-list-item .explorer-item-status.published {
+  background: color-mix(in srgb, var(--green-500) 16%, transparent);
+  color: var(--green-600);
+}
+
+.explorer-list-item .explorer-item-status.draft {
+  background: color-mix(in srgb, var(--amber-500) 18%, transparent);
+  color: var(--amber-600);
+}
+
+/* На выделенной строке цветная плашка статуса конфликтует с синей
+   заливкой — переводим её в полупрозрачное белое. */
+.explorer-list-item.selected .explorer-item-status {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+/* Действия в строке. Раньше это были сплошные синие квадраты — в списке
+   из тридцати строк получалась синяя колонка вместо данных. */
+.explorer-list-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  /* Скрыты прозрачностью, а не display: место под них зарезервировано
+     всегда, иначе бейдж статуса дёргался бы при наведении. */
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.explorer-list-item:hover .explorer-list-actions,
+.explorer-list-item.selected .explorer-list-actions {
+  opacity: 1;
+}
+
+.explorer-list-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--exp-hairline);
+  border-radius: 50%;
+  background: var(--exp-glass-strong);
+  box-shadow: inset 0 1px 0 var(--exp-sheen);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.explorer-list-actions button:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.explorer-list-actions button.danger:hover {
+  background: var(--error);
+  border-color: var(--error);
+}
+
+.explorer-list-item.selected .explorer-list-actions button {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #fff;
+}
+
+/* Меню действий у нижнего ряда раскрывается вверх — направление считает
+   toggleMenu по фактическому месту под кнопкой. */
+.explorer-item-actions .actions-menu.drop-up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+/* ── Перетаскивание ──────────────────────────────────────── */
+.explorer-item.dragging,
+.explorer-list-item.dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+
+/* Папка-приёмник: акцентное кольцо и лёгкий подъём — видно, что объект
+   упадёт именно сюда, а не просто «куда-то в эту область». */
+.explorer-item.drag-over-target {
+  background: var(--exp-tint);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--exp-tint), var(--exp-shadow-raised);
+}
+
+.explorer-item.drag-over-target .explorer-glyph-folder {
+  transform: translateY(-3px) scale(1.06);
+}
+
+.explorer-list-item.drag-over-target {
+  background: var(--exp-tint);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.explorer-list-item.drag-over-row {
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+
+/* ── Пустая папка ────────────────────────────────────────── */
+.explorer-canvas .empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 72px 20px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.explorer-canvas .empty-state svg {
+  opacity: 0.32;
+  margin-bottom: 10px;
+}
+
+.explorer-canvas .empty-state p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ── Адаптив ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .explorer-window {
+    --exp-radius: 14px;
+  }
+
+  .explorer-toolbar-bar {
+    flex-wrap: wrap;
+  }
+
+  /* Путь уезжает на вторую строку: на узком экране он длиннее всего
+     остального, и управляющие элементы должны оставаться сверху. */
+  .explorer-breadcrumbs {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .explorer-search-wrap {
+    flex: 1 1 auto;
+  }
+
+  .explorer-grid {
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    padding: 12px;
+  }
+
+  .explorer-item-actions {
+    opacity: 1; /* На touch-экране нет наведения, иначе меню недостижимо */
+  }
+
+  .explorer-list-actions {
+    opacity: 1;
+  }
+
+  .explorer-list-header,
+  .explorer-list-item {
+    grid-template-columns: 30px 1fr 104px 96px;
+    padding-inline: 12px;
+  }
+
+  /* Тип в узкой строке дублирует иконку — она и так говорит, что это. */
+  .explorer-list-type-col,
+  .explorer-list-type {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explorer-item,
+  .explorer-glyph-folder,
+  .explorer-glyph-doc,
+  .explorer-back-btn,
+  .explorer-list-item {
+    transition-duration: 1ms;
+  }
+
+  .explorer-type-dropdown {
+    animation: none;
+  }
+}

@@ -11,30 +11,30 @@ import {
 } from 'lucide-react';
 
 const getFileIconInfo = (mimeType) => {
-  if (!mimeType) return { Icon: File, className: 'explorer-icon-file', title: 'Файл' };
+  if (!mimeType) return { Icon: File, className: 'explorer-icon-file', title: 'Файл', label: 'FILE' };
   if (mimeType.startsWith('image/'))
-    return { Icon: Image,   className: 'explorer-icon-file-image', title: 'Изображение' };
+    return { Icon: Image,   className: 'explorer-icon-file-image', title: 'Изображение', label: 'IMG' };
   if (mimeType.startsWith('video/'))
-    return { Icon: Film,    className: 'explorer-icon-file-video', title: 'Видео' };
+    return { Icon: Film,    className: 'explorer-icon-file-video', title: 'Видео', label: 'VIDEO' };
   if (mimeType.startsWith('audio/'))
-    return { Icon: Music,   className: 'explorer-icon-file-audio', title: 'Аудио' };
+    return { Icon: Music,   className: 'explorer-icon-file-audio', title: 'Аудио', label: 'AUDIO' };
   if (mimeType === 'application/pdf')
-    return { Icon: Scroll, className: 'explorer-icon-file-pdf', title: 'PDF' };
+    return { Icon: Scroll, className: 'explorer-icon-file-pdf', title: 'PDF', label: 'PDF' };
   if (mimeType.includes('spreadsheet') || mimeType.includes('excel'))
-    return { Icon: Table,   className: 'explorer-icon-spreadsheet', title: 'Excel' };
+    return { Icon: Table,   className: 'explorer-icon-spreadsheet', title: 'Excel', label: 'XLS' };
   if (mimeType.includes('presentation') || mimeType.includes('powerpoint'))
-    return { Icon: File,    className: 'explorer-icon-file-ppt', title: 'PowerPoint' };
+    return { Icon: File,    className: 'explorer-icon-file-ppt', title: 'PowerPoint', label: 'PPT' };
   if (mimeType.includes('word') || mimeType.includes('msword'))
-    return { Icon: BookOpen, className: 'explorer-icon-file-doc', title: 'Word' };
+    return { Icon: BookOpen, className: 'explorer-icon-file-doc', title: 'Word', label: 'DOC' };
   if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
        'application/vnd.rar','application/x-7z-compressed','application/x-tar','application/gzip']
       .includes(mimeType))
-    return { Icon: Archive, className: 'explorer-icon-file-archive', title: 'Архив' };
+    return { Icon: Archive, className: 'explorer-icon-file-archive', title: 'Архив', label: 'ZIP' };
   if (['application/x-msdownload','application/x-msi','application/octet-stream'].includes(mimeType))
-    return { Icon: Package, className: 'explorer-icon-file-exe', title: 'Исполняемый файл' };
+    return { Icon: Package, className: 'explorer-icon-file-exe', title: 'Исполняемый файл', label: 'EXE' };
   if (mimeType.startsWith('text/') || mimeType === 'application/json')
-    return { Icon: FileText, className: 'explorer-icon-file-text', title: 'Текст' };
-  return { Icon: File, className: 'explorer-icon-file', title: 'Файл' };
+    return { Icon: FileText, className: 'explorer-icon-file-text', title: 'Текст', label: 'TXT' };
+  return { Icon: File, className: 'explorer-icon-file', title: 'Файл', label: 'FILE' };
 };
 
 const hasFilePreview = (mimeType) => {
@@ -48,16 +48,32 @@ const hasFilePreview = (mimeType) => {
   return false;
 };
 
+/** Запас под выпадающее меню действий, px. */
+const MENU_HEIGHT = 180;
+
+/** Склонение для строки состояния: 1 объект, 2 объекта, 5 объектов. */
+const pluralItems = (n) => {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 14) return 'объектов';
+  switch (n % 10) {
+    case 1: return 'объект';
+    case 2:
+    case 3:
+    case 4: return 'объекта';
+    default: return 'объектов';
+  }
+};
+
 const getPageIconInfo = (contentType, metadata) => {
   if (contentType === 'file') return getFileIconInfo(metadata?.mimeType);
   switch (contentType) {
     case 'spreadsheet':
-      return { Icon: Table,    className: 'explorer-icon-spreadsheet', title: 'Таблица' };
+      return { Icon: Table,    className: 'explorer-icon-spreadsheet', title: 'Таблица', label: 'TABLE' };
     case 'html':
-      return { Icon: FileCode, className: 'explorer-icon-html',        title: 'HTML-страница' };
+      return { Icon: FileCode, className: 'explorer-icon-html',        title: 'HTML-страница', label: 'HTML' };
     case 'wysiwyg':
     default:
-      return { Icon: FileText, className: 'explorer-icon-wysiwyg',     title: 'Документ' };
+      return { Icon: FileText, className: 'explorer-icon-wysiwyg',     title: 'Документ', label: 'WIKI' };
   }
 };
 
@@ -75,7 +91,9 @@ import { BASE_URL } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import PageView from '../PageView';
+import { ExplorerGlyphDefs, FolderGlyph, DocGlyph } from './ExplorerGlyphs';
 import '../Admin.css';
+import './Explorer.css';
 
 export default function AdminPages() {
   const navigate = useNavigate();
@@ -95,6 +113,7 @@ export default function AdminPages() {
   const [folderList, setFolderList] = useState([]);
   const [pageList, setPageList] = useState([]);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [menuDropUp, setMenuDropUp] = useState(false);
   const [allRoles, setAllRoles] = useState([]);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('alfa-wiki-explorer-view') || 'grid');
 
@@ -316,6 +335,14 @@ export default function AdminPages() {
 
   const toggleMenu = (itemId, e) => {
     e.stopPropagation();
+    if (openMenuId !== itemId) {
+      // Холст проводника прокручивается сам и режет всё, что за его нижним
+      // краем. Меряем место под кнопкой заранее: не хватает — раскрываем вверх.
+      const btn = e.currentTarget.getBoundingClientRect();
+      const canvas = e.currentTarget.closest('.explorer-canvas');
+      const bottom = canvas ? canvas.getBoundingClientRect().bottom : window.innerHeight;
+      setMenuDropUp(bottom - btn.bottom < MENU_HEIGHT);
+    }
     setOpenMenuId(openMenuId === itemId ? null : itemId);
   };
 
@@ -451,10 +478,69 @@ export default function AdminPages() {
   }
 
   return (
-    <div className="admin-page">
-      <div className="admin-header">
-        <h1>Проводник страниц</h1>
-        <div className="admin-header-actions">
+    <div className="admin-page explorer-page">
+      {/* Окно проводника: панель, холст и строка состояния — одна поверхность,
+          как окно Finder. Раньше панель и содержимое были двумя отдельными
+          карточками, и между ними читался разрыв. */}
+      <div className="explorer-window">
+        {/* Спрайт с градиентами — внутри окна: цвет папки задан переменными
+            на .explorer-window, и снаружи градиенты до них не дотягиваются. */}
+        <ExplorerGlyphDefs />
+
+        {/* Единая панель: назад, путь, поиск, режим вида и создание — одной строкой.
+            Кнопка «Назад» здесь же, а не карточкой внутри папки: так путь и навигация
+            читаются как в системном проводнике, а сетка не теряет первую ячейку. */}
+        <div className="explorer-toolbar-bar">
+          <button
+            type="button"
+            className={`explorer-back-btn${dragOverBack ? ' drag-over-target' : ''}`}
+            onClick={navigateUp}
+            disabled={!currentFolderId}
+            title="Назад"
+            onDragOver={draggedItem && currentFolderId ? (e) => { e.preventDefault(); setDragOverBack(true); } : undefined}
+            onDragLeave={() => setDragOverBack(false)}
+            onDrop={draggedItem && currentFolderId ? handleDropOnBack : undefined}
+          >
+            <ArrowLeft size={16} />
+          </button>
+
+          <div className="explorer-breadcrumbs">
+            <button
+              className={`breadcrumb-item ${!currentFolderId ? 'active' : ''}`}
+              onClick={navigateToRoot}
+            >
+              <Home size={16} />
+              <span>Корень</span>
+            </button>
+            {breadcrumbs.map((crumb, idx) => (
+              <React.Fragment key={crumb.id}>
+                <ChevronRight size={16} className="breadcrumb-separator" />
+                <button
+                  className={`breadcrumb-item ${idx === breadcrumbs.length - 1 ? 'active' : ''}`}
+                  onClick={() => navigateToCrumb(idx)}
+                >
+                  <Folder size={16} />
+                  <span>{crumb.title}</span>
+                </button>
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="explorer-search-wrap">
+            <Search size={13} className="explorer-search-icon" />
+            <input
+              className="explorer-search-input"
+              placeholder="Поиск..."
+              value={folderSearch}
+              onChange={e => { setFolderSearch(e.target.value); setSelectedId(null); }}
+            />
+            {folderSearch && (
+              <button className="explorer-search-clear" onClick={() => { setFolderSearch(''); setSelectedId(null); }}>
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
           <div className="explorer-view-toggle">
             <button
               className={`btn-icon ${viewMode === 'grid' ? 'active' : ''}`}
@@ -500,103 +586,50 @@ export default function AdminPages() {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Breadcrumbs + поиск в одной строке */}
-      <div className="explorer-breadcrumbs-row">
-        <div className="explorer-breadcrumbs">
-          <button
-            className={`breadcrumb-item ${!currentFolderId ? 'active' : ''}`}
-            onClick={navigateToRoot}
-          >
-            <Home size={16} />
-            <span>Корень</span>
-          </button>
-          {breadcrumbs.map((crumb, idx) => (
-            <React.Fragment key={crumb.id}>
-              <ChevronRight size={16} className="breadcrumb-separator" />
-              <button
-                className={`breadcrumb-item ${idx === breadcrumbs.length - 1 ? 'active' : ''}`}
-                onClick={() => navigateToCrumb(idx)}
-              >
-                <Folder size={16} />
-                <span>{crumb.title}</span>
-              </button>
-            </React.Fragment>
-          ))}
-        </div>
-
-        <div className="explorer-search-wrap">
-          <Search size={13} className="explorer-search-icon" />
-          <input
-            className="explorer-search-input"
-            placeholder="Поиск..."
-            value={folderSearch}
-            onChange={e => { setFolderSearch(e.target.value); setSelectedId(null); }}
-          />
-          {folderSearch && (
-            <button className="explorer-search-clear" onClick={() => { setFolderSearch(''); setSelectedId(null); }}>
-              <X size={13} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="card">
-        {loading ? (
-          <div className="admin-loading"><div className="loading-spinner" /></div>
-        ) : viewMode === 'list' ? (
-          /* ── LIST VIEW ── */
-          <div className="explorer-list">
-            <div className="explorer-list-header">
-              <span className="explorer-list-icon-col" />
-              <button className={`explorer-list-col-btn ${sortConfig.key === 'name' ? 'active' : ''}`} onClick={() => handleSort('name')}>
-                Название <SortIcon colKey="name" />
-              </button>
-              <button className={`explorer-list-col-btn explorer-list-type-col ${sortConfig.key === 'type' ? 'active' : ''}`} onClick={() => handleSort('type')}>
-                Тип <SortIcon colKey="type" />
-              </button>
-              <button className={`explorer-list-col-btn explorer-list-status-col ${sortConfig.key === 'status' ? 'active' : ''}`} onClick={() => handleSort('status')}>
-                Статус <SortIcon colKey="status" />
-              </button>
-            </div>
-
-            {currentFolderId && (
-              <div
-                className={`explorer-list-item explorer-list-back${dragOverBack ? ' drag-over-target' : ''}`}
-                onClick={navigateUp}
-                onDragOver={draggedItem ? (e) => { e.preventDefault(); setDragOverBack(true); } : undefined}
-                onDragLeave={() => setDragOverBack(false)}
-                onDrop={draggedItem ? handleDropOnBack : undefined}
-              >
-                <ArrowLeft size={16} className="explorer-list-icon" />
-                <span className="explorer-list-name">Назад</span>
+        {/* Содержимое */}
+        <div className="explorer-canvas">
+          {loading ? (
+            <div className="admin-loading"><div className="loading-spinner" /></div>
+          ) : viewMode === 'list' ? (
+            /* ── LIST VIEW ── */
+            <div className="explorer-list">
+              <div className="explorer-list-header">
+                <span className="explorer-list-icon-col" />
+                <button className={`explorer-list-col-btn ${sortConfig.key === 'name' ? 'active' : ''}`} onClick={() => handleSort('name')}>
+                  Название <SortIcon colKey="name" />
+                </button>
+                <button className={`explorer-list-col-btn explorer-list-type-col ${sortConfig.key === 'type' ? 'active' : ''}`} onClick={() => handleSort('type')}>
+                  Тип <SortIcon colKey="type" />
+                </button>
+                <button className={`explorer-list-col-btn explorer-list-status-col ${sortConfig.key === 'status' ? 'active' : ''}`} onClick={() => handleSort('status')}>
+                  Статус <SortIcon colKey="status" />
+                </button>
+                <span className="explorer-list-actions-col" />
               </div>
-            )}
 
-            {displayedFolders.map(folder => (
-              <div
-                key={folder.id}
-                draggable={canEdit}
-                className={[
-                  'explorer-list-item explorer-list-folder',
-                  selectedId === `folder-${folder.id}` ? 'selected' : '',
-                  dragOverFolderId === folder.id ? 'drag-over-target' : '',
-                  draggedItem?.id === folder.id ? 'dragging' : '',
-                ].filter(Boolean).join(' ')}
-                onClick={() => setSelectedId(`folder-${folder.id}`)}
-                onDoubleClick={() => openFolder(folder)}
-                onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
-                onDragOver={(e) => handleDragOver(e, folder.id, true)}
-                onDragLeave={() => setDragOverFolderId(null)}
-                onDrop={(e) => handleDrop(e, folder.id, 'folder')}
-                onDragEnd={handleDragEnd}
-              >
-                <Folder size={16} className="explorer-list-icon folder" />
-                <span className="explorer-list-name">{folder.title}</span>
-                <span className="explorer-list-type">Папка</span>
-                <div className="explorer-list-status-cell">
+              {displayedFolders.map(folder => (
+                <div
+                  key={folder.id}
+                  draggable={canEdit}
+                  className={[
+                    'explorer-list-item explorer-list-folder',
+                    selectedId === `folder-${folder.id}` ? 'selected' : '',
+                    dragOverFolderId === folder.id ? 'drag-over-target' : '',
+                    draggedItem?.id === folder.id ? 'dragging' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => setSelectedId(`folder-${folder.id}`)}
+                  onDoubleClick={() => openFolder(folder)}
+                  onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
+                  onDragOver={(e) => handleDragOver(e, folder.id, true)}
+                  onDragLeave={() => setDragOverFolderId(null)}
+                  onDrop={(e) => handleDrop(e, folder.id, 'folder')}
+                  onDragEnd={handleDragEnd}
+                >
+                  <FolderGlyph size={30} className="explorer-list-icon" />
+                  <span className="explorer-list-name">{folder.title}</span>
+                  <span className="explorer-list-type">Папка</span>
+                  <span className="explorer-list-status-cell" />
                   <div className="explorer-list-actions">
                     {canEdit && (
                       <button title="Редактировать" onClick={(e) => { e.stopPropagation(); setFolderForm(folder); setFolderModal({ open: true, folder }); }}>
@@ -610,43 +643,48 @@ export default function AdminPages() {
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {displayedPages.map(page => {
-              const iconInfo = getPageIconInfo(page.contentType, page.metadata);
-              const IconComponent = iconInfo.Icon;
-              return (
-                <div
-                  key={page.id}
-                  draggable={canEdit}
-                  className={[
-                    'explorer-list-item explorer-list-page',
-                    selectedId === `page-${page.id}` ? 'selected' : '',
-                    dragOverId === page.id ? 'drag-over-row' : '',
-                    draggedItem?.id === page.id ? 'dragging' : '',
-                  ].filter(Boolean).join(' ')}
-                  onClick={() => setSelectedId(`page-${page.id}`)}
-                  onDoubleClick={() => {
-                    if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
-                      downloadFile(page);
-                    } else {
-                      openPage(page);
-                    }
-                  }}
-                  onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
-                  onDragOver={(e) => handleDragOver(e, page.id, false)}
-                  onDragLeave={() => setDragOverId(null)}
-                  onDrop={(e) => handleDrop(e, page.id, 'page')}
-                  onDragEnd={handleDragEnd}
-                >
-                  <IconComponent size={16} className={`explorer-list-icon ${iconInfo.className}`} />
-                  <span className="explorer-list-name">{page.title}</span>
-                  <span className="explorer-list-type">{iconInfo.title}</span>
-                  <div className="explorer-list-status-cell">
-                    <span className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
-                      {page.isPublished ? 'Опубликовано' : 'Черновик'}
-                    </span>
+              {displayedPages.map(page => {
+                const iconInfo = getPageIconInfo(page.contentType, page.metadata);
+                const IconComponent = iconInfo.Icon;
+                return (
+                  <div
+                    key={page.id}
+                    draggable={canEdit}
+                    className={[
+                      'explorer-list-item explorer-list-page',
+                      selectedId === `page-${page.id}` ? 'selected' : '',
+                      dragOverId === page.id ? 'drag-over-row' : '',
+                      draggedItem?.id === page.id ? 'dragging' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => setSelectedId(`page-${page.id}`)}
+                    onDoubleClick={() => {
+                      if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
+                        downloadFile(page);
+                      } else {
+                        openPage(page);
+                      }
+                    }}
+                    onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
+                    onDragOver={(e) => handleDragOver(e, page.id, false)}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDrop={(e) => handleDrop(e, page.id, 'page')}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <DocGlyph
+                      size={30}
+                      className={`explorer-list-icon ${iconInfo.className}`}
+                      label={iconInfo.label}
+                      Icon={IconComponent}
+                    />
+                    <span className="explorer-list-name">{page.title}</span>
+                    <span className="explorer-list-type">{iconInfo.title}</span>
+                    <div className="explorer-list-status-cell">
+                      <span className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
+                        {page.isPublished ? 'Опубликовано' : 'Черновик'}
+                      </span>
+                    </div>
                     <div className="explorer-list-actions">
                       {page.contentType === 'file' ? (
                         <button title="Скачать" onClick={(e) => { e.stopPropagation(); downloadFile(page); }}>
@@ -674,155 +712,150 @@ export default function AdminPages() {
                       )}
                     </div>
                   </div>
+                );
+              })}
+
+              {totalDisplayed === 0 && (
+                <div className="empty-state">
+                  <FolderGlyph size={104} />
+                  <p>{folderSearch ? 'Ничего не найдено' : currentFolderId ? 'Папка пуста' : 'Папки и страницы отсутствуют'}</p>
+                  {!folderSearch && !currentFolderId && canEdit && <p>Нажмите «Создать», чтобы начать</p>}
                 </div>
-              );
-            })}
-
-            {totalDisplayed === 0 && (
-              <div className="empty-state">
-                <Folder size={48} />
-                <p>{folderSearch ? 'Ничего не найдено' : currentFolderId ? 'Папка пуста' : 'Папки и страницы отсутствуют'}</p>
-                {!folderSearch && !currentFolderId && canEdit && <p>Нажмите «Создать», чтобы начать</p>}
-              </div>
-            )}
-          </div>
-        ) : (
-          /* ── GRID VIEW ── */
-          <div className="explorer-grid">
-            {currentFolderId && (
-              <div
-                className={`explorer-item explorer-back${dragOverBack ? ' drag-over-target' : ''}`}
-                onClick={navigateUp}
-                onDragOver={draggedItem ? (e) => { e.preventDefault(); setDragOverBack(true); } : undefined}
-                onDragLeave={() => setDragOverBack(false)}
-                onDrop={draggedItem ? handleDropOnBack : undefined}
-              >
-                <div className="explorer-item-icon"><ArrowLeft size={48} /></div>
-                <div className="explorer-item-name">Назад</div>
-              </div>
-            )}
-
-            {displayedFolders.map(folder => (
-              <div
-                key={folder.id}
-                draggable={canEdit}
-                className={[
-                  'explorer-item explorer-folder',
-                  selectedId === `folder-${folder.id}` ? 'selected' : '',
-                  dragOverFolderId === folder.id ? 'drag-over-target' : '',
-                  draggedItem?.id === folder.id ? 'dragging' : '',
-                ].filter(Boolean).join(' ')}
-                onClick={() => setSelectedId(`folder-${folder.id}`)}
-                onDoubleClick={() => openFolder(folder)}
-                onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
-                onDragOver={(e) => handleDragOver(e, folder.id, true)}
-                onDragLeave={() => setDragOverFolderId(null)}
-                onDrop={(e) => handleDrop(e, folder.id, 'folder')}
-                onDragEnd={handleDragEnd}
-              >
-                <div className="explorer-item-icon"><Folder size={48} /></div>
-                <div className="explorer-item-name">{folder.title}</div>
-                {canEdit && (
-                  <div className="explorer-item-actions">
-                    <button className="actions-menu-btn" onClick={(e) => toggleMenu(`folder-${folder.id}`, e)}>
-                      <MoreVertical size={18} />
-                    </button>
-                    {openMenuId === `folder-${folder.id}` && (
-                      <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => { setFolderForm(folder); setFolderModal({ open: true, folder }); setOpenMenuId(null); }}>
-                          <Edit size={16} /> Редактировать
-                        </button>
-                        {canDelete && (
-                          <button onClick={() => { openDeleteModal('folder', folder); setOpenMenuId(null); }} className="danger">
-                            <Trash2 size={16} /> Удалить
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {displayedPages.map(page => {
-              const iconInfo = getPageIconInfo(page.contentType, page.metadata);
-              const IconComponent = iconInfo.Icon;
-              return (
+              )}
+            </div>
+          ) : (
+            /* ── GRID VIEW ── */
+            <div className="explorer-grid">
+              {displayedFolders.map(folder => (
                 <div
-                  key={page.id}
+                  key={folder.id}
                   draggable={canEdit}
                   className={[
-                    'explorer-item explorer-page',
-                    selectedId === `page-${page.id}` ? 'selected' : '',
-                    draggedItem?.id === page.id ? 'dragging' : '',
+                    'explorer-item explorer-folder',
+                    selectedId === `folder-${folder.id}` ? 'selected' : '',
+                    dragOverFolderId === folder.id ? 'drag-over-target' : '',
+                    draggedItem?.id === folder.id ? 'dragging' : '',
                   ].filter(Boolean).join(' ')}
-                  onClick={() => setSelectedId(`page-${page.id}`)}
-                  onDoubleClick={() => {
-                    if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
-                      downloadFile(page);
-                    } else {
-                      openPage(page);
-                    }
-                  }}
-                  onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
-                  onDragOver={(e) => handleDragOver(e, page.id, false)}
-                  onDragLeave={() => setDragOverId(null)}
-                  onDrop={(e) => handleDrop(e, page.id, 'page')}
+                  onClick={() => setSelectedId(`folder-${folder.id}`)}
+                  onDoubleClick={() => openFolder(folder)}
+                  onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
+                  onDragOver={(e) => handleDragOver(e, folder.id, true)}
+                  onDragLeave={() => setDragOverFolderId(null)}
+                  onDrop={(e) => handleDrop(e, folder.id, 'folder')}
                   onDragEnd={handleDragEnd}
-                  title={iconInfo.title}
                 >
-                  <div className={`explorer-item-icon ${iconInfo.className}`}>
-                    <IconComponent size={48} />
-                  </div>
-                  <div className="explorer-item-name">{page.title}</div>
-                  <div className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
-                    {page.isPublished ? 'Опубликовано' : 'Черновик'}
-                  </div>
-                  <div className="explorer-item-actions">
-                    <button className="actions-menu-btn" onClick={(e) => toggleMenu(`page-${page.id}`, e)}>
-                      <MoreVertical size={18} />
-                    </button>
-                    {openMenuId === `page-${page.id}` && (
-                      <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
-                        {page.contentType !== 'file' && (
-                          <button onClick={() => { openPage(page); setOpenMenuId(null); }}>
-                            <Eye size={16} /> Просмотр
-                          </button>
-                        )}
-                        {page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
-                          <button onClick={() => { openPage(page); setOpenMenuId(null); }}>
-                            <Eye size={16} /> Просмотр
-                          </button>
-                        )}
-                        {page.contentType === 'file' && (
-                          <button onClick={() => { downloadFile(page); setOpenMenuId(null); }}>
-                            <Download size={16} /> Скачать
-                          </button>
-                        )}
-                        {canEdit && page.contentType !== 'file' && (
-                          <button onClick={() => { navigate(`/page/${page.slug}/edit`); setOpenMenuId(null); }}>
+                  <div className="explorer-item-icon"><FolderGlyph size={88} /></div>
+                  <div className="explorer-item-name">{folder.title}</div>
+                  {canEdit && (
+                    <div className="explorer-item-actions">
+                      <button className="actions-menu-btn" onClick={(e) => toggleMenu(`folder-${folder.id}`, e)}>
+                        <MoreVertical size={18} />
+                      </button>
+                      {openMenuId === `folder-${folder.id}` && (
+                        <div className={`actions-menu${menuDropUp ? ' drop-up' : ''}`} onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => { setFolderForm(folder); setFolderModal({ open: true, folder }); setOpenMenuId(null); }}>
                             <Edit size={16} /> Редактировать
                           </button>
-                        )}
-                        {canDelete && (
-                          <button onClick={() => { openDeleteModal('page', page); setOpenMenuId(null); }} className="danger">
-                            <Trash2 size={16} /> Удалить
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                          {canDelete && (
+                            <button onClick={() => { openDeleteModal('folder', folder); setOpenMenuId(null); }} className="danger">
+                              <Trash2 size={16} /> Удалить
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              );
-            })}
+              ))}
 
-            {totalDisplayed === 0 && (
-              <div className="empty-state">
-                <Folder size={48} />
-                <p>{folderSearch ? 'Ничего не найдено' : currentFolderId ? 'Папка пуста' : 'Папки и страницы отсутствуют'}</p>
-                {!folderSearch && !currentFolderId && canEdit && <p>Нажмите «Создать», чтобы начать</p>}
-              </div>
-            )}
+              {displayedPages.map(page => {
+                const iconInfo = getPageIconInfo(page.contentType, page.metadata);
+                const IconComponent = iconInfo.Icon;
+                return (
+                  <div
+                    key={page.id}
+                    draggable={canEdit}
+                    className={[
+                      'explorer-item explorer-page',
+                      selectedId === `page-${page.id}` ? 'selected' : '',
+                      draggedItem?.id === page.id ? 'dragging' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => setSelectedId(`page-${page.id}`)}
+                    onDoubleClick={() => {
+                      if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
+                        downloadFile(page);
+                      } else {
+                        openPage(page);
+                      }
+                    }}
+                    onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
+                    onDragOver={(e) => handleDragOver(e, page.id, false)}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDrop={(e) => handleDrop(e, page.id, 'page')}
+                    onDragEnd={handleDragEnd}
+                    title={iconInfo.title}
+                  >
+                    <div className={`explorer-item-icon ${iconInfo.className}`}>
+                      <DocGlyph size={88} label={iconInfo.label} Icon={IconComponent} />
+                    </div>
+                    <div className="explorer-item-name">{page.title}</div>
+                    <div className="explorer-item-actions">
+                      <button className="actions-menu-btn" onClick={(e) => toggleMenu(`page-${page.id}`, e)}>
+                        <MoreVertical size={18} />
+                      </button>
+                      {openMenuId === `page-${page.id}` && (
+                        <div className={`actions-menu${menuDropUp ? ' drop-up' : ''}`} onClick={(e) => e.stopPropagation()}>
+                          {page.contentType !== 'file' && (
+                            <button onClick={() => { openPage(page); setOpenMenuId(null); }}>
+                              <Eye size={16} /> Просмотр
+                            </button>
+                          )}
+                          {page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
+                            <button onClick={() => { openPage(page); setOpenMenuId(null); }}>
+                              <Eye size={16} /> Просмотр
+                            </button>
+                          )}
+                          {page.contentType === 'file' && (
+                            <button onClick={() => { downloadFile(page); setOpenMenuId(null); }}>
+                              <Download size={16} /> Скачать
+                            </button>
+                          )}
+                          {canEdit && page.contentType !== 'file' && (
+                            <button onClick={() => { navigate(`/page/${page.slug}/edit`); setOpenMenuId(null); }}>
+                              <Edit size={16} /> Редактировать
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button onClick={() => { openDeleteModal('page', page); setOpenMenuId(null); }} className="danger">
+                              <Trash2 size={16} /> Удалить
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {totalDisplayed === 0 && (
+                <div className="empty-state">
+                  <FolderGlyph size={104} />
+                  <p>{folderSearch ? 'Ничего не найдено' : currentFolderId ? 'Папка пуста' : 'Папки и страницы отсутствуют'}</p>
+                  {!folderSearch && !currentFolderId && canEdit && <p>Нажмите «Создать», чтобы начать</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Строка состояния — как в Finder: сколько объектов лежит в папке
+            и сколько из них показывает текущий фильтр. */}
+        {!loading && (
+          <div className="explorer-statusbar">
+            {totalDisplayed === 0
+              ? 'Нет объектов'
+              : `${totalDisplayed} ${pluralItems(totalDisplayed)}` +
+                (folderSearch ? ' найдено' : '')}
           </div>
         )}
       </div>
