@@ -79,6 +79,8 @@
     "migrate:7.60:check": "node scripts/migrateAppearancePreferences.js --check",
     "migrate:7.64": "node scripts/migrateOnboardingChatLinks.js",
     "migrate:7.64:check": "node scripts/migrateOnboardingChatLinks.js --check",
+    "migrate:7.67": "node scripts/migrateMealRequirements.js",
+    "migrate:7.67:check": "node scripts/migrateMealRequirements.js --check",
     "warehouse:nomenclature": "node scripts/seedWarehouseNomenclature.js",
     "warehouse:nomenclature:check": "node scripts/seedWarehouseNomenclature.js --check",
     "warehouse:reset": "node scripts/resetWarehouseTestData.js",

@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Порционное требование</title>
+<style>
+/* Страница намеренно выглядит бумажным бланком, а не «интерфейсом»: медсестра
+   тридцать лет заполняла эту форму на бумаге, и чем меньше разницы с привычным
+   листом, тем быстрее она в ней разбирается. Расположение колонок, шапка и
+   подписи повторяют PDF (services/mealRequirementDoc.js) один в один. */
+:root {
+  --meal-ink: #111827;
+  --meal-rule: #111827;
+  --meal-muted: #6b7280;
+  --meal-bg: #f1f2f4;
+  --meal-accent: #1d4ed8;
+  --meal-danger: #b91c1c;
+  --meal-warning: #b45309;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--meal-bg);
+  color: var(--meal-ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 14px;
+}
+button, input, textarea, select { font-family: inherit; }
+/* Никаких собственных полей по бокам: страница вики уже даёт свои */
+#meal-app { max-width: none; margin: 0; padding: 0 0 16px; }
+
+.meal-bar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 0 10px;
+}
+.meal-bar-spacer { flex: 1 1 auto; }
+.meal-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 32px; padding: 6px 12px; border: 1px solid #9ca3af; border-radius: 4px;
+  background: #fff; color: #1f2937; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.meal-btn:hover:not(:disabled) { background: #f3f4f6; }
+.meal-btn:disabled { opacity: .5; cursor: not-allowed; }
+.meal-btn-main { background: #1f2937; border-color: #1f2937; color: #fff; font-weight: 600; }
+.meal-btn-main:hover:not(:disabled) { background: #111827; }
+.meal-btn-nav { width: 32px; padding: 0; font-size: 15px; }
+.meal-date {
+  min-height: 32px; padding: 5px 8px; border: 1px solid #9ca3af; border-radius: 4px;
+  background: #fff; font-size: 13px; color: var(--meal-ink);
+}
+.meal-note { font-size: 12px; color: var(--meal-muted); }
+.meal-note.sent { color: #15803d; }
+.meal-note.changed { color: var(--meal-warning); font-weight: 600; }
+.meal-note.error { color: var(--meal-danger); font-weight: 600; }
+
+/* ── Лист ────────────────────────────────────────────────────────────────── */
+.meal-sheet {
+  background: #fff; border: 1px solid #d1d5db; padding: 26px 22px 22px;
+}
+.meal-head { text-align: center; margin-bottom: 18px; }
+.meal-head h1 { margin: 0 0 8px; font-size: 20px; font-weight: 700; letter-spacing: .01em; }
+.meal-head .meal-line { font-size: 15px; margin-bottom: 4px; }
+.meal-head .meal-correction { font-size: 13px; font-weight: 700; margin-top: 6px; }
+
+.meal-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.meal-table th, .meal-table td { border: 1px solid var(--meal-rule); padding: 0; }
+.meal-table th {
+  padding: 6px 6px; font-size: 13px; font-weight: 700; text-align: center; background: #fff;
+}
+.meal-table td.meal-room {
+  text-align: center; font-size: 14px; padding: 6px; vertical-align: middle;
+}
+.meal-cell {
+  width: 100%; border: 0; outline: none; background: transparent; color: var(--meal-ink);
+  padding: 7px 8px; font-size: 14px; line-height: 1.35; resize: none; display: block;
+}
+.meal-cell:focus { background: #eef2ff; }
+.meal-cell.center { text-align: center; }
+.meal-cell::placeholder { color: transparent; }
+.meal-cell:focus::placeholder { color: #9ca3af; }
+.meal-total td { font-weight: 700; text-align: center; padding: 8px 6px; font-size: 14px; }
+.meal-total td.meal-total-label { text-align: center; }
+
+.meal-signatures { margin-top: 34px; font-size: 14px; }
+.meal-signatures-title { margin-bottom: 26px; }
+.meal-sign-row { display: flex; gap: 48px; flex-wrap: wrap; }
+.meal-sign-cell { min-width: 200px; }
+.meal-sign-name { text-align: center; min-height: 20px; }
+.meal-sign-rule { border-bottom: 1px solid var(--meal-rule); }
+.meal-sign-caption { text-align: center; font-size: 11px; color: var(--meal-muted); margin-top: 3px; }
+
+/* ── Подсказки при вводе ─────────────────────────────────────────────────── */
+.meal-suggest {
+  position: absolute; z-index: 40; min-width: 220px; max-width: 360px; max-height: 200px;
+  overflow-y: auto; background: #fff; border: 1px solid #9ca3af;
+  box-shadow: 0 6px 18px rgba(0,0,0,.12); display: none;
+}
+.meal-suggest.open { display: block; }
+.meal-suggest-item { padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.meal-suggest-item:hover, .meal-suggest-item.active { background: #eef2ff; }
+
+/* ── Архив и настройки ───────────────────────────────────────────────────── */
+.meal-block { display: none; background: #fff; border: 1px solid #d1d5db; margin-top: 12px; }
+.meal-block.open { display: block; }
+.meal-block-head {
+  padding: 9px 14px; border-bottom: 1px solid #e5e7eb; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.meal-archive-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.meal-archive-table th {
+  text-align: left; padding: 7px 14px; font-weight: 600; color: #4b5563;
+  border-bottom: 1px solid #e5e7eb; white-space: nowrap;
+}
+.meal-archive-table td { padding: 7px 14px; border-bottom: 1px solid #f3f4f6; }
+.meal-archive-table tbody tr:hover td { background: #f9fafb; cursor: pointer; }
+.meal-settings { padding: 14px; display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.meal-field { display: flex; flex-direction: column; gap: 4px; }
+.meal-field label { font-size: 12px; color: #4b5563; }
+.meal-field input {
+  min-height: 32px; padding: 6px 8px; border: 1px solid #9ca3af; border-radius: 4px;
+  font-size: 13px; background: #fff; color: var(--meal-ink);
+}
+.meal-field .meal-hint { font-size: 11px; color: var(--meal-muted); }
+.meal-empty { padding: 20px 14px; text-align: center; color: var(--meal-muted); font-size: 13px; }
+
+.meal-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 1000; padding: 10px 14px;
+  border-radius: 4px; background: #1f2937; color: #fff; font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+}
+.meal-toast.error { background: var(--meal-danger); }
+
+@media (max-width: 720px) {
+  .meal-sheet { padding: 16px 10px; }
+  .meal-head h1 { font-size: 17px; }
+  .meal-table th, .meal-table td { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+<div id="meal-app" data-department="therapy">
+
+  <div class="meal-bar">
+    <button class="meal-btn meal-btn-nav" type="button" onclick="mealApp.shiftDate(-1)" title="Предыдущий день">‹</button>
+    <input class="meal-date" id="meal-date" type="date" onchange="mealApp.pickDate(this.value)">
+    <button class="meal-btn meal-btn-nav" type="button" onclick="mealApp.shiftDate(1)" title="Следующий день">›</button>
+    <button class="meal-btn" type="button" onclick="mealApp.goTomorrow()">Завтра</button>
+    <span class="meal-note" id="meal-note"></span>
+    <span class="meal-bar-spacer"></span>
+    <button class="meal-btn" type="button" onclick="mealApp.copyPrevious()">Вчерашний список</button>
+    <button class="meal-btn" type="button" onclick="mealApp.toggleArchive()">Архив</button>
+    <button class="meal-btn" type="button" onclick="mealApp.print()">Печать</button>
+    <button class="meal-btn" id="meal-settings-btn" type="button" style="display:none" onclick="mealApp.toggleSettings()">Настройки</button>
+    <button class="meal-btn meal-btn-main" id="meal-send" type="button" onclick="mealApp.send()">Отправить в буфет</button>
+  </div>
+
+  <div class="meal-block" id="meal-settings">
+    <div class="meal-block-head">Настройки отделения</div>
+    <div class="meal-settings">
+      <div class="meal-field" style="flex:1 1 260px">
+        <label for="meal-set-title">Название отделения</label>
+        <input id="meal-set-title" type="text" placeholder="Терапевтическое отделение">
+      </div>
+      <div class="meal-field" style="flex:1 1 260px">
+        <label for="meal-set-rooms">Палаты</label>
+        <input id="meal-set-rooms" type="text" placeholder="301-311">
+        <span class="meal-hint">Через запятую или диапазоном: 301-311, 315, 320-322</span>
+      </div>
+      <button class="meal-btn meal-btn-main" type="button" onclick="mealApp.saveSettings()">Сохранить</button>
+    </div>
+  </div>
+
+  <div class="meal-sheet">
+    <div class="meal-head">
+      <h1>Порционное требование</h1>
+      <div class="meal-line" id="meal-department">на питание больных</div>
+      <div class="meal-line" id="meal-date-line">дата</div>
+    </div>
+
+    <table class="meal-table">
+      <colgroup>
+        <col style="width:90px">
+        <col>
+        <col style="width:110px">
+        <col style="width:120px">
+        <col style="width:120px">
+        <col style="width:120px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th rowspan="2">№ палаты</th>
+          <th rowspan="2">ФИО</th>
+          <th rowspan="2">Стол №</th>
+          <th colspan="3">Количество</th>
+        </tr>
+        <tr>
+          <th>Завтрак</th>
+          <th>Обед</th>
+          <th>Ужин</th>
+        </tr>
+      </thead>
+      <tbody id="meal-tbody"></tbody>
+      <tfoot>
+        <tr class="meal-total">
+          <td colspan="3" class="meal-total-label">Итого</td>
+          <td id="meal-total-breakfast"></td>
+          <td id="meal-total-lunch"></td>
+          <td id="meal-total-dinner"></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div class="meal-signatures">
+      <div class="meal-signatures-title">Постовая медицинская сестра</div>
+      <div class="meal-sign-row">
+        <div class="meal-sign-cell">
+          <div class="meal-sign-name">&nbsp;</div>
+          <div class="meal-sign-rule"></div>
+          <div class="meal-sign-caption">(подпись)</div>
+        </div>
+        <div class="meal-sign-cell" style="min-width:280px">
+          <div class="meal-sign-name" id="meal-nurse">&nbsp;</div>
+          <div class="meal-sign-rule"></div>
+          <div class="meal-sign-caption">(расшифровка подписи)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="meal-block" id="meal-archive">
+    <div class="meal-block-head">
+      <span>Архив требований</span>
+      <span class="meal-note" id="meal-archive-count"></span>
+    </div>
+    <div id="meal-archive-body"><div class="meal-empty">Загрузка…</div></div>
+  </div>
+
+  <div class="meal-suggest" id="meal-suggest"></div>
+</div>
+
+<script>
+window.mealApp = (function() {
+  var API_URL = (window.location.port === '9000'
+    ? window.location.protocol + '//' + window.location.hostname + ':9001'
+    : window.location.origin) + '/api/meal-requirements';
+
+  var root = document.getElementById('meal-app');
+  var department = (root && root.dataset.department) || 'therapy';
+
+  var state = {
+    date: '',
+    entries: [],
+    status: 'draft',
+    sentVersion: 0,
+    sentAt: null,
+    nurseName: '',
+    dirty: false
+  };
+  var me = { displayName: '', isAdmin: false };
+  var config = { title: '', rooms: [] };
+  var dietOptions = [];
+  var saveTimer = null;
+  var suggestTimer = null;
+  var suggest = { el: null, target: null, items: [], index: -1 };
+
+  function getToken() {
+    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  }
+
+  // ID вики-страницы нужен, чтобы отправка требования попадала в «Журнал
+  // изменений» этой страницы. Определяем по slug сами — на React не завязываемся.
+  var PAGES_URL = API_URL.replace(/\/meal-requirements\/?$/, '/pages');
+  var wikiPageIdCache = '';
+
+  function wikiPageId() {
+    return wikiPageIdCache || (window.__WIKI_PAGE__ && window.__WIKI_PAGE__.id) || '';
+  }
+
+  function currentSlug() {
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    if (!parts.length) return '';
+    try { return decodeURIComponent(parts[parts.length - 1]); }
+    catch (e) { return parts[parts.length - 1]; }
+  }
+
+  function resolveWikiPageId() {
+    if (wikiPageId()) return Promise.resolve(wikiPageId());
+    var slug = currentSlug();
+    if (!slug) return Promise.resolve('');
+    return fetch(PAGES_URL + '/' + encodeURIComponent(slug), {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(page) { wikiPageIdCache = (page && page.id) || ''; return wikiPageIdCache; })
+      .catch(function() { return ''; });
+  }
+
+  function api(path, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 20000);
+    return fetch(API_URL + path, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: options.body,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timer);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; }
+        catch (e) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      if (options.raw) return r.blob();
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timer);
+      if (e.name === 'AbortError') throw new Error('Сервер не ответил');
+      throw e;
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function showToast(message, type) {
+    var el = document.createElement('div');
+    el.className = 'meal-toast' + (type ? ' ' + type : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2800);
+  }
+
+  function isoToday() {
+    var d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
+  function shiftIso(iso, days) {
+    var d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+
+  // Дата в шапке бланка — в том виде, в каком её пишут на бумаге: 01.09.26
+  function formatDateShort(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? m[3] + '.' + m[2] + '.' + m[1].slice(2) : String(iso || '');
+  }
+
+  function formatTime(value) {
+    if (!value) return '';
+    return new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // То же правило, что на сервере (services/mealRequirementDoc.js): в ячейке
+  // может стоять пометка «выписан», и она не должна попадать в сумму.
+  function parseAmount(value) {
+    var m = String(value == null ? '' : value).match(/-?\d+(?:[.,]\d+)?/);
+    if (!m) return 0;
+    var n = Number(m[0].replace(',', '.'));
+    return isFinite(n) ? n : 0;
+  }
+
+  function formatSum(value) {
+    return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+  }
+
+  function sumMeal(key) {
+    return state.entries.reduce(function(acc, row) { return acc + parseAmount(row[key]); }, 0);
+  }
+
+  // ── Отрисовка ───────────────────────────────────────────────────────────────
+
+  function autoGrow(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, 32) + 'px';
+  }
+
+  function renderTable() {
+    var dietList = dietOptions.map(function(d) {
+      return '<option value="' + escapeHtml(d) + '">';
+    }).join('');
+
+    document.getElementById('meal-tbody').innerHTML = state.entries.map(function(row, idx) {
+      var meals = ['breakfast', 'lunch', 'dinner'].map(function(key) {
+        return '<td><input class="meal-cell center" type="text" data-idx="' + idx +
+          '" data-field="' + key + '" value="' + escapeHtml(row[key]) + '"></td>';
+      }).join('');
+
+      return '<tr>' +
+        '<td class="meal-room">' + escapeHtml(row.room) + '</td>' +
+        '<td><textarea class="meal-cell" rows="1" data-idx="' + idx + '" data-field="patients" ' +
+          'placeholder="ФИО, по одному в строке">' + escapeHtml(row.patients) + '</textarea></td>' +
+        '<td><input class="meal-cell center" type="text" list="meal-diet-list" data-idx="' + idx +
+          '" data-field="diet" value="' + escapeHtml(row.diet) + '"></td>' +
+        meals +
+      '</tr>';
+    }).join('') + '<datalist id="meal-diet-list">' + dietList + '</datalist>';
+
+    document.querySelectorAll('#meal-tbody textarea.meal-cell').forEach(autoGrow);
+    renderTotals();
+  }
+
+  function renderTotals() {
+    ['breakfast', 'lunch', 'dinner'].forEach(function(key) {
+      var sum = sumMeal(key);
+      document.getElementById('meal-total-' + key).textContent = sum ? formatSum(sum) : '';
+    });
+  }
+
+  function setNote(text, type) {
+    var el = document.getElementById('meal-note');
+    el.className = 'meal-note ' + (type || '');
+    el.textContent = text || '';
+  }
+
+  function renderDayState() {
+    if (state.status === 'changed') {
+      setNote('Изменено после отправки', 'changed');
+    } else if (state.status === 'sent') {
+      setNote('Отправлено ' + formatTime(state.sentAt) +
+        (state.sentVersion > 1 ? ' · версия ' + state.sentVersion : ''), 'sent');
+    } else {
+      setNote('');
+    }
+
+    document.getElementById('meal-send').textContent =
+      state.status === 'draft' ? 'Отправить в буфет' : 'Отправить исправленную';
+    document.getElementById('meal-nurse').textContent = state.nurseName || me.displayName || ' ';
+    document.getElementById('meal-date-line').textContent = 'дата ' + formatDateShort(state.date);
+  }
+
+  // ── Данные ──────────────────────────────────────────────────────────────────
+
+  function applyDay(day) {
+    state.entries = day.entries || [];
+    state.status = day.status || 'draft';
+    state.sentVersion = day.sentVersion || 0;
+    state.sentAt = day.sentAt || null;
+    state.nurseName = day.nurseName || '';
+    state.dirty = false;
+    renderTable();
+    renderDayState();
+  }
+
+  function loadDay(date) {
+    state.date = date;
+    document.getElementById('meal-date').value = date;
+    document.getElementById('meal-date-line').textContent = 'дата ' + formatDateShort(date);
+    return api('/day?department=' + encodeURIComponent(department) + '&date=' + encodeURIComponent(date))
+      .then(applyDay)
+      .catch(function(e) {
+        setNote('Не загрузилось: ' + e.message, 'error');
+        showToast(e.message, 'error');
+      });
+  }
+
+  function saveDay() {
+    clearTimeout(saveTimer);
+    if (!state.dirty) return Promise.resolve();
+    return api('/day', {
+      method: 'PUT',
+      body: JSON.stringify({ department: department, date: state.date, entries: state.entries })
+    }).then(function(day) {
+      state.dirty = false;
+      state.status = day.status;
+      renderDayState();
+    }).catch(function(e) {
+      setNote('Не сохранилось: ' + e.message, 'error');
+      showToast('Не сохранилось: ' + e.message, 'error');
+    });
+  }
+
+  // Автосохранение вместо кнопки «Сохранить»: таблицу заполняют по одной ячейке
+  // между делами, и потерять полдня из-за незамеченной кнопки нельзя.
+  function scheduleSave() {
+    state.dirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveDay, 1200);
+  }
+
+  function onCellInput(el) {
+    var idx = Number(el.dataset.idx);
+    var field = el.dataset.field;
+    if (!state.entries[idx]) return;
+    state.entries[idx][field] = el.value;
+
+    if (field === 'patients') autoGrow(el);
+
+    // Статус «изменено после отправки» появляется сразу, не дожидаясь сохранения
+    if (state.status === 'sent') state.status = 'changed';
+    renderTotals();
+    renderDayState();
+    scheduleSave();
+  }
+
+  function copyPrevious() {
+    api('/previous?department=' + encodeURIComponent(department) + '&date=' + encodeURIComponent(state.date))
+      .then(function(res) {
+        if (!res.found) return showToast('Предыдущих дней нет', 'error');
+        var filled = state.entries.some(function(r) {
+          return r.patients || r.diet || r.breakfast || r.lunch || r.dinner;
+        });
+        if (filled && !confirm('Заменить текущую таблицу списком за ' + formatDateShort(res.date) + '?')) return;
+
+        state.entries = res.entries;
+        state.dirty = true;
+        if (state.status === 'sent') state.status = 'changed';
+        renderTable();
+        renderDayState();
+        saveDay();
+      })
+      .catch(function(e) { showToast(e.message, 'error'); });
+  }
+
+  function send() {
+    if (!sumMeal('breakfast') && !sumMeal('lunch') && !sumMeal('dinner')) {
+      showToast('В требовании нет ни одной порции', 'error');
+      return;
+    }
+    var question = state.status === 'draft'
+      ? 'Отправить требование на ' + formatDateShort(state.date) + ' в чат буфета?'
+      : 'Отправить исправленное требование? В чат уйдёт новый бланк взамен предыдущего.';
+    if (!confirm(question)) return;
+
+    var btn = document.getElementById('meal-send');
+    btn.disabled = true;
+    setNote('Отправка…', '');
+
+    clearTimeout(saveTimer);
+    api('/day/send', {
+      method: 'POST',
+      timeout: 40000,
+      body: JSON.stringify({
+        department: department,
+        date: state.date,
+        entries: state.entries,
+        pageId: wikiPageId()
+      })
+    }).then(function(day) {
+      applyDay(day);
+      showToast('Требование отправлено в буфет');
+      if (document.getElementById('meal-archive').classList.contains('open')) loadArchive();
+    }).catch(function(e) {
+      setNote('Не отправилось: ' + e.message, 'error');
+      showToast('Не отправилось: ' + e.message, 'error');
+    }).then(function() {
+      btn.disabled = false;
+    });
+  }
+
+  // Печать идёт через тот же PDF, который лежит в архиве: бланк на бумаге и
+  // бланк в буфете обязаны совпадать до миллиметра, а печать из браузера
+  // рисовала бы третий вариант вёрстки.
+  function print() {
+    var source = state.status === 'draft' ? '&source=draft' : '';
+    saveDay().then(function() {
+      return api('/day/pdf?department=' + encodeURIComponent(department) +
+        '&date=' + encodeURIComponent(state.date) + source, { raw: true });
+    }).then(openBlob).catch(function(e) {
+      setNote('PDF не сформировался: ' + e.message, 'error');
+      showToast(e.message, 'error');
+    });
+  }
+
+  function openBlob(blob) {
+    var url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  function openPdf(date) {
+    api('/day/pdf?department=' + encodeURIComponent(department) + '&date=' + encodeURIComponent(date), { raw: true })
+      .then(openBlob)
+      .catch(function(e) { showToast(e.message, 'error'); });
+  }
+
+  // ── Архив ───────────────────────────────────────────────────────────────────
+
+  function loadArchive() {
+    return api('/days?department=' + encodeURIComponent(department) + '&limit=60')
+      .then(function(res) {
+        document.getElementById('meal-archive-count').textContent = 'дней: ' + res.total;
+        if (!res.rows.length) {
+          document.getElementById('meal-archive-body').innerHTML = '<div class="meal-empty">Пока ничего не заполняли</div>';
+          return;
+        }
+        var labels = { draft: 'не отправлено', sent: 'отправлено', changed: 'изменено после отправки' };
+        document.getElementById('meal-archive-body').innerHTML =
+          '<table class="meal-archive-table"><thead><tr>' +
+            '<th>Дата</th><th>Завтраки</th><th>Обеды</th><th>Ужины</th><th>Медсестра</th><th>Состояние</th><th></th>' +
+          '</tr></thead><tbody>' +
+          res.rows.map(function(row) {
+            return '<tr onclick="mealApp.pickDate(\'' + row.date + '\')">' +
+              '<td>' + formatDateShort(row.date) + '</td>' +
+              '<td>' + formatSum(row.totals.breakfast) + '</td>' +
+              '<td>' + formatSum(row.totals.lunch) + '</td>' +
+              '<td>' + formatSum(row.totals.dinner) + '</td>' +
+              '<td>' + escapeHtml(row.nurseName || '') + '</td>' +
+              '<td>' + labels[row.status] + (row.sentVersion > 1 ? ', версия ' + row.sentVersion : '') + '</td>' +
+              '<td><button class="meal-btn" type="button" ' +
+                'onclick="event.stopPropagation();mealApp.openPdf(\'' + row.date + '\')">PDF</button></td>' +
+            '</tr>';
+          }).join('') + '</tbody></table>';
+      })
+      .catch(function(e) {
+        document.getElementById('meal-archive-body').innerHTML =
+          '<div class="meal-empty">Не удалось загрузить архив: ' + escapeHtml(e.message) + '</div>';
+      });
+  }
+
+  function toggleArchive() {
+    if (document.getElementById('meal-archive').classList.toggle('open')) loadArchive();
+  }
+
+  // ── Настройки отделения (администратор) ─────────────────────────────────────
+
+  function applyConfig(cfg) {
+    config = { title: cfg.title, rooms: cfg.rooms || [] };
+    document.getElementById('meal-department').textContent = 'на питание больных ' + cfg.title;
+    document.getElementById('meal-set-title').value = cfg.title;
+    document.getElementById('meal-set-rooms').value = (cfg.rooms || []).join(', ');
+  }
+
+  function toggleSettings() {
+    document.getElementById('meal-settings').classList.toggle('open');
+  }
+
+  function saveSettings() {
+    api('/config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        department: department,
+        title: document.getElementById('meal-set-title').value,
+        rooms: document.getElementById('meal-set-rooms').value
+      })
+    }).then(function(cfg) {
+      applyConfig(cfg);
+      showToast('Настройки сохранены');
+      // Палаты могли измениться — перечитываем день, чтобы каркас таблицы совпал
+      return loadDay(state.date);
+    }).catch(function(e) { showToast(e.message, 'error'); });
+  }
+
+  // ── Навигация по датам ──────────────────────────────────────────────────────
+
+  function pickDate(date) {
+    if (!date) return;
+    saveDay().then(function() { loadDay(date); });
+  }
+
+  function shiftDate(days) {
+    pickDate(shiftIso(state.date, days));
+  }
+
+  function goTomorrow() {
+    pickDate(shiftIso(isoToday(), 1));
+  }
+
+  // ── Подсказки по ФИО ────────────────────────────────────────────────────────
+
+  function currentLineBounds(el) {
+    var pos = el.selectionStart;
+    var value = el.value;
+    var start = value.lastIndexOf('\n', pos - 1) + 1;
+    var end = value.indexOf('\n', pos);
+    return { start: start, end: end === -1 ? value.length : end };
+  }
+
+  function hideSuggest() {
+    suggest.el.classList.remove('open');
+    suggest.target = null;
+    suggest.items = [];
+    suggest.index = -1;
+  }
+
+  function renderSuggest() {
+    suggest.el.innerHTML = suggest.items.map(function(name, i) {
+      return '<div class="meal-suggest-item' + (i === suggest.index ? ' active' : '') +
+        '" data-i="' + i + '">' + escapeHtml(name) + '</div>';
+    }).join('');
+  }
+
+  function showSuggest(el, names) {
+    if (!names.length) return hideSuggest();
+    suggest.target = el;
+    suggest.items = names;
+    suggest.index = -1;
+    renderSuggest();
+
+    var rect = el.getBoundingClientRect();
+    suggest.el.style.left = (rect.left + window.scrollX) + 'px';
+    suggest.el.style.top = (rect.bottom + window.scrollY + 2) + 'px';
+    suggest.el.style.width = Math.max(rect.width, 220) + 'px';
+    suggest.el.classList.add('open');
+  }
+
+  function applySuggest(name) {
+    var el = suggest.target;
+    if (!el) return;
+    var bounds = currentLineBounds(el);
+    el.value = el.value.slice(0, bounds.start) + name + el.value.slice(bounds.end);
+    var caret = bounds.start + name.length;
+    el.setSelectionRange(caret, caret);
+    hideSuggest();
+    onCellInput(el);
+    el.focus();
+  }
+
+  // Подсказки тянем с сервера от двух букв и не больше десятка: за год словарь
+  // разрастётся до тысяч фамилий, целиком его сюда не притащить.
+  function requestSuggest(el) {
+    var bounds = currentLineBounds(el);
+    var query = el.value.slice(bounds.start, bounds.end).trim();
+    if (query.length < 2) return hideSuggest();
+
+    clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(function() {
+      api('/patients?department=' + encodeURIComponent(department) + '&q=' + encodeURIComponent(query))
+        .then(function(names) {
+          if (document.activeElement !== el) return;
+          showSuggest(el, names.filter(function(n) { return n.toLowerCase() !== query.toLowerCase(); }));
+        })
+        .catch(function() { hideSuggest(); });
+    }, 250);
+  }
+
+  function onSuggestKeydown(e) {
+    if (!suggest.el.classList.contains('open')) return false;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      var delta = e.key === 'ArrowDown' ? 1 : -1;
+      suggest.index = (suggest.index + delta + suggest.items.length) % suggest.items.length;
+      renderSuggest();
+      return true;
+    }
+    if (e.key === 'Enter' && suggest.index >= 0) {
+      e.preventDefault();
+      applySuggest(suggest.items[suggest.index]);
+      return true;
+    }
+    if (e.key === 'Escape') { hideSuggest(); return true; }
+    return false;
+  }
+
+  // ── Инициализация ───────────────────────────────────────────────────────────
+
+  function bindEvents() {
+    var tbody = document.getElementById('meal-tbody');
+
+    tbody.addEventListener('input', function(e) {
+      var el = e.target;
+      if (!el.classList.contains('meal-cell')) return;
+      onCellInput(el);
+      if (el.dataset.field === 'patients') requestSuggest(el);
+    });
+
+    tbody.addEventListener('keydown', function(e) {
+      if (e.target.dataset && e.target.dataset.field === 'patients') onSuggestKeydown(e);
+    });
+
+    tbody.addEventListener('focusout', function(e) {
+      if (e.target.dataset && e.target.dataset.field === 'patients') {
+        // Задержка нужна, чтобы клик по подсказке успел сработать до её закрытия
+        setTimeout(function() { if (suggest.target === e.target) hideSuggest(); }, 180);
+      }
+    });
+
+    suggest.el.addEventListener('mousedown', function(e) {
+      var item = e.target.closest('.meal-suggest-item');
+      if (!item) return;
+      e.preventDefault();
+      applySuggest(suggest.items[Number(item.dataset.i)]);
+    });
+
+    // Вкладку закрывают, не дожидаясь автосохранения. keepalive заставляет
+    // браузер довезти запрос уже после закрытия — обычный fetch тут обрывается.
+    window.addEventListener('beforeunload', function() {
+      if (!state.dirty) return;
+      try {
+        fetch(API_URL + '/day', {
+          method: 'PUT',
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+          body: JSON.stringify({ department: department, date: state.date, entries: state.entries })
+        });
+      } catch (e) { /* уходящей вкладке уже нечем показать ошибку */ }
+    });
+  }
+
+  function init() {
+    suggest.el = document.getElementById('meal-suggest');
+    bindEvents();
+    resolveWikiPageId();
+
+    api('/config?department=' + encodeURIComponent(department)).then(function(cfg) {
+      applyConfig(cfg);
+      if (cfg.isAdmin) document.getElementById('meal-settings-btn').style.display = '';
+    }).catch(function() {});
+
+    api('/whoami').then(function(info) {
+      me = info;
+      document.getElementById('meal-nurse').textContent = state.nurseName || info.displayName || ' ';
+    }).catch(function() {});
+
+    api('/diets?department=' + encodeURIComponent(department))
+      .then(function(list) { dietOptions = list || []; renderTable(); })
+      .catch(function() {});
+
+    // Требование подают накануне, поэтому открываем сразу завтрашний день
+    loadDay(shiftIso(isoToday(), 1));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+  return {
+    pickDate: pickDate,
+    shiftDate: shiftDate,
+    goTomorrow: goTomorrow,
+    copyPrevious: copyPrevious,
+    toggleArchive: toggleArchive,
+    toggleSettings: toggleSettings,
+    saveSettings: saveSettings,
+    openPdf: openPdf,
+    print: print,
+    send: send
+  };
+})();
+</script>
+</body>
+</html>

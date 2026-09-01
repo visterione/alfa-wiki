@@ -825,6 +825,7 @@ export const bots = {
   update:          (id, data) => api.put(`/bots/${id}`, data),
   delete:          (id)       => api.delete(`/bots/${id}`),
   regenerateToken: (id)       => api.post(`/bots/${id}/regenerate-token`),
+  chats:           (id)       => api.get(`/bots/${id}/chats`),
 };
 
 // Ключи публичного API: внешние системы, которым разрешено слать нам данные

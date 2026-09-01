@@ -3513,6 +3513,44 @@ const TherapyReportEntry = sequelize.define('TherapyReportEntry', {
   ]
 });
 
+// === MEAL REQUIREMENT MODEL (порционное требование на питание больных) ===
+// Строки палат лежат в entries одним JSONB: править и отправлять их можно только
+// всей таблицей сразу, отдельной жизни у палаты нет.
+const MealRequirementDay = sequelize.define('MealRequirementDay', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  department: { type: DataTypes.STRING(30), allowNull: false },
+  reportDate: { type: DataTypes.DATEONLY, allowNull: false },
+  entries: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  // Снимок последней отправки: день после неё продолжает редактироваться, а в
+  // буфете и в архивном PDF обязано оставаться то, что там уже видели.
+  sentEntries: { type: DataTypes.JSONB, allowNull: true },
+  status: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'draft' },
+  sentVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  sentAt: { type: DataTypes.DATE, allowNull: true },
+  sentBy: { type: DataTypes.UUID, allowNull: true },
+  nurseName: { type: DataTypes.STRING(150), allowNull: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+  updatedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'meal_requirement_days',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['department', 'reportDate'] }
+  ]
+});
+
+// Словарь ФИО для подсказок при вводе — отдельно от дней, чтобы искать по
+// индексу префикса, а не разворачивать JSONB всех дней за год.
+const MealRequirementPatient = sequelize.define('MealRequirementPatient', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  department: { type: DataTypes.STRING(30), allowNull: false },
+  name: { type: DataTypes.STRING(200), allowNull: false },
+  lastUsedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
+}, {
+  tableName: 'meal_requirement_patients',
+  timestamps: true
+});
+
 // === SURGERY REPORT MODEL ===
 const SurgeryReportEntry = sequelize.define('SurgeryReportEntry', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -4251,6 +4289,9 @@ module.exports = {
   TherapyReportEntry,
   // Surgery reports module
   SurgeryReportEntry,
+  // Порционные требования на питание больных
+  MealRequirementDay,
+  MealRequirementPatient,
   // Discount reports module (скидки 100%)
   DiscountReportEntry,
   // Release notes module (Центр обновлений)

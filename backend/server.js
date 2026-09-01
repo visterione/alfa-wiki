@@ -86,6 +86,7 @@ const operationsReportsRoutes    = require('./routes/operations-reports');
 const gynecologyReportsRoutes    = require('./routes/gynecology-reports');
 const therapyReportsRoutes       = require('./routes/therapy-reports');
 const surgeryReportsRoutes       = require('./routes/surgery-reports');
+const mealRequirementsRoutes     = require('./routes/meal-requirements');
 const discountReportsRoutes      = require('./routes/discount-reports');
 const releaseNotesRoutes         = require('./routes/release-notes');
 
@@ -444,6 +445,7 @@ app.use('/api/operations-reports',  operationsReportsRoutes);
 app.use('/api/gynecology-reports',  gynecologyReportsRoutes);
 app.use('/api/therapy-reports',     therapyReportsRoutes);
 app.use('/api/surgery-reports',     surgeryReportsRoutes);
+app.use('/api/meal-requirements',   mealRequirementsRoutes);
 app.use('/api/discount-reports',    discountReportsRoutes);
 app.use('/api/release-notes',       releaseNotesRoutes);
 
