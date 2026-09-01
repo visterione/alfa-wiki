@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, RefreshCw, Copy, Check, Bot, X, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, Edit2, RefreshCw, Copy, Check, Bot, X, Eye, EyeOff, MessagesSquare } from 'lucide-react';
 import { bots as botsApi, apiClients as apiClientsApi, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -44,6 +44,10 @@ export default function AdminBots() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(null);
+  // Чаты бота грузим по требованию: список нужен редко, а строк в нём столько же,
+  // сколько у бота групп — тянуть их вместе со списком ботов незачем.
+  const [chats, setChats] = useState({}); // botId -> { loading, rows, error }
+  const [openChats, setOpenChats] = useState(null); // botId раскрытой строки
   const [serverUrl, setServerUrl] = useState(() => {
     // Пытаемся определить реальный адрес из сохранённого значения или из текущего hostname
     const saved = localStorage.getItem('botServerUrl');
@@ -170,6 +174,26 @@ export default function AdminBots() {
     }
   };
 
+  // ID чата больше нигде в портале не виден: мессенджер держит активный чат в
+  // состоянии и в адресную строку его не выносит. А для доставки ботом (АТС,
+  // порционные требования, публичные формы) нужен именно он.
+  const toggleChats = async (bot) => {
+    if (openChats === bot.id) {
+      setOpenChats(null);
+      return;
+    }
+    setOpenChats(bot.id);
+    if (chats[bot.id]?.rows) return;
+
+    setChats(prev => ({ ...prev, [bot.id]: { loading: true } }));
+    try {
+      const { data } = await botsApi.chats(bot.id);
+      setChats(prev => ({ ...prev, [bot.id]: { rows: data || [] } }));
+    } catch (error) {
+      setChats(prev => ({ ...prev, [bot.id]: { error: 'Не удалось загрузить чаты бота' } }));
+    }
+  };
+
   const getBaseUrl = () => BASE_URL.replace('/api', '');
 
   return (
@@ -211,7 +235,8 @@ export default function AdminBots() {
             </thead>
             <tbody>
               {bots.map(bot => (
-                <tr key={bot.id}>
+                <React.Fragment key={bot.id}>
+                <tr>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Bot size={18} style={{ opacity: 0.6 }} />
@@ -255,6 +280,13 @@ export default function AdminBots() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
+                      <button
+                        className="btn btn-icon"
+                        onClick={() => toggleChats(bot)}
+                        title="Чаты бота и их ID"
+                      >
+                        <MessagesSquare size={16} />
+                      </button>
                       <button className="btn btn-icon" onClick={() => openEdit(bot)} title="Редактировать">
                         <Edit2 size={16} />
                       </button>
@@ -264,6 +296,48 @@ export default function AdminBots() {
                     </div>
                   </td>
                 </tr>
+
+                {openChats === bot.id && (
+                  <tr>
+                    <td colSpan={8} style={{ background: 'var(--bg-secondary)', padding: '10px 14px' }}>
+                      {chats[bot.id]?.loading ? (
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Загрузка чатов...</span>
+                      ) : chats[bot.id]?.error ? (
+                        <span style={{ fontSize: 12, color: 'var(--color-error)' }}>{chats[bot.id].error}</span>
+                      ) : !(chats[bot.id]?.rows || []).length ? (
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                          Бот ни в одном чате не состоит. Добавьте его участником в нужную группу — тогда здесь появится её ID.
+                        </span>
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                            Чаты, где состоит бот. ID нужен там, где чат указывается настройкой: chat_id для АТС и внешних систем,
+                            MEAL_CHAT_ID для порционных требований.
+                          </div>
+                          {/* Группы наверх: ради них список и открывают, а личные
+                              переписки бота здесь просто попутный шум */}
+                          {[...chats[bot.id].rows]
+                            .sort((a, b) => (a.type === 'group' ? 0 : 1) - (b.type === 'group' ? 0 : 1))
+                            .map(chat => (
+                            <div
+                              key={chat.id}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}
+                            >
+                              <span style={{ minWidth: 220, fontSize: 13 }}>
+                                {chat.type === 'group'
+                                  ? (chat.name || 'Группа без названия')
+                                  : <span style={{ color: 'var(--text-muted)' }}>Личная переписка</span>}
+                              </span>
+                              <code style={{ fontSize: 12 }}>{chat.id}</code>
+                              <CopyButton text={chat.id} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
