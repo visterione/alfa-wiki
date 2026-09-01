@@ -627,7 +627,7 @@ export default function AdminPages() {
                   onDragEnd={handleDragEnd}
                 >
                   <FolderGlyph size={30} className="explorer-list-icon" />
-                  <span className="explorer-list-name">{folder.title}</span>
+                  <span className="explorer-list-name" title={folder.title}>{folder.title}</span>
                   <span className="explorer-list-type">Папка</span>
                   <span className="explorer-list-status-cell" />
                   <div className="explorer-list-actions">
@@ -678,7 +678,7 @@ export default function AdminPages() {
                       label={iconInfo.label}
                       Icon={IconComponent}
                     />
-                    <span className="explorer-list-name">{page.title}</span>
+                    <span className="explorer-list-name" title={page.title}>{page.title}</span>
                     <span className="explorer-list-type">{iconInfo.title}</span>
                     <div className="explorer-list-status-cell">
                       <span className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
@@ -743,9 +743,12 @@ export default function AdminPages() {
                   onDragLeave={() => setDragOverFolderId(null)}
                   onDrop={(e) => handleDrop(e, folder.id, 'folder')}
                   onDragEnd={handleDragEnd}
+                  title={folder.title}
                 >
                   <div className="explorer-item-icon"><FolderGlyph size={88} /></div>
-                  <div className="explorer-item-name">{folder.title}</div>
+                  <div className="explorer-item-name-wrap">
+                    <div className="explorer-item-name">{folder.title}</div>
+                  </div>
                   {canEdit && (
                     <div className="explorer-item-actions">
                       <button className="actions-menu-btn" onClick={(e) => toggleMenu(`folder-${folder.id}`, e)}>
@@ -793,12 +796,14 @@ export default function AdminPages() {
                     onDragLeave={() => setDragOverId(null)}
                     onDrop={(e) => handleDrop(e, page.id, 'page')}
                     onDragEnd={handleDragEnd}
-                    title={iconInfo.title}
+                    title={page.title}
                   >
                     <div className={`explorer-item-icon ${iconInfo.className}`}>
                       <DocGlyph size={88} label={iconInfo.label} Icon={IconComponent} />
                     </div>
-                    <div className="explorer-item-name">{page.title}</div>
+                    <div className="explorer-item-name-wrap">
+                      <div className="explorer-item-name">{page.title}</div>
+                    </div>
                     <div className="explorer-item-actions">
                       <button className="actions-menu-btn" onClick={(e) => toggleMenu(`page-${page.id}`, e)}>
                         <MoreVertical size={18} />
