@@ -630,13 +630,14 @@
 .explorer-icon-file-text    { color: var(--n-600); }
 .explorer-icon-file         { color: var(--n-500); }
 
-/* Подпись живёт в обёртке ровно на две строки. Высота ячейки от длины
-   имени не зависит: иначе ряд с «Порционные требования (Терапия)» становился
-   выше соседних и сетка шла ступеньками. */
+/* Подпись живёт в обёртке ровно на три строки. Высота ячейки от длины имени
+   не зависит: иначе ряд с «Порционные требования (Терапия)» становился выше
+   соседних и сетка шла ступеньками. Три строки, а не две: в две такие имена
+   не помещаются, а именно они в вики и встречаются чаще всего. */
 .explorer-item-name-wrap {
   position: relative;
   width: 100%;
-  height: 2.68em;
+  height: 4.02em;
   font-size: 13px;
 }
 
@@ -646,9 +647,14 @@
   left: 50%;
   transform: translateX(-50%);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* max-content с потолком в ширину ячейки: короткое имя плашка выделения
+     обнимает, длинное занимает ячейку целиком. Без max-content абсолютно
+     позиционированный блок ужимается по «наименьшей возможной» ширине, и
+     подпись рвалась посреди слова в узкую колонку. */
+  width: max-content;
   max-width: 100%;
   padding: 2px 6px;
   border-radius: 7px;
@@ -656,7 +662,9 @@
   line-height: 1.34;
   color: var(--text-primary);
   text-align: center;
-  word-break: break-word;
+  /* break-word, а не anywhere: слово рвётся только когда иначе не влезает,
+     и «Схема проезда.png» не переносится как «проезда.pn / g». */
+  overflow-wrap: break-word;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
@@ -666,19 +674,6 @@
   background: var(--primary);
   color: #fff;
   box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 40%, transparent);
-}
-
-/* Выделенная подпись разворачивается целиком и ложится поверх соседей —
-   так же ведёт себя Finder. Обрезанное имя иначе не прочитать никак:
-   «Порционные требования (Терапия)» в две строки не помещается, а по одному
-   клику видно всё название. Синяя плашка тут заодно работает подложкой,
-   поэтому текст поверх соседних ячеек остаётся читаемым. */
-.explorer-item.selected .explorer-item-name {
-  -webkit-line-clamp: unset;
-  overflow: visible;
-  z-index: 6;
-  width: max-content;
-  max-width: calc(100% + 22px);
 }
 
 .explorer-item.selected {
