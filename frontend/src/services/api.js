@@ -1209,6 +1209,22 @@ export const onboarding = {
   saveStep:      (stepKey, data)    => api.put(`/onboarding/settings/${stepKey}`, data),
   broken:        ()                 => api.get('/onboarding/settings/broken'),
 
+  // Рабочие чаты филиала: ссылки, которые уходят врачу письмом после запуска.
+  // Превью (название и аватарка) читается на бэкенде — из браузера страницу
+  // приглашения не прочитать, её отдают без CORS.
+  chats:         ()                 => api.get('/onboarding/settings/chats'),
+  chatPreview:   (data)             => api.post('/onboarding/settings/chats/preview', data),
+  addChat:       (data)             => api.post('/onboarding/settings/chats', data),
+  saveChat:      (id, data)         => api.put(`/onboarding/settings/chats/${id}`, data),
+  refreshChat:   (id, data)         => api.post(`/onboarding/settings/chats/${id}/refresh`, data),
+  // Аватарка файлом — для мессенджеров, которые превью не отдают (WhatsApp), и
+  // тех, у кого в og лежит логотип самого приложения (MAX, VK).
+  chatAvatar:    (id, formData)     => api.post(`/onboarding/settings/chats/${id}/avatar`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  deleteChat:    (id)               => api.delete(`/onboarding/settings/chats/${id}`),
+  testChatMail:  (data)             => api.post('/onboarding/settings/chats/test', data),
+
   applications:  (params)           => api.get('/onboarding/applications', { params }),
   application:   (id)               => api.get(`/onboarding/applications/${id}`),
   approve:       (id)               => api.post(`/onboarding/applications/${id}/approve`),

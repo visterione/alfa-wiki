@@ -17,6 +17,7 @@ const proc = require('./process');
 const assignments = require('./assignments');
 const sla = require('./sla');
 const mailer = require('./mailer');
+const chatLinks = require('./chatLinks');
 const misVerify = require('./misVerify');
 const notificationService = require('../notificationService');
 
@@ -372,7 +373,23 @@ async function tryLaunch(app) {
   await app.update({ status: proc.STATUS.LAUNCHED, launchedAt: new Date() });
 
   const mc = app.medCenterId ? await MedCenter.findByPk(app.medCenterId, { attributes: ['name'] }) : null;
-  await mailer.sendWelcome(app, mc?.name);
+
+  // Ссылки в рабочие чаты — то, ради чего это письмо и читают: до ver. 7.64 их
+  // кидали руками, и врач раз за разом оказывался не в том чате. Список берётся
+  // из настроек филиала; пустой он бывает штатно (чаты для филиала ещё не
+  // завели), и письмо тогда уходит как раньше — без блока с чатами.
+  let chats = [];
+  try {
+    chats = await chatLinks.forMedCenter(app.medCenterId);
+  } catch (error) {
+    console.error('[onboarding] Список чатов не собрался:', error.message);
+  }
+  const welcome = await mailer.sendWelcome(app, mc?.name, chats);
+  await log(app.id, 'welcome_sent', {
+    mail: welcome.success,
+    chats: chats.length,
+    reason: welcome.reason || null
+  });
 
   const participants = [...new Set(tasks.flatMap(t => [t.completedBy, t.claimedBy]).filter(Boolean))];
   await notify(participants,

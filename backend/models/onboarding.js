@@ -262,6 +262,50 @@ module.exports = function defineOnboardingModels(sequelize, DataTypes) {
     ]
   });
 
+  // ── Рабочие чаты филиала ──────────────────────────────────────────────────
+  //
+  // Ссылки на групповые чаты (в основном телеграм), которые уходят врачу одним
+  // письмом, когда закрыт последний шаг. До ver. 7.64 их кидали руками в личку,
+  // и раз за разом кто-нибудь оказывался не в том чате.
+  //
+  // Название и аватарка не собираются в момент отправки письма: превью тянется
+  // из открытой страницы приглашения, а она может не ответить — и тогда письмо
+  // ушло бы с голыми ссылками именно в тот момент, когда его читают. Поэтому
+  // превью забирается при настройке и хранится здесь, а обновляется кнопкой.
+  const OnbChatLink = sequelize.define('OnbChatLink', {
+    id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    medCenterId: { type: DataTypes.UUID, comment: 'NULL — чат общий на сеть, уходит врачам всех филиалов' },
+
+    url: { type: DataTypes.STRING(500), allowNull: false },
+
+    // Что видит врач в письме. Заполняется превью, но остаётся редактируемым:
+    // в телеграме группа зовётся «Альфа | Ресепшн 24/7», а человеку, который
+    // выходит на работу первый раз, понятнее «Чат регистратуры».
+    title:    { type: DataTypes.STRING(255), allowNull: false },
+    subtitle: { type: DataTypes.STRING(255), comment: 'Пояснение под названием: зачем этот чат' },
+
+    // Путь внутри uploads, а не адрес картинки в телеграме: их CDN отдаёт файл
+    // по временной ссылке, и через месяц в письме была бы дырка. Плюс почтовые
+    // клиенты охотнее показывают картинки с того же домена, что и ссылки.
+    avatarPath: { type: DataTypes.STRING(255) },
+
+    sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    isActive:  { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+
+    // Когда последний раз удалось прочитать превью и чем закончилась попытка.
+    // Показывается в настройках: чат могли переименовать, а инвайт-ссылка —
+    // протухнуть, и узнать об этом лучше до того, как письмо уйдёт врачу.
+    fetchedAt:  { type: DataTypes.DATE },
+    fetchError: { type: DataTypes.STRING(255) }
+  }, {
+    ...ts,
+    tableName: 'onb_chat_links',
+    indexes: [
+      { fields: ['medCenterId'] },
+      { fields: ['isActive'] }
+    ]
+  });
+
   const models = {
     OnbApplication,
     OnbAssignment,
@@ -269,7 +313,8 @@ module.exports = function defineOnboardingModels(sequelize, DataTypes) {
     OnbServiceChoice,
     OnbFile,
     OnbEvent,
-    OnbEmailCode
+    OnbEmailCode,
+    OnbChatLink
   };
 
   function associateOnboarding({ User, MedCenter }) {
@@ -294,6 +339,8 @@ module.exports = function defineOnboardingModels(sequelize, DataTypes) {
 
     OnbAssignment.belongsTo(User, { foreignKey: 'userId', as: 'user' });
     OnbAssignment.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+
+    OnbChatLink.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
   }
 
   return { models, associateOnboarding };

@@ -24,6 +24,7 @@ const TONE = {
   sla_escalated: 'bad',
   approved: 'ok',
   launched: 'ok',
+  welcome_sent: 'ok',
   task_completed: 'ok',
   closed_unverified: 'warn',
   mis_created: 'ok',
@@ -47,6 +48,7 @@ const LABELS = {
   services_picked: 'Врач отметил услуги',
   durations_applied: 'Длительности перенесены в настройки врача',
   launched: 'Врач запущен',
+  welcome_sent: 'Врачу отправлено письмо со ссылками в чаты',
   cancelled: 'Процесс отменён',
   medcenter_changed: 'Сменён филиал',
   sla_reminded: 'Напоминание о просрочке',
@@ -107,6 +109,12 @@ function details(event) {
   }
   if (event.action === 'doctor_services_invited' && payload.mail === false) {
     return `Письмо не ушло: ${payload.reason || 'причина не указана'}`;
+  }
+  if (event.action === 'welcome_sent') {
+    if (payload.mail === false) return `Письмо не ушло: ${payload.reason || 'причина не указана'}`;
+    // Ноль чатов — не ошибка, а незаполненная настройка филиала. В журнале это
+    // видно сразу: письмо ушло, но звать врача оказалось некуда.
+    return payload.chats ? `Чатов в письме: ${payload.chats}` : 'Чаты для филиала не настроены';
   }
   return null;
 }

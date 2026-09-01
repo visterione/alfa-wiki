@@ -10,13 +10,14 @@
  */
 
 const express = require('express');
+const multer = require('multer');
 const { Op, Sequelize } = require('sequelize');
 
 const router = express.Router();
 
 const {
   OnbApplication, OnbTask, OnbAssignment, OnbServiceChoice, OnbFile, OnbEvent,
-  User, MedCenter
+  OnbChatLink, User, MedCenter
 } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const proc = require('../services/onboarding/process');
@@ -30,6 +31,7 @@ const sla = require('../services/onboarding/sla');
 const links = require('../services/onboarding/links');
 const cvPdf = require('../services/onboarding/cvPdf');
 const mailer = require('../services/onboarding/mailer');
+const chatLinks = require('../services/onboarding/chatLinks');
 const fileAccess = require('../services/fileAccess');
 
 const USER_FIELDS = ['id', 'displayName', 'username', 'avatar', 'position', 'isActive'];
@@ -131,7 +133,15 @@ router.get('/settings', async (req, res) => {
         include: [{ model: User, as: 'user', attributes: USER_FIELDS }],
         order: [['stepKey', 'ASC']]
       }),
-      MedCenter.findAll({ where: { isActive: true }, attributes: ['id', 'name'], order: [['sortOrder', 'ASC'], ['name', 'ASC']] }),
+      // Только настоящие работающие филиалы: «АУП», «Направители» и прочие
+      // служебные группировки помечены в справочнике isVirtual — врача туда не
+      // нанимают, и в списке исполнителей они лишние. Тот же фильтр стоит в
+      // публичной анкете (routes/public/v1/onboarding.js).
+      MedCenter.findAll({
+        where: { isActive: true, isVirtual: false },
+        attributes: ['id', 'name'],
+        order: [['sortOrder', 'ASC'], ['name', 'ASC']]
+      }),
       // В выборе исполнителя — только те, у кого есть доступ к разделу. Назначить
       // человека, который раздел не откроет, значит поставить задачу, которую он
       // никогда не увидит: она просто протухнет по сроку. Полный список
@@ -217,6 +227,226 @@ router.put('/settings/:stepKey', async (req, res) => {
 router.get('/settings/broken', async (req, res) => {
   if (!access.canConfigure(req.user)) return res.status(403).json({ error: 'Только для администратора' });
   res.json(await assignments.brokenAssignees());
+});
+
+// ── Настройки: рабочие чаты филиала ───────────────────────────────────────
+//
+// Аватарка принимается в память, а не на диск: на диск её всё равно пишет sharp
+// после приведения к общему размеру, и промежуточный файл пришлось бы убирать.
+const chatAvatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (!/^image\//.test(file.mimetype)) return cb(new Error('Нужна картинка'));
+    cb(null, true);
+  }
+});
+
+// Отказ загрузчика — это ответ человеку, а не пятисотка: он выбрал не тот файл
+// и должен прочитать, какой нужен.
+function receiveAvatar(req, res, next) {
+  chatAvatarUpload.single('avatar')(req, res, (error) => {
+    if (!error) return next();
+    res.status(400).json({
+      error: error.code === 'LIMIT_FILE_SIZE' ? 'Картинка больше 8 МБ' : error.message
+    });
+  });
+}
+//
+// Ссылки, которые уходят врачу письмом после закрытия последнего шага. Раньше
+// их кидали руками, и врач регулярно оказывался не в том чате.
+
+/** Только администратор: список видят все филиалы, и это настройка сети. */
+function requireAdmin(req, res, next) {
+  if (!access.canConfigure(req.user)) return res.status(403).json({ error: 'Только для администратора' });
+  next();
+}
+
+router.get('/settings/chats', requireAdmin, async (req, res) => {
+  try {
+    const [rows, centers] = await Promise.all([
+      OnbChatLink.findAll({ order: [['sortOrder', 'ASC'], ['createdAt', 'ASC']] }),
+      MedCenter.findAll({
+        where: { isActive: true, isVirtual: false },
+        attributes: ['id', 'name'],
+        order: [['sortOrder', 'ASC'], ['name', 'ASC']]
+      })
+    ]);
+    res.json({ chats: rows.map(chatLinks.toJson), medCenters: centers });
+  } catch (error) {
+    console.error('[onboarding] chats:', error);
+    res.status(500).json({ error: 'Не удалось загрузить список чатов' });
+  }
+});
+
+/**
+ * Превью по ссылке — до сохранения. Администратор вставляет приглашение и сразу
+ * видит, что за чат он добавляет: у приватных ссылок вида «t.me/+AbCdEf» по
+ * самой ссылке этого не понять, а ошибиться чатом здесь дороже всего.
+ */
+router.post('/settings/chats/preview', requireAdmin, async (req, res) => {
+  try {
+    res.json(await chatLinks.fetchPreview(req.body?.url));
+  } catch (error) {
+    console.error('[onboarding] chat preview:', error);
+    res.status(500).json({ error: 'Не удалось прочитать страницу чата' });
+  }
+});
+
+router.post('/settings/chats', requireAdmin, async (req, res) => {
+  const check = chatLinks.normalizeUrl(req.body?.url);
+  if (!check.ok) return res.status(400).json({ error: check.error });
+
+  try {
+    // Один и тот же чат дважды в одном письме — то, ради чего этот список и
+    // заводили: раньше врачу присылали по две ссылки на одну группу.
+    const duplicate = await OnbChatLink.findOne({
+      where: { url: check.url, medCenterId: req.body?.medCenterId || null }
+    });
+    if (duplicate) return res.status(409).json({ error: 'Этот чат уже в списке' });
+
+    // Название и аватарку тянем сами, но не блокируем сохранение, если чат
+    // закрыт и превью не отдал ничего: администратор подпишет строку руками, а
+    // обновить превью можно потом.
+    const preview = await chatLinks.fetchPreview(check.url);
+    const title = String(req.body?.title || '').trim() || preview.title || 'Рабочий чат';
+    const avatarPath = await chatLinks.storeAvatar(preview);
+
+    const link = await OnbChatLink.create({
+      medCenterId: req.body?.medCenterId || null,
+      url: check.url,
+      title: title.slice(0, 255),
+      subtitle: String(req.body?.subtitle || '').trim().slice(0, 255) || null,
+      avatarPath,
+      sortOrder: Number(req.body?.sortOrder) || 0,
+      fetchedAt: new Date(),
+      fetchError: preview.ok ? null : preview.error
+    });
+
+    res.status(201).json(chatLinks.toJson(link));
+  } catch (error) {
+    console.error('[onboarding] chat create:', error);
+    res.status(500).json({ error: 'Не удалось добавить чат' });
+  }
+});
+
+router.put('/settings/chats/:id', requireAdmin, async (req, res) => {
+  try {
+    const link = await OnbChatLink.findByPk(req.params.id);
+    if (!link) return res.status(404).json({ error: 'Чат не найден' });
+
+    const patch = {};
+    if (req.body?.url !== undefined) {
+      const check = chatLinks.normalizeUrl(req.body.url);
+      if (!check.ok) return res.status(400).json({ error: check.error });
+      patch.url = check.url;
+    }
+    if (req.body?.title !== undefined) {
+      const title = String(req.body.title).trim();
+      if (!title) return res.status(400).json({ error: 'Название нужно: врач увидит его в письме' });
+      patch.title = title.slice(0, 255);
+    }
+    if (req.body?.subtitle !== undefined) {
+      patch.subtitle = String(req.body.subtitle).trim().slice(0, 255) || null;
+    }
+    if (req.body?.medCenterId !== undefined) patch.medCenterId = req.body.medCenterId || null;
+    if (req.body?.sortOrder !== undefined) patch.sortOrder = Number(req.body.sortOrder) || 0;
+    if (req.body?.isActive !== undefined) patch.isActive = Boolean(req.body.isActive);
+
+    await link.update(patch);
+
+    // Смена адреса — это другой чат, и старое превью к нему уже не относится:
+    // перечитываем вместе с названием. Исключение — когда название пришло в
+    // том же запросе: значит, его только что написали руками.
+    if (patch.url) await chatLinks.refresh(link, { keepTitle: patch.title !== undefined });
+
+    res.json(chatLinks.toJson(link));
+  } catch (error) {
+    console.error('[onboarding] chat update:', error);
+    res.status(500).json({ error: 'Не удалось сохранить чат' });
+  }
+});
+
+/**
+ * Перечитать превью. Отдельной кнопкой, а не по расписанию: чат переименовывают
+ * раз в год, а инвайт-ссылка либо живёт, либо протухла — и то, и другое видно
+ * прямо здесь, до того как письмо уйдёт врачу.
+ */
+router.post('/settings/chats/:id/refresh', requireAdmin, async (req, res) => {
+  try {
+    const link = await OnbChatLink.findByPk(req.params.id);
+    if (!link) return res.status(404).json({ error: 'Чат не найден' });
+    await chatLinks.refresh(link, { keepTitle: req.body?.keepTitle !== false });
+    res.json(chatLinks.toJson(link));
+  } catch (error) {
+    console.error('[onboarding] chat refresh:', error);
+    res.status(500).json({ error: 'Не удалось обновить превью' });
+  }
+});
+
+/**
+ * Аватарка файлом.
+ *
+ * Нужна там, где превью бесполезно: WhatsApp og-теги не отдаёт вовсе, а MAX и
+ * VK отдают описание самого приложения, а не группы. Кружок с буквой письмо не
+ * ломает, но чат с фотографией узнают, а с буквой — читают.
+ */
+router.post('/settings/chats/:id/avatar', requireAdmin, receiveAvatar, async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Файл не пришёл' });
+
+  try {
+    const link = await OnbChatLink.findByPk(req.params.id);
+    if (!link) return res.status(404).json({ error: 'Чат не найден' });
+
+    const filename = await chatLinks.saveAvatar(req.file.buffer);
+    chatLinks.removeAvatar(link.avatarPath);
+    await link.update({ avatarPath: filename });
+
+    res.json(chatLinks.toJson(link));
+  } catch (error) {
+    console.error('[onboarding] chat avatar:', error);
+    res.status(500).json({ error: 'Не удалось сохранить картинку' });
+  }
+});
+
+router.delete('/settings/chats/:id', requireAdmin, async (req, res) => {
+  try {
+    const link = await OnbChatLink.findByPk(req.params.id);
+    if (!link) return res.status(404).json({ error: 'Чат не найден' });
+    chatLinks.removeAvatar(link.avatarPath);
+    await link.destroy();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[onboarding] chat delete:', error);
+    res.status(500).json({ error: 'Не удалось удалить чат' });
+  }
+});
+
+/**
+ * Пробное письмо себе — ровно то, что получит врач этого филиала.
+ *
+ * Иначе проверить вёрстку нечем: письмо уходит один раз, в момент запуска
+ * врача, и «посмотрим на живой заявке» здесь означает «отправим человеку
+ * кривое письмо».
+ */
+router.post('/settings/chats/test', requireAdmin, async (req, res) => {
+  const email = String(req.user.email || '').trim();
+  if (!email) return res.status(400).json({ error: 'В вашем профиле не указана почта' });
+
+  try {
+    const medCenterId = req.body?.medCenterId || null;
+    const chats = await chatLinks.forMedCenter(medCenterId);
+    const mc = medCenterId ? await MedCenter.findByPk(medCenterId, { attributes: ['name'] }) : null;
+
+    const sent = await mailer.sendWelcome({ email }, mc?.name, chats);
+    if (!sent.success) {
+      return res.status(502).json({ error: 'Письмо не ушло. Проверьте настройки SMTP' });
+    }
+    res.json({ ok: true, email, chats: chats.length });
+  } catch (error) {
+    console.error('[onboarding] chat test mail:', error);
+    res.status(500).json({ error: 'Не удалось отправить пробное письмо' });
+  }
 });
 
 // ── Список заявок ─────────────────────────────────────────────────────────

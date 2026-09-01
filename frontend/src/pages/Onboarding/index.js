@@ -13,13 +13,14 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FileText, Inbox, Archive, SlidersHorizontal, QrCode } from 'lucide-react';
+import { FileText, Inbox, Archive, SlidersHorizontal, QrCode, MessagesSquare } from 'lucide-react';
 
 import { onboarding as api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import ApplicationCard from './ApplicationCard';
 import OnboardingSettings from './OnboardingSettings';
 import OnboardingMaterials from './OnboardingMaterials';
+import OnboardingChats from './OnboardingChats';
 import { Badge, dueText, professionsText } from './bits';
 import './Onboarding.css';
 
@@ -32,6 +33,9 @@ const SCREENS = [
   // поэтому «Материалы» видны всем, у кого есть раздел.
   { key: 'materials', label: 'Материалы', icon: QrCode },
   { key: 'settings', label: 'Настройки', icon: SlidersHorizontal, adminOnly: true },
+  // Ссылки в рабочие чаты уходят врачу письмом после запуска, и состав этих
+  // чатов — решение сети, а не того, кто ведёт конкретную заявку.
+  { key: 'chats', label: 'Рабочие чаты', icon: MessagesSquare, adminOnly: true },
 ];
 
 export default function Onboarding() {
@@ -188,6 +192,8 @@ export default function Onboarding() {
             {!loading && screen === 'materials' && <OnboardingMaterials />}
 
             {!loading && screen === 'settings' && isAdmin && <OnboardingSettings />}
+
+            {!loading && screen === 'chats' && isAdmin && <OnboardingChats />}
           </div>
         </div>
       </div>

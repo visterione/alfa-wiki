@@ -639,6 +639,7 @@
   backdrop-filter: blur(10px);
 }
 .onb-branchbar > span { margin-right: 2px; }
+.onb-branchbar-act { margin-left: auto; }
 .onb-branchbar .onb-cs { min-width: 200px; }
 
 .onb-steps {
@@ -914,6 +915,157 @@
 .onb-invite-row { display: flex; gap: 9px; align-items: center; }
 .onb-invite-row .onb-input { flex: 1; min-width: 0; min-height: 34px; }
 .onb-invite .onb-sub { margin-top: 8px; }
+
+/* ── Рабочие чаты ──────────────────────────────────────────────────────────
+   Строка нарисована как карточка в письме: аватарка, название, подпись,
+   адрес. Настраивающий должен видеть то же, что увидит врач, — иначе проверить
+   письмо можно только отправив его живому человеку. */
+
+.onb-chats { display: flex; flex-direction: column; gap: 8px; }
+
+.onb-chat {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 13px;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+}
+.onb-chat:hover { border-color: color-mix(in srgb, var(--border) 70%, transparent); }
+/* Выключенный чат из списка не убираем: его выключили на время, и найти его
+   потом должно быть так же легко, как включить обратно. */
+.onb-chat.is-off { opacity: .55; }
+
+.onb-chat-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-tertiary);
+}
+.onb-chat-avatar.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+  font-size: 17px;
+  font-weight: 650;
+}
+
+/* Аватарка — она же кнопка выбора файла: подсказка появляется поверх неё при
+   наведении, отдельной иконки в строке ради редкого действия не заводим. */
+.onb-chat-avatarbtn {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 50%;
+  cursor: pointer;
+  line-height: 0;
+}
+.onb-chat-avatarbtn > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(20, 29, 45, .55);
+  color: #fff;
+  opacity: 0;
+  transition: opacity .14s ease;
+}
+.onb-chat-avatarbtn:hover > span,
+.onb-chat-avatarbtn:focus-visible > span { opacity: 1; }
+
+.onb-chat-body { min-width: 0; }
+
+/* Поля правятся на месте и выглядят текстом, пока в них не встали: отдельная
+   форма ради названия и подписи — лишний экран, а рамки вокруг двух строк
+   сломали бы всё сходство с письмом. */
+.onb-chat-title,
+.onb-chat-sub {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+}
+.onb-chat-title { font-size: 14px; font-weight: 600; }
+.onb-chat-sub { font-size: 12.5px; color: var(--text-secondary); }
+.onb-chat-title:hover,
+.onb-chat-sub:hover { border-color: var(--border-light); }
+.onb-chat-title:focus,
+.onb-chat-sub:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: var(--bg-primary);
+}
+
+.onb-chat-url {
+  display: inline-block;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.onb-chat-url:hover { color: var(--primary); text-decoration: underline; }
+
+.onb-chat-warn,
+.onb-chat-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 11.5px;
+}
+.onb-chat-warn { color: var(--error); }
+.onb-chat-note { color: var(--text-tertiary); }
+.onb-chat-warn svg, .onb-chat-note svg { flex: none; }
+
+/* Кнопки собраны в одну группу с общей подложкой: три отдельные иконки в
+   пустом углу карточки читались как случайно рассыпанные. */
+.onb-chat-acts {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+}
+.onb-chat-acts button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.onb-chat-acts button:hover { background: var(--bg-primary); color: var(--text-primary); }
+.onb-chat-acts button:disabled { cursor: default; }
+/* Включённый чат помечен цветом на самой кнопке: «уходит врачу» — это
+   состояние строки, и видно его должно быть без наведения. */
+.onb-chat-acts button.is-on { color: var(--primary); }
+.onb-chat-acts button.is-danger:hover { color: var(--error); }
+
+.onb-spin { animation: onb-spin 900ms linear infinite; }
+@keyframes onb-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 620px) {
+  .onb-chat { grid-template-columns: 40px minmax(0, 1fr); }
+  .onb-chat-avatar { width: 40px; height: 40px; }
+  .onb-chat-acts { grid-column: 1 / -1; justify-content: flex-end; }
+}
 
 /* ── Движение ──────────────────────────────────────────────────────────── */
 

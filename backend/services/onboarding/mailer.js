@@ -138,13 +138,81 @@ async function sendServicesInvite(app) {
   `));
 }
 
-/** Всё закрыто — приветственное письмо. */
-async function sendWelcome(app, medCenterName) {
+/**
+ * Всё закрыто — приветственное письмо со ссылками в рабочие чаты.
+ *
+ * Чаты — главное, ради чего письмо вообще читают: до ver. 7.64 ссылки кидали
+ * руками, и врач регулярно оказывался не в том чате или ни в одном. Список
+ * приходит из настроек филиала (services/onboarding/chatLinks.js).
+ *
+ * Каждый чат — карточка с аватаркой, названием и кнопкой «Вступить», а не
+ * строка «t.me/+AbCdEf». Причина простая: голую ссылку от незнакомого
+ * отправителя человек не откроет, и правильно сделает. Из карточки видно, куда
+ * именно ведёт кнопка, ещё до нажатия.
+ */
+async function sendWelcome(app, medCenterName, chats = []) {
+  const chatsBlock = chats.length ? `
+    <h2 style="margin:32px 0 6px;font-size:17px;font-weight:650;">Рабочие чаты</h2>
+    <p style="margin:0 0 16px;color:#86868B;font-size:13px;">
+      Здесь идёт работа: расписание, замены, объявления. Вступите${chats.length > 1 ? ' во все' : ''} —
+      это займёт минуту, иначе новости пройдут мимо.
+    </p>
+    ${chats.map(chatCard).join('')}
+  ` : '';
+
   return send(app.email, 'Добро пожаловать в «Альфу»', layout('Всё готово', `
     <p>Все подготовительные шаги закрыты: учётная запись создана, расписание открыто, услуги внесены${medCenterName ? `, филиал — ${escapeHtml(medCenterName)}` : ''}.</p>
     <p>Можно выходить на приём — запись к вам уже доступна.</p>
     <p style="color:#86868B;font-size:13px;">Логин и пароль к «Реновации» вам передаст администратор МИС отдельно.</p>
+    ${chatsBlock}
   `));
+}
+
+/**
+ * Карточка чата.
+ *
+ * Свёрстана таблицами и с инлайновыми стилями: почтовые клиенты флексбокс и
+ * grid либо игнорируют, либо рисуют по-своему, а Outlook вырезает и часть
+ * обычных свойств. Аватарка нужного размера приходит с нашего домена — на
+ * временный адрес телеграмовского CDN картинка в письме через месяц перестала
+ * бы открываться.
+ *
+ * Картинки в почте по умолчанию не грузятся у половины людей, поэтому на месте
+ * аватарки в этом случае остаётся не пустая рамка, а кружок с первой буквой
+ * названия: карточка читается и без единого изображения.
+ */
+function chatCard(chat) {
+  const title = escapeHtml(chat.title || 'Рабочий чат');
+  const href = escapeHtml(chat.url);
+  const avatar = chat.avatarUrl
+    ? `<img src="${escapeHtml(chat.avatarUrl)}" width="48" height="48" alt=""
+           style="display:block;width:48px;height:48px;border-radius:24px;background:#e8e8ed;">`
+    : `<table role="presentation" width="48" cellpadding="0" cellspacing="0"
+              style="width:48px;height:48px;border-radius:24px;background:#e8e8ed;">
+         <tr><td align="center" valign="middle"
+                 style="font-size:19px;font-weight:700;color:#86868B;height:48px;">${initial(chat.title)}</td></tr>
+       </table>`;
+
+  return `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+         style="border-collapse:separate;border:1px solid #e5e5ea;border-radius:14px;margin:0 0 10px;">
+    <tr>
+      <td width="48" valign="top" style="padding:16px 0 16px 16px;">${avatar}</td>
+      <td valign="top" style="padding:16px 16px 16px 13px;">
+        <div style="font-size:15px;font-weight:650;color:#1d1d1f;">${title}</div>
+        ${chat.subtitle ? `<div style="margin-top:3px;color:#86868B;font-size:13px;">${escapeHtml(chat.subtitle)}</div>` : ''}
+        <div style="margin-top:4px;color:#A1A1A6;font-size:11.5px;word-break:break-all;">${href}</div>
+        <a href="${href}" style="display:inline-block;margin-top:11px;background:#007AFF;color:#fff;
+           text-decoration:none;padding:9px 22px;border-radius:9px;font-size:14px;font-weight:600;">Вступить</a>
+      </td>
+    </tr>
+  </table>`;
+}
+
+/** Первая буква названия — для кружка на месте незагруженной аватарки. */
+function initial(title) {
+  const letter = String(title || '').trim().charAt(0).toUpperCase();
+  return escapeHtml(letter || '#');
 }
 
 /**
