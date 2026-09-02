@@ -84,7 +84,9 @@ import {stripFormatting, toggleMarkup} from '../../utils/richText';
 import {useAuth} from '../../store/authStore';
 import avatarUrl from '../../utils/avatarUrl';
 import CONFIG from '../../config';
-import {radius, shadow, font} from '../../theme';
+import LinearGradient from 'react-native-linear-gradient';
+import {BlurView} from '@react-native-community/blur';
+import {radius, shadow, font, chatSurface, accentShadow, withAlpha, ACCENT_SHEEN} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import ChatBackground from '../../components/ChatBackground';
 import EmojiPicker from '../../components/EmojiPicker';
@@ -562,6 +564,18 @@ function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, 
           </TouchableOpacity>
         )}
         <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
+          {/* Блик по верхней кромке своего пузыря. Отдельным слоем поверх
+              заливки, потому что цвет личный: подмешивать белое пришлось бы в
+              каждый из восьми акцентов. Скругления повторены на самом слое, а
+              не срезаны через overflow: 'hidden' у пузыря, — на Android
+              overflow гасит elevation, и пузырь остался бы без тени. */}
+          {isOwn && (
+            <LinearGradient
+              {...ACCENT_SHEEN}
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, styles.bubbleSheen]}
+            />
+          )}
           {/* Автор — внутри пузырька, а не отдельной строкой над ним:
               так подпись явно принадлежит сообщению и не висит в воздухе */}
           {!isOwn && chatType === 'group' && message.sender && (
@@ -1822,7 +1836,15 @@ export default function ChatScreen({route, navigation}) {
     if (item._itemType === 'separator') {
       return (
         <View style={styles.dateSep}>
-          <Text style={styles.dateSepText}>{formatDateSep(item.date)}</Text>
+          <View style={styles.dateChip}>
+            <BlurView
+              style={StyleSheet.absoluteFill}
+              blurType="dark"
+              blurAmount={12}
+              reducedTransparencyFallbackColor="rgba(0,0,0,0.55)"
+            />
+            <Text style={styles.dateChipText}>{formatDateSep(item.date)}</Text>
+          </View>
         </View>
       );
     }
@@ -1981,7 +2003,17 @@ export default function ChatScreen({route, navigation}) {
         <Animated.View
           style={[styles.floatingDate, {opacity: floatingOpacity}]}
           pointerEvents="none">
-          {floatingDate && <Text style={styles.dateSepText}>{formatDateSep(floatingDate)}</Text>}
+          {floatingDate && (
+            <View style={styles.dateChip}>
+              <BlurView
+                style={StyleSheet.absoluteFill}
+                blurType="dark"
+                blurAmount={12}
+                reducedTransparencyFallbackColor="rgba(0,0,0,0.55)"
+              />
+              <Text style={styles.dateChipText}>{formatDateSep(floatingDate)}</Text>
+            </View>
+          )}
         </Animated.View>
       </View>
 
@@ -2119,6 +2151,11 @@ export default function ChatScreen({route, navigation}) {
             style={styles.sendBtn}
             onPress={() => finishVoiceRecording(true)}
             disabled={sending}>
+            <LinearGradient
+              {...ACCENT_SHEEN}
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, styles.sendBtnSheen]}
+            />
             {sending
               ? <LogoLoader width={36} color="#FFFFFF" />
               : <Send size={18} color="#FFF" />}
@@ -2210,6 +2247,11 @@ export default function ChatScreen({route, navigation}) {
             style={styles.sendBtn}
             onPress={handleSend}
             disabled={sending || uploading}>
+            <LinearGradient
+              {...ACCENT_SHEEN}
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, styles.sendBtnSheen]}
+            />
             {sending || uploading
               ? <LogoLoader width={36} color="#FFFFFF" />
               : <Send size={18} color="#FFF" />}
@@ -2423,12 +2465,18 @@ const makeStyles = c => StyleSheet.create({
    * скруглением, и вместо капсулы получается прямоугольник.
    */
   dateSep: {alignItems: 'center', marginVertical: 12},
-  dateSepText: {
-    fontSize: 12.5, fontFamily: font.medium, color: '#FFFFFF',
-    backgroundColor: 'rgba(0,0,0,0.30)',
+  dateChip: {
     paddingHorizontal: 12, paddingVertical: 4,
-    borderRadius: 12, overflow: 'hidden',
+    borderRadius: 12,
+    // Обязателен: под капсулой лежит BlurView во всю её площадь, и без обрезки
+    // размытие вылезает прямоугольником за скругление
+    overflow: 'hidden',
+    // Притемнение поверх размытия, а не вместо него: одно размытие на светлой
+    // ленте даёт белое на белом, и белая надпись пропадает
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)',
   },
+  dateChipText: {fontSize: 12.5, fontFamily: font.medium, color: '#FFFFFF'},
   // Та же капсула, но висящая над лентой во время прокрутки
   listWrap: {flex: 1},
   floatingDate: {
@@ -2504,10 +2552,15 @@ const makeStyles = c => StyleSheet.create({
    * overflow: 'hidden' нужен полоске слева: без него она рисуется поверх
    * скруглённого угла подложки и торчит из него прямым срезом.
    */
+  // Цитата — самостоятельная вложенная поверхность: скругление по кругу и
+  // цветная полоса внутри, с отступами сверху и снизу. Прежние 6 пунктов и
+  // полоса во всю высоту делали из неё обрезанный край чужого блока. Значения
+  // общие с вебом (.reply-quote в Dashboard.css).
   replyQuote: {
     flexDirection: 'row', alignItems: 'stretch', alignSelf: 'stretch',
     backgroundColor: c.primaryLight,
-    borderRadius: 6, overflow: 'hidden', marginBottom: 5,
+    borderWidth: 1, borderColor: withAlpha(c.primary, 0.18),
+    borderRadius: 11, overflow: 'hidden', marginBottom: 5,
     // Ширина пузырька считается по самому широкому содержимому, и без
     // minWidth ответ «ок» давал пузырёк в три буквы, внутри которого от
     // цитаты оставалось многоточие. Теперь цитата раздвигает пузырёк под
@@ -2515,8 +2568,14 @@ const makeStyles = c => StyleSheet.create({
     // сжимается сама.
     minWidth: 170,
   },
-  replyQuoteOwn: {backgroundColor: 'rgba(255,255,255,0.18)'},
-  replyQuoteBar: {width: 3, backgroundColor: c.primary},
+  replyQuoteOwn: {
+    backgroundColor: 'rgba(255,255,255,0.17)',
+    borderColor: 'rgba(255,255,255,0.24)',
+  },
+  replyQuoteBar: {
+    width: 3, backgroundColor: c.primary,
+    marginLeft: 4, marginVertical: 6, borderRadius: 2,
+  },
   replyQuoteBarOwn: {backgroundColor: 'rgba(255,255,255,0.9)'},
   replyQuoteThumb: {width: 32, height: 32, alignSelf: 'center', borderRadius: 4, marginLeft: 5},
   // minWidth: 0 обязателен — без него длинная строка не сжимается до
@@ -2528,9 +2587,26 @@ const makeStyles = c => StyleSheet.create({
   replyQuoteTextOwn: {color: 'rgba(255,255,255,0.82)'},
 
   // Bubble
-  bubble: {borderRadius: radius.lg, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6},
-  bubbleOther: {backgroundColor: c.bgPrimary, borderBottomLeftRadius: 4, elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: {width: 0, height: 1}},
-  bubbleOwn: {backgroundColor: c.primary, borderBottomRightRadius: 4},
+  // Скругление, срезанный угол и тени — общие с вебом (chatSurface в theme.js).
+  // Чужой пузырь берёт собственный токен bubbleOther, а не bgPrimary: в тёмной
+  // теме он обязан быть светлее ленты, иначе приподнятая поверхность читается
+  // как вдавленная.
+  bubble: {borderRadius: chatSurface.bubbleRadius, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6},
+  bubbleOther: {
+    backgroundColor: c.bubbleOther,
+    borderWidth: 1, borderColor: c.borderLight,
+    borderBottomLeftRadius: chatSurface.bubbleTail,
+    ...chatSurface.bubbleOtherShadow,
+  },
+  bubbleOwn: {
+    backgroundColor: c.primary,
+    borderBottomRightRadius: chatSurface.bubbleTail,
+    ...accentShadow(c.primary),
+  },
+  bubbleSheen: {
+    borderRadius: chatSurface.bubbleRadius,
+    borderBottomRightRadius: chatSurface.bubbleTail,
+  },
   msgText: {fontSize: 15, fontFamily: font.regular, color: c.bubbleOtherText, lineHeight: 21},
   msgTextOwn: {color: c.bubbleOwnText},
   // Разметка в тексте сообщения (см. components/RichText). Жирный задаёт
@@ -2703,15 +2779,24 @@ const makeStyles = c => StyleSheet.create({
     width: 40, height: 36, borderRadius: radius.sm,
     alignItems: 'center', justifyContent: 'center',
   },
+  // Вдавленное, а не выпуклое — по нему видно, что в него пишут. В вебе то же
+  // самое даёт inset-тень; в React Native внутренних теней нет, объём держится
+  // на подложке темнее полосы и на кромке.
   textInput: {
     flex: 1, backgroundColor: c.bgSecondary, borderRadius: radius.xl,
+    borderWidth: 1, borderColor: c.borderLight,
     paddingHorizontal: 16, paddingTop: 11, paddingBottom: 11,
     fontSize: 15, fontFamily: font.regular, color: c.textPrimary, maxHeight: 120,
   },
+  // Единственная выпуклая акцентная поверхность в переписке. Материал тот же,
+  // что у своего пузыря: они стоят рядом и обязаны выглядеть как одно вещество.
   sendBtn: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: 6,
+    overflow: 'visible',
+    ...accentShadow(c.primary),
   },
+  sendBtnSheen: {borderRadius: 22},
   // Микрофон — заглушка под голосовые. Без заливки, чтобы не спорить
   // с «самолётиком» за внимание: активное действие здесь пока не он.
   micBtn: {
