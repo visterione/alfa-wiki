@@ -2607,7 +2607,7 @@ export default function Dashboard() {
                   <EmojiPicker
                     onEmojiClick={handleEmojiClick}
                     width="100%"
-                    height={350}
+                    height={460}
                     searchPlaceholder="Поиск эмодзи..."
                     previewConfig={{ showPreview: false }}
                     categories={[
@@ -2755,8 +2755,18 @@ export default function Dashboard() {
                 )}
 
                 {infoTab !== 'members' && mediaLoading && <div className="chat-loading"><div className="loading-spinner" /></div>}
+                {/* Пустая вкладка — один знак раздела и ничего больше. Надпись
+                    «Здесь пока пусто» ничего не добавляла: пустая вкладка и так
+                    очевидно пуста, а строка текста в узкой панели читалась как
+                    сообщение об ошибке. Знак берётся по вкладке — так видно, чего
+                    именно нет. */}
                 {infoTab !== 'members' && !mediaLoading && mediaItems.length === 0 && (
-                  <div className="text-muted text-center">Здесь пока пусто</div>
+                  <div className="chat-info-empty" aria-hidden="true">
+                    {infoTab === 'files' ? <FileText size={44} />
+                      : infoTab === 'voice' ? <Mic size={44} />
+                        : infoTab === 'links' ? <Link2 size={44} />
+                          : <Image size={44} />}
+                  </div>
                 )}
 
                 {!mediaLoading && infoTab === 'media' && (
@@ -2842,7 +2852,7 @@ export default function Dashboard() {
             </div>
             {activeChat.type === 'group' && (
               <div className="chat-info-actions">
-                <button className="btn btn-sm btn-ghost text-danger" onClick={leaveGroup}><LogOut size={16} /> Покинуть группу</button>
+                <button className="btn btn-sm btn-ghost" onClick={leaveGroup}><LogOut size={16} /> Покинуть группу</button>
                 {isGroupCreator && (
                   <button className="btn btn-sm btn-ghost text-danger" onClick={deleteGroup}><Trash2 size={16} /> Удалить группу</button>
                 )}

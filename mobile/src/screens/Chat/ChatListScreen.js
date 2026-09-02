@@ -20,7 +20,7 @@ import {useAuth} from '../../store/authStore';
 import Avatar from '../../components/Avatar';
 import LogoLoader from '../../components/LogoLoader';
 import VoiceMiniPlayer from '../../components/VoiceMiniPlayer';
-import {radius, shadow, font} from '../../theme';
+import {radius, shadow, font, withAlpha, accentShadow} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {setUnreadTotal} from '../../store/unreadStore';
@@ -75,7 +75,7 @@ function ChatItem({item, onPress, onLongPress, currentUserId}) {
 
   return (
     <TouchableOpacity
-      style={styles.chatItem}
+      style={[styles.chatItem, unread && styles.chatItemUnread]}
       onPress={() => onPress(item)}
       onLongPress={() => onLongPress(item)}
       delayLongPress={350}
@@ -436,7 +436,9 @@ export default function ChatListScreen({navigation}) {
             }
           </View>
         }
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        /* Разделителей нет: строки стали пилюлями, и линия во всю ширину
+           резала список сильнее, чем отличаются друг от друга два чата.
+           То же самое в вебе (.chat-item, раздел «Этап 2» в Dashboard.css) */
       />
 
       {/* Действия над чатом по долгому нажатию: те же три, что в вебе */}
@@ -502,12 +504,17 @@ const makeStyles = c => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: c.borderLight,
   },
+  // Вдавленное поле-пилюля — такое же, как строка ввода в переписке и как
+  // поиск в вебе (.chat-search). Прямоугольник со скруглением 14 в одной
+  // колонке с круглой строкой ввода выглядел полем из другой программы.
   searchInner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: c.bgSecondary,
-    borderRadius: radius.lg,
-    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: c.borderLight,
+    borderRadius: 100,
+    paddingHorizontal: 14,
     paddingVertical: 9,
   },
   searchInput: {
@@ -517,13 +524,19 @@ const makeStyles = c => StyleSheet.create({
     color: c.textPrimary,
   },
 
+  // Поля строки уменьшены ровно на столько, на сколько она отступила от края:
+  // аватары и текст остались на прежних местах, а пилюля получила зазор
   chatItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    marginHorizontal: 8,
+    marginBottom: 2,
+    borderRadius: 14,
+    paddingHorizontal: 8,
     // Три строки вместо двух — и заодно крупнее: прежний размер был мелковат
     paddingVertical: 11,
   },
+  chatItemUnread: {backgroundColor: withAlpha(c.primary, 0.09)},
   chatInfo: {flex: 1, marginLeft: 13, justifyContent: 'center'},
   chatHeader: {
     flexDirection: 'row',
@@ -559,17 +572,20 @@ const makeStyles = c => StyleSheet.create({
   senderLine: {fontSize: 13.5, color: c.textSecondary, fontFamily: font.medium, marginBottom: 1},
   lastMessage: {fontSize: 14.5, color: c.textSecondary, flex: 1, fontFamily: font.regular},
   lastMessageBold: {color: c.textPrimary, fontFamily: font.medium},
+  // Красный, а не акцентный: в вебе счётчик непрочитанных красный
+  // (.chat-item-unread), и одна и та же строка списка не может выглядеть на
+  // телефоне иначе. Тень цветная — так же, как у своего пузыря.
   badge: {
-    backgroundColor: c.primary,
+    backgroundColor: c.error,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 5,
+    ...accentShadow(c.error),
   },
   badgeText: {color: '#FFFFFF', fontSize: 11, fontFamily: font.semiBold},
-  separator: {height: 1, backgroundColor: c.borderLight, marginLeft: 81},
   empty: {paddingTop: 60, alignItems: 'center'},
   emptyText: {fontSize: 15, color: c.textTertiary, fontFamily: font.regular},
 

@@ -2,7 +2,7 @@ import React, {useMemo, useCallback} from 'react';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 import {Play, Pause} from 'lucide-react-native';
 import VoicePlayer, {useVoicePlayer} from '../services/voicePlayer';
-import {font} from '../theme';
+import {font, chatSurface} from '../theme';
 import {useTheme, useThemedStyles} from '../store/settingsStore';
 
 /**
@@ -65,7 +65,9 @@ export default function VoiceMessage({uri, duration, messageId, isOwn, chatTitle
 
   const cycleSpeed = useCallback(() => { VoicePlayer.cycleSpeed(); }, []);
 
-  const barColor = isOwn ? 'rgba(255,255,255,0.45)' : c.borderLight;
+  // 0.55, а не 0.45: на акцентной заливке непрослушанная часть волны уходила
+  // в шум и волна читалась только наполовину
+  const barColor = isOwn ? 'rgba(255,255,255,0.55)' : c.borderLight;
   const barPlayedColor = isOwn ? '#FFFFFF' : c.primary;
 
   return (
@@ -122,7 +124,10 @@ const makeStyles = c => StyleSheet.create({
     backgroundColor: c.primary,
     alignItems: 'center', justifyContent: 'center', marginRight: 10,
   },
-  playBtnOwn: {backgroundColor: 'rgba(255,255,255,0.9)'},
+  // Белый непрозрачный, а не 0.9: девять десятых пропускали акцент насквозь,
+  // круг выцветал до бледно-серого, и акцентный треугольник на нём почти не
+  // читался — в чужом пузырьке та же кнопка выглядела вчетверо контрастнее.
+  playBtnOwn: {backgroundColor: '#FFFFFF', ...chatSurface.bubbleOtherShadow},
   body: {flex: 1, flexDirection: 'row', alignItems: 'center'},
   wave: {flex: 1, height: 26, flexDirection: 'row', alignItems: 'center'},
   bar: {flex: 1, marginHorizontal: 1, borderRadius: 1.5, minHeight: 3},

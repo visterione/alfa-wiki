@@ -3,6 +3,20 @@
    оставалась пустота), поэтому отступы задаются здесь. */
 .courses-page {
   padding: 24px 32px;
+
+  /* Поверхности карточки. Названы отдельно от семантических имён, потому что в
+     тёмной теме их приходится переставлять вручную: ступени рамп там
+     перевёрнуты, и --bg-primary дал бы карточку темнее страницы, то есть
+     вдавленную вместо приподнятой. Тот же приём, что у ленты переписки. */
+  --course-surface: var(--bg-primary);
+  --course-footer: var(--n-50);
+  --course-border: color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38));
+  --course-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+:root[data-theme='dark'] .courses-page {
+  --course-surface: var(--n-100);
+  --course-footer: var(--n-150);
 }
 
 .courses-grid {
@@ -12,176 +26,209 @@
   margin-top: 32px;
 }
 
+/* ── Карточка курса ────────────────────────────────────────────────────────
+ *
+ * Раньше у карточки была акцентная «крышка» с градиентом под 135° и белым
+ * заголовком поверх. Цвет был одинаков у всех курсов, то есть не различал
+ * ничего, а заголовок — главное, ради чего карточку читают, — из-за него шёл
+ * белым по синему вместо чёрного по белому. Вдобавок крышка росла вместе с
+ * длиной названия, и в ряду из трёх курсов синие блоки стояли на разной высоте.
+ *
+ * Теперь цвет остался, но начал что-то значить: узкая полоса по верху
+ * показывает состояние курса — зелёная у пройденного, акцентная у начатого,
+ * серая у нетронутого. Её видно с другого конца комнаты, чего про медаль в
+ * подвале сказать было нельзя.
+ */
 .course-card {
-  background: var(--n-0);
-  border: 1px solid var(--n-200);
-  border-radius: 16px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.3s ease;
+  position: relative;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--course-border);
+  border-radius: 16px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--course-surface) 97%, rgba(255, 255, 255, .3)),
+    var(--course-surface));
+  box-shadow: 0 1px 2px rgba(20, 29, 45, .05),
+              0 6px 14px rgba(20, 29, 45, .05),
+              inset 0 1px 0 rgba(255, 255, 255, .55);
+  transition: box-shadow var(--transition-normal) var(--course-ease),
+              transform var(--transition-normal) var(--course-ease);
 }
 
+/* Полоса статуса. Скругление ей не нужно: карточка обрезает содержимое
+   по своему радиусу (overflow: hidden). */
+.course-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--course-status, var(--n-300));
+}
+
+.course-card--completed   { --course-status: var(--green-500); }
+.course-card--in_progress { --course-status: var(--primary); }
+.course-card--not_started { --course-status: var(--n-300); }
+
+/* Подъём на пиксель, а не на шесть: карточка, отпрыгивающая из ряда, тянет
+   на себя внимание сильнее, чем того стоит наведение мышью. */
 .course-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
-  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(20, 29, 45, .06),
+              0 14px 30px rgba(20, 29, 45, .1),
+              inset 0 1px 0 rgba(255, 255, 255, .6);
 }
 
 .course-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 24px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  border-bottom: none;
-}
-
-.course-medal {
-  flex-shrink: 0;
-}
-
-.course-medal--in_progress {
-  color: var(--n-500);
-}
-
-.course-medal--completed {
-  color: var(--amber-500);
-  filter: drop-shadow(0 1px 3px rgba(245, 158, 11, 0.4));
-}
-
-.course-card-body {
-  padding: 24px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  padding: 22px 24px 0;
 }
 
 .course-title {
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 650;
   font-family: inherit;
   margin: 0;
-  color: #ffffff;
-  line-height: 1.35;
+  color: var(--text-primary);
+  line-height: 1.3;
   letter-spacing: -0.01em;
+}
+
+.course-card-body {
+  padding: 12px 24px 20px;
   flex: 1;
 }
 
 .course-description {
   font-size: 14px;
   font-family: inherit;
-  color: var(--n-600);
+  color: var(--text-secondary);
   margin: 0;
-  line-height: 1.65;
+  line-height: 1.6;
   display: -webkit-box;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 56px;
 }
 
+/* ── Подвал: прогресс и медаль ─────────────────────────────────────────── */
 
-.course-progress-section {
-  margin-top: 8px;
-  padding: 16px;
-  background: linear-gradient(135deg, var(--accent-50) 0%, var(--n-50) 100%);
-  border-radius: 12px;
-  border: 1px solid var(--accent-100);
-}
-
-.course-progress-header {
+.course-card-footer {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 24px;
+  background: var(--course-footer);
+  border-top: 1px solid var(--course-border);
 }
 
-.course-progress-label {
-  font-size: 12px;
-  font-family: inherit;
-  font-weight: 600;
-  color: var(--n-600);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.course-progress-value {
-  font-size: 15px;
-  font-family: inherit;
-  font-weight: 700;
-  color: var(--primary);
+.course-status-label {
+  font-size: 13px;
+  color: var(--text-tertiary);
 }
 
 .course-progress-bar {
   flex: 1;
   height: 8px;
-  background: var(--accent-100);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
   border-radius: 6px;
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 1px 2px rgba(var(--overlay-ink), .06);
 }
 
+/* Свечение под полосой считается из акцента. Раньше здесь стоял вбитый
+   rgba(59, 130, 246, .3): у человека с пурпурным акцентом под пурпурной
+   полосой лежало синее пятно. */
 .course-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--primary) 0%, var(--primary-hover) 100%);
-  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 6px;
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
   position: relative;
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--primary) 88%, #FFFFFF),
+    var(--primary));
+  box-shadow: 0 1px 4px rgba(var(--primary-rgb), .35);
+  transition: width 0.5s var(--course-ease);
 }
 
 .course-progress-fill::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 40%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 100%);
+  inset: 0 0 auto 0;
+  height: 45%;
   border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .4), transparent);
 }
 
-.course-card-footer {
-  padding: 14px 24px;
-  background: var(--n-25);
-  border-top: 1px solid var(--n-100);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
+/* У пройденного курса полоса зелёная, а не акцентная: полоса статуса сверху
+   уже сказала «пройден», и синий прогресс под зелёной полосой заставлял
+   сверять два разных сигнала об одном и том же. */
+.course-card--completed .course-progress-bar {
+  background: color-mix(in srgb, var(--green-500) 18%, transparent);
 }
 
+.course-card--completed .course-progress-fill {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--green-500) 88%, #FFFFFF),
+    var(--green-500));
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--green-500) 38%, transparent);
+}
 
-/* Empty state */
+.course-card--completed .course-progress-value {
+  color: var(--green-600);
+}
+
+.course-progress-value {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 650;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.course-medal {
+  flex-shrink: 0;
+}
+
+/* Серая медаль на светлом подвале почти не читалась — берём ступень темнее */
+.course-medal--in_progress {
+  color: var(--n-400);
+}
+
+.course-medal--completed {
+  color: var(--amber-500);
+  filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--amber-500) 40%, transparent));
+}
+
+/* ── Пусто ─────────────────────────────────────────────────────────────── */
+
 .empty-state {
   text-align: center;
   padding: 60px 20px;
-  background: var(--n-0);
+  border: 1px solid var(--course-border);
   border-radius: 16px;
-  border: 1px solid var(--n-200);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--course-surface);
+  box-shadow: 0 1px 2px rgba(20, 29, 45, .05), inset 0 1px 0 rgba(255, 255, 255, .5);
+  color: var(--text-tertiary);
 }
 
 .empty-state h3 {
   font-family: inherit;
   font-size: 18px;
   font-weight: 600;
-  color: var(--n-800);
+  color: var(--text-primary);
   margin: 16px 0 8px;
 }
 
 .empty-state p {
   font-family: inherit;
   font-size: 14px;
-  color: var(--n-600);
+  color: var(--text-secondary);
   margin: 0;
 }
-
 
 @media (max-width: 768px) {
   .courses-grid {
@@ -189,15 +236,13 @@
     gap: 24px;
   }
 
-  .course-card-header {
-    padding: 20px;
-  }
+  .course-card-header { padding: 18px 20px 0; }
+  .course-card-body { padding: 10px 20px 18px; }
+  .course-card-footer { padding: 12px 20px; }
+}
 
-  .course-card-body {
-    padding: 20px;
-  }
-
-  .course-card-footer {
-    padding: 12px 20px;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .course-card { transition-duration: 1ms; }
+  .course-card:hover { transform: none; }
+  .course-progress-fill { transition: none; }
 }

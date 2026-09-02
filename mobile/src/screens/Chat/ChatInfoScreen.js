@@ -34,6 +34,10 @@ import {
   AtSign,
   Download,
   Link2,
+  FileText,
+  Mic,
+  // Image уже занято компонентом React Native выше
+  Image as ImageIcon,
 } from 'lucide-react-native';
 import {chat as chatApi} from '../../services/api';
 import {useAuth} from '../../store/authStore';
@@ -42,7 +46,7 @@ import LogoLoader from '../../components/LogoLoader';
 import InviteLinkModal from './InviteLinkModal';
 import {saveAttachment} from '../../services/downloads';
 import CONFIG from '../../config';
-import {radius, font} from '../../theme';
+import {radius, font, cardSurface, chatSurface} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 
 /**
@@ -474,9 +478,16 @@ export default function ChatInfoScreen({route, navigation}) {
       {infoTab && infoTab !== 'members' && mediaLoading && (
         <View style={styles.mediaPlaceholder}><LogoLoader width={80} /></View>
       )}
+      {/* Пустая вкладка — один знак раздела и ничего больше. Надпись «Здесь
+          пока пусто» ничего не добавляла: пустая вкладка и так очевидно пуста.
+          Знак берётся по вкладке, чтобы было видно, чего именно нет. То же
+          самое в вебе (Dashboard.js, .chat-info-empty). */}
       {infoTab && infoTab !== 'members' && !mediaLoading && mediaItems.length === 0 && (
-        <View style={styles.mediaPlaceholder}>
-          <Text style={styles.emptyText}>Здесь пока пусто</Text>
+        <View style={styles.mediaEmpty}>
+          {infoTab === 'files' ? <FileText size={44} color={c.textTertiary} />
+            : infoTab === 'voice' ? <Mic size={44} color={c.textTertiary} />
+              : infoTab === 'links' ? <Link2 size={44} color={c.textTertiary} />
+                : <ImageIcon size={44} color={c.textTertiary} />}
         </View>
       )}
     </View>
@@ -728,10 +739,29 @@ const makeStyles = c => StyleSheet.create({
   addBtn: {flexDirection: 'row', alignItems: 'center'},
   addBtnText: {fontSize: 14, fontFamily: font.medium, color: c.primary, marginLeft: 5},
 
-  card: {backgroundColor: c.bgPrimary, marginHorizontal: 12, borderRadius: radius.lg, overflow: 'hidden'},
-  memberCard: {backgroundColor: c.bgPrimary, marginHorizontal: 12},
-  memberCardFirst: {borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg},
-  memberCardLast: {borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg},
+  // Карточки приподняты над фоном кромкой и мягкой тенью — тот же материал,
+  // что у чужого пузыря в переписке (cardSurface в theme.js).
+  card: {...cardSurface(c), marginHorizontal: 12, borderRadius: radius.lg, overflow: 'hidden'},
+  // У списка участников скругления раздаются первой и последней строке, а
+  // кромка — всем: иначе на стыке строк получалась бы двойная линия
+  // Список участников — это одна карточка, сложенная из строк, поэтому кромка
+  // и тень раздаются каждой строке: у соседних они перекрываются непрозрачным
+  // фоном, и наружу выходит контур всего списка. Скругления достаются только
+  // первой и последней, верхняя и нижняя кромки — им же, иначе на стыке строк
+  // получалась бы двойная линия.
+  memberCard: {
+    backgroundColor: c.bgPrimary, marginHorizontal: 12,
+    borderLeftWidth: 1, borderRightWidth: 1, borderColor: c.borderLight,
+    ...chatSurface.bubbleOtherShadow,
+  },
+  memberCardFirst: {
+    borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
+    borderTopWidth: 1,
+  },
+  memberCardLast: {
+    borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg,
+    borderBottomWidth: 1,
+  },
   // Ряд с «Добавить» стоит между полосой вкладок и списком, поэтому у него свои
   // отступы: секционного заголовка над участниками больше нет
   inviteRow: {
@@ -768,7 +798,7 @@ const makeStyles = c => StyleSheet.create({
   tabsBar: {
     flexDirection: 'row',
     marginHorizontal: 12,
-    backgroundColor: c.bgPrimary,
+    ...cardSurface(c),
     borderRadius: radius.lg,
     padding: 4,
   },
@@ -777,6 +807,9 @@ const makeStyles = c => StyleSheet.create({
   mediaTabText: {fontSize: 12.5, fontFamily: font.medium, color: c.textSecondary},
   mediaTabTextActive: {color: c.primary},
   mediaPlaceholder: {alignItems: 'center', justifyContent: 'center', paddingVertical: 34},
+  // Пустой вкладке места нужно больше, чем загрузке: знак стоит один посреди
+  // рабочей области, и прижатый к полосе вкладок он выглядел бы обрезком
+  mediaEmpty: {alignItems: 'center', justifyContent: 'center', paddingVertical: 64},
   mediaGridRow: {paddingHorizontal: 12, gap: 2},
   mediaCell: {marginTop: 2, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: c.bgTertiary},
   mediaCellImage: {width: '100%', height: '100%'},
@@ -784,7 +817,7 @@ const makeStyles = c => StyleSheet.create({
   mediaRow: {
     flexDirection: 'row', alignItems: 'center',
     marginHorizontal: 12, marginTop: 2, paddingHorizontal: 14, paddingVertical: 11,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    ...cardSurface(c), borderRadius: radius.md,
   },
   mediaRowBody: {flex: 1},
   mediaRowTitle: {fontSize: 14.5, fontFamily: font.medium, color: c.textPrimary},

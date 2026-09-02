@@ -1136,3 +1136,102 @@
     display: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ПРИЧЁСАННАЯ ШАПКА (ver. 7.73)
+
+   Шапка остаётся фирменной цветной — это решение заказчика, узнаваемость
+   важнее буквального следования Apple. Здесь снято то, что мешало ей выглядеть
+   частью одного продукта с мессенджером: диагональный градиент, жёсткая тень,
+   белый поиск-наклейка и жёлтые подсветки, ни с чем не связанные.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Градиент сверху вниз, а не под 135°: свет падает сверху во всём остальном
+   интерфейсе, и одна панель, освещённая из угла, выбивалась. Строится
+   подмешиванием белого и чёрного к --primary, а не ступенями рампы: ступени в
+   тёмной теме переворачиваются, и блик оказался бы снизу.
+
+   Вместо тени — кромка. Тень под панелью во всю ширину читается как второй
+   слой поверх страницы, а шапка здесь не всплывает над содержимым, она его
+   держит. */
+.header {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 92%, #FFFFFF),
+    var(--primary) 55%,
+    color-mix(in srgb, var(--primary) 92%, #000000));
+  box-shadow: none;
+  border-bottom: 1px solid rgba(0, 0, 0, .14);
+}
+
+/* Поиск — углубление в панели, а не белый прямоугольник поверх неё. Белое поле
+   с тенью выглядело наклейкой; затемнение работает на любом акценте, потому что
+   не красит подложку, а притемняет её.
+
+   Только на десктопе: на телефоне поиск раскрывается в полноэкранный оверлей
+   (.header-search--open в медиазапросе выше), и там он — белый лист, а не
+   капсула в шапке. */
+@media (min-width: 769px) {
+  .header-search {
+    background: rgba(0, 0, 0, .16);
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 100px;
+    padding: 9px 18px 9px 44px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .14);
+  }
+
+  .header-search:focus-within {
+    background: rgba(0, 0, 0, .24);
+    border-color: rgba(255, 255, 255, .4);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .16), 0 0 0 3px rgba(255, 255, 255, .14);
+  }
+
+  /* Лупа была акцентной — акцент на акценте. При графитовом цвете она вообще
+     превращалась в серую на сером. */
+  .header-search > svg {
+    color: rgba(255, 255, 255, .8);
+  }
+
+  .header-search input {
+    color: #FFFFFF;
+  }
+
+  .header-search input::placeholder {
+    color: rgba(255, 255, 255, .68);
+  }
+}
+
+/* Кнопки шапки поднимаются на пиксель, а не растут: увеличение всей кнопки
+   спорит с соседями по строке, а подъём — тот же жест, что у контролов
+   мессенджера. */
+.header-toggle,
+.header-user-btn,
+.wnm-btn {
+  border: 1px solid rgba(255, 255, 255, .16);
+  transition: background var(--transition-fast),
+              transform var(--transition-fast) cubic-bezier(.22, 1, .36, 1);
+}
+
+.header-toggle:hover,
+.header-user-btn:hover,
+.wnm-btn:hover {
+  transform: translateY(-1px);
+}
+
+.header-toggle:active,
+.header-user-btn:active,
+.wnm-btn:active {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-toggle,
+  .header-user-btn,
+  .wnm-btn {
+    transition-duration: 1ms;
+  }
+  .header-toggle:hover,
+  .header-user-btn:hover,
+  .wnm-btn:hover {
+    transform: none;
+  }
+}

@@ -11,7 +11,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import {GraduationCap, Award, BookOpen, Play} from 'lucide-react-native';
 
 import {courses as coursesApi} from '../../services/api';
-import {font, radius, shadow} from '../../theme';
+import {font, radius, cardSurface} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import LogoLoader from '../../components/LogoLoader';
@@ -116,6 +116,17 @@ function CourseCard({course, styles, c, onPress}) {
 
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
+      {/* Полоса состояния по верху карточки — то же самое, что в вебе
+          (.course-card::before в Courses.css): зелёная у пройденного,
+          акцентная у начатого, серая у нетронутого. Скругления повторены на
+          самой полосе, а не срезаны через overflow: 'hidden' у карточки, —
+          на Android overflow гасит elevation, и карточка осталась бы без тени. */}
+      <View
+        style={[
+          styles.statusStripe,
+          {backgroundColor: finished ? c.success : started ? c.primary : c.border},
+        ]}
+      />
       <View style={styles.cardTop}>
         <View style={[styles.icon, finished && styles.iconDone]}>
           {finished ? (
@@ -168,11 +179,22 @@ const makeStyles = c => StyleSheet.create({
   content: {padding: 16, paddingBottom: 32, gap: 12},
   contentEmpty: {flexGrow: 1},
 
+  // paddingTop на четыре пункта больше остальных: сверху лежит полоса
+  // состояния, и без запаса заголовок вставал бы вплотную к ней
   card: {
-    backgroundColor: c.bgPrimary,
+    ...cardSurface(c),
     borderRadius: radius.lg,
     padding: 16,
-    ...shadow.sm,
+    paddingTop: 20,
+  },
+  statusStripe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
   },
   cardTop: {flexDirection: 'row', gap: 12},
   icon: {

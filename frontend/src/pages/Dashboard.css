@@ -3057,3 +3057,748 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОБЩЕЕ ОФОРМЛЕНИЕ: стекло и тактильные контролы — переписка (ver. 7.73)
+
+   Раздел приводит мессенджер к тому же виду, что у «Задач» и склада: рецепты
+   поверхности, поля и контрола взяты оттуда один в один (Tasks.css, раздел
+   «Visual refresh: quiet glass + tactile controls»), чтобы модули читались как
+   один продукт, а не как несколько разных программ.
+
+   Почему отдельным разделом в конце файла, а не правкой трёх тысяч строк выше:
+   там лежит геометрия — раскладки, ширины панелей, фиксированные позиции на
+   мобильной. Она отлажена и верная, трогать её ради цвета незачем. Здесь
+   переопределяются только поверхности, и такой раздел легко читать целиком,
+   откатывать целиком и продолжать на следующих экранах.
+
+   Этап 1 — переписка: лента, пузыри, шапка чата, панель ввода. Список чатов
+   слева и всплывающие окна остаются прежними до следующего этапа: разойтись
+   они успеют ненадолго, а править всё разом — значит не суметь ничего толком
+   проверить.
+
+   Размытие ставится только там, где под поверхностью действительно что-то
+   прокручивается: капсула даты висит поверх ленты. Шапка чата и панель ввода
+   стоят в потоке рядом с лентой, а не над ней — под ними ровная заливка, и
+   backdrop-filter там не даёт ничего, кроме расхода на отрисовку. Объём им
+   создаёт градиент с бликом по верхней кромке.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.alfa-chat {
+  /* Три подложки переписки названы отдельно от семантических имён (--bg-primary
+     и т.п.) не ради удобства, а потому что в тёмной теме их приходится
+     переставлять: см. блок ниже. Рецепты собираются из них, поэтому перестановка
+     стоит трёх строк, а не переписывания всего раздела. */
+  --msg-lane: var(--bg-secondary);   /* лента переписки */
+  --msg-bubble-base: var(--bg-primary); /* чужой пузырь */
+  --msg-bar-base: var(--bg-primary); /* шапка чата и панель ввода */
+
+  /* Полоса: шапка чата, панель ввода, шапка закреплённого сообщения. Отделена
+     от ленты по светлоте — они держат её сверху и снизу, как рамка лист. */
+  --msg-bar-bg: linear-gradient(180deg,
+    color-mix(in srgb, var(--msg-bar-base) 96%, rgba(255, 255, 255, .22)),
+    color-mix(in srgb, var(--msg-bar-base) 86%, transparent));
+  --msg-bar-border: color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38));
+
+  /* Чужой пузырь — приподнятая поверхность над лентой, так же, как в мобильном
+     приложении и как во всех мессенджерах Apple. */
+  --msg-bubble-bg: linear-gradient(180deg,
+    color-mix(in srgb, var(--msg-bubble-base) 97%, rgba(255, 255, 255, .3)),
+    color-mix(in srgb, var(--msg-bubble-base) 88%, transparent));
+  --msg-bubble-border: color-mix(in srgb, var(--border-light) 70%, rgba(255, 255, 255, .4));
+  --msg-bubble-shadow:
+    0 1px 2px rgba(20, 29, 45, .05),
+    0 6px 14px rgba(20, 29, 45, .05),
+    inset 0 1px 0 rgba(255, 255, 255, .55);
+
+  /* Свой пузырь. Градиент строится от --primary подмешиванием белого и
+     чёрного, а не ступенями рампы: направление ступеней в тёмной теме
+     переворачивается, и блик оказался бы снизу. Свет падает сверху в обеих. */
+  --msg-bubble-own-bg: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 88%, #FFFFFF),
+    var(--primary) 58%,
+    color-mix(in srgb, var(--primary) 93%, #000000));
+  --msg-bubble-own-shadow:
+    0 1px 2px rgba(var(--primary-rgb), .18),
+    0 6px 16px rgba(var(--primary-rgb), .22),
+    inset 0 1px 0 rgba(255, 255, 255, .28);
+
+  /* Скругление пузыря и срезанный угол со стороны говорящего. Значения общие с
+     мобильным приложением (mobile/src/screens/Chat/ChatScreen.js) — переписка
+     на телефоне и в браузере обязана выглядеть одинаково. */
+  --msg-bubble-radius: 18px;
+  --msg-bubble-tail: 6px;
+
+  /* Контрол: скрепка, эмодзи, микрофон, троеточие в шапке — то, что нажимают.
+     Выпуклый, и отличается по светлоте от полосы, на которой стоит: в тёмной
+     теме полоса сама поднята над лентой, и кнопка цвета полосы на ней просто
+     исчезала. */
+  --msg-control-base: var(--bg-secondary);
+  --msg-control-bg: linear-gradient(180deg,
+    color-mix(in srgb, var(--msg-control-base) 88%, #FFFFFF),
+    var(--msg-control-base));
+  --msg-control-border: color-mix(in srgb, var(--border) 72%, rgba(255, 255, 255, .3));
+  --msg-control-shadow: 0 3px 9px rgba(24, 35, 54, .055), inset 0 1px 0 rgba(255, 255, 255, .55);
+  --msg-control-shadow-hover: 0 7px 16px rgba(24, 35, 54, .09), inset 0 1px 0 rgba(255, 255, 255, .65);
+  --msg-control-shadow-active: inset 0 2px 5px rgba(24, 35, 54, .1);
+
+  /* Поле ввода: вдавленное, а не выпуклое — по нему видно, что в него пишут. */
+  --msg-input-bg: color-mix(in srgb, var(--msg-bar-base) 78%, transparent);
+  --msg-input-border: color-mix(in srgb, var(--border) 68%, rgba(255, 255, 255, .3));
+  --msg-input-shadow: inset 0 1px 2px rgba(19, 28, 45, .05), 0 1px 0 rgba(255, 255, 255, .36);
+
+  --msg-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Тёмная тема переставляет подложки, а не наследует их.
+
+   Пузырь обязан быть светлее ленты в обеих темах — приподнятая поверхность
+   читается только так. В светлой это выходит само: лента --bg-secondary, пузырь
+   --bg-primary. В тёмной ступени рампы перевёрнуты, и та же пара даёт пузырь
+   темнее ленты — ровно наоборот. Поэтому здесь ступени назначаются вручную:
+   лента уходит в самую тёмную, пузырь и полосы поднимаются над ней.
+
+   Ориентир — мобильное приложение (mobile/src/theme.js): там в тёмной теме
+   лента #121214, а пузырь #2C2C2E. Соотношение то же. */
+:root[data-theme='dark'] .alfa-chat {
+  --msg-lane: var(--n-0);
+  --msg-bubble-base: var(--n-100);
+  --msg-bar-base: var(--n-50);
+  --msg-control-base: var(--n-150);
+}
+
+/* ── Лента ─────────────────────────────────────────────────────────────── */
+
+/* Лента отделяется по светлоте: пузырь одного цвета с подложкой читался бы
+   одной тенью, а тень такой площади уже выглядит грязью. Узор остаётся поверх —
+   его подставляет AppearanceContext, правило про background-image выше не
+   трогается, здесь задан только цвет. */
+.chat-messages {
+  background-color: var(--msg-lane);
+}
+
+/* ── Пузырь ────────────────────────────────────────────────────────────── */
+
+.message-bubble {
+  border: 1px solid var(--msg-bubble-border);
+  border-radius: var(--msg-bubble-radius);
+  background: var(--msg-bubble-bg);
+  box-shadow: var(--msg-bubble-shadow);
+}
+
+.message.own .message-bubble {
+  border-color: color-mix(in srgb, var(--primary) 82%, #000000);
+  background: var(--msg-bubble-own-bg);
+  box-shadow: var(--msg-bubble-own-shadow);
+}
+
+/* Срезанный угол со стороны говорящего. У чужих сообщений он ставится только на
+   пузырь с аватаром: аватар показывается у первого сообщения подряд идущей
+   группы (showAvatar в Dashboard.js), и хвост обязан оказаться там же, где он,
+   иначе указывает в пустоту. Свои сообщения аватара не имеют — там хвост у
+   каждого, как и в мобильном приложении. */
+.message-bubble:not(.no-avatar) {
+  border-bottom-left-radius: var(--msg-bubble-tail);
+}
+
+.message.own .message-bubble {
+  border-bottom-left-radius: var(--msg-bubble-radius);
+  border-bottom-right-radius: var(--msg-bubble-tail);
+}
+
+/* Подсветка найденного сообщения перебивает тень пузыря целиком: box-shadow не
+   складывается из двух правил, и без повтора рецепта пузырь на время подсветки
+   становился бы плоским. */
+.message.highlighted .message-bubble {
+  box-shadow: var(--msg-bubble-shadow), 0 0 0 3px rgba(var(--primary-rgb), .32);
+}
+
+.message.own.highlighted .message-bubble {
+  box-shadow: var(--msg-bubble-own-shadow), 0 0 0 3px rgba(255, 255, 255, .45);
+}
+
+@keyframes highlight-pulse {
+  0%, 100% { box-shadow: var(--msg-bubble-shadow), 0 0 0 3px rgba(var(--primary-rgb), .32); }
+  50% { box-shadow: var(--msg-bubble-shadow), 0 0 0 6px rgba(var(--primary-rgb), .5); }
+}
+
+/* ── Служебные капсулы поверх ленты ────────────────────────────────────── */
+
+/* Капсула даты — размытие здесь настоящее: под ней действительно проезжают
+   сообщения.
+
+   Подложка берётся из --surface-inverse, а не из прежнего rgba(0,0,0,.3).
+   Смысл тот же — плашка остаётся тёмной в обеих темах и потому читается как
+   наложение поверх ленты, — но у ступени 0.3 чёрного не хватало плотности:
+   поверх светлой ленты капсула выцветала в серое пятно, и белая надпись на ней
+   висела на пределе различимости. Токен для таких наложений в проекте уже есть,
+   и в тёмной теме он сам поднимается на пару ступеней, чтобы не слиться с
+   фоном. */
+.date-separator span,
+.chat-date-float span {
+  padding: 6px 14px;
+  background: color-mix(in srgb, var(--surface-inverse) 78%, transparent);
+  color: var(--text-on-inverse);
+  font-weight: 600;
+  letter-spacing: -.1px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  box-shadow: 0 4px 14px rgba(10, 16, 26, .22);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+}
+
+/* Плавающая висит над лентой, а не лежит в ней, — тень у неё заметнее.
+   Отличать их приходится: во время прокрутки обе бывают на экране разом. */
+.chat-date-float span {
+  box-shadow: 0 8px 22px rgba(10, 16, 26, .3);
+}
+
+/* Починка, а не оформление: у .chat-date-float стоит `display: flex` и
+   `height: 0` (нулевая высота убирает капсулу из потока, чтобы первое сообщение
+   не сдвигалось вниз). Капсула внутри — флекс-элемент, и при выравнивании по
+   умолчанию `stretch` она растягивалась до высоты родителя, то есть до нуля:
+   от капсулы оставалась полоска в одни поля, а текст вылезал за неё сверху и
+   снизу. Выравнивание по началу оси возвращает ей высоту по содержимому,
+   нулевая высота родителя при этом сохраняется. */
+.chat-date-float {
+  align-items: flex-start;
+}
+
+.message-system {
+  border: 1px solid var(--msg-bubble-border);
+  background: var(--msg-bubble-bg);
+  box-shadow: var(--msg-bubble-shadow);
+}
+
+/* ── Шапка чата, закреплённое и панель ввода ───────────────────────────── */
+
+.chat-main-header,
+.chat-input {
+  background: var(--msg-bar-bg);
+}
+
+.chat-main-header {
+  border-bottom-color: var(--msg-bar-border);
+}
+
+.chat-input {
+  border-top-color: var(--msg-bar-border);
+}
+
+.chat-pinned-bar {
+  background: var(--msg-bar-bg);
+  border-bottom-color: var(--msg-bar-border);
+}
+
+/* ── Контролы строки ввода ─────────────────────────────────────────────── */
+
+.chat-main-header .btn-icon-chat,
+.chat-info-header .btn-icon-chat,
+.chat-member-actions .btn-icon-chat,
+.chat-input .btn-icon-chat {
+  border: 1px solid var(--msg-control-border);
+  background: var(--msg-control-bg);
+  box-shadow: var(--msg-control-shadow);
+  transition: box-shadow var(--transition-fast) var(--msg-ease),
+              transform var(--transition-fast) var(--msg-ease),
+              color var(--transition-fast);
+}
+
+.chat-main-header .btn-icon-chat:hover,
+.chat-info-header .btn-icon-chat:hover,
+.chat-member-actions .btn-icon-chat:hover,
+.chat-input .btn-icon-chat:hover {
+  background: var(--msg-control-bg);
+  box-shadow: var(--msg-control-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.chat-main-header .btn-icon-chat:active,
+.chat-info-header .btn-icon-chat:active,
+.chat-member-actions .btn-icon-chat:active,
+.chat-input .btn-icon-chat:active {
+  box-shadow: var(--msg-control-shadow-active);
+  transform: translateY(0);
+}
+
+.chat-input-wrapper {
+  border-color: var(--msg-input-border);
+  background: var(--msg-input-bg);
+  box-shadow: var(--msg-input-shadow);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.chat-input-wrapper:focus-within {
+  box-shadow: var(--msg-input-shadow), 0 0 0 3px rgba(var(--primary-rgb), .16);
+}
+
+/* Кнопка отправки — единственная выпуклая акцентная поверхность в переписке.
+   Блик по верхней кромке тот же, что у своего пузыря: они стоят рядом и обязаны
+   быть сделаны из одного материала. */
+.chat-input .btn.btn-primary.btn-icon {
+  border: 1px solid color-mix(in srgb, var(--primary) 82%, #000000);
+  background: var(--msg-bubble-own-bg);
+  /* Цвет задаётся явно, хотя .btn-primary и так белый. В Admin.css лежит
+     глобальный незаскоупленный `.btn-icon { color: var(--text-secondary) }` с
+     той же специфичностью (0,1,0), и кто из них победит, решает только порядок
+     файлов в бандле. У микрофона и самолётика от этого выходила серая иконка на
+     акцентной заливке. Здесь специфичность выше, спор заканчивается. */
+  color: #FFFFFF;
+  box-shadow: var(--msg-bubble-own-shadow);
+  transition: box-shadow var(--transition-fast) var(--msg-ease),
+              transform var(--transition-fast) var(--msg-ease);
+}
+
+.chat-input .btn.btn-primary.btn-icon:hover:not(:disabled) {
+  box-shadow: 0 2px 4px rgba(var(--primary-rgb), .2), 0 10px 22px rgba(var(--primary-rgb), .28),
+              inset 0 1px 0 rgba(255, 255, 255, .34);
+  transform: translateY(-1px);
+}
+
+.chat-input .btn.btn-primary.btn-icon:active:not(:disabled) {
+  box-shadow: inset 0 2px 6px rgba(8, 14, 24, .28);
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-main-header .btn-icon-chat,
+  .chat-input .btn-icon-chat,
+  .chat-input .btn.btn-primary.btn-icon {
+    transition-duration: 1ms;
+  }
+  .chat-main-header .btn-icon-chat:hover,
+  .chat-input .btn-icon-chat:hover,
+  .chat-input .btn.btn-primary.btn-icon:hover:not(:disabled) {
+    transform: none;
+  }
+  .message.highlighted .message-bubble { animation: none; }
+}
+
+/* ── Кнопка эмодзи ─────────────────────────────────────────────────────── */
+
+/* Единственный контрол строки ввода без собственной поверхности. Она стоит
+   внутри поля, а не рядом с ним: рамка вокруг неё читалась как вложенная
+   кнопка в кнопке, и поле ввода из-за этого выглядело составным. Здесь нужен
+   просто смайлик. */
+.chat-input .emoji-picker-button {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+
+.chat-input .emoji-picker-button:hover {
+  background: none;
+  box-shadow: none;
+  transform: none;
+  color: var(--primary);
+}
+
+.chat-input .emoji-picker-button:active {
+  box-shadow: none;
+  transform: scale(.94);
+}
+
+/* Панель эмодзи. Ширину задаём здесь, а не в свойствах компонента: у него
+   width="100%", а сотня процентов у абсолютно позиционированной обёртки без
+   ширины схлопывается в ширину содержимого — панель выходила уже, чем её
+   собственная сетка, и эмодзи шли по шесть в ряд.
+
+   Только на десктопе: на телефоне панель растянута от края до края (left и
+   right в медиазапросе выше), и заданная ширина отменила бы правый край. */
+.emoji-picker-container {
+  border: 1px solid var(--msg-bar-border);
+}
+
+@media (min-width: 769px) {
+  .emoji-picker-container {
+    width: min(420px, calc(100vw - 48px));
+  }
+}
+
+/* Панель стала выше (460 вместо 350 в свойствах компонента), и на невысоком
+   экране низ упирался бы в строку ввода. Высота у компонента задана внутренним
+   стилем, поэтому подрезаем её здесь. */
+@media (max-width: 768px) {
+  .emoji-picker-container aside {
+    height: min(460px, calc(100vh - 150px)) !important;
+  }
+}
+
+/* ── Цитата в отправленном сообщении ───────────────────────────────────── */
+
+/* Ответ на сообщение внутри пузыря. Раньше это была серая плашка, прижатая к
+   левому краю пузыря: скруглений с одной стороны не было вовсе, и цитата
+   читалась как обрезанный кусок чужого интерфейса. Теперь это самостоятельная
+   вложенная поверхность со скруглением по кругу и цветной полосой внутри, а не
+   вместо границы. */
+.reply-quote {
+  position: relative;
+  padding: 7px 10px 7px 15px;
+  border-left: none;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Полоса внутри, с отступами сверху и снизу: во всю высоту она снова
+   превращала цитату в обрезанный край. */
+.reply-quote::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+.reply-quote:hover {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+/* В своём пузыре подложка уже акцентная — цитата светлеет, а не темнеет. */
+.message.own .reply-quote {
+  background: rgba(255, 255, 255, .17);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .24);
+}
+
+.message.own .reply-quote:hover {
+  background: rgba(255, 255, 255, .24);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .34);
+}
+
+.message.own .reply-quote::before {
+  background: rgba(255, 255, 255, .9);
+}
+
+/* ── Панель информации о группе ────────────────────────────────────────── */
+
+.chat-info-panel {
+  background: var(--msg-bar-bg);
+  border-left-color: var(--msg-bar-border);
+}
+
+.chat-info-header {
+  border-bottom-color: var(--msg-bar-border);
+}
+
+/* Строка вкладок прилипает к верху при прокрутке — под ней действительно
+   проезжает содержимое, и размытие тут настоящее, как у капсулы даты. */
+.chat-info-tabs {
+  background: color-mix(in srgb, var(--msg-bar-base) 78%, transparent);
+  border-bottom-color: var(--msg-bar-border);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+.chat-info-tab {
+  font-weight: 500;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.chat-info-tab.active {
+  font-weight: 600;
+}
+
+/* Аватар группы — приподнят над панелью, как пузырь над лентой. */
+.chat-info-avatar {
+  border: 1px solid var(--msg-bubble-border);
+  box-shadow: var(--msg-bubble-shadow);
+}
+
+/* Участники — приподнятые карточки, а не вдавленные серые полосы. Серая
+   заливка на светлой панели читалась как отключённое поле ввода. */
+.chat-member-item {
+  border: 1px solid var(--msg-bubble-border);
+  border-radius: 14px;
+  background: var(--msg-bubble-bg);
+  box-shadow: var(--msg-bubble-shadow);
+  transition: box-shadow var(--transition-fast) var(--msg-ease),
+              transform var(--transition-fast) var(--msg-ease);
+}
+
+.chat-member-item:hover {
+  box-shadow: 0 2px 4px rgba(20, 29, 45, .06), 0 10px 22px rgba(20, 29, 45, .08),
+              inset 0 1px 0 rgba(255, 255, 255, .6);
+  transform: translateY(-1px);
+}
+
+.chat-member-badge {
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, transparent);
+}
+
+.chat-info-actions {
+  border-top-color: var(--msg-bar-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-member-item { transition-duration: 1ms; }
+  .chat-member-item:hover { transform: none; }
+  .chat-input .emoji-picker-button:active { transform: none; }
+}
+
+/* Пустая вкладка панели информации: один знак раздела посреди рабочей области.
+
+   Растягивается только та вкладка, внутри которой этот знак, — отсюда :has().
+   Расти можно безопасно: flex-grow забирает лишь остаток высоты и не отменяет
+   flex-shrink: 0, которым держатся три блока .chat-info-body (без него
+   содержимое вкладки продавливает полосу вкладок до нулевой высоты). Заданными
+   отступами обойтись не вышло: панель высокая, и знак с любым разумным
+   отступом висел под вкладками, а не по центру. */
+.chat-info-tab-content:has(.chat-info-empty) {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-info-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Не --text-disabled: на 44 пунктах он выцветал до еле заметного контура и
+     читался как недогрузившаяся картинка. Та же ступень, что у знака на
+     телефоне (c.textTertiary в ChatInfoScreen). */
+  color: var(--text-tertiary);
+}
+
+/* Во вкладке «Медиа» знак уезжал влево. Причина не в нём: рядом рисуется пустая
+   .media-grid, и в центрирующем флекс-контейнере её колонки забирали ширину,
+   сдвигая знак. У списков файлов и ссылок колонка без содержимого ширины не
+   занимает — оттого и было видно только на одной вкладке. Когда показан знак,
+   всё остальное в этой вкладке всё равно пусто. */
+.chat-info-tab-content:has(.chat-info-empty) > :not(.chat-info-empty) {
+  display: none;
+}
+
+/* ── Действия над группой ──────────────────────────────────────────────── */
+
+/* Были два одинаковых серых прямоугольника во всю ширину, поставленных друг на
+   друга: «Покинуть» и «Удалить» выглядели одним и тем же действием, а
+   .text-danger на них ничего не красил — этот класс объявлен только внутри
+   .chat-info-avatar-actions. Теперь это строки одной карточки, как в списке
+   участников и как на телефоне (dangerRow в ChatInfoScreen), а красная там
+   одна — та, после которой группы не станет.
+
+   Прибитыми к низу панели они остаются: с открытой вкладкой медиа до конца
+   ленты пришлось бы прокручивать всю галерею (причина записана выше). */
+.chat-info-actions {
+  gap: 0;
+  padding: 12px 16px 16px;
+  border-top-color: var(--msg-bar-border);
+}
+
+.chat-info-actions .btn {
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--msg-bubble-bg);
+  border: 1px solid var(--msg-bubble-border);
+  border-top-width: 0;
+  border-radius: 0;
+  transition: background var(--transition-fast);
+}
+
+/* Скругления по длинным сторонам — только крайним строкам. Если строка одна,
+   оба правила достаются ей, поэтому радиусы расписаны по углам: сокращённая
+   запись у второго правила обнулила бы верхние. */
+.chat-info-actions .btn:first-child {
+  border-top-width: 1px;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+
+.chat-info-actions .btn:last-child {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+
+.chat-info-actions .btn:hover {
+  background: var(--bg-hover);
+  transform: none;
+  box-shadow: none;
+}
+
+.chat-info-actions .text-danger {
+  color: var(--error);
+}
+
+.chat-info-actions .text-danger:hover {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  color: var(--error);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ЭТАП 2: СПИСОК ЧАТОВ
+
+   Тот же материал, что в переписке. Главная перемена — строки перестали быть
+   полосами, разделёнными линиями, и стали пилюлями: линия во всю ширину режет
+   список сильнее, чем отличаются друг от друга два чата, а наведение и выбор
+   ей нечем показать, кроме заливки от края до края.
+
+   Разделители не удалены, а обесцвечены: правило выше задаёт border-bottom в
+   один пиксель, и убери его совсем — все строки сдвинулись бы на пиксель.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.chat-sidebar {
+  background: var(--msg-bar-bg);
+  border-right-color: var(--msg-bar-border);
+}
+
+.chat-sidebar-header {
+  border-bottom-color: var(--msg-bar-border);
+}
+
+.chat-sidebar-actions .btn-icon-chat {
+  border: 1px solid var(--msg-control-border);
+  background: var(--msg-control-bg);
+  box-shadow: var(--msg-control-shadow);
+  border-radius: var(--radius-md);
+  transition: box-shadow var(--transition-fast) var(--msg-ease),
+              transform var(--transition-fast) var(--msg-ease),
+              color var(--transition-fast);
+}
+
+.chat-sidebar-actions .btn-icon-chat:hover {
+  background: var(--msg-control-bg);
+  box-shadow: var(--msg-control-shadow-hover);
+  transform: translateY(-1px);
+  color: var(--primary);
+}
+
+.chat-sidebar-actions .btn-icon-chat:active {
+  box-shadow: var(--msg-control-shadow-active);
+  transform: translateY(0);
+}
+
+/* Поиск — такое же вдавленное поле-пилюля, как строка ввода в переписке.
+   Прежний прямоугольник со скруглением 10 в одной колонке с круглой строкой
+   ввода выглядел полем из другой программы. */
+.chat-search {
+  border: 1px solid var(--msg-input-border);
+  border-radius: 100px;
+  background: var(--msg-input-bg);
+  box-shadow: var(--msg-input-shadow);
+  transition: box-shadow var(--transition-fast);
+}
+
+.chat-search:focus-within {
+  box-shadow: var(--msg-input-shadow), 0 0 0 3px rgba(var(--primary-rgb), .16);
+}
+
+/* Поля списка переезжают со строк на сам список: отступ строки уменьшен ровно
+   на столько же, поэтому аватары и текст остались на прежних местах, а пилюля
+   получила зазор от края панели. */
+.chat-list {
+  padding: 6px 8px;
+}
+
+.chat-item {
+  padding: 14px 12px;
+  border-radius: 14px;
+  border-bottom-color: transparent;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.chat-item:hover {
+  background: var(--msg-bubble-bg);
+  box-shadow: var(--msg-bubble-shadow);
+}
+
+.chat-item.active {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 17%, transparent),
+    color-mix(in srgb, var(--primary) 10%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent),
+              0 6px 14px rgba(var(--primary-rgb), .1);
+}
+
+/* Непрочитанное — та же подсветка, что и была, но теперь в границах пилюли */
+.chat-item.has-unread {
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+}
+
+.chat-item.has-unread:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+/* Закреплённые — приподняты, а не залиты серым: серая заливка на светлой
+   панели читалась как отключённая строка, а не как поднятая наверх */
+.chat-item.pinned {
+  background: var(--msg-bubble-bg);
+  box-shadow: var(--msg-bubble-shadow);
+}
+
+.chat-item.pinned:hover {
+  background: var(--msg-bubble-bg);
+  box-shadow: 0 2px 4px rgba(20, 29, 45, .06), 0 10px 22px rgba(20, 29, 45, .08),
+              inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+.chat-item.pinned.active {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 17%, transparent),
+    color-mix(in srgb, var(--primary) 10%, transparent));
+}
+
+.chat-item-avatar {
+  border: 1px solid var(--msg-bubble-border);
+  box-shadow: 0 1px 3px rgba(20, 29, 45, .08);
+}
+
+.chat-item.active .chat-item-avatar {
+  background: var(--msg-bubble-own-bg);
+  border-color: color-mix(in srgb, var(--primary) 82%, #000000);
+  box-shadow: var(--msg-bubble-own-shadow);
+}
+
+/* Кружок «в сети» обведён цветом строки, а не панели: на выбранной и на
+   закреплённой строке подложка своя, и обводка цвета панели выдавала бы
+   белое кольцо поверх тонированной пилюли. */
+.chat-item.active .chat-item-status-dot {
+  border-color: color-mix(in srgb, var(--primary) 14%, var(--msg-bar-base));
+}
+
+.chat-item.pinned .chat-item-status-dot {
+  border-color: var(--msg-bubble-base);
+}
+
+/* Счётчик непрочитанных — выпуклая таблетка того же материала, что кнопка
+   отправки, только красная */
+.chat-item-unread {
+  border: 1px solid color-mix(in srgb, var(--error) 82%, #000000);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--error) 86%, #FFFFFF),
+    var(--error) 60%,
+    color-mix(in srgb, var(--error) 94%, #000000));
+  box-shadow: 0 1px 2px rgba(var(--overlay-ink), .12),
+              0 3px 8px color-mix(in srgb, var(--error) 34%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+/* У беззвучного чата счётчик серый — тот же рельеф, но без цветного свечения */
+.chat-item.muted .chat-item-unread {
+  border-color: var(--n-500);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--text-tertiary) 84%, #FFFFFF),
+    var(--text-tertiary));
+  box-shadow: 0 1px 2px rgba(var(--overlay-ink), .1),
+              inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+
+.chat-list-divider::before,
+.chat-list-divider::after {
+  background: var(--msg-bar-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-sidebar-actions .btn-icon-chat { transition-duration: 1ms; }
+  .chat-sidebar-actions .btn-icon-chat:hover { transform: none; }
+  .chat-item { transition-duration: 1ms; }
+}

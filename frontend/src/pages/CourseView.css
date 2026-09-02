@@ -203,8 +203,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: rgba(52, 211, 153, 0.1);
-  color: var(--green-600);
+  background: color-mix(in srgb, var(--green-500) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green-500) 26%, transparent);
+  color: var(--green-700);
   border-radius: 20px;
   font-size: 14px;
   font-weight: 500;
@@ -410,12 +411,12 @@
 }
 
 .test-result-icon.success {
-  background: rgba(52, 211, 153, 0.1);
+  background: color-mix(in srgb, var(--green-500) 14%, transparent);
   color: var(--green-600);
 }
 
 .test-result-icon.failure {
-  background: rgba(239, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--red-500) 14%, transparent);
   color: var(--red-500);
 }
 
@@ -464,13 +465,13 @@
 }
 
 .question-result.correct {
-  background: rgba(52, 211, 153, 0.05);
-  border: 1px solid rgba(52, 211, 153, 0.2);
+  background: color-mix(in srgb, var(--green-500) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green-500) 24%, transparent);
 }
 
 .question-result.incorrect {
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--red-500) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red-500) 24%, transparent);
 }
 
 .question-result-header {
@@ -631,4 +632,182 @@
   .lesson-content iframe {
     display: none !important;
   }
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОБЩЕЕ ОФОРМЛЕНИЕ: курс и тест (ver. 7.73)
+
+   Тот же материал, что в списке курсов и в мессенджере. Отдельным разделом в
+   конце файла, переопределяются только поверхности — геометрия выше верная.
+
+   Отдельно — но не здесь, а прямо в своих правилах выше — вычищены семь мест
+   с вбитыми литералами rgba(52, 211, 153, …) и rgba(239, 68, 68, …): отметки
+   «верно / неверно», значок пройденного урока, кружок результата теста. Мимо
+   рамп они не подстраивались под тёмную тему — подложка оставалась бледной
+   плёнкой на тёмном, а текст поверх неё брался из --green-600, который в
+   тёмной теме уже другой. Через color-mix обе половины считаются от одной
+   ступени и разойтись не могут. Правил их на месте, а не перекрывал отсюда:
+   два определения одного цвета — ровно то, из-за чего они и разъехались.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.course-view-container,
+.course-test-container {
+  --cv-surface: var(--bg-primary);
+  --cv-border: color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38));
+  --cv-shadow: 0 1px 2px rgba(20, 29, 45, .05),
+               0 6px 14px rgba(20, 29, 45, .05),
+               inset 0 1px 0 rgba(255, 255, 255, .55);
+  --cv-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+:root[data-theme='dark'] .course-view-container,
+:root[data-theme='dark'] .course-test-container {
+  --cv-surface: var(--n-100);
+}
+
+/* ── Шапка курса и боковой список уроков ───────────────────────────────── */
+
+.course-view-header {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-primary) 96%, rgba(255, 255, 255, .22)),
+    color-mix(in srgb, var(--bg-primary) 86%, transparent));
+  border-bottom-color: var(--cv-border);
+}
+
+.course-sidebar {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-primary) 96%, rgba(255, 255, 255, .22)),
+    color-mix(in srgb, var(--bg-primary) 86%, transparent));
+  border-right-color: var(--cv-border);
+}
+
+.course-sidebar-header {
+  border-bottom-color: var(--cv-border);
+}
+
+/* Кнопка «назад» — тот же материал, что кнопка отправки в переписке.
+   Прежние !important тут не нужны: специфичность и так выше. */
+.course-view-header .btn-back,
+.course-test-container .btn-back {
+  border: 1px solid color-mix(in srgb, var(--primary) 82%, #000000);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 88%, #FFFFFF),
+    var(--primary) 58%,
+    color-mix(in srgb, var(--primary) 93%, #000000)) !important;
+  box-shadow: 0 1px 2px rgba(var(--primary-rgb), .18),
+              0 6px 16px rgba(var(--primary-rgb), .22),
+              inset 0 1px 0 rgba(255, 255, 255, .28);
+  transition: box-shadow var(--transition-fast) var(--cv-ease),
+              transform var(--transition-fast) var(--cv-ease);
+}
+
+.course-view-header .btn-back:hover,
+.course-test-container .btn-back:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(var(--primary-rgb), .2),
+              0 10px 22px rgba(var(--primary-rgb), .28),
+              inset 0 1px 0 rgba(255, 255, 255, .34);
+}
+
+/* Урок в списке — пилюля, как строка чата: наведение приподнимает, выбранный
+   держит акцентную подложку с кольцом */
+.lesson-item {
+  border-radius: 12px;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.lesson-item:hover {
+  background: var(--cv-surface);
+  box-shadow: var(--cv-shadow);
+}
+
+.lesson-item.active {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 17%, transparent),
+    color-mix(in srgb, var(--primary) 10%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent),
+              0 6px 14px rgba(var(--primary-rgb), .1);
+}
+
+/* ── Полоса прохождения курса ──────────────────────────────────────────── */
+
+.progress-bar {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 2px rgba(var(--overlay-ink), .06);
+}
+
+.progress-fill {
+  border-radius: 6px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--primary) 88%, #FFFFFF),
+    var(--primary));
+  box-shadow: 0 1px 4px rgba(var(--primary-rgb), .35);
+}
+
+/* ── Урок ──────────────────────────────────────────────────────────────── */
+
+.lesson-header,
+.lesson-navigation {
+  border-color: var(--cv-border);
+}
+
+
+/* ── Тест ──────────────────────────────────────────────────────────────── */
+
+.test-question,
+.test-result-card {
+  border: 1px solid var(--cv-border);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--cv-surface) 97%, rgba(255, 255, 255, .3)),
+    var(--cv-surface));
+  box-shadow: var(--cv-shadow);
+}
+
+/* Вариант ответа: рамка в один пиксель вместо двух. Двойная делала из списка
+   ответов лесенку жирных прямоугольников, в которой выбранный не выделялся
+   ничем, кроме цвета текста. */
+.test-option {
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--border) 72%, rgba(255, 255, 255, .3));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.test-option:hover {
+  background: var(--cv-surface);
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  box-shadow: 0 3px 9px rgba(24, 35, 54, .06);
+}
+
+/* Выбранный вариант виден подложкой и кольцом, а не только цветом надписи */
+.test-option:has(input[type="radio"]:checked) {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+/* ── Результат теста ───────────────────────────────────────────────────── */
+
+
+.question-result {
+  border-radius: 12px;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .course-view-header .btn-back,
+  .course-test-container .btn-back,
+  .lesson-item,
+  .test-option {
+    transition-duration: 1ms;
+  }
+  .course-view-header .btn-back:hover,
+  .course-test-container .btn-back:hover {
+    transform: none;
+  }
+  .progress-fill { transition: none; }
 }

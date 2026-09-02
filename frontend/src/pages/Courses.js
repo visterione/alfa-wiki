@@ -72,7 +72,7 @@ export default function Courses() {
             return (
               <div
                 key={course.id}
-                className="course-card"
+                className={`course-card course-card--${status}`}
                 onClick={() => handleCourseClick(course.id)}
               >
                 <div className="course-card-header">
@@ -85,25 +85,28 @@ export default function Courses() {
                   )}
                 </div>
 
-                {status !== 'not_started' && (
-                  <div className="course-card-footer">
-                    {course.userProgress.completedLessons > 0 && (
-                      <>
-                        <div className="course-progress-bar">
-                          <div
-                            className="course-progress-fill"
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                        <span className="course-progress-value">{progress}%</span>
-                      </>
-                    )}
-                    <Medal
-                      size={22}
-                      className={`course-medal course-medal--${status}`}
-                    />
-                  </div>
-                )}
+                {/* Подвал рисуется всегда, даже у нетронутого курса: без него низ
+                    карточки оставался пустым, и в сетке из курсов с разным
+                    состоянием ряд выглядел рваным. */}
+                <div className="course-card-footer">
+                  {status === 'not_started' ? (
+                    <span className="course-status-label">Не начат</span>
+                  ) : (
+                    <>
+                      <div className="course-progress-bar">
+                        <div
+                          className="course-progress-fill"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className="course-progress-value">{progress}%</span>
+                      <Medal
+                        size={22}
+                        className={`course-medal course-medal--${status}`}
+                      />
+                    </>
+                  )}
+                </div>
               </div>
             );
           })}
