@@ -34,7 +34,8 @@ import {
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
-  ChevronRight, Printer, Check, X, Undo2, Pencil, Plus, ClipboardList,
+  ChevronRight, Printer, Check, X, Undo2, Pencil, ClipboardList,
+  ArrowLeftRight, ScrollText,
 } from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
@@ -43,10 +44,12 @@ import LabelPreview from '../../components/LabelPreview';
 import MarqueeText from '../../components/MarqueeText';
 import RoomMiniMap from '../../components/RoomMiniMap';
 import SwipeTabs from '../../components/SwipeTabs';
+import BottomSheet from '../../components/BottomSheet';
+import RoomOperation, {stockTarget, assetTarget} from './RoomOperation';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseAccess, useWarehouseCan} from '../../store/warehouseStore';
-import {ASSET_STATUS, statusColor, qtyText, dateText} from './warehouseMeta';
+import {ASSET_STATUS, statusColor, qtyText, dateText, roomHeadText} from './warehouseMeta';
 
 export default function WarehouseRoomScreen({route, navigation}) {
   const styles = useThemedStyles(makeStyles);
@@ -71,6 +74,10 @@ export default function WarehouseRoomScreen({route, navigation}) {
   const [checked, setChecked] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [rollingBack, setRollingBack] = useState(false);
+  // Что сейчас двигают и куда: «actions» держит выбранную строку, пока человек
+  // выбирает действие, «operation» — уже выбранную пару «действие + позиция».
+  const [actions, setActions] = useState(null);
+  const [operation, setOperation] = useState(null);
 
   const load = useCallback(() => {
     warehouseApi.roomDashboard(roomId)
@@ -102,6 +109,14 @@ export default function WarehouseRoomScreen({route, navigation}) {
   }), [data]);
 
   const counting = room?.counting || null;
+  // Операции из кабинета: право на учёт плюс открытый кабинет. Пересчёт
+  // закрывает их все разом — сервер такой документ всё равно отклонит.
+  const canOperate = canIssue && !counting;
+  // Кнопка нужна и тому, у кого права вести учёт нет, а ставить оборудование на
+  // учёт есть: права независимы (см. services/warehouse/permissions.js), и
+  // спрятав кнопку за одним canIssue, мы отобрали бы у него заведение карточек,
+  // которое до этого стояло отдельной строкой во вкладке.
+  const canStartOps = (canIssue || canAddAssets) && !counting;
 
   /**
    * Шапка: «Каб. 434 (Архив) | МЦ Альфа».
@@ -203,23 +218,37 @@ export default function WarehouseRoomScreen({route, navigation}) {
     return next;
   });
 
+  // Шторку открывают двумя путями, и от этого зависит её содержимое:
+  // 'room' — кнопкой кабинета, объект позиции — кнопкой на строке.
+  const fromRoom = actions === 'room';
+
   const allOn = assets.length > 0 && assets.every(a => checked.has(a.id));
   const firstPicked = assets.find(a => checked.has(a.id));
 
-  const addRow = (label, itemKind) => (
+  /**
+   * Кнопка операций на строке (ver. 7.76).
+   *
+   * Стоит справа, а нажатие по самой строке ведёт туда же, куда вело раньше —
+   * в карточку прибора и в правку позиции. Разделение нарочное: смотреть на
+   * вещь и двигать вещь — разные намерения, и заменить одно другим значило бы
+   * отобрать привычный переход у тех, кто ходит сюда читать.
+   *
+   * Пока в кабинете идёт пересчёт, кнопки нет вовсе: сервер такую операцию
+   * отклонит, и предлагать её — это предлагать сходить впустую.
+   */
+  const opsButton = target => canOperate && (
     <Pressable
-      style={styles.addRow}
-      onPress={() => navigation.navigate('WarehouseItemCreate', {roomId, kind: itemKind})}>
-      <View style={styles.addIcon}>
-        <Plus size={16} color="#FFFFFF" />
-      </View>
-      <Text style={styles.addText}>{label}</Text>
+      style={styles.opsButton}
+      onPress={() => setActions(target)}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`Операции: ${target.name}`}>
+      <ArrowLeftRight size={16} color={c.primary} />
     </Pressable>
   );
 
   const assetsPage = (
     <View style={styles.page}>
-      {canAddAssets && !picking && !counting && addRow('Завести оборудование', 'asset')}
       {/* Строка отбора появляется только у того, кому разрешена печать: у
           материалов этикеток нет вовсе. */}
       {canPrint && assets.length > 0 && (
@@ -269,6 +298,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
                 {asset.inventoryNumber} · {ASSET_STATUS[asset.status] || asset.status}
               </Text>
             </View>
+            {!picking && opsButton(assetTarget(asset))}
             {!picking && <ChevronRight size={16} color={c.textTertiary} />}
           </Pressable>
         ))}
@@ -279,7 +309,6 @@ export default function WarehouseRoomScreen({route, navigation}) {
 
   const stockPage = (
     <View style={styles.page}>
-      {canAddMaterials && !counting && addRow('Завести материал', 'material')}
       <View style={styles.card}>
         {stock.map((item, index) => (
           <Pressable
@@ -308,7 +337,10 @@ export default function WarehouseRoomScreen({route, navigation}) {
               ]}>
               {qtyText(item.quantity)} {item.unit}
             </Text>
-            {canEditMaterials && !counting && <Pencil size={14} color={c.textTertiary} />}
+            {canEditMaterials && !counting && !canOperate && (
+              <Pencil size={14} color={c.textTertiary} />
+            )}
+            {opsButton(stockTarget(item))}
           </Pressable>
         ))}
         {!stock.length && <Text style={styles.none}>Материалов в кабинете нет</Text>}
@@ -379,6 +411,19 @@ export default function WarehouseRoomScreen({route, navigation}) {
           <Text style={styles.mol}>МОЛ: {room.responsible.displayName}</Text>
         )}
 
+        {/* Единственный вход в операции (ver. 7.76). Раньше здесь стояли
+            «Завести оборудование», «Завести материал» и ссылка в журнал: три
+            кнопки про одно и то же — что-то сделать с имуществом кабинета, —
+            причём заведение с нуля, самое редкое из всего, было заметнее
+            выдачи. Теперь одна кнопка, а что именно делать, спрашивается
+            следующим шагом. */}
+        {canStartOps && (
+          <Pressable style={styles.opsBar} onPress={() => setActions('room')}>
+            <ArrowLeftRight size={17} color="#FFFFFF" />
+            <Text style={styles.opsBarText}>Операции</Text>
+          </Pressable>
+        )}
+
         <SwipeTabs
           style={styles.block}
           value={tab}
@@ -436,6 +481,97 @@ export default function WarehouseRoomScreen({route, navigation}) {
           </Pressable>
         </View>
       )}
+
+      {/* Выбор действия. Списком, а не рядом кнопок на строке: строка списка
+          узкая, а три значка на ней читались бы как состояние вещи, а не как
+          то, что с ней можно сделать.
+
+          Шторка одна на два входа. От кнопки кабинета спрашивается всё, что он
+          умеет, включая приём; от строки — только то, что применимо к ней:
+          выдачи у оборудования нет (оно не расходуется), а приём начинается не
+          с вещи, которая уже здесь лежит. Ремонт заводится с карточки прибора,
+          где виден его статус. */}
+      <BottomSheet
+        visible={Boolean(actions)}
+        title={fromRoom ? 'Что делаем' : actions?.name}
+        onClose={() => setActions(null)}>
+        <View style={styles.sheet}>
+          {[
+            canOperate && (fromRoom || !actions?.assetId) && {key: 'issue', label: 'Выдать'},
+            canOperate && {key: 'transfer', label: 'Переместить'},
+            canOperate && {key: 'writeoff', label: 'Списать'},
+            // Приём — он же заведение с нуля: что именно привезли, знает
+            // следующий шаг, и там же заводят то, чего в справочнике не было.
+            fromRoom && canOperate && {key: 'receipt', label: 'Принять или завести новое'},
+          ].filter(Boolean).map(item => (
+            <Pressable
+              key={item.key}
+              style={styles.sheetRow}
+              onPress={() => {
+                setOperation({type: item.key, target: fromRoom ? null : actions});
+                setActions(null);
+              }}>
+              <Text style={styles.sheetRowText}>{item.label}</Text>
+            </Pressable>
+          ))}
+
+          {/* Без права вести учёт остаётся одно — поставить на учёт: приход и
+              движения такому человеку сервер не проведёт. */}
+          {fromRoom && !canOperate && canAddAssets && (
+            <Pressable
+              style={styles.sheetRow}
+              onPress={() => {
+                setActions(null);
+                navigation.navigate('WarehouseItemCreate', {roomId, kind: 'asset'});
+              }}>
+              <Text style={styles.sheetRowText}>Завести оборудование</Text>
+            </Pressable>
+          )}
+
+          {/* Журнал кабинета — последней строкой и приглушённой: это не
+              операция, а взгляд назад, и стоять наравне с «Выдать» ему незачем.
+              Отменяют промах отсюда же — кнопка отмены на строке документа. */}
+          {fromRoom && (
+            <Pressable
+              style={[styles.sheetRow, styles.sheetRowLast]}
+              onPress={() => {
+                setActions(null);
+                navigation.navigate('WarehouseOperations', {
+                  roomId,
+                  title: roomHeadText(room),
+                });
+              }}>
+              <ScrollText size={15} color={c.textSecondary} />
+              <Text style={styles.sheetRowMuted}>История движений</Text>
+            </Pressable>
+          )}
+        </View>
+      </BottomSheet>
+
+      {Boolean(operation) && (
+        <RoomOperation
+          room={room}
+          type={operation.type}
+          target={operation.target}
+          // Списки кабинета уже загружены дашбордом: форма выбирает позицию из
+          // них, а не спрашивает сервер второй раз о том же самом.
+          stock={stock}
+          assets={assets}
+          // Заведение с нуля — право отдельное от права провести приход, и
+          // кнопки его показываются только тому, у кого оно есть: иначе человек
+          // упирался бы в 403 после того, как заполнил форму карточки.
+          canCreate={{asset: canAddAssets, material: canAddMaterials}}
+          onCreateItem={(kind) => {
+            setOperation(null);
+            navigation.navigate('WarehouseItemCreate', {roomId, kind});
+          }}
+          onClose={() => setOperation(null)}
+          // Дашборд перечитывается целиком: операция меняет и остаток, и списки,
+          // и блок «требуют внимания» — сшивать это на клиенте значило бы
+          // держать вторую копию правил сервера.
+          onDone={() => { setOperation(null); load(); }}
+        />
+      )}
     </View>
   );
 }
@@ -484,25 +620,6 @@ const makeStyles = c => StyleSheet.create({
   },
   labelButtonText: {fontFamily: font.semiBold, fontSize: 14, color: c.primary},
 
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
-    borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
-  },
-  addIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: c.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addText: {flex: 1, fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
   pickBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -542,6 +659,44 @@ const makeStyles = c => StyleSheet.create({
   rowSub: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginTop: 2},
   qty: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, padding: 16, textAlign: 'center'},
+
+  // Кнопка операций на строке: обведённый кружок, а не сплошная заливка —
+  // строка списка и так плотная, и второй цветной элемент рядом с состоянием
+  // прибора перетягивал бы взгляд на себя.
+  opsButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: c.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  opsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    marginTop: 14,
+    height: 46,
+    borderRadius: radius.md,
+    backgroundColor: c.primary,
+  },
+  opsBarText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
+
+  sheet: {paddingHorizontal: 16, paddingBottom: 8},
+  sheetRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 13, paddingHorizontal: 12, borderRadius: radius.md,
+  },
+  sheetRowLast: {
+    marginTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.border,
+    borderRadius: 0,
+  },
+  sheetRowText: {fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
+  sheetRowMuted: {fontFamily: font.medium, fontSize: 14, color: c.textSecondary},
 
   rollback: {
     flexDirection: 'row',
