@@ -199,9 +199,15 @@ const makeStyles = c => StyleSheet.create({
   tabTextOn: {color: '#FFFFFF'},
 
   column: {flex: 1},
+  // Приподнятая карточка — тот же материал, что у отзыва на веб-доске
+  // (.review-card в ReviewBoard.css). overflow нужен цветной полосе слева,
+  // поэтому тень не задаётся: на Android overflow её всё равно погасит,
+  // приподнятость держат кромка и градиент.
   card: {
     flexDirection: 'row',
     backgroundColor: c.bgPrimary,
+    borderWidth: 1,
+    borderColor: c.borderLight,
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: 8,

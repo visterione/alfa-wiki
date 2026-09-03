@@ -12,16 +12,22 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
-import Svg, {Circle, Path} from 'react-native-svg';
+import Svg, {
+  Circle,
+  Path,
+  Defs,
+  Stop,
+  LinearGradient as SvgGradient,
+} from 'react-native-svg';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
 import {
   Settings, ListTodo, GraduationCap, Package, MessageCircle, Star, UserPlus,
-  SquarePen, Plus, LogOut,
+  SquarePen, Users, Plus, LogOut,
 } from 'lucide-react-native';
 
-import {font} from '../theme';
+import {font, accentShadow} from '../theme';
 import {useTheme, useThemedStyles} from '../store/settingsStore';
 import {useUnreadTotal} from '../store/unreadStore';
 import {useInboxCount} from '../store/tasksStore';
@@ -52,8 +58,8 @@ import {TAB_BAR_HEIGHT} from './tabBarLayout';
  * ── Как это работает ─────────────────────────────────────────────────────────
  *
  * Короткое нажатие открывает колесо разделов. Долгое — второе колесо, с
- * действиями текущего раздела: в чатах это новый чат, в задачах — быстрое
- * создание, в профиле — выход. Нажатие мимо колеса, «назад» на Android и
+ * действиями текущего раздела: в чатах это новый чат и новая группа, в
+ * задачах — быстрое создание, в профиле — выход. Нажатие мимо колеса, «назад» на Android и
  * повторное нажатие на знак закрывают его.
  *
  * Раньше короткое нажатие уводило в чаты, а колесо открывалось долгим. Так у
@@ -79,7 +85,7 @@ import {TAB_BAR_HEIGHT} from './tabBarLayout';
 // Урок и тест вдобавок держат внизу собственную кнопку — рядом со знаком она
 // оказалась бы вторым рядом органов управления над жестовой полосой.
 const HIDDEN_ROUTES = [
-  'Chat', 'NewChat', 'ChatInfo', 'CalendarEvent', 'CalendarEventEdit',
+  'Chat', 'NewChat', 'NewGroup', 'ChatInfo', 'CalendarEvent', 'CalendarEventEdit',
   'Lesson', 'CourseTest',
   // Внутренние экраны модуля «Задачи» (ver. 6.75): у каждого своя кнопка
   // «назад» в шапке, и панель под ними только отнимала бы высоту у списка.
@@ -253,13 +259,20 @@ const maxTurn = count => Math.abs(slotAngle(0, count));
  * профилю, и тащить ради них в панель по магазину на каждое действие незачем.
  */
 const TAB_ACTIONS = {
+  // Переписка и группа — два разных дела, и с ver. 7.75 у каждого своё гнездо.
+  // Раньше здесь была одна кнопка «Новый чат», а выбор между личным чатом и
+  // группой прятался вкладками уже внутри экрана: колесо обещало одно действие,
+  // а приводило к развилке.
   ChatsTab: [{
     key: 'new-chat',
     icon: SquarePen,
     label: 'Новый чат',
-    run: ({navigation}) => navigation.navigate('ChatsTab', {
-      screen: 'NewChat', params: {initialMode: 'private'},
-    }),
+    run: ({navigation}) => navigation.navigate('ChatsTab', {screen: 'NewChat'}),
+  }, {
+    key: 'new-group',
+    icon: Users,
+    label: 'Новая группа',
+    run: ({navigation}) => navigation.navigate('ChatsTab', {screen: 'NewGroup'}),
   }],
   TasksTab: [{
     key: 'new-task',
@@ -886,13 +899,21 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
 
       {/* Затухание содержимого под кнопкой. Без него список уезжает под знак и
           просвечивает сквозь него. Касания не перехватывает: прокрутка в этой
-          полосе должна работать. */}
+          полосе должна работать.
+
+          Уходит вместе со знаком (ver. 7.76). Раньше полоса оставалась на
+          экранах, где кнопки нет вовсе, и затемняла рабочую область без всякой
+          причины: затухать там было нечему. Гаснет той же анимацией, что и сам
+          знак, — иначе исчезала бы рывком посреди перехода. */}
       {!mounted && (
-        <LinearGradient
+        <Animated.View
           pointerEvents="none"
-          colors={['rgba(0,0,0,0)', c.bgSecondary]}
-          style={[styles.scrim, {height: SCRIM_HEIGHT + insets.bottom}]}
-        />
+          style={[styles.scrim, {height: SCRIM_HEIGHT + insets.bottom, opacity: enter}]}>
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', c.bgSecondary]}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
       )}
 
       {/* Колесо лежит в полноэкранном слое, а не внутри кнопки, хотя вращается
@@ -955,12 +976,29 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
                 height={WHEEL_R_OUT * 2}
                 pointerEvents="none"
                 style={StyleSheet.absoluteFill}>
+                {/* Обод — стекло, а не сплошная заливка. Тем же способом, что
+                    поверхности в вебе: заливка чуть прозрачнее к низу, чтобы
+                    сквозь неё просвечивало затемнение, и белый блик по верхней
+                    кромке. Настоящее размытие тут поставить не за что: BlurView
+                    даёт круг целиком, а нам нужно кольцо с дырой, сквозь
+                    которую видно экран. */}
+                <Defs>
+                  <SvgGradient id="wheelBand" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={c.bgPrimary} stopOpacity="0.99" />
+                    <Stop offset="1" stopColor={c.bgPrimary} stopOpacity="0.9" />
+                  </SvgGradient>
+                  {/* Блик гаснет к середине: снизу обода света нет */}
+                  <SvgGradient id="wheelSheen" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.6" />
+                    <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0" />
+                  </SvgGradient>
+                </Defs>
                 <Circle
                   cx={WHEEL_R_OUT}
                   cy={WHEEL_R_OUT}
                   r={WHEEL_R_MID}
                   fill="none"
-                  stroke={c.bgPrimary}
+                  stroke="url(#wheelBand)"
                   strokeWidth={WHEEL_BAND}
                 />
                 <Circle
@@ -978,6 +1016,15 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
                   fill="none"
                   stroke={c.borderLight}
                   strokeWidth={1}
+                />
+                {/* Блик кладётся последним, поверх обеих кромок */}
+                <Circle
+                  cx={WHEEL_R_OUT}
+                  cy={WHEEL_R_OUT}
+                  r={WHEEL_R_OUT - 1}
+                  fill="none"
+                  stroke="url(#wheelSheen)"
+                  strokeWidth={1.5}
                 />
               </Svg>
 
@@ -1002,7 +1049,15 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
                     height={WHEEL_R_OUT * 2}
                     pointerEvents="none"
                     style={StyleSheet.absoluteFill}>
-                    <Path d={sectorPath(items.length)} fill={c.primaryLight} />
+                    {/* Сектор тоже с градиентом: плоская заливка primaryLight
+                        на стеклянном ободе выглядела наклейкой поверх него */}
+                    <Defs>
+                      <SvgGradient id="wheelActive" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={c.primary} stopOpacity="0.3" />
+                        <Stop offset="1" stopColor={c.primary} stopOpacity="0.13" />
+                      </SvgGradient>
+                    </Defs>
+                    <Path d={sectorPath(items.length)} fill="url(#wheelActive)" />
                   </Svg>
                 </Animated.View>
               )}
@@ -1099,6 +1154,8 @@ const makeStyles = c => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Тень цветная, а не чёрная: чёрная под насыщенной заливкой выглядит грязью.
+  // Тот же приём, что у счётчика непрочитанных в списке чатов.
   wheelBadge: {
     position: 'absolute',
     top: -6,
@@ -1111,6 +1168,7 @@ const makeStyles = c => StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
+    ...accentShadow(c.error),
   },
   wheelBadgeText: {
     fontFamily: font.semiBold,

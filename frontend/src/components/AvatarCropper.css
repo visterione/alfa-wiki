@@ -1,0 +1,99 @@
+.avc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4200; /* выше обычных модальных окон: кроппер вызывается из них */
+  padding: 20px;
+}
+
+.avc-modal {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+}
+
+.avc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+}
+
+.avc-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.avc-close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.avc-close:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+.avc-box {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  border-radius: var(--radius-md);
+  cursor: grab;
+  touch-action: none; /* иначе жест уводит страницу в прокрутку, а не картинку */
+  user-select: none;
+}
+
+.avc-box:active { cursor: grabbing; }
+
+.avc-box img {
+  position: absolute;
+  max-width: none; /* глобальное правило для картинок сжимало бы снимок обратно */
+  pointer-events: none;
+}
+
+.avc-hole {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  pointer-events: none;
+}
+
+.avc-zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--text-secondary);
+}
+
+.avc-zoom input { flex: 1; accent-color: var(--primary); }
+
+.avc-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.avc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}

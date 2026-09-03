@@ -17,7 +17,7 @@ import LogoLoader from '../../components/LogoLoader';
 import Stars from '../../components/Stars';
 import {setReviewsBadge} from '../../store/reviewsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {radius, font} from '../../theme';
+import {radius, font, cardSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {statusLabel, statusColor, stageAge, dateText} from './reviewsMeta';
 
@@ -87,7 +87,7 @@ const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
   list: {padding: 16},
   card: {
-    backgroundColor: c.bgPrimary,
+    ...cardSurface(c),
     borderRadius: radius.lg,
     padding: 14,
     marginBottom: 8,

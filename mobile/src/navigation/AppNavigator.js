@@ -20,6 +20,7 @@ import LoginScreen from '../screens/Auth/LoginScreen';
 import ChatListScreen from '../screens/Chat/ChatListScreen';
 import ChatScreen from '../screens/Chat/ChatScreen';
 import NewChatScreen from '../screens/Chat/NewChatScreen';
+import NewGroupScreen from '../screens/Chat/NewGroupScreen';
 import ChatInfoScreen from '../screens/Chat/ChatInfoScreen';
 import SettingsScreen from '../screens/Settings/SettingsScreen';
 import SettingsAccountScreen from '../screens/Settings/AccountScreen';
@@ -214,6 +215,18 @@ function ChatsStack() {
           // В новых версиях native-stack headerBackTitleVisible недостаточно:
           // iOS всё равно может показать крупную кнопку «Альфа Вики».
           // minimal гарантированно оставляет только компактную стрелку.
+          headerBackButtonDisplayMode: 'minimal',
+          headerBackTitle: '',
+        }}
+      />
+      <Stack.Screen
+        name="NewGroup"
+        component={NewGroupScreen}
+        options={{
+          // Заголовок экран меняет сам: на первом шаге «Новая группа», на
+          // втором — «Название группы»
+          title: 'Новая группа',
+          headerTitleAlign: 'center',
           headerBackButtonDisplayMode: 'minimal',
           headerBackTitle: '',
         }}

@@ -135,6 +135,9 @@ export const chat = {
   votePoll: (chatId, messageId, optionIds) =>
     api.post(`/chat/${chatId}/messages/${messageId}/poll-vote`, {optionIds}),
   getUsers: () => api.get('/chat/users'),
+  // Боты идут отдельным списком: /chat/users их намеренно не отдаёт, чтобы они
+  // не попадались в поиске личной переписки — писать боту один на один некому
+  getBots: () => api.get('/chat/bots'),
   sendMessage: (chatId, content, attachments = [], replyToId = null, mentions = []) =>
     api.post(`/chat/${chatId}/messages`, {content, attachments, replyToId, mentions}),
   markAsRead: chatId => api.post(`/chat/${chatId}/read`),
@@ -159,6 +162,25 @@ export const chat = {
   pinChat: (chatId, pinned) => api.patch(`/chat/${chatId}/pin`, {pinned}),
   // Управление группой
   renameGroup: (chatId, name) => api.patch(`/chat/${chatId}/rename`, {name}),
+  // Аватар группы. Отдельным запросом после создания, а не полем в /chat/group:
+  // маршрут принимает multipart и сам обрезает картинку до 200×200 — держать
+  // вторую такую обработку в создании группы незачем.
+  //
+  // crop — выбранная в AvatarCropper область в координатах исходного снимка.
+  // Режет сервер: обрезать картинку на телефоне нечем без нативного модуля.
+  updateGroupAvatar: (chatId, asset, crop) => {
+    const formData = new FormData();
+    if (crop) formData.append('crop', JSON.stringify(crop));
+    formData.append('avatar', {
+      uri: asset.uri,
+      type: asset.type || 'image/jpeg',
+      name: asset.fileName || 'group.jpg',
+    });
+    return api.post(`/chat/${chatId}/avatar`, formData, {
+      headers: {'Content-Type': 'multipart/form-data'},
+      timeout: UPLOAD_TIMEOUT,
+    });
+  },
   setMemberRole: (chatId, userId, role) =>
     api.patch(`/chat/${chatId}/members/${userId}/role`, {role}),
   setMemberReadOnly: (chatId, userId, isReadOnly) =>

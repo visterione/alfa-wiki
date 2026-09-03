@@ -70,7 +70,7 @@
 .reviews-boards-page .btn-create-board:hover {
   background: linear-gradient(135deg, var(--accent-600) 0%, var(--accent-700) 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
 }
 
 /* Loading */
@@ -389,7 +389,7 @@
 .create-board-form textarea:focus {
   outline: none;
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
 }
 
 .create-board-form input::placeholder,
@@ -471,5 +471,133 @@
 
   .reviews-boards-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОБЩЕЕ ОФОРМЛЕНИЕ: список досок отзывов (ver. 7.75)
+
+   Тот же материал, что в мессенджере, курсах и обвязке портала: рецепты взяты
+   оттуда, чтобы модули читались как один продукт. Отдельным разделом в конце
+   файла — переопределяются только поверхности, геометрия выше верная.
+
+   Выше по файлу отдельно вычищены места, где акцент был вбит литералом
+   rgba(59, 130, 246, …): свечение под кнопкой создания и кольцо фокуса у полей.
+   На пурпурном акценте под пурпурной кнопкой лежало синее пятно.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.reviews-boards-page {
+  --rv-surface: var(--bg-primary);
+  --rv-border: color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38));
+  --rv-shadow: 0 1px 2px rgba(20, 29, 45, .05),
+               0 6px 14px rgba(20, 29, 45, .05),
+               inset 0 1px 0 rgba(255, 255, 255, .55);
+  --rv-shadow-hover: 0 2px 4px rgba(20, 29, 45, .06),
+                     0 14px 30px rgba(20, 29, 45, .1),
+                     inset 0 1px 0 rgba(255, 255, 255, .6);
+  --rv-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* В тёмной теме ступени рамп перевёрнуты, и --bg-primary дал бы карточку
+   темнее страницы — приподнятая поверхность читалась бы как вдавленная. */
+:root[data-theme='dark'] .reviews-boards-page {
+  --rv-surface: var(--n-100);
+}
+
+.review-board-card {
+  border-color: var(--rv-border);
+  border-radius: 16px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--rv-surface) 97%, rgba(255, 255, 255, .3)),
+    var(--rv-surface));
+  box-shadow: var(--rv-shadow);
+  transition: box-shadow var(--transition-normal) var(--rv-ease),
+              transform var(--transition-normal) var(--rv-ease);
+}
+
+.review-board-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--rv-shadow-hover);
+}
+
+/* Кнопки шапки. Градиент разворачивается сверху вниз, как в шапке портала и у
+   своего пузыря в переписке: свет во всём интерфейсе падает сверху, и панель,
+   освещённая из угла, выбивалась. Строится подмешиванием белого и чёрного к
+   --primary, а не ступенями рампы, — ступени в тёмной теме переворачиваются, и
+   блик оказался бы снизу. */
+.reviews-boards-page .btn-create-board,
+.reviews-boards-page .btn-create-first {
+  border: 1px solid color-mix(in srgb, var(--primary) 82%, #000000);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 88%, #FFFFFF),
+    var(--primary) 58%,
+    color-mix(in srgb, var(--primary) 93%, #000000));
+  box-shadow: 0 1px 2px rgba(var(--primary-rgb), .18),
+              0 6px 16px rgba(var(--primary-rgb), .22),
+              inset 0 1px 0 rgba(255, 255, 255, .28);
+  transition: box-shadow var(--transition-fast) var(--rv-ease),
+              transform var(--transition-fast) var(--rv-ease);
+}
+
+.reviews-boards-page .btn-create-board:hover,
+.reviews-boards-page .btn-create-first:hover {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 82%, #FFFFFF),
+    var(--primary) 58%,
+    color-mix(in srgb, var(--primary) 90%, #000000));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(var(--primary-rgb), .2),
+              0 10px 22px rgba(var(--primary-rgb), .28),
+              inset 0 1px 0 rgba(255, 255, 255, .34);
+}
+
+/* Архив — тактильный контрол: выпуклый, с кромкой и нажатием */
+.btn-archive {
+  border-color: color-mix(in srgb, var(--border) 72%, rgba(255, 255, 255, .3));
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-secondary) 88%, #FFFFFF),
+    var(--bg-secondary));
+  box-shadow: 0 3px 9px rgba(24, 35, 54, .055), inset 0 1px 0 rgba(255, 255, 255, .55);
+  transition: box-shadow var(--transition-fast) var(--rv-ease),
+              transform var(--transition-fast) var(--rv-ease),
+              color var(--transition-fast);
+}
+
+.btn-archive:hover {
+  box-shadow: 0 7px 16px rgba(24, 35, 54, .09), inset 0 1px 0 rgba(255, 255, 255, .65);
+  transform: translateY(-1px);
+}
+
+.btn-archive:active {
+  box-shadow: inset 0 2px 5px rgba(24, 35, 54, .1);
+  transform: translateY(0);
+}
+
+/* Всплывающее окно — по общему рецепту: размытие тут настоящее, под ним
+   действительно лежит страница */
+.reviews-boards-page ~ .modal-overlay,
+.modal-overlay {
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+
+.modal-content {
+  border: 1px solid var(--rv-border, color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38)));
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(8, 14, 24, .24), inset 0 1px 0 rgba(255, 255, 255, .55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-board-card,
+  .reviews-boards-page .btn-create-board,
+  .reviews-boards-page .btn-create-first,
+  .btn-archive {
+    transition-duration: 1ms;
+  }
+  .review-board-card:hover,
+  .reviews-boards-page .btn-create-board:hover,
+  .reviews-boards-page .btn-create-first:hover,
+  .btn-archive:hover {
+    transform: none;
   }
 }

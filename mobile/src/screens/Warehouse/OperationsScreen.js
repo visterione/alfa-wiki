@@ -18,7 +18,7 @@
  * позиций на телефоне не влезает таблицей, а «добавить и повторить» — ровно тот
  * ритм, в котором человек снимает вещи с полки.
  */
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useLayoutEffect, useState} from 'react';
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -102,13 +102,22 @@ const dateTimeText = value => new Date(value).toLocaleString('ru-RU', {
   day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
 });
 
-export default function WarehouseOperationsScreen() {
+export default function WarehouseOperationsScreen({route, navigation}) {
   const styles = useThemedStyles(makeStyles);
   const c = useTheme();
   const insets = useSafeAreaInsets();
   const tabInset = useTabBarInset();
   const canIssue = useWarehouseCan('canIssue');
   const {medCenterId, ready} = useWarehouseMedCenter();
+  /**
+   * Журнал одного кабинета (ver. 7.76).
+   *
+   * Тот же экран, открытый из кабинета: движения смотрят, чтобы понять, куда
+   * делась вещь, и отдельный экран ради этого — копия того, что уже написано,
+   * включая отмену на строке. Отбор считает сервер, потому что кабинеты
+   * заполнены не у всех типов документа и судить по ним нельзя.
+   */
+  const {roomId, title} = route?.params || {};
 
   const [documents, setDocuments] = useState(null);
   const [typeFilter, setTypeFilter] = useState('');
@@ -120,15 +129,27 @@ export default function WarehouseOperationsScreen() {
     ...(typeFilter ? {type: typeFilter} : {}),
     // Своего медцентра у документа нет — сервер определяет его по движениям
     // (см. operations.js). Перемещение между центрами попадает в журнал обоих:
-    // оно и правда касается обоих.
-    ...(medCenterId ? {medCenterId} : {}),
+    // оно и правда касается обоих. Кабинет этот отбор отменяет: он и так внутри
+    // одного медцентра, и второй параметр сузил бы выборку тем же самым дважды.
+    ...(roomId ? {roomId} : (medCenterId ? {medCenterId} : {})),
   })
     .then(({data}) => setDocuments(data?.items || []))
-    .catch(() => setDocuments([])), [typeFilter, medCenterId]);
+    .catch(() => setDocuments([])), [typeFilter, medCenterId, roomId]);
 
   // Пока выбранный медцентр читается из памяти телефона, запрос не уходит:
-  // иначе журнал открылся бы сетевым и через миг сменился своим.
-  useFocusEffect(useCallback(() => { if (ready) load(); }, [load, ready]));
+  // иначе журнал открылся бы сетевым и через миг сменился своим. Журналу
+  // кабинета ждать нечего — медцентр в его отборе не участвует.
+  useFocusEffect(useCallback(() => { if (ready || roomId) load(); }, [load, ready, roomId]));
+
+  // Заголовок и переключатель медцентра: в журнале кабинета переключать нечего,
+  // и оставленная кнопка меняла бы то, что на этот экран уже не влияет.
+  useLayoutEffect(() => {
+    if (!roomId) return;
+    navigation.setOptions({
+      title: title ? `Движения · ${title}` : 'Движения',
+      headerRight: () => null,
+    });
+  }, [roomId, title, navigation]);
 
   // Число по всей сети — только для пустого журнала: человек должен видеть, что
   // документы есть, просто не здесь.
@@ -138,7 +159,9 @@ export default function WarehouseOperationsScreen() {
     [typeFilter],
   );
   const foundInNetwork = useNetworkFallback(probeNetwork, {
-    enabled: Boolean(medCenterId) && Boolean(documents) && documents.length === 0,
+    // Кабинету подсказка «а в сети документы есть» ничего не даёт: он спрашивал
+    // не про сеть, а про себя.
+    enabled: !roomId && Boolean(medCenterId) && Boolean(documents) && documents.length === 0,
   });
 
   /**

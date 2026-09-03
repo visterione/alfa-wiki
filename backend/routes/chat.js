@@ -10,6 +10,7 @@ const { authenticate } = require('../middleware/auth');
 const { sequelize, Chat, ChatMember, Message, MessageReaction, ChatFile, MessageDeletion, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
 const notificationService = require('../services/notificationService');
 const invites = require('../services/chatInvites');
+const { parseAvatarCrop } = require('../services/avatarCrop');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
 const messageActions = require('../services/messageActions');
@@ -1751,6 +1752,16 @@ router.post('/group', authenticate, async (req, res) => {
 
     await ChatMember.bulkCreate(members);
 
+    // Бот, выбранный прямо при создании группы, должен узнать об этом так же,
+    // как при добавлении в готовую: подписки и вебхук включаются только через
+    // notifyBotMembership. До ver. 7.75 бота сюда было не позвать вовсе — его
+    // добавляли вторым шагом, и этот вызов случался в маршруте /members.
+    members
+      .filter(m => m.userId !== req.user.id)
+      .forEach(m => notifyBotMembership({
+        chatId: chat.id, userId: m.userId, actorId: req.user.id, status: 'member'
+      }));
+
     const systemMessage = `${req.user.displayName || req.user.username} создал группу "${name.trim()}"`;
     
     await Message.create({
@@ -1816,7 +1827,17 @@ router.post('/:chatId/avatar', authenticate, (req, res, next) => {
     const inputBuffer = fs.readFileSync(inputPath);
     fs.unlinkSync(inputPath);
 
-    const outputBuffer = await sharp(inputBuffer)
+    // Снимок с телефона несёт поворот меткой в EXIF, а не в самих пикселях.
+    // rotate() без аргументов применяет метку — и дальше картинка лежит так же,
+    // как её видел человек в окне обрезки. Без этого шага рамка легла бы на бок,
+    // да и сам аватар выходил боком: sharp по умолчанию метаданные срезает.
+    const oriented = await sharp(inputBuffer).rotate().toBuffer();
+    const meta = await sharp(oriented).metadata();
+
+    const crop = parseAvatarCrop(req.body?.crop, meta);
+    const pipeline = crop ? sharp(oriented).extract(crop) : sharp(oriented);
+
+    const outputBuffer = await pipeline
       .resize(200, 200, { fit: 'cover' })
       .jpeg({ quality: 85 })
       .toBuffer();

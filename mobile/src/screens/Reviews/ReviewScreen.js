@@ -34,7 +34,7 @@ import Stars from '../../components/Stars';
 import SwipeTabs from '../../components/SwipeTabs';
 import {useAuth} from '../../store/authStore';
 import {refreshReviewsBadge} from '../../store/reviewsStore';
-import {radius, font} from '../../theme';
+import {radius, font, cardSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {
   NEXT_STATUSES, statusLabel, statusColor, DECISION_CATEGORIES, HISTORY_LABELS,
@@ -274,7 +274,7 @@ const makeStyles = c => StyleSheet.create({
   root: {flex: 1, backgroundColor: c.bgSecondary},
   content: {padding: 16},
   page: {width: '100%'},
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, padding: 14, gap: 8},
+  card: {...cardSurface(c), borderRadius: radius.lg, padding: 14, gap: 8},
   gap: {marginTop: 12},
   cardHead: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   chip: {paddingHorizontal: 9, paddingVertical: 4, borderRadius: 11},

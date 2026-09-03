@@ -958,7 +958,7 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
     const today = new Date().toISOString().slice(0, 10);
     const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
-    const [assets, stockRows, maintenance, utilRow] = await Promise.all([
+    const [assets, stockRows, maintenance, utilRow, storages] = await Promise.all([
       WhAsset.findAll({
         where: { roomId: room.id, isArchived: false },
         include: [{ model: User, as: 'responsible', attributes: userAttrs }],
@@ -966,8 +966,9 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
       }),
       sequelize.query(`
         SELECT s.id AS "stockId", s.quantity, s."unitCost", n.name, n.unit, n.id AS "nomenclatureId",
+               b.id AS "batchId",
                b."batchNumber", b."expiryDate", (b."expiryDate" - CURRENT_DATE) AS "daysLeft",
-               st.name AS "storageName",
+               st.id AS "storageId", st.name AS "storageName",
                (SELECT rr."minQty" FROM warehouse_reorder_rules rr
                  WHERE rr."nomenclatureId" = n.id AND (rr."roomId" = :roomId OR rr."storageId" = st.id
                        OR (rr."roomId" IS NULL AND rr."storageId" IS NULL))
@@ -1002,6 +1003,14 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         medCenterId: room.floorId ? null : room.medCenterId,
         from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
         to: today,
+      }),
+      // Места хранения кабинета (ver. 7.76). Нужны тому, кто проводит операцию
+      // прямо отсюда: приход требует полку «куда», и без неё телефон тянул бы
+      // ради одного идентификатора всё дерево локаций сети.
+      WhStorage.findAll({
+        where: { roomId: room.id },
+        attributes: ['id', 'name'],
+        order: [['name', 'ASC']],
       }),
     ]);
 
@@ -1074,6 +1083,7 @@ router.get('/room/:roomId/dashboard', authenticate, requireWarehouse(), requireR
         path: await roomPath(room.id),
         // Опись, которой кабинет закрыт прямо сейчас, или null.
         counting: counting && { id: counting.id, number: counting.number },
+        storages: storages.map(st => ({ id: st.id, name: st.name })),
       },
       cards: {
         assets: {

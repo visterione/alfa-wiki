@@ -20,7 +20,7 @@ import CONFIG from '../../config';
 import LogoLoader from '../../components/LogoLoader';
 import {loadReviewBoards, useReviewsBadge, refreshReviewsBadge} from '../../store/reviewsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {radius, font} from '../../theme';
+import {radius, font, cardSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 
 export default function ReviewsScreen({navigation}) {
@@ -134,7 +134,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: c.bgPrimary,
+    ...cardSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -159,7 +159,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: c.bgPrimary,
+    ...cardSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,

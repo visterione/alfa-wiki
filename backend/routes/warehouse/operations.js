@@ -34,7 +34,7 @@ const userAttrs = ['id', 'displayName', 'username', 'avatar'];
 // ── Документы и движения ─────────────────────────────────────────────────────
 router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
   try {
-    const { type, from, to, status, q, page = 1, limit = 50, medCenterId } = req.query;
+    const { type, from, to, status, q, page = 1, limit = 50, medCenterId, roomId } = req.query;
     const where = {};
     if (type) where.type = { [Op.in]: String(type).split(',') };
     if (status) where.status = status;
@@ -96,6 +96,32 @@ router.get('/documents', authenticate, requireWarehouse(), async (req, res) => {
         ],
       });
     }
+    /**
+     * Отбор по кабинету (ver. 7.76) — журнал движений внутри самого кабинета.
+     *
+     * Считается тем же способом, что и медцентр, и по той же причине: кабинеты
+     * документа заполнены только у перемещений, а у прихода, выдачи и списания
+     * они пустые, и отбор по ним показал бы кабинету одни переезды. Настоящий
+     * ответ лежит в движениях: у каждой строки есть место хранения, у места —
+     * кабинет.
+     */
+    if (roomId) {
+      const rid = sequelize.escape(String(roomId));
+      conditions.push({
+        [Op.or]: [
+          { fromRoomId: roomId },
+          { toRoomId: roomId },
+          sequelize.literal(`EXISTS (
+            SELECT 1 FROM warehouse_movements mv
+            LEFT JOIN warehouse_storages fs ON fs.id = mv."fromStorageId"
+            LEFT JOIN warehouse_storages ts ON ts.id = mv."toStorageId"
+            WHERE mv."documentId" = "WhDocument".id
+              AND ${rid} IN (fs."roomId", ts."roomId", mv."fromRoomId", mv."toRoomId")
+          )`),
+        ],
+      });
+    }
+
     if (conditions.length) where[Op.and] = conditions;
 
     const rows = await WhDocument.findAndCountAll({

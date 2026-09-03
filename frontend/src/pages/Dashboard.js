@@ -24,6 +24,7 @@ import VoiceMessage from '../components/chat/VoiceMessage';
 import UserBadge from '../components/chat/UserBadge';
 import PollMessage from '../components/chat/PollMessage';
 import EmailComposeModal from '../components/EmailComposeModal';
+import AvatarCropper from '../components/AvatarCropper';
 import { renderRichHtml, stripFormatting, toggleMarkup } from '../utils/richText';
 import './Dashboard.css';
 
@@ -90,6 +91,14 @@ export default function Dashboard() {
   const [botsList, setBotsList] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [groupName, setGroupName] = useState('');
+  // Аватарка выбирается до создания группы, а грузится после: маршрут загрузки
+  // адресуется chatId, которого до создания ещё нет. Файл ждёт здесь, превью —
+  // это blob-ссылка на него, её нужно освобождать при закрытии окна
+  const [groupAvatarFile, setGroupAvatarFile] = useState(null);
+  const [groupAvatarPreview, setGroupAvatarPreview] = useState('');
+  // Окно выбора области. target говорит, куда уйдёт обрезанный снимок: в
+  // создаваемую группу ('new-group') или сразу в открытую ('active-group')
+  const [cropper, setCropper] = useState(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [addMemberSearchQuery, setAddMemberSearchQuery] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -1464,16 +1473,83 @@ export default function Dashboard() {
     } catch (e) { toast.error('Ошибка создания чата'); }
   };
 
+  const openNewGroup = () => {
+    setShowNewGroup(true);
+    loadUsers();
+    // Боты в /chat/users не приходят: их отдаёт отдельный маршрут
+    loadBots();
+    setSelectedUsers([]);
+    setGroupName('');
+    setUserSearchQuery('');
+    setQuickAddRoleFilter('');
+    setQuickAddMedCenterFilter('');
+    pickGroupAvatar(null);
+  };
+
+  const closeNewGroup = () => {
+    setShowNewGroup(false);
+    setUserSearchQuery('');
+    setQuickAddRoleFilter('');
+    setQuickAddMedCenterFilter('');
+    pickGroupAvatar(null);
+  };
+
+  /** Выбранный файл аватарки и превью к нему — всегда вместе, иначе течёт blob. */
+  const pickGroupAvatar = (file) => {
+    setGroupAvatarPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : '';
+    });
+    setGroupAvatarFile(file);
+  };
+
+  const handleGroupAvatarChange = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // иначе повторный выбор того же файла не даст события
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Максимальный размер файла 5 МБ'); return; }
+    // Сразу в окно обрезки: вертикальный снимок иначе попадёт в кружок
+    // серединой кадра, и понятно это станет только после загрузки
+    setCropper({ file, target: 'new-group' });
+  };
+
+  /** Обрезанный квадрат — туда, откуда открывали окно. */
+  const handleCropped = async (cropped) => {
+    const target = cropper?.target;
+    setCropper(null);
+    if (target === 'new-group') { pickGroupAvatar(cropped); return; }
+
+    setAvatarUploading(true);
+    try {
+      await chat.updateAvatar(activeChat.id, cropped);
+      await refreshActiveChat();
+      toast.success('Аватар обновлён');
+    } catch (err) { toast.error(err.response?.data?.error || 'Ошибка загрузки'); }
+    finally { setAvatarUploading(false); }
+  };
+
   const createGroup = async () => {
     if (!groupName.trim()) { toast.error('Введите название группы'); return; }
     try {
       const { data } = await chat.createGroup(groupName, selectedUsers);
+
+      // Картинка уходит вторым запросом. Не долетела — группа всё равно
+      // создана, и откатывать её из-за аватарки было бы хуже, чем сказать
+      let created = data;
+      if (groupAvatarFile) {
+        try {
+          const { data: uploaded } = await chat.updateAvatar(data.id, groupAvatarFile);
+          created = { ...created, avatar: uploaded.avatar };
+        } catch { toast.error('Группа создана, но фото загрузить не удалось'); }
+      }
+
       await loadChats();
-      setActiveChat(data);
+      setActiveChat(created);
       setShowNewGroup(false);
       setGroupName('');
       setSelectedUsers([]);
-      await loadMessages(data.id, true); // Прокручиваем при создании группы
+      pickGroupAvatar(null);
+      await loadMessages(created.id, true); // Прокручиваем при создании группы
     } catch (e) { toast.error('Ошибка создания группы'); }
   };
 
@@ -1672,16 +1748,13 @@ export default function Dashboard() {
     e.currentTarget.classList.remove('dragging');
   };
 
-  const handleAvatarChange = async (e) => {
+  const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
     if (!file) return;
-    setAvatarUploading(true);
-    try {
-      await chat.updateAvatar(activeChat.id, file);
-      await refreshActiveChat();
-      toast.success('Аватар обновлён');
-    } catch (e) { toast.error(e.response?.data?.error || 'Ошибка загрузки'); }
-    finally { setAvatarUploading(false); if (avatarInputRef.current) avatarInputRef.current.value = ''; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Максимальный размер файла 5 МБ'); return; }
+    // Загрузка ждёт выбора области — дальше её продолжит handleCropped
+    setCropper({ file, target: 'active-group' });
   };
 
   const handleDeleteAvatar = async () => {
@@ -1748,6 +1821,14 @@ export default function Dashboard() {
     const displayName = (u.displayName || u.username || '').toLowerCase();
     return displayName.includes(userSearchQuery.toLowerCase()) && matchesQuickFilters(u);
   });
+
+  // Боты для окна создания группы. Фильтры по роли и медцентру к ним
+  // неприменимы — ни того, ни другого у бота нет, и включённый фильтр просто
+  // спрятал бы раздел целиком
+  const groupBotOptions = (quickAddRoleFilter || quickAddMedCenterFilter)
+    ? []
+    : botsList.filter(b => (b.displayName || b.username || '').toLowerCase()
+        .includes(userSearchQuery.toLowerCase()));
 
   const activeGroupMembers = activeChat?.type === 'group' ? (activeChat.members || []) : [];
   const activeGroupOnlineCount = activeGroupMembers.filter(member => {
@@ -2125,7 +2206,7 @@ export default function Dashboard() {
             <h2><MessageCircle size={20} /> Сообщения</h2>
             <div className="chat-sidebar-actions">
               <button className="btn-icon-chat" onClick={() => setShowEmailCompose(true)} title="Email-рассылка"><Mail size={20} /></button>
-              <button className="btn-icon-chat" onClick={() => { setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }} title="Создать группу"><Users size={20} /></button>
+              <button className="btn-icon-chat" onClick={openNewGroup} title="Создать группу"><Users size={20} /></button>
               <button className="btn-icon-chat" onClick={() => { setShowNewChat(true); loadUsers(); }} title="Новый чат"><UserPlus size={20} /></button>
             </div>
           </div>
@@ -2137,7 +2218,7 @@ export default function Dashboard() {
               {showChatMenu && (
                 <div className="chat-search-menu-dropdown">
                   <button type="button" onClick={() => { setShowChatMenu(false); setShowNewChat(true); loadUsers(); }}><UserPlus size={18} /> Новый чат</button>
-                  <button type="button" onClick={() => { setShowChatMenu(false); setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}><Users size={18} /> Создать группу</button>
+                  <button type="button" onClick={() => { setShowChatMenu(false); openNewGroup(); }}><Users size={18} /> Создать группу</button>
                   <button type="button" onClick={() => { setShowChatMenu(false); setShowEmailCompose(true); }}><Mail size={18} /> Email-рассылка</button>
                 </div>
               )}
@@ -3008,11 +3089,36 @@ export default function Dashboard() {
       )}
 
       {showNewGroup && (
-        <div className="modal-overlay" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}>
+        <div className="modal-overlay" onClick={closeNewGroup}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2>Создать группу</h2><button className="modal-close" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}><X size={20} /></button></div>
+            <div className="modal-header"><h2>Создать группу</h2><button className="modal-close" onClick={closeNewGroup}><X size={20} /></button></div>
             <div className="modal-body">
-              <div className="form-group"><label className="form-label">Название группы</label><input className="input" value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Название группы" /></div>
+              {/* Фото и название стоят в одной строке: так у группы сразу видно
+                  лицо, а не только строка ввода, как было до ver. 7.75 */}
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <label
+                  title={groupAvatarFile ? 'Изменить фото' : 'Добавить фото'}
+                  style={{
+                    flexShrink: 0, width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    background: groupAvatarPreview ? 'transparent' : 'var(--bg-secondary)',
+                    border: '1px dashed var(--border)', color: 'var(--text-secondary)',
+                  }}>
+                  {groupAvatarPreview
+                    ? <img src={groupAvatarPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <Camera size={22} />}
+                  <input type="file" accept="image/*" hidden onChange={handleGroupAvatarChange} />
+                </label>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <label className="form-label">Название группы</label>
+                  <input className="input" value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Название группы" />
+                  {groupAvatarFile && (
+                    <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} onClick={() => pickGroupAvatar(null)}>
+                      <X size={14} /> Убрать фото
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="form-group"><label className="form-label">Участники {selectedUsers.length > 0 && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({selectedUsers.length} выбрано)</span>}</label>
                 <div className="chat-search" style={{ marginBottom: '8px' }}>
                   <Search size={18} />
@@ -3058,13 +3164,38 @@ export default function Dashboard() {
                       {selectedUsers.includes(u.id) && <Check size={20} />}
                     </div>
                   ))}
-                  {filteredUsers.length === 0 && <div className="text-muted text-center">Нет пользователей</div>}
+                  {groupBotOptions.length > 0 && (
+                    <>
+                      {/* Боты отдельным разделом в конце: их немного, они не
+                          сотрудники, и до ver. 7.75 добавить бота в группу можно
+                          было только после её создания, вторым заходом */}
+                      <div className="user-list-section-title" style={{ padding: '8px 0 4px', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Боты</div>
+                      {groupBotOptions.map(b => (
+                        <div key={b.id} className={`user-item ${selectedUsers.includes(b.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(b.id)}>
+                          <div className="user-item-avatar">{getAvatarUrl(b.avatar) ? <img src={getAvatarUrl(b.avatar)} alt="" /> : <Bot size={24} />}</div>
+                          <div className="user-item-info"><div className="user-item-name">{b.displayName || b.username}</div><div className="user-item-username">@{b.username} · бот</div></div>
+                          {selectedUsers.includes(b.id) && <Check size={20} />}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {filteredUsers.length === 0 && groupBotOptions.length === 0 && <div className="text-muted text-center">Нет пользователей</div>}
                 </div>
               </div>
             </div>
-            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
+            <div className="modal-footer"><button className="btn btn-ghost" onClick={closeNewGroup}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
           </div>
         </div>
+      )}
+
+      {/* Окно обрезки лежит поверх остальных: его открывают из них */}
+      {cropper && (
+        <AvatarCropper
+          file={cropper.file}
+          title={cropper.target === 'new-group' ? 'Фото группы' : 'Новое фото группы'}
+          onCancel={() => setCropper(null)}
+          onCrop={handleCropped}
+        />
       )}
 
       {showInviteLink && activeChat && (
@@ -3118,7 +3249,7 @@ export default function Dashboard() {
                 ))}
                 {availableBotsToAdd.length > 0 && (
                   <>
-                    <div className="user-list-section-title" style={{ padding: '8px 0 4px', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Боты</div>
+                    <div className="user-list-section-title" style={{ padding: '8px 0 4px', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Боты</div>
                     {availableBotsToAdd.map(b => (
                       <div key={b.id} className="user-item" onClick={() => addMemberToGroup(b.id)}>
                         <div className="user-item-avatar">{getAvatarUrl(b.avatar) ? <img src={getAvatarUrl(b.avatar)} alt="" /> : <Bot size={24} />}</div>

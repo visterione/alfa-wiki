@@ -268,7 +268,7 @@
 }
 
 .column-content-wrap.dragging-over {
-  background: rgba(59, 130, 246, 0.04);
+  background: rgba(var(--primary-rgb), 0.04);
 }
 
 /* Режим секций: теперь внутри column-content-wrap, не скроллится сам */
@@ -450,9 +450,9 @@
 }
 
 @keyframes review-highlight-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6), 0 0 0 3px rgba(59, 130, 246, 0.35); }
-  50%  { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.15), 0 0 0 3px rgba(59, 130, 246, 0.35); }
-  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0), 0 0 0 3px rgba(59, 130, 246, 0.35); }
+  0%   { box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0.6), 0 0 0 3px rgba(var(--primary-rgb), 0.35); }
+  50%  { box-shadow: 0 0 0 6px rgba(var(--primary-rgb), 0.15), 0 0 0 3px rgba(var(--primary-rgb), 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0), 0 0 0 3px rgba(var(--primary-rgb), 0.35); }
 }
 
 .review-card.highlighted {
@@ -729,7 +729,7 @@
 .assign-modal .form-group input:focus {
   outline: none;
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
 }
 
 .finalize-modal .form-group textarea {
@@ -873,7 +873,7 @@
 .review-modal .form-group textarea:focus {
   outline: none;
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
 }
 
 .review-modal .form-group textarea {
@@ -1524,13 +1524,13 @@
   color: var(--accent-500);
   text-decoration: none;
   padding: 0.2rem 0.5rem;
-  background: rgba(59, 130, 246, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   border-radius: 4px;
   width: fit-content;
 }
 
 .comment-attachment-link:hover {
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(var(--primary-rgb), 0.15);
 }
 
 .add-comment button:hover:not(:disabled) {
@@ -1987,7 +1987,7 @@
 
 .reply-to-platform .add-comment-row textarea:focus {
   border-color: var(--green-600);
-  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green-600) 15%, transparent);
 }
 
 .btn-send-reply {
@@ -2087,4 +2087,242 @@
   margin-top: 8px;
   font-size: 12px;
   color: var(--red-700);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОБЩЕЕ ОФОРМЛЕНИЕ: доска отзывов (ver. 7.75)
+
+   Рецепты те же, что в мессенджере и курсах. Отдельным разделом в конце файла —
+   переопределяются только поверхности, две тысячи строк геометрии выше не
+   трогаются.
+
+   Выше по файлу отдельно вычищены двенадцать мест, где акцент был вбит
+   литералом rgba(59, 130, 246, …): подсветка колонки под перетаскиванием,
+   кольца фокуса у полей, выделение выбранного и все три кадра пульсации
+   найденной карточки. На пурпурном акценте доска подсвечивалась синим.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.review-board-page {
+  --rb-lane: var(--bg-secondary);
+  --rb-surface: var(--bg-primary);
+  --rb-border: color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38));
+  --rb-shadow: 0 1px 2px rgba(20, 29, 45, .05),
+               0 6px 14px rgba(20, 29, 45, .05),
+               inset 0 1px 0 rgba(255, 255, 255, .55);
+  --rb-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Тёмная тема переставляет подложки вручную: ступени рамп в ней перевёрнуты, и
+   пара «колонка --bg-secondary + карточка --bg-primary» дала бы карточку темнее
+   колонки — ровно наоборот тому, что нужно. Та же правка, что у ленты чата. */
+:root[data-theme='dark'] .review-board-page {
+  --rb-lane: var(--n-0);
+  --rb-surface: var(--n-100);
+}
+
+/* ── Колонка ───────────────────────────────────────────────────────────── */
+
+/* Здесь, в отличие от остального раздела, правится не поверхность, а
+   раскладка — но это починка, а не перекраивание.
+
+   Потолок ширины в 350 px не давал колонкам занять строку: на мониторе 1920
+   четыре колонки складывались в 1448 px, и справа оставалась пустая полоса в
+   четверть экрана. Убран совсем — ширину делит flex: 1, а min-width в 280 px и
+   горизонтальная прокрутка обёртки по-прежнему держат случай, когда колонок
+   много. Обратная сторона: на широком мониторе доска из двух колонок разгонит
+   каждую почти на половину экрана. */
+.review-column {
+  max-width: none;
+  background: var(--rb-lane);
+  border: 1px solid var(--rb-border);
+  border-radius: 16px;
+}
+
+/* Полей у обёртки не было вовсе, и в плоском списке карточки упирались в края
+   колонки, а верхняя — прямо в шапку. Отступ даётся прямым детям, а не самой
+   обёртке: в режиме секций поля уже есть у секции (.person-section margin), и
+   на обёртке они сложились бы вдвое. */
+.column-content-wrap > .review-card {
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.column-content-wrap > .review-card:first-child {
+  margin-top: 0.5rem;
+}
+
+.column-header {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--rb-surface) 96%, rgba(255, 255, 255, .22)),
+    color-mix(in srgb, var(--rb-surface) 86%, transparent));
+  border-bottom: 1px solid var(--rb-border);
+}
+
+.column-count {
+  border: 1px solid var(--rb-border);
+  background: var(--rb-surface);
+}
+
+/* ── Карточка отзыва ───────────────────────────────────────────────────── */
+
+/* Своей подложки у карточки не было вовсе — нейтральная лежала прямо на
+   колонке и держалась только рамкой в один пиксель прозрачного цвета, то есть
+   ничем. Теперь это приподнятая поверхность, как пузырь над лентой. */
+.review-card {
+  border-color: var(--rb-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--rb-surface) 97%, rgba(255, 255, 255, .3)),
+    var(--rb-surface));
+  box-shadow: var(--rb-shadow);
+  transition: box-shadow var(--transition-fast) var(--rb-ease),
+              transform var(--transition-fast) var(--rb-ease);
+}
+
+.review-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(20, 29, 45, .06),
+              0 14px 30px rgba(20, 29, 45, .1),
+              inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+/* Тональные карточки — та же поверхность, только подложка окрашена смыслом.
+   Ступень 500 с прозрачностью вместо ступени 50: 50-я в тёмной теме
+   переворачивается в почти чёрную, и различить отрицательный отзыв от
+   положительного там было нельзя. */
+.review-card.negative {
+  background: color-mix(in srgb, var(--red-500) 9%, var(--rb-surface));
+  border-color: color-mix(in srgb, var(--red-500) 26%, transparent);
+}
+
+.review-card.positive {
+  background: color-mix(in srgb, var(--green-500) 9%, var(--rb-surface));
+  border-color: color-mix(in srgb, var(--green-500) 26%, transparent);
+}
+
+/* Перетаскиваемая карточка не поворачивается на три градуса: наклон в колонке
+   с ровными краями читается как сбой отрисовки, а не как «взял в руку».
+   Отрыв показывает тень и лёгкое увеличение. */
+.review-card.dragging {
+  transform: scale(1.02);
+  box-shadow: 0 18px 44px rgba(19, 28, 45, .18), 0 2px 8px rgba(19, 28, 45, .08);
+}
+
+/* ── Контролы шапки и фильтров ─────────────────────────────────────────── */
+
+.review-board-header .btn-filter,
+.review-board-header .btn-stats,
+.review-board-header .btn-settings,
+.btn-clear-filters {
+  border-color: color-mix(in srgb, var(--border) 72%, rgba(255, 255, 255, .3));
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-secondary) 88%, #FFFFFF),
+    var(--bg-secondary));
+  box-shadow: 0 3px 9px rgba(24, 35, 54, .055), inset 0 1px 0 rgba(255, 255, 255, .55);
+  transition: box-shadow var(--transition-fast) var(--rb-ease),
+              transform var(--transition-fast) var(--rb-ease),
+              color var(--transition-fast);
+}
+
+.review-board-header .btn-filter:hover,
+.review-board-header .btn-stats:hover,
+.review-board-header .btn-settings:hover,
+.btn-clear-filters:hover {
+  box-shadow: 0 7px 16px rgba(24, 35, 54, .09), inset 0 1px 0 rgba(255, 255, 255, .65);
+  transform: translateY(-1px);
+}
+
+.review-board-header .btn-filter:active,
+.review-board-header .btn-stats:active,
+.review-board-header .btn-settings:active,
+.btn-clear-filters:active {
+  box-shadow: inset 0 2px 5px rgba(24, 35, 54, .1);
+  transform: translateY(0);
+}
+
+/* Включённый фильтр — акцентная плитка того же вещества, что кнопка отправки */
+.review-board-header .btn-filter.active,
+.review-board-header .btn-filter.active:hover {
+  border-color: color-mix(in srgb, var(--primary) 82%, #000000);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 88%, #FFFFFF),
+    var(--primary) 58%,
+    color-mix(in srgb, var(--primary) 93%, #000000));
+  box-shadow: 0 1px 2px rgba(var(--primary-rgb), .18),
+              0 6px 16px rgba(var(--primary-rgb), .22),
+              inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+
+.btn-create {
+  border: 1px solid color-mix(in srgb, var(--primary) 82%, #000000);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 88%, #FFFFFF),
+    var(--primary) 58%,
+    color-mix(in srgb, var(--primary) 93%, #000000));
+  box-shadow: 0 1px 2px rgba(var(--primary-rgb), .18),
+              0 6px 16px rgba(var(--primary-rgb), .22),
+              inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+
+.btn-create:hover {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--primary) 82%, #FFFFFF),
+    var(--primary) 58%,
+    color-mix(in srgb, var(--primary) 90%, #000000));
+  box-shadow: 0 2px 4px rgba(var(--primary-rgb), .2),
+              0 10px 22px rgba(var(--primary-rgb), .28),
+              inset 0 1px 0 rgba(255, 255, 255, .34);
+}
+
+.review-board-filters {
+  border-color: var(--rb-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--rb-surface) 96%, rgba(255, 255, 255, .22)),
+    color-mix(in srgb, var(--rb-surface) 86%, transparent));
+  box-shadow: var(--rb-shadow);
+}
+
+/* Поля — вдавленные, как строка ввода в переписке */
+.review-board-filters select,
+.review-board-filters input {
+  border-color: color-mix(in srgb, var(--border) 68%, rgba(255, 255, 255, .3));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--rb-surface) 78%, transparent);
+  box-shadow: inset 0 1px 2px rgba(19, 28, 45, .05), 0 1px 0 rgba(255, 255, 255, .36);
+}
+
+/* ── Всплывающее окно ──────────────────────────────────────────────────── */
+
+.review-board-page ~ .modal-overlay,
+.review-board-page .modal-overlay {
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+
+/* ── Движение ──────────────────────────────────────────────────────────── */
+
+/* Три бесконечные анимации разом — пульсация найденной карточки, мигание
+   непрочитанного и таймер этапа. Для тех, кому движение мешает, доска
+   превращалась в мерцающую витрину. */
+@media (prefers-reduced-motion: reduce) {
+  .review-card,
+  .review-board-header .btn-filter,
+  .review-board-header .btn-stats,
+  .review-board-header .btn-settings,
+  .btn-clear-filters {
+    transition-duration: 1ms;
+  }
+  .review-card:hover,
+  .review-board-header .btn-filter:hover,
+  .review-board-header .btn-stats:hover,
+  .review-board-header .btn-settings:hover,
+  .btn-clear-filters:hover {
+    transform: none;
+  }
+  .review-card.highlighted,
+  .card-unread-badge,
+  .card-stage-timer--critical svg {
+    animation: none;
+  }
 }

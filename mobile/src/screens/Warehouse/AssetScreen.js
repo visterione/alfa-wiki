@@ -25,13 +25,17 @@ import {
   View, Text, ScrollView, Pressable, StyleSheet, Alert, useWindowDimensions,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {DoorOpen, Printer, Pencil, Boxes, Wrench, Undo2} from 'lucide-react-native';
+import {
+  DoorOpen, Printer, Pencil, Boxes, Wrench, Undo2, ArrowLeftRight,
+} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
 import LabelPreview from '../../components/LabelPreview';
 import MarqueeText from '../../components/MarqueeText';
 import SwipeTabs from '../../components/SwipeTabs';
+import BottomSheet from '../../components/BottomSheet';
+import RoomOperation from './RoomOperation';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan} from '../../store/warehouseStore';
@@ -66,6 +70,12 @@ export default function WarehouseAssetScreen({route, navigation}) {
   const [tab, setTab] = useState('main');
   const [loading, setLoading] = useState(true);
   const [moving, setMoving] = useState(false);
+  // Операции с прибором прямо из карточки (ver. 7.76). Сюда приходят,
+  // отсканировав этикетку, — то есть стоя перед прибором, который надо
+  // переставить или списать; идти за этим в журнал операций и там заново
+  // искать этот же прибор в списке кабинета человеку незачем.
+  const [ops, setOps] = useState(false);
+  const [operation, setOperation] = useState(null);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -351,6 +361,18 @@ export default function WarehouseAssetScreen({route, navigation}) {
         </View>
       )}
 
+      {/* Перемещение и списание — отдельной строкой под быстрыми кнопками, а не
+          третьей кнопкой в их ряду: обе спрашивают о большем, чем «на склад» и
+          «в ремонт» (куда именно, по какой причине), и в ряду из трёх подписи
+          пришлось бы сокращать до нечитаемого. */}
+      {canIssue && Boolean(asset.room) && !openRepair
+        && !asset.isArchived && asset.status !== 'written_off' && (
+        <Pressable style={styles.opsBtn} onPress={() => setOps(true)}>
+          <ArrowLeftRight size={15} color={c.primary} />
+          <Text style={styles.opsText}>Переместить или списать</Text>
+        </Pressable>
+      )}
+
       {/* Отмена — отдельной строкой и приглушённой: это исправление ошибки, а
           не повседневное действие, и стоять наравне с «На склад» ей незачем. */}
       {canIssue && undoable && !asset.isArchived && (
@@ -382,6 +404,36 @@ export default function WarehouseAssetScreen({route, navigation}) {
             </Text>
           </Pressable>
         </View>
+      )}
+
+      <BottomSheet visible={ops} title={asset.name} onClose={() => setOps(false)}>
+        <View style={styles.sheet}>
+          {[
+            {key: 'transfer', label: 'Переместить в другой кабинет'},
+            {key: 'writeoff', label: 'Списать'},
+          ].map(item => (
+            <Pressable
+              key={item.key}
+              style={styles.sheetRow}
+              onPress={() => { setOps(false); setOperation(item.key); }}>
+              <Text style={styles.sheetRowText}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </BottomSheet>
+
+      {Boolean(operation) && (
+        <RoomOperation
+          room={asset.room}
+          type={operation}
+          target={{
+            assetId: asset.id,
+            name: asset.name,
+            note: asset.inventoryNumber,
+          }}
+          onClose={() => setOperation(null)}
+          onDone={() => { setOperation(null); reload(); }}
+        />
       )}
 
       <SwipeTabs
@@ -427,6 +479,17 @@ const makeStyles = c => StyleSheet.create({
     backgroundColor: c.bgPrimary, borderRadius: radius.md,
   },
   quickText: {fontFamily: font.medium, fontSize: 13, color: c.primary},
+  opsBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 11, marginBottom: 14,
+    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+  },
+  opsText: {fontFamily: font.medium, fontSize: 13, color: c.primary},
+
+  sheet: {paddingHorizontal: 16, paddingBottom: 8},
+  sheetRow: {paddingVertical: 13, paddingHorizontal: 12, borderRadius: radius.md},
+  sheetRowText: {fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
+
   undoBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     paddingVertical: 11, marginBottom: 14,
