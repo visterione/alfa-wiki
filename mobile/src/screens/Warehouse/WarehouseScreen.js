@@ -24,7 +24,7 @@ import {
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {
   useWarehouseAccess, loadWarehouseAccess, setWarehouseBadge, useWarehouseMedCenter,
@@ -278,10 +278,10 @@ export default function WarehouseScreen({navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
 
   placement: {
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -305,7 +305,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 13,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -328,7 +328,7 @@ const makeStyles = c => StyleSheet.create({
     flexGrow: 1,
     flexBasis: '46%',
     minHeight: 108,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     padding: 14,
     justifyContent: 'space-between',
@@ -360,7 +360,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -368,6 +368,6 @@ const makeStyles = c => StyleSheet.create({
   },
   settingsText: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
 
-  denied: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12, backgroundColor: c.bgSecondary},
+  denied: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12},
   deniedTitle: {fontFamily: font.semiBold, fontSize: 16, color: c.textPrimary, textAlign: 'center'},
 });
