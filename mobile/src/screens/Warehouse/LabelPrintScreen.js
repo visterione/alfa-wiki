@@ -16,7 +16,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import {Printer, Check, Settings, AlertTriangle} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {loadPrinter} from '../../store/printerStore';
 import {sendPrintJob, PRINTER_PORT} from '../../services/ptouchPrint';
@@ -184,7 +184,7 @@ export default function WarehouseLabelPrintScreen({route, navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   content: {padding: 16, paddingBottom: 40},
   title: {fontFamily: font.semiBold, fontSize: 19, color: c.textPrimary},
   subtitle: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 3},
@@ -192,7 +192,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 11,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -210,13 +210,14 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonOff: {opacity: 0.45},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
   ready: {
     flexDirection: 'row',
     gap: 9,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     padding: 13,
     marginBottom: 12,
@@ -225,7 +226,7 @@ const makeStyles = c => StyleSheet.create({
   error: {
     flexDirection: 'row',
     gap: 9,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     padding: 13,
     marginTop: 12,
@@ -239,12 +240,12 @@ const makeStyles = c => StyleSheet.create({
     marginBottom: 8,
     marginLeft: 2,
   },
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, overflow: 'hidden'},
+  card: {...glassSurface(c), borderRadius: radius.lg, overflow: 'hidden'},
   item: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   itemMain: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
   itemSub: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},

@@ -13,7 +13,7 @@ import {
 
 // Зеркало frontend/src/components/chat/badgeIcons.js. Метку считает бэкенд
 // (иконка от роли, цвет от клиники), сюда приходит готовый объект.
-const ICONS = {
+export const BADGE_ICONS = {
   Activity, Baby, BadgeCheck, Beaker, Bone, BookOpen, Bot, Brain, Briefcase,
   Building2, Calculator, CalendarDays, Camera, ClipboardList, Cpu, CreditCard,
   Cross, Crown, Database, Dna, Droplet, Ear, Eye, Flame, FlaskConical, Gavel,
@@ -27,6 +27,6 @@ const ICONS = {
 
 export default function UserBadge({badge, size = 16}) {
   if (!badge?.value) return null;
-  const Icon = ICONS[badge.value] || BadgeCheck;
+  const Icon = BADGE_ICONS[badge.value] || BadgeCheck;
   return <Icon size={size} color={badge.color || '#94a3b8'} accessibilityLabel={badge.label} />;
 }

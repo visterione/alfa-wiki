@@ -59,8 +59,10 @@ import {
 
 import {warehouse as warehouseApi, users as usersApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassBackdrop from '../../components/GlassBackdrop';
+import GlassBar from '../../components/GlassBar';
 import BottomSheet from '../../components/BottomSheet';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {loadLocationTree, useWarehouseMedCenter, setWarehouseMedCenter} from '../../store/warehouseStore';
 import FloorSwitch from './FloorSwitch';
@@ -389,7 +391,7 @@ export default function WarehouseInventoryNewScreen({navigation}) {
       />
 
       {ready && (
-        <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+        <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
           <Pressable style={styles.params} onPress={() => setSheet('params')}>
             <Users size={17} color={c.primary} />
             <View style={styles.rowText}>
@@ -409,10 +411,11 @@ export default function WarehouseInventoryNewScreen({navigation}) {
               {starting ? 'Открываю…' : `Считать · кабинетов ${picked.size}`}
             </Text>
           </Pressable>
-        </View>
+        </GlassBar>
       )}
 
       <BottomSheet
+        glass
         visible={sheet !== null}
         title={sheet === 'chairman' ? 'Председатель комиссии'
           : sheet === 'responsible' ? 'Материально ответственный'
@@ -501,23 +504,25 @@ export default function WarehouseInventoryNewScreen({navigation}) {
       </BottomSheet>
 
       <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
-        <View style={styles.camera}>
-          {Boolean(device) && (
-            <Camera
-              style={StyleSheet.absoluteFill}
-              device={device}
-              isActive={scanning}
-              codeScanner={codeScanner}
-            />
-          )}
-          <Pressable
-            style={[styles.cameraClose, {top: insets.top + 8}]}
-            onPress={() => setScanning(false)}
-            hitSlop={10}>
-            <X size={22} color="#FFFFFF" />
-          </Pressable>
-          <View style={styles.frame} pointerEvents="none" />
-        </View>
+        <GlassBackdrop>
+          <View style={styles.camera}>
+            {Boolean(device) && (
+              <Camera
+                style={StyleSheet.absoluteFill}
+                device={device}
+                isActive={scanning}
+                codeScanner={codeScanner}
+              />
+            )}
+            <Pressable
+              style={[styles.cameraClose, {top: insets.top + 8}]}
+              onPress={() => setScanning(false)}
+              hitSlop={10}>
+              <X size={22} color="#FFFFFF" />
+            </Pressable>
+            <View style={styles.frame} pointerEvents="none" />
+          </View>
+        </GlassBackdrop>
       </Modal>
     </View>
   );
@@ -535,7 +540,7 @@ function SheetRow({styles, c, label, value, onPress}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary, paddingTop: 12},
+  root: {flex: 1, paddingTop: 12},
   // Верхний отступ теперь на самом экране: первой идёт лента этажей, а она,
   // как и в списке кабинетов, своего отступа сверху не держит.
   tools: {flexDirection: 'row', alignItems: 'center', gap: 8, margin: 16, marginTop: 10, marginBottom: 10},
@@ -544,7 +549,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     height: 42,
@@ -564,7 +569,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 11,
@@ -606,15 +611,14 @@ const makeStyles = c => StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgSecondary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   params: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -629,6 +633,7 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonOff: {opacity: 0.5},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
@@ -677,7 +682,7 @@ const makeStyles = c => StyleSheet.create({
     gap: 10,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   personName: {flex: 1, fontFamily: font.regular, fontSize: 14, color: c.textPrimary},
   camera: {flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center'},

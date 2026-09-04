@@ -13,8 +13,10 @@ import {
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
-import {radius, font} from '../theme';
-import {useThemedStyles} from '../store/settingsStore';
+import {BlurView} from '@react-native-community/blur';
+
+import {radius, font, glassOverlay, blurKind} from '../theme';
+import {useThemedStyles, useTheme} from '../store/settingsStore';
 
 /**
  * Нижняя шторка с выездом.
@@ -30,8 +32,11 @@ import {useThemedStyles} from '../store/settingsStore';
  * одной из платформ, и поле ввода в шторке (быстрый ввод задачи, название
  * личного дела) оказывалось прямо под клавиатурой: человек печатал вслепую.
  */
-export default function BottomSheet({visible, title, onClose, children, maxHeightRatio = 0.8}) {
+export default function BottomSheet({
+  visible, title, onClose, onClosed, children, maxHeightRatio = 0.8, glass = false,
+}) {
   const styles = useThemedStyles(makeStyles);
+  const c = useTheme();
   const insets = useSafeAreaInsets();
   const {height: screenHeight} = useWindowDimensions();
 
@@ -57,9 +62,19 @@ export default function BottomSheet({visible, title, onClose, children, maxHeigh
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(({finished}) => {
-      if (finished) setMounted(false);
+      if (!finished) return;
+      setMounted(false);
+      /**
+       * Сигнал «шторки на экране больше нет».
+       *
+       * Нужен тому, кто по выбору в шторке открывает следующее окно: Modal
+       * остаётся смонтированным всё время уезда, и вторая модалка, поднятая в
+       * тот же кадр, на обеих платформах встаёт поверх ещё живой первой — экран
+       * замирает и не отвечает на касания. Открывать её надо здесь.
+       */
+      onClosed?.();
     });
-  }, [visible, mounted, progress]);
+  }, [visible, mounted, progress, onClosed]);
 
   if (!mounted) return null;
 
@@ -83,12 +98,28 @@ export default function BottomSheet({visible, title, onClose, children, maxHeigh
         <Animated.View
           style={[
             styles.sheet,
+            // Стеклянная шторка (ver. 7.77) — только там, где её об этом
+            // просят: у переписки и задач фон свой, и полупрозрачное дно
+            // показало бы им ленту сквозь материал, которого они не выбирали.
+            glass && [styles.sheetGlass, glassOverlay(c)],
             {
               transform: [{translateY}],
               maxHeight: screenHeight * maxHeightRatio,
               paddingBottom: insets.bottom,
             },
           ]}>
+          {/* Размытие под заливкой, а не вместо неё: системное «Уменьшение
+              прозрачности» гасит BlurView, и без собственной заливки шторка
+              стала бы прозрачной насквозь. */}
+          {glass && (
+            <BlurView
+              style={StyleSheet.absoluteFill}
+              blurType={blurKind(c)}
+              blurAmount={18}
+              reducedTransparencyFallbackColor={c.bgPrimary}
+            />
+          )}
+
           {/* Полоска-«ручка»: подсказывает, что шторку можно закрыть свайпом
               вниз по подложке, и отделяет её от содержимого экрана */}
           <View style={styles.grabber} />
@@ -103,6 +134,9 @@ export default function BottomSheet({visible, title, onClose, children, maxHeigh
 const makeStyles = c => StyleSheet.create({
   backdrop: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)'},
   wrap: {flex: 1, justifyContent: 'flex-end'},
+  // Обрезка обязательна: под шторкой лежит BlurView во всю её площадь, и без
+  // неё размытие вылезло бы прямоугольником из-под скруглённых углов.
+  sheetGlass: {overflow: 'hidden', borderTopWidth: 1},
   sheet: {
     backgroundColor: c.bgPrimary,
     borderTopLeftRadius: radius.xl,

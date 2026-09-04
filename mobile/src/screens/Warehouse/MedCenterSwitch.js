@@ -146,7 +146,7 @@ export default function MedCenterSwitch() {
         <ChevronDown size={14} color="#FFFFFF" />
       </Pressable>
 
-      <BottomSheet visible={sheet} title="Медцентр" onClose={() => setSheet(false)}>
+      <BottomSheet glass visible={sheet} title="Медцентр" onClose={() => setSheet(false)}>
         <ScrollView>
           {/* Вся сеть — полноценный режим, а не «ничего не выбрано»: он нужен
               снабжению и тем, кто ведёт сеть целиком. Поэтому у него своя

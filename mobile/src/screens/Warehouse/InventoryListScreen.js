@@ -18,7 +18,7 @@ import {ChevronRight, Plus} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, accentShadow} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan, useWarehouseMedCenter} from '../../store/warehouseStore';
 import {useNetworkFallback, NetworkFallbackHint} from './MedCenterSwitch';
@@ -126,12 +126,12 @@ export default function WarehouseInventoryListScreen({navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -148,7 +148,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -159,6 +159,7 @@ const makeStyles = c => StyleSheet.create({
     height: 34,
     borderRadius: 17,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
     alignItems: 'center',
     justifyContent: 'center',
   },

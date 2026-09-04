@@ -118,6 +118,65 @@ export const media = {
 // а МОЛ человек назначает и себя тоже.
 export const users = {
   listBasic: () => api.get('/users/list'),
+
+  /**
+   * Админский раздел «Пользователи» (ver. 7.77 в мобилке).
+   *
+   * Здесь весь набор веба, без изъятий: список, карточка, заведение, правка,
+   * корзина и всё дерево прав. Урезать его, как урезаны склад и онбординг, не
+   * вышло: сотрудника заводят и правят в одном заходе — вчерашнюю регистратуру
+   * переводят в старшие и тут же выдают ей зарплатный модуль, — и половина
+   * работы, оставленная в вебе, означала бы дорогу к компьютеру ради второго
+   * шага.
+   *
+   * Права проверяет сервер: пользователи и корзина — adminAccess.users,
+   * зарплатные и складские права — только isAdmin (см. ниже).
+   */
+  list: () => api.get('/users'),
+  get: id => api.get(`/users/${id}`),
+  create: data => api.post('/users', data),
+  update: (id, data) => api.put(`/users/${id}`, data),
+  // Не удаление, а корзина: восстановить человека можно, пока не почистили
+  remove: id => api.delete(`/users/${id}`),
+  trash: () => api.get('/users/trash'),
+  restore: id => api.post(`/users/${id}/restore`),
+  roles: () => api.get('/roles'),
+  medCenters: () => api.get('/users/medcenters/list'),
+
+  // Аватар кладётся своей ручкой, а не общей /media/upload: та складывает файлы
+  // в общее хранилище вложений, а портреты живут отдельной папкой uploads/avatars
+  uploadAvatar: async (file) => {
+    const formData = new FormData();
+    formData.append('avatar', {
+      uri: file.uri,
+      type: file.type || 'image/jpeg',
+      name: file.name || 'avatar.jpg',
+    });
+    return api.post('/users/upload-avatar', formData, {
+      headers: {'Content-Type': 'multipart/form-data'},
+      timeout: UPLOAD_TIMEOUT,
+    });
+  },
+
+  // Сотрудника заводят из «Реновации»: имя, почта, телефон и специальность там
+  // уже введены, и перенабирать их с телефона значит переносить ещё и опечатки
+  misSearch: q => api.get('/users/mis-search', {params: {q}}),
+  misAvatar: avatarUrl => api.post('/users/mis-avatar', {avatarUrl}),
+
+  /**
+   * Права зарплатного и складского модулей.
+   *
+   * Лежат не в самой карточке, а своими таблицами, поэтому и читаются отдельными
+   * запросами — как в вебе. Обе ручки закрыты isAdmin, а не adminAccess.users:
+   * иначе тот, кому доверили заводить людей, выдал бы сам себе доступ к
+   * зарплатам. Поэтому у неполного администратора эти ветки дерева просто не
+   * рисуются — 403 здесь ответ, а не сбой.
+   */
+  salaryPerm: userId => api.get(`/referral-bonuses/permissions/${userId}`),
+  saveSalaryPerm: (userId, data) => api.put(`/referral-bonuses/permissions/${userId}`, data),
+  warehouseCatalogue: () => api.get('/warehouse/permissions/catalogue'),
+  warehousePerm: userId => api.get(`/warehouse/permissions/${userId}`),
+  saveWarehousePerm: (userId, data) => api.put(`/warehouse/permissions/${userId}`, data),
 };
 
 // ── Chat ────────────────────────────────────────────────────────────────────

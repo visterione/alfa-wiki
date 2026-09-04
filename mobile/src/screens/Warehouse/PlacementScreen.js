@@ -73,7 +73,7 @@
  * предложение отклонили. Печать остаётся отдельным шагом — принтер бывает не с
  * собой, а этикетки нужны не всегда.
  */
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   View, Text, Image, FlatList, TextInput, Pressable, StyleSheet, Alert, Modal,
 } from 'react-native';
@@ -82,16 +82,19 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Camera, useCameraDevice, useCodeScanner} from 'react-native-vision-camera';
 import {
   DoorOpen, ScanLine, Search, X, Check, Package, Boxes, Building2,
-  ChevronRight, ChevronLeft, Printer, ClipboardList,
+  ChevronRight, Printer, ClipboardList,
 } from 'lucide-react-native';
 
 import CONFIG from '../../config';
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassBackdrop from '../../components/GlassBackdrop';
 import FloorSwitch from './FloorSwitch';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, glassLine, accentShadow} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {loadLocationTree, useWarehouseCan} from '../../store/warehouseStore';
+import {
+  loadLocationTree, useWarehouseCan, useWarehouseMedCenter,
+} from '../../store/warehouseStore';
 import {
   qtyText, moneyText, flattenRooms, roomMatches, roomHeadText, roomSubText,
 } from './warehouseMeta';
@@ -484,13 +487,42 @@ export default function WarehousePlacementScreen() {
  * неё раскладка сорвалась бы уже после того, как человек всё отметил.
  */
 function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, onCloseScan, onFound}) {
-  const [nodeKey, setNodeKey] = useState(ROOT_KEY);
+  /**
+   * Спуск начинается не с корня, а с медцентра из шапки (ver. 7.78).
+   *
+   * Размещение — это обход одного здания, и медцентр в нём не меняется весь
+   * день. Выбирать его заново на каждом входе значило требовать ответа на
+   * вопрос, на который уже отвечено переключателем в шапке — тем же, что
+   * определяет остальные экраны склада.
+   *
+   * `null` здесь означает «идём за переключателем», а не «корень»: пока человек
+   * сам не спустился в медцентр (это возможно только в режиме «вся сеть»), шаг
+   * следует за шапкой, и смена клиники там сразу уводит спуск туда.
+   *
+   * Строки «Все медцентры» здесь нет: подниматься некуда — вопрос «какая
+   * клиника» задан переключателем в шапке, и второй орган управления с тем же
+   * смыслом рядом с поиском только повторял бы его. Спуск живёт ровно до выбора
+   * кабинета: как только он сделан, шаг снимается с экрана целиком, и следующий
+   * заход снова начинается с ответа шапки.
+   */
+  const {medCenterId} = useWarehouseMedCenter();
+  const [nodeKey, setNodeKey] = useState(null);
   // Выбранный этаж. Пусто до первого касания — тогда берётся первый по списку.
   const [floorKey, setFloorKey] = useState(null);
   const [q, setQ] = useState('');
 
   const nodes = useMemo(() => buildNodes(tree), [tree]);
-  const node = useMemo(() => resolveNode(nodes, nodeKey), [nodes, nodeKey]);
+
+  // Медцентр без единого кабинета в дерево не попадает (см. buildNodes), и
+  // тогда начинаем с корня: спуск в узел, которого нет, показал бы пустоту.
+  const homeKey = medCenterId && nodes.has(`mc:${medCenterId}`) ? `mc:${medCenterId}` : ROOT_KEY;
+  const activeKey = nodeKey ?? homeKey;
+
+  // Сменили медцентр в шапке — спуск идёт туда, а не остаётся в прежнем
+  // здании: переключатель для того и нажимают.
+  useEffect(() => { setNodeKey(null); setFloorKey(null); setQ(''); }, [medCenterId]);
+
+  const node = useMemo(() => resolveNode(nodes, activeKey), [nodes, activeKey]);
 
   // Этажи — лентой над списком, а не уровнем спуска: ровно как в разделе
   // «Кабинеты» (ver. 7.50). Раскладка это обход здания, и человек, стоящий в
@@ -527,23 +559,7 @@ function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, on
     : (listNode?.children || []).map(child => ({type: 'node', key: `n-${child.key}`, node: child}));
 
   return (
-    <View style={styles.root}>
-      <Pressable style={styles.scanWide} onPress={onScan}>
-        <ScanLine size={20} color="#FFFFFF" />
-        <Text style={styles.scanWideText}>QR-код</Text>
-      </Pressable>
-
-      {/* Возврат на уровень выше. Своей шапки у шага нет — он живёт внутри
-          экрана размещения, и системная стрелка «назад» увела бы из него совсем. */}
-      {nodeKey !== ROOT_KEY && (
-        <Pressable
-          style={styles.up}
-          onPress={() => { setNodeKey(ROOT_KEY); setFloorKey(null); setQ(''); }}>
-          <ChevronLeft size={16} color={c.primary} />
-          <Text style={styles.upText}>Все медцентры</Text>
-        </Pressable>
-      )}
-
+    <View style={styles.stepRoot}>
       {/* Поля по линии поиска и списка этого экрана, интервал — как у соседей:
           здесь всё стоит на восьми. */}
       <FloorSwitch
@@ -554,15 +570,29 @@ function RoomStep({tree, frozen, styles, c, insets, onScan, onPick, scanning, on
         spacing={8}
       />
 
-      <View style={styles.stepSearch}>
-        <Search size={15} color={c.textTertiary} />
-        <TextInput
-          style={styles.searchInput}
-          value={q}
-          onChangeText={setQ}
-          placeholder={listNode?.kind === 'root' ? 'Кабинет по всей сети' : 'Кабинет'}
-          placeholderTextColor={c.textTertiary}
-        />
+      {/* Сканер — значком рядом с поиском (ver. 7.78). Полосой во всю ширину
+          он занимал верх экрана и читался как главное действие, хотя это
+          второй способ ответить на тот же вопрос «какой кабинет»: первый —
+          набрать номер. Теперь оба стоят в одной строке, и выбор между ними
+          стоит одного взгляда, а не половины экрана. */}
+      <View style={styles.searchRow}>
+        <View style={[styles.stepSearch, styles.searchField]}>
+          <Search size={15} color={c.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            value={q}
+            onChangeText={setQ}
+            placeholder={listNode?.kind === 'root' ? 'Кабинет по всей сети' : 'Кабинет'}
+            placeholderTextColor={c.textTertiary}
+          />
+        </View>
+        <Pressable
+          style={styles.scanBtn}
+          onPress={onScan}
+          accessibilityRole="button"
+          accessibilityLabel="Сканировать QR кабинета">
+          <ScanLine size={19} color="#FFFFFF" />
+        </Pressable>
       </View>
 
       <FlatList
@@ -708,25 +738,36 @@ function RoomScanner({styles, onClose, onFound}) {
 
   return (
     <Modal animationType="slide" transparent={false} onRequestClose={onClose}>
-      <View style={styles.scanModal}>
-        {device && (
-          <Camera style={StyleSheet.absoluteFill} device={device} isActive codeScanner={codeScanner} />
-        )}
-        <Pressable style={styles.scanClose} onPress={onClose} hitSlop={10}>
-          <X size={22} color="#FFFFFF" />
-        </Pressable>
-      </View>
+      <GlassBackdrop>
+        <View style={styles.scanModal}>
+          {device && (
+            <Camera style={StyleSheet.absoluteFill} device={device} isActive codeScanner={codeScanner} />
+          )}
+          <Pressable style={styles.scanClose} onPress={onClose} hitSlop={10}>
+            <X size={22} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </GlassBackdrop>
     </Modal>
   );
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
+  /**
+   * Отступ шага выбора кабинета от шапки — на самом шаге, а не на первом его
+   * элементе. Первым бывает то возврат «Все медцентры», то переключатель
+   * этажей, то сразу поиск (на «всей сети» первых двух нет вовсе), и отступ,
+   * привязанный к любому из них, пропадал ровно в том случае, когда этого
+   * элемента на экране не оказывалось. Раньше его держала широкая кнопка QR —
+   * вместе с ней он и исчез.
+   */
+  stepRoot: {flex: 1, paddingTop: 12},
   roomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     margin: 12,
     marginBottom: 8,
     paddingHorizontal: 14,
@@ -749,18 +790,19 @@ const makeStyles = c => StyleSheet.create({
     borderRadius: radius.md,
   },
   freshText: {flex: 1, fontFamily: font.medium, fontSize: 13, color: c.primary, lineHeight: 18},
-  scanWide: {
-    flexDirection: 'row',
+  // Поиск и сканер стоят в одной строке: поле тянется, кнопка держит квадрат
+  // по высоте поля — иначе она выпирала бы из строки и снова притягивала взгляд.
+  searchRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginHorizontal: 12},
+  searchField: {flex: 1, marginHorizontal: 0},
+  scanBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    height: 52,
-    margin: 12,
-    marginBottom: 10,
-    borderRadius: radius.lg,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
-  scanWideText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
   tools: {flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12},
   // Поиск в строке инструментов списка ведомости: делит её с переключателями
   // вида, поэтому flex
@@ -774,7 +816,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 12,
     height: 40,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   // Переключатель вида: значок плюс сколько таких позиций в очереди. Число
   // здесь отвечает «а есть ли там вообще материалы» до нажатия.
@@ -790,7 +832,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 12,
     height: 40,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   logo: {width: 34, height: 34, borderRadius: radius.md, backgroundColor: '#FFFFFF'},
   levelIcon: {
@@ -810,14 +852,6 @@ const makeStyles = c => StyleSheet.create({
     minWidth: 18,
     textAlign: 'right',
   },
-  up: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  upText: {fontFamily: font.medium, fontSize: 13, color: c.primary},
   groupTitle: {
     fontFamily: font.medium,
     fontSize: 12,
@@ -833,7 +867,7 @@ const makeStyles = c => StyleSheet.create({
     height: 40,
     marginBottom: 8,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   kindToggleOn: {backgroundColor: c.primary},
   kindCount: {fontFamily: font.semiBold, fontSize: 12, color: c.textSecondary},
@@ -851,7 +885,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 11,
@@ -876,8 +910,8 @@ const makeStyles = c => StyleSheet.create({
   bottom: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     paddingHorizontal: 12, paddingTop: 10,
-    backgroundColor: c.bgPrimary,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border,
+    ...glassOverlay(c),
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glassLine(c),
   },
   send: {
     height: 48, borderRadius: radius.md, backgroundColor: c.primary,
@@ -886,11 +920,11 @@ const makeStyles = c => StyleSheet.create({
   sendOff: {opacity: 0.5},
   sendText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, textAlign: 'center', padding: 24, lineHeight: 19},
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
+  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary, textAlign: 'center', lineHeight: 20},
   pickRow: {
     flexDirection: 'row', alignItems: 'center', gap: 11,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    ...glassSurface(c), borderRadius: radius.md,
     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8,
   },
   pickRowOff: {opacity: 0.45},
@@ -900,7 +934,7 @@ const makeStyles = c => StyleSheet.create({
   },
   blockedBtn: {
     marginTop: 20, paddingHorizontal: 18, paddingVertical: 12,
-    borderRadius: radius.md, backgroundColor: c.bgPrimary,
+    borderRadius: radius.md, ...glassSurface(c),
   },
   blockedBtnText: {fontFamily: font.medium, fontSize: 14, color: c.primary},
   scanModal: {flex: 1, backgroundColor: '#000000'},

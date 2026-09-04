@@ -13,13 +13,14 @@
  * экрана, каким «Настройки» были раньше, заодно перестал быть свитком: чтобы
  * поменять мелодию, больше не нужно проезжать мимо восьми узоров фона.
  *
- * Выход из аккаунта остался внизу этого экрана и в колесе действий на долгое
- * нажатие знака «Альфа» (см. AlfaTabBar) — там он был у профиля и переехал
- * сюда вместе с ним.
+ * Выход из аккаунта живёт только в колесе действий на долгое нажатие знака
+ * «Альфа» (см. AlfaTabBar). Внизу этого экрана он тоже был, и это оказалось
+ * двумя кнопками для одного действия: в колесе выход стоит рядом с такими же
+ * действиями других разделов, и искать его там человек и научился.
  */
 import React from 'react';
-import {View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert} from 'react-native';
-import {Bell, Palette, User, Lock, LogOut, Timer, ChevronRight} from 'lucide-react-native';
+import {View, Text, ScrollView, TouchableOpacity, StyleSheet} from 'react-native';
+import {Bell, Palette, User, Lock, Timer, ChevronRight} from 'lucide-react-native';
 
 import {radius, font} from '../../theme';
 import {useTheme, useThemedStyles, useSettings} from '../../store/settingsStore';
@@ -41,16 +42,9 @@ export default function SettingsScreen({navigation}) {
   const base = useThemedStyles(makeSettingsStyles);
   const styles = useThemedStyles(makeStyles);
   const settings = useSettings();
-  const {user, logout} = useAuth();
+  const {user} = useAuth();
   // Панель лежит поверх экрана — высоту под неё резервируем сами
   const tabInset = useTabBarInset();
-
-  const handleLogout = () => {
-    Alert.alert('Выйти из аккаунта?', '', [
-      {text: 'Отмена', style: 'cancel'},
-      {text: 'Выйти', style: 'destructive', onPress: logout},
-    ]);
-  };
 
   return (
     <ScrollView
@@ -124,11 +118,6 @@ export default function SettingsScreen({navigation}) {
           onPress={() => navigation.navigate('TasksNorm')}
         />
       </Section>
-
-      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-        <LogOut size={18} color={c.error} style={styles.logoutIcon} />
-        <Text style={styles.logoutText}>Выйти из аккаунта</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -149,12 +138,4 @@ const makeStyles = c => StyleSheet.create({
   meName: {fontSize: 18, fontFamily: font.semiBold, color: c.textPrimary},
   meRole: {fontSize: 13, fontFamily: font.regular, color: c.textSecondary, marginTop: 3},
 
-  logoutBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: c.bgPrimary, borderRadius: radius.lg,
-    paddingVertical: 15,
-    borderWidth: 1, borderColor: `${c.error}44`,
-  },
-  logoutIcon: {marginRight: 10},
-  logoutText: {fontSize: 15, fontFamily: font.medium, color: c.error},
 });

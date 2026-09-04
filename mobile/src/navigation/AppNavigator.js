@@ -1,6 +1,7 @@
 import React, {useState, useEffect, useMemo} from 'react';
 import {
   StyleSheet,
+  View,
   Image,
   TouchableOpacity,
 } from 'react-native';
@@ -13,7 +14,7 @@ import {
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import LinearGradient from 'react-native-linear-gradient';
-import {QrCode} from 'lucide-react-native';
+import {QrCode, UserPlus, Trash2, PenLine} from 'lucide-react-native';
 
 import {useAuth} from '../store/authStore';
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -27,6 +28,10 @@ import SettingsAccountScreen from '../screens/Settings/AccountScreen';
 import SettingsSecurityScreen from '../screens/Settings/SecurityScreen';
 import SettingsNotificationsScreen from '../screens/Settings/NotificationsScreen';
 import SettingsAppearanceScreen from '../screens/Settings/AppearanceScreen';
+import AdminUsersScreen from '../screens/Admin/UsersScreen';
+import AdminUserScreen from '../screens/Admin/UserScreen';
+import AdminUserFormScreen from '../screens/Admin/UserFormScreen';
+import AdminTrashScreen from '../screens/Admin/TrashScreen';
 import EventScreen from '../screens/Calendar/EventScreen';
 import EventEditScreen from '../screens/Calendar/EventEditScreen';
 import TasksScreen from '../screens/Tasks/TasksScreen';
@@ -34,6 +39,7 @@ import TasksInboxScreen from '../screens/Tasks/InboxScreen';
 import TaskListScreen from '../screens/Tasks/TaskListScreen';
 import TaskCardScreen from '../screens/Tasks/TaskCardScreen';
 import NormScreen from '../screens/Tasks/NormScreen';
+import GlassBackdrop from '../components/GlassBackdrop';
 import WarehouseScreen from '../screens/Warehouse/WarehouseScreen';
 import MedCenterSwitch from '../screens/Warehouse/MedCenterSwitch';
 import WarehouseScannerScreen from '../screens/Warehouse/ScannerScreen';
@@ -161,6 +167,15 @@ function HeaderIconButton({icon: Icon, label, onPress}) {
     </TouchableOpacity>
   );
 }
+
+/** Несколько кнопок в шапке: у экрана «Пользователи» их две — корзина и «завести». */
+function HeaderActions({children}) {
+  return <View style={headerStyles.actions}>{children}</View>;
+}
+
+const headerStyles = StyleSheet.create({
+  actions: {flexDirection: 'row', alignItems: 'center', gap: 18},
+});
 
 function HeaderBackground() {
   const c = useTheme();
@@ -316,126 +331,143 @@ function TasksStack() {
  */
 function WarehouseStack() {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerBackground: () => <HeaderBackground />,
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
-        headerTitleAlign: 'center',
-        headerBackTitleVisible: false,
-        headerBackButtonDisplayMode: 'minimal',
-        ...STACK_ANIMATION,
-      }}>
-      <Stack.Screen
-        name="WarehouseHome"
-        component={WarehouseScreen}
-        options={{title: 'Склад'}}
-      />
-      {/* Сканер без шапки: кадр камеры занимает экран целиком, а закрывается он
-          своей кнопкой поверх кадра — системная шапка над видоискателем
-          выглядела бы как чужая полоса на объективе. */}
-      <Stack.Screen
-        name="WarehouseScanner"
-        component={WarehouseScannerScreen}
-        options={{headerShown: false}}
-      />
-      {/* Заголовок карточки — инвентарный номер, его ставит сам экран */}
-      <Stack.Screen
-        name="WarehouseAsset"
-        component={WarehouseAssetScreen}
-        options={{title: 'Оборудование'}}
-      />
-      {/* Правка карточек с телефона (ver. 7.24). Заголовок — тот же инвентарный
-          номер: форма и просмотр это один предмет, и подписаны они одинаково */}
-      <Stack.Screen
-        name="WarehouseAssetEdit"
-        component={WarehouseAssetEditScreen}
-        options={{title: 'Правка карточки'}}
-      />
-      <Stack.Screen
-        name="WarehouseMaterialEdit"
-        component={WarehouseMaterialEditScreen}
-        options={{title: 'Материал'}}
-      />
-      {/* Заголовок зависит от того, что заводят, — его ставит сам экран */}
-      <Stack.Screen
-        name="WarehouseItemCreate"
-        component={WarehouseItemCreateScreen}
-        options={{title: 'Завести'}}
-      />
-      <Stack.Screen
-        name="WarehouseMailings"
-        component={WarehouseMailingsScreen}
-        options={{title: 'Отчёты и рассылки'}}
-      />
-      {/* Разделы «Оборудование», «Материалы» и «Операции» — те же, что в вебе.
-          Первые два отвечают на вопрос «где у нас такое», третий ведёт журнал
-          движений и позволяет провести выдачу, приём, перемещение и списание. */}
-      {/* Переключатель медцентров стоит в шапке каждого списка, а не только на
-          главной склада: выбор действует неделями и со списка не виден, и
-          короткий список без него читается как «имущество пропало». Заодно
-          переключиться можно там, где это заметил, а не возвращаясь назад.
-          На карточках прибора и кабинета его нет намеренно — они показывают
-          один предмет, и отбирать там нечего. */}
-      <Stack.Screen
-        name="WarehouseAssets"
-        component={WarehouseAssetsScreen}
-        options={{title: 'Оборудование', headerRight: () => <MedCenterSwitch />}}
-      />
-      <Stack.Screen
-        name="WarehouseStock"
-        component={WarehouseStockScreen}
-        options={{title: 'Материалы', headerRight: () => <MedCenterSwitch />}}
-      />
-      <Stack.Screen
-        name="WarehouseOperations"
-        component={WarehouseOperationsScreen}
-        options={{title: 'Операции', headerRight: () => <MedCenterSwitch />}}
-      />
-      <Stack.Screen
-        name="WarehouseRoom"
-        component={WarehouseRoomScreen}
-        options={{title: 'Кабинет'}}
-      />
-      <Stack.Screen
-        name="WarehouseInventoryList"
-        component={WarehouseInventoryListScreen}
-        options={{title: 'Инвентаризация', headerRight: () => <MedCenterSwitch />}}
-      />
-      <Stack.Screen
-        name="WarehouseInventoryCount"
-        component={WarehouseInventoryCountScreen}
-        options={{title: 'Пересчёт'}}
-      />
-      <Stack.Screen
-        name="WarehouseInventoryNew"
-        component={WarehouseInventoryNewScreen}
-        options={{title: 'Новая опись', headerRight: () => <MedCenterSwitch />}}
-      />
-      <Stack.Screen
-        name="WarehousePlacement"
-        component={WarehousePlacementScreen}
-        options={{title: 'Размещение'}}
-      />
-      {/* Заголовок и кнопка принтера в шапке — на самом экране: список кабинетов
-          переключается между просмотром и отбором под печать, и шапка меняется
-          вместе с ним */}
-      <Stack.Screen
-        name="WarehouseRooms"
-        component={WarehouseRoomPickerScreen}
-        options={{title: 'Кабинеты'}}
-      />
-      <Stack.Screen
-        name="WarehouseLabelPrint"
-        component={WarehouseLabelPrintScreen}
-        options={{title: 'Печать'}}
-      />
-      <Stack.Screen
-        name="WarehousePrinter"
-        component={WarehousePrinterScreen}
-        options={{title: 'Принтер этикеток'}}
-      />
-    </Stack.Navigator>
+    /**
+     * Подложка под всем модулем (ver. 7.77).
+     *
+     * Стекло экранов склада прозрачно, и смотреть сквозь него нужно на что-то:
+     * подложка даёт этот фон и красится акцентом человека. Лежит снаружи
+     * навигатора, потому что фон при переходе между экранами меняться не
+     * должен — уезжают только сами экраны, и мигание фона читалось бы как
+     * перезагрузка раздела.
+     */
+    <GlassBackdrop>
+      <Stack.Navigator
+        screenOptions={{
+          headerBackground: () => <HeaderBackground />,
+          headerTintColor: '#FFFFFF',
+          headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
+          headerTitleAlign: 'center',
+          headerBackTitleVisible: false,
+          headerBackButtonDisplayMode: 'minimal',
+          // Экраны прозрачные: цвет под ними даёт подложка. Без этого
+          // навигатор красит контейнер экрана своим фоном и закрывает её.
+          contentStyle: {backgroundColor: 'transparent'},
+          ...STACK_ANIMATION,
+        }}>
+        <Stack.Screen
+          name="WarehouseHome"
+          component={WarehouseScreen}
+          options={{title: 'Склад'}}
+        />
+        {/* Сканер без шапки: кадр камеры занимает экран целиком, а закрывается он
+            своей кнопкой поверх кадра — системная шапка над видоискателем
+            выглядела бы как чужая полоса на объективе. */}
+        <Stack.Screen
+          name="WarehouseScanner"
+          component={WarehouseScannerScreen}
+          options={{headerShown: false}}
+        />
+        {/* Заголовок карточки — инвентарный номер, его ставит сам экран */}
+        <Stack.Screen
+          name="WarehouseAsset"
+          component={WarehouseAssetScreen}
+          options={{title: 'Оборудование'}}
+        />
+        {/* Правка карточек с телефона (ver. 7.24). Заголовок — тот же инвентарный
+            номер: форма и просмотр это один предмет, и подписаны они одинаково */}
+        <Stack.Screen
+          name="WarehouseAssetEdit"
+          component={WarehouseAssetEditScreen}
+          options={{title: 'Правка карточки'}}
+        />
+        <Stack.Screen
+          name="WarehouseMaterialEdit"
+          component={WarehouseMaterialEditScreen}
+          options={{title: 'Материал'}}
+        />
+        {/* Заголовок зависит от того, что заводят, — его ставит сам экран */}
+        <Stack.Screen
+          name="WarehouseItemCreate"
+          component={WarehouseItemCreateScreen}
+          options={{title: 'Завести'}}
+        />
+        <Stack.Screen
+          name="WarehouseMailings"
+          component={WarehouseMailingsScreen}
+          options={{title: 'Отчёты и рассылки'}}
+        />
+        {/* Разделы «Оборудование», «Материалы» и «Операции» — те же, что в вебе.
+            Первые два отвечают на вопрос «где у нас такое», третий ведёт журнал
+            движений и позволяет провести выдачу, приём, перемещение и списание. */}
+        {/* Переключатель медцентров стоит в шапке каждого списка, а не только на
+            главной склада: выбор действует неделями и со списка не виден, и
+            короткий список без него читается как «имущество пропало». Заодно
+            переключиться можно там, где это заметил, а не возвращаясь назад.
+            На карточках прибора и кабинета его нет намеренно — они показывают
+            один предмет, и отбирать там нечего. */}
+        <Stack.Screen
+          name="WarehouseAssets"
+          component={WarehouseAssetsScreen}
+          options={{title: 'Оборудование', headerRight: () => <MedCenterSwitch />}}
+        />
+        <Stack.Screen
+          name="WarehouseStock"
+          component={WarehouseStockScreen}
+          options={{title: 'Материалы', headerRight: () => <MedCenterSwitch />}}
+        />
+        <Stack.Screen
+          name="WarehouseOperations"
+          component={WarehouseOperationsScreen}
+          options={{title: 'Операции', headerRight: () => <MedCenterSwitch />}}
+        />
+        <Stack.Screen
+          name="WarehouseRoom"
+          component={WarehouseRoomScreen}
+          options={{title: 'Кабинет'}}
+        />
+        <Stack.Screen
+          name="WarehouseInventoryList"
+          component={WarehouseInventoryListScreen}
+          options={{title: 'Инвентаризация', headerRight: () => <MedCenterSwitch />}}
+        />
+        <Stack.Screen
+          name="WarehouseInventoryCount"
+          component={WarehouseInventoryCountScreen}
+          options={{title: 'Пересчёт'}}
+        />
+        <Stack.Screen
+          name="WarehouseInventoryNew"
+          component={WarehouseInventoryNewScreen}
+          options={{title: 'Новая опись', headerRight: () => <MedCenterSwitch />}}
+        />
+        <Stack.Screen
+          name="WarehousePlacement"
+          component={WarehousePlacementScreen}
+          // Переключатель медцентра и здесь: спуск к кабинету начинается с
+          // выбранной клиники, и менять её надо там же, где на остальных
+          // экранах склада, — иначе за ней пришлось бы выходить из размещения.
+          options={{title: 'Размещение', headerRight: () => <MedCenterSwitch />}}
+        />
+        {/* Заголовок и кнопка принтера в шапке — на самом экране: список кабинетов
+            переключается между просмотром и отбором под печать, и шапка меняется
+            вместе с ним */}
+        <Stack.Screen
+          name="WarehouseRooms"
+          component={WarehouseRoomPickerScreen}
+          options={{title: 'Кабинеты'}}
+        />
+        <Stack.Screen
+          name="WarehouseLabelPrint"
+          component={WarehouseLabelPrintScreen}
+          options={{title: 'Печать'}}
+        />
+        <Stack.Screen
+          name="WarehousePrinter"
+          component={WarehousePrinterScreen}
+          options={{title: 'Принтер этикеток'}}
+        />
+      </Stack.Navigator>
+    </GlassBackdrop>
   );
 }
 
@@ -639,6 +671,64 @@ function SettingsStack() {
         name="TasksNorm"
         component={NormScreen}
         options={{title: 'Рабочее расписание'}}
+      />
+      {/* Пользователи портала (ver. 7.77) — админский раздел, и в хабе настроек
+          его строки нет: у большинства нет права adminAccess.users, а строка,
+          которую видят десять человек на сеть, занимала бы место у всех.
+          Вход один — колесо действий на долгое нажатие знака «Альфа», где
+          кнопка появляется только у тех, кому раздел положен (AlfaTabBar). */}
+      <Stack.Screen
+        name="AdminUsers"
+        component={AdminUsersScreen}
+        options={({navigation}) => ({
+          title: 'Пользователи',
+          // Корзина и заведение — два действия раздела, и оба в шапке: в колесе
+          // им места нет (оно занято разделами), а внизу экрана их закрыл бы
+          // список
+          headerRight: () => (
+            <HeaderActions>
+              <HeaderIconButton
+                icon={Trash2}
+                label="Корзина"
+                onPress={() => navigation.navigate('AdminTrash')}
+              />
+              <HeaderIconButton
+                icon={UserPlus}
+                label="Завести сотрудника"
+                onPress={() => navigation.navigate('AdminUserForm')}
+              />
+            </HeaderActions>
+          ),
+        })}
+      />
+      {/* Заголовок карточки — имя сотрудника, оно приезжает из списка: шапка
+          подписана ещё до того, как ответит сервер */}
+      <Stack.Screen
+        name="AdminUser"
+        component={AdminUserScreen}
+        options={({route, navigation}) => ({
+          title: route.params?.title || 'Сотрудник',
+          headerRight: () => (
+            <HeaderIconButton
+              icon={PenLine}
+              label="Изменить"
+              onPress={() => navigation.navigate('AdminUserForm', {
+                userId: route.params?.userId,
+              })}
+            />
+          ),
+        })}
+      />
+      {/* Одна форма на заведение и правку: без userId — новый сотрудник */}
+      <Stack.Screen
+        name="AdminUserForm"
+        component={AdminUserFormScreen}
+        options={{title: 'Новый сотрудник'}}
+      />
+      <Stack.Screen
+        name="AdminTrash"
+        component={AdminTrashScreen}
+        options={{title: 'Корзина'}}
       />
     </Stack.Navigator>
   );

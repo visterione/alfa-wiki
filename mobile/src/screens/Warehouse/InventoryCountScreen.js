@@ -41,7 +41,7 @@ import {ScanLine, Search, Check} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan} from '../../store/warehouseStore';
 import {qtyText, INVENTORY_STATUS, inventoryScopeText} from './warehouseMeta';
@@ -328,7 +328,7 @@ function Stat({styles, value, total, label, tone}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   headerAction: {fontFamily: font.medium, fontSize: 14, color: '#FFFFFF'},
   // Треть экрана: достаточно, чтобы прицелиться, и достаточно мало, чтобы под
   // кадром помещалось несколько строк описи.
@@ -341,7 +341,7 @@ const makeStyles = c => StyleSheet.create({
     paddingTop: 12,
   },
   stats: {flexDirection: 'row', gap: 8, padding: 12},
-  stat: {flex: 1, backgroundColor: c.bgPrimary, borderRadius: radius.md, paddingVertical: 11, alignItems: 'center'},
+  stat: {flex: 1, ...glassSurface(c), borderRadius: radius.md, paddingVertical: 11, alignItems: 'center'},
   statValue: {fontFamily: font.semiBold, fontSize: 17, color: c.textPrimary},
   statLabel: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginTop: 2},
   tools: {flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 10},
@@ -361,7 +361,7 @@ const makeStyles = c => StyleSheet.create({
     flex: 1,
     height: 42,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     paddingHorizontal: 12,
     color: c.textPrimary,
     fontFamily: font.regular,
@@ -376,7 +376,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 12,
     height: 38,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   searchInput: {flex: 1, color: c.textPrimary, fontFamily: font.regular, fontSize: 14, padding: 0},
   list: {paddingHorizontal: 12, paddingBottom: 24},
@@ -384,7 +384,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 11,
@@ -414,6 +414,6 @@ const makeStyles = c => StyleSheet.create({
   closed: {marginHorizontal: 12, marginBottom: 10, padding: 12, borderRadius: radius.md, backgroundColor: c.bgTertiary},
   closedText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary, textAlign: 'center'},
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, textAlign: 'center', padding: 24},
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
+  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary},
 });

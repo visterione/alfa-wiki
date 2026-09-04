@@ -48,9 +48,12 @@ import {Check, ChevronDown, ChevronRight, Plus, Search, X} from 'lucide-react-na
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassCard from '../../components/GlassCard';
+import GlassBackdrop from '../../components/GlassBackdrop';
+import GlassBar from '../../components/GlassBar';
 import BottomSheet from '../../components/BottomSheet';
 import {loadLocationTree} from '../../store/warehouseStore';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {qtyText, roomText, flattenRooms, matchesSearch} from './warehouseMeta';
 
@@ -222,38 +225,6 @@ export default function RoomOperation({
     }
   };
 
-  if (!target) {
-    // Приём ищет по справочнику: кладут как раз то, чего в кабинете ещё нет, и
-    // предлагать его же остаток здесь бессмысленно.
-    if (type === 'receipt') {
-      return (
-        <ItemPick
-          styles={styles}
-          c={c}
-          insets={insets}
-          canCreate={canCreate}
-          onCreate={onCreateItem}
-          onClose={onClose}
-          onPick={setTarget}
-        />
-      );
-    }
-    // Расход выбирают из того, что здесь лежит. Выдача — только материалы:
-    // оборудование не расходуется, его перемещают или списывают.
-    return (
-      <RoomItemPick
-        styles={styles}
-        c={c}
-        insets={insets}
-        title={PICK_TITLES[type]}
-        stock={stock}
-        assets={type === 'issue' ? [] : assets}
-        onClose={onClose}
-        onPick={setTarget}
-      />
-    );
-  }
-
   const field = (label, value, onChangeText, extra = {}) => (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -267,165 +238,215 @@ export default function RoomOperation({
     </View>
   );
 
+  /**
+   * Окно одно на оба шага (ver. 7.76).
+   *
+   * Раньше выбор позиции и форма были разными Modal, и переход между ними
+   * снимал одну модалку, поднимая другую в том же кадре: на устройстве это
+   * читалось как зависший экран — касания уходили в уже несуществующее окно.
+   * Теперь меняется только содержимое.
+   */
+  if (!target) {
+    return (
+      <Modal animationType="slide" onRequestClose={onClose}>
+        <GlassBackdrop>
+          <KeyboardAvoidingView
+            style={styles.root}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            {type === 'receipt' ? (
+              // Приём ищет по справочнику: кладут как раз то, чего в кабинете ещё
+              // нет, и предлагать его же остаток здесь бессмысленно.
+              <ItemPick
+                styles={styles}
+                c={c}
+                insets={insets}
+                canCreate={canCreate}
+                onCreate={onCreateItem}
+                onClose={onClose}
+                onPick={setTarget}
+              />
+            ) : (
+              // Расход выбирают из того, что здесь лежит. Выдача — только
+              // материалы: оборудование не расходуется, его перемещают и списывают.
+              <RoomItemPick
+                styles={styles}
+                c={c}
+                insets={insets}
+                title={PICK_TITLES[type]}
+                stock={stock}
+                assets={type === 'issue' ? [] : assets}
+                onClose={onClose}
+                onPick={setTarget}
+              />
+            )}
+          </KeyboardAvoidingView>
+        </GlassBackdrop>
+      </Modal>
+    );
+  }
+
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.root}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.head, {paddingTop: insets.top + 12}]}>
-          <View style={styles.headText}>
-            <Text style={styles.title}>{config.title}</Text>
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {config.from ? `из ${roomText(room)}` : `в ${roomText(room)}`}
-            </Text>
-          </View>
-          <Pressable onPress={onClose} hitSlop={10}>
-            <X size={22} color={c.textPrimary} />
-          </Pressable>
-        </View>
-
-        <ScrollView
-          style={styles.body}
-          contentContainerStyle={{padding: 16, paddingBottom: insets.bottom + 96}}
-          keyboardShouldPersistTaps="handled">
-          <View style={styles.item}>
-            <Text style={styles.itemName}>{target.name}</Text>
-            {Boolean(target.note) && <Text style={styles.itemNote}>{target.note}</Text>}
-            {available != null && (
-              <Text style={styles.itemNote}>
-                В кабинете: {qtyText(available)} {target.unit || ''}
+      <GlassBackdrop>
+        <KeyboardAvoidingView
+          style={styles.root}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={[styles.head, {paddingTop: insets.top + 12}]}>
+            <View style={styles.headText}>
+              <Text style={styles.title}>{config.title}</Text>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {config.from ? `из ${roomText(room)}` : `в ${roomText(room)}`}
               </Text>
-            )}
-          </View>
-
-          {/* У оборудования количества нет: карточка одна, и «две штуки одного
-              инвентарного номера» не бывает. */}
-          {!isAsset && (
-            <View style={styles.qtyRow}>
-              <View style={styles.qtyField}>
-                <Text style={styles.fieldLabel}>Количество, {target.unit || 'шт'}</Text>
-                <TextInput
-                  style={styles.qtyInput}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="numeric"
-                  selectTextOnFocus
-                />
-              </View>
-              {/* «Всё» — самая частая просроченная коробка: её списывают
-                  целиком, и набирать 0,375 руками незачем. */}
-              {available != null && available > 0 && (
-                <Pressable
-                  style={styles.qtyAll}
-                  onPress={() => setQuantity(String(available))}>
-                  <Text style={styles.qtyAllText}>Всё</Text>
-                </Pressable>
-              )}
             </View>
-          )}
-
-          {type === 'transfer' && (
-            <Pressable
-              style={styles.pick}
-              disabled={!rooms}
-              onPress={() => setPicker('room')}>
-              <Text style={styles.pickLabel}>Куда</Text>
-              <Text style={[styles.pickValue, !toRoom && styles.pickEmpty]} numberOfLines={1}>
-                {rooms ? (toRoom ? toRoom.label : 'Выберите кабинет') : 'Загружаю…'}
-              </Text>
-              <ChevronRight size={16} color={c.textTertiary} />
+            <Pressable onPress={onClose} hitSlop={10}>
+              <X size={22} color={c.textPrimary} />
             </Pressable>
-          )}
+          </View>
 
-          {type === 'receipt' && (
-            <>
-              <Pressable style={styles.pick} onPress={() => setPicker('contractor')}>
-                <Text style={styles.pickLabel}>Поставщик</Text>
-                <Text
-                  style={[styles.pickValue, !contractorId && styles.pickEmpty]}
-                  numberOfLines={1}>
-                  {contractors.find(x => x.id === contractorId)?.name || 'Не выбран'}
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={{padding: 16, paddingBottom: insets.bottom + 96}}
+            keyboardShouldPersistTaps="handled">
+            <GlassCard style={styles.item}>
+              <Text style={styles.itemName}>{target.name}</Text>
+              {Boolean(target.note) && <Text style={styles.itemNote}>{target.note}</Text>}
+              {available != null && (
+                <Text style={styles.itemNote}>
+                  В кабинете: {qtyText(available)} {target.unit || ''}
+                </Text>
+              )}
+            </GlassCard>
+
+            {/* У оборудования количества нет: карточка одна, и «две штуки одного
+                инвентарного номера» не бывает. */}
+            {!isAsset && (
+              <View style={styles.qtyRow}>
+                <View style={styles.qtyField}>
+                  <Text style={styles.fieldLabel}>Количество, {target.unit || 'шт'}</Text>
+                  <TextInput
+                    style={styles.qtyInput}
+                    value={quantity}
+                    onChangeText={setQuantity}
+                    keyboardType="numeric"
+                    selectTextOnFocus
+                  />
+                </View>
+                {/* «Всё» — самая частая просроченная коробка: её списывают
+                    целиком, и набирать 0,375 руками незачем. */}
+                {available != null && available > 0 && (
+                  <Pressable
+                    style={styles.qtyAll}
+                    onPress={() => setQuantity(String(available))}>
+                    <Text style={styles.qtyAllText}>Всё</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+
+            {type === 'transfer' && (
+              <Pressable
+                style={styles.pick}
+                disabled={!rooms}
+                onPress={() => setPicker('room')}>
+                <Text style={styles.pickLabel}>Куда</Text>
+                <Text style={[styles.pickValue, !toRoom && styles.pickEmpty]} numberOfLines={1}>
+                  {rooms ? (toRoom ? toRoom.label : 'Выберите кабинет') : 'Загружаю…'}
                 </Text>
                 <ChevronRight size={16} color={c.textTertiary} />
               </Pressable>
-              <View style={styles.card}>
-                {field('Цена за единицу, ₽', unitCost, setUnitCost, {
-                  keyboardType: 'numeric', placeholder: 'если известна',
-                })}
-              </View>
-            </>
-          )}
+            )}
 
-          <Pressable style={styles.more} onPress={() => setDetails(v => !v)}>
-            <Text style={styles.moreText}>Подробнее</Text>
-            <ChevronDown
-              size={16}
-              color={c.textTertiary}
-              style={details ? styles.moreOpen : undefined}
-            />
-          </Pressable>
+            {type === 'receipt' && (
+              <>
+                <Pressable style={styles.pick} onPress={() => setPicker('contractor')}>
+                  <Text style={styles.pickLabel}>Поставщик</Text>
+                  <Text
+                    style={[styles.pickValue, !contractorId && styles.pickEmpty]}
+                    numberOfLines={1}>
+                    {contractors.find(x => x.id === contractorId)?.name || 'Не выбран'}
+                  </Text>
+                  <ChevronRight size={16} color={c.textTertiary} />
+                </Pressable>
+                <View style={styles.card}>
+                  {field('Цена за единицу, ₽', unitCost, setUnitCost, {
+                    keyboardType: 'numeric', placeholder: 'если известна',
+                  })}
+                </View>
+              </>
+            )}
 
-          {details && (
-            <View style={styles.card}>
-              {field('Причина', reasonText, setReasonText, {
-                multiline: true,
-                placeholder: type === 'writeoff' ? 'брак, просрочка, поломка…' : 'заявка, замена…',
-              })}
-              {field('Комментарий', comment, setComment, {multiline: true})}
-            </View>
-          )}
-        </ScrollView>
-
-        <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
-          <Pressable
-            style={[styles.button, sending && styles.buttonOff]}
-            disabled={sending}
-            onPress={post}>
-            {sending
-              ? <ActivityIndicator size="small" color="#FFFFFF" />
-              : <Check size={17} color="#FFFFFF" />}
-            <Text style={styles.buttonText}>{sending ? 'Провожу…' : config.done}</Text>
-          </Pressable>
-        </View>
-
-        <BottomSheet
-          visible={picker === 'contractor'}
-          title="Поставщик"
-          onClose={() => setPicker(null)}>
-          <ScrollView style={styles.sheet}>
-            <Pressable
-              style={styles.sheetRow}
-              onPress={() => { setContractorId(null); setPicker(null); }}>
-              <Text style={styles.sheetRowText}>Не выбран</Text>
+            <Pressable style={styles.more} onPress={() => setDetails(v => !v)}>
+              <Text style={styles.moreText}>Подробнее</Text>
+              <ChevronDown
+                size={16}
+                color={c.textTertiary}
+                style={details ? styles.moreOpen : undefined}
+              />
             </Pressable>
-            {contractors.map(item => (
-              <Pressable
-                key={item.id}
-                style={[styles.sheetRow, contractorId === item.id && styles.sheetRowOn]}
-                onPress={() => { setContractorId(item.id); setPicker(null); }}>
-                <Text
-                  style={[styles.sheetRowText, contractorId === item.id && styles.sheetRowTextOn]}>
-                  {item.name}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </BottomSheet>
 
-        {picker === 'room' && Boolean(rooms) && (
-          <RoomPick
-            styles={styles}
-            c={c}
-            insets={insets}
-            // Кабинет-источник из списка убран: сервер такое перемещение всё
-            // равно отклонит, а объяснять отказ после выбора хуже, чем не
-            // предлагать.
-            rooms={rooms.filter(r => r.hasStorage && r.id !== room.id)}
-            onClose={() => setPicker(null)}
-            onPick={(id) => { setToRoomId(id); setPicker(null); }}
-          />
-        )}
-      </KeyboardAvoidingView>
+            {details && (
+              <View style={styles.card}>
+                {field('Причина', reasonText, setReasonText, {
+                  multiline: true,
+                  placeholder: type === 'writeoff' ? 'брак, просрочка, поломка…' : 'заявка, замена…',
+                })}
+                {field('Комментарий', comment, setComment, {multiline: true})}
+              </View>
+            )}
+          </ScrollView>
+
+          <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+            <Pressable
+              style={[styles.button, sending && styles.buttonOff]}
+              disabled={sending}
+              onPress={post}>
+              {sending
+                ? <ActivityIndicator size="small" color="#FFFFFF" />
+                : <Check size={17} color="#FFFFFF" />}
+              <Text style={styles.buttonText}>{sending ? 'Провожу…' : config.done}</Text>
+            </Pressable>
+          </GlassBar>
+
+          <BottomSheet
+            glass
+            visible={picker === 'contractor'}
+            title="Поставщик"
+            onClose={() => setPicker(null)}>
+            <ScrollView style={styles.sheet}>
+              <Pressable
+                style={styles.sheetRow}
+                onPress={() => { setContractorId(null); setPicker(null); }}>
+                <Text style={styles.sheetRowText}>Не выбран</Text>
+              </Pressable>
+              {contractors.map(item => (
+                <Pressable
+                  key={item.id}
+                  style={[styles.sheetRow, contractorId === item.id && styles.sheetRowOn]}
+                  onPress={() => { setContractorId(item.id); setPicker(null); }}>
+                  <Text
+                    style={[styles.sheetRowText, contractorId === item.id && styles.sheetRowTextOn]}>
+                    {item.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </BottomSheet>
+
+          {picker === 'room' && Boolean(rooms) && (
+            <RoomPick
+              styles={styles}
+              c={c}
+              insets={insets}
+              // Кабинет-источник из списка убран: сервер такое перемещение всё
+              // равно отклонит, а объяснять отказ после выбора хуже, чем не
+              // предлагать.
+              rooms={rooms.filter(r => r.hasStorage && r.id !== room.id)}
+              onClose={() => setPicker(null)}
+              onPick={(id) => { setToRoomId(id); setPicker(null); }}
+            />
+          )}
+        </KeyboardAvoidingView>
+      </GlassBackdrop>
     </Modal>
   );
 }
@@ -440,38 +461,40 @@ function RoomPick({styles, c, insets, rooms, onClose, onPick}) {
 
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <View style={[styles.head, {paddingTop: insets.top + 12}]}>
-          <Text style={styles.title}>Куда</Text>
-          <Pressable onPress={onClose} hitSlop={10}>
-            <X size={22} color={c.textPrimary} />
-          </Pressable>
-        </View>
-        <View style={styles.search}>
-          <Search size={15} color={c.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            value={q}
-            onChangeText={setQ}
-            placeholder="Номер или этаж"
-            placeholderTextColor={c.textTertiary}
+      <GlassBackdrop>
+        <View style={styles.root}>
+          <View style={[styles.head, {paddingTop: insets.top + 12}]}>
+            <Text style={styles.title}>Куда</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <X size={22} color={c.textPrimary} />
+            </Pressable>
+          </View>
+          <View style={styles.search}>
+            <Search size={15} color={c.textTertiary} />
+            <TextInput
+              style={styles.searchInput}
+              value={q}
+              onChangeText={setQ}
+              placeholder="Номер или этаж"
+              placeholderTextColor={c.textTertiary}
+            />
+          </View>
+          <FlatList
+            data={list}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({item}) => (
+              <Pressable style={styles.line} onPress={() => onPick(item.id)}>
+                <View style={styles.lineText}>
+                  <Text style={styles.itemName}>{item.label}</Text>
+                  <Text style={styles.itemNote}>{item.where}</Text>
+                </View>
+              </Pressable>
+            )}
           />
         </View>
-        <FlatList
-          data={list}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({item}) => (
-            <Pressable style={styles.line} onPress={() => onPick(item.id)}>
-              <View style={styles.lineText}>
-                <Text style={styles.itemName}>{item.label}</Text>
-                <Text style={styles.itemNote}>{item.where}</Text>
-              </View>
-            </Pressable>
-          )}
-        />
-      </View>
+      </GlassBackdrop>
     </Modal>
   );
 }
@@ -497,50 +520,48 @@ function RoomItemPick({styles, c, insets, title, stock, assets, onClose, onPick}
   ], [stock, assets, q]);
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <View style={[styles.head, {paddingTop: insets.top + 12}]}>
-          <Text style={styles.title}>{title}</Text>
-          <Pressable onPress={onClose} hitSlop={10}>
-            <X size={22} color={c.textPrimary} />
-          </Pressable>
-        </View>
-        <View style={styles.search}>
-          <Search size={15} color={c.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            value={q}
-            onChangeText={setQ}
-            placeholder="Название или инвентарный номер"
-            placeholderTextColor={c.textTertiary}
-          />
-        </View>
-        <FlatList
-          data={rows}
-          keyExtractor={item => item.key}
-          contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <Text style={styles.none}>
-              {q ? 'Ничего не нашлось' : 'В кабинете пусто'}
-            </Text>
-          }
-          renderItem={({item}) => (
-            <Pressable style={styles.line} onPress={() => onPick(item)}>
-              <View style={styles.lineText}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                {Boolean(item.note) && <Text style={styles.itemNote}>{item.note}</Text>}
-              </View>
-              {item.available != null && (
-                <Text style={styles.lineQty}>
-                  {qtyText(item.available)} {item.unit || ''}
-                </Text>
-              )}
-            </Pressable>
-          )}
+    <>
+      <View style={[styles.head, {paddingTop: insets.top + 12}]}>
+        <Text style={styles.title}>{title}</Text>
+        <Pressable onPress={onClose} hitSlop={10}>
+          <X size={22} color={c.textPrimary} />
+        </Pressable>
+      </View>
+      <View style={styles.search}>
+        <Search size={15} color={c.textTertiary} />
+        <TextInput
+          style={styles.searchInput}
+          value={q}
+          onChangeText={setQ}
+          placeholder="Название или инвентарный номер"
+          placeholderTextColor={c.textTertiary}
         />
       </View>
-    </Modal>
+      <FlatList
+        data={rows}
+        keyExtractor={item => item.key}
+        contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
+        keyboardShouldPersistTaps="handled"
+        ListEmptyComponent={
+          <Text style={styles.none}>
+            {q ? 'Ничего не нашлось' : 'В кабинете пусто'}
+          </Text>
+        }
+        renderItem={({item}) => (
+          <Pressable style={styles.line} onPress={() => onPick(item)}>
+            <View style={styles.lineText}>
+              <Text style={styles.itemName}>{item.name}</Text>
+              {Boolean(item.note) && <Text style={styles.itemNote}>{item.note}</Text>}
+            </View>
+            {item.available != null && (
+              <Text style={styles.lineQty}>
+                {qtyText(item.available)} {item.unit || ''}
+              </Text>
+            )}
+          </Pressable>
+        )}
+      />
+    </>
   );
 }
 
@@ -567,82 +588,80 @@ function ItemPick({styles, c, insets, canCreate, onCreate, onClose, onPick}) {
   }, [q]));
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <View style={[styles.head, {paddingTop: insets.top + 12}]}>
-          <Text style={styles.title}>Что принимаем</Text>
-          <Pressable onPress={onClose} hitSlop={10}>
-            <X size={22} color={c.textPrimary} />
-          </Pressable>
-        </View>
-        <View style={styles.search}>
-          <Search size={15} color={c.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            value={q}
-            onChangeText={setQ}
-            placeholder="Название материала"
-            placeholderTextColor={c.textTertiary}
-          />
-        </View>
-        {!rows ? <LogoLoader /> : (
-          <FlatList
-            data={rows}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
-            keyboardShouldPersistTaps="handled"
-            ListHeaderComponent={
-              // Заведение с нуля — здесь же, но ниже поиска: сначала стоит
-              // убедиться, что позиции нет, и только потом заводить вторую
-              // такую же под чуть иным названием.
-              onCreate && (canCreate?.asset || canCreate?.material) ? (
-                <View style={styles.createBlock}>
-                  <Text style={styles.createHint}>Нет в справочнике — завести:</Text>
-                  <View style={styles.createRow}>
-                    {Boolean(canCreate?.asset) && (
-                      <Pressable style={styles.createBtn} onPress={() => onCreate('asset')}>
-                        <Plus size={15} color={c.primary} />
-                        <Text style={styles.createText}>Оборудование</Text>
-                      </Pressable>
-                    )}
-                    {Boolean(canCreate?.material) && (
-                      <Pressable style={styles.createBtn} onPress={() => onCreate('material')}>
-                        <Plus size={15} color={c.primary} />
-                        <Text style={styles.createText}>Материал</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
-              ) : null
-            }
-            ListEmptyComponent={
-              <Text style={styles.none}>
-                {q ? 'Ничего не нашлось' : 'Справочник пуст'}
-              </Text>
-            }
-            renderItem={({item}) => (
-              <Pressable
-                style={styles.line}
-                onPress={() => onPick({
-                  nomenclatureId: item.id,
-                  name: item.name,
-                  unit: item.unit,
-                })}>
-                <View style={styles.lineText}>
-                  <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemNote}>{item.unit}</Text>
-                </View>
-              </Pressable>
-            )}
-          />
-        )}
+    <>
+      <View style={[styles.head, {paddingTop: insets.top + 12}]}>
+        <Text style={styles.title}>Что принимаем</Text>
+        <Pressable onPress={onClose} hitSlop={10}>
+          <X size={22} color={c.textPrimary} />
+        </Pressable>
       </View>
-    </Modal>
+      <View style={styles.search}>
+        <Search size={15} color={c.textTertiary} />
+        <TextInput
+          style={styles.searchInput}
+          value={q}
+          onChangeText={setQ}
+          placeholder="Название материала"
+          placeholderTextColor={c.textTertiary}
+        />
+      </View>
+      {!rows ? <LogoLoader /> : (
+        <FlatList
+          data={rows}
+          keyExtractor={item => item.id}
+          contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            // Заведение с нуля — здесь же, но ниже поиска: сначала стоит
+            // убедиться, что позиции нет, и только потом заводить вторую
+            // такую же под чуть иным названием.
+            onCreate && (canCreate?.asset || canCreate?.material) ? (
+              <View style={styles.createBlock}>
+                <Text style={styles.createHint}>Нет в справочнике — завести:</Text>
+                <View style={styles.createRow}>
+                  {Boolean(canCreate?.asset) && (
+                    <Pressable style={styles.createBtn} onPress={() => onCreate('asset')}>
+                      <Plus size={15} color={c.primary} />
+                      <Text style={styles.createText}>Оборудование</Text>
+                    </Pressable>
+                  )}
+                  {Boolean(canCreate?.material) && (
+                    <Pressable style={styles.createBtn} onPress={() => onCreate('material')}>
+                      <Plus size={15} color={c.primary} />
+                      <Text style={styles.createText}>Материал</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <Text style={styles.none}>
+              {q ? 'Ничего не нашлось' : 'Справочник пуст'}
+            </Text>
+          }
+          renderItem={({item}) => (
+            <Pressable
+              style={styles.line}
+              onPress={() => onPick({
+                nomenclatureId: item.id,
+                name: item.name,
+                unit: item.unit,
+              })}>
+              <View style={styles.lineText}>
+                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemNote}>{item.unit}</Text>
+              </View>
+            </Pressable>
+          )}
+        />
+      )}
+    </>
   );
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   body: {flex: 1},
   head: {
     flexDirection: 'row',
@@ -651,13 +670,13 @@ const makeStyles = c => StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    backgroundColor: c.bgPrimary,
+    ...glassOverlay(c),
   },
   headText: {flex: 1},
   title: {fontFamily: font.semiBold, fontSize: 18, color: c.textPrimary},
   subtitle: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
 
-  item: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, padding: 14, gap: 3},
+  item: {...glassSurface(c), borderRadius: radius.lg, padding: 14, gap: 3},
   itemName: {fontFamily: font.semiBold, fontSize: 15, color: c.textPrimary, lineHeight: 20},
   itemNote: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary},
 
@@ -668,7 +687,6 @@ const makeStyles = c => StyleSheet.create({
     marginTop: 6,
     paddingHorizontal: 14,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
     fontFamily: font.semiBold,
     fontSize: 20,
     color: c.textPrimary,
@@ -691,7 +709,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   pickLabel: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary},
   pickValue: {flex: 1, fontFamily: font.medium, fontSize: 14, color: c.textPrimary, textAlign: 'right'},
@@ -708,12 +726,12 @@ const makeStyles = c => StyleSheet.create({
   moreText: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary},
   moreOpen: {transform: [{rotate: '180deg'}]},
 
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, marginTop: 8, overflow: 'hidden'},
+  card: {...glassSurface(c), borderRadius: radius.lg, marginTop: 8, overflow: 'hidden'},
   field: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   fieldLabel: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary},
   fieldInput: {
@@ -732,7 +750,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 12,
     height: 42,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   searchInput: {flex: 1, fontFamily: font.regular, fontSize: 14, color: c.textPrimary},
   line: {
@@ -743,7 +761,7 @@ const makeStyles = c => StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 8,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   lineText: {flex: 1},
   lineQty: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
@@ -769,9 +787,8 @@ const makeStyles = c => StyleSheet.create({
   bar: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgPrimary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   button: {
     flexDirection: 'row',
@@ -781,6 +798,7 @@ const makeStyles = c => StyleSheet.create({
     height: 50,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonOff: {opacity: 0.6},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},

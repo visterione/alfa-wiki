@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import {Printer, Check} from 'lucide-react-native';
 
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {usePrinter} from '../../store/printerStore';
 import {checkPrinter, PRINTER_PORT} from '../../services/ptouchPrint';
@@ -120,7 +120,7 @@ export default function WarehousePrinterScreen() {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   content: {padding: 16, paddingBottom: 40},
   section: {
     fontFamily: font.semiBold,
@@ -130,7 +130,7 @@ const makeStyles = c => StyleSheet.create({
     marginTop: 18,
     marginLeft: 2,
   },
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, overflow: 'hidden'},
+  card: {...glassSurface(c), borderRadius: radius.lg, overflow: 'hidden'},
   input: {
     height: 48,
     paddingHorizontal: 14,
@@ -146,6 +146,7 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
     marginTop: 6,
   },
   buttonOff: {opacity: 0.45},
@@ -168,7 +169,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   rowLast: {borderBottomWidth: 0},
   rowText: {flex: 1},

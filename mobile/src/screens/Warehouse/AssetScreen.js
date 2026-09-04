@@ -20,23 +20,25 @@
  * сидит за компьютером. Кабинета и МОЛ в форме нет — их меняет документ
  * перемещения, см. AssetEditScreen.
  */
-import React, {useCallback, useLayoutEffect, useState} from 'react';
+import React, {useCallback, useLayoutEffect, useRef, useState} from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Alert, useWindowDimensions,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {
-  DoorOpen, Printer, Pencil, Boxes, Wrench, Undo2, ArrowLeftRight,
+  DoorOpen, Printer, Pencil, Boxes, Wrench, Undo2, ArrowLeftRight, ArrowRightLeft,
+  PackageX,
 } from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassCard from '../../components/GlassCard';
 import LabelPreview from '../../components/LabelPreview';
 import MarqueeText from '../../components/MarqueeText';
 import SwipeTabs from '../../components/SwipeTabs';
 import BottomSheet from '../../components/BottomSheet';
 import RoomOperation from './RoomOperation';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseCan} from '../../store/warehouseStore';
 import {ASSET_STATUS, statusColor, moneyText, dateText, roomText} from './warehouseMeta';
@@ -76,6 +78,14 @@ export default function WarehouseAssetScreen({route, navigation}) {
   // искать этот же прибор в списке кабинета человеку незачем.
   const [ops, setOps] = useState(false);
   const [operation, setOperation] = useState(null);
+  // Форма поднимается не в момент выбора, а когда шторка уедет с экрана: две
+  // модалки, живущие одновременно, замораживают экран — см. RoomScreen.
+  const afterSheet = useRef(null);
+  const sheetClosed = useCallback(() => {
+    const next = afterSheet.current;
+    afterSheet.current = null;
+    if (next) setOperation(next);
+  }, []);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -389,7 +399,7 @@ export default function WarehouseAssetScreen({route, navigation}) {
           прибором, человек сверяет наклейку на нём с той, что в портале: у
           старого имущества номер на ленте затёрт, а иногда и вовсе не тот. */}
       {canPrint && (
-        <View style={styles.labelCard}>
+        <GlassCard style={styles.labelCard}>
           <LabelPreview url={warehouseApi.assetLabelUrl(asset.id)} />
           <Pressable
             style={styles.labelButton}
@@ -403,22 +413,33 @@ export default function WarehouseAssetScreen({route, navigation}) {
               {asset.labelPrintedAt ? 'Напечатать заново' : 'Напечатать'}
             </Text>
           </Pressable>
-        </View>
+        </GlassCard>
       )}
 
-      <BottomSheet visible={ops} title={asset.name} onClose={() => setOps(false)}>
+      <BottomSheet
+        glass
+        visible={ops}
+        title={asset.name}
+        onClose={() => setOps(false)}
+        onClosed={sheetClosed}>
         <View style={styles.sheet}>
+          {/* Значки те же, что в шторке кабинета: одно и то же действие,
+              открытое с двух сторон, обязано выглядеть одинаково. */}
           {[
-            {key: 'transfer', label: 'Переместить в другой кабинет'},
-            {key: 'writeoff', label: 'Списать'},
-          ].map(item => (
-            <Pressable
-              key={item.key}
-              style={styles.sheetRow}
-              onPress={() => { setOps(false); setOperation(item.key); }}>
-              <Text style={styles.sheetRowText}>{item.label}</Text>
-            </Pressable>
-          ))}
+            {key: 'transfer', label: 'Переместить в другой кабинет', icon: ArrowRightLeft},
+            {key: 'writeoff', label: 'Списать', icon: PackageX},
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <Pressable
+                key={item.key}
+                style={styles.sheetRow}
+                onPress={() => { afterSheet.current = item.key; setOps(false); }}>
+                <Icon size={17} color={c.primary} />
+                <Text style={styles.sheetRowText}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       </BottomSheet>
 
@@ -454,7 +475,7 @@ export default function WarehouseAssetScreen({route, navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   content: {padding: 16, paddingBottom: 32},
   head: {marginBottom: 14},
   name: {fontFamily: font.semiBold, fontSize: 19, color: c.textPrimary, lineHeight: 25},
@@ -476,29 +497,31 @@ const makeStyles = c => StyleSheet.create({
   quickBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 7, paddingVertical: 12, paddingHorizontal: 10,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    ...glassSurface(c), borderRadius: radius.md,
   },
   quickText: {fontFamily: font.medium, fontSize: 13, color: c.primary},
   opsBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     paddingVertical: 11, marginBottom: 14,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    ...glassSurface(c), borderRadius: radius.md,
   },
   opsText: {fontFamily: font.medium, fontSize: 13, color: c.primary},
 
   sheet: {paddingHorizontal: 16, paddingBottom: 8},
-  sheetRow: {paddingVertical: 13, paddingHorizontal: 12, borderRadius: radius.md},
+  sheetRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 13, paddingHorizontal: 12, borderRadius: radius.md,
+  },
   sheetRowText: {fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
 
   undoBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     paddingVertical: 11, marginBottom: 14,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    ...glassSurface(c), borderRadius: radius.md,
   },
   undoText: {fontFamily: font.medium, fontSize: 13, color: c.error},
 
   labelCard: {
-    backgroundColor: c.bgPrimary,
     borderRadius: radius.lg,
     padding: 12,
     gap: 10,
@@ -514,7 +537,7 @@ const makeStyles = c => StyleSheet.create({
     backgroundColor: c.primaryLight,
   },
   labelButtonText: {fontFamily: font.semiBold, fontSize: 14, color: c.primary},
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, overflow: 'hidden'},
+  card: {...glassSurface(c), borderRadius: radius.lg, overflow: 'hidden'},
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -522,7 +545,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   rowLabel: {flex: 1, fontFamily: font.regular, fontSize: 13, color: c.textSecondary},
   rowValue: {
@@ -537,13 +560,13 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   moveMain: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   moveType: {fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
   moveWhen: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary},
   moveWhere: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, marginTop: 2},
   moveReason: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, marginTop: 2},
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
+  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary, textAlign: 'center'},
 });

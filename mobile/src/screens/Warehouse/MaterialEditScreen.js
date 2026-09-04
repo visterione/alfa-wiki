@@ -28,7 +28,9 @@ import {Check, ChevronRight, X} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
-import {radius, font} from '../../theme';
+import GlassBackdrop from '../../components/GlassBackdrop';
+import GlassBar from '../../components/GlassBar';
+import {radius, font, glassSurface, glassOverlay, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 
 export default function WarehouseMaterialEditScreen({route, navigation}) {
@@ -170,7 +172,7 @@ export default function WarehouseMaterialEditScreen({route, navigation}) {
         </View>
       </ScrollView>
 
-      <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+      <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
         <Pressable
           style={[styles.button, saving && styles.buttonOff]}
           disabled={saving}
@@ -180,34 +182,36 @@ export default function WarehouseMaterialEditScreen({route, navigation}) {
             : <Check size={17} color="#FFFFFF" />}
           <Text style={styles.buttonText}>{saving ? 'Сохраняю…' : 'Сохранить'}</Text>
         </Pressable>
-      </View>
+      </GlassBar>
 
       {picker && (
         <Modal animationType="slide" onRequestClose={() => setPicker(false)}>
-          <View style={[styles.modal, {paddingTop: insets.top + 12}]}>
-            <View style={styles.modalHead}>
-              <Text style={styles.modalTitle}>Категория</Text>
-              <Pressable onPress={() => setPicker(false)} hitSlop={10}>
-                <X size={22} color={c.textPrimary} />
-              </Pressable>
-            </View>
-            <ScrollView contentContainerStyle={styles.modalList}>
-              <Pressable
-                style={styles.modalRow}
-                onPress={() => { set('categoryId', null); setPicker(false); }}>
-                <Text style={styles.modalEmpty}>Не выбрана</Text>
-              </Pressable>
-              {categoryOptions.map(option => (
-                <Pressable
-                  key={option.value}
-                  style={styles.modalRow}
-                  onPress={() => { set('categoryId', option.value); setPicker(false); }}>
-                  <Text style={styles.modalRowText}>{option.label}</Text>
-                  {form.categoryId === option.value && <Check size={16} color={c.primary} />}
+          <GlassBackdrop>
+            <View style={[styles.modal, {paddingTop: insets.top + 12}]}>
+              <View style={styles.modalHead}>
+                <Text style={styles.modalTitle}>Категория</Text>
+                <Pressable onPress={() => setPicker(false)} hitSlop={10}>
+                  <X size={22} color={c.textPrimary} />
                 </Pressable>
-              ))}
-            </ScrollView>
-          </View>
+              </View>
+              <ScrollView contentContainerStyle={styles.modalList}>
+                <Pressable
+                  style={styles.modalRow}
+                  onPress={() => { set('categoryId', null); setPicker(false); }}>
+                  <Text style={styles.modalEmpty}>Не выбрана</Text>
+                </Pressable>
+                {categoryOptions.map(option => (
+                  <Pressable
+                    key={option.value}
+                    style={styles.modalRow}
+                    onPress={() => { set('categoryId', option.value); setPicker(false); }}>
+                    <Text style={styles.modalRowText}>{option.label}</Text>
+                    {form.categoryId === option.value && <Check size={16} color={c.primary} />}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          </GlassBackdrop>
         </Modal>
       )}
     </KeyboardAvoidingView>
@@ -215,14 +219,14 @@ export default function WarehouseMaterialEditScreen({route, navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   content: {padding: 16},
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, paddingHorizontal: 14},
+  card: {...glassSurface(c), borderRadius: radius.lg, paddingHorizontal: 14},
   cardGap: {marginTop: 14},
   field: {
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   label: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginBottom: 3},
   input: {fontFamily: font.medium, fontSize: 15, color: c.textPrimary, padding: 0, minHeight: 24},
@@ -236,7 +240,7 @@ const makeStyles = c => StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   rowText: {flex: 1},
   rowTitle: {fontFamily: font.medium, fontSize: 14, color: c.textPrimary},
@@ -249,9 +253,8 @@ const makeStyles = c => StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgSecondary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   button: {
     flexDirection: 'row',
@@ -261,11 +264,12 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonOff: {opacity: 0.5},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
 
-  modal: {flex: 1, backgroundColor: c.bgSecondary},
+  modal: {flex: 1},
   modalHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -279,7 +283,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -288,6 +292,6 @@ const makeStyles = c => StyleSheet.create({
   modalRowText: {flex: 1, fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
   modalEmpty: {flex: 1, fontFamily: font.regular, fontSize: 15, color: c.textTertiary},
 
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
+  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary},
 });

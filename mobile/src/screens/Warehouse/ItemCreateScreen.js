@@ -30,8 +30,10 @@ import {Check, ChevronRight, X} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassBackdrop from '../../components/GlassBackdrop';
+import GlassBar from '../../components/GlassBar';
 import {loadLocationTree} from '../../store/warehouseStore';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {ASSET_STATUS, flattenRooms} from './warehouseMeta';
 
@@ -222,7 +224,7 @@ export default function WarehouseItemCreateScreen({route, navigation}) {
         )}
       </ScrollView>
 
-      <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+      <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
         <Pressable
           style={[styles.button, saving && styles.buttonOff]}
           disabled={saving}
@@ -232,39 +234,41 @@ export default function WarehouseItemCreateScreen({route, navigation}) {
             : <Check size={17} color="#FFFFFF" />}
           <Text style={styles.buttonText}>{saving ? 'Завожу…' : 'Завести'}</Text>
         </Pressable>
-      </View>
+      </GlassBar>
 
       {Boolean(picker) && (
         <Modal animationType="slide" onRequestClose={() => setPicker(null)}>
-          <View style={[styles.modal, {paddingTop: insets.top + 12}]}>
-            <View style={styles.modalHead}>
-              <Text style={styles.modalTitle}>{picker.label}</Text>
-              <Pressable onPress={() => setPicker(null)} hitSlop={10}>
-                <X size={22} color={c.textPrimary} />
-              </Pressable>
+          <GlassBackdrop>
+            <View style={[styles.modal, {paddingTop: insets.top + 12}]}>
+              <View style={styles.modalHead}>
+                <Text style={styles.modalTitle}>{picker.label}</Text>
+                <Pressable onPress={() => setPicker(null)} hitSlop={10}>
+                  <X size={22} color={c.textPrimary} />
+                </Pressable>
+              </View>
+              <ScrollView contentContainerStyle={styles.modalList}>
+                {picker.key !== 'status' && (
+                  <Pressable
+                    style={styles.modalRow}
+                    onPress={() => { set(picker.key, null); setPicker(null); }}>
+                    <Text style={styles.modalEmpty}>Не выбрано</Text>
+                  </Pressable>
+                )}
+                {picker.options.map(option => (
+                  <Pressable
+                    key={option.value}
+                    style={styles.modalRow}
+                    onPress={() => { set(picker.key, option.value); setPicker(null); }}>
+                    <Text style={styles.modalRowText}>{option.label}</Text>
+                    {form[picker.key] === option.value && <Check size={16} color={c.primary} />}
+                  </Pressable>
+                ))}
+                {!picker.options.length && (
+                  <Text style={styles.modalEmpty}>Справочник пуст или закрыт правами</Text>
+                )}
+              </ScrollView>
             </View>
-            <ScrollView contentContainerStyle={styles.modalList}>
-              {picker.key !== 'status' && (
-                <Pressable
-                  style={styles.modalRow}
-                  onPress={() => { set(picker.key, null); setPicker(null); }}>
-                  <Text style={styles.modalEmpty}>Не выбрано</Text>
-                </Pressable>
-              )}
-              {picker.options.map(option => (
-                <Pressable
-                  key={option.value}
-                  style={styles.modalRow}
-                  onPress={() => { set(picker.key, option.value); setPicker(null); }}>
-                  <Text style={styles.modalRowText}>{option.label}</Text>
-                  {form[picker.key] === option.value && <Check size={16} color={c.primary} />}
-                </Pressable>
-              ))}
-              {!picker.options.length && (
-                <Text style={styles.modalEmpty}>Справочник пуст или закрыт правами</Text>
-              )}
-            </ScrollView>
-          </View>
+          </GlassBackdrop>
         </Modal>
       )}
     </KeyboardAvoidingView>
@@ -272,14 +276,14 @@ export default function WarehouseItemCreateScreen({route, navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   content: {padding: 16},
   where: {fontFamily: font.medium, fontSize: 13, color: c.textSecondary, marginBottom: 10},
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, paddingHorizontal: 14},
+  card: {...glassSurface(c), borderRadius: radius.lg, paddingHorizontal: 14},
   field: {
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   label: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginBottom: 3},
   input: {fontFamily: font.medium, fontSize: 15, color: c.textPrimary, padding: 0, minHeight: 24},
@@ -296,9 +300,8 @@ const makeStyles = c => StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgSecondary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   button: {
     flexDirection: 'row',
@@ -308,11 +311,12 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonOff: {opacity: 0.5},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
 
-  modal: {flex: 1, backgroundColor: c.bgSecondary},
+  modal: {flex: 1},
   modalHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -326,7 +330,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 13,

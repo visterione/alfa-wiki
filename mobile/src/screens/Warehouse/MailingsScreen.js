@@ -29,7 +29,7 @@ import {warehouse as warehouseApi, authHeader} from '../../services/api';
 import {saveAttachment} from '../../services/downloads';
 import LogoLoader from '../../components/LogoLoader';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 
 export default function WarehouseMailingsScreen() {
@@ -158,9 +158,9 @@ export default function WarehouseMailingsScreen() {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   card: {
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     padding: 14,
     marginBottom: 12,
@@ -193,6 +193,6 @@ const makeStyles = c => StyleSheet.create({
   buttonText: {fontFamily: font.semiBold, fontSize: 14, color: c.primary},
   none: {fontFamily: font.regular, fontSize: 13, color: c.textTertiary, textAlign: 'center', marginTop: 40},
   note: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, lineHeight: 18, marginTop: 4},
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
+  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary},
 });

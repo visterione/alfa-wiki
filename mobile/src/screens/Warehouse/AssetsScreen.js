@@ -28,7 +28,7 @@ import BottomSheet from '../../components/BottomSheet';
 import {loadLocationTree, useWarehouseAccess, useWarehouseMedCenter} from '../../store/warehouseStore';
 import {useNetworkFallback, NetworkFallbackHint} from './MedCenterSwitch';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {ASSET_STATUS, statusColor, moneyText, dateText, roomText} from './warehouseMeta';
 
@@ -215,7 +215,7 @@ export default function WarehouseAssetsScreen({navigation}) {
         />
       )}
 
-      <BottomSheet visible={sheet} title="Отбор" onClose={() => setSheet(false)}>
+      <BottomSheet glass visible={sheet} title="Отбор" onClose={() => setSheet(false)}>
         <View style={styles.sheet}>
           <Text style={styles.sheetLabel}>Статус</Text>
           <View style={styles.options}>
@@ -284,14 +284,14 @@ function Option({styles, label, on, onPress}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   tools: {flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, paddingBottom: 10},
   search: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     height: 42,
@@ -301,7 +301,7 @@ const makeStyles = c => StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -310,7 +310,7 @@ const makeStyles = c => StyleSheet.create({
   total: {fontFamily: font.regular, fontSize: 12, color: c.textTertiary, marginBottom: 8},
 
   card: {
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     padding: 14,
     marginBottom: 8,

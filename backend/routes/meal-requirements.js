@@ -87,14 +87,24 @@ function resolveDate(req, res) {
 // Строки таблицы всегда пересобираем по списку палат отделения: каркас задаёт
 // настройка, клиент присылает только содержимое ячеек. Иначе кривой запрос мог
 // бы добавить палату, которой в отделении нет, или потерять существующую.
+//
+// Номер палаты может повторяться (двухместную расписывают по строке на койку),
+// поэтому строки не сопоставляются по номеру, а разбираются очередью: на
+// первую «309» в каркасе ложится первая присланная «309», на вторую — вторая.
+// Так строки не схлопываются в одну и переживают вставку палаты в середину
+// списка.
 function normalizeEntries(department, incoming) {
   const byRoom = new Map();
   (Array.isArray(incoming) ? incoming : []).forEach(row => {
-    if (row && cleanText(row.room)) byRoom.set(cleanText(row.room), row);
+    if (!row || !cleanText(row.room)) return;
+    const key = cleanText(row.room);
+    if (!byRoom.has(key)) byRoom.set(key, []);
+    byRoom.get(key).push(row);
   });
 
   return department.rooms.map(room => {
-    const row = byRoom.get(room) || {};
+    const queue = byRoom.get(room);
+    const row = (queue && queue.shift()) || {};
     return {
       room,
       // Перевод строки — разделитель пациентов в одной палате, его сохраняем

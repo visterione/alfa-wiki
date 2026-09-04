@@ -33,11 +33,13 @@ import {
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassBackdrop from '../../components/GlassBackdrop';
+import GlassBar from '../../components/GlassBar';
 import BottomSheet from '../../components/BottomSheet';
 import {loadLocationTree, useWarehouseCan, useWarehouseMedCenter} from '../../store/warehouseStore';
 import {useNetworkFallback, NetworkFallbackHint} from './MedCenterSwitch';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {qtyText, dateText, roomText, flattenRooms} from './warehouseMeta';
 
@@ -263,15 +265,16 @@ export default function WarehouseOperationsScreen({route, navigation}) {
       />
 
       {canIssue && (
-        <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+        <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
           <Pressable style={styles.button} onPress={() => setForm({type: 'issue'})}>
             <Plus size={17} color="#FFFFFF" />
             <Text style={styles.buttonText}>Новая операция</Text>
           </Pressable>
-        </View>
+        </GlassBar>
       )}
 
       <BottomSheet
+        glass
         visible={typeSheet}
         title="Тип операции"
         onClose={() => setTypeSheet(false)}>
@@ -398,228 +401,231 @@ function DocumentForm({styles, c, insets, onClose, onDone}) {
 
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.modalHead, {paddingTop: insets.top + 12}]}>
-          <Text style={styles.modalTitle}>Новая операция</Text>
-          <Pressable onPress={onClose} hitSlop={10}>
-            <X size={22} color={c.textPrimary} />
-          </Pressable>
-        </View>
+      <GlassBackdrop>
+        <KeyboardAvoidingView
+          style={styles.modalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={[styles.modalHead, {paddingTop: insets.top + 12}]}>
+            <Text style={styles.modalTitle}>Новая операция</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <X size={22} color={c.textPrimary} />
+            </Pressable>
+          </View>
 
-        {!rooms ? <LogoLoader /> : (
-          <FlatList
-            data={lines}
-            keyExtractor={(item, at) => `${item.key}-${at}`}
-            contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 90}}
-            keyboardShouldPersistTaps="handled"
-            ListHeaderComponent={
-              <View>
-                {/* Тип — строкой с листом, а не рядом кнопок: типов восемь, и
-                    от типа зависит вся остальная форма, так что выбор должен
-                    читаться словом, а не угадываться по подсвеченному чипу */}
-                <Pressable style={styles.pick} onPress={() => setPicker('type')}>
-                  <Text style={styles.pickLabel}>Операция</Text>
-                  <Text style={styles.pickValue} numberOfLines={1}>{config.label}</Text>
-                  <ChevronDown size={16} color={c.textTertiary} />
-                </Pressable>
-
-                <Pressable style={styles.pick} onPress={() => setDatePicker(true)}>
-                  <Text style={styles.pickLabel}>Когда</Text>
-                  <Text style={styles.pickValue}>{dateTimeText(meta.occurredAt)}</Text>
-                  <CalendarDays size={16} color={c.textTertiary} />
-                </Pressable>
-
-                {config.from && (
-                  <Pressable style={styles.pick} onPress={() => setPicker('from')}>
-                    <Text style={styles.pickLabel} numberOfLines={2}>
-                      {FROM_LABELS[type] || 'Откуда'}
-                    </Text>
-                    <Text style={[styles.pickValue, !fromRoom && styles.pickEmpty]} numberOfLines={1}>
-                      {fromRoom ? fromRoom.label : 'Выберите кабинет'}
-                    </Text>
-                    <ChevronRight size={16} color={c.textTertiary} />
+          {!rooms ? <LogoLoader /> : (
+            <FlatList
+              data={lines}
+              keyExtractor={(item, at) => `${item.key}-${at}`}
+              contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 90}}
+              keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={
+                <View>
+                  {/* Тип — строкой с листом, а не рядом кнопок: типов восемь, и
+                      от типа зависит вся остальная форма, так что выбор должен
+                      читаться словом, а не угадываться по подсвеченному чипу */}
+                  <Pressable style={styles.pick} onPress={() => setPicker('type')}>
+                    <Text style={styles.pickLabel}>Операция</Text>
+                    <Text style={styles.pickValue} numberOfLines={1}>{config.label}</Text>
+                    <ChevronDown size={16} color={c.textTertiary} />
                   </Pressable>
-                )}
 
-                {config.to && (
-                  <Pressable style={styles.pick} onPress={() => setPicker('to')}>
-                    <Text style={styles.pickLabel} numberOfLines={2}>
-                      {TO_LABELS[type] || 'Куда'}
-                    </Text>
-                    <Text style={[styles.pickValue, !toRoom && styles.pickEmpty]} numberOfLines={1}>
-                      {toRoom ? toRoom.label : 'Выберите кабинет'}
-                    </Text>
-                    <ChevronRight size={16} color={c.textTertiary} />
+                  <Pressable style={styles.pick} onPress={() => setDatePicker(true)}>
+                    <Text style={styles.pickLabel}>Когда</Text>
+                    <Text style={styles.pickValue}>{dateTimeText(meta.occurredAt)}</Text>
+                    <CalendarDays size={16} color={c.textTertiary} />
                   </Pressable>
-                )}
 
-                {/* Контрагент только у приходных операций: у выдачи и списания
-                    второй стороны нет, и пустое поле там задавало бы вопрос,
-                    на который нечего ответить */}
-                {withContractor && (
-                  <Pressable style={styles.pick} onPress={() => setPicker('contractor')}>
-                    <Text style={styles.pickLabel}>Контрагент</Text>
+                  {config.from && (
+                    <Pressable style={styles.pick} onPress={() => setPicker('from')}>
+                      <Text style={styles.pickLabel} numberOfLines={2}>
+                        {FROM_LABELS[type] || 'Откуда'}
+                      </Text>
+                      <Text style={[styles.pickValue, !fromRoom && styles.pickEmpty]} numberOfLines={1}>
+                        {fromRoom ? fromRoom.label : 'Выберите кабинет'}
+                      </Text>
+                      <ChevronRight size={16} color={c.textTertiary} />
+                    </Pressable>
+                  )}
+
+                  {config.to && (
+                    <Pressable style={styles.pick} onPress={() => setPicker('to')}>
+                      <Text style={styles.pickLabel} numberOfLines={2}>
+                        {TO_LABELS[type] || 'Куда'}
+                      </Text>
+                      <Text style={[styles.pickValue, !toRoom && styles.pickEmpty]} numberOfLines={1}>
+                        {toRoom ? toRoom.label : 'Выберите кабинет'}
+                      </Text>
+                      <ChevronRight size={16} color={c.textTertiary} />
+                    </Pressable>
+                  )}
+
+                  {/* Контрагент только у приходных операций: у выдачи и списания
+                      второй стороны нет, и пустое поле там задавало бы вопрос,
+                      на который нечего ответить */}
+                  {withContractor && (
+                    <Pressable style={styles.pick} onPress={() => setPicker('contractor')}>
+                      <Text style={styles.pickLabel}>Контрагент</Text>
+                      <Text
+                        style={[styles.pickValue, !meta.contractorId && styles.pickEmpty]}
+                        numberOfLines={1}>
+                        {contractors.find(x => x.id === meta.contractorId)?.name || 'Не выбран'}
+                      </Text>
+                      <ChevronRight size={16} color={c.textTertiary} />
+                    </Pressable>
+                  )}
+
+                  <Text style={styles.section}>Позиции</Text>
+                  <Pressable
+                    style={styles.add}
+                    disabled={config.sourceFirst && !fromRoomId}
+                    onPress={() => setPicker('line')}>
+                    <Plus
+                      size={16}
+                      color={config.sourceFirst && !fromRoomId ? c.textTertiary : c.primary}
+                    />
                     <Text
-                      style={[styles.pickValue, !meta.contractorId && styles.pickEmpty]}
-                      numberOfLines={1}>
-                      {contractors.find(x => x.id === meta.contractorId)?.name || 'Не выбран'}
+                      style={[
+                        styles.addText,
+                        config.sourceFirst && !fromRoomId && styles.addTextOff,
+                      ]}>
+                      {config.sourceFirst && !fromRoomId
+                        ? 'Сначала выберите кабинет'
+                        : 'Добавить позицию'}
                     </Text>
-                    <ChevronRight size={16} color={c.textTertiary} />
                   </Pressable>
-                )}
+                </View>
+              }
+              renderItem={({item, index}) => (
+                <View style={styles.line}>
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowTitle} numberOfLines={2}>{item.name}</Text>
+                    <Text style={styles.rowSub}>
+                      {qtyText(item.quantity)} {item.unit || 'шт'}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setLines(prev => prev.filter((_, at) => at !== index))}
+                    hitSlop={10}>
+                    <Trash2 size={16} color={c.error} />
+                  </Pressable>
+                </View>
+              )}
+              ListFooterComponent={
+                <View style={styles.footer}>
+                  <Text style={styles.section}>Основание</Text>
+                  <View style={styles.card}>
+                    {field('Код основания', 'reasonCode', {placeholder: 'заявка, возврат, брак…'})}
+                    {field('Причина', 'reasonText', {multiline: true})}
+                    {field('Комментарий', 'comment', {multiline: true})}
+                  </View>
+                </View>
+              }
+            />
+          )}
 
-                <Text style={styles.section}>Позиции</Text>
+          <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+            <Pressable
+              style={[styles.button, sending && styles.buttonOff]}
+              disabled={sending}
+              onPress={post}>
+              {sending
+                ? <ActivityIndicator size="small" color="#FFFFFF" />
+                : <Check size={17} color="#FFFFFF" />}
+              <Text style={styles.buttonText}>{sending ? 'Провожу…' : 'Провести'}</Text>
+            </Pressable>
+          </GlassBar>
+
+          {/* Системный выбор даты: на Android это отдельный диалог, поэтому
+              компонент монтируется только на время показа */}
+          {datePicker && (
+            <DateTimePicker
+              value={meta.occurredAt}
+              mode="date"
+              onChange={(event, picked) => {
+                setDatePicker(false);
+                if (event.type === 'set' && picked) setMeta(m => ({...m, occurredAt: picked}));
+              }}
+            />
+          )}
+
+          <BottomSheet
+            glass
+            visible={picker === 'type' || picker === 'contractor'}
+            title={picker === 'type' ? 'Операция' : 'Контрагент'}
+            onClose={() => setPicker(null)}>
+            <View style={styles.sheet}>
+              {picker === 'type' && TYPES.map(item => (
                 <Pressable
-                  style={styles.add}
-                  disabled={config.sourceFirst && !fromRoomId}
-                  onPress={() => setPicker('line')}>
-                  <Plus
-                    size={16}
-                    color={config.sourceFirst && !fromRoomId ? c.textTertiary : c.primary}
-                  />
+                  key={item.key}
+                  style={[styles.sheetRow, type === item.key && styles.sheetRowOn]}
+                  onPress={() => {
+                    // Смена типа сбрасывает строки: у нового типа другой набор
+                    // того, что вообще можно положить в документ
+                    setType(item.key);
+                    setLines([]);
+                    setPicker(null);
+                  }}>
+                  <Text style={[styles.sheetRowText, type === item.key && styles.sheetRowTextOn]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+
+              {picker === 'contractor' && (
+                <Pressable
+                  style={styles.sheetRow}
+                  onPress={() => { setMeta(m => ({...m, contractorId: null})); setPicker(null); }}>
+                  <Text style={styles.sheetRowText}>Не выбран</Text>
+                </Pressable>
+              )}
+              {picker === 'contractor' && contractors.map(item => (
+                <Pressable
+                  key={item.id}
+                  style={[styles.sheetRow, meta.contractorId === item.id && styles.sheetRowOn]}
+                  onPress={() => { setMeta(m => ({...m, contractorId: item.id})); setPicker(null); }}>
                   <Text
                     style={[
-                      styles.addText,
-                      config.sourceFirst && !fromRoomId && styles.addTextOff,
+                      styles.sheetRowText,
+                      meta.contractorId === item.id && styles.sheetRowTextOn,
                     ]}>
-                    {config.sourceFirst && !fromRoomId
-                      ? 'Сначала выберите кабинет'
-                      : 'Добавить позицию'}
+                    {item.name}
                   </Text>
                 </Pressable>
-              </View>
-            }
-            renderItem={({item, index}) => (
-              <View style={styles.line}>
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>{item.name}</Text>
-                  <Text style={styles.rowSub}>
-                    {qtyText(item.quantity)} {item.unit || 'шт'}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => setLines(prev => prev.filter((_, at) => at !== index))}
-                  hitSlop={10}>
-                  <Trash2 size={16} color={c.error} />
-                </Pressable>
-              </View>
-            )}
-            ListFooterComponent={
-              <View style={styles.footer}>
-                <Text style={styles.section}>Основание</Text>
-                <View style={styles.card}>
-                  {field('Код основания', 'reasonCode', {placeholder: 'заявка, возврат, брак…'})}
-                  {field('Причина', 'reasonText', {multiline: true})}
-                  {field('Комментарий', 'comment', {multiline: true})}
-                </View>
-              </View>
-            }
-          />
-        )}
+              ))}
+            </View>
+          </BottomSheet>
 
-        <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
-          <Pressable
-            style={[styles.button, sending && styles.buttonOff]}
-            disabled={sending}
-            onPress={post}>
-            {sending
-              ? <ActivityIndicator size="small" color="#FFFFFF" />
-              : <Check size={17} color="#FFFFFF" />}
-            <Text style={styles.buttonText}>{sending ? 'Провожу…' : 'Провести'}</Text>
-          </Pressable>
-        </View>
+          {(picker === 'from' || picker === 'to') && (
+            <RoomPicker
+              styles={styles}
+              c={c}
+              insets={insets}
+              rooms={rooms}
+              onClose={() => setPicker(null)}
+              onPick={(id) => {
+                if (picker === 'from') { setFromRoomId(id); setLines([]); } else setToRoomId(id);
+                setPicker(null);
+              }}
+            />
+          )}
 
-        {/* Системный выбор даты: на Android это отдельный диалог, поэтому
-            компонент монтируется только на время показа */}
-        {datePicker && (
-          <DateTimePicker
-            value={meta.occurredAt}
-            mode="date"
-            onChange={(event, picked) => {
-              setDatePicker(false);
-              if (event.type === 'set' && picked) setMeta(m => ({...m, occurredAt: picked}));
-            }}
-          />
-        )}
-
-        <BottomSheet
-          visible={picker === 'type' || picker === 'contractor'}
-          title={picker === 'type' ? 'Операция' : 'Контрагент'}
-          onClose={() => setPicker(null)}>
-          <View style={styles.sheet}>
-            {picker === 'type' && TYPES.map(item => (
-              <Pressable
-                key={item.key}
-                style={[styles.sheetRow, type === item.key && styles.sheetRowOn]}
-                onPress={() => {
-                  // Смена типа сбрасывает строки: у нового типа другой набор
-                  // того, что вообще можно положить в документ
-                  setType(item.key);
-                  setLines([]);
-                  setPicker(null);
-                }}>
-                <Text style={[styles.sheetRowText, type === item.key && styles.sheetRowTextOn]}>
-                  {item.label}
-                </Text>
-              </Pressable>
-            ))}
-
-            {picker === 'contractor' && (
-              <Pressable
-                style={styles.sheetRow}
-                onPress={() => { setMeta(m => ({...m, contractorId: null})); setPicker(null); }}>
-                <Text style={styles.sheetRowText}>Не выбран</Text>
-              </Pressable>
-            )}
-            {picker === 'contractor' && contractors.map(item => (
-              <Pressable
-                key={item.id}
-                style={[styles.sheetRow, meta.contractorId === item.id && styles.sheetRowOn]}
-                onPress={() => { setMeta(m => ({...m, contractorId: item.id})); setPicker(null); }}>
-                <Text
-                  style={[
-                    styles.sheetRowText,
-                    meta.contractorId === item.id && styles.sheetRowTextOn,
-                  ]}>
-                  {item.name}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </BottomSheet>
-
-        {(picker === 'from' || picker === 'to') && (
-          <RoomPicker
-            styles={styles}
-            c={c}
-            insets={insets}
-            rooms={rooms}
-            onClose={() => setPicker(null)}
-            onPick={(id) => {
-              if (picker === 'from') { setFromRoomId(id); setLines([]); } else setToRoomId(id);
-              setPicker(null);
-            }}
-          />
-        )}
-
-        {picker === 'line' && (
-          <LinePicker
-            styles={styles}
-            c={c}
-            insets={insets}
-            roomId={fromRoomId}
-            // У приёма источника нет: класть можно что угодно из справочника,
-            // а не только то, что уже где-то лежит
-            material={config.material}
-            asset={config.asset}
-            fromStock={Boolean(config.sourceFirst)}
-            onClose={() => setPicker(null)}
-            onPick={(line) => { setLines(prev => [...prev, line]); setPicker(null); }}
-          />
-        )}
-      </KeyboardAvoidingView>
+          {picker === 'line' && (
+            <LinePicker
+              styles={styles}
+              c={c}
+              insets={insets}
+              roomId={fromRoomId}
+              // У приёма источника нет: класть можно что угодно из справочника,
+              // а не только то, что уже где-то лежит
+              material={config.material}
+              asset={config.asset}
+              fromStock={Boolean(config.sourceFirst)}
+              onClose={() => setPicker(null)}
+              onPick={(line) => { setLines(prev => [...prev, line]); setPicker(null); }}
+            />
+          )}
+        </KeyboardAvoidingView>
+      </GlassBackdrop>
     </Modal>
   );
 }
@@ -634,38 +640,40 @@ function RoomPicker({styles, c, insets, rooms, onClose, onPick}) {
 
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalRoot}>
-        <View style={[styles.modalHead, {paddingTop: insets.top + 12}]}>
-          <Text style={styles.modalTitle}>Кабинет</Text>
-          <Pressable onPress={onClose} hitSlop={10}>
-            <X size={22} color={c.textPrimary} />
-          </Pressable>
-        </View>
-        <View style={styles.search}>
-          <Search size={15} color={c.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            value={q}
-            onChangeText={setQ}
-            placeholder="Номер или корпус"
-            placeholderTextColor={c.textTertiary}
+      <GlassBackdrop>
+        <View style={styles.modalRoot}>
+          <View style={[styles.modalHead, {paddingTop: insets.top + 12}]}>
+            <Text style={styles.modalTitle}>Кабинет</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <X size={22} color={c.textPrimary} />
+            </Pressable>
+          </View>
+          <View style={styles.search}>
+            <Search size={15} color={c.textTertiary} />
+            <TextInput
+              style={styles.searchInput}
+              value={q}
+              onChangeText={setQ}
+              placeholder="Номер или корпус"
+              placeholderTextColor={c.textTertiary}
+            />
+          </View>
+          <FlatList
+            data={list}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({item}) => (
+              <Pressable style={styles.line} onPress={() => onPick(item.id)}>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle}>{item.label}</Text>
+                  <Text style={styles.rowSub}>{item.where}</Text>
+                </View>
+              </Pressable>
+            )}
           />
         </View>
-        <FlatList
-          data={list}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({item}) => (
-            <Pressable style={styles.line} onPress={() => onPick(item.id)}>
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{item.label}</Text>
-                <Text style={styles.rowSub}>{item.where}</Text>
-              </View>
-            </Pressable>
-          )}
-        />
-      </View>
+      </GlassBackdrop>
     </Modal>
   );
 }
@@ -753,86 +761,88 @@ function LinePicker({styles, c, insets, roomId, fromStock, material, asset, onCl
 
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalRoot}>
-        <View style={[styles.modalHead, {paddingTop: insets.top + 12}]}>
-          <Text style={styles.modalTitle}>{chosen ? 'Количество' : 'Позиция'}</Text>
-          <Pressable onPress={chosen ? () => setChosen(null) : onClose} hitSlop={10}>
-            <X size={22} color={c.textPrimary} />
-          </Pressable>
-        </View>
-
-        {chosen ? (
-          <View style={styles.qtyWrap}>
-            <Text style={styles.qtyName}>{chosen.name}</Text>
-            {chosen.available !== null && (
-              <Text style={styles.rowSub}>
-                Доступно: {qtyText(chosen.available)} {chosen.unit || ''}
-              </Text>
-            )}
-            {!chosen.assetId && (
-              <TextInput
-                style={styles.qtyInput}
-                value={quantity}
-                onChangeText={setQuantity}
-                keyboardType="numeric"
-                autoFocus
-              />
-            )}
-            <Pressable style={styles.button} onPress={confirm}>
-              <Check size={17} color="#FFFFFF" />
-              <Text style={styles.buttonText}>Добавить</Text>
+      <GlassBackdrop>
+        <View style={styles.modalRoot}>
+          <View style={[styles.modalHead, {paddingTop: insets.top + 12}]}>
+            <Text style={styles.modalTitle}>{chosen ? 'Количество' : 'Позиция'}</Text>
+            <Pressable onPress={chosen ? () => setChosen(null) : onClose} hitSlop={10}>
+              <X size={22} color={c.textPrimary} />
             </Pressable>
           </View>
-        ) : (
-          <>
-            <View style={styles.search}>
-              <Search size={15} color={c.textTertiary} />
-              <TextInput
-                style={styles.searchInput}
-                value={q}
-                onChangeText={setQ}
-                placeholder="Наименование"
-                placeholderTextColor={c.textTertiary}
-              />
+
+          {chosen ? (
+            <View style={styles.qtyWrap}>
+              <Text style={styles.qtyName}>{chosen.name}</Text>
+              {chosen.available !== null && (
+                <Text style={styles.rowSub}>
+                  Доступно: {qtyText(chosen.available)} {chosen.unit || ''}
+                </Text>
+              )}
+              {!chosen.assetId && (
+                <TextInput
+                  style={styles.qtyInput}
+                  value={quantity}
+                  onChangeText={setQuantity}
+                  keyboardType="numeric"
+                  autoFocus
+                />
+              )}
+              <Pressable style={styles.button} onPress={confirm}>
+                <Check size={17} color="#FFFFFF" />
+                <Text style={styles.buttonText}>Добавить</Text>
+              </Pressable>
             </View>
-            {!rows ? <LogoLoader /> : (
-              <FlatList
-                data={list}
-                keyExtractor={item => item.key}
-                contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
-                keyboardShouldPersistTaps="handled"
-                ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
-                renderItem={({item}) => (
-                  <Pressable
-                    style={styles.line}
-                    onPress={() => { setChosen(item); setQuantity('1'); }}>
-                    <View style={styles.rowText}>
-                      <Text style={styles.rowTitle} numberOfLines={2}>{item.name}</Text>
-                      {item.available !== null && (
-                        <Text style={styles.rowSub}>
-                          {qtyText(item.available)} {item.unit || ''}
-                        </Text>
-                      )}
-                    </View>
-                  </Pressable>
-                )}
-              />
-            )}
-          </>
-        )}
-      </View>
+          ) : (
+            <>
+              <View style={styles.search}>
+                <Search size={15} color={c.textTertiary} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={q}
+                  onChangeText={setQ}
+                  placeholder="Наименование"
+                  placeholderTextColor={c.textTertiary}
+                />
+              </View>
+              {!rows ? <LogoLoader /> : (
+                <FlatList
+                  data={list}
+                  keyExtractor={item => item.key}
+                  contentContainerStyle={{paddingHorizontal: 16, paddingBottom: insets.bottom + 24}}
+                  keyboardShouldPersistTaps="handled"
+                  ListEmptyComponent={<Text style={styles.none}>Ничего не нашлось</Text>}
+                  renderItem={({item}) => (
+                    <Pressable
+                      style={styles.line}
+                      onPress={() => { setChosen(item); setQuantity('1'); }}>
+                      <View style={styles.rowText}>
+                        <Text style={styles.rowTitle} numberOfLines={2}>{item.name}</Text>
+                        {item.available !== null && (
+                          <Text style={styles.rowSub}>
+                            {qtyText(item.available)} {item.unit || ''}
+                          </Text>
+                        )}
+                      </View>
+                    </Pressable>
+                  )}
+                />
+              )}
+            </>
+          )}
+        </View>
+      </GlassBackdrop>
     </Modal>
   );
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   list: {paddingHorizontal: 16},
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 11,
@@ -853,9 +863,8 @@ const makeStyles = c => StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgSecondary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   button: {
     flexDirection: 'row',
@@ -865,11 +874,12 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonOff: {opacity: 0.5},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
 
-  modalRoot: {flex: 1, backgroundColor: c.bgSecondary},
+  modalRoot: {flex: 1},
   modalHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -882,7 +892,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     height: 42,
@@ -894,7 +904,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -916,7 +926,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 11,
@@ -929,11 +939,11 @@ const makeStyles = c => StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, paddingHorizontal: 14},
+  card: {...glassSurface(c), borderRadius: radius.lg, paddingHorizontal: 14},
   field: {
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   fieldLabel: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginBottom: 3},
   fieldInput: {
@@ -948,7 +958,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     height: 42,
@@ -972,7 +982,7 @@ const makeStyles = c => StyleSheet.create({
   qtyInput: {
     height: 52,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     paddingHorizontal: 14,
     color: c.textPrimary,
     fontFamily: font.semiBold,

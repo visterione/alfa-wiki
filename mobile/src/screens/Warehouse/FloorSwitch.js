@@ -41,7 +41,7 @@ import React from 'react';
 import {View, Text, Pressable, StyleSheet} from 'react-native';
 import {Boxes} from 'lucide-react-native';
 
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 
 /**
@@ -93,7 +93,7 @@ const makeStyles = c => StyleSheet.create({
     flexWrap: 'wrap',
     gap: 5,
     padding: 5,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
   },
   cell: {

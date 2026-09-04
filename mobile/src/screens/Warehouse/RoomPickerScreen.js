@@ -53,8 +53,9 @@ import {
 
 import CONFIG from '../../config';
 import LogoLoader from '../../components/LogoLoader';
+import GlassBar from '../../components/GlassBar';
 import FloorSwitch from './FloorSwitch';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, accentShadow} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {
   useWarehouseCan, getLocationTree, loadLocationTree, useWarehouseMedCenter,
@@ -322,7 +323,7 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
       />
 
       {picking && checked.size > 0 && (
-        <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+        <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
           <Pressable
             style={styles.button}
             onPress={() => navigation.navigate('WarehouseLabelPrint', {
@@ -333,7 +334,7 @@ export default function WarehouseRoomPickerScreen({route, navigation}) {
             <Printer size={17} color="#FFFFFF" />
             <Text style={styles.buttonText}>Печать · {checked.size}</Text>
           </Pressable>
-        </View>
+        </GlassBar>
       )}
     </View>
   );
@@ -374,12 +375,12 @@ const makeStyles = c => StyleSheet.create({
   // переключатель этажей, и поиск, и отступ должен быть одинаковым в обоих
   // случаях. Дальше интервалы идут сверху вниз — каждый элемент отодвигает
   // следующий.
-  root: {flex: 1, backgroundColor: c.bgSecondary, paddingTop: 12},
+  root: {flex: 1, paddingTop: 12},
   search: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     height: 42,
@@ -393,7 +394,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -441,7 +442,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 11,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 11,
@@ -474,9 +475,8 @@ const makeStyles = c => StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgSecondary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   button: {
     flexDirection: 'row',
@@ -486,6 +486,7 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
 });

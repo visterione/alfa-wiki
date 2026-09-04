@@ -93,6 +93,10 @@ const HIDDEN_ROUTES = [
   // Подэкраны настроек (ver. 7.55) — по той же причине. Знак нужен на самом
   // хабе: оттуда и уходят в другой раздел.
   'SettingsAccount', 'SettingsSecurity', 'SettingsNotifications', 'SettingsAppearance',
+  // Пользователи (ver. 7.77): длинный список сотрудников, карточка, форма и
+  // корзина — знак поверх них отнимал бы нижнюю строку у списка и лёг бы прямо
+  // на кнопку «Сохранить» вместе со своим затемнением
+  'AdminUsers', 'AdminUser', 'AdminUserForm', 'AdminTrash',
   // Склад (ver. 6.81). Сканер — потому что кадр камеры занимает экран целиком и
   // кнопка поверх него читалась бы как часть видоискателя. Пересчёт, размещение
   // и выбор этикеток — потому что у них своя кнопка внизу, а два ряда органов
@@ -285,6 +289,16 @@ const TAB_ACTIONS = {
   // Выход стоит у настроек, а не у профиля: профиля отдельной вкладкой больше
   // нет — он стал первым экраном настроек (ver. 7.55)
   SettingsTab: [{
+    // Пользователи портала (ver. 7.77). В колесе, а не строкой в хабе настроек:
+    // право adminAccess.users есть у десятка человек на сеть, и строка, которую
+    // видят десятеро, занимала бы место у всех остальных. Колесо же рисуется по
+    // тому, что доступно, — лишней кнопки в нём просто нет.
+    key: 'users',
+    icon: Users,
+    label: 'Пользователи',
+    allowed: user => Boolean(user?.isAdmin || user?.adminAccess?.users),
+    run: ({navigation}) => navigation.navigate('SettingsTab', {screen: 'AdminUsers'}),
+  }, {
     key: 'logout',
     icon: LogOut,
     label: 'Выйти',
@@ -645,7 +659,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   // момент открытия — см. openTurnFor ниже.
   const openTurn = useRef(0);
 
-  const {logout} = useAuth();
+  const {user, logout} = useAuth();
   // 'sections' — разделы приложения, 'actions' — действия текущего раздела
   const [mode, setMode] = useState('sections');
   const [open, setOpen] = useState(false);
@@ -806,15 +820,19 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
       badge: badges[route.name] || 0,
     }));
 
-  // Действия текущего раздела — второе колесо, на долгое нажатие
-  const actions = (TAB_ACTIONS[current.name] || []).map(action => ({
-    key: action.key,
-    icon: action.icon,
-    label: action.label,
-    badge: 0,
-    danger: action.danger,
-    onPress: () => { close(); action.run({navigation, logout}); },
-  }));
+  // Действия текущего раздела — второе колесо, на долгое нажатие. Часть из них
+  // закрыта правом (пользователи портала), и у кого его нет — гнезда в колесе
+  // тоже нет: кнопка, ведущая в «нет доступа», хуже её отсутствия.
+  const actions = (TAB_ACTIONS[current.name] || [])
+    .filter(action => !action.allowed || action.allowed(user))
+    .map(action => ({
+      key: action.key,
+      icon: action.icon,
+      label: action.label,
+      badge: 0,
+      danger: action.danger,
+      onPress: () => { close(); action.run({navigation, logout}); },
+    }));
 
   const items = mode === 'actions' ? actions : sections;
 

@@ -381,7 +381,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, avatar, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -438,6 +438,10 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       ...(username && { username }),
       ...(displayName !== undefined && { displayName }),
       ...(email !== undefined && { email: email || null }),
+      // Портрет в правке раньше терялся молча: форма его показывала и давала
+      // сменить, а сюда поле не доезжало вовсе — карточка сохранялась со старым
+      // фото, и это выглядело как «не загрузилось».
+      ...(avatar !== undefined && { avatar: avatar || null }),
       ...(phone !== undefined && { phone: phone || null }),
       ...(position !== undefined && { position: position || null }),
       ...(specialty !== undefined && { specialty: specialty || null }),

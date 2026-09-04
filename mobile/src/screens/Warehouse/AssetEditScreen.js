@@ -35,8 +35,10 @@ import {Check, ChevronRight, X} from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassBackdrop from '../../components/GlassBackdrop';
+import GlassBar from '../../components/GlassBar';
 import SwipeTabs from '../../components/SwipeTabs';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {ASSET_STATUS, dateText} from './warehouseMeta';
 
@@ -259,7 +261,7 @@ export default function WarehouseAssetEditScreen({route, navigation}) {
         </SwipeTabs>
       </ScrollView>
 
-      <View style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
+      <GlassBar style={[styles.bar, {paddingBottom: insets.bottom + 12}]}>
         <Pressable
           style={[styles.button, saving && styles.buttonOff]}
           disabled={saving}
@@ -269,42 +271,44 @@ export default function WarehouseAssetEditScreen({route, navigation}) {
             : <Check size={17} color="#FFFFFF" />}
           <Text style={styles.buttonText}>{saving ? 'Сохраняю…' : 'Сохранить'}</Text>
         </Pressable>
-      </View>
+      </GlassBar>
 
       {Boolean(picker) && (
         <Modal animationType="slide" onRequestClose={() => setPicker(null)}>
-          <View style={[styles.modal, {paddingTop: insets.top + 12}]}>
-            <View style={styles.modalHead}>
-              <Text style={styles.modalTitle}>{picker.label}</Text>
-              <Pressable onPress={() => setPicker(null)} hitSlop={10}>
-                <X size={22} color={c.textPrimary} />
-              </Pressable>
+          <GlassBackdrop>
+            <View style={[styles.modal, {paddingTop: insets.top + 12}]}>
+              <View style={styles.modalHead}>
+                <Text style={styles.modalTitle}>{picker.label}</Text>
+                <Pressable onPress={() => setPicker(null)} hitSlop={10}>
+                  <X size={22} color={c.textPrimary} />
+                </Pressable>
+              </View>
+              <ScrollView contentContainerStyle={styles.modalList}>
+                {/* «Не выбрано» — законный ответ: категория и поставщик известны
+                    не всегда, а обязать выбрать значит получить наугад проставленный
+                    справочник. Статус же есть всегда, и очищать его нечем. */}
+                {picker.key !== 'status' && picker.key !== 'depreciationMethod' && (
+                  <Pressable
+                    style={styles.modalRow}
+                    onPress={() => { set(picker.key, null); setPicker(null); }}>
+                    <Text style={styles.modalEmpty}>Не выбрано</Text>
+                  </Pressable>
+                )}
+                {picker.options.map(option => (
+                  <Pressable
+                    key={option.value}
+                    style={styles.modalRow}
+                    onPress={() => { set(picker.key, option.value); setPicker(null); }}>
+                    <Text style={styles.modalRowText}>{option.label}</Text>
+                    {form[picker.key] === option.value && <Check size={16} color={c.primary} />}
+                  </Pressable>
+                ))}
+                {!picker.options.length && (
+                  <Text style={styles.modalEmpty}>Справочник пуст или закрыт правами</Text>
+                )}
+              </ScrollView>
             </View>
-            <ScrollView contentContainerStyle={styles.modalList}>
-              {/* «Не выбрано» — законный ответ: категория и поставщик известны
-                  не всегда, а обязать выбрать значит получить наугад проставленный
-                  справочник. Статус же есть всегда, и очищать его нечем. */}
-              {picker.key !== 'status' && picker.key !== 'depreciationMethod' && (
-                <Pressable
-                  style={styles.modalRow}
-                  onPress={() => { set(picker.key, null); setPicker(null); }}>
-                  <Text style={styles.modalEmpty}>Не выбрано</Text>
-                </Pressable>
-              )}
-              {picker.options.map(option => (
-                <Pressable
-                  key={option.value}
-                  style={styles.modalRow}
-                  onPress={() => { set(picker.key, option.value); setPicker(null); }}>
-                  <Text style={styles.modalRowText}>{option.label}</Text>
-                  {form[picker.key] === option.value && <Check size={16} color={c.primary} />}
-                </Pressable>
-              ))}
-              {!picker.options.length && (
-                <Text style={styles.modalEmpty}>Справочник пуст или закрыт правами</Text>
-              )}
-            </ScrollView>
-          </View>
+          </GlassBackdrop>
         </Modal>
       )}
 
@@ -326,11 +330,11 @@ export default function WarehouseAssetEditScreen({route, navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   content: {padding: 16},
   card: {
     width: '100%',
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 4,
@@ -338,7 +342,7 @@ const makeStyles = c => StyleSheet.create({
   field: {
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   label: {fontFamily: font.regular, fontSize: 11, color: c.textSecondary, marginBottom: 3},
   input: {
@@ -360,9 +364,8 @@ const makeStyles = c => StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgSecondary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   button: {
     flexDirection: 'row',
@@ -372,11 +375,12 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonOff: {opacity: 0.5},
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
 
-  modal: {flex: 1, backgroundColor: c.bgSecondary},
+  modal: {flex: 1},
   modalHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,7 +394,7 @@ const makeStyles = c => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
     borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -399,6 +403,6 @@ const makeStyles = c => StyleSheet.create({
   modalRowText: {flex: 1, fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
   modalEmpty: {flex: 1, fontFamily: font.regular, fontSize: 15, color: c.textTertiary},
 
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
+  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary},
 });

@@ -27,7 +27,7 @@
  * прямо в списке — там же, где на него смотрят, — и перед печатью видно
  * наклейку первого отмеченного.
  */
-import React, {useCallback, useLayoutEffect, useMemo, useState} from 'react';
+import React, {useCallback, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Alert, useWindowDimensions,
 } from 'react-native';
@@ -35,18 +35,20 @@ import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   ChevronRight, Printer, Check, X, Undo2, Pencil, ClipboardList,
-  ArrowLeftRight, ScrollText,
+  ArrowLeftRight, ArrowRightLeft, ScrollText, PackageMinus, PackagePlus, PackageX,
 } from 'lucide-react-native';
 
 import {warehouse as warehouseApi} from '../../services/api';
 import LogoLoader from '../../components/LogoLoader';
+import GlassCard from '../../components/GlassCard';
+import GlassBar from '../../components/GlassBar';
 import LabelPreview from '../../components/LabelPreview';
 import MarqueeText from '../../components/MarqueeText';
 import RoomMiniMap from '../../components/RoomMiniMap';
 import SwipeTabs from '../../components/SwipeTabs';
 import BottomSheet from '../../components/BottomSheet';
 import RoomOperation, {stockTarget, assetTarget} from './RoomOperation';
-import {radius, font} from '../../theme';
+import {radius, font, glassSurface, glassOverlay, accentShadow, glassLine} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {useWarehouseAccess, useWarehouseCan} from '../../store/warehouseStore';
 import {ASSET_STATUS, statusColor, qtyText, dateText, roomHeadText} from './warehouseMeta';
@@ -78,6 +80,25 @@ export default function WarehouseRoomScreen({route, navigation}) {
   // выбирает действие, «operation» — уже выбранную пару «действие + позиция».
   const [actions, setActions] = useState(null);
   const [operation, setOperation] = useState(null);
+
+  /**
+   * Выбранное в шторке выполняется после того, как она уедет с экрана.
+   *
+   * Шторка — это Modal, и живёт она ещё почти секунду после того, как её
+   * закрыли: всё время анимации уезда. Форма операции, поднятая в тот же кадр,
+   * вставала поверх ещё живой шторки, и экран замирал — касания уходили в окно,
+   * которого уже нет, а вернуться можно было только кнопкой «назад». Поэтому
+   * здесь не действие, а намерение: что сделать, когда шторки не станет.
+   */
+  const afterSheet = useRef(null);
+
+  const pick = (action) => { afterSheet.current = action; setActions(null); };
+
+  const sheetClosed = useCallback(() => {
+    const action = afterSheet.current;
+    afterSheet.current = null;
+    action?.();
+  }, []);
 
   const load = useCallback(() => {
     warehouseApi.roomDashboard(roomId)
@@ -116,7 +137,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
   // учёт есть: права независимы (см. services/warehouse/permissions.js), и
   // спрятав кнопку за одним canIssue, мы отобрали бы у него заведение карточек,
   // которое до этого стояло отдельной строкой во вкладке.
-  const canStartOps = (canIssue || canAddAssets) && !counting;
+  const canStartOps = (canIssue || canAddAssets || access?.isAdmin) && !counting;
 
   /**
    * Шапка: «Каб. 434 (Архив) | МЦ Альфа».
@@ -371,7 +392,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
         )}
 
         {canPrint && (
-          <View style={styles.labelCard}>
+          <GlassCard style={styles.labelCard}>
             <LabelPreview url={warehouseApi.doorCardUrl(room.id)} />
             <Pressable
               style={styles.labelButton}
@@ -383,7 +404,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
               <Printer size={16} color={c.primary} />
               <Text style={styles.labelButtonText}>Напечатать</Text>
             </Pressable>
-          </View>
+          </GlassCard>
         )}
 
         {/* Просрочка, минимумы и просроченное ТО — единственное, что требует
@@ -436,20 +457,6 @@ export default function WarehouseRoomScreen({route, navigation}) {
           {stockPage}
         </SwipeTabs>
 
-        {/* Временный инструмент отладки: стирает всё, что разбор ведомости
-            завёл в этот кабинет. Только администратору и внизу страницы —
-            рядом с полезными кнопками ему не место. */}
-        {Boolean(access?.isAdmin) && !counting && (
-          <Pressable
-            style={styles.rollback}
-            disabled={rollingBack}
-            onPress={rollback}>
-            <Undo2 size={15} color={c.error} />
-            <Text style={styles.rollbackText}>
-              {rollingBack ? 'Отменяю…' : 'Отменить размещение в кабинете'}
-            </Text>
-          </Pressable>
-        )}
       </ScrollView>
 
       {/* Полоса печати с наклейкой первого отмеченного. Показывать все — значит
@@ -457,7 +464,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
           вернуться к тому, от чего уходили. Первый отвечает на вопрос «то ли
           вообще поедет в принтер». */}
       {picking && checked.size > 0 && (
-        <View style={[styles.printBar, {paddingBottom: insets.bottom + 12}]}>
+        <GlassBar style={[styles.printBar, {paddingBottom: insets.bottom + 12}]}>
           {Boolean(firstPicked) && (
             <View style={styles.printPreview}>
               <LabelPreview
@@ -479,7 +486,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
             <Printer size={17} color="#FFFFFF" />
             <Text style={styles.buttonText}>Печать · {checked.size}</Text>
           </Pressable>
-        </View>
+        </GlassBar>
       )}
 
       {/* Выбор действия. Списком, а не рядом кнопок на строке: строка списка
@@ -492,38 +499,50 @@ export default function WarehouseRoomScreen({route, navigation}) {
           с вещи, которая уже здесь лежит. Ремонт заводится с карточки прибора,
           где виден его статус. */}
       <BottomSheet
+        glass
         visible={Boolean(actions)}
         title={fromRoom ? 'Что делаем' : actions?.name}
-        onClose={() => setActions(null)}>
+        onClose={() => setActions(null)}
+        onClosed={sheetClosed}>
         <View style={styles.sheet}>
+          {/* Значки из одной семьи: у трёх операций это коробка, с которой
+              что-то происходит — убыло, прибыло, вышло из оборота, — и рядом
+              они читаются как один набор, а не как случайные картинки.
+              Перемещение выпадает из неё намеренно: с коробкой там ничего не
+              происходит, меняется только место. */}
           {[
-            canOperate && (fromRoom || !actions?.assetId) && {key: 'issue', label: 'Выдать'},
-            canOperate && {key: 'transfer', label: 'Переместить'},
-            canOperate && {key: 'writeoff', label: 'Списать'},
+            canOperate && (fromRoom || !actions?.assetId)
+              && {key: 'issue', label: 'Выдать', icon: PackageMinus},
+            canOperate && {key: 'transfer', label: 'Переместить', icon: ArrowRightLeft},
+            canOperate && {key: 'writeoff', label: 'Списать', icon: PackageX},
             // Приём — он же заведение с нуля: что именно привезли, знает
             // следующий шаг, и там же заводят то, чего в справочнике не было.
-            fromRoom && canOperate && {key: 'receipt', label: 'Принять или завести новое'},
-          ].filter(Boolean).map(item => (
-            <Pressable
-              key={item.key}
-              style={styles.sheetRow}
-              onPress={() => {
-                setOperation({type: item.key, target: fromRoom ? null : actions});
-                setActions(null);
-              }}>
-              <Text style={styles.sheetRowText}>{item.label}</Text>
-            </Pressable>
-          ))}
+            fromRoom && canOperate
+              && {key: 'receipt', label: 'Принять или завести новое', icon: PackagePlus},
+          ].filter(Boolean).map((item) => {
+            const Icon = item.icon;
+            return (
+              <Pressable
+                key={item.key}
+                style={styles.sheetRow}
+                onPress={() => pick(
+                  () => setOperation({type: item.key, target: fromRoom ? null : actions}),
+                )}>
+                <Icon size={17} color={c.primary} />
+                <Text style={styles.sheetRowText}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
 
           {/* Без права вести учёт остаётся одно — поставить на учёт: приход и
               движения такому человеку сервер не проведёт. */}
           {fromRoom && !canOperate && canAddAssets && (
             <Pressable
               style={styles.sheetRow}
-              onPress={() => {
-                setActions(null);
-                navigation.navigate('WarehouseItemCreate', {roomId, kind: 'asset'});
-              }}>
+              onPress={() => pick(
+                () => navigation.navigate('WarehouseItemCreate', {roomId, kind: 'asset'}),
+              )}>
+              <PackagePlus size={17} color={c.primary} />
               <Text style={styles.sheetRowText}>Завести оборудование</Text>
             </Pressable>
           )}
@@ -534,15 +553,27 @@ export default function WarehouseRoomScreen({route, navigation}) {
           {fromRoom && (
             <Pressable
               style={[styles.sheetRow, styles.sheetRowLast]}
-              onPress={() => {
-                setActions(null);
-                navigation.navigate('WarehouseOperations', {
-                  roomId,
-                  title: roomHeadText(room),
-                });
-              }}>
+              onPress={() => pick(() => navigation.navigate('WarehouseOperations', {
+                roomId,
+                title: roomHeadText(room),
+              }))}>
               <ScrollText size={15} color={c.textSecondary} />
               <Text style={styles.sheetRowMuted}>История движений</Text>
+            </Pressable>
+          )}
+
+          {/* Временный инструмент отладки: стирает всё, что разбор ведомости
+              завёл в этот кабинет. Со страницы убран сюда — внизу кабинета он
+              был первым, что видел долиставший, хотя нужен раз в жизни. */}
+          {fromRoom && Boolean(access?.isAdmin) && !counting && (
+            <Pressable
+              style={styles.sheetRow}
+              disabled={rollingBack}
+              onPress={() => pick(rollback)}>
+              <Undo2 size={15} color={c.error} />
+              <Text style={styles.sheetRowDanger}>
+                {rollingBack ? 'Отменяю…' : 'Отменить размещение в кабинете'}
+              </Text>
             </Pressable>
           )}
         </View>
@@ -577,7 +608,7 @@ export default function WarehouseRoomScreen({route, navigation}) {
 }
 
 const makeStyles = c => StyleSheet.create({
-  root: {flex: 1, backgroundColor: c.bgSecondary},
+  root: {flex: 1},
   content: {padding: 16},
   headerTitle: {fontFamily: font.semiBold, fontSize: 16, color: '#FFFFFF'},
   block: {marginTop: 14},
@@ -594,7 +625,7 @@ const makeStyles = c => StyleSheet.create({
 
   counting: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 9,
-    backgroundColor: c.bgPrimary, borderRadius: radius.md,
+    ...glassSurface(c), borderRadius: radius.md,
     borderLeftWidth: 3, borderLeftColor: c.error,
     padding: 12, marginTop: 14,
   },
@@ -604,7 +635,6 @@ const makeStyles = c => StyleSheet.create({
   },
 
   labelCard: {
-    backgroundColor: c.bgPrimary,
     borderRadius: radius.lg,
     padding: 12,
     gap: 10,
@@ -628,12 +658,12 @@ const makeStyles = c => StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 8,
     borderRadius: radius.md,
-    backgroundColor: c.bgPrimary,
+    ...glassSurface(c),
   },
   pickText: {flex: 1, fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
   pickAction: {fontFamily: font.medium, fontSize: 12, color: c.primary},
 
-  card: {backgroundColor: c.bgPrimary, borderRadius: radius.lg, overflow: 'hidden'},
+  card: {...glassSurface(c), borderRadius: radius.lg, overflow: 'hidden'},
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -641,7 +671,7 @@ const makeStyles = c => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: glassLine(c),
   },
   dot: {width: 8, height: 8, borderRadius: 4},
   box: {
@@ -681,6 +711,7 @@ const makeStyles = c => StyleSheet.create({
     height: 46,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   opsBarText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
 
@@ -692,24 +723,13 @@ const makeStyles = c => StyleSheet.create({
   sheetRowLast: {
     marginTop: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
+    borderTopColor: glassLine(c),
     borderRadius: 0,
   },
   sheetRowText: {fontFamily: font.medium, fontSize: 15, color: c.textPrimary},
   sheetRowMuted: {fontFamily: font.medium, fontSize: 14, color: c.textSecondary},
+  sheetRowDanger: {fontFamily: font.medium, fontSize: 14, color: c.error},
 
-  rollback: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 24,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.error,
-  },
-  rollbackText: {fontFamily: font.medium, fontSize: 13, color: c.error},
 
   printBar: {
     position: 'absolute',
@@ -719,9 +739,8 @@ const makeStyles = c => StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: c.bgSecondary,
+    ...glassOverlay(c),
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
   },
   printPreview: {flexDirection: 'row', alignItems: 'center', gap: 10},
   // Ширина задана числом, а не долей: у превью жёсткое отношение сторон ленты,
@@ -736,9 +755,10 @@ const makeStyles = c => StyleSheet.create({
     height: 48,
     borderRadius: radius.md,
     backgroundColor: c.primary,
+    ...accentShadow(c.primary),
   },
   buttonText: {fontFamily: font.semiBold, fontSize: 15, color: '#FFFFFF'},
 
-  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: c.bgSecondary},
+  empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32},
   emptyText: {fontFamily: font.regular, fontSize: 14, color: c.textSecondary, textAlign: 'center', lineHeight: 20},
 });
