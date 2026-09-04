@@ -133,11 +133,16 @@ function totals(entries) {
   };
 }
 
+// Каркас строк задаёт текущий список палат, а не тот, что действовал в момент
+// сохранения дня. Иначе правка настроек доезжала бы только до тех дней, которые
+// ещё никто не открывал: уже начатый завтрашний день так и стоял бы со старыми
+// палатами, а новые появились бы через сутки — ровно тогда, когда список уже
+// надо отправлять. Содержимое ячеек переносит normalizeEntries.
 function dayToJson(day, department) {
-  const entries = day && Array.isArray(day.entries) && day.entries.length
-    ? day.entries
-    : emptyEntries(department);
-  const sent = day && Array.isArray(day.sentEntries) ? day.sentEntries : null;
+  const entries = normalizeEntries(department, day && day.entries);
+  const sent = day && Array.isArray(day.sentEntries)
+    ? normalizeEntries(department, day.sentEntries)
+    : null;
 
   return {
     department: department.key,
@@ -364,9 +369,12 @@ router.get('/day/pdf', authenticate, async (req, res) => {
 
     const day = await findDay(department, date);
     const useDraft = cleanText(req.query.source) === 'draft' || !day || !Array.isArray(day.sentEntries);
-    const entries = day
-      ? (useDraft ? day.entries : day.sentEntries)
-      : emptyEntries(department);
+    // Черновик печатаем по текущему списку палат — он должен совпасть с тем, что
+    // на экране. Отправленную версию не трогаем: это копия бумаги, которая уже
+    // лежит в буфете, и задним числом менять в ней строки нельзя.
+    const entries = useDraft
+      ? normalizeEntries(department, day && day.entries)
+      : day.sentEntries;
 
     const pdf = await mealDoc.renderPdf({
       department,
