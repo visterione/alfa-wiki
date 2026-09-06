@@ -4,9 +4,12 @@ import {
   Phone, AlertTriangle, RefreshCw, Paperclip
 } from 'lucide-react';
 import { openLine as openLineApi } from '../services/api';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import NotificationsPanel from './NotificationsPanel';
 import toast from 'react-hot-toast';
 import './OpenLine.css';
+import './NotificationsPanel.css';
 
 /**
  * Открытая линия: обращения пациентов из ботов (ver. 7.85).
@@ -81,6 +84,10 @@ function renderAttachment(a, key, fileToken) {
 
 export default function OpenLine() {
   const { user } = useAuth();
+  // Экран держим в адресе, как в «Задачах»: ссылка на журнал уведомлений должна
+  // открываться журналом, а не сбрасывать человека в очередь обращений.
+  const [params, setParams] = useSearchParams();
+  const screen = params.get('screen') === 'notifications' ? 'notifications' : 'conversations';
 
   const [state, setState] = useState(null);          // смена и линии сотрудника
   const [scope, setScope] = useState('queue');
@@ -211,12 +218,39 @@ export default function OpenLine() {
 
   // ── Отрисовка ───────────────────────────────────────────────────────────
 
+  const screenTabs = (
+    <nav className="ol-screens">
+      <button
+        className={screen === 'conversations' ? 'active' : ''}
+        onClick={() => setParams({})}
+      >Обращения</button>
+      <button
+        className={screen === 'notifications' ? 'active' : ''}
+        onClick={() => setParams({ screen: 'notifications' })}
+      >Уведомления</button>
+    </nav>
+  );
+
+  if (screen === 'notifications') {
+    return (
+      <div className="ol-page">
+        {screenTabs}
+        <NotificationsPanel />
+      </div>
+    );
+  }
+
+  // Администратор может не работать ни на одной линии, но тексты уведомлений
+  // правит именно он — переключатель разделов нужен и на этом экране.
   if (state && !state.isOperator) {
     return (
-      <div className="ol-empty-page">
+      <div className="ol-page">
+        {screenTabs}
+        <div className="ol-empty-page">
         <Inbox size={40} />
         <h2>Вы не заведены ни в одну линию</h2>
         <p>Открытая линия работает по составу: администратор добавляет сотрудников в линию медцентра.</p>
+        </div>
       </div>
     );
   }
@@ -226,9 +260,11 @@ export default function OpenLine() {
   const canWrite = conversation && conversation.status !== 'closed' && (isMine || !conversation.assigneeUserId);
 
   return (
-    // has-active нужен только узкому экрану: там список и переписка не помещаются
-    // рядом, и класс переключает, что из них показывать.
-    <div className={`ol-root ${activeId ? 'has-active' : ''}`}>
+    <div className="ol-page">
+      {screenTabs}
+      {/* has-active нужен только узкому экрану: там список и переписка не
+          помещаются рядом, и класс переключает, что из них показывать. */}
+      <div className={`ol-root ${activeId ? 'has-active' : ''}`}>
       <aside className="ol-side">
         <div className="ol-shift">
           <button
@@ -383,6 +419,7 @@ export default function OpenLine() {
           </>
         )}
       </section>
+      </div>
     </div>
   );
 }

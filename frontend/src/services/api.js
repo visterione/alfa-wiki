@@ -1302,3 +1302,13 @@ export const openLine = {
   removeOperator: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/operators/${userId}`),
   bindBot: (lineId, botId) => api.put(`/open-line/lines/${lineId}/bots/${botId}`)
 };
+
+// Уведомления пациентам (ver. 7.86): шаблоны текстов и журнал отправок.
+export const notifications = {
+  templates: () => api.get('/notifications/templates'),
+  createTemplate: (data) => api.post('/notifications/templates', data),
+  updateTemplate: (id, data) => api.put(`/notifications/templates/${id}`, data),
+  deleteTemplate: (id) => api.delete(`/notifications/templates/${id}`),
+  preview: (text) => api.post('/notifications/templates/preview', { text }),
+  outbox: (params) => api.get('/notifications/outbox', { params })
+};

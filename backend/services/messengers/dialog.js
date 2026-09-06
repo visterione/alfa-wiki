@@ -212,6 +212,7 @@ async function handleText(channel, bot, update) {
  */
 async function handleButton(channel, bot, update) {
   const [action, value] = String(update.data || '').split(':');
+  console.log(`[dialog] кнопка «${update.data}» от ${update.externalUserId}`);
 
   if (action !== 'confirm' || !value) {
     return channel.answerCallback(bot, update.callbackId);
@@ -219,6 +220,7 @@ async function handleButton(channel, bot, update) {
 
   try {
     const ok = await misClient.confirmAppointment(value);
+    console.log(`[dialog] подтверждение визита ${value}: ${ok ? 'принято МИС' : 'МИС отказала'}`);
     // Ответ на кнопку живёт секунды — сначала гасим часики, потом пишем в чат.
     await channel.answerCallback(bot, update.callbackId, ok ? 'Спасибо, визит подтверждён' : 'Не получилось, попробуйте позже');
     await channel.sendText(bot, update.chatId, ok

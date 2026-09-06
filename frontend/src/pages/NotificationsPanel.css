@@ -1,0 +1,237 @@
+/* Уведомления пациентам: тексты и журнал (ver. 7.86).
+   Цвета — только семантические токены, как во всём разделе. */
+
+/* Обёртка раздела: полоса переключения экранов и содержимое под ней. */
+.ol-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.ol-screens {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.ol-screens button {
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.ol-screens button:hover { background: var(--bg-hover); }
+.ol-screens button.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
+
+/* Раздел обращений внутри обёртки занимает остаток высоты. */
+.ol-page .ol-root { flex: 1; height: auto; min-height: 0; }
+
+.nt-root { flex: 1; overflow-y: auto; padding: 20px; min-height: 0; }
+
+.nt-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+.nt-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.nt-tab.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
+
+.nt-warning {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.nt-warning strong { color: var(--text-primary); }
+.nt-warning code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  font-size: 12px;
+}
+
+/* ── Шаблоны ─────────────────────────────────────────────────────────── */
+
+.nt-templates { display: flex; flex-direction: column; gap: 14px; max-width: 860px; }
+
+.nt-card {
+  padding: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+}
+.nt-card.off { opacity: .55; }
+
+.nt-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.nt-card h3 { margin: 0; font-size: 15px; color: var(--text-primary); }
+
+.nt-when {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.nt-card-actions { display: flex; gap: 14px; }
+
+.nt-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.nt-card textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.nt-card textarea:focus { outline: none; border-color: var(--accent-500); }
+
+.nt-placeholders { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.nt-placeholders button {
+  padding: 3px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  cursor: pointer;
+}
+.nt-placeholders button:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.nt-preview {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--accent-500);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.nt-card footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+.nt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.nt-btn:hover { background: var(--bg-hover); }
+.nt-btn.primary { background: var(--accent-500); border-color: transparent; color: #fff; font-weight: 600; }
+.nt-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── Журнал ──────────────────────────────────────────────────────────── */
+
+.nt-log { max-width: 860px; }
+
+.nt-log-head { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+
+.nt-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 104px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.nt-stat.active { border-color: var(--accent-500); }
+.nt-stat-value { font-size: 20px; font-weight: 700; color: var(--text-primary); }
+.nt-stat-label { font-size: 12px; color: var(--text-tertiary); }
+.nt-stat.ok .nt-stat-value { color: var(--success); }
+.nt-stat.bad .nt-stat-value { color: var(--error); }
+.nt-stat.wait .nt-stat-value { color: var(--warning); }
+
+.nt-log-note { font-size: 12px; color: var(--text-tertiary); }
+
+.nt-empty { color: var(--text-tertiary); font-size: 14px; }
+
+.nt-row {
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.nt-row.ok { border-left-color: var(--success); }
+.nt-row.bad { border-left-color: var(--error); }
+.nt-row.wait { border-left-color: var(--warning); }
+.nt-row.muted { border-left-color: var(--text-disabled); }
+
+.nt-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.nt-row-event { font-weight: 600; color: var(--text-primary); }
+.nt-row-phone { color: var(--text-secondary); }
+.nt-row-time { margin-left: auto; }
+
+.nt-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.nt-row-text { margin-top: 5px; font-size: 13px; color: var(--text-secondary); line-height: 1.45; }
+.nt-row-error { margin-top: 4px; font-size: 12px; color: var(--error); }
+
+@media (max-width: 768px) {
+  .nt-root { padding: 14px; }
+  .nt-row-time { margin-left: 0; }
+}
