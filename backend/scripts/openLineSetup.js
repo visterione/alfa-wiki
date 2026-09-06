@@ -26,10 +26,24 @@ const {
 
 const args = process.argv.slice(2);
 const has = (flag) => args.includes(flag);
+/**
+ * Значения после флага. Последнее собирается из всех оставшихся слов до
+ * следующего флага: `npm run` снимает кавычки, и «Тест — колл-центр» доезжает
+ * сюда тремя отдельными аргументами.
+ */
 const after = (flag, n = 1) => {
   const i = args.indexOf(flag);
   if (i < 0) return [];
-  return args.slice(i + 1, i + 1 + n);
+
+  const out = [];
+  const tail = [];
+  for (const a of args.slice(i + 1)) {
+    if (a.startsWith('--')) break;
+    if (out.length < n - 1) out.push(a);
+    else tail.push(a);
+  }
+  if (tail.length) out.push(tail.join(' '));
+  return out;
 };
 
 async function findUser(login) {
