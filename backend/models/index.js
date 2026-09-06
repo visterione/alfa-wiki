@@ -617,7 +617,12 @@ const BotSubscriber = sequelize.define('BotSubscriber', {
   source: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'bot' },      // bot | import (Fromni backfill)
   startedAt: { type: DataTypes.DATE },
   identifiedAt: { type: DataTypes.DATE },
-  taggedAt: { type: DataTypes.DATE }
+  taggedAt: { type: DataTypes.DATE },
+  botId: { type: DataTypes.UUID, allowNull: true },                   // каким нашим ботом заведён (у выгрузки из Fromni пусто)
+  // Человек заблокировал бота — Telegram отвечает 403. Помечаем сразу, чтобы
+  // каскад не тратил на него попытку и уходил на следующую ступень.
+  isBlocked: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  blockedAt: { type: DataTypes.DATE, allowNull: true }
 }, {
   tableName: 'bot_subscribers',
   timestamps: true,
@@ -627,6 +632,31 @@ const BotSubscriber = sequelize.define('BotSubscriber', {
     { unique: true, fields: ['platform', 'organization', 'externalUserId'] },
     { fields: ['organization'] },
     { fields: ['status'] }
+  ]
+});
+
+// === MESSENGER BOT MODEL (ver. 7.84) ===
+// Наш бот в Telegram/MAX: один на организацию и платформу. Раньше боты жили у
+// Fromni, и у неё же был их вебхук — из-за чего входящие мог получать только
+// кто-то один. Забрав ботов себе, мы становимся этим единственным потребителем.
+const MessengerBot = sequelize.define('MessengerBot', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  platform: { type: DataTypes.STRING(20), allowNull: false },        // 'telegram' | 'max'
+  organization: { type: DataTypes.STRING(50), allowNull: false },    // ключ организации, 'test' для проверочных
+  token: { type: DataTypes.TEXT, allowNull: false, unique: true },
+  username: { type: DataTypes.STRING(100) },
+  title: { type: DataTypes.STRING(150) },
+  // Приёмник вебхука открыт наружу без авторизации — иначе Telegram до него не
+  // достучится. Отличить настоящее обновление от постороннего запроса можно
+  // только по этому секрету, который платформа возвращает в заголовке.
+  webhookSecret: { type: DataTypes.STRING(64), allowNull: false },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
+}, {
+  tableName: 'messenger_bots',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['token'] },
+    { fields: ['organization', 'platform'] }
   ]
 });
 
@@ -2765,6 +2795,16 @@ const ReviewBoard = sequelize.define('ReviewBoard', {
     allowNull: false,
     comment: 'ID владельца доски'
   },
+  // Доски заводили до того, как появился нормальный справочник, и филиал жил
+  // только в названии строкой. Из-за этого оценки нельзя было собрать по
+  // клинике: сравнить название с справочником может человек, но не запрос.
+  // Привязка стоит на доске, а не на отзыве: досок десяток, отзывов тысячи, и
+  // филиал у доски один на всю её жизнь.
+  medCenterId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'Филиал, отзывы которого собирает доска. NULL — доска не про филиал'
+  },
   archived: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
@@ -2799,7 +2839,8 @@ const ReviewBoard = sequelize.define('ReviewBoard', {
   timestamps: true,
   indexes: [
     { fields: ['ownerId'] },
-    { fields: ['archived'] }
+    { fields: ['archived'] },
+    { fields: ['medCenterId'] }
   ]
 });
 
@@ -3057,6 +3098,10 @@ const ReviewHistory = sequelize.define('ReviewHistory', {
 
 // ReviewBoard relationships
 ReviewBoard.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
+// SET NULL при удалении филиала: доска с историей отзывов переживает закрытие
+// клиники, и терять её из-за правки справочника нельзя.
+ReviewBoard.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter', onDelete: 'SET NULL' });
+MedCenter.hasMany(ReviewBoard, { foreignKey: 'medCenterId', as: 'reviewBoards' });
 ReviewBoard.hasMany(Review, { foreignKey: 'boardId', as: 'reviews', onDelete: 'CASCADE' });
 ReviewBoard.hasMany(ReviewBoardPermission, { foreignKey: 'boardId', as: 'permissions', onDelete: 'CASCADE' });
 ReviewBoard.hasMany(ReviewBoardRole, { foreignKey: 'boardId', as: 'roles', onDelete: 'CASCADE' });
@@ -3545,10 +3590,55 @@ const MealRequirementPatient = sequelize.define('MealRequirementPatient', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   department: { type: DataTypes.STRING(30), allowNull: false },
   name: { type: DataTypes.STRING(200), allowNull: false },
-  lastUsedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
+  lastUsedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  // Привязка к карточке МИС (ver. 7.80). Живёт здесь, а не в JSONB дня, потому
+  // что ключ словаря — фамилия: «Вчерашний список» переносит её вместе с ФИО, и
+  // искать пациента приходится один раз, в день поступления.
+  misPatientId: { type: DataTypes.STRING(30), allowNull: true },
+  misCardNumber: { type: DataTypes.STRING(30), allowNull: true },
+  misBirthDate: { type: DataTypes.STRING(20), allowNull: true },
+  misFullName: { type: DataTypes.STRING(200), allowNull: true },
+  misLinkedAt: { type: DataTypes.DATE, allowNull: true },
+  misLinkedBy: { type: DataTypes.UUID, allowNull: true },
+  misLinkSource: { type: DataTypes.STRING(10), allowNull: true }
 }, {
   tableName: 'meal_requirement_patients',
   timestamps: true
+});
+
+// Справочник карточек МИС (ver. 7.81): публичное API ищет только по точной
+// фамилии, поэтому префиксный поиск обслуживает локальная копия.
+const MisPatient = sequelize.define('MisPatient', {
+  patient_id: { type: DataTypes.STRING(30), primaryKey: true },
+  number: { type: DataTypes.STRING(30), allowNull: true },
+  last_name: { type: DataTypes.STRING(120), allowNull: false, defaultValue: '' },
+  first_name: { type: DataTypes.STRING(120), allowNull: false, defaultValue: '' },
+  third_name: { type: DataTypes.STRING(120), allowNull: false, defaultValue: '' },
+  birth_date: { type: DataTypes.STRING(20), allowNull: true },
+  mis_updated: { type: DataTypes.STRING(20), allowNull: true },
+  synced_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
+}, {
+  tableName: 'mis_patients',
+  timestamps: false
+});
+
+// Снимок «кого кормили в этот день». Словарь выше — текущая истина, и тёзка
+// через полгода перезапишет в нём привязку; статистика прошлых месяцев от
+// этого меняться не должна, поэтому день фиксируется отдельными строками.
+const MealRequirementStay = sequelize.define('MealRequirementStay', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  department: { type: DataTypes.STRING(30), allowNull: false },
+  stayDate: { type: DataTypes.DATEONLY, allowNull: false },
+  room: { type: DataTypes.STRING(30), allowNull: true },
+  name: { type: DataTypes.STRING(200), allowNull: false },
+  misPatientId: { type: DataTypes.STRING(30), allowNull: true }
+}, {
+  tableName: 'meal_requirement_stays',
+  timestamps: true,
+  indexes: [
+    { fields: ['department', 'stayDate'] },
+    { fields: ['misPatientId', 'stayDate'] }
+  ]
 });
 
 // === SURGERY REPORT MODEL ===
@@ -4164,6 +4254,7 @@ module.exports = {
   AccreditationFile,
   TelegramSubscriber,
   BotSubscriber,
+  MessengerBot,
   Vehicle,
   VehicleFile,
   MapMarker,
@@ -4292,6 +4383,8 @@ module.exports = {
   // Порционные требования на питание больных
   MealRequirementDay,
   MealRequirementPatient,
+  MealRequirementStay,
+  MisPatient,
   // Discount reports module (скидки 100%)
   DiscountReportEntry,
   // Release notes module (Центр обновлений)

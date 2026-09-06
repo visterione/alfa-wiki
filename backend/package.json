@@ -91,7 +91,18 @@
     "migrate:legacy-doctor-durations": "node scripts/migrateLegacyDoctorDurations.js --apply",
     "migrate:safe-db": "node scripts/migrateSafeDatabase.js",
     "migrate:safe-db:check": "node scripts/migrateSafeDatabase.js --check",
-    "seed:warehouse": "node scripts/seedWarehouse.js"
+    "seed:warehouse": "node scripts/seedWarehouse.js",
+    "migrate:sql": "node scripts/runSqlMigration.js",
+    "migrate:7.80": "node scripts/runSqlMigration.js 7.80",
+    "migrate:7.80:check": "node scripts/runSqlMigration.js 7.80 --check",
+    "migrate:7.81": "node scripts/runSqlMigration.js 7.81",
+    "migrate:7.81:check": "node scripts/runSqlMigration.js 7.81 --check",
+    "migrate:7.82": "node scripts/runSqlMigration.js 7.82",
+    "migrate:7.82:check": "node scripts/runSqlMigration.js 7.82 --check",
+    "migrate:7.83": "node scripts/runSqlMigration.js 7.83",
+    "migrate:7.83:check": "node scripts/runSqlMigration.js 7.83 --check",
+    "migrate:7.84": "node scripts/runSqlMigration.js 7.84",
+    "migrate:7.84:check": "node scripts/runSqlMigration.js 7.84 --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

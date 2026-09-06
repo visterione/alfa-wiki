@@ -114,6 +114,9 @@ export const medCenters = {
       ...(includeInactive ? { includeInactive: '1' } : {})
     }
   }),
+  // Точки для карты на экране входа. Без авторизации: карту рисуют до того,
+  // как человек представился, и токена в этот момент ещё нет.
+  map: () => api.get('/med-centers/map'),
   get: (id) => api.get(`/med-centers/${id}`),
   create: (data) => api.post('/med-centers', data),
   update: (id, data) => api.put(`/med-centers/${id}`, data),

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Персональные настройки пользователя: тема, акцент, фон переписки, звук.
+ * Персональные настройки пользователя: тема, фон переписки, звук.
  *
  * Раньше их знала только мобилка, и лежали они в users.settings.mobile. С
  * ver. 7.60 те же настройки применяет и веб — «мобильными» они быть перестали,
@@ -21,7 +21,6 @@ const ALLOWED_VALUES = {
   // отвечать им ошибкой значило бы сломать у них сохранение настроек.
   // Клиенты с 7.60 читают сохранённое 'system' как светлую.
   theme: new Set(['system', 'light', 'dark']),
-  accent: new Set(['blue', 'pink', 'orange', 'sand', 'lavender', 'graphite', 'purple', 'green']),
   fontScale: new Set(['normal', 'large', 'huge']),
   chatBackground: new Set([
     'plain', 'dots', 'hex', 'waves', 'confetti', 'pulse', 'care',
@@ -30,6 +29,15 @@ const ALLOWED_VALUES = {
   notificationSound: new Set(['default', 'sol', 'luna', 'terra']),
   taskDefaultVisibility: new Set(['private', 'busy', 'team', 'public'])
 };
+
+// Настройки, которые больше не применяет ни один клиент, но которые продолжают
+// присылать установленные сборки. Отвечать на них ошибкой нельзя: запрос уходит
+// целиком, и вместе с забытым ключом не сохранились бы тема и звук. Поэтому
+// значение принимается и молча выбрасывается — ни в базу, ни в ответ оно не
+// попадает, и накопленный в базе выбор цвета вычищается при первой же правке.
+//
+// accent — выбор акцентного цвета, убранный в ver. 7.84.
+const IGNORED_KEYS = new Set(['accent']);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -40,13 +48,14 @@ function normalizePreferences(value) {
     throw new TypeError('Настройки должны быть объектом');
   }
 
-  const unknown = Object.keys(value).filter(key => !ALLOWED_VALUES[key]);
+  const unknown = Object.keys(value).filter(key => !ALLOWED_VALUES[key] && !IGNORED_KEYS.has(key));
   if (unknown.length) {
     throw new TypeError(`Неизвестные настройки: ${unknown.join(', ')}`);
   }
 
   const normalized = {};
   for (const [key, candidate] of Object.entries(value)) {
+    if (IGNORED_KEYS.has(key)) continue;
     if (!ALLOWED_VALUES[key].has(candidate)) {
       throw new TypeError(`Недопустимое значение настройки ${key}`);
     }
@@ -66,7 +75,8 @@ function readPreferences(userSettings) {
   const settings = isPlainObject(userSettings) ? userSettings : {};
   const legacy = isPlainObject(settings[LEGACY_NAMESPACE]) ? settings[LEGACY_NAMESPACE] : {};
   const current = isPlainObject(settings[NAMESPACE]) ? settings[NAMESPACE] : {};
-  return { ...legacy, ...current };
+  const merged = { ...legacy, ...current };
+  return Object.fromEntries(Object.entries(merged).filter(([key]) => ALLOWED_VALUES[key]));
 }
 
 /**

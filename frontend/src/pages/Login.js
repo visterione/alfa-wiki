@@ -2,11 +2,88 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { auth as authApi } from '../services/api';
-import { Eye, EyeOff, Shield, User, Lock } from 'lucide-react';
+import {
+  Eye, EyeOff, User, Lock,
+  MessageCircle, KanbanSquare, GraduationCap, Star, Warehouse,
+  Wrench, BadgeCheck, Wallet, BarChart3
+} from 'lucide-react';
+import LoginMap from './LoginMap';
 import toast from 'react-hot-toast';
 import './Login.css';
 
 import loginLogo from '../assets/images/logo.png';
+
+/**
+ * Что портал умеет — списком, для лент на синем поле.
+ *
+ * Список вбит, а не собран из маршрутов или бокового меню, и на то две
+ * причины. Меню у каждого своё и приезжает вместе с правами, а на экране
+ * входа человека ещё нет — спрашивать нечего и не у кого. И второе: здесь
+ * нужны не разделы приложения, а то, чем люди пользуются, — «Задачи», а не
+ * «/tasks» и не «Канбан-доска отдела закупок». Появится новый модуль — строка
+ * дописывается сюда руками, и это правильное место для такого решения.
+ */
+const MODULES = [
+  { name: 'Мессенджер',      Icon: MessageCircle },
+  { name: 'Задачи',          Icon: KanbanSquare },
+  { name: 'Курсы',           Icon: GraduationCap },
+  { name: 'Отзывы',          Icon: Star },
+  // Не Boxes и не Package: в складском модуле они уже заняты «Материалами» и
+  // «Оборудованием», то есть частями склада, а не им самим. Заодно штабель
+  // коробок в мелком размере превращался в кляксу — тринадцать контуров на
+  // двадцать четыре пикселя.
+  { name: 'Склад',           Icon: Warehouse },
+  // Тот же гаечный ключ, что у обслуживания оборудования в складском модуле
+  // (WarehouseRoom.js): один и тот же предмет обязан выглядеть одинаково.
+  { name: 'Техобслуживание', Icon: Wrench },
+  // Аккредитация — это подтверждение, а не награда: «галочка в значке», а не
+  // медаль. Медаль (Award) в ряду с мессенджером и складом читалась бы как
+  // достижение сотрудника.
+  { name: 'Аккредитации',    Icon: BadgeCheck },
+  { name: 'Зарплата',        Icon: Wallet },
+  { name: 'Статистика',      Icon: BarChart3 }
+];
+
+/**
+ * Строки лент: с какого места списка начинается каждая, за сколько секунд
+ * проходит свою длину, в какую сторону едет и какое слово в ней горит ярко.
+ *
+ * Начала разведены по списку так, чтобы в одном кадре соседние строки не
+ * начинались с одних и тех же слов. Длительности намеренно не кратны друг
+ * другу: при кратных строки то и дело выстраиваются в одну колонну, и стена на
+ * мгновение превращается в таблицу.
+ *
+ * Ярких слов ровно по одному на строку, и все семь — разные модули. Так вышло
+ * не само: раньше горело каждое третье слово, то есть по три-четыре в строке,
+ * и одно и то же название загоралось сразу в нескольких лентах. Заказчик
+ * споткнулся об это первым делом — «Мессенджер» горел в третьей и в пятой
+ * строке разом, и стена читалась как список с ошибками, а не как перечисление.
+ *
+ * Теперь ярким слоем читается ровно список из семи имён, а всё остальное —
+ * фактура: в стене из семи строк по десять слов каждое название всё равно
+ * попадает в кадр по нескольку раз, этого не избежать, но приглушённые повторы
+ * взгляд не цепляет.
+ *
+ * Строк семь, а модулей девять, поэтому два из них горят никогда. Какие именно —
+ * следствие раскладки, а не оценки важности: начала и позиции подобраны
+ * перебором так, чтобы яркие слова были разными модулями, не сходились в
+ * столбик и в лесенку и при этом попадали в первый кадр. В первом кадре ленты
+ * видно около четырёх слов из девяти (со значками они шире), и позиции,
+ * разбросанные по всей длине, давали на открытии одно горящее слово на всю
+ * стену — проверено и забраковано.
+ *
+ * bright — место яркого слова в ленте. Перебор придётся повторить, если
+ * поменяется список модулей: и начала, и позиции считаны под девять названий.
+ */
+const STRIP_LANES = [
+  { from: 0, seconds: 58, back: false, bright: 1 },
+  { from: 3, seconds: 74, back: true,  bright: 3 },
+  { from: 6, seconds: 64, back: false, bright: 6 },
+  { from: 1, seconds: 82, back: true,  bright: 4 },
+  { from: 4, seconds: 68, back: false, bright: 0 },
+  { from: 7, seconds: 78, back: true,  bright: 2 },
+  { from: 2, seconds: 62, back: false, bright: 5 }
+];
 
 /**
  * Адрес возврата после входа: принимаем только путь внутри портала.
@@ -33,6 +110,18 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
   const [codeStatus, setCodeStatus] = useState(''); // '' | 'success' | 'error'
+  // Замок вздрагивает на неудачном входе. Отдельный флаг, а не производная от
+  // ошибки: его надо снять, иначе вторая неверная попытка подряд не проиграла
+  // бы ничего — класс так и висел бы с первого раза.
+  const [lockShake, setLockShake] = useState(false);
+  // Просьба вернуть фокус на первую клетку кода. Исполняется не на месте, а в
+  // useEffect ниже: в момент сброса клетки ещё disabled, и focus() на
+  // выключенном поле молча ничего не делает.
+  const focusFirstDigit = useRef(false);
+  // Код пришёл вставкой, а не набором: клетки отыгрывают лесенкой. Признак
+  // живёт ровно на время лесенки — задержка по номеру клетки, оставленная
+  // насовсем, тормозила бы обычный набор.
+  const [pasteWave, setPasteWave] = useState(false);
   const inputRefs = useRef([]);
   const usernameRef = useRef(null);
   // Оба шага отрисованы одновременно и лежат в «ленте», которую двигает
@@ -40,6 +129,10 @@ export default function Login() {
   // едет вместе со сдвигом, иначе на переходе она прыгала бы рывком.
   const viewportRef = useRef(null);
   const stepRefs = useRef([]);
+  // Размер плашки, в которую сжимается синее поле, считается по живому размеру
+  // знака сети — см. useEffect ниже.
+  const pageRef = useRef(null);
+  const markRef = useRef(null);
   const location = useLocation();
   // Куда возвращаться после входа. Адрес приходит двумя путями, и оба нужны:
   // ProtectedRoute кладёт его в состояние навигации (переход внутри приложения,
@@ -51,6 +144,21 @@ export default function Login() {
     sessionStorage.removeItem('afterLogin');
     return target;
   });
+
+  useEffect(() => {
+    if (!pasteWave) return undefined;
+    const timer = setTimeout(() => setPasteWave(false), 700);
+    return () => clearTimeout(timer);
+  }, [pasteWave]);
+
+  // Снимаем по таймеру, а не по onAnimationEnd: кадра в замке два — корпус и
+  // дужка, — событие приходит от каждого, и первое же сняло бы класс, оборвав
+  // второй. Точность тут не нужна: класс просто живёт на кадр дольше.
+  useEffect(() => {
+    if (!lockShake) return undefined;
+    const timer = setTimeout(() => setLockShake(false), 600);
+    return () => clearTimeout(timer);
+  }, [lockShake]);
 
   const handleCredentialsSubmit = async (e) => {
     e.preventDefault();
@@ -87,6 +195,9 @@ export default function Login() {
       }
     } catch (error) {
       console.error('Login error:', error);
+      // Всплывашка появляется в углу, а смотрят в этот момент на поле —
+      // поэтому об отказе говорит ещё и сам замок
+      setLockShake(true);
       toast.error(error.response?.data?.error || 'Ошибка авторизации');
     } finally {
       setLoading(false);
@@ -131,9 +242,7 @@ export default function Login() {
       setTimeout(() => {
         setTwoFactorCode(['', '', '', '', '', '']);
         setCodeStatus('');
-        if (inputRefs.current[0]) {
-          inputRefs.current[0].focus();
-        }
+        focusFirstDigit.current = true;
       }, 600);
 
       if (errorData?.attemptsLeft !== undefined) {
@@ -167,9 +276,7 @@ export default function Login() {
       setTwoFactorCode(['', '', '', '', '', '']);
       setCodeStatus('');
       setAttemptsLeft(5);
-      if (inputRefs.current[0]) {
-        inputRefs.current[0].focus();
-      }
+      focusFirstDigit.current = true;
     } catch (error) {
       console.error('Resend error:', error);
       toast.error('Ошибка отправки кода');
@@ -239,11 +346,31 @@ export default function Login() {
     const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     const newCode = pastedData.split('').concat(Array(6).fill('')).slice(0, 6);
     setTwoFactorCode(newCode);
+    setPasteWave(true);
 
     // Фокус на последнюю заполненную клеточку или следующую пустую
     const nextIndex = Math.min(pastedData.length, 5);
     inputRefs.current[nextIndex]?.focus();
   };
+
+  /**
+   * Возврат курсора на первую клетку после сброса кода.
+   *
+   * Раньше focus() стоял прямо в обработчике, рядом со сбросом, и не работал:
+   * клетки выключены, пока держится codeStatus или loading, а React снимает
+   * disabled только следующей перерисовкой — то есть уже после выхода из
+   * обработчика. focus() на выключенном поле не делает ничего и не жалуется.
+   * Получалось, что после неверного кода курсор оставался на шестой клетке,
+   * потом терялся вовсе: ни набрать заново, ни уйти стрелками — только мышью.
+   *
+   * Отсюда просьба флагом и исполнение здесь, когда клетки уже доступны.
+   */
+  useEffect(() => {
+    if (!focusFirstDigit.current) return;
+    if (loading || codeStatus) return;
+    focusFirstDigit.current = false;
+    inputRefs.current[0]?.focus();
+  }, [loading, codeStatus]);
 
   // Автоматическая отправка при заполнении всех клеточек
   useEffect(() => {
@@ -299,20 +426,118 @@ export default function Login() {
     return () => clearTimeout(timer);
   }, [activeIndex]);
 
+  // Плашка со знаком сети — это то, во что сжимается синее поле, и её размер
+  // обязан совпасть со знаком внутри до пикселя: иначе на месте остановки
+  // видно либо обрезанный текст, либо полосу пустого синего справа.
+  //
+  // Поэтому размер не вбит в стили, а измеряется. Наблюдатель, а не разовый
+  // замер: до подгрузки Inter надпись набрана запасным шрифтом и заметно
+  // другой ширины, а системное увеличение текста меняет её и позже. CSS
+  // складывает плашку из этих двух чисел и своих отбивок.
+  useEffect(() => {
+    const page = pageRef.current;
+    const mark = markRef.current;
+    if (!page || !mark) return undefined;
+
+    const apply = () => {
+      page.style.setProperty('--mark-w', `${mark.offsetWidth}px`);
+      page.style.setProperty('--mark-h', `${mark.offsetHeight}px`);
+    };
+    apply();
+
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(apply);
+    observer.observe(mark);
+    return () => observer.disconnect();
+  }, []);
+
   const setStepRef = useCallback((index) => (el) => { stepRefs.current[index] = el; }, []);
 
   return (
-    <div className="login-page">
-      <div className="lava-blob lava-blob-1"></div>
-      <div className="lava-blob lava-blob-2"></div>
-      <div className="lava-blob lava-blob-3"></div>
+    <div className="login-page" data-step={activeIndex + 1} ref={pageRef}>
+      {/* Левая половина: не фон под формой, а вторая половина экрана — форма
+          лежит рядом с ней, а не поверх.
+
+          Что на ней видно, зависит от шага. Пока вводят логин, её занимает
+          синее поле с названиями модулей; после отправки кода поле сжимается
+          до плашки со знаком сети и открывает карту. Карта при этом
+          отрисована с самого начала и просто лежит под полем: смонтируй её на
+          втором шаге — и подложка с маршрутами начали бы грузиться ровно в
+          тот момент, когда поле уже разъезжается. */}
+      <div className="login-brand">
+        <LoginMap active={step === 'twoFactor'} />
+
+        <div className="login-brand-shell">
+          {/* Ленты — украшение, и читать их вслух незачем: для чтения с экрана
+              это семьдесят слов подряд без всякого смысла. */}
+          <div className="login-strips" aria-hidden="true">
+            {STRIP_LANES.map((lane) => (
+              <div className="login-strip" key={lane.from}>
+                {/* Две одинаковые копии: кадр сдвигает строку ровно на ширину
+                    одной, и на стыке следующая оказывается точно на месте
+                    предыдущей. */}
+                {[0, 1].map((copy) => (
+                  <div
+                    className="login-strip-run"
+                    key={copy}
+                    style={{
+                      animationDuration: `${lane.seconds}s`,
+                      animationDirection: lane.back ? 'reverse' : 'normal'
+                    }}
+                  >
+                    {MODULES.map((_, i) => {
+                      const { name, Icon } = MODULES[(lane.from + i) % MODULES.length];
+                      return (
+                        /* Ярко — ровно одно слово в строке, и во всех семи
+                           строках это разные модули: см. STRIP_LANES. Значок
+                           горит вместе с надписью: цвет он берёт из строки. */
+                        <span
+                          className={`login-strip-item${i === lane.bright ? ' on' : ''}`}
+                          key={name}
+                        >
+                          {/* Размер в em, а не в пикселях: кегль надписи резиновый
+                              (clamp), и значок обязан ехать вместе с ним. */}
+                          {/* Штрих чуть толще стандартной двойки: рядом с
+                              надписью в 600 значок с ней в весе не спорит, а
+                              отстаёт. */}
+                          <Icon size="0.78em" strokeWidth={2.4} />
+                          <span className="login-strip-word">{name}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <div className="login-brand-mark" ref={markRef}>
+            <img src={loginLogo} alt="" aria-hidden="true" />
+            {/* Черта между знаком и названием. Ширину плашки она меняет сама
+                собой: та считается по измеренному знаку, а не по вбитому
+                числу, — см. useEffect с ResizeObserver выше. */}
+            <span className="login-brand-rule" aria-hidden="true" />
+            <span className="login-brand-name">
+              <b>Альфа Вики</b>
+              <i>База знаний</i>
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="login-container">
         <div className="login-card">
-          <div className="login-header">
-            <div className="login-logo-icon">
-              <img src={loginLogo} alt="Альфа Вики" />
-            </div>
-            <h1>Альфа Вики</h1>
+          {/* Шапка одна на оба шага и меняет текст вместе с шагом. Раньше у
+              шага подтверждения была своя, и на экране оказывались две шапки
+              подряд — как две страницы, наложенные друг на друга. key даёт
+              смене проявиться, а не подмениться рывком. */}
+          <div className="login-header" key={step}>
+            <h1>{step === 'twoFactor' ? 'Подтверждение входа' : 'С возвращением'}</h1>
+            <p>
+              {step === 'twoFactor'
+                ? 'Код отправлен на вашу почту'
+                : 'Войдите под своей учётной записью'}
+            </p>
           </div>
 
           <div className="login-viewport" ref={viewportRef}>
@@ -338,7 +563,7 @@ export default function Login() {
 
                   <div className="form-group">
                     <label className="form-label">Пароль</label>
-                    <div className="login-field">
+                    <div className={`login-field${lockShake ? ' login-field--error' : ''}`}>
                       <Lock size={18} className="login-field-icon" />
                       <input
                         type={showPassword ? 'text' : 'password'}
@@ -376,16 +601,8 @@ export default function Login() {
 
               <div className="login-step" ref={setStepRef(1)}>
                 <form onSubmit={handleTwoFactorSubmit} className="login-form">
-                  <div className="two-factor-info">
-                    <div className="two-factor-badge">
-                      <Shield size={22} />
-                    </div>
-                    <h2>Подтверждение входа</h2>
-                    <p>Введите код, отправленный на почту</p>
-                  </div>
-
                   <div className="form-group">
-                    <div className={`code-input-grid ${codeStatus}`}>
+                    <div className={`code-input-grid ${codeStatus}${pasteWave && !codeStatus ? ' pasted' : ''}`}>
                       {twoFactorCode.map((digit, index) => (
                         <input
                           key={index}
@@ -394,7 +611,7 @@ export default function Login() {
                           inputMode="numeric"
                           pattern="\d*"
                           maxLength={1}
-                          className="code-digit-input"
+                          className={`code-digit-input${digit ? ' filled' : ''}`}
                           value={digit}
                           onChange={(e) => handleCodeInput(index, e.target.value)}
                           onKeyDown={(e) => handleCodeKeyDown(index, e)}

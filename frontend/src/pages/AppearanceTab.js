@@ -1,14 +1,13 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { useAppearance, THEME_OPTIONS, FONT_SCALES } from '../context/AppearanceContext';
-import { ACCENTS, accentRamp } from '../theme/palette';
 import { CHAT_BACKGROUNDS, patternImage } from '../theme/chatBackgrounds';
 import './AppearanceTab.css';
 
 /**
- * Оформление: тема, акцентный цвет, фон переписки и размер текста в чате.
+ * Оформление: тема, фон переписки и размер текста в чате.
  *
- * Все четыре набора образцов на одной вкладке — это тот случай, когда длинная
+ * Все три набора образцов на одной вкладке — это тот случай, когда длинная
  * страница оправдана: оформление подбирают за один заход, сравнивая варианты
  * между собой. Разносить их по отдельным экранам значило бы заставить человека
  * возвращаться назад после каждой пробы.
@@ -24,51 +23,25 @@ export default function AppearanceTab() {
     <div className="appearance">
       <div className="card">
         <div className="card-header"><h3>Тема</h3></div>
-        <div className="card-body appearance-themes">
-          {THEME_OPTIONS.map(opt => (
-            <button
-              key={opt.key}
-              type="button"
-              className={`appearance-theme ${appearance.theme === opt.key ? 'active' : ''}`}
-              onClick={() => appearance.update({ theme: opt.key })}
-              aria-pressed={appearance.theme === opt.key}
-            >
-              <ThemeSample variant={opt.key} accent={appearance.accent} />
-              <span className="appearance-theme-label">{opt.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header"><h3>Акцентный цвет</h3></div>
         <div className="card-body">
-          <div className="appearance-accents">
-            {ACCENTS.map(a => {
-              // Показываем оттенок именно для текущей темы: в светлой и тёмной
-              // один и тот же акцент выглядит по-разному
-              const swatch = scheme === 'dark' ? a.dark : a.light;
-              const selected = appearance.accent === a.key;
-              return (
-                <button
-                  key={a.key}
-                  type="button"
-                  className={`appearance-accent ${selected ? 'active' : ''}`}
-                  style={{ background: swatch }}
-                  onClick={() => appearance.update({ accent: a.key })}
-                  // Подписи под кружками нет — название остаётся для озвучки
-                  // скринридером, иначе цвет для него безымянный
-                  aria-label={a.label}
-                  aria-pressed={selected}
-                  title={a.label}
-                >
-                  {selected && <Check size={15} strokeWidth={3} />}
-                </button>
-              );
-            })}
+          <div className="appearance-themes">
+            {THEME_OPTIONS.map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`appearance-theme ${appearance.theme === opt.key ? 'active' : ''}`}
+                onClick={() => appearance.update({ theme: opt.key })}
+                aria-pressed={appearance.theme === opt.key}
+              >
+                <ThemeSample variant={opt.key} />
+                <span className="appearance-theme-label">{opt.label}</span>
+              </button>
+            ))}
           </div>
+          {/* Подсказка про общие настройки стояла под выбором цвета, а цвет
+              убран — она перешла к теме, самой заметной из оставшихся */}
           <p className="appearance-hint">
-            Цвет применится и в мобильном приложении — настройки общие.
+            Тема применится и в мобильном приложении — настройки общие.
           </p>
         </div>
       </div>
@@ -140,12 +113,10 @@ export default function AppearanceTab() {
 /**
  * Миниатюра темы: полоска шапки, карточка и строчки текста.
  *
- * Показывает обе темы такими, какими они будут с выбранным акцентом: цвет
- * шапки в образце меняется вместе с ним, иначе выбор темы и выбор цвета
- * выглядели бы не связанными между собой.
+ * Цвета вбиты значениями, а не взяты из токенов: образец показывает ту тему,
+ * которая сейчас не включена, — а токены на странице отдают цвета включённой.
  */
-function ThemeSample({ variant, accent }) {
-  const ramp = accentRamp(variant, accent);
+function ThemeSample({ variant }) {
   const dark = variant === 'dark';
 
   return (
@@ -155,7 +126,7 @@ function ThemeSample({ variant, accent }) {
         '--sample-bg': dark ? '#1C1C1E' : '#FFFFFF',
         '--sample-sunken': dark ? '#121214' : '#F5F5F7',
         '--sample-line': dark ? '#3A3A40' : '#DCDCE2',
-        '--sample-accent': ramp[500]
+        '--sample-accent': dark ? '#0A84FF' : '#007AFF'
       }}
     >
       <span className="appearance-sample-bar" />

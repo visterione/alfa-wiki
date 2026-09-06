@@ -6,15 +6,17 @@ import {
 import { reviews } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { useMedCenters } from '../context/MedCentersContext';
 import './ReviewBoardsList.css';
 
 const ReviewBoardsList = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { medCenters } = useMedCenters();
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newBoard, setNewBoard] = useState({ name: '', description: '' });
+  const [newBoard, setNewBoard] = useState({ name: '', description: '', medCenterId: '' });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
 
@@ -48,7 +50,7 @@ const ReviewBoardsList = () => {
       const response = await reviews.createBoard(newBoard);
       setBoards([...boards, response.data]);
       setShowCreateModal(false);
-      setNewBoard({ name: '', description: '' });
+      setNewBoard({ name: '', description: '', medCenterId: '' });
       toast.success('Доска создана');
       navigate(`/reviews/board/${response.data.id}`);
     } catch (err) {
@@ -198,6 +200,26 @@ const ReviewBoardsList = () => {
                   disabled={creating}
                   autoFocus
                 />
+              </div>
+
+              {/* Филиал выбирается сразу: доска почти всегда заводится под
+                  конкретный медцентр, а без привязки его оценку потом не
+                  собрать — в самом отзыве филиала нет. */}
+              <div className="form-group">
+                <label htmlFor="board-med-center">Медцентр (необязательно)</label>
+                <select
+                  id="board-med-center"
+                  value={newBoard.medCenterId}
+                  onChange={(e) => setNewBoard({ ...newBoard, medCenterId: e.target.value })}
+                  disabled={creating}
+                >
+                  <option value="">Не привязана к филиалу</option>
+                  {medCenters
+                    .filter(mc => !mc.isVirtual)
+                    .map(mc => (
+                      <option key={mc.id} value={mc.id}>{mc.name}</option>
+                    ))}
+                </select>
               </div>
 
               <div className="form-group">

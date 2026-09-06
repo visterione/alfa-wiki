@@ -1,17 +1,17 @@
 /**
- * Оформление: тема, акцентный цвет, фон переписки и размер текста в чате.
+ * Оформление: тема, фон переписки и размер текста в чате.
  *
- * Четыре набора образцов на одном экране — это тот случай, когда свиток
- * оправдан: всё это про то, как приложение будет выглядеть, и подбирают это за
- * один заход, сравнивая между собой. Разносить их по четырём экранам значило бы
+ * Три набора образцов на одном экране — это тот случай, когда свиток оправдан:
+ * всё это про то, как приложение будет выглядеть, и подбирают это за один
+ * заход, сравнивая между собой. Разносить их по трём экранам значило бы
  * заставить человека возвращаться назад после каждой пробы.
  */
 import React from 'react';
 import {View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions} from 'react-native';
 import {Check} from 'lucide-react-native';
 
-import {radius, font, ACCENTS, fontScales} from '../../theme';
-import {useTheme, useThemedStyles, useSettings, THEME_OPTIONS} from '../../store/settingsStore';
+import {radius, font, fontScales} from '../../theme';
+import {useThemedStyles, useSettings, THEME_OPTIONS} from '../../store/settingsStore';
 import {CHAT_BACKGROUNDS, PatternPreview} from '../../components/ChatBackground';
 import {ChoiceRow, Section, Divider, makeSettingsStyles} from './parts';
 
@@ -75,7 +75,6 @@ function FontPreview({scale}) {
 }
 
 export default function AppearanceScreen() {
-  const c = useTheme();
   const base = useThemedStyles(makeSettingsStyles);
   const styles = useThemedStyles(makeStyles);
   const settings = useSettings();
@@ -93,37 +92,6 @@ export default function AppearanceScreen() {
             />
           </React.Fragment>
         ))}
-      </Section>
-
-      <Section title="Акцентный цвет">
-        <View style={styles.accentGrid}>
-          {ACCENTS.map(a => {
-            const selected = settings.accent === a.key;
-            // Показываем оттенок именно для текущей темы: в светлой и тёмной
-            // один и тот же акцент выглядит по-разному
-            const swatch = settings.scheme === 'dark' ? a.dark : a.light;
-            return (
-              <TouchableOpacity
-                key={a.key}
-                style={styles.accentCell}
-                onPress={() => settings.update({accent: a.key})}
-                activeOpacity={0.7}
-                // Подписи под кружками нет — название остаётся только для
-                // озвучки скринридером, иначе цвет для него безымянный
-                accessibilityLabel={a.label}
-                accessibilityRole="button">
-                <View
-                  style={[
-                    styles.accentDot,
-                    {backgroundColor: swatch},
-                    selected && {borderColor: c.textPrimary},
-                  ]}>
-                  {selected && <Check size={16} color="#FFFFFF" />}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
       </Section>
 
       <Section title="Фон переписки">
@@ -212,18 +180,6 @@ const makeStyles = c => StyleSheet.create({
     textAlign: 'center',
   },
   bgLabelActive: {color: c.primary},
-
-  accentGrid: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingVertical: 14,
-  },
-  // Без подписей восемь цветов помещаются в одну строку
-  accentCell: {width: '12.5%', alignItems: 'center'},
-  accentDot: {
-    width: 34, height: 34, borderRadius: 17,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: 'transparent',
-  },
 
   fontPreview: {paddingHorizontal: 14, paddingBottom: 12, paddingTop: 12},
   fontPreviewBubble: {

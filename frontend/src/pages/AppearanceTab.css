@@ -83,31 +83,6 @@
   font-weight: 500;
 }
 
-/* ── Акцент ───────────────────────────────────────────────────────────────── */
-
-.appearance-accents {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.appearance-accent {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  box-shadow: 0 0 0 2px var(--bg-primary) inset;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  transition: transform var(--transition-fast), border-color var(--transition-fast);
-}
-
-.appearance-accent:hover { transform: scale(1.08); }
-.appearance-accent.active { border-color: var(--text-primary); }
-
 /* ── Фон переписки ────────────────────────────────────────────────────────── */
 
 .appearance-backgrounds {

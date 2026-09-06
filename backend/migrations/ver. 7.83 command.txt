@@ -1,0 +1,20 @@
+Применение миграции ver. 7.83 (привязка досок отзывов к филиалам).
+
+Из папки backend:
+
+  set -a; . ./.env; set +a
+  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+    -U "$DB_USER" -d "$DB_NAME" -f "migrations/ver. 7.83 review-boards-med-center.sql"
+
+Почему не «psql -U $DB_USER» без .env — объяснено в «ver. 6.98 command.txt».
+
+Миграция идемпотентна: ADD COLUMN IF NOT EXISTS, ограничение и индекс ставятся
+с проверкой, а сопоставление трогает только доски с пустым medCenterId.
+
+После применения посмотреть, что не сопоставилось само:
+
+  SELECT name FROM review_boards WHERE "medCenterId" IS NULL AND archived = FALSE;
+
+Эти доски привязываются руками — в списке досок, в форме правки доски.
+Отката нет намеренно: удалять колонку с уже проставленными вручную привязками
+опаснее, чем оставить её пустой.

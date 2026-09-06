@@ -81,7 +81,7 @@ export default function WhatsNewMenu() {
 
   return (
     <div className="wnm" ref={ref}>
-      <button className="wnm-btn" onClick={toggle} title="Что нового">
+      <button className="wnm-btn" onClick={toggle} title="Что нового" data-icon-motion="news">
         <Newspaper size={20} />
         {releaseUnreadCount > 0 && (
           <span className="wnm-badge">{releaseUnreadCount > 99 ? '99+' : releaseUnreadCount}</span>

@@ -11,19 +11,18 @@ const {
 test('preferences accept supported values', () => {
   assert.deepEqual(normalizePreferences({
     theme: 'dark',
-    accent: 'green',
+    chatBackground: 'dots',
     notificationSound: 'luna',
     taskDefaultVisibility: 'busy'
   }), {
     theme: 'dark',
-    accent: 'green',
+    chatBackground: 'dots',
     notificationSound: 'luna',
     taskDefaultVisibility: 'busy'
   });
 });
 
 test('preferences reject unknown keys and values', () => {
-  assert.throws(() => normalizePreferences({ accent: 'rainbow' }), /accent/);
   assert.throws(() => normalizePreferences({ chatBackground: 'grid' }), /chatBackground/);
   assert.throws(() => normalizePreferences({ taskDefaultVisibility: 'shared' }), /taskDefaultVisibility/);
   assert.throws(() => normalizePreferences({ admin: true }), /Неизвестные/);
@@ -32,14 +31,30 @@ test('preferences reject unknown keys and values', () => {
 test('preferences merge without overwriting other account settings', () => {
   assert.deepEqual(
     mergePreferences(
-      { calendar: { showVehicles: true }, appearance: { theme: 'light', accent: 'blue' } },
-      { accent: 'green' }
+      { calendar: { showVehicles: true }, appearance: { theme: 'light' } },
+      { fontScale: 'large' }
     ),
     {
       calendar: { showVehicles: true },
-      appearance: { theme: 'light', accent: 'green' },
-      mobile: { theme: 'light', accent: 'green' }
+      appearance: { theme: 'light', fontScale: 'large' },
+      mobile: { theme: 'light', fontScale: 'large' }
     }
+  );
+});
+
+// Выбор акцентного цвета убран в ver. 7.84, но установленные сборки мобилки
+// продолжают его присылать. Ошибка на такой запрос стоила бы человеку всех
+// настроек разом, поэтому значение принимается и выбрасывается — а заодно
+// вычищается из базы при первом же сохранении.
+test('preferences swallow the retired accent instead of failing', () => {
+  assert.deepEqual(normalizePreferences({ theme: 'dark', accent: 'green' }), { theme: 'dark' });
+  assert.deepEqual(normalizePreferences({ accent: 'rainbow' }), {});
+
+  assert.deepEqual(readPreferences({ appearance: { theme: 'dark', accent: 'purple' } }), { theme: 'dark' });
+
+  assert.deepEqual(
+    mergePreferences({ appearance: { theme: 'dark', accent: 'purple' } }, { fontScale: 'large' }).appearance,
+    { theme: 'dark', fontScale: 'large' }
   );
 });
 
@@ -47,13 +62,13 @@ test('preferences merge without overwriting other account settings', () => {
 // ключе. Он должен пережить первое же сохранение из веба, а не обнулиться.
 test('preferences pick up the legacy mobile namespace', () => {
   assert.deepEqual(
-    readPreferences({ mobile: { theme: 'dark', accent: 'purple' } }),
-    { theme: 'dark', accent: 'purple' }
+    readPreferences({ mobile: { theme: 'dark', chatBackground: 'dots' } }),
+    { theme: 'dark', chatBackground: 'dots' }
   );
 
   assert.deepEqual(
-    mergePreferences({ mobile: { theme: 'dark', accent: 'purple' } }, { fontScale: 'large' }).appearance,
-    { theme: 'dark', accent: 'purple', fontScale: 'large' }
+    mergePreferences({ mobile: { theme: 'dark', chatBackground: 'dots' } }, { fontScale: 'large' }).appearance,
+    { theme: 'dark', chatBackground: 'dots', fontScale: 'large' }
   );
 });
 

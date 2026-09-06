@@ -87,6 +87,7 @@ const gynecologyReportsRoutes    = require('./routes/gynecology-reports');
 const therapyReportsRoutes       = require('./routes/therapy-reports');
 const surgeryReportsRoutes       = require('./routes/surgery-reports');
 const mealRequirementsRoutes     = require('./routes/meal-requirements');
+const inpatientReportRoutes      = require('./routes/inpatient-report');
 const discountReportsRoutes      = require('./routes/discount-reports');
 const releaseNotesRoutes         = require('./routes/release-notes');
 
@@ -421,6 +422,9 @@ app.use('/api/service-matrix', serviceMatrixRoutes);
 app.use('/api/bots', botManagementRoutes);
 app.use('/api/api-clients', apiClientsRoutes);
 app.use('/api/bot-subscribers', require('./routes/bot-subscribers'));
+// Входящие от наших ботов Telegram/MAX. Маршрут публичный намеренно: платформа
+// приходит без нашего JWT, подлинность проверяется секретом вебхука внутри.
+app.use('/api/messenger', require('./routes/messenger-webhook'));
 app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);
 app.use('/api/cash-payments', cashPaymentsRoutes);
@@ -446,6 +450,7 @@ app.use('/api/gynecology-reports',  gynecologyReportsRoutes);
 app.use('/api/therapy-reports',     therapyReportsRoutes);
 app.use('/api/surgery-reports',     surgeryReportsRoutes);
 app.use('/api/meal-requirements',   mealRequirementsRoutes);
+app.use('/api/inpatient-report',    inpatientReportRoutes);
 app.use('/api/discount-reports',    discountReportsRoutes);
 app.use('/api/release-notes',       releaseNotesRoutes);
 

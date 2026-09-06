@@ -73,9 +73,13 @@ export function soundOption(key) {
   return SOUND_OPTIONS.find(s => s.key === key) ?? SOUND_OPTIONS[0];
 }
 
+// Выбора акцентного цвета здесь больше нет: до ver. 7.84 их было восемь, и
+// каждый новый экран приходилось проверять во всех — при том что цвет по
+// умолчанию не менял почти никто. Цвет теперь один и лежит в палитрах theme.js.
+// Сохранённое у людей значение сервер принимает ради старых сборок, но никому
+// его не отдаёт, а PREFERENCE_KEYS отсекает его на чтении.
 const DEFAULTS = {
   theme: 'light',
-  accent: 'blue',
   fontScale: 'normal',
   chatBackground: 'plain',
   notificationSound: 'default',
@@ -112,7 +116,7 @@ function pickPreferences(value) {
 function persistNativeLaunchColor(settings) {
   if (Platform.OS !== 'ios') return;
 
-  const palette = getPalette(settings.theme === 'dark' ? 'dark' : 'light', settings.accent);
+  const palette = getPalette(settings.theme === 'dark' ? 'dark' : 'light');
 
   Settings.set({[IOS_LAUNCH_COLOR_KEY]: palette.headerGradientStart});
 }
@@ -249,8 +253,7 @@ export function SettingsProvider({children}) {
     if (!user?.id) syncedUserRef.current = null;
   }, [user?.id]);
 
-  // Обновляем нативный цвет после чтения настроек и при выборе новой темы
-  // или акцента.
+  // Обновляем нативный цвет после чтения настроек и при выборе новой темы.
   useEffect(() => {
     if (loaded) persistNativeLaunchColor(settings);
   }, [loaded, settings]);
@@ -287,7 +290,7 @@ export function SettingsProvider({children}) {
       ...settings,
       loaded,
       scheme,
-      colors: getPalette(scheme, settings.accent),
+      colors: getPalette(scheme),
       scale: (fontScales[settings.fontScale] ?? fontScales.normal).scale,
       update,
     };

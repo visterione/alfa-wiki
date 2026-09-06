@@ -8,6 +8,7 @@ import {
 import { reviews, users } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { useMedCenters } from '../context/MedCentersContext';
 import { REVIEW_STATUSES } from '../utils/reviewConstants';
 import ReviewWorkflowEditor from '../components/ReviewWorkflowEditor';
 import './ReviewBoardSettings.css';
@@ -24,7 +25,11 @@ const ReviewBoardSettings = () => {
   const [saving, setSaving] = useState(false);
 
   // Board info
+  const { medCenters } = useMedCenters();
   const [boardName, setBoardName] = useState('');
+  // Филиал доски. Пустая строка — «не привязана»: доска может быть и не про
+  // филиал, и заставлять выбирать нельзя.
+  const [boardMedCenterId, setBoardMedCenterId] = useState('');
   const [boardDescription, setBoardDescription] = useState('');
 
   // Permissions
@@ -74,6 +79,7 @@ const ReviewBoardSettings = () => {
       setBoard(boardData);
       setBoardName(boardData.name);
       setBoardDescription(boardData.description || '');
+      setBoardMedCenterId(boardData.medCenterId || '');
       setPermissions(permissionsRes.data);
       setUsersList(usersRes.data);
       setSyncConfigs(syncRes.data || []);
@@ -120,7 +126,8 @@ const ReviewBoardSettings = () => {
       setSaving(true);
       await reviews.updateBoard(boardId, {
         name: boardName.trim(),
-        description: boardDescription.trim() || null
+        description: boardDescription.trim() || null,
+        medCenterId: boardMedCenterId || null
       });
       toast.success('Настройки сохранены');
     } catch (err) {
@@ -460,6 +467,24 @@ const ReviewBoardSettings = () => {
                 onChange={(e) => setBoardName(e.target.value)}
                 placeholder="Название доски"
               />
+            </div>
+
+            {/* Привязка к филиалу. Нужна не для порядка: без неё оценки
+                нельзя собрать по клинике — в отзыве филиала нет, а название
+                доски строкой запрос сопоставить не может. */}
+            <div className="form-group">
+              <label>Медцентр</label>
+              <select
+                value={boardMedCenterId}
+                onChange={(e) => setBoardMedCenterId(e.target.value)}
+              >
+                <option value="">Не привязана к филиалу</option>
+                {medCenters
+                  .filter(mc => !mc.isVirtual)
+                  .map(mc => (
+                    <option key={mc.id} value={mc.id}>{mc.name}</option>
+                  ))}
+              </select>
             </div>
 
             <div className="form-group">

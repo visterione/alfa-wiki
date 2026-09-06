@@ -9,6 +9,7 @@ import { MedCentersProvider } from './context/MedCentersContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import './index.css';
+import './icon-motion.css';
 
 const PageView = lazy(() => import('./pages/PageView'));
 const PageEditor = lazy(() => import('./pages/PageEditor'));

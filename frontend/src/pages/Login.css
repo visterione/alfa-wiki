@@ -1,184 +1,723 @@
+/**
+ * Экран входа — разворот: слева карта сети, справа форма.
+ *
+ * До ver. 7.83 здесь была стеклянная карточка по центру тёмного градиента с
+ * плывущими цветными пятнами. Пятна ничего не значили, а карточка стояла на
+ * обоях. Теперь половины равноправны: форма не лежит поверх фона, она занимает
+ * свою половину экрана, и коробки вокруг полей ей больше не нужны — от пёстрого
+ * фона отделять нечего.
+ */
+/* Половины делятся не поровну и не в долях, а по надобности: форме нужна
+   колонка постоянной ширины, всё остальное забирает карта.
+   Деление 43/57 в пользу формы было ошибкой — на широком мониторе рядом с
+   узкой формой оставалось полэкрана пустоты, а карта, ради которой всё и
+   затевалось, ужималась. Теперь наоборот: колонка формы от 360 до трети
+   экрана, карта берёт остаток и на большом мониторе только выигрывает.
+
+   minmax(0, …) у первой колонки и min-width: 0 у половин — не украшение.
+   Элемент сетки по умолчанию не может стать уже своего минимального
+   содержимого, а внутри формы лежит лента шагов шириной в два экрана. Без
+   ограничения колонка растягивалась под неё, страница становилась шире окна и
+   на телефоне форма наполовину уезжала за правый край. */
 .login-page {
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 34%);
+  background: var(--bg-primary);
+  position: relative;
+  overflow: hidden;
+
+  /* Геометрия плашки со знаком сети. Собрана в переменные, потому что её
+     читают трое: само поле (в какой размер сжиматься), знак внутри (где
+     стоять до и после) и Login.js (он измеряет знак и кладёт сюда --mark-w
+     и --mark-h). Вбитые числа в трёх местах разъезжались бы при первой же
+     правке. */
+  --plate-top: 26px;
+  --plate-left: 24px;
+  --plate-pt: 13px;
+  --plate-pl: 15px;
+  --plate-pr: 20px;
+
+  --morph-ms: 820ms;
+  --morph-ease: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+/* ── Половина с картой ───────────────────────────────────────────────────── */
+.login-brand {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  /* Цвет земли на карте: пока карта грузится, половина не мигает белым */
+  background: #F3F0E9;
+}
+
+/* ── Поле, которое становится плашкой ─────────────────────────────────────
+ *
+ * Пока вводят логин и пароль, половину занимает синее поле с названиями
+ * модулей: карта в этот момент не нужна — человек занят формой, а знать, что
+ * внутри портала, полезнее. Как только код ушёл на почту, поле сжимается до
+ * размеров плашки со знаком сети и открывает под собой карту: у человека
+ * появилось время, и теперь есть что разглядывать.
+ *
+ * Плашка при этом не появляется — ею становится само поле. Поэтому у поля с
+ * самого начала тот же градиент, тот же радиус и та же тень: это один предмет
+ * в двух размерах, а не два похожих. Отдельной плашки на первом шаге нет
+ * вовсе, знак сети просто лежит на поле.
+ *
+ * Едут размеры и радиус, а не transform: scale. При масштабировании вместе с
+ * полем ужимался бы и знак внутри, а он обязан остаться прежним — он и есть
+ * то, ради чего плашка существует.
+ *
+ * Градиент тот же, что у шапки портала (Header.css): на входе и после входа
+ * это один и тот же предмет. */
+.login-brand-shell {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 0;
+  color: #FFFFFF;
+  background:
+    /* Блик сверху слева: во всю половину ровная заливка выглядит клеёнкой.
+       К размеру плашки он ужимается до неразличимого, так что материал у
+       обоих состояний остаётся один. */
+    radial-gradient(70% 60% at 26% 18%, rgba(255, 255, 255, 0.10), transparent 70%),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--primary) 92%, #FFFFFF),
+      var(--primary) 55%,
+      color-mix(in srgb, var(--primary) 92%, #000000));
+  /* Тень у поля во всю половину не нужна — ронять её некуда */
+  box-shadow: 0 8px 22px rgba(0, 82, 175, 0);
+  transition:
+    top var(--morph-ms) var(--morph-ease),
+    left var(--morph-ms) var(--morph-ease),
+    width var(--morph-ms) var(--morph-ease),
+    height var(--morph-ms) var(--morph-ease),
+    border-radius var(--morph-ms) var(--morph-ease),
+    box-shadow var(--morph-ms) ease;
+}
+
+/* Размеры плашки не вбиты, а сложены из измеренного знака и отбивок вокруг
+   него: --mark-w и --mark-h ставит Login.js по живому размеру знака. Вбитое
+   число разъезжалось бы со знаком после подгрузки шрифта, при системном
+   увеличении текста и от любой правки надписи. Запасные значения — на кадр
+   до первого замера. */
+.login-page[data-step='2'] .login-brand-shell {
+  top: var(--plate-top);
+  left: var(--plate-left);
+  width: calc(var(--mark-w, 194px) + var(--plate-pl) + var(--plate-pr));
+  height: calc(var(--mark-h, 54px) + var(--plate-pt) * 2);
+  border-radius: 19px;
+  box-shadow: 0 8px 22px rgba(0, 82, 175, 0.34);
+}
+
+/* ── Знак сети ────────────────────────────────────────────────────────────
+   На первом шаге стоит ровно там, где окажется на втором: сумма отступа
+   плашки от края и её внутренней отбивки. Поле схлопывается вокруг знака, а
+   сам он не двигается вовсе — из-за этого переход читается как «поле стало
+   плашкой», а не как «плашка приехала из угла». */
+.login-brand-mark {
+  position: absolute;
+  z-index: 2;
+  top: calc(var(--plate-top) + var(--plate-pt));
+  left: calc(var(--plate-left) + var(--plate-pl));
   display: flex;
   align-items: center;
+  gap: 14px;
+  transition:
+    top var(--morph-ms) var(--morph-ease),
+    left var(--morph-ms) var(--morph-ease);
+}
+
+.login-page[data-step='2'] .login-brand-mark {
+  top: var(--plate-pt);
+  left: var(--plate-pl);
+}
+
+.login-brand-mark img {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+
+/* Черта между знаком и названием.
+   Ростом с надпись, а не со знак: черта отбивает текст, и логичнее ей быть
+   вровень с ним. Отбивки по бокам берутся из gap самой строки — отдельных ей
+   не нужно.
+
+   Два пикселя с закруглёнными концами: волосяная линия на плашке терялась, а
+   у толстой прямые торцы делают из неё перегородку. Прозрачность при этом
+   пришлось опустить — на той же трети чёрточка в два пикселя спорила бы со
+   знаком. */
+.login-brand-rule {
+  flex: none;
+  width: 2px;
+  height: 38px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  /* Вырастает от середины — из неё же потом выходит надпись. Задержка
+     согласована с надписью: черта обязана быть на месте раньше, иначе
+     непонятно, откуда та выезжает. */
+  animation: loginRuleDraw 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.9s backwards;
+}
+
+@keyframes loginRuleDraw {
+  from { transform: scaleY(0); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
+}
+
+/* Надпись выезжает из-за черты, а не проявляется на месте.
+ *
+ * Раскрытие сделано обрезкой вместе со сдвигом — тем же приёмом, что и
+ * карточка филиала на карте: там она так же выходит из-под метки. Приём на
+ * экране один, и это не совпадение, а причина им пользоваться.
+ *
+ * Едет правый край обрезки, а левый стоит на месте: надпись раскрывается от
+ * черты вправо. Сделать наоборот — и она проявляется с хвоста, справа налево,
+ * будто её печатают задом наперёд; на это я и попался с первого раза.
+ *
+ * Запас по трём сторонам (отрицательные отступы расширяют область) нужен
+ * потому, что вровень с текстом обрезка срезала бы выносные элементы букв.
+ * Левый край запаса не получает: он обязан лежать ровно на черте.
+ *
+ * Сдвиг ровно на gap строки: в начале кадра левый край надписи стоит впритык к
+ * черте, то есть она и правда выезжает из-под неё, а не появляется рядом.
+ *
+ * backwards обязателен: без него надпись стоит на месте всю свою задержку и
+ * только потом прячется, чтобы выехать заново. А задержка тут больше секунды —
+ * без backwards это была бы секунда с показанной надписью и рывок.
+ *
+ * Кадр начинается не сразу, а через 1.2 с: страница успевает открыться и
+ * замереть, и только потом знак сети договаривает себя. Сразу после загрузки
+ * движение теряется среди всего остального, что в этот момент появляется. */
+.login-brand-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  animation: loginNameOut 0.95s cubic-bezier(0.22, 1, 0.36, 1) 1.2s backwards;
+}
+
+@keyframes loginNameOut {
+  from {
+    clip-path: inset(-6px 100% -6px 0);
+    transform: translateX(-14px);
+  }
+  to {
+    clip-path: inset(-6px -8px -6px 0);
+    transform: translateX(0);
+  }
+}
+
+/* nowrap обязателен: ширину плашки считают по измеренному знаку, а знак,
+   которому позволено переноситься, менял бы её на каждом кадре сжатия. */
+.login-brand-mark b {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  white-space: nowrap;
+}
+
+.login-brand-mark i {
+  font-style: normal;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.76);
+  white-space: nowrap;
+}
+
+/* ── Ленты с названиями модулей ───────────────────────────────────────────
+ *
+ * Семь строк идут в разные стороны. В каждой — весь список, но со своего
+ * места: повтор наступает через десять слов, то есть далеко за краем экрана,
+ * и соседние строки не выглядят одинаковыми.
+ *
+ * Ни описаний, ни цифр здесь нет намеренно. Экран входа называет, что внутри,
+ * а рассказывать — дело самого портала; цифры к тому же пришлось бы отдавать
+ * наружу без авторизации.
+ *
+ * Гаснут ленты быстрее, чем схлопывается поле: слова, обрезаемые сжимающимся
+ * краем, читались бы как сбой отрисовки. */
+.login-strips {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
   justify-content: center;
-  background: linear-gradient(150deg, #050b25 0%, #14225c 45%, #35146b 100%);
-  padding: 24px;
-  position: relative;
+  gap: 24px;
+  /* Сверху больше: там лежит знак сети, и лента не должна под него подходить */
+  padding: 104px 0 48px;
+  mask-image: linear-gradient(to right, transparent 0%, #000 11%, #000 89%, transparent 100%);
+  transition: opacity 260ms ease;
+}
+
+.login-page[data-step='2'] .login-strips {
+  opacity: 0;
+}
+
+.login-strip {
+  display: flex;
+  overflow: hidden;
+  /* Обещание браузеру, что за пределы строки ничего не протечёт: правки внутри
+     неё не заставляют пересчитывать соседние. */
+  contain: paint;
+}
+
+/* Две одинаковые копии подряд, сдвиг ровно на ширину одной — шва не видно.
+   Длительность и направление ставит разметка: у каждой строки они свои. */
+.login-strip-run {
+  display: flex;
+  align-items: center;
+  /* Отбивка между названиями заметно больше, чем между значком и его словом:
+     иначе непонятно, к какому названию значок относится. */
+  gap: 34px;
+  padding-right: 34px;
+  flex: none;
+  white-space: nowrap;
+  animation-name: loginStripSlide;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+
+  /* Своим слоем — и это не преждевременная оптимизация, а лечение настоящей
+     беды: ленты периодически подёргивались, будто подвисая на кадр.
+     Причина в том, что без выделенного слоя браузер каждый кадр заново
+     растрирует содержимое ленты — а это девять надписей и девять значков,
+     каждый из нескольких контуров, и так четырнадцать раз (семь строк по две
+     копии). До появления значков работы было заметно меньше, и рывки в глаза
+     не бросались; с ними главный поток перестал успевать.
+     С выделенным слоем содержимое растрируется один раз, а дальше слой просто
+     двигают — этим занят композитор, и чужая работа на главном потоке ему уже
+     не мешает. Заодно уходит субпиксельное дрожание: ширина ленты дробная,
+     сдвиг на 100% — тоже, и без слоя каждый кадр округлялся по-своему. */
+  will-change: transform;
+}
+
+@keyframes loginStripSlide {
+  to { transform: translateX(-100%); }
+}
+
+/* Значок и название — один предмет, и цвет у них общий: он живёт здесь, а не
+   на надписи, чтобы значок гас и загорался вместе с ней.
+
+   Кегль тоже здесь: значок размерен в em и едет за надписью. Точки-разделителя
+   между названиями больше нет — её работу делает сам значок, он и отмечает
+   начало каждого пункта.
+
+   Приглушённые и яркие пункты чередуются не ради красоты: сплошная стена
+   одинаково ярких названий читается как объявление, а не как перечисление. */
+.login-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: clamp(22px, 2.4vw, 34px);
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.login-strip-item.on {
+  color: #FFFFFF;
+}
+
+.login-strip-item svg {
+  flex: none;
+}
+
+.login-strip-word {
+  font-weight: 600;
+  letter-spacing: -0.8px;
+}
+
+/* ── Карта ───────────────────────────────────────────────────────────────── */
+.login-map {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
 }
 
-/* Lava lamp blobs */
-.login-page::before,
-.login-page::after {
-  content: '';
+/* Холст размерен ровно по своему viewBox: одна единица карты — один пиксель.
+   При растяжении на всю половину они расходятся, и камера, считающая сдвиг в
+   единицах карты, промахивается тем сильнее, чем дальше метка от начала
+   координат — город ещё попадает в кадр, а Сукко уезжает под нижний край. */
+.login-map-view {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.45;
-  will-change: transform;
-  pointer-events: none;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  transition: transform 2800ms cubic-bezier(0.55, 0, 0.22, 1);
 }
 
-.login-page::before {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, #007AFF 0%, #5856D6 100%);
-  top: -100px;
-  left: -100px;
-  animation: lavaMove1 20s ease-in-out infinite;
-}
-
-.login-page::after {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, #5856D6 0%, #AF52DE 100%);
-  bottom: -150px;
-  right: -150px;
-  animation: lavaMove2 25s ease-in-out infinite;
-}
-
-@keyframes lavaMove1 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(100px, 150px) scale(1.1);
-  }
-  66% {
-    transform: translate(-50px, 100px) scale(0.9);
-  }
-}
-
-@keyframes lavaMove2 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(-120px, -80px) scale(1.15);
-  }
-  66% {
-    transform: translate(80px, -120px) scale(0.85);
-  }
-}
-
-/* Additional lava blobs */
-.lava-blob {
+.login-map-base,
+.login-map-pins {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.35;
-  will-change: transform;
-  pointer-events: none;
+  top: 0;
+  left: 0;
+  display: block;
 }
 
-.lava-blob-1 {
-  width: 350px;
-  height: 350px;
-  background: radial-gradient(circle, #00D4FF 0%, #0099CC 100%);
-  top: 20%;
-  right: 10%;
-  animation: lavaFloat1 30s ease-in-out infinite;
-}
+/* Соседние метки лежат под карточкой, активная — над ней: карточка выезжает
+   из-под своей метки, но чужие не должны перекрывать её текст. */
+.login-map-pins { z-index: 1; }
+.login-map-pins-top { z-index: 3; }
 
-.lava-blob-2 {
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, #AF52DE 0%, #7C3AED 100%);
-  bottom: 30%;
-  left: 15%;
-  animation: lavaFloat2 28s ease-in-out infinite reverse;
-}
-
-.lava-blob-3 {
-  width: 450px;
-  height: 450px;
-  background: radial-gradient(circle, #5856D6 0%, #007AFF 100%);
-  top: 50%;
-  left: 50%;
-  animation: lavaFloat3 35s ease-in-out infinite;
-}
-
-@keyframes lavaFloat1 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(-80px, 60px) scale(1.1);
-  }
-  50% {
-    transform: translate(-120px, -40px) scale(0.9);
-  }
-  75% {
-    transform: translate(60px, -80px) scale(1.05);
-  }
-}
-
-@keyframes lavaFloat2 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1) rotate(0deg);
-  }
-  33% {
-    transform: translate(100px, -60px) scale(1.15) rotate(120deg);
-  }
-  66% {
-    transform: translate(-70px, 90px) scale(0.85) rotate(240deg);
-  }
-}
-
-@keyframes lavaFloat3 {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  20% {
-    transform: translate(calc(-50% + 90px), calc(-50% + 70px)) scale(1.1);
-  }
-  40% {
-    transform: translate(calc(-50% - 60px), calc(-50% + 100px)) scale(0.95);
-  }
-  60% {
-    transform: translate(calc(-50% - 100px), calc(-50% - 50px)) scale(1.05);
-  }
-  80% {
-    transform: translate(calc(-50% + 70px), calc(-50% - 90px)) scale(0.9);
-  }
-}
-
-.login-container {
+/* Подложка встроена разметкой: <svg> внутри должен занять контейнер целиком */
+.login-map-base > svg {
+  display: block;
   width: 100%;
-  max-width: 400px;
-  position: relative;
-  z-index: 1;
+  height: 100%;
 }
 
+/* Маршрут по улицам. Ширины в единицах холста, а он размерен в пикселях —
+   значит это и есть пиксели на экране. */
+.login-route {
+  transition: opacity 0.9s ease;
+}
+
+/* Гаснет перед сбросом на самой дальней точке круга: там хвост прошлого круга
+   ещё виден краем, и мгновенное исчезновение читается сбоем отрисовки. */
+.login-route.fading {
+  opacity: 0;
+}
+
+/* Толщины поделены на увеличение камеры (ZOOM_NEAR в loginMapGeo.js): линия
+   нарисована в единицах холста, а на экране должна остаться той же ширины.
+   Меняете там — поправьте здесь. */
+.login-route-case {
+  fill: none;
+  stroke: #FFFFFF;
+  stroke-width: 6.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+}
+
+.login-route-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 3.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Пока проезд не начался, линия спрятана: штрих кончается ровно в начале пути.
+   Настоящие величины проставляет скрипт — длину пути можно узнать только у
+   отрисованного элемента. */
+.login-route-case,
+.login-route-line {
+  stroke-dasharray: 100000;
+  stroke-dashoffset: 100000;
+}
+
+/* ── Полоса отзывов ───────────────────────────────────────────────────────
+   Три положительных отзыва о филиале, на котором стоит камера. Лежит поверх
+   карты у нижнего края и уходит вместе с выноской, когда камера трогается.
+
+   Стекла здесь нет намеренно: `backdrop-filter` растрирует всё, что за
+   элементом, а за ним увеличенная камерой карта — она разом мылится. Связь с
+   картой держит растушёвка снизу, а не размытие. */
+.login-quotes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 48px 24px 22px;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.14),
+    rgba(0, 0, 0, 0.06) 46%,
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.login-quotes.shown { opacity: 1; }
+
+/* Цвета вбиты, а не взяты токенами, и это тот редкий случай, когда так и надо:
+   карточки лежат над картой, а карта светлая при любой теме портала. На токенах
+   они в тёмной теме чернели поверх светлой карты и вставали рядом с выноской
+   филиала, которая по той же причине белая всегда. Палитра здесь ровно её. */
+/* Цвета вбиты, а не взяты токенами, и это тот редкий случай, когда так и надо:
+   карточки лежат над картой, а карта светлая при любой теме портала. На токенах
+   они в тёмной теме чернели поверх светлой карты и вставали рядом с выноской
+   филиала, которая по той же причине белая всегда. Палитра здесь ровно её.
+
+   Единственный цвет, который приходит снаружи, — цвет филиала в `--lq-accent`,
+   его ставит разметка. */
+.login-quote {
+  margin: 0;
+  padding: 13px 15px;
+  border-radius: 14px;
+  /* Не плоский белый: тёплый уклон ко дну даёт карточке объём, которого не даёт
+     одна тень, а ко дну же подмешан цвет филиала — четыре процента, ровно
+     столько, чтобы полоса на каждой остановке имела свой оттенок, но не
+     превращалась в цветную плашку. */
+  background: linear-gradient(
+    180deg,
+    #FFFFFF 0%,
+    color-mix(in srgb, var(--lq-accent, #6B7280) 4%, #FBF8F3) 100%
+  );
+  border: 1px solid rgba(40, 34, 24, 0.09);
+  box-shadow: 0 8px 22px rgba(40, 34, 24, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.login-quotes.shown .login-quote {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── Шапка карточки: аватарка, имя с датой, звёзды ─────────────────────── */
+.lq-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Значок человека вместо снимка — заглушка и заглушка есть. Серый один на все
+   карточки и не зависит от филиала: цвет тут нёс бы смысл, которого нет, а
+   рядом стоит имя, и оттягивать внимание на себя кружку незачем. Серый тёплый,
+   из той же земляной гаммы, что и остальной экран, — нейтральный #E5E5EA рядом
+   с бежевой картой отдавал бы синевой. */
+.lq-avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #EDE8E0;
+  color: #A49B90;
+}
+
+.lq-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Имя и дата в одну строку. Ужимается имя, а не дата: дата предсказуемой
+   длины, а имя бывает каким угодно, и обрезать «17 августа 2026» до «17 авг…»
+   было бы хуже, чем «Владислава Б…». */
+.lq-line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.lq-line b {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1B1A17;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lq-line time {
+  flex: none;
+  font-size: 11px;
+  color: #9A9289;
+  white-space: nowrap;
+}
+
+/* Три строки, а не четыре: отбивка над текстом и шапка забрали высоту, а
+   поднимать полосу выше нижней трети карты нельзя — под ней проходит маршрут.
+   Бэкенд режет текст до 190 символов, это примерно те же три строки; обрезка в
+   двух местах — страховка на узкое окно, где строки короче. */
+.login-quote blockquote {
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(40, 34, 24, 0.07);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #3E3831;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Метки ────────────────────────────────────────────────────────────────
+   Метка нарисована в SVG в натуральную величину, увеличение камеры гасится
+   обратным масштабом в разметке. */
+.login-pin-body {
+  stroke: #FFFFFF;
+  stroke-width: 4.2;
+  filter: url(#loginPinShadow);
+}
+
+.login-pin-letter {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+/* Метка вздрагивает, когда камера до неё доехала: качается на острие, как
+   маятник, и затихает. */
+.login-pin-settle {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: loginPinSettle 0.9s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes loginPinSettle {
+  0%   { transform: rotate(0deg); }
+  14%  { transform: rotate(-9deg); }
+  32%  { transform: rotate(6.5deg); }
+  50%  { transform: rotate(-4deg); }
+  68%  { transform: rotate(2.2deg); }
+  84%  { transform: rotate(-1deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* ── Карточка филиала ─────────────────────────────────────────────────────
+   Лежит слоем ниже меток и стартует спрятанной под своей меткой. Раскрываясь,
+   выезжает из-под метки вправо, а не всплывает рядом готовой плашкой.
+
+   Якорь стоит в координатах холста и гасит увеличение камеры; всё, что внутри,
+   верстается обычными пикселями. */
+.login-pin-card-anchor {
+  position: absolute;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+/* Левый край карточки заходит под голову метки — оттуда она и выезжает.
+   Раскрытие сделано обрезкой, а не масштабом или шириной: при них текст внутри
+   переливался бы и переносился по-разному в каждом кадре. Сдвиг вправо идёт
+   вместе с обрезкой — край не просто проявляется, а именно выходит. */
+/* Ростом ровно с метку: от макушки её головы до острия, 78 пикселей. Выше или
+   ниже карточка выглядела бы приклеенной сбоку, а не выехавшей из-под метки.
+   Отсюда и раскладка в строку — в столбик содержимое в эту высоту не влезает.
+
+   Левый край заходит под голову метки, оттуда карточка и выезжает; широкая
+   отбивка слева держит текст в стороне от неё.
+
+   Раскрытие сделано обрезкой вместе со сдвигом вправо, а не масштабом или
+   шириной: при них текст внутри переливался бы и переносился по-разному в
+   каждом кадре. */
+.login-pin-card {
+  position: absolute;
+  /* Начинается от середины метки, а не от её левого края: левее выступал угол
+     карточки, и особенно заметно это было на сворачивании, когда от неё
+     остаётся как раз левая кромка. */
+  left: 0;
+  top: -78px;
+  height: 78px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 8px 36px;
+  border-radius: 16px;
+  background: #FFFFFF;
+  border: 1px solid rgba(40, 34, 24, 0.08);
+  box-shadow: 0 10px 26px rgba(40, 34, 24, 0.24);
+  color: #1B1A17;
+  transform: translateX(-26px);
+  clip-path: inset(0 100% 0 0 round 16px);
+  transition:
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    clip-path 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.login-pin-card.shown {
+  transform: translateX(0);
+  clip-path: inset(0 0 0 0 round 16px);
+}
+
+.lpc-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.lpc-text > b {
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lpc-addr {
+  font-size: 12px;
+  line-height: 1.3;
+  color: #7A736A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lpc-rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.lpc-rating b { font-size: 12.5px; font-weight: 600; }
+
+.lpc-reviews { font-size: 11.5px; color: #8A8279; white-space: nowrap; }
+
+/* Звёзды: ряд золотых поверх серого, обрезанный по ширине оценки. Половина
+   звезды получается сама, без отдельного значка на каждый случай. */
+.stars { position: relative; display: inline-block; line-height: 0; flex: none; }
+.stars-off, .stars-on { display: flex; gap: 2px; }
+.stars-on { position: absolute; inset: 0; overflow: hidden; }
+.stars svg { width: 12px; height: 12px; flex: none; }
+.stars-off svg { fill: #DCD5C8; }
+.stars-on svg { fill: #F5A623; }
+
+
+/* ── Половина с формой ───────────────────────────────────────────────────── */
+/* Едва заметный уклон к краю карты: на большом мониторе ровная белая плоскость
+   выглядит недоделанной, а прямой градиент под формой — приёмом из чужого
+   макета. Здесь всего два процента затемнения к левому краю, ровно чтобы стык
+   с картой не был обрывом. */
+.login-container {
+  background:
+    linear-gradient(to right, rgba(var(--primary-rgb), 0.045), transparent 42%),
+    var(--bg-primary);
+  display: grid;
+  /* minmax(0, 1fr), а не просто auto: лента шагов внутри шире окна (два шага по
+     100%), и колонка, посчитанная по содержимому, растягивалась под неё. Форму
+     при этом уносило вправо и на телефоне она наполовину уезжала за экран. */
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  min-width: 0;
+  padding: 40px 32px;
+}
+
+/* Карточки больше нет: на чистой половине отделять форму не от чего. Класс
+   остался — на нём держится ширина и вся вёрстка шагов внутри. */
 .login-card {
   position: relative;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
-  border-radius: 28px;
-  box-shadow: 0 32px 80px rgba(4, 8, 32, 0.45),
-              0 2px 8px rgba(4, 8, 32, 0.12);
-  padding: 40px 32px 36px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  width: 100%;
+  min-width: 0;
+  max-width: 400px;
   animation: cardSlideIn 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-/* Тонкий блик по верхней кромке: именно он читается как «стекло», без него
-   карточка на размытом фоне выглядит плоской заливкой. */
-.login-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 45%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
 }
 
 @keyframes cardSlideIn {
@@ -193,39 +732,21 @@
 }
 
 .login-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.login-logo-icon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 18px;
-  background: linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%);
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 12px 28px rgba(0, 122, 255, 0.35);
-  transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
-}
-
-.login-logo-icon img {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-}
-
-.login-logo-icon:hover {
-  transform: translateY(-3px) rotate(-3deg);
+  margin-bottom: 30px;
 }
 
 .login-header h1 {
-  font-size: 27px;
+  font-size: 30px;
   font-weight: 650;
-  margin: 0;
+  margin: 0 0 6px;
   color: var(--text-primary);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.6px;
+}
+
+.login-header p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-secondary);
 }
 
 /* Окно, в котором едет лента шагов.
@@ -294,7 +815,7 @@
 
 .login-field-icon {
   position: absolute;
-  left: 15px;
+  left: 2px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-tertiary);
@@ -306,33 +827,72 @@
   color: var(--primary);
 }
 
+/* Иконка поля отвечает на фокус не только цветом.
+ *
+ * Мимо контракта data-icon-motion из icon-motion.css, хотя кадры берутся
+ * оттуда же. Причин две. Первая: хозяин движения здесь — обёртка поля, а фокус
+ * попадает во внутренний input, и ни :hover, ни :focus-visible на обёртке не
+ * сработают. Вторая: у поля пароля внутри лежит вторая иконка — глазик в своей
+ * кнопке, — и общее правило «первая иконка внутри хозяина» подхватывало бы её
+ * тоже, отчего зрачок подпрыгивал бы вместе с дужкой замка.
+ *
+ * Двигаются детали значка, а не он сам: значок стоит в поле абсолютно и
+ * центрируется собственным transform: translateY(-50%). Кадр с transform на нём
+ * самом уронил бы его на пол-высоты вниз. */
+.login-field:focus-within .login-field-icon > :nth-child(2) {
+  animation: loginFieldIconIn 0.5s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* У замка вторая деталь — дужка, и она приподнимается: поставил курсор в
+   пароль, замок готов открыться. У логина вторая деталь — голова, и движение
+   выходит тем же кадром, только читается как кивок. Совпадение удачное, но
+   разные кадры тут были бы честнее, если однажды поменяется одна из иконок. */
+@keyframes loginFieldIconIn {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-2px); }
+}
+
+/* Поле — строка с подчёркиванием, а не коробка. Коробка нужна была, чтобы
+   отделить поле от пёстрого фона под карточкой; на чистой половине отделять
+   не от чего, и рамка вокруг каждого поля только шумит. */
 .login-form .input {
-  height: 52px;
-  padding-left: 44px;
+  height: 46px;
+  padding: 0 0 0 30px;
   font-size: 16px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 14px;
-  background: rgba(118, 118, 128, 0.13);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  transition: border-color 0.25s ease;
 }
 
 .login-form .input.has-action {
-  padding-right: 48px;
+  padding-right: 40px;
 }
 
 .login-form .input:focus {
-  border-color: var(--primary);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.14);
+  border-bottom-color: var(--primary);
+  box-shadow: none;
+}
+
+/* Автозаполнение браузер красит своим фоном, и на прозрачном поле это выглядит
+   заплаткой поверх половины. Гасим тем же приёмом, что уже применён к тёмной
+   теме, — заливкой через inset-тень цветом самой страницы. */
+.login-form .input:-webkit-autofill,
+.login-form .input:-webkit-autofill:hover,
+.login-form .input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-primary) inset;
+  -webkit-text-fill-color: var(--text-primary);
+  caret-color: var(--text-primary);
 }
 
 .password-toggle {
   position: absolute;
-  right: 6px;
+  right: -4px;
   top: 50%;
   transform: translateY(-50%);
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -347,6 +907,48 @@
 .password-toggle:hover {
   color: var(--text-secondary);
   background: rgba(118, 118, 128, 0.12);
+}
+
+/* Глазик моргает при переключении.
+ *
+ * Кадр не привязан ни к какому состоянию — он играет на появлении значка.
+ * Работает это потому, что Eye и EyeOff разные компоненты: React не
+ * переиспользует узел, а вставляет новый, и анимация на нём стартует сама.
+ * Заодно значок моргает при первой отрисовке экрана — на входе это уместно. */
+.password-toggle svg {
+  animation: loginEyeOpen 0.32s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes loginEyeOpen {
+  0%   { transform: scaleY(.15); }
+  60%  { transform: scaleY(1.08); }
+  100% { transform: scaleY(1); }
+}
+
+/* Замок вздрагивает на неудачном входе.
+ *
+ * Прецедент на этом же экране: сетка кода 2FA отвечает на неверный код тем же
+ * движением (errorShake ниже). Всплывашка появляется в углу, а взгляд в момент
+ * отказа на поле — без этого кадра отказ рядом с паролем ничем не отмечен.
+ *
+ * Трясётся значок целиком, а не его детали, и на то две причины. Первая: так
+ * это и должно выглядеть — вздрагивает замок, а не дужка отдельно от корпуса.
+ * Вторая важнее — правило фокуса из icon-motion.css адресует дужку через
+ * nth-child и весит больше любого удобного здесь селектора; кадр на детали оно
+ * бы просто перебило, пока поле в фокусе, а после неудачного входа оно как раз
+ * в фокусе. Разведены по разным целям — спорить не о чем.
+ *
+ * translateY(-50%) в каждом кадре — не украшение: значок стоит в поле абсолютно
+ * и центрируется по вертикали этим самым transform. Кадр без него уронил бы
+ * замок вниз на пол-высоты. */
+.login-field--error .login-field-icon {
+  animation: loginLockShake 0.5s ease;
+}
+
+@keyframes loginLockShake {
+  0%, 100%            { transform: translate(0, -50%); }
+  10%, 30%, 50%, 70%  { transform: translate(-3px, -50%); }
+  20%, 40%, 60%, 80%  { transform: translate(3px, -50%); }
 }
 
 .login-form .login-btn {
@@ -380,80 +982,89 @@
 }
 
 /* 2FA */
-.two-factor-info {
-  text-align: center;
-  padding-bottom: 4px;
+/* Смена текста шапки при переходе на второй шаг: проявление, а не подмена.
+   Без него заголовок менялся рывком посреди едущей ленты. */
+.login-header {
+  animation: loginHeaderIn 0.35s ease-out;
 }
 
-.two-factor-badge {
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 16px;
-  color: var(--primary);
-  background: rgba(0, 122, 255, 0.12);
-  animation: iconFloat 3.5s ease-in-out infinite;
-}
-
-@keyframes iconFloat {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
-.two-factor-info h2 {
-  margin: 0 0 6px;
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: -0.3px;
-  color: var(--text-primary);
-}
-
-.two-factor-info p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-secondary);
+@keyframes loginHeaderIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Code input grid with 6 cells */
+/* minmax(0, 1fr), а не 1fr: у <input> есть собственная ширина примерно в
+   двадцать символов, и колонка размером auto требует её целиком. Шесть таких
+   клеток растягивали форму, а через неё и всю страницу — на телефоне половина
+   формы уезжала за правый край. */
 .code-input-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
+/* Клетки остаются коробками — цифру надо во что-то ставить, — но лёгкими:
+   рамка вместо заливки, чтобы они не спорили с полями-строками первого шага. */
 .code-digit-input {
   width: 100%;
   aspect-ratio: 1;
   padding: 0;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   text-align: center;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 14px;
-  background: rgba(118, 118, 128, 0.13);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
   color: var(--text-primary);
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
   outline: none;
   caret-color: var(--primary);
 }
 
 .code-digit-input:focus {
   border-color: var(--primary);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.14);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.16);
 }
 
 .code-digit-input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Цифра встаёт в клетку.
+ *
+ * Кадр играет на появлении класса, а класс вешает сам факт непустого значения.
+ * Стирание убирает класс, набор возвращает — поэтому исправленная цифра
+ * отыгрывает заново, без единой строчки на это в обработчиках.
+ *
+ * Двигается клетка целиком: цифра живёт внутри input, отдельно от него её не
+ * анимировать. Смотрится это как надо — цифра «падает» в клетку вместе с ней.
+ *
+ * При наборе клетка отыгрывает сразу; лесенка слева направо включается только
+ * на вставке кода из письма — класс pasted вешает обработчик вставки и снимает
+ * через 0.7 с. Насовсем задержку по номеру клетки оставить нельзя: шестая
+ * цифра при обычном наборе ждала бы своей очереди после пяти чужих. */
+.code-digit-input.filled {
+  animation: codeDigitLand 0.32s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* backwards обязателен: без него клетка стоит в полный размер всю свою
+   задержку и только потом сжимается — лесенка читалась бы как рывок. */
+.code-input-grid.pasted .code-digit-input.filled {
+  animation-fill-mode: backwards;
+}
+
+.code-input-grid.pasted .code-digit-input:nth-child(2) { animation-delay: 0.05s; }
+.code-input-grid.pasted .code-digit-input:nth-child(3) { animation-delay: 0.10s; }
+.code-input-grid.pasted .code-digit-input:nth-child(4) { animation-delay: 0.15s; }
+.code-input-grid.pasted .code-digit-input:nth-child(5) { animation-delay: 0.20s; }
+.code-input-grid.pasted .code-digit-input:nth-child(6) { animation-delay: 0.25s; }
+
+@keyframes codeDigitLand {
+  0%   { transform: scale(.82); }
+  55%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
 }
 
 /* Success state - green */
@@ -553,58 +1164,37 @@
    Цвета внутри намеренно записаны значениями, а не токенами рамп: они
    уже подобраны под тёмный фон, и токен, который в светлой теме светлый,
    здесь перевернулся бы и дал тёмное на тёмном. */
-:root[data-theme='dark'] .login-card {
-  background: rgba(28, 28, 30, 0.82);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6),
-              0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-:root[data-theme='dark'] .login-card::before {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%);
-}
-
 :root[data-theme='dark'] .login-header h1 {
   color: #F5F5F7;
 }
 
-:root[data-theme='dark'] .two-factor-info h2 {
-  color: #F5F5F7;
-}
-
-/* Тёмный фон инпутов — включая состояние autofill */
 :root[data-theme='dark'] .login-form .input {
   color-scheme: dark;
-  background: rgba(118, 118, 128, 0.24) !important;
   color: #F5F5F7;
-  border-color: rgba(255, 255, 255, 0.12);
+  border-bottom-color: rgba(255, 255, 255, 0.16);
 }
 
 :root[data-theme='dark'] .login-form .input:focus {
-  background: rgba(118, 118, 128, 0.36) !important;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.2);
+  border-bottom-color: var(--primary);
 }
 
 /* Перебиваем браузерный autofill (Chrome/Edge окрашивает поля своим цветом) */
 :root[data-theme='dark'] .login-form .input:-webkit-autofill,
 :root[data-theme='dark'] .login-form .input:-webkit-autofill:hover,
 :root[data-theme='dark'] .login-form .input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px #2C2C2E inset !important;
-  -webkit-text-fill-color: #F5F5F7 !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-primary) inset;
+  -webkit-text-fill-color: #F5F5F7;
   caret-color: #F5F5F7;
-  border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 :root[data-theme='dark'] .code-digit-input {
   color-scheme: dark;
-  background: rgba(118, 118, 128, 0.24);
+  background: transparent;
   color: #F5F5F7;
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 :root[data-theme='dark'] .code-digit-input:focus {
-  background: rgba(118, 118, 128, 0.36);
   border-color: var(--primary);
 }
 
@@ -617,30 +1207,84 @@
 }
 
 
-/* Responsive */
-@media (max-width: 480px) {
+/* ── Узкие экраны ─────────────────────────────────────────────────────────
+   Разворота на телефоне нет: две колонки по 43% превратились бы в две
+   нечитаемые полосы. Карта уезжает наверх отдельной лентой и остаётся
+   узнаваемой заставкой, форма занимает всё остальное. */
+@media (max-width: 900px) {
   .login-page {
-    padding: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 32vh 1fr;
+    min-height: 100vh;
   }
 
-  .login-card {
-    padding: 32px 22px 28px;
-    border-radius: 24px;
+  /* Карта на телефоне занимает 32vh — полосе из трёх карточек там места нет,
+     а сжимать её до нечитаемого смысла не имеет. */
+  .login-quotes {
+    display: none;
+  }
+
+  /* Плашка на телефоне мельче — вместе с ней уезжает и то, во что сжимается
+     поле: размеры считаются из этих же переменных. */
+  .login-page {
+    --plate-top: 16px;
+    --plate-left: 16px;
+    --plate-pt: 10px;
+    --plate-pl: 12px;
+    --plate-pr: 16px;
+  }
+
+  .login-page[data-step='2'] .login-brand-shell {
+    border-radius: 16px;
+  }
+
+  .login-brand-mark img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .login-brand-rule { height: 32px; }
+
+  .login-brand-mark b { font-size: 17px; }
+  .login-brand-mark i { font-size: 13px; }
+
+  /* В полосе на 32vh семь строк не помещаются: середина видна, края уходят
+     под обрез без всякой растушёвки — это читается как ошибка вёрстки, а не
+     как приём. Поэтому на телефоне лент четыре, и отбивка сверху рассчитана
+     так, чтобы верхняя не подходила под плашку со знаком. */
+  .login-strips {
+    padding: 88px 0 16px;
+    gap: 14px;
+  }
+
+  .login-strip:nth-child(n + 5) {
+    display: none;
+  }
+
+  /* На узкой полосе в кадр попадает пара названий из девяти, и яркое чаще
+     всего оказывается за краем — стена выходит целиком приглушённой. Поэтому
+     здесь она просто светлее: акцентам всё равно негде себя показать. */
+  .login-strip-item {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* На узкой ленте сверху раскрытая карточка не должна вылезать за края */
+  .login-pin-card { padding: 8px 10px 8px 34px; }
+  .lpc-text > b { font-size: 14.5px; }
+
+  .login-container {
+    padding: 28px 20px 36px;
+    align-items: start;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    grid-template-rows: 26vh 1fr;
   }
 
   .login-header h1 {
     font-size: 24px;
-  }
-
-  .login-logo-icon {
-    width: 58px;
-    height: 58px;
-    border-radius: 18px;
-  }
-
-  .login-logo-icon img {
-    width: 34px;
-    height: 34px;
   }
 
   .login-viewport {
@@ -668,20 +1312,63 @@
   }
 }
 
-/* Уважение к системной настройке: фоновая «лава» и слайд шагов — украшение,
-   при отключённой анимации они только мешают. */
+/* Уважение к системной настройке. Переезд камеры по карте гасится здесь же:
+   он идёт сам по себе, без участия человека, и это ровно то движение, от
+   которого настройка защищает. Карта остаётся стоять на первом филиале. */
 @media (prefers-reduced-motion: reduce) {
-  .login-page::before,
-  .login-page::after,
-  .lava-blob,
-  .two-factor-badge,
-  .login-card {
+  .login-card,
+  /* Кадры иконок полей — тоже сюда. Они короткие и отвечают на действие, но
+     тот, кто выключил анимацию, просил выключить её целиком: об отказе всё
+     так же скажет всплывашка, а о показанном пароле — сам значок. */
+  .password-toggle svg,
+  .login-field .login-field-icon,
+  .login-field .login-field-icon > *,
+  .code-digit-input.filled {
     animation: none;
+  }
+
+  .login-pin-settle,
+  .login-header {
+    animation: none;
+  }
+
+  /* Ленты идут сами по себе — гасим совсем. Схлопывание поля тоже: оно
+     отвечает на действие человека, но по размаху это движение во всю
+     половину, а лента шагов рядом при этой настройке уже не едет, и поле,
+     плывущее в одиночку, выглядело бы недоделкой. */
+  .login-strip-run,
+  .login-brand-rule,
+  .login-brand-name {
+    animation: none;
+  }
+
+  /* Ничего не движется — обещание слоя только держало бы память зря */
+  .login-strip-run {
+    will-change: auto;
+  }
+
+  .login-brand-shell,
+  .login-brand-mark,
+  .login-strips {
+    transition: none;
   }
 
   .login-viewport,
   .login-track,
-  .login-step {
+  .login-step,
+  .login-map-view,
+  .login-pin-card,
+  .login-quotes,
+  .login-quote,
+  .login-route {
     transition: none;
+  }
+
+  /* Без переезда камеры полоса никогда не получит класс shown, а показать её
+     всё равно надо: филиал в кадре есть, отзывы к нему тоже. */
+  .login-quotes,
+  .login-quotes .login-quote {
+    opacity: 1;
+    transform: none;
   }
 }

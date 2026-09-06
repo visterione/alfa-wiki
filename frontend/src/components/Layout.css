@@ -575,15 +575,16 @@
   background: linear-gradient(135deg, var(--qa-fill) 0%, var(--qa-fill-deep) 100%);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--qa-fill) 30%, transparent);
   transition: background var(--transition-fast),
-              box-shadow var(--transition-fast) cubic-bezier(.22, 1, .36, 1),
-              transform var(--transition-fast) cubic-bezier(.22, 1, .36, 1);
+              box-shadow var(--transition-fast) cubic-bezier(.22, 1, .36, 1);
 }
 
+/* Сама плитка при наведении только темнеет и подсвечивается: подскок
+   translateY отсюда убран, движение теперь берёт на себя иконка внутри —
+   см. icon-motion.css. Две подвижности сразу спорили друг с другом. */
 .quick-access-btn:hover {
   background: linear-gradient(135deg, var(--qa-fill-deep) 0%,
     color-mix(in srgb, var(--qa-fill-deep) 84%, #000000) 100%);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--qa-fill) 42%, transparent);
-  transform: translateY(-1px);
 }
 
 /* Активная плитка. Вдавленность осталась от прежней версии, но одной её мало:
@@ -597,7 +598,6 @@
     color-mix(in srgb, var(--qa-fill-deep) 78%, #000000) 100%);
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, .3),
               0 0 0 2px color-mix(in srgb, var(--qa-fill) 55%, transparent);
-  transform: none;
 }
 
 /* Цвета модулей. Заданы парой «заливка → глубина»: первая идёт в левый верхний
@@ -622,7 +622,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .quick-access-btn { transition-duration: 1ms; }
-  .quick-access-btn:hover { transform: none; }
 }
 
 /* Кнопка без доступа */
@@ -630,10 +629,6 @@
   opacity: 0.45;
   filter: grayscale(0.4);
   cursor: not-allowed;
-}
-
-.quick-access-btn.locked:hover {
-  transform: none;
 }
 
 .quick-access-lock {

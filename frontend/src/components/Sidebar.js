@@ -505,6 +505,7 @@ function QuickAccessButtons({ onClose }) {
       {/* Первый ряд */}
       <button 
         className={`quick-access-btn messages ${isOnChat ? 'active' : ''}`}
+        data-icon-motion="message"
         onClick={handleMessagesClick}
         title="Сообщения"
       >
@@ -518,6 +519,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn favorites ${isOnFavorites ? 'active' : ''}`}
+        data-icon-motion="star"
         onClick={() => handleClick('/favorites')}
         title="Избранное"
       >
@@ -526,6 +528,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn explorer ${isOnAdminPages ? 'active' : ''}`}
+        data-icon-motion="folder"
         onClick={() => handleClick('/explorer')}
         title="Проводник"
       >
@@ -534,6 +537,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn courses ${isOnCourses ? 'active' : ''}`}
+        data-icon-motion="cap"
         onClick={() => handleClick('/courses')}
         title="Курсы и обучение"
       >
@@ -545,6 +549,7 @@ function QuickAccessButtons({ onClose }) {
           остались от версии с тремя колонками и врали. */}
       <button
         className={`quick-access-btn warehouse ${isOnWarehouse ? 'active' : ''} ${!canAccessWarehouse ? 'locked' : ''}`}
+        data-icon-motion={canAccessWarehouse ? 'boxes' : undefined}
         onClick={() => canAccessWarehouse ? handleClick('/warehouse') : toast.error('Нет доступа к разделу «Складской учёт»')}
         title={canAccessWarehouse ? 'Складской учёт' : 'Складской учёт (нет доступа)'}
       >
@@ -554,6 +559,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn reviews ${isOnReviews ? 'active' : ''} ${!canAccessReviews ? 'locked' : ''}`}
+        data-icon-motion={canAccessReviews ? 'thumb' : undefined}
         onClick={() => canAccessReviews ? handleClick('/reviews') : toast.error('Нет доступа к разделу «Отзывы»')}
         title={canAccessReviews ? 'Отзывы' : 'Отзывы (нет доступа)'}
       >
@@ -568,6 +574,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn salary ${isOnSalary ? 'active' : ''} ${!canAccessSalary ? 'locked' : ''}`}
+        data-icon-motion={canAccessSalary ? 'wallet' : undefined}
         onClick={() => canAccessSalary ? handleClick('/referral-bonuses') : toast.error('Нет доступа к разделу «Зарплата»')}
         title={canAccessSalary ? 'Зарплата и бонусы' : 'Зарплата и бонусы (нет доступа)'}
       >
@@ -577,6 +584,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn statistics ${isOnStatistics ? 'active' : ''} ${!canAccessStatistics ? 'locked' : ''}`}
+        data-icon-motion={canAccessStatistics ? 'chart' : undefined}
         onClick={() => canAccessStatistics ? handleClick('/statistics') : toast.error('Нет доступа к разделу «Статистика»')}
         title={canAccessStatistics ? 'Статистика' : 'Статистика (нет доступа)'}
       >
@@ -589,6 +597,7 @@ function QuickAccessButtons({ onClose }) {
           смену, снова нужен под рукой — это ежедневный раздел, а не админский. */}
       <button
         className={`quick-access-btn tasks ${isOnTasks ? 'active' : ''} ${!canAccessTasks ? 'locked' : ''}`}
+        data-icon-motion={canAccessTasks ? 'todo' : undefined}
         onClick={() => canAccessTasks ? handleClick('/tasks') : toast.error('Нет доступа к разделу «Задачи»')}
         title={canAccessTasks ? 'Задачи' : 'Задачи (нет доступа)'}
       >
@@ -603,6 +612,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn onboarding ${isOnOnboarding ? 'active' : ''} ${!canAccessOnboarding ? 'locked' : ''}`}
+        data-icon-motion={canAccessOnboarding ? 'clipboard' : undefined}
         onClick={() => canAccessOnboarding ? handleClick('/onboarding') : toast.error('Нет доступа к разделу «Онбординг врача»')}
         title={canAccessOnboarding ? 'Онбординг врача' : 'Онбординг врача (нет доступа)'}
       >

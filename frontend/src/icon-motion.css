@@ -1,0 +1,458 @@
+/* Оживление иконок Lucide при наведении.
+ *
+ * Готового «анимированного Lucide» не существует: официальный набор — статичные
+ * SVG. Известные анимированные сборки (pqoqubbw/icons и подобные) собраны не из
+ * набора, а поверх него: каждая иконка переписана отдельным React-компонентом на
+ * framer-motion. Для нас это вторая копия иконок, которая расходится с
+ * lucide-react при первом же обновлении, плюс зависимость ради ховера.
+ *
+ * Здесь тот же результат берётся из самого набора. lucide-react рисует <svg> с
+ * фиксированным порядком детей, и каждая деталь адресуется через nth-child:
+ * шапочку в GraduationCap можно подбросить отдельно от головы, карту в Wallet
+ * выдвинуть из кошелька. Ни зависимости, ни разметки — только CSS.
+ *
+ * У контракта есть граница, и она нашлась на экране входа: хозяин не должен
+ * содержать вторую иконку в отдельной обёртке. «Первая иконка» ищется как
+ * svg:first-of-type среди своих соседей, и значок, лежащий один в собственной
+ * кнопке внутри хозяина, тоже ей окажется — у поля пароля так подхватывался
+ * глазик. Экран входа поэтому ходит мимо атрибута: свои селекторы в Login.css,
+ * кадры отсюда.
+ *
+ * Подключение: элемент-хозяин (кнопка, ссылка) получает data-icon-motion="имя",
+ * и при наведении или фокусе с клавиатуры оживает первая иконка внутри него —
+ * на любой глубине: в шапке она завёрнута в <span> с цветной подложкой, в
+ * сайдбаре лежит в кнопке напрямую. Первая — потому что рядом может лежать
+ * служебная (замок на закрытом разделе), её трогать не надо.
+ *
+ * Что важно помнить: порядок детей — это внутренности lucide-react, а не
+ * публичный контракт. Поднимаем версию пакета — проверяем именно эти селекторы;
+ * сломается это молча, иконка просто перестанет двигаться.
+ */
+
+[data-icon-motion] svg:first-of-type {
+  /* Детали выходят за 24×24 — карта выдвигается из кошелька, крышка коробки
+     поднимается над ней, — а <svg> по умолчанию режет всё за пределами viewBox */
+  overflow: visible;
+}
+
+[data-icon-motion] svg:first-of-type > * {
+  /* Без fill-box transform-origin у детей SVG считается от всего холста, и
+     деталь вращается вокруг чужого центра, а не своего */
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ── Сообщения: пузырёк подпрыгивает и качается ───────────────────────────── */
+[data-icon-motion="message"]:is(:hover, :focus-visible) svg:first-of-type {
+  animation: icon-bubble 0.5s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+@keyframes icon-bubble {
+  0%   { transform: scale(1) rotate(0); }
+  35%  { transform: scale(1.16) rotate(-8deg); }
+  65%  { transform: scale(.96) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* ── Избранное: звезда проворачивается на один луч ────────────────────────── */
+[data-icon-motion="star"]:is(:hover, :focus-visible) svg:first-of-type {
+  animation: icon-star 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+/* 72° — ровно шаг между лучами пятиконечной звезды. Кадр кончается там же, где
+   начался, поэтому возврат в исходное после анимации не виден */
+@keyframes icon-star {
+  0%   { transform: rotate(0) scale(1); }
+  55%  { transform: rotate(46deg) scale(1.18); }
+  100% { transform: rotate(72deg) scale(1); }
+}
+
+/* ── Проводник: папка приподнимается и качается, будто её открыли ─────────── */
+[data-icon-motion="folder"]:is(:hover, :focus-visible) svg:first-of-type {
+  transform-origin: 50% 85%;
+  animation: icon-folder 0.5s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-folder {
+  0%, 100% { transform: rotate(0) translateY(0); }
+  40%      { transform: rotate(-8deg) translateY(-2px); }
+  70%      { transform: rotate(3deg) translateY(0); }
+}
+
+/* ── Курсы: шапочку подбрасывают, голова провожает её взглядом ────────────── */
+[data-icon-motion="cap"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  animation: icon-cap-toss 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="cap"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  animation: icon-cap-catch 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-cap-toss {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  40%      { transform: translateY(-2.5px) rotate(-7deg); }
+  75%      { transform: translateY(.5px) rotate(2deg); }
+}
+
+@keyframes icon-cap-catch {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(1px); }
+}
+
+/* ── Склад: верхняя коробка снимается со стопки, нижние расходятся ────────── */
+/* Двенадцать детей Boxes идут тройками: 1–4 левая нижняя коробка, 5–8 правая
+   нижняя, 9–12 верхняя. Разбиение на группы держится на этом порядке */
+[data-icon-motion="boxes"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(-n+4) {
+  animation: icon-box-left 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="boxes"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+5):nth-child(-n+8) {
+  animation: icon-box-right 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="boxes"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+9) {
+  animation: icon-box-top 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-box-left {
+  0%, 100% { transform: translateX(0); }
+  45%      { transform: translateX(-1.5px); }
+}
+
+@keyframes icon-box-right {
+  0%, 100% { transform: translateX(0); }
+  45%      { transform: translateX(1.5px); }
+}
+
+@keyframes icon-box-top {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-3px); }
+}
+
+/* ── Отзывы: большой палец показывают одобрение ───────────────────────────── */
+[data-icon-motion="thumb"]:is(:hover, :focus-visible) svg:first-of-type {
+  /* Поворот идёт от запястья, а не от центра значка */
+  transform-origin: 30% 80%;
+  animation: icon-thumb 0.55s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+@keyframes icon-thumb {
+  0%, 100% { transform: rotate(0) translateY(0); }
+  35%      { transform: rotate(-15deg) translateY(-1.5px); }
+  70%      { transform: rotate(5deg) translateY(0); }
+}
+
+/* ── Зарплата: карта выезжает из кошелька и убирается обратно ─────────────── */
+[data-icon-motion="wallet"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3) {
+  animation: icon-wallet-card 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-wallet-card {
+  0%, 100% { transform: translateX(0); }
+  45%      { transform: translateX(3px); }
+}
+
+/* ── Статистика: столбцы вырастают слева направо ──────────────────────────── */
+[data-icon-motion="chart"]:is(:hover, :focus-visible) svg:first-of-type > * {
+  /* view-box вместо общего fill-box: столбец — это <line> нулевой ширины, и
+     опираться на его собственную рамку рискованно. Координаты ниже — из самого
+     набора: все три линии стоят на y=20, отличаются только x */
+  transform-box: view-box;
+  animation: icon-bar 0.5s cubic-bezier(.22, 1, .36, 1) backwards;
+}
+
+[data-icon-motion="chart"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  transform-origin: 18px 20px;
+  animation-delay: 0.14s;
+}
+
+[data-icon-motion="chart"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  transform-origin: 12px 20px;
+  animation-delay: 0.07s;
+}
+
+[data-icon-motion="chart"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3) {
+  transform-origin: 6px 20px;
+}
+
+@keyframes icon-bar {
+  0%   { transform: scaleY(.2); }
+  65%  { transform: scaleY(1.1); }
+  100% { transform: scaleY(1); }
+}
+
+/* ── Задачи: галочка прочерчивается, строки подтягиваются следом ──────────── */
+[data-icon-motion="todo"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  animation: icon-pop 0.5s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+[data-icon-motion="todo"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  animation: icon-check-draw 0.4s ease-out 0.1s backwards;
+}
+
+[data-icon-motion="todo"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+3) {
+  animation: icon-row-in 0.4s ease-out backwards;
+}
+
+[data-icon-motion="todo"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3) { animation-delay: 0.05s; }
+[data-icon-motion="todo"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(4) { animation-delay: 0.12s; }
+[data-icon-motion="todo"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(5) { animation-delay: 0.19s; }
+
+/* Галочка «m3 17 2 2 4-4» длиной около 8.5 единиц; пунктир взят с запасом,
+   чтобы к концу кадра она была дорисована целиком, а не обрезана */
+@keyframes icon-check-draw {
+  from { stroke-dasharray: 10; stroke-dashoffset: 10; }
+  to   { stroke-dasharray: 10; stroke-dashoffset: 0; }
+}
+
+/* ── Онбординг: зажим планшета качается, строки анкеты проявляются ────────── */
+[data-icon-motion="clipboard"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  animation: icon-clip 0.5s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="clipboard"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+3) {
+  animation: icon-row-in 0.4s ease-out backwards;
+}
+
+/* Строка анкеты — это пара «точка + линия», и лежат они в наборе не подряд:
+   3 и 5 — верхняя строка, 4 и 6 — нижняя. Задержка задаётся по строке, иначе
+   точка проявлялась бы отдельно от своей линии */
+[data-icon-motion="clipboard"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3),
+[data-icon-motion="clipboard"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(5) {
+  animation-delay: 0.06s;
+}
+
+[data-icon-motion="clipboard"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(4),
+[data-icon-motion="clipboard"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(6) {
+  animation-delay: 0.14s;
+}
+
+@keyframes icon-clip {
+  0%, 100% { transform: translateY(0); }
+  40%      { transform: translateY(-1.5px); }
+}
+
+/* ── Общие кадры, которые используют несколько иконок ─────────────────────── */
+@keyframes icon-pop {
+  0%, 100% { transform: scale(1); }
+  45%      { transform: scale(1.18); }
+}
+
+@keyframes icon-row-in {
+  0%   { transform: translateX(-2px); opacity: .35; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Шапка: меню пользователя и «Что нового»
+
+   Здесь иконка лежит не в кнопке напрямую, а внутри <span> с цветной
+   подложкой, — поэтому селектор и ищет её вглубь. Кадры сдержаннее, чем в
+   сайдбаре: в меню четырнадцать строк подряд, и размашистое движение в каждой
+   превратило бы список в мельтешение.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Настройки: шестерня проворачивается ──────────────────────────────────── */
+/* Крутится только тело шестерни, втулка в центре стоит — так виден сам поворот.
+   45° — шаг между зубцами, поэтому конец кадра неотличим от начала */
+[data-icon-motion="gear"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  animation: icon-gear 0.6s cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes icon-gear {
+  from { transform: rotate(0); }
+  to   { transform: rotate(45deg); }
+}
+
+/* ── Меню навигации: панели прочерчиваются ────────────────────────────────── */
+[data-icon-motion="panels"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  animation: icon-pop 0.45s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+[data-icon-motion="panels"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+2) {
+  animation: icon-line-draw 0.4s ease-out 0.08s backwards;
+}
+
+/* Пунктир взят с запасом на самую длинную из линий (18 единиц по горизонтали) */
+@keyframes icon-line-draw {
+  from { stroke-dasharray: 20; stroke-dashoffset: 20; }
+  to   { stroke-dasharray: 20; stroke-dashoffset: 0; }
+}
+
+/* ── Пользователи: передний выходит вперёд, задний придвигается ───────────── */
+[data-icon-motion="users"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(-n+2) {
+  animation: icon-pop 0.5s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+[data-icon-motion="users"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+3) {
+  animation: icon-users-back 0.5s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-users-back {
+  0%, 100% { transform: translateX(0); }
+  45%      { transform: translateX(1.5px); }
+}
+
+/* ── Роли и права: дужка замка приподнимается ─────────────────────────────── */
+[data-icon-motion="lock"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  animation: icon-lock-shackle 0.5s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+@keyframes icon-lock-shackle {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-2px); }
+}
+
+/* ── Медцентры: окна загораются сверху вниз ───────────────────────────────── */
+[data-icon-motion="building"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+4) {
+  animation: icon-blink 0.45s ease-out backwards;
+}
+
+[data-icon-motion="building"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(4) { animation-delay: 0.02s; }
+[data-icon-motion="building"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(5) { animation-delay: 0.08s; }
+[data-icon-motion="building"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(6) { animation-delay: 0.14s; }
+[data-icon-motion="building"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(7) { animation-delay: 0.20s; }
+
+/* ── Резервные копии: диски перемигиваются сверху вниз ────────────────────── */
+[data-icon-motion="database"]:is(:hover, :focus-visible) svg:first-of-type > * {
+  animation: icon-blink 0.45s ease-out backwards;
+}
+
+[data-icon-motion="database"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) { animation-delay: 0.08s; }
+[data-icon-motion="database"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3) { animation-delay: 0.16s; }
+
+/* ── Курсы: книга раскрывается ────────────────────────────────────────────── */
+/* Каждая половина отклоняется от корешка, то есть от своего внутреннего края */
+[data-icon-motion="book"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  transform-origin: right center;
+  animation: icon-book-left 0.5s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="book"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  transform-origin: left center;
+  animation: icon-book-right 0.5s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-book-left {
+  0%, 100% { transform: rotate(0); }
+  45%      { transform: rotate(-7deg); }
+}
+
+@keyframes icon-book-right {
+  0%, 100% { transform: rotate(0); }
+  45%      { transform: rotate(7deg); }
+}
+
+/* ── Журнал страниц: строки текста набегают ───────────────────────────────── */
+[data-icon-motion="file"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+3) {
+  animation: icon-row-in 0.4s ease-out backwards;
+}
+
+[data-icon-motion="file"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3) { animation-delay: 0.06s; }
+[data-icon-motion="file"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(4) { animation-delay: 0.13s; }
+[data-icon-motion="file"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(5) { animation-delay: 0.20s; }
+
+/* ── Парсер цен: лупа ведёт поиск ─────────────────────────────────────────── */
+[data-icon-motion="search"]:is(:hover, :focus-visible) svg:first-of-type {
+  animation: icon-search 0.6s cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes icon-search {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  30%      { transform: translate(-1.5px, -1.5px) scale(1.06); }
+  65%      { transform: translate(1.5px, 1.5px) scale(1.06); }
+}
+
+/* ── Боты: робот моргает и кивает ─────────────────────────────────────────── */
+[data-icon-motion="bot"]:is(:hover, :focus-visible) svg:first-of-type {
+  animation: icon-bot-nod 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Глаза — вертикальные штрихи «M15 13v2»; сжимать их по высоте нельзя (у линии
+   нулевой ширины нет собственной рамки, вокруг которой считать масштаб), так
+   что моргание сделано прозрачностью */
+[data-icon-motion="bot"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+5) {
+  animation: icon-blink 0.4s ease-out 0.12s backwards;
+}
+
+@keyframes icon-bot-nod {
+  0%, 100% { transform: rotate(0); }
+  35%      { transform: rotate(-5deg); }
+  70%      { transform: rotate(3deg); }
+}
+
+/* ── Интеграции: ключ поворачивается в личинке ────────────────────────────── */
+[data-icon-motion="key"]:is(:hover, :focus-visible) svg:first-of-type {
+  /* Поворот идёт вокруг головки ключа, а не вокруг центра значка */
+  transform-origin: 70% 30%;
+  animation: icon-key 0.55s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+@keyframes icon-key {
+  0%, 100% { transform: rotate(0); }
+  45%      { transform: rotate(-18deg); }
+}
+
+/* ── Нововведения: газету встряхивают, строки набегают ────────────────────── */
+[data-icon-motion="news"]:is(:hover, :focus-visible) svg:first-of-type {
+  animation: icon-news 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="news"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2),
+[data-icon-motion="news"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3) {
+  animation: icon-row-in 0.4s ease-out 0.08s backwards;
+}
+
+@keyframes icon-news {
+  0%, 100% { transform: rotate(0) scale(1); }
+  35%      { transform: rotate(-7deg) scale(1.06); }
+  70%      { transform: rotate(4deg) scale(1); }
+}
+
+/* ── Зарплата: ветка прочерчивается, узлы вспыхивают ──────────────────────── */
+[data-icon-motion="branch"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(4) {
+  animation: icon-branch-draw 0.45s ease-out backwards;
+}
+
+[data-icon-motion="branch"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  animation: icon-pop 0.45s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+[data-icon-motion="branch"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(3) {
+  animation: icon-pop 0.45s cubic-bezier(.34, 1.56, .64, 1) 0.18s backwards;
+}
+
+/* Дуга «M18 9a9 9 0 0 1-9 9» — четверть окружности радиусом 9, около 14 единиц */
+@keyframes icon-branch-draw {
+  from { stroke-dasharray: 16; stroke-dashoffset: 16; }
+  to   { stroke-dasharray: 16; stroke-dashoffset: 0; }
+}
+
+/* ── Выход: стрелка уходит в дверь ────────────────────────────────────────── */
+[data-icon-motion="logout"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(n+2) {
+  animation: icon-logout 0.5s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-logout {
+  0%, 100% { transform: translateX(0); }
+  45%      { transform: translateX(2.5px); }
+}
+
+/* ── Общий кадр: деталь гаснет и загорается ───────────────────────────────── */
+@keyframes icon-blink {
+  0%   { opacity: .2; }
+  100% { opacity: 1; }
+}
+
+/* ── Выключатель для тех, кому движение мешает ────────────────────────────── */
+/* !important здесь по делу, а не от лени: правила отдельных иконок весят
+   больше этого (у них к атрибуту добавлен nth-child), и без !important
+   выключатель проигрывал бы им по специфичности — движение осталось бы.
+   Гасится не по ховеру, а вообще: анимации тут только ховерные. */
+@media (prefers-reduced-motion: reduce) {
+  [data-icon-motion] svg,
+  [data-icon-motion] svg * {
+    animation: none !important;
+  }
+}

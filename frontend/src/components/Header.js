@@ -430,6 +430,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   </div>
                   <button
                     className="header-dropdown-logout"
+                    data-icon-motion="logout"
                     onClick={handleLogout}
                     title="Выйти"
                     aria-label="Выйти из учётной записи"
@@ -439,85 +440,85 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 </div>
 
                 <div className="header-dropdown-grid">
-                  <Link to="/profile" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                  <Link to="/profile" className="header-dropdown-item" data-icon-motion="gear" onClick={() => setShowDropdown(false)}>
                     <span className="header-dropdown-item-icon"><Settings size={17} /></span>
                     Настройки
                   </Link>
 
                   {(isAdmin || user?.adminAccess?.sidebar) && (
-                    <Link to="/admin/sidebar" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/sidebar" className="header-dropdown-item" data-icon-motion="panels" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Layout size={17} /></span>
                       Меню навигации
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.users) && (
-                    <Link to="/admin/users" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/users" className="header-dropdown-item" data-icon-motion="users" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Users size={17} /></span>
                       Пользователи
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.roles) && (
-                    <Link to="/admin/roles" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/roles" className="header-dropdown-item" data-icon-motion="lock" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Lock size={17} /></span>
                       Роли и права
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.medCenters) && (
-                    <Link to="/admin/med-centers" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/med-centers" className="header-dropdown-item" data-icon-motion="building" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Building2 size={17} /></span>
                       Медцентры
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.backup) && (
-                    <Link to="/admin/backup" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/backup" className="header-dropdown-item" data-icon-motion="database" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Database size={17} /></span>
                       Резервные копии
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.settings) && (
-                    <Link to="/admin/settings" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/settings" className="header-dropdown-item" data-icon-motion="gear" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Settings size={17} /></span>
                       Настройки системы
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.courses) && (
-                    <Link to="/admin/courses" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/courses" className="header-dropdown-item" data-icon-motion="book" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><BookOpen size={17} /></span>
                       Курсы
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.journal) && (
-                    <Link to="/admin/journal" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/journal" className="header-dropdown-item" data-icon-motion="file" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><FileText size={17} /></span>
                       Журнал страниц
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.parser) && (
-                    <Link to="/admin/parser" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/parser" className="header-dropdown-item" data-icon-motion="search" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Search size={17} /></span>
                       Парсер цен
                     </Link>
                   )}
                   {isAdmin && (
-                    <Link to="/admin/bots" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/bots" className="header-dropdown-item" data-icon-motion="bot" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Bot size={17} /></span>
                       Боты
                     </Link>
                   )}
                   {isAdmin && (
-                    <Link to="/admin/integrations" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/integrations" className="header-dropdown-item" data-icon-motion="key" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><KeyRound size={17} /></span>
                       Интеграции
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.releaseNotes) && (
-                    <Link to="/admin/release-notes" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/release-notes" className="header-dropdown-item" data-icon-motion="news" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Newspaper size={17} /></span>
                       Нововведения
                     </Link>
                   )}
                   {isAdmin && (
-                    <Link to="/admin/referral-bonuses-access" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Link to="/admin/referral-bonuses-access" className="header-dropdown-item" data-icon-motion="branch" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><GitBranch size={17} /></span>
                       Зарплата
                     </Link>

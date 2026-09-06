@@ -72,7 +72,6 @@ async function initializeDatabase() {
     const defaultSettings = [
       { key: 'siteName', value: 'Alfa Wiki', description: 'Название сайта' },
       { key: 'siteDescription', value: 'База знаний медицинского центра', description: 'Описание сайта' },
-      { key: 'accentColor', value: '#5856D6', description: 'Акцентный цвет' },
       { key: 'logo', value: null, description: 'URL логотипа' },
       { key: 'defaultRole', value: readerRole.id, description: 'Роль по умолчанию' },
       { key: 'allowRegistration', value: false, description: 'Разрешить регистрацию' }

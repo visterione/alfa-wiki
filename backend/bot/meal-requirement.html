@@ -94,14 +94,31 @@ button, input, textarea, select { font-family: inherit; }
 .meal-sign-caption { text-align: center; font-size: 11px; color: var(--meal-muted); margin-top: 3px; }
 
 /* ── Подсказки при вводе ─────────────────────────────────────────────────── */
+/* Ширина списка равна ширине графы ФИО: строка «№111111 Иванов Иван Иванович
+   (01.01.1999)» должна помещаться целиком, иначе выбирать не из чего */
 .meal-suggest {
-  position: absolute; z-index: 40; min-width: 220px; max-width: 360px; max-height: 200px;
+  position: absolute; z-index: 40; min-width: 320px; max-height: 260px;
   overflow-y: auto; background: #fff; border: 1px solid #9ca3af;
   box-shadow: 0 6px 18px rgba(0,0,0,.12); display: none;
 }
 .meal-suggest.open { display: block; }
-.meal-suggest-item { padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.meal-suggest-item {
+  padding: 6px 10px; font-size: 13px; cursor: pointer; color: var(--meal-ink); white-space: nowrap;
+}
 .meal-suggest-item:hover, .meal-suggest-item.active { background: #eef2ff; }
+.meal-suggest-empty { padding: 8px 10px; font-size: 13px; color: var(--meal-ink); }
+
+/* Привязка к карточке МИС не должна выглядеть новой графой бланка: это точка
+   в углу ячейки, а не колонка. Серая — пациента ещё не опознали, синяя —
+   карточка найдена. */
+.meal-fio-cell { position: relative; }
+.meal-link-dot {
+  position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
+  background: #d1d5db; pointer-events: none;
+}
+.meal-link-dot.linked { background: var(--meal-accent); }
+.meal-link-dot.partial { background: var(--meal-warning); }
+.meal-link-dot.empty { display: none; }
 
 /* ── Архив и настройки ───────────────────────────────────────────────────── */
 .meal-block { display: none; background: #fff; border: 1px solid #d1d5db; margin-top: 12px; }
@@ -261,6 +278,9 @@ window.mealApp = (function() {
     dirty: false
   };
   var me = { displayName: '', isAdmin: false };
+  // Привязки приезжают вместе с днём: сервер мог достроить их сам, пока
+  // медсестра печатала
+  var links = {};
   var config = { title: '', rooms: [] };
   var dietOptions = [];
   var saveTimer = null;
@@ -382,9 +402,41 @@ window.mealApp = (function() {
 
   // ── Отрисовка ───────────────────────────────────────────────────────────────
 
-  function autoGrow(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.max(el.scrollHeight, 32) + 'px';
+  // В строке палаты ровно один пациент: двухместную палату расписывают двумя
+  // строками с одним номером. Так же считает сервер.
+  function splitPatients(value) {
+    var name = String(value || '').trim().replace(/\s+/g, ' ');
+    return name.length >= 3 ? [name] : [];
+  }
+
+  function linkStateOf(patients) {
+    var names = splitPatients(patients);
+    if (!names.length) return 'empty';
+    var linked = names.filter(function(n) { return links[n.toLowerCase()]; }).length;
+    if (!linked) return '';
+    return linked === names.length ? 'linked' : 'partial';
+  }
+
+  function linkTitleOf(patients) {
+    var names = splitPatients(patients);
+    if (!names.length) return '';
+    return names.map(function(n) {
+      var link = links[n.toLowerCase()];
+      return link
+        ? n + ' → ' + (link.fullName || '') + (link.cardNumber ? ', карта ' + link.cardNumber : '')
+        : n + ' → карточка не найдена';
+    }).join('\n');
+  }
+
+  // Точку перерисовываем без пересборки таблицы: строка ФИО в это время под
+  // курсором, и innerHTML увёл бы фокус вместе с недопечатанной фамилией
+  function refreshDots() {
+    document.querySelectorAll('#meal-tbody tr').forEach(function(tr, idx) {
+      var dot = tr.querySelector('.meal-link-dot');
+      if (!dot || !state.entries[idx]) return;
+      dot.className = 'meal-link-dot ' + linkStateOf(state.entries[idx].patients);
+      dot.title = linkTitleOf(state.entries[idx].patients);
+    });
   }
 
   function renderTable() {
@@ -400,15 +452,19 @@ window.mealApp = (function() {
 
       return '<tr>' +
         '<td class="meal-room">' + escapeHtml(row.room) + '</td>' +
-        '<td><textarea class="meal-cell" rows="1" data-idx="' + idx + '" data-field="patients" ' +
-          'placeholder="ФИО, по одному в строке">' + escapeHtml(row.patients) + '</textarea></td>' +
+        '<td class="meal-fio-cell">' +
+          '<input class="meal-cell" type="text" data-idx="' + idx + '" data-field="patients" ' +
+          'autocomplete="off" placeholder="фамилия, инициалы или номер карты" value="' +
+          escapeHtml(row.patients) + '">' +
+          '<span class="meal-link-dot ' + linkStateOf(row.patients) + '" title="' +
+            escapeHtml(linkTitleOf(row.patients)) + '"></span>' +
+        '</td>' +
         '<td><input class="meal-cell center" type="text" list="meal-diet-list" data-idx="' + idx +
           '" data-field="diet" value="' + escapeHtml(row.diet) + '"></td>' +
         meals +
       '</tr>';
     }).join('') + '<datalist id="meal-diet-list">' + dietList + '</datalist>';
 
-    document.querySelectorAll('#meal-tbody textarea.meal-cell').forEach(autoGrow);
     renderTotals();
   }
 
@@ -444,6 +500,7 @@ window.mealApp = (function() {
   // ── Данные ──────────────────────────────────────────────────────────────────
 
   function applyDay(day) {
+    links = day.links || {};
     state.entries = day.entries || [];
     state.status = day.status || 'draft';
     state.sentVersion = day.sentVersion || 0;
@@ -475,6 +532,9 @@ window.mealApp = (function() {
     }).then(function(day) {
       state.dirty = false;
       state.status = day.status;
+      // Пациента могли опознать на сервере, пока шло сохранение: поступивший
+      // ночью появляется в счетах МИС только на следующий день
+      if (day.links) { links = day.links; refreshDots(); }
       renderDayState();
     }).catch(function(e) {
       setNote('Не сохранилось: ' + e.message, 'error');
@@ -495,8 +555,6 @@ window.mealApp = (function() {
     var field = el.dataset.field;
     if (!state.entries[idx]) return;
     state.entries[idx][field] = el.value;
-
-    if (field === 'patients') autoGrow(el);
 
     // Статус «изменено после отправки» появляется сразу, не дожидаясь сохранения
     if (state.status === 'sent') state.status = 'changed';
@@ -670,14 +728,6 @@ window.mealApp = (function() {
 
   // ── Подсказки по ФИО ────────────────────────────────────────────────────────
 
-  function currentLineBounds(el) {
-    var pos = el.selectionStart;
-    var value = el.value;
-    var start = value.lastIndexOf('\n', pos - 1) + 1;
-    var end = value.indexOf('\n', pos);
-    return { start: start, end: end === -1 ? value.length : end };
-  }
-
   function hideSuggest() {
     suggest.el.classList.remove('open');
     suggest.target = null;
@@ -686,54 +736,81 @@ window.mealApp = (function() {
   }
 
   function renderSuggest() {
-    suggest.el.innerHTML = suggest.items.map(function(name, i) {
+    if (!suggest.items.length) {
+      // Пустой список без объяснения читается как «ничего не работает»
+      suggest.el.innerHTML = '<div class="meal-suggest-empty">Ничего не найдено. ' +
+        'Проверьте написание или введите номер карты.</div>';
+      return;
+    }
+    suggest.el.innerHTML = suggest.items.map(function(item, i) {
       return '<div class="meal-suggest-item' + (i === suggest.index ? ' active' : '') +
-        '" data-i="' + i + '">' + escapeHtml(name) + '</div>';
+        '" data-i="' + i + '">' + escapeHtml(item.label) + '</div>';
     }).join('');
   }
 
-  function showSuggest(el, names) {
-    if (!names.length) return hideSuggest();
+  function showSuggest(el, items) {
     suggest.target = el;
-    suggest.items = names;
+    suggest.items = items || [];
     suggest.index = -1;
     renderSuggest();
 
-    var rect = el.getBoundingClientRect();
+    // Список шириной с саму графу ФИО — по ячейке, а не по полю ввода
+    var cell = el.closest('td') || el;
+    var rect = cell.getBoundingClientRect();
     suggest.el.style.left = (rect.left + window.scrollX) + 'px';
     suggest.el.style.top = (rect.bottom + window.scrollY + 2) + 'px';
-    suggest.el.style.width = Math.max(rect.width, 220) + 'px';
+    suggest.el.style.width = rect.width + 'px';
     suggest.el.classList.add('open');
   }
 
-  function applySuggest(name) {
+  function applySuggest(item) {
     var el = suggest.target;
     if (!el) return;
-    var bounds = currentLineBounds(el);
-    el.value = el.value.slice(0, bounds.start) + name + el.value.slice(bounds.end);
-    var caret = bounds.start + name.length;
-    el.setSelectionRange(caret, caret);
+    var text = item.text;
+    el.value = text;
     hideSuggest();
     onCellInput(el);
     el.focus();
+
+    if (!item.misPatientId) return;
+    // Выбор человека — это привязка навсегда: автоматика её потом не перебьёт
+    links[text.toLowerCase()] = {
+      misPatientId: item.misPatientId,
+      cardNumber: item.cardNumber,
+      birthDate: item.birthDate,
+      fullName: item.fullName || item.label,
+      source: 'manual'
+    };
+    refreshDots();
+    api('/link', {
+      method: 'POST',
+      body: JSON.stringify({
+        department: department,
+        name: text,
+        misPatientId: item.misPatientId,
+        cardNumber: item.cardNumber,
+        birthDate: item.birthDate,
+        fullName: item.fullName || item.label
+      })
+    }).catch(function(e) { showToast('Привязка не сохранилась: ' + e.message, 'error'); });
   }
 
-  // Подсказки тянем с сервера от двух букв и не больше десятка: за год словарь
-  // разрастётся до тысяч фамилий, целиком его сюда не притащить.
+  // Ищем от двух символов: фамилия, фамилия с инициалами или номер карты.
+  // Отвечает локальный справочник карточек, поэтому список приходит сразу.
   function requestSuggest(el) {
-    var bounds = currentLineBounds(el);
-    var query = el.value.slice(bounds.start, bounds.end).trim();
+    var query = el.value.trim();
     if (query.length < 2) return hideSuggest();
 
     clearTimeout(suggestTimer);
     suggestTimer = setTimeout(function() {
-      api('/patients?department=' + encodeURIComponent(department) + '&q=' + encodeURIComponent(query))
-        .then(function(names) {
+      api('/patients?department=' + encodeURIComponent(department) +
+          '&q=' + encodeURIComponent(query))
+        .then(function(res) {
           if (document.activeElement !== el) return;
-          showSuggest(el, names.filter(function(n) { return n.toLowerCase() !== query.toLowerCase(); }));
+          showSuggest(el, (res && res.items) || []);
         })
         .catch(function() { hideSuggest(); });
-    }, 250);
+    }, 200);
   }
 
   function onSuggestKeydown(e) {
@@ -763,7 +840,12 @@ window.mealApp = (function() {
       var el = e.target;
       if (!el.classList.contains('meal-cell')) return;
       onCellInput(el);
-      if (el.dataset.field === 'patients') requestSuggest(el);
+      if (el.dataset.field === 'patients') {
+        // Помечаем поле как правленое: только такие проверяем на выходе, иначе
+        // при открытии дня стёрлись бы старые строки, введённые до привязок
+        el.dataset.touched = '1';
+        requestSuggest(el);
+      }
     });
 
     tbody.addEventListener('keydown', function(e) {
@@ -771,10 +853,23 @@ window.mealApp = (function() {
     });
 
     tbody.addEventListener('focusout', function(e) {
-      if (e.target.dataset && e.target.dataset.field === 'patients') {
-        // Задержка нужна, чтобы клик по подсказке успел сработать до её закрытия
-        setTimeout(function() { if (suggest.target === e.target) hideSuggest(); }, 180);
-      }
+      var el = e.target;
+      if (!el.dataset || el.dataset.field !== 'patients') return;
+      // Задержка нужна, чтобы клик по подсказке успел сработать до её закрытия
+      setTimeout(function() {
+        if (suggest.target === el) hideSuggest();
+        if (!el.dataset.touched) return;
+
+        // Пациент попадает в бланк только выбором из списка. Свободный текст не
+        // привязан к карточке, а непривязанная строка бесполезна и в сверке с
+        // МИС, и в статистике, поэтому её не сохраняем вовсе.
+        var value = el.value.trim();
+        if (!value || links[value.toLowerCase()]) return;
+        el.value = '';
+        onCellInput(el);
+        refreshDots();
+        showToast('Выберите пациента из списка — введённое вручную не сохраняется', 'error');
+      }, 180);
     });
 
     suggest.el.addEventListener('mousedown', function(e) {

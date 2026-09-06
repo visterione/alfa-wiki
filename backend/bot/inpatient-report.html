@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Стационар — статистика</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Страница собрана в том же ключе, что остальные встраиваемые отчёты
+   (discount-report.html, doctor-day-report.html): свои переменные с префиксом,
+   никакой сборки, всё в одном файле. */
+:root {
+  --inp-primary: #2563eb;
+  --inp-primary-hover: #1d4ed8;
+  --inp-bg: #f8fafc;
+  --inp-card: #fff;
+  --inp-border: #e5e7eb;
+  --inp-border-dark: #cbd5e1;
+  --inp-text: #111827;
+  --inp-muted: #64748b;
+  --inp-success: #16a34a;
+  --inp-danger: #dc2626;
+  --inp-warning: #b45309;
+  /* Одна серия — один тон. Двух шкал на одной оси здесь нет нигде:
+     койко-дни и выручка живут отдельными графиками с общей датой внизу. */
+  --inp-bar: #2563eb;
+  --inp-bar-soft: #93c5fd;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--inp-bg); color: var(--inp-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+}
+button, input, select { font-family: inherit; }
+#inp-app { max-width: 1480px; margin: 0 auto; padding: 10px 14px 24px; }
+
+.inp-topbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--inp-border); padding-bottom: 10px; margin-bottom: 10px;
+}
+.inp-title { font-size: 15px; font-weight: 700; color: var(--inp-primary); margin-right: 4px; }
+.inp-spacer { flex: 1 1 auto; }
+.inp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.inp-btn-primary { background: var(--inp-primary); color: #fff; }
+.inp-btn-primary:hover:not(:disabled) { background: var(--inp-primary-hover); }
+.inp-btn-secondary { background: #fff; color: #334155; border-color: var(--inp-border-dark); }
+.inp-btn-secondary:hover:not(:disabled) { background: #f1f5f9; }
+.inp-btn:disabled { opacity: .55; cursor: not-allowed; }
+.inp-input, .inp-select {
+  min-height: 34px; padding: 6px 9px; border: 1px solid var(--inp-border-dark);
+  border-radius: 7px; background: #fff; color: var(--inp-text); font-size: 13px;
+}
+.inp-dash { color: var(--inp-muted); }
+
+.inp-progress {
+  display: none; align-items: center; gap: 10px; margin-bottom: 10px;
+  background: var(--inp-card); border: 1px solid var(--inp-border); border-radius: 10px; padding: 10px 12px;
+}
+.inp-progress.open { display: flex; }
+.inp-progress-track { flex: 1 1 auto; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+.inp-progress-fill { height: 100%; width: 0; background: var(--inp-primary); border-radius: 3px; transition: width .25s; }
+.inp-progress-text { font-size: 12px; color: var(--inp-muted); white-space: nowrap; }
+
+.inp-error {
+  display: none; background: #fef2f2; border: 1px solid #fecaca; color: var(--inp-danger);
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px;
+}
+.inp-error.open { display: block; }
+
+/* ── Плитки сводки ───────────────────────────────────────────────────────── */
+.inp-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.inp-tile { background: var(--inp-card); border: 1px solid var(--inp-border); border-radius: 10px; padding: 11px 13px; }
+.inp-tile-label { font-size: 11.5px; color: var(--inp-muted); font-weight: 500; margin-bottom: 5px; }
+.inp-tile-value { font-size: 21px; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; }
+.inp-tile-sub { font-size: 11.5px; color: var(--inp-muted); margin-top: 4px; }
+.inp-tile.accent .inp-tile-value { color: var(--inp-primary); }
+
+.inp-tabbar { display: flex; gap: 2px; border-bottom: 1px solid var(--inp-border); margin-bottom: 10px; overflow-x: auto; }
+.inp-tab {
+  border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--inp-muted);
+  padding: 10px 13px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.inp-tab:hover { background: #f1f5f9; color: var(--inp-text); }
+.inp-tab.active { color: var(--inp-primary); border-bottom-color: var(--inp-primary); background: #eff6ff; }
+
+.inp-panel { background: var(--inp-card); border: 1px solid var(--inp-border); border-radius: 10px; overflow: hidden; }
+.inp-panel + .inp-panel { margin-top: 10px; }
+.inp-panel-head {
+  padding: 10px 14px; border-bottom: 1px solid var(--inp-border); font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.inp-view { display: none; }
+.inp-view.active { display: block; }
+
+.inp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.inp-table th {
+  text-align: left; padding: 8px 14px; font-weight: 600; color: #475569; background: #f8fafc;
+  border-bottom: 1px solid var(--inp-border); white-space: nowrap; position: sticky; top: 0; z-index: 1;
+}
+.inp-table td { padding: 8px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.inp-table tbody tr:hover td { background: #f8fafc; }
+.inp-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inp-table .muted { color: var(--inp-muted); }
+.inp-scroll { max-height: 640px; overflow: auto; }
+.inp-empty { padding: 26px 14px; text-align: center; color: var(--inp-muted); font-size: 13px; }
+
+.inp-row-toggle { cursor: pointer; }
+.inp-row-toggle td:first-child::before {
+  content: '▸'; display: inline-block; width: 14px; color: var(--inp-muted); transition: transform .15s;
+}
+.inp-row-toggle.open td:first-child::before { transform: rotate(90deg); }
+.inp-subrow > td { background: #f8fafc; padding: 0 14px 10px 32px; }
+.inp-subtable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.inp-subtable td { padding: 4px 8px; border-bottom: 1px solid #eef2f7; }
+
+.inp-badge {
+  display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: #f1f5f9; color: #475569;
+}
+.inp-badge.warn { background: #fef3c7; color: #92400e; }
+.inp-badge.danger { background: #fee2e2; color: #b91c1c; }
+
+/* Полоска в строке таблицы — величина, а не украшение: сравнивать позиции
+   топа глазами по числам медленнее, чем по длине. */
+.inp-bar-cell { position: relative; min-width: 120px; }
+.inp-bar-track { height: 6px; background: #eff6ff; border-radius: 3px; overflow: hidden; }
+.inp-bar-fill { height: 100%; background: var(--inp-bar); border-radius: 0 3px 3px 0; }
+
+/* ── Графики динамики ────────────────────────────────────────────────────── */
+.inp-charts { padding: 14px; }
+.inp-chart + .inp-chart { margin-top: 22px; }
+.inp-chart-title { font-size: 12.5px; font-weight: 600; color: #334155; margin-bottom: 10px; }
+.inp-plot { display: flex; align-items: flex-end; gap: 2px; height: 150px; border-bottom: 1px solid var(--inp-border); }
+.inp-col { flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; cursor: default; }
+.inp-col-bar { background: var(--inp-bar); border-radius: 4px 4px 0 0; min-height: 2px; transition: opacity .12s; }
+.inp-col:hover .inp-col-bar { opacity: .75; }
+.inp-col-bar.zero { background: #e2e8f0; }
+.inp-xaxis { display: flex; gap: 2px; margin-top: 5px; }
+.inp-xtick { flex: 1 1 0; text-align: center; font-size: 10px; color: var(--inp-muted); overflow: hidden; white-space: nowrap; }
+
+.inp-tooltip {
+  position: fixed; z-index: 60; pointer-events: none; display: none;
+  background: #0f172a; color: #fff; font-size: 12px; padding: 6px 9px; border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.22); white-space: nowrap;
+}
+.inp-tooltip.open { display: block; }
+.inp-tooltip b { font-weight: 600; }
+
+@media (max-width: 720px) {
+  #inp-app { padding: 8px 8px 20px; }
+  .inp-table th, .inp-table td { padding: 7px 9px; }
+  .inp-tile-value { font-size: 18px; }
+}
+</style>
+</head>
+<body>
+<div id="inp-app">
+
+  <div class="inp-topbar">
+    <span class="inp-title">Стационар</span>
+    <input class="inp-input" id="inp-from" type="date">
+    <span class="inp-dash">—</span>
+    <input class="inp-input" id="inp-to" type="date">
+    <button class="inp-btn inp-btn-secondary" type="button" onclick="inpApp.setMonth(0)">Этот месяц</button>
+    <button class="inp-btn inp-btn-secondary" type="button" onclick="inpApp.setMonth(-1)">Прошлый</button>
+    <button class="inp-btn inp-btn-secondary" type="button" onclick="inpApp.setWeek()">7 дней</button>
+    <span class="inp-spacer"></span>
+    <button class="inp-btn inp-btn-primary" id="inp-run" type="button" onclick="inpApp.run()">Построить</button>
+  </div>
+
+  <div class="inp-progress" id="inp-progress">
+    <div class="inp-progress-track"><div class="inp-progress-fill" id="inp-progress-fill"></div></div>
+    <span class="inp-progress-text" id="inp-progress-text"></span>
+  </div>
+
+  <div class="inp-error" id="inp-error"></div>
+
+  <div id="inp-body" style="display:none">
+    <div class="inp-tiles" id="inp-tiles"></div>
+
+    <div class="inp-tabbar">
+      <button class="inp-tab active" type="button" data-view="episodes" onclick="inpApp.tab('episodes')">Случаи</button>
+      <button class="inp-tab" type="button" data-view="services" onclick="inpApp.tab('services')">Услуги</button>
+      <button class="inp-tab" type="button" data-view="doctors" onclick="inpApp.tab('doctors')">Исполнители</button>
+      <button class="inp-tab" type="button" data-view="patients" onclick="inpApp.tab('patients')">Пациенты</button>
+      <button class="inp-tab" type="button" data-view="dynamics" onclick="inpApp.tab('dynamics')">Динамика</button>
+      <button class="inp-tab" type="button" data-view="money" onclick="inpApp.tab('money')">Деньги</button>
+    </div>
+
+    <div class="inp-view active" id="inp-view-episodes"></div>
+    <div class="inp-view" id="inp-view-services"></div>
+    <div class="inp-view" id="inp-view-doctors"></div>
+    <div class="inp-view" id="inp-view-patients"></div>
+    <div class="inp-view" id="inp-view-dynamics"></div>
+    <div class="inp-view" id="inp-view-money"></div>
+  </div>
+
+  <div class="inp-tooltip" id="inp-tooltip"></div>
+</div>
+
+<script>
+window.inpApp = (function() {
+  var API_URL = (window.location.port === '9000'
+    ? window.location.protocol + '//' + window.location.hostname + ':9001'
+    : window.location.origin) + '/api/inpatient-report';
+
+  var report = null;
+  var view = 'episodes';
+  var openEpisodes = {};
+
+  function getToken() {
+    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  }
+
+  function api(path, timeout) {
+    var controller = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function() { if (controller) controller.abort(); }, timeout || 120000);
+    return fetch(API_URL + path, {
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timer);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || msg; } catch (e) {}
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timer);
+      throw e.name === 'AbortError' ? new Error('Сервер не ответил вовремя') : e;
+    });
+  }
+
+  // ── Формат ────────────────────────────────────────────────────────────────
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function money(n) { return Math.round(Number(n) || 0).toLocaleString('ru-RU'); }
+  function num(n, digits) {
+    var v = Number(n) || 0;
+    return digits ? v.toFixed(digits).replace('.', ',') : String(Math.round(v));
+  }
+  function pct(n) { return Math.round((Number(n) || 0) * 100) + '%'; }
+  function dateShort(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? m[3] + '.' + m[2] : String(iso || '');
+  }
+  function dateFull(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? m[3] + '.' + m[2] + '.' + m[1].slice(2) : String(iso || '');
+  }
+  function isoToday() {
+    var d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+  function isoOf(d) {
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+  function shiftIso(iso, days) {
+    var d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    return isoOf(d);
+  }
+  function daysBetween(a, b) {
+    return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+  }
+
+  // ── Периоды ───────────────────────────────────────────────────────────────
+  function setMonth(offset) {
+    var now = new Date();
+    var first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    var last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+    var today = isoToday();
+    document.getElementById('inp-from').value = isoOf(first);
+    // Будущие дни в отчёте бессмысленны: счетов там ещё нет
+    document.getElementById('inp-to').value = isoOf(last) > today ? today : isoOf(last);
+  }
+  function setWeek() {
+    document.getElementById('inp-to').value = isoToday();
+    document.getElementById('inp-from').value = shiftIso(isoToday(), -6);
+  }
+
+  function query(from, to) {
+    return '?from=' + from + '&to=' + to;
+  }
+
+  function setProgress(text) {
+    var box = document.getElementById('inp-progress');
+    box.classList.add('open');
+    document.getElementById('inp-progress-fill').style.width = '100%';
+    document.getElementById('inp-progress-text').textContent = text;
+  }
+  function hideProgress() { document.getElementById('inp-progress').classList.remove('open'); }
+
+  function showError(msg) {
+    var el = document.getElementById('inp-error');
+    el.textContent = msg;
+    el.classList.toggle('open', !!msg);
+  }
+
+  // Запрос один: пациентов в требовании десяток-другой, и счета по каждому МИС
+  // отдаёт за секунду. Раньше здесь тянулись счета всей клиники по неделям —
+  // это было нужно, пока эпизоды искались в МИС, а не брались из требования.
+  function run() {
+    var from = document.getElementById('inp-from').value;
+    var to = document.getElementById('inp-to').value;
+    if (!from || !to) return showError('Укажите период');
+    if (from > to) return showError('Начало периода позже конца');
+    if (daysBetween(from, to) > 92) return showError('Период больше 92 дней — разбейте на части');
+
+    showError('');
+    var btn = document.getElementById('inp-run');
+    btn.disabled = true;
+    setProgress('Поднимаю услуги пациентов из МИС…');
+
+    api('/report' + query(from, to), 300000).then(function(res) {
+      report = res;
+      openEpisodes = {};
+      hideProgress();
+      btn.disabled = false;
+      render();
+    }).catch(function(e) {
+      hideProgress(); btn.disabled = false; showError(e.message);
+    });
+  }
+
+  // ── Отрисовка ─────────────────────────────────────────────────────────────
+  function tile(label, value, sub, accent) {
+    return '<div class="inp-tile' + (accent ? ' accent' : '') + '">' +
+      '<div class="inp-tile-label">' + esc(label) + '</div>' +
+      '<div class="inp-tile-value">' + value + '</div>' +
+      (sub ? '<div class="inp-tile-sub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  function render() {
+    document.getElementById('inp-body').style.display = '';
+    var s = report.summary;
+
+    document.getElementById('inp-tiles').innerHTML =
+      tile('Выручка', money(s.revenue) + ' ₽', 'стационарные услуги ' + money(s.inpatientRevenue) + ' ₽', true) +
+      tile('Случаев лечения', num(s.episodes), 'пациентов ' + num(s.patients)) +
+      tile('Койко-дней', num(s.bedDays), 'выставлено ' + num(s.bedDaysBilled)) +
+      tile('Средняя длительность', num(s.avgStay, 1) + ' дн.') +
+      tile('Средний чек', money(s.avgCheck) + ' ₽', 'на койко-день ' + money(s.revenuePerBedDay) + ' ₽') +
+      tile('Не оплачено', money(s.payment.unpaidSum) + ' ₽', 'счетов ' + num(s.payment.unpaid));
+
+    renderEpisodes();
+    renderServices();
+    renderDoctors();
+    renderPatients();
+    renderDynamics();
+    renderMoney();
+  }
+
+  function renderEpisodes() {
+    var rows = report.episodes;
+    if (!rows.length) {
+      document.getElementById('inp-view-episodes').innerHTML =
+        '<div class="inp-panel"><div class="inp-empty">За период нет данных</div></div>';
+      return;
+    }
+    var html = '<div class="inp-panel"><div class="inp-panel-head">Случаи стационарного лечения</div>' +
+      '<div class="inp-scroll"><table class="inp-table"><thead><tr>' +
+      '<th>Пациент</th><th>Палата</th><th>Период лечения</th><th class="num">Койко-дней</th>' +
+      '<th class="num">Выставлено</th><th class="num">Выручка</th><th class="num">Себестоимость</th>' +
+      '<th class="num">Не оплачено</th>' +
+      '</tr></thead><tbody>';
+
+    rows.forEach(function(e, idx) {
+      var missed = e.bedDays - e.bedDaysBilled;
+      html += '<tr class="inp-row-toggle' + (openEpisodes[idx] ? ' open' : '') + '" onclick="inpApp.toggleEpisode(' + idx + ')">' +
+        '<td>' + esc(e.patient) + '</td>' +
+        '<td>' + esc(e.rooms || '') + '</td>' +
+        '<td>' + dateFull(e.start) + (e.end !== e.start ? ' — ' + dateFull(e.end) : '') + '</td>' +
+        '<td class="num">' + e.bedDays + '</td>' +
+        '<td class="num">' + (missed > 0
+          ? '<span class="inp-badge danger">' + e.bedDaysBilled + '</span>'
+          : e.bedDaysBilled) + '</td>' +
+        '<td class="num">' + money(e.revenue) + '</td>' +
+        '<td class="num muted">' + (e.cost ? money(e.cost) : '—') + '</td>' +
+        '<td class="num">' + (e.unpaid ? money(e.unpaid) : '') + '</td></tr>';
+      if (openEpisodes[idx]) {
+        html += '<tr class="inp-subrow"><td colspan="8"><table class="inp-subtable">' +
+          e.services.map(function(s) {
+            return '<tr><td style="width:70px" class="muted">' + dateFull(s.date) + '</td>' +
+              '<td>' + esc(s.title) + '</td>' +
+              '<td style="width:150px" class="muted">' + esc(s.doctor || '') + '</td>' +
+              '<td style="width:110px" class="muted">' + esc(s.profession || '') + '</td>' +
+              '<td style="width:90px" class="muted">' + esc(s.clinic || '') + '</td>' +
+              '<td class="num" style="width:40px">' + num(s.count) + '</td>' +
+              '<td class="num" style="width:90px">' + money(s.value) + '</td>' +
+              '<td class="num muted" style="width:90px">' + (s.cost ? money(s.cost) : '—') + '</td></tr>';
+          }).join('') + '</table></td></tr>';
+      }
+    });
+    html += '</tbody></table></div></div>';
+
+    if (report.unlinked && report.unlinked.length) {
+      html += '<div class="inp-panel"><div class="inp-panel-head">Без карточки МИС</div>' +
+        '<table class="inp-table"><thead><tr><th>Запись в требовании</th><th>Палата</th>' +
+        '<th class="num">Дней</th></tr></thead><tbody>' +
+        report.unlinked.map(function(u) {
+          return '<tr><td>' + esc(u.name) + '</td><td>' + esc(u.rooms || '') + '</td>' +
+            '<td class="num">' + u.days + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+
+    var dist = report.distribution;
+    var labels = { '1': '1 день', '2': '2 дня', '3-5': '3–5 дней', '6-10': '6–10 дней', '11+': '11 и больше' };
+    var maxDist = Math.max.apply(null, Object.keys(dist).map(function(k) { return dist[k]; }).concat([1]));
+    html += '<div class="inp-panel"><div class="inp-panel-head">Длительность лечения</div>' +
+      '<table class="inp-table"><tbody>' +
+      Object.keys(labels).map(function(k) {
+        return '<tr><td style="width:140px">' + labels[k] + '</td>' +
+          '<td class="num" style="width:60px">' + dist[k] + '</td>' +
+          '<td class="inp-bar-cell"><div class="inp-bar-track"><div class="inp-bar-fill" style="width:' +
+          (dist[k] / maxDist * 100) + '%"></div></div></td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+    document.getElementById('inp-view-episodes').innerHTML = html;
+  }
+
+  function topTable(title, rows, columns) {
+    if (!rows.length) return '<div class="inp-panel"><div class="inp-empty">Нет данных</div></div>';
+    var max = Math.max.apply(null, rows.map(function(r) { return r[columns.barKey]; }).concat([1]));
+    return '<div class="inp-panel"><div class="inp-panel-head"><span>' + esc(title) + '</span></div>' +
+      '<div class="inp-scroll"><table class="inp-table"><thead><tr>' +
+      columns.head.map(function(h, i) { return '<th' + (i ? ' class="num"' : '') + '>' + h + '</th>'; }).join('') +
+      '<th style="width:150px"></th></tr></thead><tbody>' +
+      rows.map(function(r) {
+        return '<tr>' + columns.cells(r).map(function(c, i) {
+          return '<td' + (i ? ' class="num"' : '') + '>' + c + '</td>';
+        }).join('') +
+        '<td class="inp-bar-cell"><div class="inp-bar-track"><div class="inp-bar-fill" style="width:' +
+        (r[columns.barKey] / max * 100) + '%"></div></div></td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+  }
+
+  function renderServices() {
+    document.getElementById('inp-view-services').innerHTML =
+      topTable('Топ услуг по сумме', report.services, {
+        head: ['Услуга', 'Количество', 'Сумма', 'Себестоимость', 'Пациентов'],
+        barKey: 'sum',
+        cells: function(r) {
+          return [esc(r.title), num(r.count), money(r.sum) + ' ₽',
+            (r.cost ? money(r.cost) : '<span class="muted">—</span>'), r.patients];
+        }
+      }) +
+      topTable('Топ услуг по количеству', report.servicesByCount, {
+        head: ['Услуга', 'Количество', 'Сумма', 'Пациентов'],
+        barKey: 'count',
+        cells: function(r) { return [esc(r.title), num(r.count), money(r.sum) + ' ₽', r.patients]; }
+      });
+  }
+
+  function renderDoctors() {
+    document.getElementById('inp-view-doctors').innerHTML =
+      topTable('Исполнители', report.doctors, {
+        head: ['Исполнитель', 'Услуг', 'Сумма', 'Пациентов'],
+        barKey: 'sum',
+        cells: function(r) { return [esc(r.name), num(r.count), money(r.sum) + ' ₽', r.patients]; }
+      }) +
+      topTable('Структура по направлениям', report.professions, {
+        head: ['Направление', 'Услуг', 'Сумма'],
+        barKey: 'sum',
+        cells: function(r) { return [esc(r.title), num(r.count), money(r.sum) + ' ₽']; }
+      });
+  }
+
+  function renderPatients() {
+    document.getElementById('inp-view-patients').innerHTML =
+      topTable('Топ пациентов по тратам', report.patientsTop, {
+        head: ['Пациент', 'Койко-дней', 'Эпизодов', 'Сумма'],
+        barKey: 'sum',
+        cells: function(r) {
+          return [esc(r.patient) + (r.birthDate ? ' <span class="muted">' + esc(r.birthDate) + '</span>' : ''),
+            num(r.bedDays), num(r.episodes), money(r.sum) + ' ₽'];
+        }
+      });
+  }
+
+  // Койко-дни и выручка — разные величины, поэтому два графика с общей датой
+  // внизу, а не две шкалы на одном поле
+  function chart(title, points, valueKey, format) {
+    var max = Math.max.apply(null, points.map(function(p) { return p[valueKey]; }).concat([1]));
+    var step = Math.max(1, Math.ceil(points.length / 15));
+    return '<div class="inp-chart"><div class="inp-chart-title">' + esc(title) + '</div>' +
+      '<div class="inp-plot">' +
+      points.map(function(p) {
+        var h = p[valueKey] / max * 100;
+        return '<div class="inp-col" data-tip="' + esc(dateFull(p.date) + ' · ' + format(p[valueKey])) + '">' +
+          '<div class="inp-col-bar' + (p[valueKey] ? '' : ' zero') + '" style="height:' + Math.max(h, p[valueKey] ? 2 : 1) + '%"></div></div>';
+      }).join('') + '</div><div class="inp-xaxis">' +
+      points.map(function(p, i) {
+        return '<div class="inp-xtick">' + (i % step === 0 ? dateShort(p.date) : '') + '</div>';
+      }).join('') + '</div></div>';
+  }
+
+  function renderDynamics() {
+    var d = report.daily;
+    if (!d.length) {
+      document.getElementById('inp-view-dynamics').innerHTML = '<div class="inp-panel"><div class="inp-empty">Нет данных</div></div>';
+      return;
+    }
+    document.getElementById('inp-view-dynamics').innerHTML =
+      '<div class="inp-panel"><div class="inp-panel-head">Динамика по дням</div><div class="inp-charts">' +
+      chart('Занято коек', d, 'bedDays', function(v) { return num(v) + ' коек'; }) +
+      chart('Выручка', d, 'revenue', function(v) { return money(v) + ' ₽'; }) +
+      '</div></div>';
+  }
+
+  function renderMoney() {
+    var p = report.summary.payment;
+    var s = report.summary;
+    var total = p.paid + p.partial + p.unpaid;
+    document.getElementById('inp-view-money').innerHTML =
+      '<div class="inp-panel"><div class="inp-panel-head">Оплата счетов</div>' +
+      '<table class="inp-table"><tbody>' +
+      '<tr><td>Оплачено полностью</td><td class="num">' + p.paid + ' из ' + total + '</td></tr>' +
+      '<tr><td>Оплачено частично</td><td class="num">' + p.partial + '</td></tr>' +
+      '<tr><td>Не оплачено</td><td class="num">' + p.unpaid + ' · ' + money(p.unpaidSum) + ' ₽</td></tr>' +
+      '<tr><td>Плательщик — физлицо</td><td class="num">' + money(p.personSum) + ' ₽</td></tr>' +
+      '<tr><td>Плательщик — компания (ДМС, договор)</td><td class="num">' + money(p.companySum) + ' ₽</td></tr>' +
+      '</tbody></table></div>' +
+      '<div class="inp-panel"><div class="inp-panel-head">Себестоимость</div>' +
+      '<table class="inp-table"><tbody>' +
+      '<tr><td>Выручка за дни пребывания</td><td class="num">' + money(s.revenue) + ' ₽</td></tr>' +
+      '<tr><td>Себестоимость там, где заполнена</td><td class="num">' + money(s.cost) + ' ₽</td></tr>' +
+      '<tr><td>Выручка по услугам без себестоимости</td><td class="num">' + money(s.revenueNoCost) +
+        ' ₽ <span class="inp-badge warn">' + pct(s.noCostShare) + ' выручки</span></td></tr>' +
+      '<tr><td>Услуг оказано</td><td class="num">' + num(s.servicesCount) + '</td></tr>' +
+      '</tbody></table></div>';
+  }
+
+  function toggleEpisode(idx) {
+    openEpisodes[idx] = !openEpisodes[idx];
+    renderEpisodes();
+  }
+
+  function tab(name) {
+    view = name;
+    document.querySelectorAll('.inp-tab').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.view === name);
+    });
+    document.querySelectorAll('.inp-view').forEach(function(v) {
+      v.classList.toggle('active', v.id === 'inp-view-' + name);
+    });
+  }
+
+  // ── Подсказки на графике ──────────────────────────────────────────────────
+  function bindTooltip() {
+    var tip = document.getElementById('inp-tooltip');
+    document.addEventListener('mousemove', function(e) {
+      var col = e.target.closest ? e.target.closest('.inp-col') : null;
+      if (!col) return tip.classList.remove('open');
+      tip.textContent = col.dataset.tip;
+      tip.style.left = Math.min(e.clientX + 12, window.innerWidth - 180) + 'px';
+      tip.style.top = (e.clientY - 34) + 'px';
+      tip.classList.add('open');
+    });
+  }
+
+  function init() {
+    bindTooltip();
+    setMonth(0);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+  return { run: run, tab: tab, setMonth: setMonth, setWeek: setWeek, toggleEpisode: toggleEpisode };
+})();
+</script>
+</body>
+</html>

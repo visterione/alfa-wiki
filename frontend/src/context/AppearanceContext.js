@@ -3,11 +3,10 @@ import toast from 'react-hot-toast';
 import { auth as authApi } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
-import { accentVariables, DEFAULT_ACCENT } from '../theme/palette';
 import { patternImage } from '../theme/chatBackgrounds';
 
 /**
- * Персональное оформление: тема, акцент, фон переписки, размер текста в чате.
+ * Персональное оформление: тема, фон переписки, размер текста в чате.
  *
  * Настройки общие с мобильным приложением и живут на сервере в
  * users.settings.appearance. localStorage тут — быстрый кэш, чтобы тема была
@@ -39,9 +38,13 @@ export const FONT_SCALES = [
   { key: 'huge', label: 'Очень крупный', scale: 1.3 }
 ];
 
+// Выбора акцентного цвета здесь больше нет: до ver. 7.84 их было восемь, и
+// каждый новый экран приходилось проверять во всех — при том что цвет по
+// умолчанию не менял почти никто. Акцент теперь один, фирменный синий, и живёт
+// статикой в index.css. Сохранённое у людей значение сервер принимает, но
+// никому не отдаёт.
 const DEFAULTS = {
   theme: 'light',
-  accent: DEFAULT_ACCENT,
   fontScale: 'normal',
   chatBackground: 'plain'
 };
@@ -74,23 +77,14 @@ function readCache() {
 /**
  * Применяет оформление к документу.
  *
- * Значения выставляются на :root переменными, а не через классы: вся вёрстка
- * уже описана токенами, и подмена переменных перекрашивает интерфейс целиком,
- * не требуя от компонентов знать о теме.
+ * Тема выставляется атрибутом на :root, а не классами на компонентах: вся
+ * вёрстка описана токенами, и подмена рамп в index.css перекрашивает интерфейс
+ * целиком, не требуя от компонентов знать о теме.
  */
 function applyAppearance(settings, scheme) {
   const root = document.documentElement;
 
   root.dataset.theme = scheme;
-  const vars = {
-    ...accentVariables(scheme, settings.accent),
-    // Светлая копия акцента — для рабочей области страницы: она остаётся белым
-    // листом при любой теме (см. блок .page-sheet в index.css)
-    ...accentVariables('light', settings.accent, 'sheet-accent')
-  };
-  for (const [name, value] of Object.entries(vars)) {
-    root.style.setProperty(name, value);
-  }
 
   const scale = (FONT_SCALES.find(f => f.key === settings.fontScale) || FONT_SCALES[0]).scale;
   root.style.setProperty('--chat-font-scale', String(scale));
@@ -153,9 +147,9 @@ export function AppearanceProvider({ children }) {
   }, [socket]);
 
   /**
-   * Сохраняет выбор. Интерфейс перекрашивается сразу, не дожидаясь сети:
-   * подбор цвета — это перебор, и задержка в полсекунды на каждый образец
-   * делает его невыносимым. Неудача запроса откатывает состояние обратно.
+   * Сохраняет выбор. Интерфейс меняется сразу, не дожидаясь сети: оформление
+   * подбирают перебором, и задержка в полсекунды на каждый образец делает его
+   * невыносимым. Неудача запроса откатывает состояние обратно.
    */
   const update = useCallback(patch => {
     // Запрос уходит рядом с setState, а не внутри него: в updater React вправе

@@ -1,0 +1,28 @@
+Применение миграции ver. 7.84 (свои боты Telegram/MAX).
+
+Из папки backend:
+
+  set -a; . ./.env; set +a
+  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+    -U "$DB_USER" -d "$DB_NAME" -f "migrations/ver. 7.84 messenger-bots.sql"
+
+Почему не «psql -U $DB_USER» без .env — объяснено в «ver. 6.98 command.txt».
+
+Миграция идемпотентна: CREATE TABLE / ADD COLUMN / CREATE INDEX идут с
+IF NOT EXISTS, существующие строки bot_subscribers не трогаются.
+
+После применения — завести бота и поставить ему вебхук (токен в репозиторий не
+кладём, он попадёт прямо в таблицу):
+
+  node scripts/addMessengerBot.js --token <токен> --org test --title "Тестовый бот"
+
+Проверить состояние вебхуков в любой момент:
+
+  node scripts/addMessengerBot.js --list
+
+Вернуть бота агрегатору (снимает вебхук и выключает бота у нас):
+
+  node scripts/addMessengerBot.js --unhook <id бота>
+
+Отката нет намеренно: таблица messenger_bots новая и никому не мешает, а
+колонки в bot_subscribers нужны каскаду уведомлений.

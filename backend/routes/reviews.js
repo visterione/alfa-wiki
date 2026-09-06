@@ -322,7 +322,8 @@ router.get('/boards', authenticate, async (req, res) => {
     const ownedBoards = await ReviewBoard.findAll({
       where: { ownerId: req.user.id, archived: false },
       include: [
-        { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] }
+        { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
+        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
       ]
     });
 
@@ -334,7 +335,8 @@ router.get('/boards', authenticate, async (req, res) => {
           as: 'board',
           where: { archived: false },
           include: [
-            { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] }
+            { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
+            { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
           ]
         }
       ]
@@ -439,7 +441,7 @@ router.get('/boards', authenticate, async (req, res) => {
  */
 router.post('/boards', authenticate, async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, medCenterId } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Название доски обязательно' });
@@ -448,6 +450,8 @@ router.post('/boards', authenticate, async (req, res) => {
     const board = await ReviewBoard.create({
       name: name.trim(),
       description: description || null,
+      // Пустая строка из формы — это «не выбрано», а не идентификатор
+      medCenterId: medCenterId || null,
       ownerId: req.user.id
     });
 
@@ -460,7 +464,8 @@ router.post('/boards', authenticate, async (req, res) => {
 
     const result = await ReviewBoard.findByPk(board.id, {
       include: [
-        { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] }
+        { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
+        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
       ]
     });
 
@@ -479,7 +484,8 @@ router.get('/boards/:id', authenticate, async (req, res) => {
   try {
     const board = await ReviewBoard.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] }
+        { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
+        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
       ]
     });
 
@@ -528,10 +534,11 @@ router.put('/boards/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Только владелец может редактировать доску' });
     }
 
-    const { name, description, archived } = req.body;
+    const { name, description, archived, medCenterId } = req.body;
     await board.update({
       name: name !== undefined ? name.trim() : board.name,
       description: description !== undefined ? description : board.description,
+      medCenterId: medCenterId !== undefined ? (medCenterId || null) : board.medCenterId,
       archived: archived !== undefined ? archived : board.archived
     });
 

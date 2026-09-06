@@ -25,13 +25,15 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const sharp = require('sharp');
 
-const { MealRequirementDay, MealRequirementPatient, Setting, BotToken, ChatFile, sequelize } = require('../models');
+const { MealRequirementDay, MealRequirementPatient, MealRequirementStay, Setting, BotToken, ChatFile, sequelize } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { DEFAULT_DEPARTMENTS, getDefaultDepartment, parseRooms } = require('../config/mealDepartments');
 const mealDoc = require('../services/mealRequirementDoc');
 const { sendBotMessage, BotMessengerError } = require('../services/botMessenger');
 const fileAccess = require('../services/fileAccess');
 const { logReportHistory } = require('../utils/reportHistory');
+const inpatientStats = require('../services/inpatientStats');
+const patientDirectory = require('../services/misPatientDirectory');
 
 const router = express.Router();
 
@@ -191,6 +193,101 @@ async function rememberPatients(department, entries) {
   }
 }
 
+// ── Привязка к карточкам МИС (ver. 7.80) ──────────────────────────────────────
+//
+// Требование знает, кого кормили, МИС — что выставили в счёт; сходятся эти два
+// списка только через карточку пациента. Медсестра при этом пишет одну фамилию,
+// и по базе на полмиллиона карт её не опознать — зато среди тех, кто лежит
+// прямо сейчас, фамилия почти всегда единственная.
+
+// В ячейку попадает не только фамилия: «Шахранюк щадящ.» — это фамилия и
+// приписка про диету, «Петров, Козлова» — двое в одной строке. Сопоставляем по
+// первому слову, остальное игнорируем.
+function surnameOf(value) {
+  const first = String(value || '').trim().split(/[\s,]+/)[0] || '';
+  return first.toLowerCase().replace(/ё/g, 'е');
+}
+
+// В строке палаты ровно один пациент: двухместную палату расписывают двумя
+// строками с одинаковым номером, поэтому перечислять через запятую незачем —
+// а разбор «Петров, Козлова» мешал бы привязке к карточке.
+function splitPatients(value) {
+  const name = String(value || '').trim().replace(/\s+/g, ' ');
+  return name.length >= 3 ? [name] : [];
+}
+
+/**
+ * Снимок дня: кого кормили, в какой палате и чья это карточка. Пересобирается
+ * целиком по дню — тот же приём, что в синхронизации списаний: день правят
+ * весь разом, и догонять отдельные строки незачем.
+ */
+async function rebuildStays(department, date, entries) {
+  const links = new Map();
+  const names = [];
+  (entries || []).forEach(row => splitPatients(row.patients).forEach(n => names.push({ room: row.room, name: n })));
+
+  if (names.length) {
+    const rows = await MealRequirementPatient.findAll({
+      where: { department: department.key, name: names.map(n => n.name) }
+    });
+    rows.forEach(r => links.set(r.name.toLowerCase(), r.misPatientId));
+  }
+
+  await sequelize.transaction(async (t) => {
+    await MealRequirementStay.destroy({
+      where: { department: department.key, stayDate: date },
+      transaction: t
+    });
+    if (!names.length) return;
+    await MealRequirementStay.bulkCreate(names.map(n => ({
+      department: department.key,
+      stayDate: date,
+      room: n.room || null,
+      name: n.name,
+      misPatientId: links.get(n.name.toLowerCase()) || null
+    })), { transaction: t });
+  });
+}
+
+/**
+ * Привязки для строк конкретного дня — их показывает точка у ФИО в бланке.
+ * Едут вместе с днём, чтобы страница не ходила за ними отдельным запросом:
+ * после автопривязки на сервере состояние точек меняется, и оно должно
+ * приезжать тем же ответом, что и сам день.
+ */
+async function linksFor(department, entries) {
+  const names = [];
+  (entries || []).forEach(row => splitPatients(row.patients).forEach(n => names.push(n)));
+  if (!names.length) return {};
+
+  const rows = await MealRequirementPatient.findAll({
+    where: { department: department.key, name: names },
+    attributes: ['name', 'misPatientId', 'misCardNumber', 'misBirthDate', 'misFullName', 'misLinkSource']
+  });
+
+  const map = {};
+  rows.forEach(r => {
+    if (!r.misPatientId) return;
+    map[r.name.toLowerCase()] = {
+      misPatientId: r.misPatientId,
+      cardNumber: r.misCardNumber || '',
+      birthDate: r.misBirthDate || '',
+      fullName: r.misFullName || '',
+      source: r.misLinkSource || ''
+    };
+  });
+  return map;
+}
+
+// Снимок дня не должен ронять сохранение: требование в буфет уходит и без него.
+async function syncLinks(department, date, entries) {
+  try {
+    await rebuildStays(department, date, entries);
+  } catch (err) {
+    console.error('[meal] снимок дня не записался:', err.message);
+  }
+}
+
 // ── Справочники и настройка отделения ─────────────────────────────────────────
 
 router.get('/whoami', authenticate, (req, res) => {
@@ -257,7 +354,8 @@ router.get('/day', authenticate, async (req, res) => {
     if (!date) return;
 
     const day = await findDay(department, date);
-    res.json(dayToJson(day, department));
+    const json = dayToJson(day, department);
+    res.json({ ...json, links: await linksFor(department, json.entries) });
   } catch (error) {
     console.error('[meal] get day error:', error);
     res.status(500).json({ error: 'Не удалось загрузить день' });
@@ -287,7 +385,8 @@ router.put('/day', authenticate, async (req, res) => {
     }
 
     await rememberPatients(department, entries);
-    res.json(dayToJson(day, department));
+    await syncLinks(department, date, entries);
+    res.json({ ...dayToJson(day, department), links: await linksFor(department, entries) });
   } catch (error) {
     console.error('[meal] save day error:', error);
     res.status(500).json({ error: 'Не удалось сохранить день' });
@@ -397,35 +496,92 @@ router.get('/day/pdf', authenticate, async (req, res) => {
 
 // ── Подсказки при вводе ───────────────────────────────────────────────────────
 
-// Отдаём только совпадения по началу строки и не больше десятка: за год в
-// словаре накопятся тысячи фамилий, и вываливать их в список целиком нельзя.
+// Фамилия с инициалами: ею подписываем однофамильцев, чтобы две «Глоба» в
+// требовании не схлопнулись в одну строку словаря.
+function shortName(fullName) {
+  const parts = String(fullName || '').trim().split(/\s+/);
+  if (parts.length < 2) return parts[0] || '';
+  return parts[0] + ' ' + parts.slice(1, 3).map(w => w[0].toUpperCase() + '.').join(' ');
+}
+
+// Подсказка ищет по началу слова — так, как этого ждут от любого поля ввода:
+// набрал «Куроч», увидел варианты. Публичное API МИС так не умеет (оно отвечает
+// только на точную фамилию), поэтому поиск идёт по локальному справочнику
+// карточек, mis_patients — его наполняет scripts/syncMisPatients.js.
+//
+// Ищем по фамилии, инициалам («Курочкин В А») и номеру карты. Если справочник
+// ещё не выгружен или фамилии в нём нет, спрашиваем МИС напрямую — там она
+// найдётся по целиком набранной фамилии.
 router.get('/patients', authenticate, async (req, res) => {
   try {
     const department = await loadDepartment(req, res);
     if (!department) return;
 
     const q = cleanText(req.query.q);
-    if (q.length < 2) return res.json([]);
+    if (q.length < 2) return res.json({ items: [], query: q });
 
-    const rows = await sequelize.query(`
-      SELECT name
-      FROM meal_requirement_patients
-      WHERE department = :department
-        AND LOWER(name) LIKE :prefix
-      ORDER BY "lastUsedAt" DESC
-      LIMIT 10
-    `, {
-      replacements: {
-        department: department.key,
-        prefix: q.toLowerCase().replace(/[%_\\]/g, function(ch) { return '\\' + ch; }) + '%'
-      },
-      type: sequelize.QueryTypes.SELECT
+    let found = await patientDirectory.search(q, 40);
+    if (!found.length && /^[^\d]/.test(q)) {
+      const surname = q.split(/[\s.]+/)[0] || '';
+      if (surname.length >= 3) {
+        const fromMis = await inpatientStats.searchPatientsBySurname(surname, 40);
+        found = fromMis.map(p => ({
+          ...p,
+          label: (p.cardNumber ? '№' + p.cardNumber + ' ' : '') + p.name +
+            (p.birthDate ? ' (' + p.birthDate + ')' : '')
+        }));
+      }
+    }
+
+    res.json({
+      query: q,
+      items: found.map(p => ({
+        // В бланк ставим фамилию с инициалами: полное ФИО не влезает в графу,
+        // а одной фамилии мало — однофамильцы схлопнулись бы в одну строку
+        text: shortName(p.name),
+        label: p.label,
+        misPatientId: p.patientId,
+        cardNumber: p.cardNumber,
+        birthDate: p.birthDate,
+        fullName: p.name
+      }))
     });
-
-    res.json(rows.map(function(r) { return r.name; }));
   } catch (error) {
     console.error('[meal] patients error:', error);
     res.status(500).json({ error: 'Не удалось загрузить подсказки' });
+  }
+});
+
+// Явный выбор пациента из подсказки. Ручную привязку автоматика потом не
+// перебивает — человек видел пациента живьём.
+router.post('/link', authenticate, async (req, res) => {
+  try {
+    const department = await loadDepartment(req, res);
+    if (!department) return;
+
+    const name = cleanText(req.body.name).slice(0, 200);
+    const misPatientId = cleanText(req.body.misPatientId).slice(0, 30);
+    if (!name || !misPatientId) return res.status(400).json({ error: 'Нужны ФИО и пациент' });
+
+    const [row] = await MealRequirementPatient.findOrCreate({
+      where: { department: department.key, name },
+      defaults: { department: department.key, name, lastUsedAt: new Date() }
+    });
+
+    await row.update({
+      misPatientId,
+      misCardNumber: cleanText(req.body.cardNumber).slice(0, 30) || null,
+      misBirthDate: cleanText(req.body.birthDate).slice(0, 20) || null,
+      misFullName: cleanText(req.body.fullName).slice(0, 200) || null,
+      misLinkedAt: new Date(),
+      misLinkedBy: req.user.id,
+      misLinkSource: 'manual'
+    });
+
+    res.json({ ok: true, name, misPatientId });
+  } catch (error) {
+    console.error('[meal] link error:', error);
+    res.status(500).json({ error: 'Не удалось сохранить привязку' });
   }
 });
 
@@ -581,6 +737,7 @@ router.post('/day/send', authenticate, async (req, res) => {
     else day = await MealRequirementDay.create({ department: department.key, reportDate: date, createdBy: req.user.id, ...patch });
 
     await rememberPatients(department, entries);
+    await syncLinks(department, date, entries);
 
     logReportHistory(req, {
       source: 'meal',
@@ -589,7 +746,7 @@ router.post('/day/send', authenticate, async (req, res) => {
         (version > 1 ? ' (исправление, версия ' + version + ')' : '')
     });
 
-    res.json({ ...dayToJson(day, department), messageId: sent.messageId });
+    res.json({ ...dayToJson(day, department), messageId: sent.messageId, links: await linksFor(department, entries) });
   } catch (error) {
     console.error('[meal] send error:', error);
     res.status(500).json({ error: 'Не удалось отправить требование' });
