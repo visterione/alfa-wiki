@@ -110,7 +110,8 @@
     "notifier": "node scripts/notifier.js",
     "notifier:once": "node scripts/notifier.js --once --dry",
     "migrate:7.86": "node scripts/runSqlMigration.js 7.86",
-    "migrate:7.86:check": "node scripts/runSqlMigration.js 7.86 --check"
+    "migrate:7.86:check": "node scripts/runSqlMigration.js 7.86 --check",
+    "notifier:outbox": "node scripts/notifier.js --outbox"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

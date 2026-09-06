@@ -15,12 +15,13 @@
  *   npm run notifier                   боевой режим
  *   node scripts/notifier.js --once    один проход обоих циклов, для проверки
  *   node scripts/notifier.js --dry     показать, что нашлось, ничего не отправляя
+ *   node scripts/notifier.js --outbox  разобрать очередь: что ушло, что нет и почему
  */
 
 require('dotenv').config();
 
 const { Client } = require('pg');
-const { sequelize, NotifOutbox } = require('../models');
+const { sequelize, NotifOutbox, BotSubscriber, MessengerBot } = require('../models');
 const detector = require('../services/notifications/detector');
 const sender = require('../services/notifications/sender');
 
@@ -81,7 +82,57 @@ async function sendTick() {
   }
 }
 
+
+/**
+ * Разбор очереди. Отвечает на единственный вопрос, который возникает, когда
+ * уведомление «не пришло»: дошло ли оно до очереди, чем закончилась отправка и
+ * нашёлся ли для телефона подписчик бота.
+ */
+async function showOutbox(limit = 15) {
+  const rows = await NotifOutbox.findAll({ order: [['createdAt', 'DESC']], limit });
+
+  if (!rows.length) {
+    console.log('Очередь пуста — детектор пока не нашёл ни одного события.');
+    return;
+  }
+
+  const misClient = require('../services/misClient');
+  const sender = require('../services/notifications/sender');
+
+  console.log(`Вторая ступень (Fromni): ${sender.ALLOW_FROMNI ? 'разрешена' : 'ВЫКЛЮЧЕНА'}` +
+    `   пилотных телефонов: ${sender.PILOT_PHONES.length || 'без ограничения'}\n`);
+
+  for (const row of rows) {
+    const normalized = misClient.normalizePhone(row.phone || '');
+    const subscriber = normalized
+      ? await BotSubscriber.findOne({ where: { phone: normalized, source: 'bot' } })
+      : null;
+
+    let who = 'подписчика бота нет — уйдёт второй ступенью';
+    if (subscriber) {
+      const bot = subscriber.botId ? await MessengerBot.findByPk(subscriber.botId) : null;
+      who = subscriber.isBlocked
+        ? 'подписчик есть, но бот заблокирован'
+        : `подписчик @${bot ? bot.username : '?'} (${subscriber.platform})`;
+    }
+
+    console.log(`${row.status.toUpperCase().padEnd(8)} ${row.event.padEnd(10)} визит ${row.apptId || '—'}`);
+    console.log(`   телефон: ${row.phone || '—'} → ${normalized || '—'}   ${who}`);
+    console.log(`   когда:   ${new Date(row.plannedAt).toLocaleString('ru-RU')}` +
+      (row.sentAt ? `   отправлено ${new Date(row.sentAt).toLocaleString('ru-RU')} (${row.channel})` : ''));
+    if (row.error) console.log(`   причина: ${row.error}`);
+    console.log(`   текст:   ${row.text.slice(0, 90)}${row.text.length > 90 ? '…' : ''}`);
+    console.log('');
+  }
+}
+
 async function main() {
+  if (args.includes('--outbox')) {
+    await showOutbox(Number(args[args.indexOf('--outbox') + 1]) || 15);
+    await sequelize.close();
+    return;
+  }
+
   console.log(`[notifier] запуск${dry ? ' (--dry, без отправки)' : ''}`);
 
   if (!once && !await acquireLock()) {
