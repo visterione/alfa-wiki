@@ -4,7 +4,7 @@ import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
   Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot, Newspaper,
-  ArrowLeft, KeyRound, Building2
+  ArrowLeft, KeyRound, Building2, MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -491,6 +491,16 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                     <Link to="/admin/journal" className="header-dropdown-item" data-icon-motion="file" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><FileText size={17} /></span>
                       Журнал страниц
+                    </Link>
+                  )}
+                  {/* Открытая линия и уведомления пациентам (ver. 7.96).
+                      Спрятано в админское меню намеренно: модуль ещё
+                      достраивается, и раздавать к нему доступ рано. Когда
+                      закончим — вернётся кнопкой в быстрый доступ. */}
+                  {(isAdmin || user?.adminAccess?.openLine) && (
+                    <Link to="/open-line" className="header-dropdown-item" data-icon-motion="message" onClick={() => setShowDropdown(false)}>
+                      <span className="header-dropdown-item-icon"><MessageCircle size={17} /></span>
+                      Открытая линия
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.parser) && (

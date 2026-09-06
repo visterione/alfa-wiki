@@ -7,7 +7,6 @@ import {
   MessageCircle, KanbanSquare, GraduationCap, Star, Warehouse,
   Wrench, BadgeCheck, Wallet, BarChart3
 } from 'lucide-react';
-import LoginMap from './LoginMap';
 import toast from 'react-hot-toast';
 import './Login.css';
 
@@ -129,10 +128,6 @@ export default function Login() {
   // едет вместе со сдвигом, иначе на переходе она прыгала бы рывком.
   const viewportRef = useRef(null);
   const stepRefs = useRef([]);
-  // Размер плашки, в которую сжимается синее поле, считается по живому размеру
-  // знака сети — см. useEffect ниже.
-  const pageRef = useRef(null);
-  const markRef = useRef(null);
   const location = useLocation();
   // Куда возвращаться после входа. Адрес приходит двумя путями, и оба нужны:
   // ProtectedRoute кладёт его в состояние навигации (переход внутри приложения,
@@ -426,102 +421,66 @@ export default function Login() {
     return () => clearTimeout(timer);
   }, [activeIndex]);
 
-  // Плашка со знаком сети — это то, во что сжимается синее поле, и её размер
-  // обязан совпасть со знаком внутри до пикселя: иначе на месте остановки
-  // видно либо обрезанный текст, либо полосу пустого синего справа.
-  //
-  // Поэтому размер не вбит в стили, а измеряется. Наблюдатель, а не разовый
-  // замер: до подгрузки Inter надпись набрана запасным шрифтом и заметно
-  // другой ширины, а системное увеличение текста меняет её и позже. CSS
-  // складывает плашку из этих двух чисел и своих отбивок.
-  useEffect(() => {
-    const page = pageRef.current;
-    const mark = markRef.current;
-    if (!page || !mark) return undefined;
-
-    const apply = () => {
-      page.style.setProperty('--mark-w', `${mark.offsetWidth}px`);
-      page.style.setProperty('--mark-h', `${mark.offsetHeight}px`);
-    };
-    apply();
-
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(apply);
-    observer.observe(mark);
-    return () => observer.disconnect();
-  }, []);
-
   const setStepRef = useCallback((index) => (el) => { stepRefs.current[index] = el; }, []);
 
   return (
-    <div className="login-page" data-step={activeIndex + 1} ref={pageRef}>
+    <div className="login-page">
       {/* Левая половина: не фон под формой, а вторая половина экрана — форма
-          лежит рядом с ней, а не поверх.
-
-          Что на ней видно, зависит от шага. Пока вводят логин, её занимает
-          синее поле с названиями модулей; после отправки кода поле сжимается
-          до плашки со знаком сети и открывает карту. Карта при этом
-          отрисована с самого начала и просто лежит под полем: смонтируй её на
-          втором шаге — и подложка с маршрутами начали бы грузиться ровно в
-          тот момент, когда поле уже разъезжается. */}
+          лежит рядом с ней, а не поверх. Синее поле с названиями модулей и
+          знаком сети занимает её целиком и на обоих шагах одинаково: пока
+          человек не представился, портал только называет, что внутри. */}
       <div className="login-brand">
-        <LoginMap active={step === 'twoFactor'} />
+        {/* Ленты — украшение, и читать их вслух незачем: для чтения с экрана
+            это семьдесят слов подряд без всякого смысла. */}
+        <div className="login-strips" aria-hidden="true">
+          {STRIP_LANES.map((lane) => (
+            <div className="login-strip" key={lane.from}>
+              {/* Две одинаковые копии: кадр сдвигает строку ровно на ширину
+                  одной, и на стыке следующая оказывается точно на месте
+                  предыдущей. */}
+              {[0, 1].map((copy) => (
+                <div
+                  className="login-strip-run"
+                  key={copy}
+                  style={{
+                    animationDuration: `${lane.seconds}s`,
+                    animationDirection: lane.back ? 'reverse' : 'normal'
+                  }}
+                >
+                  {MODULES.map((_, i) => {
+                    const { name, Icon } = MODULES[(lane.from + i) % MODULES.length];
+                    return (
+                      /* Ярко — ровно одно слово в строке, и во всех семи
+                         строках это разные модули: см. STRIP_LANES. Значок
+                         горит вместе с надписью: цвет он берёт из строки. */
+                      <span
+                        className={`login-strip-item${i === lane.bright ? ' on' : ''}`}
+                        key={name}
+                      >
+                        {/* Размер в em, а не в пикселях: кегль надписи резиновый
+                            (clamp), и значок обязан ехать вместе с ним. */}
+                        {/* Штрих чуть толще стандартной двойки: рядом с
+                            надписью в 600 значок с ней в весе не спорит, а
+                            отстаёт. */}
+                        <Icon size="0.78em" strokeWidth={2.4} />
+                        <span className="login-strip-word">{name}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
 
-        <div className="login-brand-shell">
-          {/* Ленты — украшение, и читать их вслух незачем: для чтения с экрана
-              это семьдесят слов подряд без всякого смысла. */}
-          <div className="login-strips" aria-hidden="true">
-            {STRIP_LANES.map((lane) => (
-              <div className="login-strip" key={lane.from}>
-                {/* Две одинаковые копии: кадр сдвигает строку ровно на ширину
-                    одной, и на стыке следующая оказывается точно на месте
-                    предыдущей. */}
-                {[0, 1].map((copy) => (
-                  <div
-                    className="login-strip-run"
-                    key={copy}
-                    style={{
-                      animationDuration: `${lane.seconds}s`,
-                      animationDirection: lane.back ? 'reverse' : 'normal'
-                    }}
-                  >
-                    {MODULES.map((_, i) => {
-                      const { name, Icon } = MODULES[(lane.from + i) % MODULES.length];
-                      return (
-                        /* Ярко — ровно одно слово в строке, и во всех семи
-                           строках это разные модули: см. STRIP_LANES. Значок
-                           горит вместе с надписью: цвет он берёт из строки. */
-                        <span
-                          className={`login-strip-item${i === lane.bright ? ' on' : ''}`}
-                          key={name}
-                        >
-                          {/* Размер в em, а не в пикселях: кегль надписи резиновый
-                              (clamp), и значок обязан ехать вместе с ним. */}
-                          {/* Штрих чуть толще стандартной двойки: рядом с
-                              надписью в 600 значок с ней в весе не спорит, а
-                              отстаёт. */}
-                          <Icon size="0.78em" strokeWidth={2.4} />
-                          <span className="login-strip-word">{name}</span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-
-          <div className="login-brand-mark" ref={markRef}>
-            <img src={loginLogo} alt="" aria-hidden="true" />
-            {/* Черта между знаком и названием. Ширину плашки она меняет сама
-                собой: та считается по измеренному знаку, а не по вбитому
-                числу, — см. useEffect с ResizeObserver выше. */}
-            <span className="login-brand-rule" aria-hidden="true" />
-            <span className="login-brand-name">
-              <b>Альфа Вики</b>
-              <i>База знаний</i>
-            </span>
-          </div>
+        <div className="login-brand-mark">
+          <img src={loginLogo} alt="" aria-hidden="true" />
+          {/* Черта между знаком и названием */}
+          <span className="login-brand-rule" aria-hidden="true" />
+          <span className="login-brand-name">
+            <b>Альфа Вики</b>
+            <i>База знаний</i>
+          </span>
         </div>
       </div>
 
