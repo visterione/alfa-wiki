@@ -102,7 +102,8 @@ async function syncBots() {
 
   for (const bot of bots) {
     if (running.has(bot.id)) continue;
-    console.log(`[poller] беру обновления для @${bot.username} (${bot.platform}/${bot.organization})`);
+    console.log(`[poller] беру обновления для @${bot.username} (${bot.platform}/${bot.organization})` +
+      (bot.lineId ? '' : ' — ВНИМАНИЕ: линия не назначена, обращения никуда не попадут'));
     running.set(bot.id, pollBot(bot.id).catch(err => {
       console.error(`[poller] цикл @${bot.username} завершился:`, err.message);
       running.delete(bot.id);
