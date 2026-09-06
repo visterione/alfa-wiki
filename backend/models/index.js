@@ -3396,7 +3396,12 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'pending' },
   channel: { type: DataTypes.STRING(20), allowNull: true },
   error: { type: DataTypes.TEXT, allowNull: true },
-  sentAt: { type: DataTypes.DATE, allowNull: true, field: 'sent_at' }
+  sentAt: { type: DataTypes.DATE, allowNull: true, field: 'sent_at' },
+  externalMessageId: { type: DataTypes.STRING(64), allowNull: true, field: 'external_message_id' },
+  // «Отправили» и «дошло» — разные вопросы. Наш status отвечает на первый,
+  // этот — на второй, и приходит он отчётом от провайдера.
+  deliveryStatus: { type: DataTypes.STRING(20), allowNull: true, field: 'delivery_status' },
+  deliveredAt: { type: DataTypes.DATE, allowNull: true, field: 'delivered_at' }
 }, {
   tableName: 'notif_outbox',
   timestamps: true,

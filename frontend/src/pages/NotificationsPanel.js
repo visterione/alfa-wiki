@@ -176,7 +176,8 @@ export default function NotificationsPanel() {
     try {
       const { data } = await api.saveSettings({
         cascade: settings.cascade,
-        quietHours: settings.quietHours
+        quietHours: settings.quietHours,
+        imobis: settings.imobis
       });
       setSettings(s => ({ ...s, ...data }));
       toast.success('Настройки сохранены');
@@ -328,7 +329,10 @@ export default function NotificationsPanel() {
                 return (
                   <li key={name}>
                     <span className="nt-step-no">{i + 1}</span>
-                    <span className="nt-step-name">{known ? known.title : name}</span>
+                    <span className="nt-step-name">
+                      {known ? known.title : name}
+                      {known?.provider && <span className="nt-step-provider">{known.provider}</span>}
+                    </span>
                     <button
                       type="button" title="Выше" disabled={i === 0}
                       onClick={() => moveStep(i, -1)}
@@ -350,6 +354,7 @@ export default function NotificationsPanel() {
               {settings.available.filter(a => !settings.cascade.includes(a.name)).map(a => (
                 <button
                   key={a.name} type="button"
+                  title={a.provider}
                   onClick={() => setSettings(s => ({ ...s, cascade: [...s.cascade, a.name] }))}
                 >+ {a.title}</button>
               ))}
@@ -402,6 +407,42 @@ export default function NotificationsPanel() {
             </div>
           </section>
 
+
+
+          <section className="nt-card">
+            <h3>Имобис напрямую</h3>
+            <p className="nt-hint">
+              Ступени с пометкой «Имобис» идут к провайдеру без агрегатора. Так мы видим
+              статус доставки: адрес обработчика уходит вместе с сообщением, и журнал
+              показывает «доставлено» или причину отказа, а не только «отправлено».
+              {!settings.imobisReady && ' Токен пока не задан — впишите IMOBIS_TOKEN в .env.'}
+            </p>
+
+            <div className="nt-test">
+              <input
+                placeholder="Имя отправителя, например ALFA"
+                value={settings.imobis?.sender || ''}
+                onChange={e => setSettings(s => ({ ...s, imobis: { ...s.imobis, sender: e.target.value } }))}
+              />
+              <input
+                placeholder="ID группы ВК"
+                value={settings.imobis?.vkGroup || ''}
+                onChange={e => setSettings(s => ({ ...s, imobis: { ...s.imobis, vkGroup: e.target.value } }))}
+              />
+              <label className="nt-check">
+                <input
+                  type="checkbox"
+                  checked={!!settings.imobis?.sandbox}
+                  onChange={e => setSettings(s => ({ ...s, imobis: { ...s.imobis, sandbox: e.target.checked } }))}
+                />
+                песочница (сообщения не уходят)
+              </label>
+            </div>
+            <p className="nt-hint">
+              Имя отправителя нельзя придумать — оно проходит модерацию у операторов.
+              Какое одобрено у вас, покажет <code>npm run imobis:check</code>.
+            </p>
+          </section>
 
           <section className="nt-card">
             <h3><Send size={15} /> Проверить отправку</h3>

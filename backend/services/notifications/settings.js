@@ -11,10 +11,24 @@ const { Setting } = require('../../models');
 
 const CASCADE_KEY = 'notif_cascade';
 const QUIET_KEY = 'notif_quiet_hours';
+const IMOBIS_KEY = 'notif_imobis';
 
 // «bot» — наши Telegram и MAX, остальные имена — ступени Fromni, как они
 // называются в её API. Порядок массива и есть порядок отправки.
 const DEFAULT_CASCADE = ['bot', 'notify+vk', 'sms+webchat'];
+
+// Имобис напрямую. Имя отправителя придумать нельзя — оно проходит модерацию у
+// операторов, поэтому берётся из аккаунта (npm run imobis:check) и вписывается
+// сюда. Группа ВК нужна каналу vk: без неё ступень собрать не из чего.
+const DEFAULT_IMOBIS = {
+  sender: '',
+  vkGroup: null,
+  sandbox: false,
+  // Разные клиники могут иметь разные одобренные имена — тогда общее значение
+  // выше служит запасным.
+  senders: {},
+  vkGroups: {}
+};
 
 const DEFAULT_QUIET = {
   enabled: true,
@@ -48,6 +62,36 @@ async function write(key, value, description) {
 
 const cascade = () => read(CASCADE_KEY, DEFAULT_CASCADE);
 const quietHours = () => read(QUIET_KEY, DEFAULT_QUIET);
+const imobis = () => read(IMOBIS_KEY, DEFAULT_IMOBIS);
+
+/**
+ * Разбивает каскад на группы подряд идущих ступеней одного провайдера.
+ *
+ * Нужно потому, что у Имобиса и у Fromni каскад свой: две ступени одного
+ * провайдера — это один запрос с массивом маршрута, который сам остановится на
+ * первой доставленной. Отправлять их по отдельности значило бы платить за обе.
+ *
+ * ['bot','imobis:vk','imobis:sms','sms+webchat'] →
+ *   [{provider:'bot'}, {provider:'imobis', names:['vk','sms']},
+ *    {provider:'fromni', names:['sms+webchat']}]
+ */
+function groupSteps(order) {
+  const groups = [];
+
+  for (const step of order) {
+    const provider = step === 'bot' ? 'bot' : (step.startsWith('imobis:') ? 'imobis' : 'fromni');
+    const name = step.startsWith('imobis:') ? step.slice('imobis:'.length) : step;
+
+    const last = groups[groups.length - 1];
+    if (last && last.provider === provider && provider !== 'bot') {
+      last.names.push(name);
+      last.steps.push(step);
+    } else {
+      groups.push({ provider, names: [name], steps: [step] });
+    }
+  }
+  return groups;
+}
 
 // ── Тихие часы ────────────────────────────────────────────────────────────
 
@@ -94,7 +138,8 @@ function quietFor(quiet, channel) {
 }
 
 module.exports = {
-  CASCADE_KEY, QUIET_KEY, DEFAULT_CASCADE, DEFAULT_QUIET,
-  cascade, quietHours, read, write,
+  CASCADE_KEY, QUIET_KEY, IMOBIS_KEY,
+  DEFAULT_CASCADE, DEFAULT_QUIET, DEFAULT_IMOBIS,
+  cascade, quietHours, imobis, groupSteps, read, write,
   isQuiet, nextAllowed, quietFor, minutesOf
 };

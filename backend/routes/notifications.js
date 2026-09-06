@@ -161,6 +161,63 @@ router.post('/templates/preview', authenticate, requireAdmin, async (req, res) =
 });
 
 
+
+// ── Отчёты о доставке ─────────────────────────────────────────────────────
+
+// Соответствие статусов провайдера нашим. «sent» у них означает «передано
+// оператору, окончательный статус не получен» — это ещё не доставка.
+const DELIVERED = ['delivered', 'read'];
+const FAILED = ['rejected', 'undelivered', 'expired', 'deleted', 'error'];
+
+/**
+ * Приёмник статусов доставки. Адрес передаётся провайдеру в самом запросе на
+ * отправку — этим прямое подключение и отличается от агрегатора, у которого
+ * судьба сообщения оставалась невидимой.
+ *
+ * Открыт наружу без авторизации: провайдер ходит без нашего токена, подлинность
+ * проверяется секретом в пути. Отвечаем 200 всегда, когда секрет сошёлся, —
+ * иначе он будет копить повторы из-за нашей неготовности разобрать формат.
+ */
+router.all('/report/:secret', express.json(), express.urlencoded({ extended: true }), async (req, res) => {
+  const secret = process.env.NOTIF_REPORT_SECRET || process.env.MIS_EVENTS_SECRET;
+  if (!secret || req.params.secret !== secret) return res.status(404).send('Not found');
+
+  try {
+    const body = req.body || {};
+    const reports = Array.isArray(body) ? body : (Array.isArray(body.reports) ? body.reports : [body]);
+
+    for (const report of reports) {
+      const customId = report.custom_id || report.customId;
+      const messageId = report.id || report.message_id || report.messageId;
+      const status = String(report.status || report.state || '').toLowerCase();
+      if (!status) continue;
+
+      const where = customId ? { id: customId }
+        : (messageId ? { externalMessageId: String(messageId) } : null);
+      if (!where) continue;
+
+      const item = await Outbox.findOne({ where });
+      if (!item) continue;
+
+      await item.update({
+        deliveryStatus: status,
+        deliveredAt: DELIVERED.includes(status) ? new Date() : item.deliveredAt,
+        // Причину отказа сохраняем в тот же столбец, где живут наши ошибки:
+        // оператору всё равно, на каком этапе не сложилось.
+        error: FAILED.includes(status)
+          ? (report.error || report.error_code || `провайдер: ${status}`)
+          : item.error
+      });
+
+      console.log(`[report] ${item.id} → ${status}`);
+    }
+  } catch (err) {
+    console.error('[report] не смог разобрать отчёт:', err.message);
+  }
+
+  res.status(200).json({ ok: true });
+});
+
 // ── Одобренные шаблоны Fromni ─────────────────────────────────────────────
 
 /**
@@ -251,14 +308,22 @@ router.get('/settings', authenticate, requireAdmin, async (req, res) => {
     res.json({
       cascade: await notifSettings.cascade(),
       quietHours: await notifSettings.quietHours(),
+      imobis: await notifSettings.imobis(),
+      imobisReady: !!(process.env.IMOBIS_TOKEN || process.env.IMOBIS_TOKEN_ALFA),
       // Из чего можно собрать каскад. «bot» — наши Telegram и MAX, остальное —
       // имена ступеней Fromni, как они называются в её API.
+      // Ступени с префиксом imobis: идут напрямую к провайдеру, остальные —
+      // через Fromni. Подряд идущие ступени одного провайдера отправляются
+      // одним запросом: их собственный каскад останавливается на доставленной.
       available: [
-        { name: 'bot', title: 'Наши боты (Telegram, MAX)' },
-        { name: 'notify+vk', title: 'Notify и ВКонтакте' },
-        { name: 'whatsapp-business', title: 'WhatsApp Business' },
-        { name: 'viber', title: 'Viber' },
-        { name: 'sms+webchat', title: 'SMS' }
+        { name: 'bot', title: 'Наши боты (Telegram, MAX)', provider: 'Вики' },
+        { name: 'imobis:vk', title: 'ВКонтакте напрямую', provider: 'Имобис' },
+        { name: 'imobis:sms', title: 'SMS напрямую', provider: 'Имобис' },
+        { name: 'imobis:viber', title: 'Viber напрямую', provider: 'Имобис' },
+        { name: 'notify+vk', title: 'Notify и ВКонтакте', provider: 'Fromni' },
+        { name: 'whatsapp-business', title: 'WhatsApp Business', provider: 'Fromni' },
+        { name: 'viber', title: 'Viber', provider: 'Fromni' },
+        { name: 'sms+webchat', title: 'SMS', provider: 'Fromni' }
       ],
       safety: { fromniAllowed: sender.ALLOW_FROMNI, pilotPhones: sender.PILOT_PHONES.length }
     });
@@ -270,7 +335,7 @@ router.get('/settings', authenticate, requireAdmin, async (req, res) => {
 
 router.put('/settings', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { cascade, quietHours } = req.body || {};
+    const { cascade, quietHours, imobis } = req.body || {};
 
     if (Array.isArray(cascade)) {
       if (!cascade.length) return res.status(400).json({ error: 'Каскад не может быть пустым' });
@@ -287,7 +352,21 @@ router.put('/settings', authenticate, requireAdmin, async (req, res) => {
       }, 'Тихие часы: сообщение откладывается до начала разрешённого времени');
     }
 
-    res.json({ cascade: await notifSettings.cascade(), quietHours: await notifSettings.quietHours() });
+    if (imobis && typeof imobis === 'object') {
+      const current = await notifSettings.imobis();
+      await notifSettings.write(notifSettings.IMOBIS_KEY, {
+        ...current,
+        sender: imobis.sender !== undefined ? String(imobis.sender || '').trim() : current.sender,
+        vkGroup: imobis.vkGroup !== undefined ? (Number(imobis.vkGroup) || null) : current.vkGroup,
+        sandbox: imobis.sandbox !== undefined ? !!imobis.sandbox : current.sandbox
+      }, 'Имобис напрямую: имя отправителя, группа ВК, режим песочницы');
+    }
+
+    res.json({
+      cascade: await notifSettings.cascade(),
+      quietHours: await notifSettings.quietHours(),
+      imobis: await notifSettings.imobis()
+    });
   } catch (err) {
     console.error('[notifications] PUT /settings:', err);
     res.status(500).json({ error: 'Internal server error' });

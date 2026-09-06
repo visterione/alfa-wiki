@@ -18,6 +18,7 @@ const { Op } = require('sequelize');
 const { NotifOutbox, NotifAppointment, BotSubscriber, MessengerBot, Setting } = require('../../models');
 const { getChannel } = require('../messengers');
 const fromni = require('../messengers/fromni');
+const imobis = require('../messengers/imobis');
 const misClient = require('../misClient');
 const settings = require('./settings');
 
@@ -82,6 +83,50 @@ async function subscriberFor(phone) {
 /**
  * Отправляет одну строку очереди. Возвращает её же — уже с исходом.
  */
+/**
+ * Куда слать статусы доставки. Имобис зовёт этот адрес сам — тем и отличается
+ * от агрегатора, у которого судьба сообщения оставалась невидимой.
+ */
+function reportUrl() {
+  const secret = process.env.NOTIF_REPORT_SECRET || process.env.MIS_EVENTS_SECRET;
+  if (!secret) return undefined;
+  const base = (process.env.BASE_URL || 'https://wiki.medcentralfa.ru').replace(/\/+$/, '');
+  return `${base}/api/notifications/report/${secret}`;
+}
+
+/**
+ * Собирает маршрут Имобиса из имён ступеней. Порядок сохраняется, ступень без
+ * необходимых реквизитов пропускается: канал ВК без группы и SMS без имени
+ * отправителя всё равно не уйдут, а молчаливая ступень в маршруте хуже, чем её
+ * отсутствие.
+ */
+function imobisRoute(names, config, organization, texts) {
+  const sender = (config.senders && config.senders[organization]) || config.sender;
+  const group = (config.vkGroups && config.vkGroups[organization]) || config.vkGroup;
+
+  const route = [];
+  for (const name of names) {
+    if (name === 'sms') {
+      if (!sender) continue;
+      route.push({ channel: 'sms', sender, text: texts.sms });
+    } else if (name === 'vk') {
+      if (!group) continue;
+      route.push({ channel: 'vk', group: Number(group), text: texts.long });
+    } else if (name === 'viber') {
+      if (!sender) continue;
+      route.push({ channel: 'viber', sender, text: texts.long });
+    }
+  }
+  return route;
+}
+
+/**
+ * Отправляет одну строку очереди, идя по каскаду до первой доставки.
+ *
+ * Ступени сгруппированы по провайдерам: у Имобиса и у Fromni каскад свой, и две
+ * их ступени подряд — это один запрос, который сам остановится на доставленной.
+ * Разбивать их на отдельные вызовы значило бы платить дважды.
+ */
 async function deliver(item, clinicId = null) {
   if (!allowedByPilot(item.phone)) {
     return item.update({ status: 'skipped', error: 'пилот: телефон вне списка NOTIFIER_PILOT_PHONES' });
@@ -90,50 +135,98 @@ async function deliver(item, clinicId = null) {
   const order = await settings.cascade();
   const quiet = await settings.quietHours();
   const now = new Date();
+  const groups = settings.groupSteps(order);
 
-  const found = await subscriberFor(item.phone);
-  const botStep = order.indexOf('bot');
-  const fromniSteps = order.filter(name => name !== 'bot');
+  const short = item.smsText || item.text;
+  const texts = { long: item.text, sms: short };
 
-  // Ступень «бот» может быть выключена или переставлена: порядок каскада —
-  // настройка, а не порядок операторов в коде.
-  const botAllowed = botStep !== -1;
+  const organization = await organizationFor(clinicId);
+  let lastError = null;
+  let silencedAll = groups.length > 0;
 
-  // Ступень 1: свой бот.
-  if (found && botAllowed && !(settings.quietFor(quiet, 'bot') && settings.isQuiet(quiet, now))) {
-    try {
-      const channel = getChannel(found.bot.platform);
-      const options = item.withConfirm && item.apptId
-        ? { buttons: [[{ text: '✅ Подтверждаю', data: `confirm:${item.apptId}` }]] }
-        : {};
+  for (const group of groups) {
+    // Ступень молчит в тихие часы — пропускаем её, но помним: если промолчали
+    // все, сообщение надо отложить, а не потерять.
+    const audible = group.steps.filter(step => !settings.quietFor(quiet, step));
+    if (settings.isQuiet(quiet, now) && !audible.length) continue;
+    silencedAll = false;
 
-      await channel.sendText(found.bot, found.subscriber.externalUserId, item.text, options);
-      return item.update({ status: 'sent', channel: found.bot.platform, sentAt: new Date(), error: null });
-    } catch (err) {
-      if (err.code === 'blocked') {
-        // Канал закрыт навсегда — помечаем подписку, чтобы следующий раз даже не
-        // пробовать, и уходим на следующую ступень.
-        await found.subscriber.update({ isBlocked: true, blockedAt: new Date() });
-      } else {
-        console.warn(`[sender] бот не принял (${err.code || 'ошибка'}): ${err.message} — ухожу во Fromni`);
+    if (group.provider === 'bot') {
+      const found = await subscriberFor(item.phone);
+      if (!found) continue;
+      try {
+        const channel = getChannel(found.bot.platform);
+        const options = item.withConfirm && item.apptId
+          ? { buttons: [[{ text: '✅ Подтверждаю', data: `confirm:${item.apptId}` }]] }
+          : {};
+        await channel.sendText(found.bot, found.subscriber.externalUserId, item.text, options);
+        return item.update({ status: 'sent', channel: found.bot.platform, sentAt: new Date(), error: null });
+      } catch (err) {
+        lastError = err.message;
+        if (err.code === 'blocked') {
+          // Канал закрыт навсегда — помечаем подписку, чтобы следующий раз
+          // даже не пробовать.
+          await found.subscriber.update({ isBlocked: true, blockedAt: new Date() });
+        }
+        continue;
       }
+    }
+
+    if (!item.phone) {
+      lastError = 'нет телефона пациента';
+      continue;
+    }
+
+    if (group.provider === 'imobis') {
+      try {
+        const config = await settings.imobis();
+        const route = imobisRoute(group.names.filter(n => audible.includes(`imobis:${n}`)), config, organization, texts);
+        if (!route.length) {
+          lastError = 'у ступеней Имобиса нет имени отправителя или группы ВК';
+          continue;
+        }
+
+        const sent = await imobis.send(organization, route, {
+          phone: item.phone,
+          customId: String(item.id),
+          reportUrl: reportUrl(),
+          sandbox: !!config.sandbox
+        });
+        // Статус пока «принято»: доставку подтвердит отчёт, который Имобис
+        // пришлёт на наш адрес.
+        return item.update({
+          status: 'sent',
+          channel: route.map(r => `imobis:${r.channel}`).join('→'),
+          externalMessageId: sent.externalMessageId,
+          sentAt: new Date(),
+          error: null
+        });
+      } catch (err) {
+        lastError = `Имобис: ${err.message}`;
+        continue;
+      }
+    }
+
+    // Fromni — прежняя ступень, остаётся запасной.
+    if (!ALLOW_FROMNI) {
+      lastError = 'вторая ступень выключена (NOTIFIER_ALLOW_FROMNI)';
+      continue;
+    }
+    try {
+      const names = group.steps.filter(step => audible.includes(step));
+      if (!names.length) continue;
+
+      const sent = await fromni.sendText(organization, item.phone,
+        { default: item.text, 'sms+webchat': short, sms: short }, names);
+      return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null });
+    } catch (err) {
+      lastError = `Fromni: ${err.message}`;
     }
   }
 
-  // Ступень 2: Fromni. Кнопки сюда не передаём: подтверждение визита живёт
-  // только в боте, у SMS его в принципе быть не может.
-  if (!ALLOW_FROMNI) {
-    return item.update({ status: 'skipped', error: 'вторая ступень выключена (NOTIFIER_ALLOW_FROMNI)' });
-  }
-  if (!item.phone) {
-    return item.update({ status: 'failed', error: 'нет телефона пациента' });
-  }
-
-  // Тихие часы. Сообщение не выбрасываем, а откладываем до утра: человек,
-  // которому перенесли завтрашний приём, должен узнать об этом — но не в час
-  // ночи по SMS.
-  const silenced = fromniSteps.filter(name => settings.quietFor(quiet, name));
-  if (silenced.length === fromniSteps.length && settings.isQuiet(quiet, now)) {
+  // Промолчали все ступени — значит сейчас ночь. Откладываем до утра: человек,
+  // которому перенесли завтрашний приём, должен узнать об этом, но не в час ночи.
+  if (silencedAll && settings.isQuiet(quiet, now)) {
     const at = settings.nextAllowed(quiet, now);
     return item.update({
       plannedAt: at,
@@ -142,20 +235,8 @@ async function deliver(item, clinicId = null) {
     });
   }
 
-  try {
-    const organization = await organizationFor(clinicId);
-    // У SMS длина считается сегментами, и лишний символ стоит второй SMS —
-    // поэтому короткий текст едет отдельно от обычного.
-    const short = item.smsText || item.text;
-    const texts = { default: item.text, 'sms+webchat': short, sms: short };
-
-    const sent = await fromni.sendText(organization, item.phone, texts, fromniSteps);
-    return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null });
-  } catch (err) {
-    return item.update({ status: 'failed', error: err.message });
-  }
+  return item.update({ status: 'failed', error: lastError || 'ни одна ступень каскада не сработала' });
 }
-
 
 /**
  * Отправка одного сообщения вручную, для проверки.
