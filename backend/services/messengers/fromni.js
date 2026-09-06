@@ -67,13 +67,19 @@ async function connectionsOf(organization) {
   if (hit && Date.now() - hit.at < CACHE_TTL) return hit.byChannel;
 
   const { data } = await client(organization).post('/channels/connections', {});
-  const rows = Array.isArray(data && data.data) ? data.data : (Array.isArray(data) ? data : []);
+
+  // Ответ — объект, а не массив: ключи и есть обозначения каналов, значения —
+  // массивы подключений к ним. Разбирать его списком (как сначала сделал я)
+  // означает не найти вообще ничего.
+  const source = (data && data.data) || {};
 
   const byChannel = {};
-  for (const row of rows) {
-    const name = row.channel || row.name;
-    if (!name) continue;
-    (byChannel[name] = byChannel[name] || []).push(row.id);
+  for (const [channel, connections] of Object.entries(source)) {
+    if (!Array.isArray(connections)) continue;
+    // Неактивное подключение отправку не выполнит — в каскад его брать нельзя,
+    // иначе ступень будет «есть», но молча не сработает.
+    const ids = connections.filter(c => c && c.isActive !== false).map(c => c.id);
+    if (ids.length) byChannel[channel] = ids;
   }
 
   connectionsCache.set(organization, { at: Date.now(), byChannel });
