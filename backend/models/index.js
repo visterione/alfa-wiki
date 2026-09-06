@@ -3334,6 +3334,66 @@ OmniConversation.hasMany(OmniMessage, { foreignKey: 'conversationId', as: 'messa
 OmniMessage.belongsTo(OmniConversation, { foreignKey: 'conversationId', as: 'conversation' });
 OmniMessage.belongsTo(User, { foreignKey: 'authorUserId', as: 'author' });
 
+// === УВЕДОМЛЕНИЯ ПАЦИЕНТАМ (ver. 7.86) ===
+//
+// События берём опросом МИС по дате изменения: своего движка уведомлений
+// Renovatio наружу не отдаёт, а фильтр «что изменилось за минуту» стоит дёшево.
+
+// Снимок визита — то, с чем сравниваем. Отдельно от mis_appointments намеренно:
+// тот кэш перезаписывается ночной синхронизацией склада, и «что было до» из него
+// уже не достать.
+const NotifAppointment = sequelize.define('NotifAppointment', {
+  apptId: { type: DataTypes.INTEGER, primaryKey: true, field: 'appt_id' },
+  clinicId: { type: DataTypes.SMALLINT, field: 'clinic_id' },
+  clinicName: { type: DataTypes.STRING(255), field: 'clinic_name' },
+  patientId: { type: DataTypes.INTEGER, field: 'patient_id' },
+  phone: { type: DataTypes.STRING(30) },
+  patientName: { type: DataTypes.STRING(255), field: 'patient_name' },
+  doctorName: { type: DataTypes.STRING(255), field: 'doctor_name' },
+  timeStart: { type: DataTypes.DATE, field: 'time_start' },
+  statusId: { type: DataTypes.SMALLINT, field: 'status_id' },
+  confirmStatus: { type: DataTypes.SMALLINT, field: 'confirm_status' },
+  seenAt: { type: DataTypes.DATE, field: 'seen_at', defaultValue: DataTypes.NOW }
+}, { tableName: 'notif_appointments', timestamps: false });
+
+const NotifTemplate = sequelize.define('NotifTemplate', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  event: { type: DataTypes.STRING(20), allowNull: false },   // created | moved | cancelled | reminder
+  medCenterId: { type: DataTypes.UUID, allowNull: true },     // пусто — общий на сеть
+  text: { type: DataTypes.TEXT, allowNull: false },
+  beforeMinutes: { type: DataTypes.INTEGER, allowNull: true }, // только у напоминаний
+  withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
+}, { tableName: 'notif_templates', timestamps: true });
+
+// Очередь и журнал в одной таблице: строка создаётся в pending и остаётся
+// навсегда с исходом. На вопрос «почему человек не получил напоминание»
+// отвечать всё равно по ней.
+const NotifOutbox = sequelize.define('NotifOutbox', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  apptId: { type: DataTypes.INTEGER, field: 'appt_id' },
+  event: { type: DataTypes.STRING(20), allowNull: false },
+  // В ключ входит значение, породившее событие, — иначе перенос на другое время
+  // посчитался бы повтором уже отправленного.
+  dedupKey: { type: DataTypes.STRING(200), allowNull: false, field: 'dedup_key' },
+  patientId: { type: DataTypes.INTEGER, field: 'patient_id' },
+  phone: { type: DataTypes.STRING(30) },
+  text: { type: DataTypes.TEXT, allowNull: false },
+  withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  plannedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'planned_at' },
+  status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'pending' },
+  channel: { type: DataTypes.STRING(20), allowNull: true },
+  error: { type: DataTypes.TEXT, allowNull: true },
+  sentAt: { type: DataTypes.DATE, allowNull: true, field: 'sent_at' }
+}, {
+  tableName: 'notif_outbox',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['dedup_key'] },
+    { fields: ['status', 'planned_at'] }
+  ]
+});
+
 // === API CLIENT MODEL (внешняя система, которой разрешено слать нам данные) ===
 // Не пользователь, а интегрируемая система: сайт клиники, лендинг, партнёрский сервис.
 // Сам ключ в БД не хранится — только префикс (для поиска строки) и sha256-хеш.
@@ -4354,6 +4414,9 @@ module.exports = {
   OmniLineOperator,
   OmniConversation,
   OmniMessage,
+  NotifAppointment,
+  NotifTemplate,
+  NotifOutbox,
   Vehicle,
   VehicleFile,
   MapMarker,

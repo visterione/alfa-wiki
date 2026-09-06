@@ -112,6 +112,24 @@ async function addPatientCategory(patientId, categoryId) {
   return value === true || value === 'true' || value === 1 || value === '1';
 }
 
+/**
+ * Подтверждение визита пациентом. Единственный метод, которым мы пишем в МИС по
+ * уведомлениям: человек нажал кнопку в боте — отметка должна оказаться там же,
+ * где её ждёт администратор, а не только у нас.
+ *
+ * confirm_status по умолчанию 1 («подтверждён»); source называем собой, чтобы в
+ * МИС было видно, откуда пришло подтверждение.
+ */
+async function confirmAppointment(appointmentId, confirmStatus = 1) {
+  const res = await misRequest('confirmAppointment', {
+    appointment_id: appointmentId,
+    confirm_status: confirmStatus,
+    source: process.env.MIS_CONFIRM_SOURCE || 'Альфа-Вики'
+  });
+  const value = res && typeof res === 'object' && 'data' in res ? res.data : res;
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
 module.exports = {
   misRequest,
   normalizePhone,
@@ -119,6 +137,7 @@ module.exports = {
   getPatientsByPhone,
   createPatient,
   addPatientCategory,
+  confirmAppointment,
   MIS_API_KEY,
   MIS_BASE_URL
 };

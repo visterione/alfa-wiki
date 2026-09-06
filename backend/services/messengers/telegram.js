@@ -198,6 +198,31 @@ function parseUpdate(update) {
   return null;
 }
 
+// ── Файлы ─────────────────────────────────────────────────────────────────
+
+/**
+ * Ссылка на присланный файл. Живёт около часа, поэтому качать надо сразу при
+ * приёме сообщения, а не по клику оператора: к тому времени ссылка протухнет.
+ */
+async function fileLink(bot, fileId) {
+  const info = await call(bot.token, 'getFile', { file_id: fileId });
+  if (!info.file_path) throw new ChannelError('error', 'Telegram не отдал путь к файлу');
+  return {
+    url: `${API_BASE}/file/bot${bot.token}/${info.file_path}`,
+    size: info.file_size || null,
+    suggestedName: info.file_path.split('/').pop()
+  };
+}
+
+/**
+ * Скачивает файл потоком. Возвращает поток и заголовки, писать на диск —
+ * забота вызывающего: канал не должен знать про наши каталоги.
+ */
+async function fileStream(url) {
+  const res = await axios.get(url, { responseType: 'stream', timeout: 60000, httpsAgent: agent });
+  return { stream: res.data, contentType: res.headers['content-type'] || null };
+}
+
 // ── Настройка ─────────────────────────────────────────────────────────────
 
 async function getMe(token) {
@@ -247,6 +272,8 @@ module.exports = {
   answerCallback,
   parseUpdate,
   getMe,
+  fileLink,
+  fileStream,
   getUpdates,
   setWebhook,
   deleteWebhook,

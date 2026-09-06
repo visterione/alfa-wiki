@@ -17,6 +17,7 @@
 const { BotSubscriber } = require('../../models');
 const misClient = require('../misClient');
 const openLine = require('../openLine');
+const openLineFiles = require('../openLineFiles');
 
 // Категории подписчиков в МИС. Ставятся только боевым ботам: тестовый не должен
 // оставлять следов в карточках живых пациентов.
@@ -164,7 +165,6 @@ async function handleText(channel, bot, update) {
     bot,
     subscriber,
     text: update.text || '',
-    attachments: update.media ? [update.media] : [],
     externalMessageId: update.externalMessageId
   });
 
@@ -189,8 +189,45 @@ async function handleText(channel, bot, update) {
       'Спасибо, вопрос принят. Сейчас передадим его сотруднику колл-центра.');
   }
 
+  // Файл забираем уже после того, как обращение создано: путь к нему строится от
+  // обращения, и по этому пути потом проверяется доступ. Неудача при скачивании
+  // не должна терять сам вопрос — сообщение уже сохранено.
+  if (update.media) {
+    try {
+      const attachment = await openLineFiles.saveIncoming(channel, bot, update.media, accepted.conversation.id);
+      await accepted.message.update({ attachments: [attachment] });
+    } catch (err) {
+      console.error(`[dialog] вложение обращения ${accepted.conversation.id}:`, err.message);
+    }
+  }
+
   const notice = await openLine.offlineNoticeFor(accepted.conversation, accepted.line);
   if (notice) await channel.sendText(bot, update.chatId, notice);
+}
+
+
+/**
+ * Нажатие кнопки под уведомлением. Пока она одна — «Подтверждаю» под записью и
+ * напоминанием.
+ */
+async function handleButton(channel, bot, update) {
+  const [action, value] = String(update.data || '').split(':');
+
+  if (action !== 'confirm' || !value) {
+    return channel.answerCallback(bot, update.callbackId);
+  }
+
+  try {
+    const ok = await misClient.confirmAppointment(value);
+    // Ответ на кнопку живёт секунды — сначала гасим часики, потом пишем в чат.
+    await channel.answerCallback(bot, update.callbackId, ok ? 'Спасибо, визит подтверждён' : 'Не получилось, попробуйте позже');
+    await channel.sendText(bot, update.chatId, ok
+      ? 'Спасибо! Визит подтверждён, ждём вас.'
+      : 'Не удалось отметить подтверждение. Мы всё равно вас ждём — при необходимости позвоните нам.');
+  } catch (err) {
+    console.error(`[dialog] подтверждение визита ${value}:`, err.message);
+    await channel.answerCallback(bot, update.callbackId, 'Не получилось, попробуйте позже');
+  }
 }
 
 /**
@@ -207,9 +244,7 @@ async function handleUpdate(channel, bot, update) {
     case 'media':
       return handleText(channel, bot, update);
     case 'button':
-      // Кнопки появятся вместе с уведомлениями («Подтверждаю»). Пока просто
-      // гасим часики, чтобы у человека не висела нажатая кнопка.
-      return channel.answerCallback(bot, update.callbackId);
+      return handleButton(channel, bot, update);
     default:
       return null;
   }

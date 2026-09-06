@@ -11,6 +11,7 @@ const express = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { OmniLine, OmniLineOperator, MessengerBot, MedCenter, User } = require('../models');
 const openLine = require('../services/openLine');
+const fileAccess = require('../services/fileAccess');
 
 const router = express.Router();
 
@@ -36,7 +37,10 @@ function fail(res, err, where) {
 // Состояние сотрудника: заведён ли в линии, начат ли день.
 router.get('/state', authenticate, async (req, res) => {
   try {
-    res.json(await openLine.shiftState(req.user.id));
+    const state = await openLine.shiftState(req.user.id);
+    // Короткоживущий токен для ссылок на вложения: картинку в <img> заголовком
+    // не подписать, поэтому он подставляется в ?t= — как в чатах и онбординге.
+    res.json({ ...state, fileToken: fileAccess.issueToken(req.user.id) });
   } catch (err) {
     fail(res, err, 'GET /state');
   }

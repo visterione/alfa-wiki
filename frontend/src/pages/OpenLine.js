@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Inbox, MessageCircle, Archive, Power, Send, Check, User as UserIcon,
-  Phone, AlertTriangle, RefreshCw
+  Phone, AlertTriangle, RefreshCw, Paperclip
 } from 'lucide-react';
 import { openLine as openLineApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -43,6 +43,40 @@ function timeLabel(value) {
   return sameDay
     ? date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
     : date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+}
+
+
+/**
+ * Вложение в переписке. Картинку показываем сразу — обычно это фотография
+ * направления или анализа, и открывать её отдельным кликом только мешает.
+ * Токен в ?t= обязателен: файлы пациентов закрыты проверкой доступа, а в <img>
+ * заголовок не подставить.
+ */
+function renderAttachment(a, key, fileToken) {
+  if (a.tooLarge) {
+    return <span key={key} className="ol-chip">Файл слишком большой — попросите прислать иначе</span>;
+  }
+  if (!a.url) {
+    return <span key={key} className="ol-chip">{a.title || a.kind}</span>;
+  }
+
+  const href = fileToken ? `${a.url}?t=${encodeURIComponent(fileToken)}` : a.url;
+
+  if (a.kind === 'photo') {
+    return (
+      <a key={key} href={href} target="_blank" rel="noreferrer" className="ol-photo">
+        <img src={href} alt={a.title || 'Вложение'} loading="lazy" />
+      </a>
+    );
+  }
+  if (a.kind === 'voice') {
+    return <audio key={key} className="ol-audio" src={href} controls preload="none" />;
+  }
+  return (
+    <a key={key} href={href} target="_blank" rel="noreferrer" className="ol-chip ol-file">
+      <Paperclip size={11} />{a.title || 'Файл'}
+    </a>
+  );
 }
 
 export default function OpenLine() {
@@ -91,7 +125,14 @@ export default function OpenLine() {
     }
   }, []);
 
-  useEffect(() => { loadState(); }, [loadState]);
+  // Состояние перечитываем и по таймеру: вместе с ним приезжает токен доступа к
+  // вложениям, а он живёт сутки — у оператора, не закрывавшего вкладку смену
+  // подряд, картинки иначе однажды перестанут открываться.
+  useEffect(() => {
+    loadState();
+    const timer = setInterval(loadState, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [loadState]);
   useEffect(() => { setLoading(true); loadList(); }, [loadList]);
   useEffect(() => { loadThread(activeId); }, [activeId, loadThread]);
 
@@ -300,7 +341,7 @@ export default function OpenLine() {
                     {m.text}
                     {m.attachments?.length > 0 && (
                       <div className="ol-msg-files">
-                        {m.attachments.map((a, i) => <span key={i} className="ol-chip">{a.title || a.kind}</span>)}
+                        {m.attachments.map((a, i) => renderAttachment(a, i, state?.fileToken))}
                       </div>
                     )}
                   </div>

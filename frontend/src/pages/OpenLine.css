@@ -233,7 +233,20 @@
   border-bottom-right-radius: var(--radius-sm);
 }
 
-.ol-msg-files { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ol-msg-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+.ol-photo { display: block; max-width: 260px; }
+.ol-photo img {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+}
+
+.ol-audio { max-width: 260px; height: 34px; }
+
+.ol-file { text-decoration: none; cursor: pointer; }
+.ol-file:hover { background: var(--bg-hover); }
 
 .ol-msg-foot {
   display: flex;

@@ -376,6 +376,14 @@ app.use('/uploads/onboarding', onboardingFileGuard, express.static(
   { setHeaders: setUploadHeaders }
 ));
 
+// Вложения открытой линии — третья закрытая часть uploads: это фотографии
+// направлений и анализов, присланные пациентами в бот. Пускаем только сотрудника
+// той линии, к которой относится обращение (services/openLineFiles.js).
+app.use('/uploads/open-line', require('./services/openLineFiles').openLineFileGuard, express.static(
+  path.join(__dirname, 'uploads/open-line'),
+  { setHeaders: setUploadHeaders }
+));
+
 app.use('/uploads', serveStatic);
 app.use('/uploads/map', express.static(path.join(__dirname, 'uploads/map')));
 
