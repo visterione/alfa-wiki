@@ -650,6 +650,10 @@ const MessengerBot = sequelize.define('MessengerBot', {
   // достучится. Отличить настоящее обновление от постороннего запроса можно
   // только по этому секрету, который платформа возвращает в заголовке.
   webhookSecret: { type: DataTypes.STRING(64), allowNull: false },
+  // 'webhook' — платформа стучится к нам; 'polling' — мы сами ходим за
+  // обновлениями. Второй режим нужен там, где входящие снаружи не проходят.
+  deliveryMode: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'webhook' },
+  lastUpdateId: { type: DataTypes.BIGINT, allowNull: false, defaultValue: 0 }, // курсор getUpdates
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, {
   tableName: 'messenger_bots',

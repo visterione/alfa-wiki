@@ -10,8 +10,15 @@
  *
  * Запуск из каталога backend:
  *   node scripts/addMessengerBot.js --token 123:ABC --org test --title "Тестовый"
+ *   node scripts/addMessengerBot.js --token 123:ABC --org test --polling
  *   node scripts/addMessengerBot.js --list
+ *   node scripts/addMessengerBot.js --mode <id> --polling   перевести на самостоятельный забор
+ *   node scripts/addMessengerBot.js --mode <id> --webhook   вернуть на вебхук
  *   node scripts/addMessengerBot.js --unhook <id>     снять вебхук (вернуть бота агрегатору)
+ *
+ * Режим забора нужен там, где платформа не может достучаться до нас снаружи:
+ * тогда бот сам ходит за обновлениями, и вебхук у него должен быть снят —
+ * Telegram не отдаёт getUpdates, пока адрес вебхука прописан.
  */
 
 require('dotenv').config();
@@ -48,7 +55,9 @@ async function list() {
     } catch (err) {
       state = `недоступен: ${err.message}`;
     }
+    const mode = bot.deliveryMode === 'polling' ? 'забор обновлений' : 'вебхук';
     console.log(`${bot.isActive ? '●' : '○'} ${bot.platform}/${bot.organization}  @${bot.username || '?'}  ${bot.id}`);
+    console.log(`   режим: ${mode}`);
     console.log(`   ${state}`);
   }
 }
@@ -60,6 +69,27 @@ async function unhook(id) {
   await getChannel(bot.platform).deleteWebhook(bot.token);
   await bot.update({ isActive: false });
   console.log(`Вебхук снят, бот @${bot.username} выключен. Теперь его можно вернуть агрегатору.`);
+}
+
+async function setMode(id) {
+  const bot = await MessengerBot.findByPk(id);
+  if (!bot) throw new Error(`Бот ${id} не найден`);
+
+  const channel = getChannel(bot.platform);
+
+  if (has('--polling')) {
+    // Вебхук и getUpdates взаимно исключают друг друга: пока адрес прописан,
+    // Telegram отвечает на getUpdates ошибкой конфликта.
+    await channel.deleteWebhook(bot.token);
+    await bot.update({ deliveryMode: 'polling', isActive: true });
+    console.log(`@${bot.username}: вебхук снят, режим — самостоятельный забор.`);
+    console.log('Не забудь поднять процесс: pm2 start ecosystem.config.js --only alfa-wiki-poller');
+    return;
+  }
+
+  await channel.setWebhook(bot.token, webhookUrl(bot), bot.webhookSecret);
+  await bot.update({ deliveryMode: 'webhook', isActive: true });
+  console.log(`@${bot.username}: режим — вебхук на ${webhookUrl(bot)}`);
 }
 
 async function add() {
@@ -92,18 +122,26 @@ async function add() {
         isActive: true
       });
 
-  const url = webhookUrl(bot);
-  await channel.setWebhook(bot.token, url, bot.webhookSecret);
+  if (has('--polling')) {
+    await channel.deleteWebhook(bot.token);
+    await bot.update({ deliveryMode: 'polling' });
+    console.log('Режим: самостоятельный забор обновлений (вебхук снят).');
+    console.log('Поднять процесс: pm2 start ecosystem.config.js --only alfa-wiki-poller');
+  } else {
+    const url = webhookUrl(bot);
+    await channel.setWebhook(bot.token, url, bot.webhookSecret);
 
-  const info = await channel.getWebhookInfo(bot.token);
-  console.log(`Вебхук: ${info.url || '(пусто)'}`);
-  if (info.last_error_message) console.log(`⚠ последняя ошибка: ${info.last_error_message}`);
+    const info = await channel.getWebhookInfo(bot.token);
+    console.log(`Вебхук: ${info.url || '(пусто)'}`);
+    if (info.last_error_message) console.log(`⚠ последняя ошибка: ${info.last_error_message}`);
+  }
   console.log(`Готово. id бота: ${bot.id}`);
 }
 
 (async () => {
   try {
     if (has('--list')) await list();
+    else if (has('--mode')) await setMode(valueOf('--mode'));
     else if (has('--unhook')) await unhook(valueOf('--unhook'));
     else await add();
   } catch (err) {

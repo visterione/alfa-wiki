@@ -47,10 +47,10 @@ class ChannelError extends Error {
   }
 }
 
-function client(token) {
+function client(token, timeoutMs) {
   return axios.create({
     baseURL: `${API_BASE}/bot${token}`,
-    timeout: TIMEOUT,
+    timeout: timeoutMs || TIMEOUT,
     httpsAgent: agent,
     // Разбираем коды сами: 403 и 400 здесь не аварии, а нормальные ответы,
     // из которых мы узнаём состояние подписки.
@@ -73,10 +73,10 @@ function classify(status, body) {
   return new ChannelError('error', desc || `HTTP ${status}`);
 }
 
-async function call(token, method, payload) {
+async function call(token, method, payload, timeoutMs) {
   let res;
   try {
-    res = await client(token).post(`/${method}`, payload);
+    res = await client(token, timeoutMs).post(`/${method}`, payload);
   } catch (err) {
     throw new ChannelError('network', err.code || err.message);
   }
@@ -213,6 +213,25 @@ async function setWebhook(token, url, secret) {
   });
 }
 
+/**
+ * Забирает накопившиеся обновления. Долгое ожидание (timeout) — не опрос по
+ * таймеру: соединение висит открытым, пока не появится сообщение, поэтому
+ * задержка получается почти такой же, как у вебхука, а запросов почти нет.
+ *
+ * offset подтверждает всё, что меньше него: обновления, разобранные в прошлый
+ * раз, Telegram больше не пришлёт.
+ */
+async function getUpdates(token, offset, timeoutSec = 30) {
+  // Своё ожидание держим заведомо дольше телеграмного, иначе axios оборвёт
+  // соединение раньше, чем сервер ответит пустым списком, и каждый цикл будет
+  // выглядеть сетевой ошибкой.
+  return call(token, 'getUpdates', {
+    offset,
+    timeout: timeoutSec,
+    allowed_updates: ['message', 'callback_query']
+  }, timeoutSec * 1000 + 15000);
+}
+
 async function deleteWebhook(token) {
   return call(token, 'deleteWebhook', { drop_pending_updates: false });
 }
@@ -228,6 +247,7 @@ module.exports = {
   answerCallback,
   parseUpdate,
   getMe,
+  getUpdates,
   setWebhook,
   deleteWebhook,
   getWebhookInfo

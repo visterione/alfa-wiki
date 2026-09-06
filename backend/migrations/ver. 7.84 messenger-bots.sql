@@ -23,6 +23,16 @@ CREATE TABLE IF NOT EXISTS messenger_bots (
     "updatedAt"   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
+-- Способ доставки входящих. Вебхук быстрее и проще, но требует, чтобы платформа
+-- достучалась до нас снаружи. Проверено 06.09.2026: исходящий канал до
+-- api.telegram.org работает, а входящие от подсетей Telegram до сервера не
+-- доходят — открывать нечего, ufw выключен и снаружи адрес доступен, режет выше
+-- по маршруту. Поэтому есть второй режим: бот сам ходит за обновлениями.
+-- lastUpdateId — курсор getUpdates: подтверждает разобранное и не даёт получить
+-- то же дважды после перезапуска.
+ALTER TABLE messenger_bots ADD COLUMN IF NOT EXISTS "deliveryMode" VARCHAR(10) NOT NULL DEFAULT 'webhook';
+ALTER TABLE messenger_bots ADD COLUMN IF NOT EXISTS "lastUpdateId" BIGINT NOT NULL DEFAULT 0;
+
 CREATE UNIQUE INDEX IF NOT EXISTS messenger_bots_token_key ON messenger_bots (token);
 CREATE INDEX IF NOT EXISTS messenger_bots_org_idx ON messenger_bots (organization, platform);
 

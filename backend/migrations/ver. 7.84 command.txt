@@ -16,6 +16,19 @@ IF NOT EXISTS, существующие строки bot_subscribers не тро
 
   node scripts/addMessengerBot.js --token <токен> --org test --title "Тестовый бот"
 
+Добавить сразу в режиме забора — флагом --polling.
+
+Если платформа не может достучаться до нас снаружи (у нас именно так: обновления
+от подсетей Telegram до сервера не доходят), бот переводится на самостоятельный
+забор — тогда весь трафик исходящий и открывать наружу ничего не нужно:
+
+  node scripts/addMessengerBot.js --mode <id бота> --polling
+  pm2 start ecosystem.config.js --only alfa-wiki-poller
+
+Вернуть на вебхук, если вход когда-нибудь откроется:
+
+  node scripts/addMessengerBot.js --mode <id бота> --webhook
+
 Проверить состояние вебхуков в любой момент:
 
   node scripts/addMessengerBot.js --list
