@@ -619,6 +619,10 @@
    попросту не читалась */
 .quick-access-btn.statistics  { --qa-fill: #22C55E; --qa-fill-deep: #16A34A; }
 .quick-access-btn.onboarding  { --qa-fill: #06B6D4; --qa-fill-deep: #0891B2; }
+/* Открытая линия (ver. 7.85). Розовый — единственный свободный в этом ряду:
+   янтарный занят «Избранным», голубой зарплатой и онбордингом, а раздел должен
+   опознаваться боковым зрением, в него заходят чаще прочих. */
+.quick-access-btn.open-line   { --qa-fill: #EC4899; --qa-fill-deep: #DB2777; }
 
 @media (prefers-reduced-motion: reduce) {
   .quick-access-btn { transition-duration: 1ms; }

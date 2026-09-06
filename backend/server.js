@@ -425,6 +425,7 @@ app.use('/api/bot-subscribers', require('./routes/bot-subscribers'));
 // Входящие от наших ботов Telegram/MAX. Маршрут публичный намеренно: платформа
 // приходит без нашего JWT, подлинность проверяется секретом вебхука внутри.
 app.use('/api/messenger', require('./routes/messenger-webhook'));
+app.use('/api/open-line', require('./routes/open-line'));
 app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);
 app.use('/api/cash-payments', cashPaymentsRoutes);

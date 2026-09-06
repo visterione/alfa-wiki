@@ -115,7 +115,11 @@ const User = sequelize.define('User', {
       // Онбординг врача (ver. 7.30). Как и выше — только видимость раздела.
       // Кто какой шаг выполняет, задают назначения (OnbAssignment), а не роль:
       // отдельных ролей под этот процесс намеренно не заводили.
-      onboarding: false
+      onboarding: false,
+      // Открытая линия (ver. 7.85). Тоже только видимость: отвечать может тот,
+      // кто заведён в состав линии (OmniLineOperator), и список линии и есть
+      // право. Два места настройки одного и того же неизбежно разошлись бы.
+      openLine: false
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -654,6 +658,9 @@ const MessengerBot = sequelize.define('MessengerBot', {
   // обновлениями. Второй режим нужен там, где входящие снаружи не проходят.
   deliveryMode: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'webhook' },
   lastUpdateId: { type: DataTypes.BIGINT, allowNull: false, defaultValue: 0 }, // курсор getUpdates
+  // Какую линию открытой линии кормит бот. Связь явная: на медцентр приходится
+  // два бота (Telegram и MAX), а небольшие центры со временем могут делить одну.
+  lineId: { type: DataTypes.UUID, allowNull: true },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, {
   tableName: 'messenger_bots',
@@ -3243,6 +3250,90 @@ const BotUpdate = sequelize.define('BotUpdate', {
   ]
 });
 
+// === ОТКРЫТАЯ ЛИНИЯ (ver. 7.85) ===
+//
+// Устройство повторяет привычное по Битриксу: на каждый медцентр своя линия, у
+// линии свой состав, и новые обращения видят только те, кто начал день. Смена
+// нужна ровно за этим — чужие чаты не должны мигать у занятого другим человека.
+
+const OmniLine = sequelize.define('OmniLine', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  medCenterId: { type: DataTypes.UUID, allowNull: true },  // пусто у проверочной линии
+  name: { type: DataTypes.STRING(150), allowNull: false },
+  // Ответ, когда на линии никого нет. Отправляется один раз за обращение:
+  // человек, написавший ночью три строки, не должен получить три извинения.
+  offlineReply: { type: DataTypes.TEXT, allowNull: true },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
+}, { tableName: 'omni_lines', timestamps: true });
+
+const OmniLineOperator = sequelize.define('OmniLineOperator', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  lineId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  // Признак на связи, а не на пользователе: сотрудник может числиться на
+  // нескольких линиях и открыть не все.
+  onShift: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  shiftStartedAt: { type: DataTypes.DATE, allowNull: true }
+}, {
+  tableName: 'omni_line_operators',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['lineId', 'userId'] },
+    { fields: ['lineId', 'onShift'] }
+  ]
+});
+
+const OmniConversation = sequelize.define('OmniConversation', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  lineId: { type: DataTypes.UUID, allowNull: false },
+  subscriberId: { type: DataTypes.UUID, allowNull: false },  // подписчик бота, не пользователь портала
+  botId: { type: DataTypes.UUID, allowNull: true },
+  status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'queued' }, // queued | assigned | closed
+  assigneeUserId: { type: DataTypes.UUID, allowNull: true },
+  assignedAt: { type: DataTypes.DATE, allowNull: true },
+  closedAt: { type: DataTypes.DATE, allowNull: true },
+  closedBy: { type: DataTypes.UUID, allowNull: true },
+  lastMessageAt: { type: DataTypes.DATE, allowNull: true },
+  lastIncomingAt: { type: DataTypes.DATE, allowNull: true },
+  offlineNoticeAt: { type: DataTypes.DATE, allowNull: true }
+}, {
+  tableName: 'omni_conversations',
+  timestamps: true,
+  indexes: [
+    { fields: ['lineId', 'status', 'lastMessageAt'] },
+    { fields: ['assigneeUserId', 'status'] }
+  ]
+});
+
+const OmniMessage = sequelize.define('OmniMessage', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  conversationId: { type: DataTypes.UUID, allowNull: false },
+  direction: { type: DataTypes.STRING(3), allowNull: false },       // in | out
+  authorUserId: { type: DataTypes.UUID, allowNull: true },          // пусто у входящих
+  text: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
+  // Файлы забираем к себе: ссылки мессенджеров живут около часа, а внутри вполне
+  // может оказаться фотография направления или анализов.
+  attachments: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  externalMessageId: { type: DataTypes.STRING(64), allowNull: true },
+  deliveryError: { type: DataTypes.TEXT, allowNull: true }
+}, {
+  tableName: 'omni_messages',
+  timestamps: true,
+  indexes: [{ fields: ['conversationId', 'createdAt'] }]
+});
+
+OmniLine.hasMany(OmniLineOperator, { foreignKey: 'lineId', as: 'operators' });
+OmniLineOperator.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
+OmniLineOperator.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+OmniLine.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+
+OmniConversation.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
+OmniConversation.belongsTo(BotSubscriber, { foreignKey: 'subscriberId', as: 'subscriber' });
+OmniConversation.belongsTo(User, { foreignKey: 'assigneeUserId', as: 'assignee' });
+OmniConversation.hasMany(OmniMessage, { foreignKey: 'conversationId', as: 'messages' });
+OmniMessage.belongsTo(OmniConversation, { foreignKey: 'conversationId', as: 'conversation' });
+OmniMessage.belongsTo(User, { foreignKey: 'authorUserId', as: 'author' });
+
 // === API CLIENT MODEL (внешняя система, которой разрешено слать нам данные) ===
 // Не пользователь, а интегрируемая система: сайт клиники, лендинг, партнёрский сервис.
 // Сам ключ в БД не хранится — только префикс (для поиска строки) и sha256-хеш.
@@ -4259,6 +4350,10 @@ module.exports = {
   TelegramSubscriber,
   BotSubscriber,
   MessengerBot,
+  OmniLine,
+  OmniLineOperator,
+  OmniConversation,
+  OmniMessage,
   Vehicle,
   VehicleFile,
   MapMarker,

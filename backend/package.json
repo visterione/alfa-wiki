@@ -103,7 +103,10 @@
     "migrate:7.83:check": "node scripts/runSqlMigration.js 7.83 --check",
     "migrate:7.84": "node scripts/runSqlMigration.js 7.84",
     "migrate:7.84:check": "node scripts/runSqlMigration.js 7.84 --check",
-    "poller": "node scripts/messengerPoller.js"
+    "poller": "node scripts/messengerPoller.js",
+    "migrate:7.85": "node scripts/runSqlMigration.js 7.85",
+    "migrate:7.85:check": "node scripts/runSqlMigration.js 7.85 --check",
+    "open-line": "node scripts/openLineSetup.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

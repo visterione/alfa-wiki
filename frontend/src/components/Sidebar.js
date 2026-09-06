@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi, openLine as openLineApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -373,6 +373,7 @@ function QuickAccessButtons({ onClose }) {
   const [assignedReviewsCount, setAssignedReviewsCount] = useState(0);
   const [tasksCount, setTasksCount] = useState(0);
   const [onboardingCount, setOnboardingCount] = useState(0);
+  const [openLineCount, setOpenLineCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
   const canAccessSalary = isAdmin || user?.canAccessSalary === true;
   // Складской учёт закрыт тем же гранулярным флагом, что «Отзывы»: раздел
@@ -387,6 +388,7 @@ function QuickAccessButtons({ onClose }) {
   // Онбординг врача (ver. 7.30) — тот же гранулярный флаг. Внутри модуля
   // человек видит только заявки тех филиалов, где он назначен исполнителем.
   const canAccessOnboarding = isAdmin || user?.adminAccess?.onboarding === true;
+  const canAccessOpenLine = isAdmin || user?.adminAccess?.openLine === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -474,6 +476,27 @@ function QuickAccessButtons({ onClose }) {
     };
   }, [canAccessOnboarding]);
 
+  /**
+   * Бейдж открытой линии — сколько обращений ждёт разбора. Считается только у
+   * того, кто начал день: у остальных очередь скрыта, и цифра над иконкой
+   * означала бы работу, которой они не видят.
+   */
+  useEffect(() => {
+    if (!canAccessOpenLine) return undefined;
+    const load = async () => {
+      try {
+        const { data } = await openLineApi.conversations('queue');
+        setOpenLineCount(Array.isArray(data) ? data.length : 0);
+      } catch {
+        // Молча: бейдж не тот повод, чтобы шуметь на каждой странице портала.
+        setOpenLineCount(0);
+      }
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [canAccessOpenLine]);
+
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/explorer' || location.pathname.startsWith('/explorer/');
@@ -484,6 +507,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnStatistics = location.pathname.startsWith('/statistics');
   const isOnTasks = location.pathname.startsWith('/tasks');
   const isOnOnboarding = location.pathname.startsWith('/onboarding');
+  const isOnOpenLine = location.pathname.startsWith('/open-line');
 
   const handleClick = (path) => {
     navigate(path);
@@ -606,6 +630,23 @@ function QuickAccessButtons({ onClose }) {
         {canAccessTasks && tasksCount > 0 && (
           <span className="quick-access-badge">
             {tasksCount > 99 ? '99+' : tasksCount}
+          </span>
+        )}
+      </button>
+
+      {/* Открытая линия (ver. 7.85). Рядом с «Задачами» намеренно: для колл-центра
+          это такой же ежедневный раздел, в который заходят с утра и не выходят. */}
+      <button
+        className={`quick-access-btn open-line ${isOnOpenLine ? 'active' : ''} ${!canAccessOpenLine ? 'locked' : ''}`}
+        data-icon-motion={canAccessOpenLine ? 'message' : undefined}
+        onClick={() => canAccessOpenLine ? handleClick('/open-line') : toast.error('Нет доступа к разделу «Открытая линия»')}
+        title={canAccessOpenLine ? 'Открытая линия' : 'Открытая линия (нет доступа)'}
+      >
+        <Headphones size={20} />
+        {!canAccessOpenLine && <Lock size={10} className="quick-access-lock" />}
+        {canAccessOpenLine && openLineCount > 0 && (
+          <span className="quick-access-badge">
+            {openLineCount > 99 ? '99+' : openLineCount}
           </span>
         )}
       </button>

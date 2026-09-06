@@ -18,6 +18,7 @@ const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Favorites = lazy(() => import('./pages/Favorites'));
 const ChatJoin = lazy(() => import('./pages/ChatJoin'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
+const OpenLine = lazy(() => import('./pages/OpenLine'));
 // Публичные страницы анкеты: их открывает врач, у которого нет и не будет
 // аккаунта в портале.
 const AnketaStart = lazy(() => import('./pages/Anketa/AnketaStart'));
@@ -178,6 +179,13 @@ function AppRoutes() {
             ролей под этот процесс намеренно не заводили. */}
         <Route path="onboarding" element={
           <ProtectedRoute requireAdminAccess="onboarding"><Onboarding /></ProtectedRoute>
+        } />
+
+        {/* Открытая линия (ver. 7.85): обращения пациентов из ботов Telegram/MAX.
+            Флаг решает только видимость раздела — кто отвечает, задаёт состав
+            линии, как у склада и «Задач». */}
+        <Route path="open-line" element={
+          <ProtectedRoute requireAdminAccess="openLine"><OpenLine /></ProtectedRoute>
         } />
 
         {/* Reviews module */}

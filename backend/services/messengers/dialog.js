@@ -16,6 +16,7 @@
 
 const { BotSubscriber } = require('../../models');
 const misClient = require('../misClient');
+const openLine = require('../openLine');
 
 // Категории подписчиков в МИС. Ставятся только боевым ботам: тестовый не должен
 // оставлять следов в карточках живых пациентов.
@@ -150,8 +151,8 @@ async function handleContact(channel, bot, update) {
 async function handleText(channel, bot, update) {
   const subscriber = await upsertSubscriber(bot, update);
 
-  // Открытая линия — следующий этап. Пока человек не назвался, разговаривать
-  // всё равно не о чем: оператору нужна карточка, а не безымянный чат.
+  // Пока человек не назвался, разговаривать не о чем: оператору нужна карточка,
+  // а не безымянный чат.
   if (!subscriber.phone) {
     await channel.sendText(bot, update.chatId,
       'Чтобы мы могли ответить, сначала поделитесь номером телефона.',
@@ -159,8 +160,31 @@ async function handleText(channel, bot, update) {
     return;
   }
 
-  await channel.sendText(bot, update.chatId,
-    'Сообщение получено. Ответим в рабочее время колл-центра.');
+  const accepted = await openLine.acceptIncoming({
+    bot,
+    subscriber,
+    text: update.text || '',
+    attachments: update.media ? [update.media] : [],
+    externalMessageId: update.externalMessageId
+  });
+
+  // Бот не привязан к линии — обращению некуда лечь. Так живёт проверочный бот,
+  // и молчать в ответ нельзя: человек решит, что его не услышали.
+  if (!accepted) {
+    await channel.sendText(bot, update.chatId,
+      'Сообщение получено. Ответим в рабочее время колл-центра.');
+    return;
+  }
+
+  // Новое обращение подтверждаем, продолжение — нет: «принято» под каждой
+  // репликой превращает переписку в эхо.
+  if (accepted.isNew) {
+    await channel.sendText(bot, update.chatId,
+      'Спасибо, вопрос принят. Сейчас передадим его сотруднику колл-центра.');
+  }
+
+  const notice = await openLine.offlineNoticeFor(accepted.conversation, accepted.line);
+  if (notice) await channel.sendText(bot, update.chatId, notice);
 }
 
 /**
