@@ -81,7 +81,7 @@
     "prestart": "npm run copy-pdf-worker",
     "prebuild": "npm run copy-pdf-worker",
     "start": "cross-env PORT=9000 craco start",
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 craco build",
+    "build": "cross-env NODE_ENV=production NODE_OPTIONS=--max-old-space-size=4096 craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
     "tauri": "tauri",
