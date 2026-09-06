@@ -1281,3 +1281,24 @@ export const anketa = {
 };
 
 export default api;
+
+// Открытая линия (ver. 7.85): обращения пациентов из ботов Telegram/MAX.
+// Смена одна на все линии сотрудника — очередь у него общая.
+export const openLine = {
+  state: () => api.get('/open-line/state'),
+  shift: (on) => api.post('/open-line/shift', { on }),
+
+  conversations: (scope = 'queue') => api.get('/open-line/conversations', { params: { scope } }),
+  conversation: (id) => api.get(`/open-line/conversations/${id}`),
+  assign: (id) => api.post(`/open-line/conversations/${id}/assign`),
+  close: (id) => api.post(`/open-line/conversations/${id}/close`),
+  send: (id, text) => api.post(`/open-line/conversations/${id}/messages`, { text }),
+
+  // Настройка линий — администратору
+  lines: () => api.get('/open-line/lines'),
+  createLine: (data) => api.post('/open-line/lines', data),
+  updateLine: (id, data) => api.put(`/open-line/lines/${id}`, data),
+  addOperator: (lineId, userId) => api.post(`/open-line/lines/${lineId}/operators`, { userId }),
+  removeOperator: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/operators/${userId}`),
+  bindBot: (lineId, botId) => api.put(`/open-line/lines/${lineId}/bots/${botId}`)
+};
