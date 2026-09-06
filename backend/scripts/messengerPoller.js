@@ -25,6 +25,7 @@
 
 require('dotenv').config();
 
+const { Client } = require('pg');
 const { sequelize, MessengerBot } = require('../models');
 const { getChannel } = require('../services/messengers');
 const dialog = require('../services/messengers/dialog');
@@ -32,6 +33,36 @@ const dialog = require('../services/messengers/dialog');
 const LONG_POLL_SEC = 30;
 const RELOAD_BOTS_MS = 60000;   // как часто перечитываем список ботов из базы
 const ERROR_BACKOFF_MS = 5000;
+
+// Замок на процесс. Telegram отдаёт обновления только одному потребителю, и
+// второй запущенный забор молча ломает первый — «Conflict: terminated by other
+// getUpdates request». Процесс поднимают руками в tmux, так что случай не
+// теоретический: беглый advisory-lock в Postgres дешевле, чем разбираться в
+// логах, почему бот замолчал. Число — номер версии, в которой замок появился.
+const LOCK_KEY = 78406;
+let lockClient = null;
+
+/**
+ * @returns {Promise<boolean>} удалось ли занять замок. Соединение держим
+ *   открытым до конца работы: advisory-lock живёт ровно столько же.
+ */
+async function acquireLock() {
+  lockClient = new Client({
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT || 5432,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD
+  });
+  await lockClient.connect();
+
+  const { rows } = await lockClient.query('SELECT pg_try_advisory_lock($1) AS ok', [LOCK_KEY]);
+  if (rows[0].ok) return true;
+
+  await lockClient.end();
+  lockClient = null;
+  return false;
+}
 
 let stopping = false;
 const running = new Map(); // botId -> Promise
@@ -118,6 +149,14 @@ async function syncBots() {
 async function main() {
   console.log('[poller] запуск');
 
+  if (!await acquireLock()) {
+    // Выходим нулём намеренно: это не падение, а «уже работает». Ненулевой код
+    // заставил бы петлю перезапуска в tmux долбиться сюда каждые пять секунд.
+    console.log('[poller] забор уже запущен другим процессом — этот экземпляр не нужен, выхожу');
+    await sequelize.close();
+    process.exit(0);
+  }
+
   await syncBots();
   const timer = setInterval(() => syncBots().catch(err => console.error('[poller] обновление списка:', err.message)), RELOAD_BOTS_MS);
 
@@ -127,6 +166,7 @@ async function main() {
     clearInterval(timer);
     // Даём висящим запросам закрыться, но не ждём вечно: pm2 всё равно убьёт.
     await Promise.race([Promise.all(running.values()), pause(5000)]);
+    if (lockClient) await lockClient.end().catch(() => {});
     await sequelize.close();
     process.exit(0);
   };
