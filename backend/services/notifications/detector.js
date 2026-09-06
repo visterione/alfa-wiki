@@ -57,14 +57,15 @@ async function misRequest(endpoint, params) {
 }
 
 async function fetchChanged(from, to) {
-  const params = { date_updated_from: misDate(from), date_updated_to: misDate(to) };
-
-  let data;
-  try {
-    data = await misRequest('getAppointmentsV2', params);
-  } catch {
-    data = await misRequest('getAppointments', params);
-  }
+  // Именно первая версия метода, а не V2. V2 отдаёт один идентификатор врача,
+  // клиники и пациента, а нам нужны имя, телефон и название клиники — иначе
+  // подставлять в шаблон нечего. Их даёт v1 с show_patient_data, и она же
+  // понимает фильтр по дате изменения.
+  const data = await misRequest('getAppointments', {
+    date_updated_from: misDate(from),
+    date_updated_to: misDate(to),
+    show_patient_data: 1
+  });
 
   if (!data || data.error !== 0 || !Array.isArray(data.data)) return [];
   return data.data;

@@ -16,12 +16,13 @@
  *   node scripts/notifier.js --once    один проход обоих циклов, для проверки
  *   node scripts/notifier.js --dry     показать, что нашлось, ничего не отправляя
  *   node scripts/notifier.js --outbox  разобрать очередь: что ушло, что нет и почему
+ *   node scripts/notifier.js --reset   очистить очередь, снимки и водяной знак
  */
 
 require('dotenv').config();
 
 const { Client } = require('pg');
-const { sequelize, NotifOutbox, BotSubscriber, MessengerBot } = require('../models');
+const { sequelize, NotifOutbox, NotifAppointment, Setting, BotSubscriber, MessengerBot } = require('../models');
 const detector = require('../services/notifications/detector');
 const sender = require('../services/notifications/sender');
 
@@ -126,7 +127,28 @@ async function showOutbox(limit = 15) {
   }
 }
 
+
+/**
+ * Сброс к чистому листу: очередь, снимки визитов и водяной знак. Нужен на время
+ * обкатки — снимок, снятый неполным запросом, потом уже не поправить, потому что
+ * повторное появление того же визита событием не считается.
+ */
+async function reset() {
+  const outbox = await NotifOutbox.destroy({ where: {} });
+  const snapshots = await NotifAppointment.destroy({ where: {} });
+  await Setting.destroy({ where: { key: detector.WATERMARK_KEY } });
+
+  console.log(`Очищено: очередь ${outbox}, снимков ${snapshots}, водяной знак сброшен.`);
+  console.log('Следующий запуск начнёт с текущей минуты — историю не выгребает.');
+}
+
 async function main() {
+  if (args.includes('--reset')) {
+    await reset();
+    await sequelize.close();
+    return;
+  }
+
   if (args.includes('--outbox')) {
     await showOutbox(Number(args[args.indexOf('--outbox') + 1]) || 15);
     await sequelize.close();
