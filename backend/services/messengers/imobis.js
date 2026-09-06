@@ -64,8 +64,21 @@ async function call(organization, method, path, body = {}, { sandbox = false } =
   if (res.status >= 200 && res.status < 300) return res.data;
 
   const data = res.data || {};
-  const message = data.description || data.message || data.error || `HTTP ${res.status}`;
-  throw new ChannelError(res.status === 401 ? 'unauthorized' : 'error', message);
+  const said = data.description || data.message || data.error;
+
+  // Тело ответа в сообщение об ошибке кладём обязательно. Свернув его в сухое
+  // «HTTP 403», мы отличаем отказ API от блокировки на подступах только гаданием
+  // — уже проходили это с getAppointmentsV2 и с каналами Fromni.
+  const raw = typeof data === 'string'
+    ? data.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+    : JSON.stringify(data).slice(0, 300);
+
+  const error = new ChannelError(res.status === 401 ? 'unauthorized' : 'error',
+    `HTTP ${res.status}${said ? ': ' + said : ''}${!said && raw && raw !== '{}' ? ' — ответ: ' + raw : ''}`);
+  error.status = res.status;
+  error.body = data;
+  error.headers = res.headers;
+  throw error;
 }
 
 // ── Отправка ──────────────────────────────────────────────────────────────

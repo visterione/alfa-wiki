@@ -27,8 +27,14 @@ const org = (() => {
 async function main() {
   console.log(sandbox ? 'Песочница (реальные сообщения не отправляются)\n' : 'Боевой аккаунт\n');
 
+  let token;
   try {
-    imobis.tokenFor(org);
+    token = imobis.tokenFor(org);
+    // Токен показываем обрезанным: по началу и длине видно, что подставился
+    // именно тот, что вписали, и что он не обрамлён кавычками или пробелами.
+    console.log(`Токен: ${token.slice(0, 8)}…${token.slice(-4)}  длина ${token.length}` +
+      (/^[0-9a-f-]{36}$/i.test(token) ? '  (похож на UUID)' : '  ⚠ не похож на UUID — проверьте, что скопирован целиком'));
+    console.log(`Адрес: ${sandbox ? 'https://sandbox.imobis.ru/v3' : (process.env.IMOBIS_BASE_URL || 'https://api.imobis.ru/v3')}\n`);
   } catch (err) {
     console.log(err.message);
     console.log('Токен берётся в личном кабинете app.imobis.ru: Токены → Создать токен.');
