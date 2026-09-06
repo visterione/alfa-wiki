@@ -91,8 +91,8 @@ async function pollBot(botId) {
     const channel = getChannel(bot.platform);
 
     try {
-      const offset = Number(bot.lastUpdateId) > 0 ? Number(bot.lastUpdateId) + 1 : undefined;
-      const updates = await channel.getUpdates(bot.token, offset, LONG_POLL_SEC);
+      const cursor = Number(bot.lastUpdateId) > 0 ? Number(bot.lastUpdateId) : null;
+      const { updates, cursor: nextCursor } = await channel.getUpdates(bot.token, cursor, LONG_POLL_SEC);
 
       if (!updates.length) continue;
 
@@ -103,11 +103,19 @@ async function pollBot(botId) {
         } catch (err) {
           // Одно кривое сообщение не должно останавливать разбор остальных и уж
           // тем более — весь цикл: иначе бот замолчит для всех.
-          console.error(`[poller] обновление ${raw.update_id}:`, err.message);
+          console.error('[poller] обновление:', err.message);
         }
-        // Курсор двигаем после каждого обновления, а не пачкой. Если процесс
-        // упадёт посередине, повторно придёт только необработанный хвост.
-        await bot.update({ lastUpdateId: raw.update_id });
+
+        // Курсор двигаем поштучно там, где платформа это позволяет: упав
+        // посередине пачки, мы получим повторно только необработанный хвост.
+        // У MAX маркер один на всю пачку, и канал честно возвращает пусто.
+        const each = channel.cursorOf(raw);
+        if (each != null) await bot.update({ lastUpdateId: each });
+      }
+
+      // Пачечный курсор — для каналов, где поштучного нет.
+      if (nextCursor != null && Number(nextCursor) !== Number(bot.lastUpdateId)) {
+        await bot.update({ lastUpdateId: nextCursor });
       }
     } catch (err) {
       // ChannelError('network') на долгом ожидании — обычное дело: соединение

@@ -18,7 +18,7 @@ const sender = require('../services/notifications/sender');
 
 const router = express.Router();
 
-const EVENTS = ['created', 'moved', 'cancelled', 'reminder'];
+const EVENTS = ['created', 'moved', 'cancelled', 'reminder', 'review'];
 
 // Подстановки показываем в интерфейсе списком: администратор вставляет их
 // кнопкой, а не переписывает из документации.

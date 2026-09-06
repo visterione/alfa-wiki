@@ -246,15 +246,27 @@ async function setWebhook(token, url, secret) {
  * offset подтверждает всё, что меньше него: обновления, разобранные в прошлый
  * раз, Telegram больше не пришлёт.
  */
-async function getUpdates(token, offset, timeoutSec = 30) {
+async function getUpdates(token, cursor, timeoutSec = 30) {
   // Своё ожидание держим заведомо дольше телеграмного, иначе axios оборвёт
   // соединение раньше, чем сервер ответит пустым списком, и каждый цикл будет
   // выглядеть сетевой ошибкой.
-  return call(token, 'getUpdates', {
-    offset,
+  const updates = await call(token, 'getUpdates', {
+    offset: cursor ? Number(cursor) + 1 : undefined,
     timeout: timeoutSec,
     allowed_updates: ['message', 'callback_query']
   }, timeoutSec * 1000 + 15000);
+
+  const last = updates.length ? updates[updates.length - 1].update_id : cursor;
+  return { updates, cursor: last };
+}
+
+/**
+ * Чем двигать курсор после разбора одного обновления. У Telegram он поштучный,
+ * поэтому при падении посередине пачки повторно придёт только необработанный
+ * хвост. У MAX маркер один на пачку, и там этот метод возвращает пусто.
+ */
+function cursorOf(raw) {
+  return raw && raw.update_id != null ? raw.update_id : null;
 }
 
 async function deleteWebhook(token) {
@@ -272,6 +284,7 @@ module.exports = {
   answerCallback,
   parseUpdate,
   getMe,
+  cursorOf,
   fileLink,
   fileStream,
   getUpdates,

@@ -435,6 +435,9 @@ app.use('/api/bot-subscribers', require('./routes/bot-subscribers'));
 app.use('/api/messenger', require('./routes/messenger-webhook'));
 app.use('/api/open-line', require('./routes/open-line'));
 app.use('/api/notifications', require('./routes/notifications'));
+// Приём событий от МИС (ver. 7.88). Маршрут публичный намеренно: Renovatio
+// ходит без нашего токена, подлинность проверяется секретом в самом пути.
+app.use('/api/mis-events', require('./routes/mis-events'));
 app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);
 app.use('/api/cash-payments', cashPaymentsRoutes);

@@ -38,7 +38,9 @@ function extensionFor(media, suggestedName) {
  * @returns {Promise<Object>} описание вложения для omni_messages.attachments
  */
 async function saveIncoming(channel, bot, media, conversationId) {
-  const link = await channel.fileLink(bot, media.fileId);
+  // У Telegram во вложении лежит идентификатор, и ссылку надо спросить отдельно;
+  // у MAX она приходит сразу. Канал прячет разницу, здесь только выбор источника.
+  const link = await channel.fileLink(bot, media.fileId || media.url);
 
   if (link.size && link.size > MAX_BYTES) {
     // Не молчим и не падаем: в переписке останется отметка, что файл был, но

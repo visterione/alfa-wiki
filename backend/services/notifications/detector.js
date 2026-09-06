@@ -31,6 +31,7 @@ const WATERMARK_KEY = 'notif_watermark';
 // повторы всё равно отсекает ключ идемпотентности.
 const OVERLAP_MS = 90 * 1000;
 const REFUSED_STATUS = 5;
+const COMPLETED_STATUS = 4;
 
 // ── Общение с МИС ─────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ function toSnapshot(appt) {
     timeStart: parseMisDate(appt.time_start),
     statusId: appt.status_id != null ? Number(appt.status_id) : null,
     confirmStatus: appt.confirm_status != null ? Number(appt.confirm_status) : null,
+    dateCompleted: parseMisDate(appt.date_completed),
     seenAt: new Date()
   };
 }
@@ -118,6 +120,13 @@ function eventFor(before, now) {
   const wasAt = before.timeStart && before.timeStart.getTime();
   const nowAt = now.timeStart && now.timeStart.getTime();
   if (wasAt && nowAt && wasAt !== nowAt) return { event: 'moved', previousAt: before.timeStart };
+
+  // Приём состоялся — отсюда считается просьба об отзыве. Именно переход, а не
+  // сам статус: визит остаётся завершённым навсегда, и без сравнения с прошлым
+  // состоянием мы просили бы отзыв при каждой последующей правке визита.
+  if (now.statusId === COMPLETED_STATUS && before.statusId !== COMPLETED_STATUS) {
+    return { event: 'review', completedAt: now.dateCompleted || new Date() };
+  }
 
   return null;
 }
@@ -179,6 +188,18 @@ async function enqueue(found, snap) {
 
   for (const item of prepared) {
     try {
+      // Отзыв «один раз за день» ставится на последний визит: если человек был
+      // сегодня уже не первый раз, просьбу надо сдвинуть, а не задваивать.
+      if (item.moveIfExists) {
+        const existing = await NotifOutbox.findOne({ where: { dedupKey: item.dedupKey, status: 'pending' } });
+        if (existing) {
+          if (new Date(item.plannedAt) > new Date(existing.plannedAt)) {
+            await existing.update({ plannedAt: item.plannedAt, apptId: snap.apptId, text: item.text });
+          }
+          continue;
+        }
+      }
+
       await NotifOutbox.create({
         apptId: snap.apptId,
         event: found.event,

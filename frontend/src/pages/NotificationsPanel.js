@@ -16,7 +16,8 @@ const EVENT_TITLES = {
   created: 'Запись на визит',
   moved: 'Перенос визита',
   cancelled: 'Отмена визита',
-  reminder: 'Напоминание о визите'
+  reminder: 'Напоминание о визите',
+  review: 'Просьба об отзыве'
 };
 
 const STATUS_VIEW = {
@@ -137,6 +138,12 @@ export default function NotificationsPanel() {
                 <h3>
                   {EVENT_TITLES[t.event] || t.event}
                   {t.event === 'reminder' && <span className="nt-when">{beforeLabel(t.beforeMinutes)}</span>}
+                  {t.event === 'review' && (
+                    <span className="nt-when">
+                      через {beforeLabel(t.afterMinutes).replace('за ', '')} после визита
+                      {t.frequency === 'daily' ? ', один раз за день' : ', по каждому визиту'}
+                    </span>
+                  )}
                 </h3>
                 <div className="nt-card-actions">
                   <label className="nt-check">

@@ -3353,6 +3353,9 @@ const NotifAppointment = sequelize.define('NotifAppointment', {
   timeStart: { type: DataTypes.DATE, field: 'time_start' },
   statusId: { type: DataTypes.SMALLINT, field: 'status_id' },
   confirmStatus: { type: DataTypes.SMALLINT, field: 'confirm_status' },
+  // Момент завершения приёма: от него отсчитывается просьба об отзыве. Время
+  // начала не годится — приём мог задержаться или затянуться.
+  dateCompleted: { type: DataTypes.DATE, field: 'date_completed' },
   seenAt: { type: DataTypes.DATE, field: 'seen_at', defaultValue: DataTypes.NOW }
 }, { tableName: 'notif_appointments', timestamps: false });
 
@@ -3361,7 +3364,10 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   event: { type: DataTypes.STRING(20), allowNull: false },   // created | moved | cancelled | reminder
   medCenterId: { type: DataTypes.UUID, allowNull: true },     // пусто — общий на сеть
   text: { type: DataTypes.TEXT, allowNull: false },
-  beforeMinutes: { type: DataTypes.INTEGER, allowNull: true }, // только у напоминаний
+  beforeMinutes: { type: DataTypes.INTEGER, allowNull: true },  // напоминание: за сколько до визита
+  afterMinutes: { type: DataTypes.INTEGER, allowNull: true },   // отзыв: через сколько после визита
+  // Отзыв по каждому визиту или один раз за день, после последнего.
+  frequency: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'each' },
   withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, { tableName: 'notif_templates', timestamps: true });
@@ -3392,6 +3398,26 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
     { unique: true, fields: ['dedup_key'] },
     { fields: ['status', 'planned_at'] }
   ]
+});
+
+// === СОБЫТИЯ ОТ МИС (ver. 7.88) ===
+// Приёмник настройки «уведомления о событиях» в Renovatio. Сначала только
+// записываем присланное как есть: формат тела неизвестен, а гадать о нём по
+// документации мы уже пробовали.
+const MisEvent = sequelize.define('MisEvent', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  event: { type: DataTypes.STRING(50), allowNull: true },
+  body: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  headers: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  method: { type: DataTypes.STRING(10), allowNull: true },
+  query: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  remoteAddr: { type: DataTypes.STRING(64), allowNull: true },
+  processed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }
+}, {
+  tableName: 'mis_events',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [{ fields: ['event', 'processed'] }]
 });
 
 // === API CLIENT MODEL (внешняя система, которой разрешено слать нам данные) ===
@@ -4417,6 +4443,7 @@ module.exports = {
   NotifAppointment,
   NotifTemplate,
   NotifOutbox,
+  MisEvent,
   Vehicle,
   VehicleFile,
   MapMarker,

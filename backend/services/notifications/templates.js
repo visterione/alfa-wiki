@@ -123,7 +123,33 @@ async function build(event, snap, found = {}) {
   for (const template of forEvent(event)) {
     out.push({
       text: render(template.text, values),
-      withConfirm: template.withConfirm
+      withConfirm: template.withConfirm,
+      template
+    });
+  }
+
+  // Отзыв назначается на «после визита», а не «до»: интервал отсчитывается от
+  // момента завершения приёма.
+  if (event === 'review') {
+    const done = found.completedAt || new Date();
+    return out.map(({ template, ...item }) => {
+      const after = (template && template.afterMinutes) || 180;
+      const plannedAt = new Date(done.getTime() + after * 60000);
+
+      // «Раз в день» — одна просьба на человека за сутки, привязанная к
+      // последнему визиту. Ключ без визита в составе, поэтому второй приём в тот
+      // же день не заводит вторую строку, а двигает первую.
+      const daily = template && template.frequency === 'daily';
+      const day = done.toISOString().slice(0, 10);
+
+      return {
+        ...item,
+        plannedAt,
+        moveIfExists: daily,
+        dedupKey: daily
+          ? `p${snap.patientId || 'none'}:review:${day}`
+          : `${snap.apptId}:review:${day}`
+      };
     });
   }
 
@@ -146,7 +172,7 @@ async function build(event, snap, found = {}) {
     }
   }
 
-  return out;
+  return out.map(({ template, ...item }) => item);
 }
 
 module.exports = { build, render, valuesFor, firstName, shortDoctor };
