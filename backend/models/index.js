@@ -3363,7 +3363,10 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   event: { type: DataTypes.STRING(20), allowNull: false },   // created | moved | cancelled | reminder
   medCenterId: { type: DataTypes.UUID, allowNull: true },     // пусто — общий на сеть
-  text: { type: DataTypes.TEXT, allowNull: false },
+  text: { type: DataTypes.TEXT, allowNull: false },       // мессенджеры: длина не ограничена
+  // Короткий текст для SMS. Кириллица даёт 70 символов на сегмент, и лишний
+  // символ стоит второй SMS — поэтому текст отдельный, а не обрезанный.
+  smsText: { type: DataTypes.TEXT, allowNull: true },
   beforeMinutes: { type: DataTypes.INTEGER, allowNull: true },  // напоминание: за сколько до визита
   afterMinutes: { type: DataTypes.INTEGER, allowNull: true },   // отзыв: через сколько после визита
   // Отзыв по каждому визиту или один раз за день, после последнего.
@@ -3385,7 +3388,10 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   patientId: { type: DataTypes.INTEGER, field: 'patient_id' },
   phone: { type: DataTypes.STRING(30) },
   text: { type: DataTypes.TEXT, allowNull: false },
+  smsText: { type: DataTypes.TEXT, allowNull: true, field: 'sms_text' },
   withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Видно, что сообщение не потерялось, а ждёт конца тихих часов.
+  postponedFrom: { type: DataTypes.DATE, allowNull: true, field: 'postponed_from' },
   plannedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'planned_at' },
   status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'pending' },
   channel: { type: DataTypes.STRING(20), allowNull: true },

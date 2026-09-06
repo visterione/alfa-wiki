@@ -123,6 +123,9 @@ async function build(event, snap, found = {}) {
   for (const template of forEvent(event)) {
     out.push({
       text: render(template.text, values),
+      // Короткий текст для SMS. Пусто — уйдёт обычный: пусть лучше заплатят за
+      // два сегмента, чем человек не получит уведомления вовсе.
+      smsText: template.smsText ? render(template.smsText, values) : null,
       withConfirm: template.withConfirm,
       template
     });
@@ -165,6 +168,7 @@ async function build(event, snap, found = {}) {
 
       out.push({
         text: render(template.text, values),
+        smsText: template.smsText ? render(template.smsText, values) : null,
         withConfirm: template.withConfirm,
         plannedAt,
         dedupKey: `${snap.apptId}:reminder:${template.beforeMinutes}:${snap.timeStart.toISOString()}`

@@ -235,3 +235,209 @@
   .nt-root { padding: 14px; }
   .nt-row-time { margin-left: 0; }
 }
+
+/* ── Короткий текст для SMS ──────────────────────────────────────────── */
+
+.nt-sms { margin-top: 12px; }
+.nt-sms label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.nt-sms textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.nt-sms textarea:focus { outline: none; border-color: var(--accent-500); }
+
+.nt-sms-hint { font-weight: 400; color: var(--text-tertiary); }
+
+.nt-sms-cost { margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+/* Вторая SMS — это деньги, а не мелочь оформления: показываем заметно. */
+.nt-sms-cost.over { color: var(--warning); font-weight: 600; }
+
+/* ── Настройки рассылки ──────────────────────────────────────────────── */
+
+.nt-settings { display: flex; flex-direction: column; gap: 14px; max-width: 860px; }
+
+.nt-settings h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.nt-hint { margin: 0 0 12px; font-size: 12px; color: var(--text-tertiary); line-height: 1.5; }
+
+.nt-cascade { list-style: none; margin: 0 0 12px; padding: 0; }
+.nt-cascade li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+.nt-step-no {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-500);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.nt-step-name { flex: 1; font-size: 14px; color: var(--text-primary); }
+.nt-cascade button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.nt-cascade button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.nt-cascade button:disabled { opacity: .35; cursor: not-allowed; }
+
+.nt-times { display: flex; gap: 14px; margin: 10px 0; }
+.nt-times label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.nt-times input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.nt-quiet-channels { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.nt-quiet-channels .nt-hint { margin: 0; }
+
+.nt-card-actions-row { display: flex; justify-content: flex-end; }
+
+/* ── Настройка линий ─────────────────────────────────────────────────── */
+
+.ols-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 860px;
+  margin-bottom: 14px;
+}
+.ols-head .nt-hint { margin: 0; max-width: 620px; }
+
+.ols-new { display: flex; gap: 10px; align-items: center; max-width: 860px; margin-bottom: 14px; }
+.ols-new input { flex: 1; }
+
+.ols-line { max-width: 860px; margin-bottom: 14px; }
+.ols-line.off { opacity: .55; }
+
+.ols-block { margin-top: 14px; }
+.ols-block h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ols-block textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.ols-block textarea:focus { outline: none; border-color: var(--accent-500); }
+
+.ols-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ols-chips .nt-chip { gap: 6px; padding: 4px 8px; font-size: 12px; }
+.ols-chips .nt-chip button {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: .6;
+  cursor: pointer;
+}
+.ols-chips .nt-chip button:hover { opacity: 1; }
+
+.ols-new input,
+.ols-new select,
+.ols-chips select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .ols-head { flex-direction: column; }
+  .ols-new { flex-direction: column; align-items: stretch; }
+}
+
+/* ── Проверка отправки и одобренные шаблоны ──────────────────────────── */
+
+.nt-test { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.nt-test input,
+.nt-test select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+.nt-test input { flex: 0 0 180px; }
+.nt-test select { flex: 1; min-width: 180px; }
+
+.nt-approved {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.nt-approved strong { color: var(--text-primary); margin-right: 8px; }

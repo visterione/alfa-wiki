@@ -29,8 +29,8 @@ const KEY_ENV = {
   'alfa-3k': 'FROMNI_KEY_ALFA_3K'
 };
 
-// Порядок ступеней внутри Fromni. Notify дешевле SMS, поэтому идёт первым;
-// список настраивается через .env, если у клиники другой набор подключений.
+// Запасной порядок ступеней. Основной приходит из настроек (services/
+// notifications/settings.js) — этот нужен, если вызывающий его не передал.
 const CASCADE = (process.env.FROMNI_CASCADE || 'notify+vk,sms+webchat').split(',').map(s => s.trim());
 
 // Старый nginx у Fromni просит legacy-ренегоциацию TLS, которую OpenSSL 3
@@ -84,11 +84,11 @@ async function connectionsOf(organization) {
  * Собирает ступени каскада из того, что реально подключено у организации.
  * Имя вида «notify+vk» — это комбинация, и подключения ей нужны от обеих частей.
  */
-async function channelsFor(organization) {
+async function channelsFor(organization, order = CASCADE) {
   const available = await connectionsOf(organization);
 
   const out = [];
-  for (const name of CASCADE) {
+  for (const name of order) {
     const connections = name.split('+').flatMap(part => available[part] || []);
     if (connections.length) out.push({ name, connections });
   }
@@ -99,18 +99,25 @@ async function channelsFor(organization) {
  * Отправляет уведомление на телефон. Дальше Fromni сама идёт по ступеням до
  * первой доставки.
  *
+ * @param {Object}   texts  тексты по ступеням: { 'sms+webchat': 'коротко', ... }
+ *                          и `default` для остальных. У SMS длина считается
+ *                          сегментами, и один лишний символ стоит второй SMS —
+ *                          поэтому текст на ступень свой, а не общий.
  * @returns {Promise<{externalMessageId: string, channel: string}>}
  */
-async function sendText(organization, phone, text) {
-  const channels = await channelsFor(organization);
+async function sendText(organization, phone, texts, order = CASCADE) {
+  const channels = await channelsFor(organization, order);
   if (!channels.length) {
-    throw new Error(`У организации «${organization}» не найдено подключений для каскада ${CASCADE.join(' → ')}`);
+    throw new Error(`У организации «${organization}» не найдено подключений для каскада ${order.join(' → ')}`);
   }
+
+  const fallback = typeof texts === 'string' ? texts : texts.default;
 
   const { data } = await client(organization).post('/notifications/send', {
     phone,
-    message: { text },
-    channels
+    // Текст на каждую ступень свой. Fromni это умеет: в её API у канала есть
+    // собственное поле message, и порядок массива задаёт порядок отправки.
+    channels: channels.map(c => ({ ...c, message: { text: (texts && texts[c.name]) || fallback } }))
   });
 
   if (!data || (data.result && data.result.error)) {
@@ -120,4 +127,24 @@ async function sendText(organization, phone, text) {
   return { externalMessageId: data.id || null, channel: channels.map(c => c.name).join('→') };
 }
 
-module.exports = { platform: 'fromni', sendText, channelsFor, connectionsOf, CASCADE, KEY_ENV };
+/**
+ * Зарегистрированные шаблоны. Нужны не для отправки — её метод ищет совпадение
+ * сам, — а чтобы администратор видел, с чем именно текст должен совпасть.
+ *
+ * Цена вопроса: не нашёлся шаблон — Notify не сработает, и сообщение молча
+ * уйдёт SMS-кой. Расхождение в одном слове превращает дешёвый канал в дорогой,
+ * и заметить это можно только по счёту в конце месяца.
+ */
+async function templates(organization) {
+  const { data } = await client(organization).post('/template2/list', {});
+  const rows = Array.isArray(data && data.data) ? data.data : (Array.isArray(data) ? data : []);
+
+  return rows.map(t => ({
+    id: t.id || t._id || null,
+    name: t.name || t.title || '',
+    text: t.text || (t.message && t.message.text) || '',
+    channels: t.channels || t.channelNames || []
+  }));
+}
+
+module.exports = { platform: 'fromni', sendText, channelsFor, connectionsOf, templates, CASCADE, KEY_ENV };

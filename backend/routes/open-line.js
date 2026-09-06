@@ -126,7 +126,9 @@ router.get('/lines', authenticate, requireAdmin, async (req, res) => {
     });
 
     const bots = await MessengerBot.findAll({ attributes: ['id', 'platform', 'username', 'organization', 'lineId'] });
-    res.json({ lines, bots });
+    // Справочник медцентров — для выбора при создании линии.
+    const medCenters = await MedCenter.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] });
+    res.json({ lines, bots, medCenters });
   } catch (err) {
     fail(res, err, 'GET /lines');
   }

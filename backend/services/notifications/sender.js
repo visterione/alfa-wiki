@@ -19,6 +19,7 @@ const { NotifOutbox, NotifAppointment, BotSubscriber, MessengerBot, Setting } = 
 const { getChannel } = require('../messengers');
 const fromni = require('../messengers/fromni');
 const misClient = require('../misClient');
+const settings = require('./settings');
 
 // Какой организации принадлежит клиника МИС. Нужно, чтобы уйти во Fromni под
 // правильным аккаунтом: у каждой организации он свой. Заполняется в настройках,
@@ -86,10 +87,20 @@ async function deliver(item, clinicId = null) {
     return item.update({ status: 'skipped', error: 'пилот: телефон вне списка NOTIFIER_PILOT_PHONES' });
   }
 
+  const order = await settings.cascade();
+  const quiet = await settings.quietHours();
+  const now = new Date();
+
   const found = await subscriberFor(item.phone);
+  const botStep = order.indexOf('bot');
+  const fromniSteps = order.filter(name => name !== 'bot');
+
+  // Ступень «бот» может быть выключена или переставлена: порядок каскада —
+  // настройка, а не порядок операторов в коде.
+  const botAllowed = botStep !== -1;
 
   // Ступень 1: свой бот.
-  if (found) {
+  if (found && botAllowed && !(settings.quietFor(quiet, 'bot') && settings.isQuiet(quiet, now))) {
     try {
       const channel = getChannel(found.bot.platform);
       const options = item.withConfirm && item.apptId
@@ -118,12 +129,92 @@ async function deliver(item, clinicId = null) {
     return item.update({ status: 'failed', error: 'нет телефона пациента' });
   }
 
+  // Тихие часы. Сообщение не выбрасываем, а откладываем до утра: человек,
+  // которому перенесли завтрашний приём, должен узнать об этом — но не в час
+  // ночи по SMS.
+  const silenced = fromniSteps.filter(name => settings.quietFor(quiet, name));
+  if (silenced.length === fromniSteps.length && settings.isQuiet(quiet, now)) {
+    const at = settings.nextAllowed(quiet, now);
+    return item.update({
+      plannedAt: at,
+      postponedFrom: item.postponedFrom || now,
+      error: `тихие часы, отложено до ${at.toLocaleString('ru-RU')}`
+    });
+  }
+
   try {
     const organization = await organizationFor(clinicId);
-    const sent = await fromni.sendText(organization, item.phone, item.text);
+    // У SMS длина считается сегментами, и лишний символ стоит второй SMS —
+    // поэтому короткий текст едет отдельно от обычного.
+    const short = item.smsText || item.text;
+    const texts = { default: item.text, 'sms+webchat': short, sms: short };
+
+    const sent = await fromni.sendText(organization, item.phone, texts, fromniSteps);
     return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null });
   } catch (err) {
     return item.update({ status: 'failed', error: err.message });
+  }
+}
+
+
+/**
+ * Отправка одного сообщения вручную, для проверки.
+ *
+ * Отличается от боевой тремя вещами, и все три намеренны:
+ *   • предохранитель второй ступени не действует — администратор набрал один
+ *     номер и нажал кнопку, это не веерная рассылка;
+ *   • тихие часы игнорируются: проверять канал в девять утра неудобно;
+ *   • ступень можно назвать явно, чтобы убедиться именно в SMS, а не получить
+ *     сообщение в бот и остаться без ответа на исходный вопрос.
+ *
+ * @param {'auto'|'bot'|'fromni'|'sms'} step
+ */
+async function sendTest(item, { step = 'auto' } = {}) {
+  const order = await settings.cascade();
+  const fromniSteps = order.filter(name => name !== 'bot');
+
+  if (step === 'auto' || step === 'bot') {
+    const found = await subscriberFor(item.phone);
+    if (found) {
+      try {
+        const channel = getChannel(found.bot.platform);
+        await channel.sendText(found.bot, found.subscriber.externalUserId, item.text);
+        await item.update({ status: 'sent', channel: found.bot.platform, sentAt: new Date() });
+        return { channel: found.bot.platform, text: item.text };
+      } catch (err) {
+        if (step === 'bot') {
+          await item.update({ status: 'failed', error: err.message });
+          return { channel: 'bot', error: err.message };
+        }
+      }
+    } else if (step === 'bot') {
+      await item.update({ status: 'failed', error: 'по этому номеру нет подписки на наши боты' });
+      return { channel: 'bot', error: 'по этому номеру нет подписки на наши боты' };
+    }
+  }
+
+  // Явно попросили SMS — сужаем каскад до последней ступени, иначе Fromni
+  // доставит через Notify и вопрос «дошёл ли наш текст по SMS» останется открытым.
+  const steps = step === 'sms'
+    ? fromniSteps.filter(name => name.startsWith('sms'))
+    : fromniSteps;
+
+  if (!steps.length) {
+    await item.update({ status: 'failed', error: 'в каскаде нет подходящей ступени' });
+    return { error: 'в каскаде нет подходящей ступени' };
+  }
+
+  const short = item.smsText || item.text;
+  const texts = { default: item.text, 'sms+webchat': short, sms: short };
+
+  try {
+    const organization = await organizationFor(null);
+    const sent = await fromni.sendText(organization, item.phone, texts, steps);
+    await item.update({ status: 'sent', channel: sent.channel, sentAt: new Date() });
+    return { channel: sent.channel, organization, text: steps.some(n => n.startsWith('sms')) ? short : item.text };
+  } catch (err) {
+    await item.update({ status: 'failed', error: err.message });
+    return { error: err.message };
   }
 }
 
@@ -167,6 +258,6 @@ async function runOnce(limit = 100) {
 }
 
 module.exports = {
-  runOnce, deliver, subscriberFor, organizationFor, allowedByPilot,
+  runOnce, deliver, sendTest, subscriberFor, organizationFor, allowedByPilot,
   CLINIC_ORG_KEY, ALLOW_FROMNI, PILOT_PHONES
 };

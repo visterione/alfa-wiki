@@ -7,6 +7,7 @@ import { openLine as openLineApi } from '../services/api';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import NotificationsPanel from './NotificationsPanel';
+import OpenLineSettings from './OpenLineSettings';
 import toast from 'react-hot-toast';
 import './OpenLine.css';
 import './NotificationsPanel.css';
@@ -87,7 +88,8 @@ export default function OpenLine() {
   // Экран держим в адресе, как в «Задачах»: ссылка на журнал уведомлений должна
   // открываться журналом, а не сбрасывать человека в очередь обращений.
   const [params, setParams] = useSearchParams();
-  const screen = params.get('screen') === 'notifications' ? 'notifications' : 'conversations';
+  const asked = params.get('screen');
+  const screen = ['notifications', 'settings'].includes(asked) ? asked : 'conversations';
 
   const [state, setState] = useState(null);          // смена и линии сотрудника
   const [scope, setScope] = useState('queue');
@@ -228,6 +230,12 @@ export default function OpenLine() {
         className={screen === 'notifications' ? 'active' : ''}
         onClick={() => setParams({ screen: 'notifications' })}
       >Уведомления</button>
+      {user?.isAdmin && (
+        <button
+          className={screen === 'settings' ? 'active' : ''}
+          onClick={() => setParams({ screen: 'settings' })}
+        >Настройка линий</button>
+      )}
     </nav>
   );
 
@@ -236,6 +244,15 @@ export default function OpenLine() {
       <div className="ol-page">
         {screenTabs}
         <NotificationsPanel />
+      </div>
+    );
+  }
+
+  if (screen === 'settings') {
+    return (
+      <div className="ol-page">
+        {screenTabs}
+        <OpenLineSettings />
       </div>
     );
   }

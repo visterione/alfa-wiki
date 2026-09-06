@@ -117,7 +117,11 @@
     "migrate:7.87:check": "node scripts/runSqlMigration.js 7.87 --check",
     "migrate:7.88": "node scripts/runSqlMigration.js 7.88",
     "migrate:7.88:check": "node scripts/runSqlMigration.js 7.88 --check",
-    "mis-events": "node scripts/misEvents.js"
+    "mis-events": "node scripts/misEvents.js",
+    "migrate:7.93": "node scripts/runSqlMigration.js 7.93",
+    "migrate:7.93:check": "node scripts/runSqlMigration.js 7.93 --check",
+    "migrate:7.94": "node scripts/runSqlMigration.js 7.94",
+    "migrate:7.94:check": "node scripts/runSqlMigration.js 7.94 --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

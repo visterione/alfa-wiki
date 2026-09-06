@@ -1310,5 +1310,13 @@ export const notifications = {
   updateTemplate: (id, data) => api.put(`/notifications/templates/${id}`, data),
   deleteTemplate: (id) => api.delete(`/notifications/templates/${id}`),
   preview: (text) => api.post('/notifications/templates/preview', { text }),
-  outbox: (params) => api.get('/notifications/outbox', { params })
+  outbox: (params) => api.get('/notifications/outbox', { params }),
+
+  settings: () => api.get('/notifications/settings'),
+  saveSettings: (data) => api.put('/notifications/settings', data),
+
+  // Что зарегистрировано у агрегатора: с этими текстами метод отправки сверяет
+  // наш, и несовпадение молча роняет Notify в SMS.
+  approved: (organization) => api.get('/notifications/approved', { params: { organization } }),
+  test: (data) => api.post('/notifications/test', data)
 };
