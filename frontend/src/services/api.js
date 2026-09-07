@@ -999,6 +999,9 @@ export const botSubscribers = {
   overlap: (params) => api.get('/bot-subscribers/overlap', { params }),
   // Охват среди реальных пациентов: сколько пациентов с визитами подписаны на боты
   penetration: (params) => api.get('/bot-subscribers/penetration', { params }),
+  // Чем в действительности доставлялись уведомления: ступени каскада по нашему
+  // журналу отправок, а не по отчёту агрегатора (ver. 8.02).
+  channels: (params) => api.get('/bot-subscribers/channels', { params }),
 };
 
 // ── Складской учёт (ver. 6.68) ──────────────────────────────────────────────
@@ -1325,5 +1328,9 @@ export const notifications = {
   // Что зарегистрировано у агрегатора: с этими текстами метод отправки сверяет
   // наш, и несовпадение молча роняет Notify в SMS.
   approved: (organization) => api.get('/notifications/approved', { params: { organization } }),
-  test: (data) => api.post('/notifications/test', data)
+  test: (data) => api.post('/notifications/test', data),
+
+  // Остаток на счету у Имобиса — единственная цифра о деньгах, которую их API
+  // отдаёт: отчёта о расходах и прайса по каналам в нём нет.
+  balance: (organization) => api.get('/notifications/balance', { params: { organization } })
 };

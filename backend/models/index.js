@@ -119,7 +119,14 @@ const User = sequelize.define('User', {
       // Открытая линия (ver. 7.85). Тоже только видимость: отвечать может тот,
       // кто заведён в состав линии (OmniLineOperator), и список линии и есть
       // право. Два места настройки одного и того же неизбежно разошлись бы.
-      openLine: false
+      openLine: false,
+      // Настройка открытой линии и оповещений (ver. 8.02). Отдельно от openLine
+      // намеренно: рабочее окно колл-центра открыто десяткам операторов, а
+      // состав линий, тексты уведомлений всей сети и токены провайдера — это
+      // совсем другой круг людей. Одним флагом на оба раздела пришлось бы
+      // выбирать между «оператор видит настройки» и «настройщик не видит
+      // очередь», и обе развилки плохи.
+      openLineAdmin: false
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -3475,7 +3482,9 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   postponedFrom: { type: DataTypes.DATE, allowNull: true, field: 'postponed_from' },
   plannedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'planned_at' },
   status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'pending' },
-  channel: { type: DataTypes.STRING(20), allowNull: true },
+  // 64, а не 20: сюда пишется весь маршрут каскада через «→», а не одна
+  // ступень («notify+vk→sms+webchat» — 21 символ). См. migrations/ver. 8.02.
+  channel: { type: DataTypes.STRING(64), allowNull: true },
   error: { type: DataTypes.TEXT, allowNull: true },
   sentAt: { type: DataTypes.DATE, allowNull: true, field: 'sent_at' },
   externalMessageId: { type: DataTypes.STRING(64), allowNull: true, field: 'external_message_id' },

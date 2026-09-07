@@ -53,6 +53,7 @@ const ReviewStatistics = lazy(() => import('./pages/ReviewStatistics'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const WhatsNew = lazy(() => import('./pages/WhatsNew'));
 const AdminReleaseNotes = lazy(() => import('./pages/admin/AdminReleaseNotes'));
+const AdminOpenLine = lazy(() => import('./pages/admin/AdminOpenLine'));
 const Warehouse = lazy(() => import('./pages/warehouse/Warehouse'));
 // Публичные карточки по QR грузятся отдельным чанком: их открывают с телефона по
 // одной ссылке, и тянуть ради этого весь бандл портала незачем.
@@ -186,6 +187,14 @@ function AppRoutes() {
             линии, как у склада и «Задач». */}
         <Route path="open-line" element={
           <ProtectedRoute requireAdminAccess="openLine"><OpenLine /></ProtectedRoute>
+        } />
+
+        {/* Настройки открытой линии и оповещений (ver. 8.02) — отдельный раздел
+            админки со своим правом. Состав линий, тексты уведомлений и журнал
+            отправок лежали вкладками внутри рабочего окна колл-центра; оператору
+            там делать нечего, и один промах мимо вкладки уводил его туда. */}
+        <Route path="admin/open-line" element={
+          <ProtectedRoute requireAdminAccess="openLineAdmin"><AdminOpenLine /></ProtectedRoute>
         } />
 
         {/* Reviews module */}

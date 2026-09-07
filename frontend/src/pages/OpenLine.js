@@ -6,8 +6,6 @@ import {
 import { openLine as openLineApi } from '../services/api';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import NotificationsPanel from './NotificationsPanel';
-import OpenLineSettings from './OpenLineSettings';
 import OpenLineStats from './OpenLineStats';
 import ChannelAvatar from '../components/openline/ChannelAvatar';
 import toast from 'react-hot-toast';
@@ -17,10 +15,17 @@ import toast from 'react-hot-toast';
 // OpenLine.css).
 import './Dashboard.css';
 import './OpenLine.css';
-import './NotificationsPanel.css';
 
 /**
- * Открытая линия: обращения пациентов из ботов (ver. 7.85, интерфейс — 7.99).
+ * Открытая линия: обращения пациентов из ботов (ver. 7.85, интерфейс — 8.02).
+ *
+ * Рабочее окно оператора колл-центра, и только оно: обращения и показатели.
+ * До 8.02 здесь же лежали вкладки «Уведомления» и «Настройка линий» — состав
+ * линий, тексты уведомлений всей сети и токены провайдера в одном клике от
+ * очереди. Прав это не нарушало, но лишние вкладки в рабочем окне сбивали, а
+ * промах мимо вкладки уводил человека туда, где ему делать нечего. Всё это
+ * переехало в отдельный раздел админки (pages/admin/AdminOpenLine.js) со своим
+ * правом openLineAdmin.
  *
  * Три списка, а не один с фильтром: очередь — то, что надо разобрать, «мои» —
  * то, что надо довести, архив — то, куда лезут раз в месяц при разборе жалобы.
@@ -357,27 +362,8 @@ export default function OpenLine() {
         className={screen === 'stats' ? 'active' : ''}
         onClick={() => setParams({ screen: 'stats' })}
       >Показатели</button>
-      <button
-        className={screen === 'notifications' ? 'active' : ''}
-        onClick={() => setParams({ screen: 'notifications' })}
-      >Уведомления</button>
-      {user?.isAdmin && (
-        <button
-          className={screen === 'settings' ? 'active' : ''}
-          onClick={() => setParams({ screen: 'settings' })}
-        >Настройка линий</button>
-      )}
     </nav>
   );
-
-  if (screen === 'notifications') {
-    return (
-      <div className="ol-page">
-        {screenTabs}
-        <NotificationsPanel />
-      </div>
-    );
-  }
 
   if (screen === 'stats') {
     return (
@@ -388,17 +374,6 @@ export default function OpenLine() {
     );
   }
 
-  if (screen === 'settings') {
-    return (
-      <div className="ol-page">
-        {screenTabs}
-        <OpenLineSettings />
-      </div>
-    );
-  }
-
-  // Администратор может не работать ни на одной линии, но тексты уведомлений
-  // правит именно он — переключатель разделов нужен и на этом экране.
   if (state && !state.isOperator) {
     return (
       <div className="ol-page">

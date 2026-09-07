@@ -1376,6 +1376,11 @@ export default function AdminUsers() {
                         { key: 'backup',   label: 'Резервные копии' },
                         { key: 'journal',  label: 'Журнал' },
                         { key: 'parser',   label: 'Парсер цен' },
+                        // Состав линий, тексты уведомлений всей сети и токены
+                        // провайдера. Отдельно от самой открытой линии ниже:
+                        // рабочее окно колл-центра открыто десяткам операторов,
+                        // а это — совсем другой круг людей.
+                        { key: 'openLineAdmin', label: 'Открытая линия: настройки' },
                       ].map(({ key, label }) => ({
                         key, label,
                         checked: form.isAdmin || (form.adminAccess[key] ?? false),
@@ -1384,7 +1389,7 @@ export default function AdminUsers() {
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         const a = {...form.adminAccess};
-                        ['pages','roles','settings','sidebar','media','users','backup','journal','parser'].forEach(k => { a[k] = newVal; });
+                        ['pages','roles','settings','sidebar','media','users','backup','journal','parser','openLineAdmin'].forEach(k => { a[k] = newVal; });
                         setForm({...form, adminAccess: a});
                       },
                     },
@@ -1403,13 +1408,18 @@ export default function AdminUsers() {
                         // Онбординг врача: флаг открывает раздел, но заявки человек
                         // увидит только там, где назначен исполнителем шага.
                         { key: 'onboarding',  label: 'Онбординг врача', checked: form.isAdmin || !!form.adminAccess.onboarding, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, onboarding: v}}); } },
+                        // Открытая линия: флаг открывает раздел, но обращения
+                        // человек увидит только тех линий, в состав которых
+                        // заведён (OmniLineOperator). Состав и есть право
+                        // отвечать — здесь только видимость самого раздела.
+                        { key: 'openLine',    label: 'Открытая линия',  checked: form.isAdmin || !!form.adminAccess.openLine,   onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, openLine: v}}); } },
                       ],
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         setForm({...form,
                           canEditServices: newVal, canEditDoctorCards: newVal,
                           canEditAnalyses: newVal, canManagePromotions: newVal,
-                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal}
+                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal, openLine: newVal}
                         });
                       },
                     },

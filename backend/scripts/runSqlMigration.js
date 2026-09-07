@@ -124,10 +124,34 @@ async function check(client, files) {
   }
 }
 
+/**
+ * CREATE INDEX CONCURRENTLY строит индекс, не блокируя запись в таблицу, но ровно
+ * поэтому его нельзя выполнить внутри BEGIN/COMMIT — postgres отвечает отказом.
+ * Такие миграции (6.53, 6.54) раньше просто падали здесь и доезжали руками
+ * через psql — а значит, на машинах, куда руки не дошли, не доезжали вовсе.
+ */
+function needsNoTransaction(sql) {
+  return /\bCONCURRENTLY\b/i.test(sql);
+}
+
 async function apply(client, files) {
   for (const file of files) {
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
     process.stdout.write(`${file} ... `);
+
+    // Без транзакции файл может остаться применённым наполовину, поэтому
+    // так запускаются только индексные миграции: все через IF NOT EXISTS,
+    // повторный запуск доделывает оставшееся.
+    if (needsNoTransaction(sql)) {
+      try {
+        await client.query(sql);
+        console.log('применена (без транзакции: CONCURRENTLY)');
+      } catch (err) {
+        console.log('ОШИБКА');
+        throw err;
+      }
+      continue;
+    }
 
     await client.query('BEGIN');
     try {

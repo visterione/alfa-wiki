@@ -511,7 +511,7 @@ function WeeklyScheduleEditor({ value, onChange }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr 1fr', gap: '6px 10px', alignItems: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto minmax(0, 1fr) minmax(0, 1fr)', gap: '6px 10px', alignItems: 'center' }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>День</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Раб.</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Начало</span>
@@ -575,7 +575,7 @@ function TabClinics({ roomCountByClinic, monthKey }) {
   if (!clinics.length) return <div className="rb-placeholder"><div style={{ fontWeight: 600 }}>Нет данных о клиниках</div></div>;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
       {clinics.map(c => {
         const cid = String(c.id);
         const m = manualData[cid] || {};
@@ -619,7 +619,7 @@ function TabClinics({ roomCountByClinic, monthKey }) {
               )}
             </div>
             <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
                 <Field label="Площадь (м²)">
                   <input type="text" value={m.area || ''} onChange={e => saveField(c.id, { area: e.target.value })} style={fieldInputStyle} />
                 </Field>
@@ -1193,9 +1193,9 @@ function EquipServiceBindings({ equipItem, onClose }) {
           style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--rb-text-secondary)', padding: '0 4px', lineHeight: 1 }}>×</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: 0 }}>
         {/* LEFT: search panel */}
-        <div style={{ borderRight: '1px solid var(--rb-border)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ borderRight: '1px solid var(--rb-border)', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)', display: 'flex', gap: 6 }}>
             <input
               value={svcSearch}
@@ -1245,7 +1245,7 @@ function EquipServiceBindings({ equipItem, onClose }) {
         </div>
 
         {/* RIGHT: bound services */}
-        <div style={{ padding: '12px 14px', overflowY: 'auto', maxHeight: 380 }}>
+        <div style={{ padding: '12px 14px', overflowX: 'auto', overflowY: 'auto', maxHeight: 380, minWidth: 0 }}>
           {loadingB ? (
             <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Загрузка…</div>
           ) : myBindings.length === 0 ? (
@@ -1614,7 +1614,7 @@ function TabConsumables() {
   const clinicName = DEFAULT_CLINICS.find(c => String(c.id) === clinicFilter)?.name;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 300px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
 
       {/* LEFT: Filters + Services list */}
       <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -1690,7 +1690,7 @@ function TabConsumables() {
       </div>
 
       {/* RIGHT: Consumables for selected service */}
-      <div>
+      <div style={{ minWidth: 0 }}>
         {!clinicFilter ? (
           <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
             Выберите медцентр и услугу слева
@@ -1717,7 +1717,7 @@ function TabConsumables() {
 
             {showAdd && (
               <div style={{ background: 'var(--n-50)', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '12px 14px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 90px 90px 110px auto', gap: 8, alignItems: 'flex-end' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) 90px 90px 110px auto', gap: 8, alignItems: 'flex-end' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Расходник *</span>
                     <input list="cs-cons-list" value={form.consumableName}
@@ -2163,13 +2163,13 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
   return (
     <div>
       {/* Summary KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginBottom: 20 }}>
         <SummaryKpiCard icon={MessageSquare} label="Всего отзывов"  value={totals.total}                         color="#3b82f6" />
         <SummaryKpiCard icon={Star}          label="Ср. оценка"     value={totals.avgRating?.toFixed(1) || '—'}  color="#f59e0b" />
       </div>
 
       {/* Per-clinic cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 155px), 1fr))', gap: 10, marginBottom: 20 }}>
         {boards.map((b, i) => {
           const s = statsMap[b.id];
           const color = getBoardColor(b.name);
@@ -2944,7 +2944,7 @@ function MonthFilterPanel({ selectedPeriods, onChange, onClose }) {
                 </div>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{y}</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, paddingLeft: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4, paddingLeft: 24 }}>
                 {MONTHS_RU.map(m => {
                   const sel = selectedPeriods.has(`${y}_${m.num}`);
                   return (
@@ -4616,7 +4616,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
         ) : hasExpected && (
           <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden' }}>
             {/* Header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, padding: '8px 14px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 16, padding: '8px 14px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               <span>Врач</span>
               <span style={{ textAlign: 'right' }}>Норма → Факт → Откл.</span>
             </div>
@@ -5170,7 +5170,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
   ].filter(item => item.value > 0);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 20, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 380px) minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
       <div style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--n-0)', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
         <div style={{ padding: '14px 14px 12px', background: 'var(--accent-600)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Медцентр</div>
@@ -5273,8 +5273,8 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 430px) 1fr', gap: 14, alignItems: 'stretch' }}>
-            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-0)', padding: '12px 14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 430px) minmax(0, 1fr)', gap: 14, alignItems: 'stretch' }}>
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-0)', padding: '12px 14px', minWidth: 0 }}>
               <div style={{ height: 260 }}>
                 {totals.price > 0 && pieRows.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -5304,8 +5304,8 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
               </div>
             </div>
 
-            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-0)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--n-0)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Полная себестоимость</div>
                   <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--rb-text)', fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.fullCost)}</div>
@@ -5326,7 +5326,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 2 }}>
                 {pieRows.map(item => (
-                  <div key={item.name} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                  <div key={item.name} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'center', gap: 10, fontSize: 13 }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                       <span style={{ width: 3, height: 16, borderRadius: 2, background: item.color, flexShrink: 0 }} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
@@ -5701,7 +5701,7 @@ function TabMarketing() {
           РЕЖИМ: По услугам
       ══════════════════════════════════════════════ */}
       {mode === 'services' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 300px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
 
           {/* LEFT: категория + поиск + список услуг */}
           <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -5758,7 +5758,7 @@ function TabMarketing() {
           </div>
 
           {/* RIGHT: деталь выбранной услуги */}
-          <div>
+          <div style={{ minWidth: 0 }}>
             {!clinicFilter ? (
               <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
                 Выберите медцентр и услугу слева
@@ -5770,6 +5770,10 @@ function TabMarketing() {
                   <div style={{ padding: '10px 14px', background: 'var(--n-50)', borderBottom: '1px solid var(--rb-border)', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>
                     Назначенные ставки — {clinicName}
                   </div>
+                  {/* Карточка обрезает содержимое ради скруглений, поэтому узкой
+                      колонке таблица нужна со своей горизонтальной прокруткой —
+                      иначе правые столбцы просто исчезали за краем. */}
+                  <div style={{ overflowX: 'auto' }}>
                   <table className="rb-table" style={{ minWidth: 400 }}>
                     <thead><tr><THCell>Услуга</THCell><THCell>Код</THCell><THCell right>Ставка</THCell><THCell right>Тип</THCell><THCell></THCell></tr></thead>
                     <tbody>
@@ -5796,6 +5800,7 @@ function TabMarketing() {
                         ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               ) : (
                 <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
@@ -7492,7 +7497,7 @@ function TruncTick({ x, y, payload, max = 30 }) {
 
 function DebtPanel({ title, children, style, action }) {
   return (
-    <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', background: 'var(--n-0)', padding: '14px 16px', ...style }}>
+    <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', background: 'var(--n-0)', padding: '14px 16px', minWidth: 0, ...style }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{title}</span>
         {action}
@@ -7595,7 +7600,7 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 12, alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 340px) minmax(0, 1fr)', gap: 12, alignItems: 'stretch' }}>
         {/* Донат физ/юр */}
         <DebtPanel title="Структура долга" style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
@@ -7735,7 +7740,7 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
       )}
 
       {/* Медцентры + возраст + распределение. Круговую по МЦ показываем только если центров > 1 */}
-      <div style={{ display: 'grid', gridTemplateColumns: clinicData.length > 1 ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12, alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: clinicData.length > 1 ? 'repeat(3, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))', gap: 12, alignItems: 'stretch' }}>
         {/* Долг по медцентрам (доли) — скрыт при одном центре */}
         {clinicData.length > 1 && (
         <DebtPanel title="Долг по медцентрам" style={{ display: 'flex', flexDirection: 'column' }}>

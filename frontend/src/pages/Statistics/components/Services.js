@@ -723,7 +723,7 @@ mark.ps-nbspm { background:#f87171; color:#fff; border-radius:3px; font-family:m
 .ps-tree-count { font-size:11px; color:#9ca3af; background:#f3f4f6; padding:2px 7px; border-radius:10px; flex-shrink:0; }
 .ps-tree-children { display:none; }
 .ps-tree-children.open { display:block; }
-.ps-tree-services { padding:0 16px 10px 60px; }
+.ps-tree-services { padding:0 16px 10px 60px; overflow-x:auto; }
 .ps-tree-services-table { width:100%; border-collapse:collapse; font-size:13px; }
 .ps-tree-services-table th { padding:6px 10px; font-size:11px; font-weight:600; color:#9ca3af; text-transform:uppercase; letter-spacing:0.4px; text-align:center; border-bottom:1px solid #f1f5f9; }
 .ps-tree-services-table th.col-name { text-align:left; }

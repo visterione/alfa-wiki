@@ -675,7 +675,7 @@ function HBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#4f8ef
   const max = Math.max(...items.map(d => d[dataKey]), 1);
 
   return (
-    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '12px 14px', minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
         {CHART_SORT_OPTIONS.map(o => (
           <button
@@ -696,15 +696,20 @@ function HBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#4f8ef
           const label = formatter ? formatter(d[dataKey]) : fmt(d[dataKey]);
           const sub   = subLabelKey ? d[subLabelKey] : null;
           return (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-              <div style={{ width: labelWidth, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', color: 'var(--rb-text)' }} title={sub ? `${sub} ${d[labelKey]}` : d[labelKey]}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, minWidth: 0 }}>
+              {/* Колонка подписи задаёт только желаемую ширину и обязана сжиматься.
+                  С flexShrink:0 строка не могла стать уже 220+60+110 px, и в узкой
+                  колонке сетки график вылезал за неё вместе со всей страницей —
+                  правый край с числами уходил за экран. Полное имя остаётся в title. */}
+              <div style={{ flex: `0 1 ${labelWidth}px`, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', color: 'var(--rb-text)' }} title={sub ? `${sub} ${d[labelKey]}` : d[labelKey]}>
                 {sub && <span style={{ flexShrink: 0 }}>{sub}</span>}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d[labelKey]}</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d[labelKey]}</span>
               </div>
-              <div style={{ flex: 1, background: 'var(--n-100)', borderRadius: 4, height: 20, position: 'relative', minWidth: 60 }}>
+              <div style={{ flex: '1 1 0', background: 'var(--n-100)', borderRadius: 4, height: 20, position: 'relative', minWidth: 40 }}>
                 <div style={{ width: `${pct}%`, background: colorKey ? (d[colorKey] || color) : color, borderRadius: 4, height: '100%', transition: 'width 0.5s cubic-bezier(.4,0,.2,1)', opacity: 0.85 }} />
               </div>
-              <div style={{ width: 110, flexShrink: 0, color: 'var(--rb-text)', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{label}</div>
+              {/* Число не сжимается: ради него график и читают, а места оно занимает мало */}
+              <div style={{ width: 110, flexShrink: 0, color: 'var(--rb-text)', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, whiteSpace: 'nowrap' }}>{label}</div>
             </div>
           );
         })}
@@ -847,7 +852,7 @@ function TabGeneral({ rows }) {
     <div>
       {/* По организациям */}
       <SectionTitle>Выручка по организациям</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 185px), 1fr))', gap: 12, marginBottom: 20 }}>
         {orgStats.map(g => (
           <StatCard
             key={g.key}
@@ -861,7 +866,7 @@ function TabGeneral({ rows }) {
 
       {/* По клиникам */}
       <SectionTitle>По клиникам</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 24 }}>
         <PieChart
           title={`Выручка · ${fmtRub(totalRevenue)}`}
           segments={clinicStats.map(c => ({ label: c.name, value: c.revenue, color: c.color }))}
@@ -916,10 +921,15 @@ function PieChart({ segments, size = 200, title, centerLabel, formatter }) {
   const labelFontSize = Math.max(10, size * 0.072);
 
   return (
-    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '16px 18px' }}>
+    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '16px 18px', minWidth: 0 }}>
       {title && <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', marginBottom: 12 }}>{title}</div>}
-      <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      {/* Кольцо и легенда переносятся, а не ужимаются: раньше строка была
+          нерушимой (svg с flexShrink:0 плюс легенда с нулевой основой), и в узкой
+          колонке сетки суммы легенды вылезали за правый край карточки. Обёртка
+          вокруг svg нужна затем, что сам svg с width/height не сжимается флексом. */}
+      <div style={{ display: 'flex', gap: 20, alignItems: 'center', minWidth: 0, flexWrap: 'wrap' }}>
+        <div style={{ flex: `0 1 ${size}px`, minWidth: 0 }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
           {arcs.map((seg, i) => (
             <g key={i}>
               <path d={seg.d} fill={seg.color} stroke="#fff" strokeWidth={2} />
@@ -938,7 +948,8 @@ function PieChart({ segments, size = 200, title, centerLabel, formatter }) {
             </text>
           )}
         </svg>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+        </div>
+        <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
           {segments.map((seg, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
               <div style={{ width: 10, height: 10, borderRadius: 2, background: seg.color, flexShrink: 0, marginTop: 2 }} />
@@ -1026,7 +1037,7 @@ function TabPatients({ rows }) {
       {patientModal && <PatientModal patient={patientModal} onClose={() => setPatientModal(null)} />}
 
       {/* Круговые диаграммы: ЛК и Скидки */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 16, marginBottom: 20 }}>
         <PieChart
           title="Пациенты с Личным кабинетом"
           size={240}
@@ -1567,12 +1578,12 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
 
       {referrals.length > 0 ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 4 }}>
-            <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: 24, marginTop: 4 }}>
+            <div style={{ minWidth: 0 }}>
               <SectionTitle>Кто чаще направляет</SectionTitle>
               <HBarChart data={topReferrers} dataKey="count" labelKey="name" colorKey="color" color="#f97316" />
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <SectionTitle>Кто приносит больше через направления</SectionTitle>
               <HBarChart data={topByRevenue} dataKey="revenue" labelKey="name" colorKey="color" color="#10b981" formatter={fmtRub} />
             </div>

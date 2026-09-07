@@ -20,6 +20,23 @@ const SEG_META = {
 };
 const SEG_ORDER = ['telegramOnly', 'both', 'maxOnly', 'none'];
 
+// Ступени каскада доставки (ver. 8.02). Цвет закреплён за каналом, а не за
+// порядком: SMS остаётся янтарной, даже когда она единственная в отчёте.
+// Наши боты берут цвета из PLATFORM_META выше — это те же каналы, и разъезд
+// оттенков между двумя графиками на одной вкладке читался бы как разные вещи.
+const CHANNEL_META = {
+  'telegram':          { label: 'Telegram-бот',   color: PLATFORM_META.telegram.color, ours: true },
+  'max':               { label: 'MAX-бот',        color: PLATFORM_META.max.color,      ours: true },
+  'imobis:vk':         { label: 'ВКонтакте',      color: '#0891b2' },
+  'imobis:viber':      { label: 'Viber',          color: '#a855f7' },
+  'imobis:sms':        { label: 'SMS',            color: '#d97706' },
+  'notify+vk':         { label: 'Notify и ВК',    color: '#0d9488' },
+  'whatsapp-business': { label: 'WhatsApp',       color: '#16a34a' },
+  'viber':             { label: 'Viber',          color: '#c084fc' },
+  'sms+webchat':       { label: 'SMS',            color: '#f59e0b' },
+  'unknown':           { label: 'Прочее',         color: '#cbd5e1' },
+};
+
 const MONTHS_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const ddmm = (d) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 function fmtPeriod(p, gran) {
@@ -70,6 +87,7 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
   const [prevTotal, setPrevTotal] = useState(null);
   const [penetration, setPenetration] = useState(null);
   const [penLoading, setPenLoading] = useState(true);
+  const [channels, setChannels] = useState(null);
 
   // Период берём из общего селектора StepKpi (локальная дата — без сдвига таймзоны)
   const dateFrom = periodStart ? isoLocal(periodStart) : '';
@@ -118,6 +136,23 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
       .finally(() => { if (alive) setPenLoading(false); });
     return () => { alive = false; };
   }, [dateFrom, dateTo, effGran]);
+
+  // Чем в действительности доставлялись уведомления. Разрез считается по нашему
+  // журналу отправок, а не по отчёту агрегатора: с 7.84 боты наши, с 7.86
+  // отправку ведём сами, и знание о том, что куда ушло, тоже наше.
+  // Переключатель канала сверху сюда намеренно не передаётся: он про подписку
+  // на боты, а здесь ступеней девять, и «показать только Telegram» превратило
+  // бы разрез в одну строку из девяти.
+  useEffect(() => {
+    let alive = true;
+    const params = {};
+    if (dateFrom) params.from = dateFrom;
+    if (dateTo) params.to = dateTo;
+    botSubscribers.channels(params)
+      .then(res => { if (alive) setChannels(res.data); })
+      .catch(() => { if (alive) setChannels(null); });
+    return () => { alive = false; };
+  }, [dateFrom, dateTo]);
 
   const visiblePlatforms = platform === 'all' ? ['telegram', 'max'] : [platform];
 
@@ -212,6 +247,11 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
       {/* Охват среди пациентов — доля посетителей клиник, подписанных на боты */}
       <div style={{ marginBottom: 20 }}>
         <PenetrationPanel data={penetration} loading={penLoading} gran={gran} />
+      </div>
+
+      {/* Чем доставляли: ступени каскада по журналу отправок */}
+      <div style={{ marginBottom: 20 }}>
+        <ChannelsPanel data={channels} bySource={data?.totals?.bySource} />
       </div>
 
       {loading && <div style={{ opacity: 0.6, padding: 20 }}>Загрузка…</div>}
@@ -502,6 +542,125 @@ function EcosystemPanel({ overlap }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * Чем в действительности доставлялись уведомления (ver. 8.02).
+ *
+ * До 8.02 вкладка «Боты» показывала только подписчиков, и приходили они
+ * выгрузкой из Fromni: боты жили у агрегатора, у него же была вся отправка.
+ * Теперь боты наши, отправку ведёт портал, и разрез считается по собственному
+ * журналу (notif_outbox) — без задержки на чужой синхронизации.
+ *
+ * Денег в отчёте нет намеренно, а не по недосмотру. API Имобиса v3 — это
+ * /balance, /info, /senders и отправка; методов «расходы за период»,
+ * «детализация по каналам» и «прайс» в нём не существует (несуществующие пути
+ * отвечают 404, живые — 403 без токена, так и проверялось). Посчитать рубли
+ * можно только своим прайсом по числу отправок ниже, и заводить такой прайс
+ * стоит осознанно, а не выдавать оценку за выписку провайдера.
+ */
+function ChannelsPanel({ data, bySource }) {
+  const rows = useMemo(() => (data?.channels || []).filter(c => c.count > 0), [data]);
+  const total = data?.total || 0;
+
+  const ours = rows.filter(c => CHANNEL_META[c.key]?.ours).reduce((s, c) => s + c.count, 0);
+  const paid = total - ours;
+
+  return (
+    <Panel title="Чем доставляли уведомления">
+      {!data && <div style={{ opacity: 0.6, padding: 8 }}>Загрузка…</div>}
+
+      {data && total === 0 && (
+        <div style={{ opacity: 0.6, padding: 8, fontSize: 13 }}>
+          За выбранный период уведомлений не отправлялось. Разрез наполняется журналом
+          отправок — он начинает вестись с первого запуска детектора событий МИС.
+        </div>
+      )}
+
+      {data && total > 0 && (
+        <>
+          <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', marginBottom: 14 }}>
+            <Stat value={total.toLocaleString('ru-RU')} label="уведомлений доставлено" />
+            <Stat
+              value={`${Math.round((ours / total) * 100)}%`}
+              label="через наши боты — бесплатно"
+            />
+            <Stat value={paid.toLocaleString('ru-RU')} label="ушло платными каналами" />
+            {bySource && (bySource.bot + bySource.import) > 0 && (
+              <Stat
+                value={`${Math.round((bySource.bot / (bySource.bot + bySource.import)) * 100)}%`}
+                label="подписчиков пришли к нашим ботам сами"
+              />
+            )}
+          </div>
+
+          {/* Полоса долей: одна строка вместо кругового графика. Ступеней до
+              девяти, и в круге доли по 2–3% не подписать, а сравнивать сектора
+              глазом человек всё равно не умеет. */}
+          <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 14 }}>
+            {rows.map(c => (
+              <div
+                key={c.key}
+                title={`${CHANNEL_META[c.key]?.label || c.title}: ${c.count} (${Math.round(c.share * 100)}%)`}
+                style={{ width: `${c.share * 100}%`, background: CHANNEL_META[c.key]?.color || '#cbd5e1' }}
+              />
+            ))}
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 460, fontSize: 14 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, textAlign: 'left' }}>Канал</th>
+                  <th style={{ ...thStyle, textAlign: 'left' }}>Кто доставляет</th>
+                  <th style={thStyle}>Отправок</th>
+                  <th style={thStyle}>Доля</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((c, i) => (
+                  <tr key={c.key} style={{ background: i % 2 ? 'rgba(128,128,128,0.04)' : 'transparent' }}>
+                    <td style={{ ...tdStyle, textAlign: 'left' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{
+                          width: 10, height: 10, borderRadius: 3, flexShrink: 0,
+                          background: CHANNEL_META[c.key]?.color || '#cbd5e1'
+                        }} />
+                        {CHANNEL_META[c.key]?.label || c.title}
+                      </span>
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'left', color: 'var(--rb-text-secondary, var(--n-600))' }}>
+                      {c.provider}
+                    </td>
+                    <td style={tdStyle}>{c.count.toLocaleString('ru-RU')}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{(c.share * 100).toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Оговорки под таблицей, а не в подсказке: доля, посчитанная с
+              допущением, обязана нести это на себе. */}
+          {data.ambiguous > 0 && (
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--rb-text-secondary, var(--n-600))', lineHeight: 1.5 }}>
+              Из них {data.ambiguous.toLocaleString('ru-RU')} ушло маршрутом из нескольких
+              ступеней одним запросом — такие отнесены к первой ступени маршрута. Какая
+              из них доставила на самом деле, Fromni не сообщает; ради этого в 7.95 и
+              появилась прямая отправка через Имобис, где статус приходит нам.
+            </div>
+          )}
+
+          {(data.failed?.failed > 0 || data.failed?.skipped > 0) && (
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--rb-text-secondary, var(--n-600))' }}>
+              Кроме доставленных, за период: {data.failed.failed || 0} не доставлено,
+              {' '}{data.failed.skipped || 0} пропущено предохранителями.
+            </div>
+          )}
         </>
       )}
     </Panel>

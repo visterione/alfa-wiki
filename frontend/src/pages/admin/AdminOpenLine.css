@@ -1,0 +1,844 @@
+/* Настройки открытой линии и оповещений (ver. 8.02).
+ *
+ * Экран собран заново, а не подкрашен. У прежнего (вкладки внутри модуля
+ * оператора) было четыре беды, и каждая правится здесь отдельным решением:
+ *
+ *   1. Каждая вкладка занимала свою ширину: «Тексты» растекались во всю
+ *      админскую область, «Настройки рассылки» держались узкой колонкой, а
+ *      журнал жил третьей шириной. При переключении вкладки содержимое прыгало.
+ *      → Ширину задаёт одна обёртка .ola-shell, общая для всех вкладок без
+ *        исключений. Журналу поначалу отвели колонку пошире, но он состоит из
+ *        текстов сообщений, а строка в полтора экрана читается плохо — и это
+ *        был бы ровно тот же прыжок ширины при переключении вкладки.
+ *
+ *   2. Километры подсказок. Под каждым заголовком лежал абзац на четыре строки,
+ *      и на экране их было по пять. Читать это никто не будет, а найти среди
+ *      них поле — уже работа.
+ *      → Одна короткая строка под заголовком, остальное за кнопкой «зачем это»
+ *        (.ola-why). Текст не выброшен: он объясняет решения, принятые с
+ *        заказчиком, и без него через полгода никто не вспомнит, почему каскад
+ *        именно такой. Но по умолчанию свёрнут.
+ *
+ *   3. Слабая контрастность. Подписи шли --text-tertiary по --bg-secondary,
+ *      то есть серым по серому.
+ *      → Текст полей — --text-primary, подписи — --text-secondary, и ни одного
+ *        --text-tertiary на несущем тексте. Карточки белые на сером фоне
+ *        страницы, граница видимая, а не «почти».
+ *
+ *   4. Элементы. Чекбоксы были системными, кнопки — тремя разными видами,
+ *      поля ввода не имели общего вида вовсе.
+ *      → Один набор ниже: .ola-btn, .ola-input, .ola-switch, .ola-chip.
+ *
+ * Цвета берутся только из рамп (нейтральная, акцентная, зелёная) и из
+ * семантических имён поверх них.
+ * Вбитых значений здесь нет намеренно: в 7.75 их вычищали по всему модулю
+ * отзывов, и заводить новые в свежем файле было бы странно.
+ */
+
+/* ── Оболочка ─────────────────────────────────────────────────────────────
+ *
+ * Ширина одна на все вкладки. 1180 px — это примерно 100 знаков в поле текста
+ * шаблона: длиннее строка читается хуже, а SMS всё равно короче. Админская
+ * обёртка даёт всю ширину окна, поэтому колонку центрируем сами.
+ */
+.ola-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.ola-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.ola-head h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+.ola-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+/* ── Вкладки ──────────────────────────────────────────────────────────────
+ *
+ * Сегментированный переключатель, а не подчёркнутые ссылки: вкладок четыре и
+ * они равноправны. Подложка показывает, что это один орган управления, —
+ * прежние подчёркивания на светлом фоне сливались с заголовком.
+ */
+.ola-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 20px;
+  background: var(--bg-tertiary);
+  border-radius: 11px;
+}
+
+.ola-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.ola-tab:hover { color: var(--text-primary); }
+
+.ola-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(var(--overlay-ink), 0.12);
+}
+
+.ola-tab svg { opacity: 0.75; }
+.ola-tab.active svg { opacity: 1; color: var(--accent-500); }
+
+/* Счётчик на вкладке журнала: сколько недоставленного за сутки. */
+.ola-tab-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--red-500);
+  color: var(--n-0);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ── Карточка ─────────────────────────────────────────────────────────────
+ *
+ * Белая на сером — граница между «что настраиваем» и «фоном» должна читаться
+ * без прищуривания. Прежние карточки отличались от фона на одну ступень рампы.
+ */
+.ola-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.ola-card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+}
+
+.ola-card > header h3 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.ola-card > header h3 svg { color: var(--text-secondary); flex-shrink: 0; }
+
+.ola-card-body { padding: 18px; }
+
+/* Выключенная линия или шаблон: приглушаем содержимое, но не заголовок —
+   иначе непонятно, что именно выключено. */
+.ola-card.off .ola-card-body { opacity: 0.55; }
+
+/* Подзаголовок в шапке карточки: медцентр у линии, расписание у шаблона.
+   Не серый текст рядом, а метка — так видно, что это свойство, а не пояснение. */
+.ola-badge {
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ola-badge.accent { background: var(--accent-100); color: var(--accent-700); }
+.ola-badge.warn   { background: var(--amber-100);  color: var(--amber-800);  }
+
+/* ── Блок внутри карточки ─────────────────────────────────────────────────*/
+
+.ola-block + .ola-block {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-light);
+}
+
+.ola-block > h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.ola-block > h4 svg { color: var(--text-tertiary); }
+
+/* ── Подсказка «зачем это» ────────────────────────────────────────────────
+ *
+ * Кнопка-вопрос рядом с заголовком. Абзац разворачивается на месте, а не
+ * всплывает подсказкой: тексты здесь длинные, и во всплывашке их не прочесть.
+ */
+.ola-why {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.ola-why:hover,
+.ola-why.open {
+  border-color: var(--accent-400);
+  color: var(--accent-600);
+  background: var(--accent-50);
+}
+
+.ola-why-body {
+  margin: 0 0 14px;
+  padding: 11px 14px;
+  border-left: 3px solid var(--accent-300);
+  border-radius: 0 8px 8px 0;
+  background: var(--accent-50);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+
+.ola-why-body p { margin: 0 0 7px; }
+.ola-why-body p:last-child { margin-bottom: 0; }
+.ola-why-body code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  font-size: 11.5px;
+}
+
+/* Короткая строка под заголовком — та, что остаётся видимой всегда.
+   Одна, не абзац: если не влезает в строку, значит это текст для «зачем это». */
+.ola-lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ── Поля ─────────────────────────────────────────────────────────────────*/
+
+.ola-field { margin-bottom: 14px; }
+.ola-field:last-child { margin-bottom: 0; }
+
+/* Подпись поля. :not() обязателен: переключатель ниже — тоже <label>, и лёжа
+   прямо в .ola-field он попадал под это правило. display:block отменял ему
+   inline-flex, дорожка переставала быть flex-элементом, оставалась строчной —
+   и ширина 36 px к ней уже не применялась. Внешне это выглядело так, будто
+   переключатель наезжает на свою же подпись. */
+.ola-field > label:not(.ola-switch):not(.ola-check) {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ola-input,
+.ola-select,
+.ola-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ola-textarea { resize: vertical; min-height: 62px; }
+
+.ola-input::placeholder,
+.ola-textarea::placeholder { color: var(--text-tertiary); }
+
+.ola-input:focus,
+.ola-select:focus,
+.ola-textarea:focus {
+  outline: none;
+  border-color: var(--accent-500);
+  box-shadow: 0 0 0 3px var(--accent-100);
+}
+
+.ola-select { cursor: pointer; }
+
+/* Ряд полей: имя отправителя и группа ВК стоят рядом, а не столбиком —
+   вместе они одна настройка одного провайдера. */
+.ola-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.ola-row > .ola-field { flex: 1 1 220px; margin-bottom: 0; }
+.ola-row > .ola-field.narrow { flex: 0 1 150px; }
+
+/* Пояснение под конкретным полем — короткое, иначе оно уходит в «зачем это». */
+.ola-hint {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* ── Кнопки ───────────────────────────────────────────────────────────────*/
+
+.ola-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.ola-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--n-400);
+}
+
+.ola-btn:disabled { opacity: 0.45; cursor: default; }
+
+.ola-btn.primary {
+  background: var(--accent-500);
+  border-color: var(--accent-500);
+  color: var(--n-0);
+}
+
+.ola-btn.primary:hover:not(:disabled) {
+  background: var(--accent-600);
+  border-color: var(--accent-600);
+}
+
+.ola-btn.danger { color: var(--red-600); }
+.ola-btn.danger:hover:not(:disabled) { background: var(--red-50); border-color: var(--red-300); }
+
+/* Мелкая круглая кнопка: стрелки в каскаде, крестик на метке. */
+.ola-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.ola-icon-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.ola-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.ola-icon-btn.danger:hover:not(:disabled) { background: var(--red-50); color: var(--red-600); border-color: var(--red-300); }
+
+.ola-actions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ola-actions.end { justify-content: flex-end; }
+
+/* ── Переключатель ────────────────────────────────────────────────────────
+ *
+ * Свой, а не системный чекбокс: настроек-галок здесь полтора десятка, и
+ * системный чекбокс в 13 px рядом с текстом в 13.5 читается как опечатка.
+ */
+.ola-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ola-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.ola-switch .track {
+  position: relative;
+  width: 36px;
+  height: 21px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background: var(--n-300);
+  transition: background 0.18s;
+}
+
+.ola-switch .track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--n-0);
+  box-shadow: 0 1px 3px rgba(var(--overlay-ink), 0.25);
+  transition: transform 0.18s;
+}
+
+.ola-switch input:checked + .track { background: var(--accent-500); }
+.ola-switch input:checked + .track::after { transform: translateX(15px); }
+.ola-switch input:focus-visible + .track { box-shadow: 0 0 0 3px var(--accent-100); }
+
+/* Галка в списке — там, где переключателей много подряд и они равнозначны
+   (каких ступеней касаются тихие часы). Переключатели в столбик выглядели бы
+   как десять независимых решений, хотя это один набор. */
+.ola-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  font-size: 12.5px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ola-check:hover { border-color: var(--n-400); }
+.ola-check input { accent-color: var(--accent-500); width: 15px; height: 15px; margin: 0; cursor: pointer; }
+.ola-check.on { border-color: var(--accent-400); background: var(--accent-50); }
+
+.ola-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ── Метки (боты, состав линии, подстановки) ──────────────────────────────*/
+
+.ola-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.ola-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  font-size: 12.5px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.ola-chip.plain { padding-right: 11px; }
+
+/* Сотрудник на смене. Точка, а не подпись «· на смене»: строка состава и так
+   длинная, а состояние здесь двоичное. */
+.ola-chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green-500);
+  flex-shrink: 0;
+}
+
+.ola-chip.on-shift { border-color: var(--green-300); background: var(--green-50); }
+
+.ola-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ola-chip button:hover { background: var(--red-100); color: var(--red-600); }
+
+/* Кнопка-подстановка в тексте шаблона. Моноширинная: это код, а не слово. */
+.ola-token {
+  padding: 4px 9px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.ola-token:hover {
+  border-color: var(--accent-400);
+  border-style: solid;
+  color: var(--accent-700);
+  background: var(--accent-50);
+}
+
+/* Добавление в список — тот же вид, что у меток рядом, а не голый select.
+   Прежде «+ добавить сотрудника…» выглядел инородно посреди строки чипов. */
+.ola-add {
+  padding: 6px 11px;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.ola-add:hover { border-color: var(--accent-400); color: var(--accent-600); }
+.ola-add:focus { outline: none; border-color: var(--accent-500); border-style: solid; }
+
+/* ── Каскад ───────────────────────────────────────────────────────────────*/
+
+.ola-cascade { list-style: none; margin: 0 0 12px; padding: 0; }
+
+.ola-cascade li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.ola-cascade li + li { margin-top: 7px; }
+
+.ola-cascade .no {
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--accent-500);
+  color: var(--n-0);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 23px;
+  text-align: center;
+}
+
+.ola-cascade .name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ola-cascade .provider {
+  margin-left: 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* ── Стоимость SMS ────────────────────────────────────────────────────────
+ *
+ * Счётчик стоит прямо под полем: один лишний символ здесь стоит второй SMS на
+ * всю рассылку, и узнавать об этом из счёта поздно.
+ */
+.ola-sms-cost {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ola-sms-cost strong { color: var(--green-700); font-weight: 650; }
+.ola-sms-cost.over strong { color: var(--amber-700); }
+
+/* Полоска заполнения сегмента — видно, сколько осталось до следующей SMS. */
+.ola-sms-bar {
+  flex: 1;
+  max-width: 190px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.ola-sms-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--green-500);
+  transition: width 0.2s;
+}
+
+.ola-sms-cost.over .ola-sms-bar i { background: var(--amber-500); }
+
+/* Предпросмотр текста с подставленными значениями. */
+.ola-preview {
+  margin-top: 11px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-200);
+  border-radius: 10px;
+  background: var(--accent-50);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+/* ── Предупреждение ───────────────────────────────────────────────────────*/
+
+.ola-warning {
+  display: flex;
+  gap: 11px;
+  padding: 13px 15px;
+  margin-bottom: 14px;
+  border: 1px solid var(--amber-300);
+  border-radius: 12px;
+  background: var(--amber-50);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--amber-800);
+}
+
+.ola-warning svg { flex-shrink: 0; margin-top: 1px; color: var(--amber-600); }
+.ola-warning strong { color: var(--amber-800); }
+.ola-warning code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--amber-100);
+  font-size: 11.5px;
+}
+
+/* ── Сохранение ───────────────────────────────────────────────────────────
+ *
+ * Липкая полоса внизу вкладки «Рассылка»: настроек там на два экрана, и
+ * единственная кнопка «Сохранить» в самом низу терялась — заказчик правил
+ * тихие часы и уходил со страницы, не сохранив.
+ */
+/* Липкой полоса становится только когда есть что сохранять. Иначе она висела
+   поверх содержимого всё время и накрывала нижний ряд галок «каких ступеней
+   касаются тихие часы» — то есть орган управления, до которого надо дотянуться.
+   Пока изменений нет, полосе нечего делать поверх страницы: она просто лежит
+   в конце. */
+.ola-savebar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  box-shadow: 0 -2px 12px rgba(var(--overlay-ink), 0.07);
+}
+
+.ola-savebar.dirty {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
+.ola-savebar .state { margin-right: auto; font-size: 12.5px; color: var(--text-secondary); }
+.ola-savebar .state.dirty { color: var(--amber-700); font-weight: 600; }
+
+/* ── Журнал ───────────────────────────────────────────────────────────────*/
+
+.ola-log-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+/* Плитка состояния — она же фильтр. Цифра крупная: за сутки на неё смотрят
+   первым делом, а подпись нужна только чтобы понять, что это за цифра. */
+.ola-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 104px;
+  padding: 9px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ola-stat:hover { border-color: var(--n-400); }
+
+.ola-stat .value { font-size: 21px; font-weight: 700; line-height: 1.1; color: var(--text-primary); }
+.ola-stat .label { font-size: 11.5px; color: var(--text-secondary); }
+
+.ola-stat.ok    .value { color: var(--green-700); }
+.ola-stat.bad   .value { color: var(--red-600);   }
+.ola-stat.wait  .value { color: var(--amber-700); }
+.ola-stat.muted .value { color: var(--text-secondary); }
+
+.ola-stat.active { border-color: var(--accent-500); background: var(--accent-50); }
+
+.ola-log-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+
+.ola-log-search svg { color: var(--text-tertiary); flex-shrink: 0; }
+
+.ola-log-search input {
+  width: 190px;
+  padding: 9px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.ola-log-search input:focus { outline: none; }
+
+.ola-row-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 4px 12px;
+  padding: 12px 15px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--n-300);
+  border-radius: 11px;
+  background: var(--bg-primary);
+}
+
+.ola-row-card.ok    { border-left-color: var(--green-500); }
+.ola-row-card.bad   { border-left-color: var(--red-500);   }
+.ola-row-card.wait  { border-left-color: var(--amber-500); }
+.ola-row-card.muted { border-left-color: var(--n-400);     }
+
+.ola-row-top {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 5px;
+}
+
+.ola-row-top .event { font-size: 13.5px; font-weight: 650; color: var(--text-primary); }
+.ola-row-top .phone { font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ola-row-top .time  { margin-left: auto; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.ola-row-text {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ola-row-error {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--red-50);
+  font-size: 12px;
+  color: var(--red-700);
+}
+
+/* ── Пустые состояния ─────────────────────────────────────────────────────*/
+
+.ola-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 11px;
+  padding: 52px 20px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.ola-empty svg { color: var(--text-tertiary); }
+.ola-empty h3 { margin: 0; font-size: 15px; font-weight: 650; color: var(--text-primary); }
+.ola-empty p { margin: 0; font-size: 13px; max-width: 46ch; }
+
+/* ── Узкие экраны ─────────────────────────────────────────────────────────
+ *
+ * Админку с телефона не правят, но на ноутбуке 1280 и на планшете страница
+ * открывается — ряды полей должны складываться, а не резаться.
+ */
+@media (max-width: 900px) {
+  .ola-tabs { display: flex; overflow-x: auto; }
+  .ola-row > .ola-field,
+  .ola-row > .ola-field.narrow { flex: 1 1 100%; }
+  .ola-log-search { margin-left: 0; width: 100%; }
+  .ola-log-search input { width: 100%; }
+}

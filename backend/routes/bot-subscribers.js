@@ -1,13 +1,31 @@
 /**
- * Статистика подписчиков ботов (Telegram/MAX) по медцентрам.
- * Источник — таблица bot_subscribers (наполняется синком из Fromni).
+ * Статистика ботов и каналов связи (ver. 5.91, переписан на свои данные в 8.02).
+ *
+ * Источник — наши таблицы: подписчики в bot_subscribers, отправки в
+ * notif_outbox. Раньше и то и другое приходило из Fromni выгрузкой, и вкладка
+ * «Боты» показывала чужую картину с чужой задержкой. С 7.84 боты наши, с 7.86
+ * отправку ведём сами — считать по агрегатору больше незачем.
+ *
+ * У подписчика есть признак source: 'bot' — пришёл к нашему боту сам,
+ * 'import' — достался выгрузкой из Fromni. Разделение осталось намеренно:
+ * пока живут обе истории, по нему видно, насколько переезд состоялся.
  */
 const express = require('express');
-const { sequelize } = require('../models');
+const { sequelize, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { ORGANIZATIONS } = require('../bot/patient/config');
 
 const router = express.Router();
+
+/**
+ * Соответствие «клиника МИС → организация». Живёт в настройке notif_clinic_org
+ * и заполняется вместе с рассылкой; здесь оно нужно затем же, зачем отправке —
+ * визит знает клинику, а боты и счета заведены на организацию.
+ */
+async function clinicOrgMap() {
+  const row = await Setting.findByPk('notif_clinic_org');
+  return (row && row.value) || {};
+}
 
 // GET /api/bot-subscribers/stats?from=YYYY-MM-DD&to=YYYY-MM-DD&platform=telegram|max&granularity=day|month
 // Подписки по периодам (по дате подписки startedAt), только помеченные (tagged).
@@ -34,13 +52,17 @@ router.get('/stats', authenticate, async (req, res) => {
     }
     if (platform === 'telegram' || platform === 'max') { where.push(`platform = :platform`); repl.platform = platform; }
 
+    // source в разрезе намеренно: 'bot' — человек пришёл к нашему боту сам,
+    // 'import' — строка досталась выгрузкой из Fromni. Пока живут обе истории,
+    // по этой доле видно, насколько переезд с агрегатора состоялся, и без неё
+    // рост «подписчиков» читался бы как заслуга ботов, которой нет.
     const [rows] = await sequelize.query(
-      `SELECT organization, platform,
+      `SELECT organization, platform, source,
               to_char(date_trunc('${gran}', "startedAt"), '${fmt}') AS period,
               COUNT(*)::int AS count
          FROM bot_subscribers
         WHERE ${where.join(' AND ')}
-        GROUP BY organization, platform, period
+        GROUP BY organization, platform, source, period
         ORDER BY period ASC`,
       { replacements: repl }
     );
@@ -49,16 +71,18 @@ router.get('/stats', authenticate, async (req, res) => {
 
     const byOrg = {};
     const byPlatform = { telegram: 0, max: 0 };
+    const bySource = { bot: 0, import: 0 };
     let total = 0;
     for (const r of rows) {
       byOrg[r.organization] = (byOrg[r.organization] || 0) + r.count;
       if (byPlatform[r.platform] != null) byPlatform[r.platform] += r.count;
+      if (bySource[r.source] != null) bySource[r.source] += r.count;
       total += r.count;
     }
 
     const organizations = Object.entries(ORGANIZATIONS).map(([key, name]) => ({ key, name }));
 
-    res.json({ periods, granularity: gran, organizations, rows, totals: { byOrg, byPlatform, total } });
+    res.json({ periods, granularity: gran, organizations, rows, totals: { byOrg, byPlatform, bySource, total } });
   } catch (err) {
     console.error('Bot subscribers stats error:', err);
     res.status(500).json({ error: 'Ошибка получения статистики подписчиков' });
@@ -201,6 +225,137 @@ router.get('/penetration', authenticate, async (req, res) => {
   } catch (err) {
     console.error('Bot subscribers penetration error:', err);
     res.status(500).json({ error: 'Ошибка получения охвата пациентов' });
+  }
+});
+
+// ── Каналы связи (ver. 8.02) ──────────────────────────────────────────────
+
+// Как ступень каскада называется в журнале и кому она принадлежит. Ключ — то,
+// что sender кладёт в notif_outbox.channel; порядок массива задаёт порядок в
+// отчёте, чтобы наши боты стояли первыми, а платные ступени — следом.
+const CHANNEL_META = [
+  { key: 'telegram',          title: 'Telegram-бот',   provider: 'Вики',   paid: false },
+  { key: 'max',               title: 'MAX-бот',        provider: 'Вики',   paid: false },
+  { key: 'imobis:vk',         title: 'ВКонтакте',      provider: 'Имобис', paid: true  },
+  { key: 'imobis:viber',      title: 'Viber',          provider: 'Имобис', paid: true  },
+  { key: 'imobis:sms',        title: 'SMS',            provider: 'Имобис', paid: true  },
+  { key: 'notify+vk',         title: 'Notify и ВК',    provider: 'Fromni', paid: true  },
+  { key: 'whatsapp-business', title: 'WhatsApp',       provider: 'Fromni', paid: true  },
+  { key: 'viber',             title: 'Viber',          provider: 'Fromni', paid: true  },
+  { key: 'sms+webchat',       title: 'SMS',            provider: 'Fromni', paid: true  }
+];
+
+/**
+ * К какой ступени отнести строку журнала.
+ *
+ * У Имобиса и у Fromni каскад свой: несколько ступеней уходят одним запросом, и
+ * в channel оказывается весь маршрут через «→». Какая из них в итоге доставила,
+ * провайдер сообщает не всегда — Fromni не сообщает вовсе, и это ровно та
+ * причина, по которой в 7.95 появилась прямая отправка через Имобис.
+ *
+ * Считаем по первой ступени маршрута: каскад останавливается на первой
+ * доставленной, и она же самая частая. Строки с маршрутом из нескольких ступеней
+ * возвращаются отдельным счётчиком — чтобы в отчёте было видно, какая доля
+ * цифр держится на этом допущении, а не выдавать его за точное знание.
+ */
+function splitChannel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return { key: null, ambiguous: false };
+
+  const steps = raw.split('→').map(s => s.trim()).filter(Boolean);
+  return { key: steps[0] || null, ambiguous: steps.length > 1 };
+}
+
+// GET /api/bot-subscribers/channels?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Чем в действительности доставлялись уведомления: разрез журнала отправок по
+// ступеням каскада, медцентрам и событиям.
+//
+// Источник — наш notif_outbox, а не отчёт агрегатора. До 8.02 вкладка «Боты»
+// показывала только подписчиков, и те приходили выгрузкой из Fromni; теперь
+// боты наши, отправку ведём сами, и знание о том, что куда ушло, тоже наше.
+router.get('/channels', authenticate, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    const where = [`o.status = 'sent'`, `o.channel IS NOT NULL`];
+    const repl = {};
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) { repl.from = from; where.push(`o.sent_at >= :from`); }
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) { repl.to = to; where.push(`o.sent_at < (:to)::date + interval '1 day'`); }
+
+    // Организацию журнал не хранит: она выводится из клиники визита тем же
+    // соответствием notif_clinic_org, по которому её выбирает отправка. Держать
+    // копию в строке очереди незачем — соответствие меняется, визит нет.
+    const [rows] = await sequelize.query(
+      `SELECT o.channel, o.event, o.status, o.delivery_status,
+              a.clinic_id, a.clinic_name,
+              COUNT(*)::int AS count
+         FROM notif_outbox o
+         LEFT JOIN notif_appointments a ON a.appt_id = o.appt_id
+        WHERE ${where.join(' AND ')}
+        GROUP BY o.channel, o.event, o.status, o.delivery_status, a.clinic_id, a.clinic_name`,
+      { replacements: repl }
+    );
+
+    // Промахи считаем отдельно и рядом: доля недоставленного — первое, на что
+    // смотрят, когда решают, оставлять ли ступень в каскаде.
+    const failWhere = where.map(w => w.replace(`o.status = 'sent'`, `o.status IN ('failed', 'skipped')`));
+    const [failed] = await sequelize.query(
+      `SELECT o.status, COUNT(*)::int AS count
+         FROM notif_outbox o
+        WHERE ${failWhere.join(' AND ').replace(`o.channel IS NOT NULL`, 'TRUE')}
+        GROUP BY o.status`,
+      { replacements: repl }
+    );
+
+    const orgMap = await clinicOrgMap();
+
+    const byChannel = new Map();
+    const byOrg = {};
+    const byEvent = {};
+    let total = 0;
+    let ambiguous = 0;
+    let unknown = 0;
+
+    for (const r of rows) {
+      const { key, ambiguous: multi } = splitChannel(r.channel);
+      total += r.count;
+      if (multi) ambiguous += r.count;
+
+      const slot = key || 'unknown';
+      if (!key) unknown += r.count;
+
+      byChannel.set(slot, (byChannel.get(slot) || 0) + r.count);
+      byEvent[r.event] = (byEvent[r.event] || 0) + r.count;
+
+      const org = orgMap[String(r.clinic_id)] || 'unknown';
+      byOrg[org] = byOrg[org] || { total: 0, channels: {} };
+      byOrg[org].total += r.count;
+      byOrg[org].channels[slot] = (byOrg[org].channels[slot] || 0) + r.count;
+    }
+
+    // Ступени возвращаем в порядке каскада и всегда все: нулевая ступень — тоже
+    // ответ на вопрос «а SMS вообще уходят», и пропадать из отчёта она не должна.
+    const channels = CHANNEL_META.map(meta => ({
+      ...meta,
+      count: byChannel.get(meta.key) || 0,
+      share: total ? (byChannel.get(meta.key) || 0) / total : 0
+    }));
+
+    if (unknown) {
+      channels.push({ key: 'unknown', title: 'Прочее', provider: '—', paid: false, count: unknown, share: unknown / total });
+    }
+
+    res.json({
+      total,
+      channels,
+      byOrg,
+      byEvent,
+      ambiguous,
+      failed: Object.fromEntries(failed.map(f => [f.status, f.count]))
+    });
+  } catch (err) {
+    console.error('Bot subscribers channels error:', err);
+    res.status(500).json({ error: 'Ошибка получения статистики каналов' });
   }
 });
 

@@ -24,6 +24,45 @@
 
 /* ── Каркас страницы ───────────────────────────────────────────────────── */
 
+/* Обёртка раздела и полоса переключения экранов. До 8.02 эти правила лежали в
+   NotificationsPanel.css — файле вкладки «Уведомления», которая подключалась
+   отсюда же. Место было случайным: каркас всего модуля не имеет отношения к
+   текстам уведомлений, и когда вкладка уехала в админку, страница осталась без
+   собственной обёртки. Теперь они там, где применяются. */
+.ol-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.ol-screens {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.ol-screens button {
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.ol-screens button:hover { background: var(--bg-hover); }
+.ol-screens button.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
+
+/* Раздел обращений внутри обёртки занимает остаток высоты. */
+.ol-page .ol-root { flex: 1; height: auto; min-height: 0; }
+
 /* Полоса переключения экранов забирает свою высоту, остаток отдаётся чату.
    .alfa-chat внутри тянется на всю высоту — у мессенджера эту роль играет
    .dashboard-chat-wrapper, но там над чатом ничего нет. */

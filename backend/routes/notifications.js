@@ -1,22 +1,28 @@
 'use strict';
 
 /**
- * Уведомления пациентам: шаблоны и журнал отправок (ver. 7.86).
+ * Уведомления пациентам: шаблоны и журнал отправок (ver. 7.86, доступ — 8.02).
  *
  * Тексты правит администратор, а не программист — ровно так же, как он делал это
- * на экране Renovatio до переезда. Журнал открыт всем, кто работает на линии:
- * вопрос «почему человек не получил напоминание» задают операторам, и отвечать
- * на него они должны сами, а не через заявку.
+ * на экране Renovatio до переезда.
+ *
+ * Журнал до 8.02 был открыт и операторам: считалось, что на вопрос «почему
+ * человек не получил напоминание» колл-центр должен отвечать сам. На деле рядом
+ * с журналом в том же разделе лежали каскад, тихие часы и токены, и оператор
+ * попадал туда одним промахом мимо вкладки. Настройки уехали в админку целиком,
+ * и журнал уехал вместе с ними: разбирать недоставку всё равно приходится тому,
+ * кто может поправить причину.
  */
 
 const express = require('express');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { NotifTemplate, NotifOutbox, OmniLineOperator, MedCenter } = require('../models');
+const { NotifTemplate, NotifOutbox, MedCenter } = require('../models');
 const templates = require('../services/notifications/templates');
 const sender = require('../services/notifications/sender');
 const notifSettings = require('../services/notifications/settings');
 const fromni = require('../services/messengers/fromni');
+const imobis = require('../services/messengers/imobis');
 const { NotifOutbox: Outbox } = require('../models');
 
 const router = express.Router();
@@ -45,11 +51,6 @@ const PLACEHOLDERS = [
   { key: 'старая_дата', title: 'Прежняя дата (перенос)' },
   { key: 'старое_время', title: 'Прежнее время (перенос)' }
 ];
-
-/** Работает ли человек хоть на одной линии — журнал открыт только своим. */
-async function isOperator(userId) {
-  return (await OmniLineOperator.count({ where: { userId } })) > 0;
-}
 
 // ── Шаблоны ───────────────────────────────────────────────────────────────
 
@@ -333,6 +334,39 @@ router.get('/settings', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * Счёт у Имобиса (ver. 8.02).
+ *
+ * Единственная цифра о деньгах, которую провайдер вообще отдаёт. Их API v3 —
+ * это /balance, /info, /senders и отправка; отчёта о расходах, детализации по
+ * каналам и прайса в нём нет (проверено перебором путей: несуществующие
+ * отвечают 404, живые — 403 без токена). Поэтому «сколько потратили за месяц»
+ * приходится считать у себя по журналу отправок, а отсюда берётся только
+ * остаток на счету — чтобы рассылка не встала молча в выходные.
+ */
+router.get('/balance', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const config = await notifSettings.imobis();
+    const data = await imobis.balance(req.query.organization || null, !!config.sandbox);
+
+    // Ответ у них не типизирован: в разных версиях приходило и число, и строка,
+    // и объект. Приводим к числу здесь, чтобы интерфейс не гадал.
+    const raw = data && (data.balance != null ? data.balance : data.result);
+    const value = Number(String(raw).replace(',', '.'));
+
+    res.json({
+      balance: Number.isFinite(value) ? value : null,
+      currency: (data && data.currency) || 'RUB',
+      sandbox: !!config.sandbox,
+      raw: data
+    });
+  } catch (err) {
+    // Не 500: отсутствие токена или недоступность провайдера — обычное
+    // состояние тестовой машины, и ронять из-за него всю вкладку незачем.
+    res.json({ balance: null, error: err.message });
+  }
+});
+
 router.put('/settings', authenticate, requireAdmin, async (req, res) => {
   try {
     const { cascade, quietHours, imobis } = req.body || {};
@@ -375,12 +409,8 @@ router.put('/settings', authenticate, requireAdmin, async (req, res) => {
 
 // ── Журнал ────────────────────────────────────────────────────────────────
 
-router.get('/outbox', authenticate, async (req, res) => {
+router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
   try {
-    if (!req.user.isAdmin && !await isOperator(req.user.id)) {
-      return res.status(403).json({ error: 'Журнал доступен сотрудникам линии' });
-    }
-
     const where = {};
     if (['pending', 'sent', 'failed', 'skipped'].includes(req.query.status)) {
       where.status = req.query.status;
