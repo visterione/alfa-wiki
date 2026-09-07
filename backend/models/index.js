@@ -617,6 +617,14 @@ const BotSubscriber = sequelize.define('BotSubscriber', {
   lastName: { type: DataTypes.STRING(100) },
   phone: { type: DataTypes.STRING(30) },                              // после share contact (нормализованный)
   patientIds: { type: DataTypes.JSONB, defaultValue: [] },            // найденные patient_id (семьи -> несколько)
+  // Снимок карточки МИС, выбранной для показа оператору (ver. 7.99). По одному
+  // номеру нередко заведена вся семья — мама и дети; из них берётся самый
+  // старший, остальное оператор уточняет в разговоре. Снимок, а не запрос на
+  // лету: список обращений иначе ходил бы в МИС на каждую строку.
+  patientCard: { type: DataTypes.STRING(30), allowNull: true },       // номер карты
+  patientName: { type: DataTypes.STRING(250), allowNull: true },      // ФИО полностью
+  patientBirthDate: { type: DataTypes.STRING(20), allowNull: true },  // как отдаёт МИС, ДД.ММ.ГГГГ
+  patientCheckedAt: { type: DataTypes.DATE, allowNull: true },        // когда снимок обновляли
   status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'started' }, // started | identified | tagged
   source: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'bot' },      // bot | import (Fromni backfill)
   startedAt: { type: DataTypes.DATE },
@@ -3294,14 +3302,75 @@ const OmniConversation = sequelize.define('OmniConversation', {
   closedAt: { type: DataTypes.DATE, allowNull: true },
   closedBy: { type: DataTypes.UUID, allowNull: true },
   lastMessageAt: { type: DataTypes.DATE, allowNull: true },
-  lastIncomingAt: { type: DataTypes.DATE, allowNull: true },
-  offlineNoticeAt: { type: DataTypes.DATE, allowNull: true }
+  lastIncomingAt: { type: DataTypes.DATE, allowNull: true }
 }, {
   tableName: 'omni_conversations',
   timestamps: true,
   indexes: [
+    // Переписка у собеседника ровно одна и живёт вечно (ver. 7.99). Разные
+    // мессенджеры при этом остаются разными переписками: подписчик заведён на
+    // пару «платформа + организация», и человек, написавший и в Telegram, и в
+    // MAX, — это два подписчика. Сводить их в один чат нечем: общего
+    // идентификатора у платформ нет, а телефон есть не у всех.
+    { unique: true, fields: ['subscriberId'] },
     { fields: ['lineId', 'status', 'lastMessageAt'] },
     { fields: ['assigneeUserId', 'status'] }
+  ]
+});
+
+// Одно обращение внутри вечной переписки: от первого вопроса до закрытия
+// оператором (ver. 7.99). Раньше этим была сама переписка, и повторный вопрос
+// заводил вторую карточку — оператор получал человека без истории, а в архиве
+// лежало по десятку отдельных кусков одного разговора.
+//
+// Сессия осталась нужна не для показа, а для учёта: по ней считаются оценка
+// работы оператора, время до первого ответа и доля разобранных обращений.
+const OmniSession = sequelize.define('OmniSession', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  conversationId: { type: DataTypes.UUID, allowNull: false },
+  lineId: { type: DataTypes.UUID, allowNull: false },   // дублируется с переписки: линия бота могла смениться
+  botId: { type: DataTypes.UUID, allowNull: true },
+  openedAt: { type: DataTypes.DATE, allowNull: false },
+  assigneeUserId: { type: DataTypes.UUID, allowNull: true },
+  assignedAt: { type: DataTypes.DATE, allowNull: true },
+  // Момент первого ответа человека, а не бота: по нему считается, сколько
+  // пациент ждал живого сотрудника.
+  firstReplyAt: { type: DataTypes.DATE, allowNull: true },
+  closedAt: { type: DataTypes.DATE, allowNull: true },
+  closedBy: { type: DataTypes.UUID, allowNull: true },
+  // Извинение за пустую линию — один раз на обращение, а не на переписку:
+  // иначе человек, вернувшийся через месяц ночью, не получил бы его вовсе.
+  offlineNoticeAt: { type: DataTypes.DATE, allowNull: true },
+  ratingAskedAt: { type: DataTypes.DATE, allowNull: true },
+  rating: { type: DataTypes.INTEGER, allowNull: true },   // 1..5, ставит пациент кнопкой в боте
+  ratedAt: { type: DataTypes.DATE, allowNull: true }
+}, {
+  tableName: 'omni_sessions',
+  timestamps: true,
+  indexes: [
+    { fields: ['conversationId', 'openedAt'] },
+    { fields: ['lineId', 'openedAt'] },
+    { fields: ['assigneeUserId', 'closedAt'] }
+  ]
+});
+
+// Отработанные смены (ver. 7.99). Раньше начало смены жило одним полем на связи
+// «сотрудник — линия» и стиралось следующим «закончить день»: сказать, сколько
+// обращений пришло, пока человек был на линии, было не по чему. А это и есть
+// знаменатель KPI — сравнивать разобранное с общим потоком за месяц нечестно к
+// тому, кто выходит через день.
+const OmniShift = sequelize.define('OmniShift', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  lineId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  startedAt: { type: DataTypes.DATE, allowNull: false },
+  endedAt: { type: DataTypes.DATE, allowNull: true }
+}, {
+  tableName: 'omni_shifts',
+  timestamps: true,
+  indexes: [
+    { fields: ['userId', 'startedAt'] },
+    { fields: ['lineId', 'startedAt'] }
   ]
 });
 
@@ -3315,7 +3384,10 @@ const OmniMessage = sequelize.define('OmniMessage', {
   // может оказаться фотография направления или анализов.
   attachments: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   externalMessageId: { type: DataTypes.STRING(64), allowNull: true },
-  deliveryError: { type: DataTypes.TEXT, allowNull: true }
+  deliveryError: { type: DataTypes.TEXT, allowNull: true },
+  // К какому обращению относится реплика. Лента при этом одна: по сессии в ней
+  // рисуется разделитель «обращение от такого-то числа» и оценка под ним.
+  sessionId: { type: DataTypes.UUID, allowNull: true }
 }, {
   tableName: 'omni_messages',
   timestamps: true,
@@ -3333,6 +3405,15 @@ OmniConversation.belongsTo(User, { foreignKey: 'assigneeUserId', as: 'assignee' 
 OmniConversation.hasMany(OmniMessage, { foreignKey: 'conversationId', as: 'messages' });
 OmniMessage.belongsTo(OmniConversation, { foreignKey: 'conversationId', as: 'conversation' });
 OmniMessage.belongsTo(User, { foreignKey: 'authorUserId', as: 'author' });
+
+OmniConversation.hasMany(OmniSession, { foreignKey: 'conversationId', as: 'sessions' });
+OmniSession.belongsTo(OmniConversation, { foreignKey: 'conversationId', as: 'conversation' });
+OmniSession.belongsTo(User, { foreignKey: 'assigneeUserId', as: 'assignee' });
+OmniSession.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
+OmniMessage.belongsTo(OmniSession, { foreignKey: 'sessionId', as: 'session' });
+
+OmniShift.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+OmniShift.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 
 // === УВЕДОМЛЕНИЯ ПАЦИЕНТАМ (ver. 7.86) ===
 //
@@ -4450,6 +4531,8 @@ module.exports = {
   OmniLine,
   OmniLineOperator,
   OmniConversation,
+  OmniSession,
+  OmniShift,
   OmniMessage,
   NotifAppointment,
   NotifTemplate,

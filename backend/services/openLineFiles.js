@@ -18,7 +18,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 
-const { OmniConversation, OmniLineOperator } = require('../models');
+const { OmniConversation, OmniLineOperator, sequelize } = require('../models');
 const fileAccess = require('./fileAccess');
 
 const ROOT = path.join(__dirname, '..', 'uploads', 'open-line');
@@ -69,8 +69,30 @@ async function saveIncoming(channel, bot, media, conversationId) {
 }
 
 /**
- * Пускает к файлу только сотрудника той линии, которой принадлежит обращение.
- * Путь построен так, что обращение видно прямо в нём: /<id обращения>/<файл>.
+ * Линия, которой принадлежит файл, — по самой ссылке в переписке.
+ *
+ * Нужно из-за слияния переписок в 7.99: до него каталог назывался по id
+ * переписки, а слияние часть этих переписок удалило. Файлы остались лежать по
+ * старым путям и по-прежнему открываются из ленты, но каталога с таким id в
+ * базе уже нет — по имени папки линию не найти. Зато ссылка целиком хранится в
+ * attachments того сообщения, к которому файл приложен, и через сообщение
+ * находится и переписка, и линия.
+ */
+async function lineByAttachmentUrl(url) {
+  const [row] = await sequelize.query(`
+    SELECT c."lineId"
+    FROM omni_messages m
+    JOIN omni_conversations c ON c.id = m."conversationId"
+    WHERE m.attachments @> jsonb_build_array(jsonb_build_object('url', :url))
+    LIMIT 1
+  `, { replacements: { url }, type: sequelize.QueryTypes.SELECT });
+
+  return row ? row.lineId : null;
+}
+
+/**
+ * Пускает к файлу только сотрудника той линии, которой принадлежит переписка.
+ * Путь построен так, что переписка видна прямо в нём: /<id переписки>/<файл>.
  */
 async function openLineFileGuard(req, res, next) {
   try {
@@ -78,14 +100,17 @@ async function openLineFileGuard(req, res, next) {
     const userId = token ? fileAccess.verifyToken(token) : null;
     if (!userId) return res.status(401).send('Unauthorized');
 
-    const parts = decodeURIComponent(req.path).split('/').filter(Boolean);
+    const relative = decodeURIComponent(req.path);
+    const parts = relative.split('/').filter(Boolean);
     const conversationId = parts[0];
     if (!conversationId) return res.status(404).send('Not found');
 
     const conversation = await OmniConversation.findByPk(conversationId, { attributes: ['lineId'] });
-    if (!conversation) return res.status(404).send('Not found');
+    // Переписки с таким id нет — значит файл из слитой (см. lineByAttachmentUrl).
+    const lineId = conversation ? conversation.lineId : await lineByAttachmentUrl(`/uploads/open-line${relative}`);
+    if (!lineId) return res.status(404).send('Not found');
 
-    const isOperator = await OmniLineOperator.count({ where: { lineId: conversation.lineId, userId } });
+    const isOperator = await OmniLineOperator.count({ where: { lineId, userId } });
     if (!isOperator) return res.status(403).send('Forbidden');
 
     next();

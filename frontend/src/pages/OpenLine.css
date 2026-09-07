@@ -1,239 +1,307 @@
-/* Открытая линия (ver. 7.85).
-   Цвета — только семантические токены: раздел должен одинаково читаться в обеих
-   темах, а вбитые значения этого не переживают. */
+/* Открытая линия (ver. 7.85, оформление переделано в 7.99).
 
-.ol-root {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  height: calc(100vh - 64px);
-  background: var(--bg-secondary);
-  overflow: hidden;
-}
+   Раздел не имеет собственного языка оформления и не должен его иметь: работа
+   здесь та же, что в мессенджере, только собеседник другой — сотрудник там,
+   пациент здесь. Поэтому раскладка, список, лента, пузыри и панель ввода взяты
+   у мессенджера как есть: страница собрана из его классов (.alfa-chat,
+   .chat-sidebar, .chat-item, .message, .chat-input), а Dashboard.css
+   подключается прямо в OpenLine.js.
 
-/* ── Левая колонка ───────────────────────────────────────────────────── */
+   Свои правила ниже добавляют ровно то, чего в мессенджере нет:
 
-.ol-side {
-  display: flex;
-  flex-direction: column;
+     • аватары-плейсхолдеры по каналу связи — у пациентов своих аватаров нет и
+       взять их неоткуда;
+     • переключатель очереди, «моих» и архива;
+     • разделители обращений в сплошной ленте;
+     • оценки работы и таблица показателей.
+
+   Всё это заскоуплено под .ol-page или под собственные имена: правило, которое
+   протекло бы в мессенджер, здесь недопустимо — файл подключается вместе с
+   Dashboard.css и стоит после него.
+
+   Цвета — только семантические токены, кроме фирменных цветов мессенджеров в
+   ChannelAvatar.js: чужую айдентику рампами проекта подменять нельзя. */
+
+/* ── Каркас страницы ───────────────────────────────────────────────────── */
+
+/* Полоса переключения экранов забирает свою высоту, остаток отдаётся чату.
+   .alfa-chat внутри тянется на всю высоту — у мессенджера эту роль играет
+   .dashboard-chat-wrapper, но там над чатом ничего нет. */
+.ol-page .ol-chat {
+  flex: 1;
   min-height: 0;
-  background: var(--bg-primary);
-  border-right: 1px solid var(--border-light);
 }
 
-.ol-shift { padding: 16px; border-bottom: 1px solid var(--border-light); }
+.ol-page .ol-chat .alfa-chat {
+  height: 100%;
+}
 
-.ol-shift-btn {
+/* ── Аватар канала ─────────────────────────────────────────────────────── */
+
+.ol-avatar {
+  position: relative;
+  display: inline-block;
+  width: var(--ol-avatar-size, 48px);
+  height: var(--ol-avatar-size, 48px);
+  flex-shrink: 0;
+}
+
+.ol-avatar-face {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--msg-bubble-border, var(--border-light));
+  box-shadow: 0 1px 3px rgba(20, 29, 45, .1);
+}
+
+.ol-avatar-face svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Значок мессенджера вынесен поверх круга — внутри него он оказался бы вдвое
+   мельче и превратился бы в точку. Кольцо цвета панели, а не белое: на тёмной
+   теме белое кольцо выглядит наклейкой. */
+.ol-avatar-badge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: calc(var(--ol-avatar-size, 48px) * .4);
+  height: calc(var(--ol-avatar-size, 48px) * .4);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s;
-}
-.ol-shift-btn:hover { background: var(--bg-hover); }
-.ol-shift-btn.on {
-  background: var(--success);
-  border-color: var(--success);
-  color: #fff;
+  border-radius: 50%;
+  background: var(--msg-bar-base, var(--bg-primary));
+  box-shadow: 0 0 0 1.5px var(--msg-bar-base, var(--bg-primary)),
+              0 1px 3px rgba(20, 29, 45, .2);
+  color: var(--ol-avatar-mark, var(--primary));
 }
 
-.ol-shift-hint {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  text-align: center;
+.ol-avatar-badge svg {
+  display: block;
+  width: 72%;
+  height: 72%;
 }
 
-.ol-tabs {
+/* Гнёзда мессенджера рассчитаны на картинку и обрезают всё по кругу — значок
+   канала торчит наружу, поэтому обрезку здесь снимаем. */
+.ol-page .ol-head-avatar,
+.ol-page .ol-message-avatar {
+  background: none;
+  overflow: visible;
+  box-shadow: none;
+  border: none;
+}
+
+/* ── Переключатель списков ─────────────────────────────────────────────── */
+
+/* Вдавленная пилюля с выпуклой выбранной вкладкой — тот же материал, что у
+   поиска над ней. Отдельная строка вкладок, а не фильтр в поиске: очередь,
+   «мои» и архив — три разных занятия, а не три взгляда на один список. */
+.ol-scopes {
   display: flex;
   gap: 4px;
-  padding: 8px;
-  border-bottom: 1px solid var(--border-light);
+  margin: 0 16px 8px;
+  padding: 4px;
+  border: 1px solid var(--msg-input-border, var(--border));
+  border-radius: 100px;
+  background: var(--msg-input-bg, var(--bg-secondary));
+  box-shadow: var(--msg-input-shadow);
+  flex-shrink: 0;
 }
 
-.ol-tab {
+.ol-scope {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 8px 6px;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 6px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 100px;
   background: transparent;
   color: var(--text-secondary);
+  font-family: inherit;
   font-size: 13px;
   cursor: pointer;
-  transition: background .15s, color .15s;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              box-shadow var(--transition-fast);
 }
-.ol-tab:hover { background: var(--bg-hover); }
-.ol-tab.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
 
-.ol-tab-count {
+.ol-scope:hover {
+  color: var(--text-primary);
+}
+
+/* Рельеф выбранной вкладки — тенью, а не рамкой: рамка добавила бы два пикселя
+   и вкладки прыгали бы при переключении. */
+.ol-scope.active {
+  background: var(--msg-control-bg, var(--bg-primary));
+  box-shadow: var(--msg-control-shadow), inset 0 0 0 1px var(--msg-control-border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ol-scope-count {
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--accent-500);
+  background: var(--primary);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
 }
 
-.ol-list { flex: 1; overflow-y: auto; min-height: 0; }
+/* ── Метки в строке списка ─────────────────────────────────────────────── */
 
-.ol-list-note {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 28px 16px;
-  color: var(--text-tertiary);
-  font-size: 13px;
-  text-align: center;
-}
-
-.ol-spin { animation: ol-rotate 1s linear infinite; }
-@keyframes ol-rotate { to { transform: rotate(360deg); } }
-
-.ol-item {
-  display: block;
-  width: 100%;
-  padding: 12px 16px;
-  border: none;
-  border-bottom: 1px solid var(--border-light);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition: background .15s;
-}
-.ol-item:hover { background: var(--bg-hover); }
-.ol-item.active { background: var(--bg-tertiary); }
-
-.ol-item-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.ol-item-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-.ol-item-time { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
-
-.ol-item-bottom {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-.ol-item-who { color: var(--text-secondary); }
-
-/* ── Переписка ───────────────────────────────────────────────────────── */
-
-.ol-thread {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--bg-secondary);
-}
-
-.ol-placeholder {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: var(--text-tertiary);
-}
-
-.ol-thread-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 20px;
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-light);
-}
-.ol-thread-head h3 { margin: 0 0 6px; font-size: 16px; color: var(--text-primary); }
-
-.ol-thread-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.ol-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.ol-tag {
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   font-size: 11px;
+  white-space: nowrap;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.ol-chip.ok { background: var(--green-100); color: var(--success); }
 
-.ol-thread-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-
-.ol-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background .15s;
-}
-.ol-btn:hover { background: var(--bg-hover); }
-.ol-btn.primary {
-  background: var(--accent-500);
-  border-color: transparent;
+.ol-tag.new {
+  background: var(--primary);
   color: #fff;
   font-weight: 600;
 }
 
-.ol-taken { font-size: 12px; color: var(--text-tertiary); }
+/* ── Шапка переписки ───────────────────────────────────────────────────── */
 
-.ol-messages {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-  padding: 20px;
+.ol-head-actions {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-.ol-msg { max-width: 68%; }
-.ol-msg.in { align-self: flex-start; }
-.ol-msg.out { align-self: flex-end; }
+.ol-page .ol-head-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
-.ol-msg-body {
-  padding: 10px 14px;
-  border-radius: var(--radius-lg);
-  font-size: 14px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.ol-msg.in .ol-msg-body {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
-  color: var(--text-primary);
-  border-bottom-left-radius: var(--radius-sm);
-}
-.ol-msg.out .ol-msg-body {
-  background: var(--accent-500);
+/* «Взять себе» — та же выпуклая акцентная поверхность, что кнопка отправки и
+   свой пузырь: они стоят в одном окне и обязаны быть из одного материала. */
+.ol-page .ol-head-btn.btn-primary {
+  border: 1px solid color-mix(in srgb, var(--primary) 82%, #000000);
+  background: var(--msg-bubble-own-bg);
   color: #fff;
-  border-bottom-right-radius: var(--radius-sm);
+  box-shadow: var(--msg-bubble-own-shadow);
 }
 
-.ol-msg-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ol-page .ol-head-btn:not(.btn-primary) {
+  border: 1px solid var(--msg-control-border);
+  background: var(--msg-control-bg);
+  color: var(--text-primary);
+  box-shadow: var(--msg-control-shadow);
+}
+
+/* ── Разделители обращений в ленте ─────────────────────────────────────── */
+
+/* Начало обращения. Капсула акцентная, а не серая, как у смены дня: без этого
+   отличия полугодовая переписка читается одним бесконечным разговором, и
+   понять, где кончился прошлый вопрос, нельзя. */
+.ol-page .date-separator.ol-session span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: color-mix(in srgb, var(--primary) 84%, transparent);
+  border-color: color-mix(in srgb, #ffffff 26%, transparent);
+  text-transform: none;
+}
+
+/* Конец обращения: кто довёл и как оценили. Приподнятая плашка, а не капсула, —
+   это итог, а не подпись, и он относится к тому, что выше, а не к тому, что
+   ниже. */
+.ol-session-end {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 14px;
+}
+
+.ol-session-end span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--msg-bubble-border);
+  border-radius: 100px;
+  background: var(--msg-bubble-bg);
+  box-shadow: var(--msg-bubble-shadow);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ol-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--text-disabled);
+}
+
+.ol-stars .on {
+  color: var(--amber-500);
+  fill: currentColor;
+}
+
+/* ── Панель ответа ─────────────────────────────────────────────────────── */
+
+/* Поле многострочное: оператор пишет абзацами, а не репликами в один щелчок.
+   Собственной поверхности у него нет — её даёт .chat-input-wrapper, ровно как
+   в мессенджере. */
+.ol-page .chat-input-wrapper {
+  padding: 8px 18px;
+  align-items: flex-end;
+}
+
+.ol-field {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  border: none;
+  outline: none;
+  background: none;
+  resize: none;
+  max-height: 140px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.ol-field::placeholder { color: var(--text-tertiary); }
+.ol-field:disabled { color: var(--text-disabled); cursor: not-allowed; }
+
+/* ── Вложения ──────────────────────────────────────────────────────────── */
+
+.ol-msg-files { display: flex; flex-wrap: wrap; gap: 6px; }
+.ol-msg-files:not(:last-child) { margin-bottom: 6px; }
+
+.ol-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
 
 .ol-photo { display: block; max-width: 260px; }
 .ol-photo img {
@@ -248,67 +316,25 @@
 .ol-file { text-decoration: none; cursor: pointer; }
 .ol-file:hover { background: var(--bg-hover); }
 
-.ol-msg-foot {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-.ol-msg.out .ol-msg-foot { justify-content: flex-end; }
-
-.ol-msg-error { display: inline-flex; align-items: center; gap: 3px; color: var(--error); }
-
-/* ── Поле ответа ─────────────────────────────────────────────────────── */
-
-.ol-composer {
-  display: flex;
-  gap: 10px;
-  padding: 14px 20px;
-  background: var(--bg-primary);
-  border-top: 1px solid var(--border-light);
-}
-
-.ol-composer textarea {
-  flex: 1;
-  resize: none;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.4;
-}
-.ol-composer textarea:focus { outline: none; border-color: var(--accent-500); }
-.ol-composer textarea:disabled { color: var(--text-disabled); cursor: not-allowed; }
-
-.ol-send {
-  align-self: flex-end;
-  display: flex;
+.ol-msg-error {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--accent-500);
-  color: #fff;
-  cursor: pointer;
-  transition: opacity .15s;
+  gap: 3px;
+  color: var(--error);
 }
-.ol-send:disabled { opacity: .45; cursor: not-allowed; }
 
-/* ── Нет доступа ─────────────────────────────────────────────────────── */
+/* В своём пузыре подложка акцентная — красным по ней ничего не прочесть. */
+.ol-page .message.own .ol-msg-error { color: rgba(255, 255, 255, .92); }
+
+/* ── Нет доступа ───────────────────────────────────────────────────────── */
 
 .ol-empty-page {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  height: calc(100vh - 64px);
   padding: 24px;
   color: var(--text-tertiary);
   text-align: center;
@@ -316,12 +342,184 @@
 .ol-empty-page h2 { margin: 0; font-size: 18px; color: var(--text-secondary); }
 .ol-empty-page p { margin: 0; max-width: 420px; font-size: 14px; }
 
-/* Телефон: список и переписка не помещаются рядом, показываем что-то одно.
-   Десктопную раскладку не трогаем — правило действует только здесь. */
+.ol-spin { animation: ol-rotate 1s linear infinite; }
+@keyframes ol-rotate { to { transform: rotate(360deg); } }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ПОКАЗАТЕЛИ
+
+   Таблица, а не карточки: величины сравнивают между людьми, а сравнение
+   столбиком — то, ради чего таблицы и существуют.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ols-root {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.ols-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ols-periods {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background: var(--bg-primary);
+}
+
+.ols-period {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 100px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ols-period.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.ols-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ols-refresh:hover { background: var(--bg-hover); }
+
+.ols-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ols-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-primary);
+  box-shadow: 0 1px 2px rgba(20, 29, 45, .05), 0 6px 14px rgba(20, 29, 45, .05);
+}
+
+.ols-total-value { font-size: 24px; font-weight: 700; color: var(--text-primary); }
+.ols-total-label { font-size: 12px; color: var(--text-tertiary); }
+
+/* Таблица шире экрана не помещается, и прокручиваться должна она, а не
+   страница: иначе на ноутбуке уезжает вся раскладка раздела. */
+.ols-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-primary);
+}
+
+.ols-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ols-table th {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ols-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.ols-table tbody tr:last-child td { border-bottom: none; }
+.ols-table tbody tr:hover { background: var(--bg-hover); }
+
+.ols-person { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+
+.ols-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.ols-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.ols-rating { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.ols-rating-value { font-weight: 600; }
+.ols-rating-value em, .ols-note, .ols-share-value em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.ols-share { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+
+.ols-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.ols-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--primary) 78%, #ffffff), var(--primary));
+}
+
+.ols-share-value { white-space: nowrap; font-weight: 600; }
+
+/* ── Телефон ───────────────────────────────────────────────────────────── */
+
+/* Мастер-детейл достаётся от мессенджера целиком (.mobile-hidden), здесь
+   правится только своё. Десктопная раскладка не трогается. */
 @media (max-width: 768px) {
-  .ol-root { grid-template-columns: 1fr; }
-  .ol-thread { display: none; }
-  .ol-root.has-active .ol-side { display: none; }
-  .ol-root.has-active .ol-thread { display: flex; }
-  .ol-msg { max-width: 85%; }
+  /* Полоса экранов уезжает вбок, а не переносится: «Настройка линий» вставала
+     в две строки и полоса становилась вдвое выше остальных. */
+  .ol-screens { overflow-x: auto; }
+  .ol-screens button { flex-shrink: 0; white-space: nowrap; }
+  .ol-scopes { margin: 0 12px 8px; }
+  .ol-field { font-size: 16px; }  /* иначе iOS зумит поле и обратно не отъезжает */
+  .ols-root { padding: 12px; }
+  .ol-head-actions { gap: 6px; }
+  .ol-page .ol-head-btn { padding: 8px 12px; }
 }

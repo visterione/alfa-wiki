@@ -7,6 +7,7 @@ import {
   ArrowLeft, KeyRound, Building2, MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import ShiftWidget from './openline/ShiftWidget';
 import { useTheme } from '../context/ThemeContext';
 import WhatsNewMenu from './WhatsNewMenu';
 import { search as searchApi, BASE_URL } from '../services/api';
@@ -440,6 +441,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 </div>
 
                 <div className="header-dropdown-grid">
+                  {/* Смена открытой линии (ver. 7.99). Первым в сетке и на обе
+                      колонки: это не переход в раздел, а действие, и стоять оно
+                      должно там, куда смотрят в начале и в конце рабочего дня.
+                      Не оператору виджет не показывается вовсе. */}
+                  <ShiftWidget open={showDropdown} onNavigate={() => setShowDropdown(false)} />
+
                   <Link to="/profile" className="header-dropdown-item" data-icon-motion="gear" onClick={() => setShowDropdown(false)}>
                     <span className="header-dropdown-item-icon"><Settings size={17} /></span>
                     Настройки

@@ -1285,7 +1285,7 @@ export const openLine = {
   state: () => api.get('/open-line/state'),
   shift: (on) => api.post('/open-line/shift', { on }),
 
-  conversations: (scope = 'queue') => api.get('/open-line/conversations', { params: { scope } }),
+  conversations: (scope = 'queue', q = '') => api.get('/open-line/conversations', { params: { scope, q } }),
   conversation: (id) => api.get(`/open-line/conversations/${id}`),
   assign: (id) => api.post(`/open-line/conversations/${id}/assign`),
   close: (id) => api.post(`/open-line/conversations/${id}/close`),
@@ -1297,7 +1297,10 @@ export const openLine = {
   updateLine: (id, data) => api.put(`/open-line/lines/${id}`, data),
   addOperator: (lineId, userId) => api.post(`/open-line/lines/${lineId}/operators`, { userId }),
   removeOperator: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/operators/${userId}`),
-  bindBot: (lineId, botId) => api.put(`/open-line/lines/${lineId}/bots/${botId}`)
+  bindBot: (lineId, botId) => api.put(`/open-line/lines/${lineId}/bots/${botId}`),
+
+  // Рейтинг сотрудников и KPI (ver. 7.99): считается по обращениям и сменам.
+  stats: (params) => api.get('/open-line/stats', { params })
 };
 
 // Уведомления пациентам (ver. 7.86): шаблоны текстов и журнал отправок.

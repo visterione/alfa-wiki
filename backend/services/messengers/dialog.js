@@ -18,6 +18,7 @@ const { BotSubscriber } = require('../../models');
 const misClient = require('../misClient');
 const openLine = require('../openLine');
 const openLineFiles = require('../openLineFiles');
+const openLinePatient = require('../openLinePatient');
 
 // Категории подписчиков в МИС. Ставятся только боевым ботам: тестовый не должен
 // оставлять следов в карточках живых пациентов.
@@ -139,7 +140,11 @@ async function handleContact(channel, bot, update) {
       patch.taggedAt = new Date();
     }
   }
-  await upsertSubscriber(bot, update, patch);
+  const subscriber = await upsertSubscriber(bot, update, patch);
+  // Снимок карточки для заголовка чата у оператора: ФИО, номер карты и дата
+  // рождения. Знакомство — единственный момент, когда мы точно знаем, что
+  // карточку стоит перечитать.
+  await openLinePatient.refresh(subscriber, true);
 
   const found = patientIds && patientIds.length
     ? 'Мы нашли вашу карту — напоминания о визитах будут приходить сюда.'
@@ -201,7 +206,7 @@ async function handleText(channel, bot, update) {
     }
   }
 
-  const notice = await openLine.offlineNoticeFor(accepted.conversation, accepted.line);
+  const notice = await openLine.offlineNoticeFor(accepted.session, accepted.line);
   if (notice) await channel.sendText(bot, update.chatId, notice);
 }
 
@@ -211,8 +216,21 @@ async function handleText(channel, bot, update) {
  * напоминанием.
  */
 async function handleButton(channel, bot, update) {
-  const [action, value] = String(update.data || '').split(':');
+  const [action, value, extra] = String(update.data || '').split(':');
   console.log(`[dialog] кнопка «${update.data}» от ${update.externalUserId}`);
+
+  // Оценка работы сотрудника после закрытия обращения (ver. 7.99). Ответ здесь
+  // короткий и без второго вопроса: просить оценку — уже вмешательство, а
+  // разговор о том, «почему три», человек заведёт сам, если захочет.
+  if (action === 'rate' && value) {
+    const session = await openLine.rate(value, extra);
+    await channel.answerCallback(bot, update.callbackId, session ? 'Спасибо за оценку' : '');
+    if (session) {
+      await channel.sendText(bot, update.chatId,
+        'Спасибо, оценка учтена. Если понадобится что-то ещё — просто напишите сюда.');
+    }
+    return null;
+  }
 
   if (action !== 'confirm' || !value) {
     return channel.answerCallback(bot, update.callbackId);

@@ -65,9 +65,41 @@ router.get('/conversations', authenticate, async (req, res) => {
     const scope = ['queue', 'mine', 'closed'].includes(req.query.scope) ? req.query.scope : 'queue';
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const offset = Number(req.query.offset) || 0;
-    res.json(await openLine.listConversations(req.user.id, { scope, limit, offset }));
+    const q = String(req.query.q || '').slice(0, 100);
+    res.json(await openLine.listConversations(req.user.id, { scope, limit, offset, q }));
   } catch (err) {
     fail(res, err, 'GET /conversations');
+  }
+});
+
+// ── Продуктивность ────────────────────────────────────────────────────────
+
+// Рейтинг сотрудников и KPI. Открыт всем, кто работает на линии, а не только
+// администратору: доска показателей имеет смысл, когда её видит тот, кого она
+// касается. Администратор без линий смотрит по всей сети.
+router.get('/stats', authenticate, async (req, res) => {
+  try {
+    const to = req.query.to ? new Date(req.query.to) : new Date();
+    // Месяц по умолчанию: смены складываются в месячную картину, за неделю
+    // случайный выходной перекашивает долю разобранного.
+    const from = req.query.from
+      ? new Date(req.query.from)
+      : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const own = await openLine.linesOfUser(req.user.id);
+    let lineIds = own.map(r => r.lineId);
+
+    if (req.user.isAdmin) {
+      const all = await OmniLine.findAll({ attributes: ['id'] });
+      lineIds = all.map(l => l.id);
+    }
+    if (!lineIds.length) {
+      throw new openLine.OpenLineError('not_operator', 'Вы не заведены ни в одну линию');
+    }
+
+    res.json(await openLine.stats(lineIds, { from, to }));
+  } catch (err) {
+    fail(res, err, 'GET /stats');
   }
 });
 

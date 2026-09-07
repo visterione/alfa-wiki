@@ -125,7 +125,9 @@
     "fromni:channels": "node scripts/fromniChannels.js",
     "imobis:check": "node scripts/imobisCheck.js",
     "migrate:7.95": "node scripts/runSqlMigration.js 7.95",
-    "migrate:7.95:check": "node scripts/runSqlMigration.js 7.95 --check"
+    "migrate:7.95:check": "node scripts/runSqlMigration.js 7.95 --check",
+    "migrate:7.99": "node scripts/runSqlMigration.js 7.99",
+    "migrate:7.99:check": "node scripts/runSqlMigration.js 7.99 --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
