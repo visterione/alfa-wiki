@@ -121,11 +121,22 @@ async function build(event, snap, found = {}) {
   const out = [];
 
   for (const template of forEvent(event)) {
+    // Тексты каналов отрисовываем здесь же и все сразу: какой из них уйдёт,
+    // решится только при отправке, а подстановки к тому времени могут стать
+    // недоступны — визит перенесут или отменят.
+    const channelTexts = {};
+    for (const [channel, raw] of Object.entries(template.channelTexts || {})) {
+      if (raw && String(raw).trim()) channelTexts[channel] = render(raw, values);
+    }
+
     out.push({
       text: render(template.text, values),
       // Короткий текст для SMS. Пусто — уйдёт обычный: пусть лучше заплатят за
       // два сегмента, чем человек не получит уведомления вовсе.
       smsText: template.smsText ? render(template.smsText, values) : null,
+      channelTexts,
+      // Свой каскад события; пусто — идти общим (ver. 8.03).
+      cascade: Array.isArray(template.cascade) && template.cascade.length ? template.cascade : null,
       withConfirm: template.withConfirm,
       template
     });

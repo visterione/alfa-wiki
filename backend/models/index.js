@@ -672,6 +672,10 @@ const MessengerBot = sequelize.define('MessengerBot', {
   // 'webhook' — платформа стучится к нам; 'polling' — мы сами ходим за
   // обновлениями. Второй режим нужен там, где входящие снаружи не проходят.
   deliveryMode: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'webhook' },
+  // Чей это бот (ver. 8.05). Раньше связь была косвенной: бот знал
+  // организацию, а филиал угадывался по ней. У проверочных ботов пусто
+  // намеренно — они не обслуживают пациентов.
+  medCenterId: { type: DataTypes.UUID, allowNull: true },
   lastUpdateId: { type: DataTypes.BIGINT, allowNull: false, defaultValue: 0 }, // курсор getUpdates
   // Какую линию открытой линии кормит бот. Связь явная: на медцентр приходится
   // два бота (Telegram и MAX), а небольшие центры со временем могут делить одну.
@@ -957,6 +961,16 @@ const MedCenter = sequelize.define('MedCenter', {
   // Общая схема медцентра используется по умолчанию, когда помещения не
   // разбиты по корпусам и этажам. Иерархия склада остаётся необязательной.
   warehousePlan: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  // Ходит ли сюда пациент (ver. 8.04). Рядом с клиниками в справочнике лежат
+  // АУП и «Направители» — подразделения для учёта, а не филиалы. В настройке
+  // оповещений они предлагали завести рассылку туда, где рассылать некому.
+  // Флаг, а не список имён в коде: справочник правит заказчик.
+  servesPatients: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  // Ключ лицевого счёта у провайдера (ver. 8.05). Появился в 5.91 ради
+  // выгрузки подписчиков из Fromni и до 8.05 жил отдельным справочником,
+  // никак не связанным с филиалами. Стал свойством филиала: настраивают
+  // филиал, а счёт — его признак, а не самостоятельная сущность.
+  botOrganization: { type: DataTypes.STRING(50), allowNull: true },
   organizationId: { type: DataTypes.UUID, allowNull: true, comment: 'Юрлицо, которому принадлежит медцентр' },
   // Мост между справочником и всем МИС-блоком (расписание, зарплата, бонусы,
   // платежи). Массив, потому что у Сукко исторически два id (11 и 12) — раньше это
@@ -3451,10 +3465,24 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   event: { type: DataTypes.STRING(20), allowNull: false },   // created | moved | cancelled | reminder
   medCenterId: { type: DataTypes.UUID, allowNull: true },     // пусто — общий на сеть
-  text: { type: DataTypes.TEXT, allowNull: false },       // мессенджеры: длина не ограничена
+  // Запасной текст на все каналы сразу. С 8.04 не заполняется и в интерфейсе
+  // не показывается: один абзац на мессенджер и на SMS — это разные деньги и
+  // разный разговор. Колонка оставлена ради старого отправщика, который
+  // перезапускают руками.
+  text: { type: DataTypes.TEXT, allowNull: true },
   // Короткий текст для SMS. Кириллица даёт 70 символов на сегмент, и лишний
   // символ стоит второй SMS — поэтому текст отдельный, а не обрезанный.
   smsText: { type: DataTypes.TEXT, allowNull: true },
+  // Свой текст на каждый канал: { telegram, max, sms } (ver. 8.03). Деление на
+  // text/smsText было по длине, а не по каналу, и на два своих мессенджера
+  // одного «текста для мессенджеров» перестало хватать. Пустой ключ означает
+  // «взять text», поэтому шаблон без заполненных каналов работает как прежде.
+  // JSONB, а не три колонки: следующий канал не должен требовать миграции.
+  channelTexts: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  // Свой порядок ступеней у события; NULL — идти общим каскадом (ver. 8.03).
+  // Просьбу оценить приём незачем слать по SMS: выполнить её там нельзя, кнопок
+  // нет, а деньги списываются.
+  cascade: { type: DataTypes.JSONB, allowNull: true },
   beforeMinutes: { type: DataTypes.INTEGER, allowNull: true },  // напоминание: за сколько до визита
   afterMinutes: { type: DataTypes.INTEGER, allowNull: true },   // отзыв: через сколько после визита
   // Отзыв по каждому визиту или один раз за день, после последнего.
@@ -3462,6 +3490,23 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, { tableName: 'notif_templates', timestamps: true });
+
+// Отличия филиала от общих настроек оповещений (ver. 8.03). Общие живут в
+// settings и служат основанием; здесь только то, что филиал переопределяет, и
+// филиал без отличий строки не имеет вовсе. Ключ — медцентр портала, а не
+// organization ботов: настраивают филиал, куда ходит пациент, а organization —
+// это лицевой счёт у провайдера, один на несколько филиалов.
+const NotifBranchSettings = sequelize.define('NotifBranchSettings', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  medCenterId: { type: DataTypes.UUID, allowNull: false },
+  cascade: { type: DataTypes.JSONB, allowNull: true },
+  quietHours: { type: DataTypes.JSONB, allowNull: true },
+  imobis: { type: DataTypes.JSONB, allowNull: true },
+  // Выключенный филиал не получает оповещений вовсе. Нужно на время переезда:
+  // клиники подключают по одной, и пока филиал не подключён, уведомления по
+  // нему должна слать МИС, а не оба сразу.
+  isEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
+}, { tableName: 'notif_branch_settings', timestamps: true });
 
 // Очередь и журнал в одной таблице: строка создаётся в pending и остаётся
 // навсегда с исходом. На вопрос «почему человек не получил напоминание»
@@ -3477,6 +3522,12 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   phone: { type: DataTypes.STRING(30) },
   text: { type: DataTypes.TEXT, allowNull: false },
   smsText: { type: DataTypes.TEXT, allowNull: true, field: 'sms_text' },
+  // Готовые тексты под каждый канал, отрисованные в момент заведения
+  // события (ver. 8.03). Не достаются из шаблона при отправке по той же
+  // причине, что и text: между заведением и отправкой проходят часы,
+  // шаблон за это время могут поправить, и человек получил бы не тот
+  // текст, который был обещан на момент записи.
+  channelTexts: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
   withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   // Видно, что сообщение не потерялось, а ждёт конца тихих часов.
   postponedFrom: { type: DataTypes.DATE, allowNull: true, field: 'postponed_from' },
@@ -4511,6 +4562,10 @@ const {
 
 associateOnboarding({ User, MedCenter });
 
+MessengerBot.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+NotifBranchSettings.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+NotifTemplate.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -4545,6 +4600,7 @@ module.exports = {
   OmniMessage,
   NotifAppointment,
   NotifTemplate,
+  NotifBranchSettings,
   NotifOutbox,
   MisEvent,
   Vehicle,

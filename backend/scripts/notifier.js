@@ -100,8 +100,13 @@ async function showOutbox(limit = 15) {
   const misClient = require('../services/misClient');
   const sender = require('../services/notifications/sender');
 
-  console.log(`Вторая ступень (Fromni): ${sender.ALLOW_FROMNI ? 'разрешена' : 'ВЫКЛЮЧЕНА'}` +
-    `   пилотных телефонов: ${sender.PILOT_PHONES.length || 'без ограничения'}\n`);
+  // Состояние предохранителей живёт в базе с 8.06 — спрашиваем, а не читаем из
+  // окружения. Печатаем поимённо: до 8.06 здесь сообщалось только о Fromni, и
+  // запуск с открытым Имобисом выглядел безопасным.
+  const state = await sender.safety.read();
+  const external = state.allowExternal.length ? state.allowExternal.join(', ') : 'НИКОМУ (только наши боты)';
+  console.log(`Отправка наружу разрешена: ${external}${state.locked ? '   ЗАМОК НА СЕРВЕРЕ' : ''}` +
+    `   пилотных телефонов: ${state.pilotPhones.length || 'БЕЗ ОГРАНИЧЕНИЯ (вся сеть)'}\n`);
 
   for (const row of rows) {
     const normalized = misClient.normalizePhone(row.phone || '');

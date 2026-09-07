@@ -14,10 +14,12 @@
  *   2. Километры подсказок. Под каждым заголовком лежал абзац на четыре строки,
  *      и на экране их было по пять. Читать это никто не будет, а найти среди
  *      них поле — уже работа.
- *      → Одна короткая строка под заголовком, остальное за кнопкой «зачем это»
- *        (.ola-why). Текст не выброшен: он объясняет решения, принятые с
- *        заказчиком, и без него через полгода никто не вспомнит, почему каскад
- *        именно такой. Но по умолчанию свёрнут.
+ *      → В 8.02 их свернули за кнопку «зачем это». Заказчик повторил замечание,
+ *        и в 8.03 пояснений в интерфейсе не осталось вовсе — ни .ola-lead, ни
+ *        .ola-hint, ни .ola-why. Единственный уцелевший текст (.ola-warning) —
+ *        не пояснение, а состояние системы. Объяснения решений переехали в
+ *        комментарии кода и в migrations/*.txt: их читают те, кто правит
+ *        систему, а не те, кто правит тексты уведомлений.
  *
  *   3. Слабая контрастность. Подписи шли --text-tertiary по --bg-secondary,
  *      то есть серым по серому.
@@ -203,63 +205,6 @@
 
 .ola-block > h4 svg { color: var(--text-tertiary); }
 
-/* ── Подсказка «зачем это» ────────────────────────────────────────────────
- *
- * Кнопка-вопрос рядом с заголовком. Абзац разворачивается на месте, а не
- * всплывает подсказкой: тексты здесь длинные, и во всплывашке их не прочесть.
- */
-.ola-why {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 19px;
-  height: 19px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-
-.ola-why:hover,
-.ola-why.open {
-  border-color: var(--accent-400);
-  color: var(--accent-600);
-  background: var(--accent-50);
-}
-
-.ola-why-body {
-  margin: 0 0 14px;
-  padding: 11px 14px;
-  border-left: 3px solid var(--accent-300);
-  border-radius: 0 8px 8px 0;
-  background: var(--accent-50);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--text-primary);
-}
-
-.ola-why-body p { margin: 0 0 7px; }
-.ola-why-body p:last-child { margin-bottom: 0; }
-.ola-why-body code {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--bg-tertiary);
-  font-size: 11.5px;
-}
-
-/* Короткая строка под заголовком — та, что остаётся видимой всегда.
-   Одна, не абзац: если не влезает в строку, значит это текст для «зачем это». */
-.ola-lead {
-  margin: 0 0 14px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
 /* ── Поля ─────────────────────────────────────────────────────────────────*/
 
 .ola-field { margin-bottom: 14px; }
@@ -319,14 +264,6 @@
 
 .ola-row > .ola-field { flex: 1 1 220px; margin-bottom: 0; }
 .ola-row > .ola-field.narrow { flex: 0 1 150px; }
-
-/* Пояснение под конкретным полем — короткое, иначе оно уходит в «зачем это». */
-.ola-hint {
-  margin: 5px 0 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
 
 /* ── Кнопки ───────────────────────────────────────────────────────────────*/
 
@@ -842,3 +779,572 @@
   .ola-log-search { margin-left: 0; width: 100%; }
   .ola-log-search input { width: 100%; }
 }
+
+/* ══ Добавлено в 8.03 ═════════════════════════════════════════════════════
+ *
+ * Знаки каналов, значки событий, переключатель текстов, сгибы и филиалы.
+ * Всё, что понадобилось, когда каналов стало три, а событий семь: список
+ * одинаковых карточек с одинаковыми заголовками читался только чтением.
+ */
+
+/* ── Знак канала ──────────────────────────────────────────────────────────
+ *
+ * Компонент ChannelLogo рисует плитку 24×24 в собственных координатах, здесь
+ * задаётся только размер и цвет для тех каналов, у которых нет своей марки.
+ */
+.ch-logo {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--ch-logo-size, 26px);
+  height: var(--ch-logo-size, 26px);
+  line-height: 0;
+}
+
+.ch-logo svg { width: 100%; height: 100%; display: block; }
+
+/* SMS и Notify своей марки не имеют: SMS — услуга оператора связи, Notify живёт
+   под маркой агрегатора, которая нам не принадлежит. Рисуем их токенами. */
+.ch-logo-sms    { color: var(--amber-600); }
+.ch-logo-notify { color: var(--cyan-600);  }
+
+/* ── Значок в шапке карточки ──────────────────────────────────────────────
+ *
+ * Заменяет одинаковый заголовок на узнаваемое лицо. Оттенок закреплён за
+ * смыслом события, а не за порядком в списке: отмена всегда красная, даже если
+ * стоит первой.
+ */
+.ola-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.ola-card-icon.small { width: 24px; height: 24px; border-radius: 7px; }
+
+.ola-card-icon.accent { background: var(--accent-100); color: var(--accent-700); }
+.ola-card-icon.green  { background: var(--green-100);  color: var(--green-700);  }
+.ola-card-icon.amber  { background: var(--amber-100);  color: var(--amber-700);  }
+.ola-card-icon.red    { background: var(--red-100);    color: var(--red-700);    }
+.ola-card-icon.violet { background: var(--violet-100); color: var(--violet-700); }
+.ola-card-icon.cyan   { background: var(--cyan-100);   color: var(--cyan-700);   }
+
+/* Шапка карточки: значок, название, метки, а органы управления прижаты вправо.
+   Название больше не растягивается на всю строку — иначе переключатели
+   разъезжались бы у карточек с разной длиной заголовка. */
+.ola-card > header h3 { flex: 0 1 auto; }
+.ola-card > header .ola-badge:first-of-type { margin-left: 2px; }
+.ola-card > header > .ola-switch:first-of-type { margin-left: auto; }
+.ola-card > header > .ola-btn { margin-left: auto; }
+.ola-card > header > .ola-switch + .ola-switch { margin-left: 4px; }
+
+/* ── Переключатель текстов по каналам ─────────────────────────────────────
+ *
+ * Четыре поля подряд растягивали карточку события на экран, а правят
+ * одновременно один текст. Переключатель показывает один и помечает точкой те
+ * каналы, где своего текста нет и уйдёт полный.
+ */
+.ola-textbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 12px;
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+
+.ola-textbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ola-textbar-btn:hover { color: var(--text-primary); }
+
+.ola-textbar-btn.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(var(--overlay-ink), 0.1);
+}
+
+/* Пустой канал. Не «ошибка» и не предупреждение: это рабочее состояние, при
+   котором уйдёт полный текст, — поэтому точка нейтральная, а не красная. */
+.ola-textbar-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--n-400);
+}
+
+.ola-textbar-btn.active .ola-textbar-dot { background: var(--n-500); }
+
+.ola-textarea.tall { min-height: 96px; }
+
+/* Подстановки. Своя обёртка, чтобы отделить их от поля сверху и от сгиба снизу
+   без лишнего элемента разметки. */
+.ola-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 14px;
+}
+
+/* ── Сгиб ─────────────────────────────────────────────────────────────────
+ *
+ * Каскад события нужен паре событий из семи, а места занимает столько же,
+ * сколько сами тексты. То же и с филиалом: настроенных будет один-два.
+ */
+.ola-fold {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ola-fold:hover { border-color: var(--n-400); }
+.ola-fold svg { color: var(--text-secondary); transition: transform 0.18s; flex-shrink: 0; }
+.ola-fold.open svg { transform: rotate(180deg); }
+
+.ola-fold-state {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.ola-fold-body {
+  padding: 14px 12px 4px;
+  border-left: 2px solid var(--border-light);
+  margin: 10px 0 4px 12px;
+}
+
+/* ── Каскад: знаки ступеней ───────────────────────────────────────────────*/
+
+/* Ступень «наши боты» ведёт сразу в два мессенджера, поэтому знака одного у неё
+   нет — рисуются оба, слегка внахлёст, как стопка. */
+.ola-cascade-pair {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.ola-cascade-pair .ch-logo + .ch-logo {
+  margin-left: -7px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px var(--bg-secondary);
+}
+
+.ola-cascade-empty {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+/* ── Журнал: исход строкой ────────────────────────────────────────────────*/
+
+.ola-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ola-row-status.ok    { color: var(--green-700); }
+.ola-row-status.bad   { color: var(--red-600);   }
+.ola-row-status.wait  { color: var(--amber-700); }
+.ola-row-status.muted { color: var(--text-secondary); }
+
+/* ── Прочее ───────────────────────────────────────────────────────────────*/
+
+.ola-loading {
+  padding: 34px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ola-chip.muted { color: var(--text-secondary); }
+
+/* Ряды кнопок и блоки внутри карточки шли с ручными style-отступами, пока их
+   было по одному. Теперь их десяток — задаём здесь. */
+.ola-actions.end { margin-top: 12px; }
+.ola-card-body > .ola-actions.end:first-child { margin-top: 0; }
+.ola-shell > .ola-actions.end { margin-bottom: 14px; }
+
+/* ══ Добавлено в 8.04 ═════════════════════════════════════════════════════
+ *
+ * Порядок доставки с текстами внутри, время события, ключи провайдеров, боты.
+ * Общий смысл правки — убрать размытые сущности: тексты больше не висят
+ * отдельным списком в стороне от каскада, а лежат внутри своей ступени.
+ */
+
+/* ── Время события ────────────────────────────────────────────────────────
+ *
+ * «Напомнить за 1 сут.» вместо вбитых 1440 минут. Значение и единица порознь:
+ * «1440» никто не читает как «сутки», и ошибиться в нуле легко.
+ */
+.ola-timings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+
+.ola-timing { display: inline-flex; align-items: center; gap: 8px; }
+
+.ola-timing-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ola-timing .ola-input { width: 78px; text-align: right; }
+.ola-timing .ola-select { width: auto; min-width: 78px; }
+.ola-freq { width: auto; min-width: 190px; }
+
+/* ── Порядок доставки ─────────────────────────────────────────────────────
+ *
+ * Ступень и её текст — одно целое. Прежде это были две несвязанные части, и
+ * связь между ними приходилось держать в голове: «SMS стоит третьей, значит
+ * вон то поле». Раскрывается по одной: их три-четыре, и четыре поля разом
+ * растянули бы карточку на экран.
+ */
+.ola-order-title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.ola-order { list-style: none; margin: 0 0 12px; padding: 0; }
+
+.ola-order-step {
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.ola-order-step + .ola-order-step { margin-top: 7px; }
+.ola-order-step.open { background: var(--bg-primary); border-color: var(--accent-300); }
+
+/* Ступень без текста пропускается при отправке. Помечаем её здесь, а не
+   предупреждением в стороне: решение принимают, глядя на строку. */
+.ola-order-step.blank { border-left: 3px solid var(--amber-400); }
+
+.ola-order-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+}
+
+.ola-order-head .no {
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--accent-500);
+  color: var(--n-0);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 23px;
+  text-align: center;
+}
+
+.ola-order-name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ola-order-name .provider {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.ola-order-name .chev {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  transition: transform 0.18s;
+  flex-shrink: 0;
+}
+
+.ola-order-step.open .ola-order-name .chev { transform: rotate(180deg); }
+
+.ola-order-blank {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--amber-700);
+}
+
+.ola-order-body {
+  padding: 4px 12px 14px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 2px;
+}
+
+.ola-order-body .ola-textarea { margin-top: 12px; }
+
+/* Две ступени SMS (Имобис и Fromni) делят один текст: канал у них один и тот
+   же. Говорим об этом в поле, а не оставляем догадываться, почему правка в
+   одной строке меняет другую. */
+.ola-order-shared {
+  margin-top: 12px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--accent-50);
+  font-size: 12px;
+  color: var(--accent-700);
+}
+
+/* Вложенная карточка: форма заведения бота внутри карточки ботов. */
+.ola-subcard {
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+
+/* ── Боты ─────────────────────────────────────────────────────────────────*/
+
+.ola-bot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--bg-primary);
+}
+
+.ola-bot + .ola-bot { margin-top: 8px; }
+.ola-bot.off { opacity: 0.6; }
+
+.ola-bot-main { flex: 1; min-width: 0; }
+
+.ola-bot-name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ola-bot-token {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+/* Состояние вебхука у платформы. Красным — расхождение с тем, каким режим
+   задумывался: это самая частая причина «бот молчит», и заметна она только
+   здесь. */
+.ola-bot-state { margin-top: 2px; font-size: 12px; color: var(--text-secondary); }
+.ola-bot-state.ok  { color: var(--green-700); }
+.ola-bot-state.bad { color: var(--red-600);   }
+
+.ola-select.narrow { width: auto; min-width: 120px; }
+
+/* ══ Добавлено в 8.05 ═════════════════════════════════════════════════════
+ *
+ * Филиал стал единицей настройки: его боты, его счёт, его имя отправителя
+ * лежат внутри его карточки. До 8.05 всё это было разложено по трём разным
+ * основаниям — боты по «организации», токен строкой на сеть, а филиал был
+ * списком галочек «подключён».
+ */
+
+/* Заголовок раздела на вкладке. Понадобился, когда вкладка разделилась на две
+   несмешивающиеся части: филиалы и то немногое, что действительно общее. */
+.ola-section {
+  margin: 22px 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.ola-section:first-child { margin-top: 4px; }
+
+/* Карточка филиала. Свёрнутая — одна строка со знаками ботов: по ней видно,
+   что у филиала настроено, не разворачивая. */
+.ola-branch-card > header { cursor: default; }
+.ola-branch-card.off > header { opacity: 0.65; }
+
+.ola-branch-bots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ola-branch-card > header > .ola-switch { margin-left: auto; }
+.ola-branch-card > header > .ola-icon-btn { margin-left: 4px; }
+.ola-branch-card > header > .ola-icon-btn svg { transition: transform 0.18s; }
+.ola-branch-card > header > .ola-icon-btn.open svg { transform: rotate(180deg); }
+
+/* Боты внутри филиала: тот же вид, что был у общего списка, но кнопка
+   добавления идёт следом за строками, а не в шапке карточки. */
+.ola-field > .ola-bot:first-of-type { margin-top: 2px; }
+.ola-field > .ola-add { margin-top: 8px; }
+
+/* Метка «унаследовано» рядом с подписью поля: показывает, что значение придёт
+   из общей настройки, если поле оставить пустым. */
+.ola-field > label > .ola-badge { margin-left: 8px; font-weight: 600; }
+
+
+/* ── Состояние предохранителя (ver. 8.06) ─────────────────────────────────
+ *
+ * Три вида, потому что состояний три, и путать их дорого: закрыто (янтарный,
+ * как было), закрыто и круг сужен (зелёный — это норма, а не тревога), открыто
+ * наружу (красный — сообщения уходят живым пациентам).
+ *
+ * Прежде вид был один и означал «Fromni выключена», хотя Имобис в это время
+ * отправлял мимо предохранителя.
+ */
+.ola-warning.safe {
+  border-color: var(--green-300);
+  background: var(--green-50);
+  color: var(--green-800);
+}
+
+.ola-warning.safe svg { color: var(--green-600); }
+.ola-warning.safe strong { color: var(--green-800); }
+.ola-warning.safe code { background: var(--green-100); }
+
+.ola-warning.live {
+  border-color: var(--red-300);
+  background: var(--red-50);
+  color: var(--red-800);
+}
+
+.ola-warning.live svg { color: var(--red-600); }
+.ola-warning.live strong { color: var(--red-800); }
+.ola-warning.live code { background: var(--red-100); }
+
+/* ── Предохранители (ver. 8.06) ───────────────────────────────────────────
+ *
+ * Карточка меняет цвет по состоянию, потому что состояний три и путать их
+ * дорого: зелёное — закрыто и круг сужен, янтарное — закрыто, красное —
+ * сообщения уходят живым пациентам. До 8.06 вид был один и означал «Fromni
+ * выключена», хотя Имобис в это время отправлял мимо предохранителя.
+ */
+.ola-safety.safe > header { background: var(--green-50);  border-bottom-color: var(--green-200); }
+.ola-safety.live > header { background: var(--red-50);    border-bottom-color: var(--red-200);   }
+.ola-safety:not(.safe):not(.live) > header { background: var(--amber-50); border-bottom-color: var(--amber-200); }
+
+.ola-safety.live { border-color: var(--red-300); }
+.ola-safety.safe { border-color: var(--green-300); }
+
+.ola-safety-rows { margin-bottom: 16px; }
+
+.ola-safety-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+
+.ola-safety-row + .ola-safety-row { margin-top: 8px; }
+
+/* Включённый провайдер выделен красным, а не зелёным: зелёный читается как
+   «всё хорошо», а здесь это состояние повышенной ответственности. */
+.ola-safety-row.on {
+  border-color: var(--red-300);
+  background: var(--red-50);
+}
+
+.ola-safety-row .name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.ola-safety-row .state { font-size: 12px; color: var(--text-secondary); }
+.ola-safety-row.on .state { color: var(--red-700); font-weight: 600; }
+.ola-safety-row .ola-switch { margin-left: auto; }
+
+/* Подтверждение включения. Набор слова, а не кнопка «да»: на «вы уверены?»
+   отвечают не думая, а слово приходится прочитать. */
+.ola-confirm {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--red-300);
+  border-radius: 12px;
+  background: var(--red-50);
+}
+
+.ola-confirm > svg { flex-shrink: 0; margin-top: 2px; color: var(--red-600); }
+.ola-confirm-body { flex: 1; min-width: 0; }
+.ola-confirm-body strong { display: block; margin-bottom: 6px; font-size: 14px; color: var(--red-800); }
+
+.ola-confirm-body p {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--red-800);
+}
+
+.ola-confirm .ola-input { flex: 1; min-width: 220px; }
+
+/* Кнопка, за которой стоит необратимое действие: сплошная, а не контурная —
+   её вид должен отличаться от «Сохранить». */
+.ola-btn.danger-solid {
+  background: var(--red-600);
+  border-color: var(--red-600);
+  color: var(--n-0);
+}
+
+.ola-btn.danger-solid:hover:not(:disabled) { background: var(--red-700); border-color: var(--red-700); }

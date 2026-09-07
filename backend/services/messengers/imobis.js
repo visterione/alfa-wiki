@@ -36,27 +36,33 @@ class ChannelError extends Error {
  * Токен. Один на аккаунт, но допускаем и отдельный на организацию: у клиник
  * могут оказаться разные лицевые счета.
  */
-function tokenFor(organization) {
+function tokenFor(organization, override = null) {
+  // Токен из настроек имеет преимущество над .env (ver. 8.04): модуль передают
+  // человеку, который в консоль не ходит, и менять токен он должен в интерфейсе.
+  // Окружение остаётся запасным, чтобы то, что уже настроено на бою, работало
+  // до того, как токен впишут заново.
+  if (override && String(override).trim()) return String(override).trim();
+
   const perOrg = organization && process.env[`IMOBIS_TOKEN_${String(organization).toUpperCase().replace(/-/g, '_')}`];
   const token = perOrg || process.env.IMOBIS_TOKEN;
-  if (!token) throw new ChannelError('no_token', 'Не задан IMOBIS_TOKEN');
+  if (!token) throw new ChannelError('no_token', 'Не задан токен Имобиса — впишите его в настройках рассылки');
   return token;
 }
 
-function client(organization, sandbox) {
+function client(organization, sandbox, token) {
   return axios.create({
     baseURL: sandbox ? SANDBOX_BASE : BASE,
-    headers: { Authorization: `Token ${tokenFor(organization)}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Token ${tokenFor(organization, token)}`, 'Content-Type': 'application/json' },
     timeout: 30000,
     httpsAgent: agent,
     validateStatus: () => true
   });
 }
 
-async function call(organization, method, path, body = {}, { sandbox = false } = {}) {
+async function call(organization, method, path, body = {}, { sandbox = false, token = null } = {}) {
   let res;
   try {
-    res = await client(organization, sandbox).request({ method, url: path, data: body });
+    res = await client(organization, sandbox, token).request({ method, url: path, data: body });
   } catch (err) {
     throw new ChannelError('network', err.code || err.message);
   }
@@ -109,7 +115,7 @@ async function send(organization, route, options = {}) {
     daydelivery: options.dayOnly === true ? true : undefined
   };
 
-  const data = await call(organization, 'POST', '/message/send', body, { sandbox: options.sandbox });
+  const data = await call(organization, 'POST', '/message/send', body, { sandbox: options.sandbox, token: options.token });
 
   // Идентификатор нужен, чтобы связать статус с нашей строкой очереди, если
   // custom_id вдруг не вернётся.
@@ -119,15 +125,15 @@ async function send(organization, route, options = {}) {
 
 // ── Справки ───────────────────────────────────────────────────────────────
 
-const balance = (organization, sandbox) => call(organization, 'POST', '/balance', {}, { sandbox });
-const info = (organization, sandbox) => call(organization, 'POST', '/info', {}, { sandbox });
+const balance = (organization, sandbox, token) => call(organization, 'POST', '/balance', {}, { sandbox, token });
+const info = (organization, sandbox, token) => call(organization, 'POST', '/info', {}, { sandbox, token });
 
 /**
  * Имена отправителя, зарегистрированные на аккаунте. Без них SMS не уйдёт, а
  * подобрать имя наугад нельзя: оно проходит модерацию у операторов.
  */
-async function senders(organization, sandbox) {
-  const data = await call(organization, 'POST', '/senders', {}, { sandbox });
+async function senders(organization, sandbox, token) {
+  const data = await call(organization, 'POST', '/senders', {}, { sandbox, token });
   const rows = (data && (data.senders || data.data || data.result)) || data;
   return Array.isArray(rows) ? rows : [];
 }

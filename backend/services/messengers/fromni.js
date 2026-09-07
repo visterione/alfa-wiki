@@ -41,10 +41,14 @@ const agent = new https.Agent({
   secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT | crypto.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION
 });
 
+// Ключ остаётся в .env намеренно. Токены наших ботов и Имобиса переехали в
+// интерфейс (ver. 8.04), а Fromni — нет: от неё уходят в пользу собственной
+// отправки, и заводить настройку под то, что сворачивают, значит поддерживать
+// её ради одного переходного периода.
 function keyFor(organization) {
   const name = KEY_ENV[organization];
   const key = name && process.env[name];
-  if (!key) throw new Error(`Нет ключа Fromni для организации «${organization}»`);
+  if (!key) throw new Error(`Нет ключа Fromni для организации «${organization}» — впишите его в настройках рассылки`);
   return key;
 }
 
@@ -133,24 +137,4 @@ async function sendText(organization, phone, texts, order = CASCADE) {
   return { externalMessageId: data.id || null, channel: channels.map(c => c.name).join('→') };
 }
 
-/**
- * Зарегистрированные шаблоны. Нужны не для отправки — её метод ищет совпадение
- * сам, — а чтобы администратор видел, с чем именно текст должен совпасть.
- *
- * Цена вопроса: не нашёлся шаблон — Notify не сработает, и сообщение молча
- * уйдёт SMS-кой. Расхождение в одном слове превращает дешёвый канал в дорогой,
- * и заметить это можно только по счёту в конце месяца.
- */
-async function templates(organization) {
-  const { data } = await client(organization).post('/template2/list', {});
-  const rows = Array.isArray(data && data.data) ? data.data : (Array.isArray(data) ? data : []);
-
-  return rows.map(t => ({
-    id: t.id || t._id || null,
-    name: t.name || t.title || '',
-    text: t.text || (t.message && t.message.text) || '',
-    channels: t.channels || t.channelNames || []
-  }));
-}
-
-module.exports = { platform: 'fromni', sendText, channelsFor, connectionsOf, templates, CASCADE, KEY_ENV };
+module.exports = { platform: 'fromni', sendText, channelsFor, connectionsOf, CASCADE, KEY_ENV };

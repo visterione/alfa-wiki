@@ -208,6 +208,7 @@ async function enqueue(found, snap) {
         phone: snap.phone,
         text: item.text,
         smsText: item.smsText || null,
+        channelTexts: item.channelTexts || {},
         withConfirm: item.withConfirm,
         plannedAt: item.plannedAt || new Date()
       });

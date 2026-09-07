@@ -17,15 +17,70 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { NotifTemplate, NotifOutbox, MedCenter } = require('../models');
+const { NotifTemplate, NotifOutbox, MedCenter, NotifBranchSettings, MessengerBot } = require('../models');
+const { getChannel } = require('../services/messengers');
 const templates = require('../services/notifications/templates');
 const sender = require('../services/notifications/sender');
+const safety = require('../services/notifications/safety');
 const notifSettings = require('../services/notifications/settings');
-const fromni = require('../services/messengers/fromni');
 const imobis = require('../services/messengers/imobis');
 const { NotifOutbox: Outbox } = require('../models');
 
 const router = express.Router();
+
+// Организации: к какой из них относится бот и по какой выбирается лицевой счёт
+// у провайдера. Нужен интерфейсу заведения ботов — там организацию выбирают из
+// списка, а не набирают ключом руками.
+/**
+ * Что сейчас разрешено отправлять наружу (ver. 8.06).
+ *
+ * До 8.06 интерфейс показывал один признак — «вторая ступень Fromni выключена» —
+ * и этим вводил в заблуждение: предохранитель стоял внутри ветки Fromni, ниже
+ * ветки Имобиса, и прямая отправка SMS через Имобис проходила мимо него вовсе.
+ * Экран сообщал о безопасном режиме, которого не было.
+ *
+ * Поэтому отдаём состояние по каждому провайдеру, а не одну галку: утверждение
+ * «наружу ничего не уходит» должно быть проверяемым, а не общим.
+ */
+const PROVIDER_TITLES = {
+  imobis: 'Имобис (SMS напрямую)',
+  fromni: 'Fromni (Notify, SMS)'
+};
+
+async function safetyState() {
+  const state = await safety.read();
+  return {
+    providers: safety.EXTERNAL_PROVIDERS.map(name => ({
+      name,
+      title: PROVIDER_TITLES[name] || name,
+      allowed: state.allowExternal.includes(name)
+    })),
+    // Ограничение круга получателей — вторая половина безопасного режима, и о
+    // ней экран раньше не говорил вовсе.
+    pilotPhones: state.pilotPhones,
+    // Замок на сервере: переключатель виден, но не работает. Нужен на время
+    // пилота, когда снятие должно требовать доступа к серверу.
+    locked: state.locked,
+    changedBy: state.changedBy,
+    changedAt: state.changedAt
+  };
+}
+
+// Адрес, по которому платформа стучится к нам. Совпадает с routes/
+// messenger-webhook.js и с routes/open-line.js — менять во всех трёх.
+function botWebhookUrl(bot) {
+  const base = (process.env.BASE_URL || 'https://wiki.medcentralfa.ru').replace(/\/+$/, '');
+  return `${base}/api/messenger/${bot.platform}/${bot.id}`;
+}
+
+const ORGANIZATIONS = [
+  { key: 'alfa',        name: 'Альфа' },
+  { key: 'alfa-deti',   name: 'Альфа Дети' },
+  { key: 'alfa-liniya', name: 'Альфа Линия' },
+  { key: 'alfa-prof',   name: 'Альфа Проф' },
+  { key: 'alfa-smile',  name: 'Альфа Смайл' },
+  { key: 'alfa-3k',     name: 'Альфа 3К' }
+];
 
 const EVENTS = [
   'created', 'moved', 'cancelled', 'reminder', 'review',
@@ -56,7 +111,10 @@ const PLACEHOLDERS = [
 
 router.get('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
-    const rows = await NotifTemplate.findAll({ order: [['event', 'ASC'], ['beforeMinutes', 'ASC']] });
+    const rows = await NotifTemplate.findAll({
+      include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }],
+      order: [['event', 'ASC'], ['beforeMinutes', 'ASC']]
+    });
     const medCenters = await MedCenter.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] });
 
     res.json({
@@ -66,10 +124,7 @@ router.get('/templates', authenticate, requireAdmin, async (req, res) => {
       placeholders: PLACEHOLDERS,
       // Предохранители показываем прямо здесь: без них половина отправок
       // помечается пропущенной, и это должно быть видно, а не выясняться.
-      safety: {
-        fromniAllowed: sender.ALLOW_FROMNI,
-        pilotPhones: sender.PILOT_PHONES.length
-      }
+      safety: await safetyState()
     });
   } catch (err) {
     console.error('[notifications] GET /templates:', err);
@@ -103,11 +158,31 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
     const row = await NotifTemplate.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Шаблон не найден' });
 
-    const { text, smsText, beforeMinutes, afterMinutes, frequency, withConfirm, isActive, medCenterId } = req.body || {};
+    const { text, smsText, channelTexts, cascade, beforeMinutes, afterMinutes,
+            frequency, withConfirm, isActive, medCenterId } = req.body || {};
+
+    // Тексты каналов (ver. 8.03). Пустые ключи выбрасываем, а не храним пустыми
+    // строками: «нет своего текста» и «текст из одного пробела» — разные вещи,
+    // и отправщик отличает их именно по отсутствию ключа.
+    let nextChannelTexts = row.channelTexts;
+    if (channelTexts !== undefined && channelTexts && typeof channelTexts === 'object') {
+      nextChannelTexts = {};
+      for (const channel of ['telegram', 'max', 'sms']) {
+        const value = String(channelTexts[channel] ?? '').trim();
+        if (value) nextChannelTexts[channel] = value;
+      }
+    }
+
     await row.update({
       text: text !== undefined ? String(text).trim() : row.text,
       // Пустая строка означает «нет отдельного текста для SMS» — уйдёт обычный.
       smsText: smsText !== undefined ? (String(smsText).trim() || null) : row.smsText,
+      channelTexts: nextChannelTexts,
+      // Пустой список означает «идти общим каскадом», поэтому в базу кладём null,
+      // а не []: пустой массив прочитался бы как «не слать никуда».
+      cascade: cascade !== undefined
+        ? ((Array.isArray(cascade) && cascade.length) ? cascade : null)
+        : row.cascade,
       afterMinutes: row.event === 'review' && afterMinutes !== undefined
         ? (Number(afterMinutes) || null) : row.afterMinutes,
       frequency: row.event === 'review' && frequency !== undefined
@@ -221,22 +296,6 @@ router.all('/report/:secret', express.json(), express.urlencoded({ extended: tru
 
 // ── Одобренные шаблоны Fromni ─────────────────────────────────────────────
 
-/**
- * Что зарегистрировано у агрегатора. Метод отправки ищет совпадение с этими
- * текстами сам: нашёл — уходит Notify, не нашёл — молча SMS. Поэтому список
- * показываем рядом с полем текста, а не прячем в документации.
- */
-router.get('/approved', authenticate, requireAdmin, async (req, res) => {
-  const organization = req.query.organization || process.env.FROMNI_DEFAULT_ORG || 'alfa';
-  try {
-    res.json({ organization, templates: await fromni.templates(organization) });
-  } catch (err) {
-    // Недоступность агрегатора не должна ломать экран — он и без этого списка
-    // полезен. Возвращаем причину, чтобы её было видно на месте.
-    res.json({ organization, templates: [], error: err.message });
-  }
-});
-
 // ── Тестовая отправка ─────────────────────────────────────────────────────
 
 /**
@@ -245,9 +304,10 @@ router.get('/approved', authenticate, requireAdmin, async (req, res) => {
  * Зачем: убедиться, что по SMS уходит именно наш текст, а не тот, что остался в
  * МИС. Иначе это проверяется только записью живого пациента и ожиданием.
  *
- * Предохранитель NOTIFIER_ALLOW_FROMNI здесь намеренно не действует: он защищает
- * от веерной рассылки по всей сети, а тут администратор вручную набрал один
- * номер и нажал кнопку. Запрещать это — значит сделать проверку невозможной.
+ * Предохранитель NOTIFIER_ALLOW_EXTERNAL здесь намеренно не действует: он
+ * защищает от веерной рассылки по всей сети, а тут администратор вручную набрал
+ * один номер и нажал кнопку. Запрещать это — значит сделать проверку
+ * невозможной.
  */
 router.post('/test', authenticate, requireAdmin, async (req, res) => {
   try {
@@ -306,6 +366,8 @@ router.post('/test', authenticate, requireAdmin, async (req, res) => {
 
 router.get('/settings', authenticate, requireAdmin, async (req, res) => {
   try {
+    const imobisConfig = await notifSettings.imobis();
+
     res.json({
       cascade: await notifSettings.cascade(),
       quietHours: await notifSettings.quietHours(),
@@ -316,17 +378,35 @@ router.get('/settings', authenticate, requireAdmin, async (req, res) => {
       // Ступени с префиксом imobis: идут напрямую к провайдеру, остальные —
       // через Fromni. Подряд идущие ступени одного провайдера отправляются
       // одним запросом: их собственный каскад останавливается на доставленной.
+      // Ступени, из которых собирается каскад. Список короткий намеренно:
+      // ВКонтакте, Viber и WhatsApp убраны в 8.03 по решению заказчика — сеть
+      // ими не пользуется, а в настройке они занимали половину списка и
+      // предлагали завести то, чего не будет. Вернуть — дописать строку сюда.
+      // Ступени, из которых собирается каскад. Telegram и MAX порознь с 8.04:
+      // это два разных мессенджера, и приоритет между ними — решение заказчика.
+      // Список короткий намеренно: ВКонтакте, Viber и WhatsApp убраны в 8.03,
+      // сеть ими не пользуется.
       available: [
-        { name: 'bot', title: 'Наши боты (Telegram, MAX)', provider: 'Вики' },
-        { name: 'imobis:vk', title: 'ВКонтакте напрямую', provider: 'Имобис' },
-        { name: 'imobis:sms', title: 'SMS напрямую', provider: 'Имобис' },
-        { name: 'imobis:viber', title: 'Viber напрямую', provider: 'Имобис' },
-        { name: 'notify+vk', title: 'Notify и ВКонтакте', provider: 'Fromni' },
-        { name: 'whatsapp-business', title: 'WhatsApp Business', provider: 'Fromni' },
-        { name: 'viber', title: 'Viber', provider: 'Fromni' },
-        { name: 'sms+webchat', title: 'SMS', provider: 'Fromni' }
+        { name: 'telegram',    title: 'Telegram-бот', provider: 'Вики',   channel: 'telegram' },
+        { name: 'max',         title: 'MAX-бот',      provider: 'Вики',   channel: 'max' },
+        { name: 'imobis:sms',  title: 'SMS напрямую', provider: 'Имобис', channel: 'sms' },
+        { name: 'notify+vk',   title: 'Notify',       provider: 'Fromni', channel: 'notify' },
+        { name: 'sms+webchat', title: 'SMS',          provider: 'Fromni', channel: 'sms' }
       ],
-      safety: { fromniAllowed: sender.ALLOW_FROMNI, pilotPhones: sender.PILOT_PHONES.length }
+      organizations: ORGANIZATIONS,
+      // Токен Имобиса правится в интерфейсе с 8.04. Сам токен наружу не отдаём —
+      // только признак, что он задан: показывать секрет в ответе API незачем, а
+      // «задан ли он вообще» — единственное, что нужно знать форме, чтобы не
+      // затереть его пустым значением.
+      //
+      // Ключей Fromni здесь нет намеренно: от неё уходят в пользу собственной
+      // отправки, и заводить настройку под то, что сворачивают, незачем. Она
+      // продолжает работать от FROMNI_KEY_* из .env, пока нужна.
+      credentials: {
+        imobisTokenSet: !!(imobisConfig.token || process.env.IMOBIS_TOKEN),
+        imobisTokenFromEnv: !imobisConfig.token && !!process.env.IMOBIS_TOKEN
+      },
+      safety: await safetyState()
     });
   } catch (err) {
     console.error('[notifications] GET /settings:', err);
@@ -347,7 +427,7 @@ router.get('/settings', authenticate, requireAdmin, async (req, res) => {
 router.get('/balance', authenticate, requireAdmin, async (req, res) => {
   try {
     const config = await notifSettings.imobis();
-    const data = await imobis.balance(req.query.organization || null, !!config.sandbox);
+    const data = await imobis.balance(req.query.organization || null, !!config.sandbox, config.token);
 
     // Ответ у них не типизирован: в разных версиях приходило и число, и строка,
     // и объект. Приводим к числу здесь, чтобы интерфейс не гадал.
@@ -369,7 +449,8 @@ router.get('/balance', authenticate, requireAdmin, async (req, res) => {
 
 router.put('/settings', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { cascade, quietHours, imobis } = req.body || {};
+    // Именуем иначе, чем модуль imobis выше: это тело запроса, а не провайдер.
+    const { cascade, quietHours, imobis: imobisPatch } = req.body || {};
 
     if (Array.isArray(cascade)) {
       if (!cascade.length) return res.status(400).json({ error: 'Каскад не может быть пустым' });
@@ -386,14 +467,18 @@ router.put('/settings', authenticate, requireAdmin, async (req, res) => {
       }, 'Тихие часы: сообщение откладывается до начала разрешённого времени');
     }
 
-    if (imobis && typeof imobis === 'object') {
+    if (imobisPatch && typeof imobisPatch === 'object') {
       const current = await notifSettings.imobis();
       await notifSettings.write(notifSettings.IMOBIS_KEY, {
         ...current,
-        sender: imobis.sender !== undefined ? String(imobis.sender || '').trim() : current.sender,
-        vkGroup: imobis.vkGroup !== undefined ? (Number(imobis.vkGroup) || null) : current.vkGroup,
-        sandbox: imobis.sandbox !== undefined ? !!imobis.sandbox : current.sandbox
-      }, 'Имобис напрямую: имя отправителя, группа ВК, режим песочницы');
+        // Токен правится в интерфейсе с 8.04. Пустая строка означает «вернуться
+        // к .env», а не «стереть доступ»: иначе случайное сохранение пустой
+        // формы обрывало бы рассылку, и понять почему было бы нечем.
+        token: imobisPatch.token !== undefined ? String(imobisPatch.token || '').trim() : (current.token || ''),
+        sender: imobisPatch.sender !== undefined ? String(imobisPatch.sender || '').trim() : current.sender,
+        vkGroup: imobisPatch.vkGroup !== undefined ? (Number(imobisPatch.vkGroup) || null) : current.vkGroup,
+        sandbox: imobisPatch.sandbox !== undefined ? !!imobisPatch.sandbox : current.sandbox
+      }, 'Имобис напрямую: токен, имя отправителя, группа ВК, режим песочницы');
     }
 
     res.json({
@@ -403,6 +488,189 @@ router.put('/settings', authenticate, requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error('[notifications] PUT /settings:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Предохранители: кому разрешено отправлять наружу и на какие номера (ver. 8.06).
+ *
+ * Отдельным маршрутом, а не полем в общих настройках, намеренно. Снятие
+ * предохранителя — не рядовая правка: после него сообщения идут живым
+ * пациентам. Его не должно случайно унести вместе с сохранением формы, где
+ * человек менял тихие часы.
+ */
+router.get('/safety', authenticate, requireAdmin, async (req, res) => {
+  try {
+    res.json(await safetyState());
+  } catch (err) {
+    console.error('[notifications] GET /safety:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/safety', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { allowExternal, pilotPhones } = req.body || {};
+
+    const before = await safety.read();
+    await safety.write({ allowExternal, pilotPhones }, req.user);
+    const after = await safety.read();
+
+    // Снятие пишем в журнал сервера отдельной строкой: по логам восстанавливают
+    // порядок событий, когда выясняют, почему пациент получил два уведомления.
+    const opened = after.allowExternal.filter(p => !before.allowExternal.includes(p));
+    if (opened.length) {
+      console.warn(`[notifications] ОТПРАВКА НАРУЖУ ВКЛЮЧЕНА: ${opened.join(', ')} — ` +
+        `${req.user.displayName || req.user.username} (${req.user.id})`);
+    }
+
+    res.json(await safetyState());
+  } catch (err) {
+    if (err.code === 'locked') return res.status(409).json({ error: err.message });
+    console.error('[notifications] PUT /safety:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Филиалы (ver. 8.03, владеют каналами с 8.05) ──────────────────────────
+//
+// Филиал — единица настройки: у него свои боты, свой лицевой счёт у провайдера
+// и своё имя отправителя, потому что имя проходит модерацию у операторов связи
+// на конкретное юрлицо. До 8.05 всё это лежало по разным основаниям — боты по
+// «организации», токен одной строкой на сеть, а сам филиал был галочкой
+// «подключён».
+//
+// Общая настройка (settings.notif_imobis) осталась основанием, а не исчезла:
+// сеть чаще всего живёт на одном счету, и заставлять вписывать один токен
+// девять раз значило бы менять одну беду на другую. Филиал заполняет своё поле
+// только тогда, когда счёт у него действительно отдельный, — и в ответе видно,
+// какое значение откуда взялось.
+
+router.get('/branches', authenticate, requireAdmin, async (req, res) => {
+  try {
+    // Только филиалы, куда ходит пациент: АУП и «Направители» — подразделения
+    // для учёта, и предлагать завести им рассылку значит предлагать рассылать
+    // туда, где рассылать некому (ver. 8.04).
+    const medCenters = await MedCenter.findAll({
+      attributes: ['id', 'name', 'botOrganization'],
+      where: { servesPatients: true },
+      order: [['name', 'ASC']]
+    });
+
+    const rows = await NotifBranchSettings.findAll();
+    const byId = new Map(rows.map(r => [r.medCenterId, r.toJSON()]));
+
+    const bots = await MessengerBot.findAll({
+      order: [['platform', 'ASC']]
+    });
+
+    const common = await notifSettings.imobis();
+
+    // Состояние вебхука спрашиваем у платформы: строка в базе говорит, каким
+    // режим задумывался, а не каким он получился. Расхождение между ними —
+    // самая частая причина «бот молчит», и видно её только отсюда.
+    const botView = await Promise.all(bots.map(async (bot) => {
+      let webhook;
+      try {
+        const info = await getChannel(bot.platform).getWebhookInfo(bot.token);
+        webhook = { url: info.url || '', error: info.last_error_message || null, pending: info.pending_update_count || 0 };
+      } catch (err) {
+        webhook = { url: '', error: err.message, pending: 0 };
+      }
+      return {
+        id: bot.id,
+        medCenterId: bot.medCenterId,
+        platform: bot.platform,
+        organization: bot.organization,
+        username: bot.username,
+        deliveryMode: bot.deliveryMode,
+        isActive: bot.isActive,
+        tokenTail: bot.token ? `…${String(bot.token).slice(-6)}` : '',
+        expectedWebhook: botWebhookUrl(bot),
+        webhook
+      };
+    }));
+
+    res.json({
+      branches: medCenters.map(mc => {
+        const own = byId.get(mc.id) || null;
+        const ownImobis = (own && own.imobis) || {};
+
+        return {
+          medCenterId: mc.id,
+          name: mc.name,
+          organization: mc.botOrganization,
+          isEnabled: own ? own.isEnabled !== false : true,
+          quietHours: own ? own.quietHours : null,
+          bots: botView.filter(b => b.medCenterId === mc.id),
+          // Токен наружу не отдаём — только откуда он берётся у этого филиала.
+          // Секрет в ответе API незачем, а «свой или общий» это единственное,
+          // что нужно знать форме, чтобы не затереть его пустым значением.
+          imobis: {
+            sender: ownImobis.sender || '',
+            senderInherited: !ownImobis.sender ? (common.sender || '') : null,
+            tokenSet: !!ownImobis.token,
+            tokenInherited: !ownImobis.token && !!(common.token || process.env.IMOBIS_TOKEN)
+          },
+          configured: !!own
+        };
+      }),
+      // Боты без филиала: проверочные и те, что не встали при переносе. Прятать
+      // их нельзя — иначе бот работает, а в настройке его нет.
+      orphanBots: botView.filter(b => !b.medCenterId)
+    });
+  } catch (err) {
+    console.error('[notifications] GET /branches:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/branches/:medCenterId', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const medCenter = await MedCenter.findByPk(req.params.medCenterId);
+    if (!medCenter) return res.status(404).json({ error: 'Филиал не найден' });
+
+    const { quietHours, imobis, isEnabled } = req.body || {};
+
+    const patch = {};
+    if (quietHours !== undefined) patch.quietHours = quietHours || null;
+    if (isEnabled !== undefined) patch.isEnabled = !!isEnabled;
+
+    if (imobis !== undefined) {
+      const [existing] = await NotifBranchSettings.findOrCreate({
+        where: { medCenterId: req.params.medCenterId },
+        defaults: { medCenterId: req.params.medCenterId }
+      });
+      const current = existing.imobis || {};
+      const next = { ...current };
+
+      // Пустая строка означает «вернуться к общей настройке», а не «стереть
+      // доступ»: филиал без своего счёта — обычное состояние, а не поломка.
+      if (imobis.sender !== undefined) {
+        const value = String(imobis.sender || '').trim();
+        if (value) next.sender = value; else delete next.sender;
+      }
+      if (imobis.token !== undefined) {
+        const value = String(imobis.token || '').trim();
+        if (value) next.token = value; else delete next.token;
+      }
+      patch.imobis = Object.keys(next).length ? next : null;
+    }
+
+    const [row] = await NotifBranchSettings.findOrCreate({
+      where: { medCenterId: req.params.medCenterId },
+      defaults: { medCenterId: req.params.medCenterId, ...patch }
+    });
+    await row.update(patch);
+
+    // Настройки филиалов лежат в памяти отправщика минуту — сбрасываем, чтобы
+    // правка подействовала сразу, а не «когда-нибудь в течение минуты».
+    notifSettings.forgetBranch(req.params.medCenterId);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[notifications] PUT /branches/:medCenterId:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1303,6 +1303,14 @@ export const openLine = {
 
   // Настройка линий — администратору
   lines: () => api.get('/open-line/lines'),
+
+  // Боты: заводятся в интерфейсе, а не скриптом (ver. 8.04). Токен наружу не
+  // отдаётся — только хвост и состояние вебхука у платформы.
+  bots: () => api.get('/open-line/bots'),
+  addBot: (data) => api.post('/open-line/bots', data),
+  updateBot: (id, data) => api.put(`/open-line/bots/${id}`, data),
+  deleteBot: (id) => api.delete(`/open-line/bots/${id}`),
+
   createLine: (data) => api.post('/open-line/lines', data),
   updateLine: (id, data) => api.put(`/open-line/lines/${id}`, data),
   addOperator: (lineId, userId) => api.post(`/open-line/lines/${lineId}/operators`, { userId }),
@@ -1325,9 +1333,17 @@ export const notifications = {
   settings: () => api.get('/notifications/settings'),
   saveSettings: (data) => api.put('/notifications/settings', data),
 
-  // Что зарегистрировано у агрегатора: с этими текстами метод отправки сверяет
-  // наш, и несовпадение молча роняет Notify в SMS.
-  approved: (organization) => api.get('/notifications/approved', { params: { organization } }),
+  // Отличия филиала от общих настроек (ver. 8.03): свой каскад, свои тихие
+  // часы, своё имя отправителя, признак «подключён к рассылке портала».
+  // Предохранители: кому разрешено отправлять наружу и на какие номера
+  // (ver. 8.06). Отдельно от общих настроек намеренно — снятие предохранителя
+  // не должно случайно уехать вместе с сохранением формы тихих часов.
+  safety: () => api.get('/notifications/safety'),
+  saveSafety: (data) => api.put('/notifications/safety', data),
+
+  branches: () => api.get('/notifications/branches'),
+  saveBranch: (medCenterId, data) => api.put(`/notifications/branches/${medCenterId}`, data),
+
   test: (data) => api.post('/notifications/test', data),
 
   // Остаток на счету у Имобиса — единственная цифра о деньгах, которую их API

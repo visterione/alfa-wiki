@@ -1,34 +1,45 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Headphones, FileText, Radio, ScrollText, Plus, Users, Bot, Save, Power, X,
-  Check, AlertTriangle, Clock, Ban, Eye, ArrowUp, ArrowDown, Moon, Send,
-  ListChecks, HelpCircle, Search, Wallet, Inbox
+  Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
+  Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
+  Star, FlaskConical, Building2, ChevronDown, ShieldCheck
 } from 'lucide-react';
 import { openLine as lineApi, notifications as notifApi, users as usersApi } from '../../services/api';
+import ChannelLogo from '../../components/openline/ChannelLogo';
 import toast from 'react-hot-toast';
 import './AdminOpenLine.css';
 
 /**
- * Настройки открытой линии и оповещений (ver. 8.02).
+ * Настройки открытой линии и оповещений (ver. 8.02, филиалы и каналы — 8.03).
  *
  * До 8.02 это были две вкладки внутри самого модуля открытой линии, рядом с
  * очередью обращений. Модуль при этом — рабочее окно оператора колл-центра, и
  * соседство получилось неудачным: в одном клике от списка обращений лежали
- * состав линий, тексты уведомлений всей сети и токены провайдера. Прав это не
- * нарушало (вкладки показывались только администратору), но само присутствие
- * лишних вкладок в рабочем окне сбивало, а один промах мимо вкладки уводил
- * человека туда, где ему делать нечего.
+ * состав линий, тексты уведомлений всей сети и токены провайдера.
  *
- * Теперь настройки — отдельный раздел админки, и открытая линия у оператора
- * состоит ровно из того, чем он занят: обращения и показатели.
+ * ЧТО ИЗМЕНИЛОСЬ В 8.03.
  *
- * Журнал отправок переехал сюда же. Прежде он был открыт операторам намеренно —
- * «почему пациенту не пришло напоминание» спрашивают у колл-центра. Но лежал он
- * вплотную к каскаду и тихим часам, а разбирать недоставку всё равно приходится
- * тому, кто может поправить причину.
+ * Подсказки убраны. Их было по абзацу под каждым заголовком, и на экране по
+ * пять — читать это никто не станет, а искать среди них поле уже работа. В
+ * 8.02 их свернули за кнопку «зачем это»; заказчик повторил замечание, и теперь
+ * пояснений в интерфейсе нет вовсе. Осталось одно предупреждение о выключенной
+ * второй ступени: это не пояснение, а состояние системы, из-за которого
+ * половина отправок помечается пропущенной. Всё, что объясняло решения, живёт в
+ * комментариях этого файла и в migrations/*.txt — там оно и нужно, потому что
+ * читают его те, кто правит код, а не те, кто правит тексты.
  *
- * Оформление — см. шапку AdminOpenLine.css: там расписано, что именно было не
- * так с прежним экраном и каким решением здесь правится каждая беда.
+ * Тексты стали по каналам. Было два поля — «в мессенджеры» и «в SMS», то есть
+ * деление по длине. Каналов у нас три, и у каждого свой разговор: в Telegram
+ * есть кнопки, в MAX своя длина строки, в SMS сегменты по 70 символов.
+ *
+ * Каскад стал свой у каждого события. Общий не выдерживал первого возражения:
+ * просьбу оценить приём незачем слать по SMS — выполнить её там нельзя, а
+ * деньги списываются.
+ *
+ * Появились филиалы. Пока это только переопределения поверх общих настроек, но
+ * дальше сеть расходится: у филиалов разные боты, разные лицевые счета у
+ * провайдера и разные привычки в текстах.
  */
 
 // ── Справочники ───────────────────────────────────────────────────────────
@@ -40,16 +51,20 @@ const TABS = [
   { key: 'log',      label: 'Журнал',   icon: ScrollText }
 ];
 
-const EVENT_TITLES = {
-  created: 'Запись на визит',
-  moved: 'Перенос визита',
-  cancelled: 'Отмена визита',
-  reminder: 'Напоминание о визите',
-  review: 'Просьба об отзыве',
-  lab_full: 'Результаты анализов готовы',
-  lab_partial: 'Часть результатов готова',
-  test: 'Проверочная отправка'
+// Событие узнаётся по значку раньше, чем по названию: карточек на вкладке семь,
+// и в списке одинаковых заголовков глаз ищет дольше, чем в списке разных.
+const EVENT_VIEW = {
+  created:     { title: 'Запись на визит',            icon: CalendarPlus,  tone: 'green'  },
+  moved:       { title: 'Перенос визита',             icon: CalendarClock, tone: 'amber'  },
+  cancelled:   { title: 'Отмена визита',              icon: CalendarX,     tone: 'red'    },
+  reminder:    { title: 'Напоминание о визите',       icon: BellRing,      tone: 'accent' },
+  review:      { title: 'Просьба об отзыве',          icon: Star,          tone: 'violet' },
+  lab_full:    { title: 'Результаты анализов готовы', icon: FlaskConical,  tone: 'cyan'   },
+  lab_partial: { title: 'Часть результатов готова',   icon: FlaskConical,  tone: 'cyan'   },
+  test:        { title: 'Проверочная отправка',       icon: Send,          tone: 'accent' }
 };
+
+const eventTitle = (event) => (EVENT_VIEW[event]?.title) || event;
 
 const STATUS_VIEW = {
   sent:    { label: 'доставлено',    icon: Check,         cls: 'ok'    },
@@ -57,6 +72,15 @@ const STATUS_VIEW = {
   failed:  { label: 'не доставлено', icon: AlertTriangle, cls: 'bad'   },
   skipped: { label: 'пропущено',     icon: Ban,           cls: 'muted' }
 };
+
+// Какой знак показать у ступени каскада. Ступень «наши боты» ведёт сразу в два
+// мессенджера, поэтому у неё знака одного нет — показывать один из двух было бы
+// неправдой, и рисуются оба.
+function stepChannel(name) {
+  if (name === 'imobis:sms' || name === 'sms+webchat') return 'sms';
+  if (name === 'notify+vk') return 'notify';
+  return null;
+}
 
 function beforeLabel(minutes) {
   if (!minutes) return '';
@@ -74,8 +98,6 @@ function beforeLabel(minutes) {
  */
 function smsCost(text) {
   const value = text || '';
-  // Latin-1 determined by code point rather than a regex range: an escape
-  // sequence here is too easy to turn into a real control byte on edit.
   const unicode = [...value].some(ch => ch.codePointAt(0) > 127);
   const single = unicode ? 70 : 160;
   const multi = unicode ? 67 : 153;
@@ -88,28 +110,6 @@ function smsCost(text) {
 }
 
 // ── Общие мелочи интерфейса ───────────────────────────────────────────────
-
-/**
- * Свёрнутое объяснение. Длинные тексты не выброшены — они помнят, почему
- * настройка устроена именно так, — но по умолчанию не занимают экран.
- */
-function Why({ children }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        className={`ola-why ${open ? 'open' : ''}`}
-        onClick={() => setOpen(v => !v)}
-        title={open ? 'Свернуть' : 'Зачем это'}
-        aria-expanded={open}
-      >
-        <HelpCircle size={13} />
-      </button>
-      {open && <div className="ola-why-body">{children}</div>}
-    </>
-  );
-}
 
 function Switch({ checked, onChange, children, disabled }) {
   return (
@@ -132,11 +132,6 @@ function Check1({ checked, onChange, children }) {
 
 // ══ Вкладка «Линии» ═══════════════════════════════════════════════════════
 
-/**
- * Линия на медцентр: свой состав сотрудников и свои боты. Состав линии — это и
- * есть право работать в ней; отдельного разрешения нет намеренно, иначе одно и
- * то же настраивалось бы в двух местах и неизбежно разошлось бы.
- */
 function LinesTab() {
   const [data, setData] = useState(null);
   const [staff, setStaff] = useState([]);
@@ -158,8 +153,8 @@ function LinesTab() {
 
   useEffect(() => {
     // Список сотрудников нужен только для добавления в состав: грузим один раз
-    // и не обновляем, состав правят редко. listBasic, а не полный список —
-    // здесь нужны имя и идентификатор, и он доступен любому сотруднику.
+    // и не обновляем, состав правят редко. listBasic доступен любому сотруднику
+    // и отдаёт ровно то, что здесь нужно, — имя и идентификатор.
     usersApi.listBasic()
       .then(({ data }) => setStaff((data.users || data || []).filter(u => u.isActive !== false)))
       .catch(() => {});
@@ -186,14 +181,13 @@ function LinesTab() {
   const removeOperator = guard((line, userId) => lineApi.removeOperator(line.id, userId), 'Не удалось убрать сотрудника');
   const bindBot = guard((lineId, botId) => lineApi.bindBot(lineId, botId), 'Не удалось привязать бота');
 
-  if (!data) return <p className="ola-lead">Загрузка…</p>;
+  if (!data) return <div className="ola-loading">Загрузка…</div>;
 
   const looseBots = data.bots.filter(b => !b.lineId);
-  const botTitle = (b) => `${b.platform === 'max' ? 'MAX' : 'Telegram'} @${b.username}`;
 
   return (
     <>
-      <div className="ola-actions end" style={{ marginBottom: 14 }}>
+      <div className="ola-actions end">
         <button className="ola-btn primary" onClick={() => setCreating(v => !v)}>
           <Plus size={15} /> Новая линия
         </button>
@@ -201,7 +195,10 @@ function LinesTab() {
 
       {creating && (
         <section className="ola-card">
-          <header><h3>Новая линия</h3></header>
+          <header>
+            <span className="ola-card-icon accent"><Plus size={17} /></span>
+            <h3>Новая линия</h3>
+          </header>
           <div className="ola-card-body">
             <div className="ola-row">
               <div className="ola-field">
@@ -214,13 +211,13 @@ function LinesTab() {
                 />
               </div>
               <div className="ola-field">
-                <label>Медцентр</label>
+                <label>Филиал</label>
                 <select
                   className="ola-select"
                   value={draft.medCenterId}
                   onChange={e => setDraft(d => ({ ...d, medCenterId: e.target.value }))}
                 >
-                  <option value="">без медцентра (проверочная)</option>
+                  <option value="">без филиала (проверочная)</option>
                   {(data.medCenters || []).map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
                 </select>
               </div>
@@ -234,7 +231,7 @@ function LinesTab() {
         <div className="ola-empty">
           <Headphones size={34} />
           <h3>Линий пока нет</h3>
-          <p>Линия — это медцентр, его боты и его состав сотрудников. Обращения из ботов без линии никуда не попадут.</p>
+          <p>Линия — это филиал, его боты и его состав сотрудников.</p>
         </div>
       )}
 
@@ -246,17 +243,11 @@ function LinesTab() {
         return (
           <section key={line.id} className={`ola-card ${line.isActive ? '' : 'off'}`}>
             <header>
-              <h3>
-                <Headphones size={16} />
-                {line.name}
-              </h3>
+              <span className="ola-card-icon accent"><Headphones size={17} /></span>
+              <h3>{line.name}</h3>
               {line.medCenter && <span className="ola-badge accent">{line.medCenter.name}</span>}
               {!line.isActive && <span className="ola-badge warn">выключена</span>}
-              <button
-                className="ola-btn"
-                onClick={() => update(line, { isActive: !line.isActive })}
-                title={line.isActive ? 'Выключить линию' : 'Включить линию'}
-              >
+              <button className="ola-btn" onClick={() => update(line, { isActive: !line.isActive })}>
                 <Power size={14} /> {line.isActive ? 'Выключить' : 'Включить'}
               </button>
             </header>
@@ -267,7 +258,8 @@ function LinesTab() {
                 <div className="ola-chips">
                   {bots.map(b => (
                     <span key={b.id} className="ola-chip">
-                      {botTitle(b)}
+                      <ChannelLogo channel={b.platform === 'max' ? 'max' : 'telegram'} size={18} />
+                      @{b.username}
                       <button title="Отвязать" onClick={() => bindBot('none', b.id)}><X size={12} /></button>
                     </span>
                   ))}
@@ -275,31 +267,17 @@ function LinesTab() {
                     <select className="ola-add" value="" onChange={e => e.target.value && bindBot(line.id, e.target.value)}>
                       <option value="">+ привязать бота…</option>
                       {looseBots.map(b => (
-                        <option key={b.id} value={b.id}>{botTitle(b)} ({b.organization})</option>
+                        <option key={b.id} value={b.id}>
+                          {b.platform === 'max' ? 'MAX' : 'Telegram'} @{b.username} ({b.organization})
+                        </option>
                       ))}
                     </select>
                   )}
                 </div>
-                {bots.length === 0 && (
-                  <p className="ola-hint">Бот не привязан — обращения из мессенджеров сюда не попадут.</p>
-                )}
               </div>
 
               <div className="ola-block">
-                <h4>
-                  <Users size={13} /> Состав
-                  <Why>
-                    <p>
-                      Кто заведён в состав — тот и отвечает: отдельного права для открытой
-                      линии нет. Два места настройки одного и того же неизбежно разошлись бы.
-                    </p>
-                    <p>
-                      Зелёная точка — сотрудник начал день. Новые обращения видят только те,
-                      кто на смене: чужие чаты не должны мигать у того, кто сегодня занят
-                      другим. Смену человек включает сам, в меню пользователя.
-                    </p>
-                  </Why>
-                </h4>
+                <h4><Users size={13} /> Состав</h4>
                 <div className="ola-chips">
                   {(line.operators || []).map(o => (
                     <span key={o.userId} className={`ola-chip ${o.onShift ? 'on-shift' : ''}`}>
@@ -315,35 +293,24 @@ function LinesTab() {
                     ))}
                   </select>
                 </div>
-                {(line.operators || []).length === 0 && (
-                  <p className="ola-hint">В составе никого — отвечать на обращения этой линии некому.</p>
-                )}
               </div>
 
               <div className="ola-block">
-                <h4>
-                  Ответ, когда на линии никого
-                  <Why>
-                    <p>
-                      Уходит один раз за обращение, а не на каждое сообщение: иначе человек,
-                      написавший ночью три строки, получит три одинаковых извинения.
-                    </p>
-                  </Why>
-                </h4>
+                <h4>Ответ, когда на линии никого</h4>
                 <textarea
                   className="ola-textarea"
                   rows={2}
-                  placeholder="Сейчас все операторы заняты или смена завершена. Мы видим ваше сообщение и ответим, как только линия откроется."
+                  placeholder="Сейчас все операторы заняты или смена завершена. Мы ответим, как только линия откроется."
                   value={reply}
                   onChange={e => setReplies(r => ({ ...r, [line.id]: e.target.value }))}
                 />
-                <div className="ola-actions end" style={{ marginTop: 10 }}>
+                <div className="ola-actions end">
                   <button
                     className="ola-btn primary"
                     disabled={replies[line.id] === undefined || reply === (line.offlineReply || '')}
                     onClick={() => update(line, { offlineReply: reply })}
                   >
-                    <Save size={14} /> Сохранить ответ
+                    <Save size={14} /> Сохранить
                   </button>
                 </div>
               </div>
@@ -357,24 +324,274 @@ function LinesTab() {
 
 // ══ Вкладка «Тексты» ══════════════════════════════════════════════════════
 
-function TemplatesTab({ data, reload }) {
-  const [drafts, setDrafts] = useState({});
-  const [preview, setPreview] = useState({});
+/**
+ * Время у напоминания и просьбы об отзыве (ver. 8.04).
+ *
+ * Было вбито: напоминание за сутки, отзыв через три часа. Числа разумные, но
+ * это чужое решение, принятое за заказчика, и подходит оно не всякой клинике —
+ * стоматологии удобнее напомнить за два часа, лаборатории за трое суток.
+ *
+ * Единицы отдельным списком, а не одним полем в минутах: «1440» никто не читает
+ * как «сутки», и ошибиться в нуле легко.
+ */
+const UNITS = [
+  { key: 'minutes', label: 'мин.', mul: 1 },
+  { key: 'hours',   label: 'ч.',   mul: 60 },
+  { key: 'days',    label: 'сут.', mul: 1440 }
+];
 
-  const textOf = (t) => (drafts[t.id] !== undefined ? drafts[t.id] : t.text);
-  const smsOf = (t) => (drafts[`sms:${t.id}`] !== undefined ? drafts[`sms:${t.id}`] : (t.smsText || ''));
-  const changed = (t) => textOf(t) !== t.text || smsOf(t) !== (t.smsText || '');
+function splitMinutes(total) {
+  const value = Number(total) || 0;
+  if (value && value % 1440 === 0) return { amount: value / 1440, unit: 'days' };
+  if (value && value % 60 === 0) return { amount: value / 60, unit: 'hours' };
+  return { amount: value, unit: 'minutes' };
+}
 
-  const save = async (t) => {
+function TimingField({ label, minutes, onChange }) {
+  const { amount, unit } = splitMinutes(minutes);
+
+  const apply = (nextAmount, nextUnit) => {
+    const mul = UNITS.find(u => u.key === nextUnit)?.mul || 1;
+    const n = Math.max(0, Number(nextAmount) || 0);
+    onChange(n * mul);
+  };
+
+  return (
+    <div className="ola-timing">
+      <span className="ola-timing-label">{label}</span>
+      <input
+        className="ola-input"
+        type="number"
+        min="0"
+        value={amount}
+        onChange={e => apply(e.target.value, unit)}
+      />
+      <select className="ola-select" value={unit} onChange={e => apply(amount, e.target.value)}>
+        {UNITS.map(u => <option key={u.key} value={u.key}>{u.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * Карточка события: порядок доставки и тексты в нём же (ver. 8.04).
+ *
+ * Прежде это были две несвязанные части — список ступеней и отдельный набор
+ * полей с текстами. Связь между ними приходилось держать в голове: «SMS стоит
+ * третьей, значит вон то поле». Теперь текст живёт внутри своей ступени, и
+ * вопрос «что уйдёт в MAX» решается взглядом на строку MAX.
+ *
+ * Полного текста больше нет. Он уходил в любой канал, для которого не завели
+ * свой, то есть один абзац оказывался и в мессенджере, и в SMS, где он стоит
+ * трёх сегментов. Ступень без текста теперь пропускается — с причиной в журнале.
+ *
+ * Ступени раскрываются по одной. Их три-четыре, и четыре поля разом растянули
+ * бы карточку на экран — ровно то, от чего уходили в 8.03.
+ */
+function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
+  const [draft, setDraft] = useState(null);
+  const [openStep, setOpenStep] = useState(null);
+
+  const view = EVENT_VIEW[template.event] || { title: template.event, icon: FileText, tone: 'accent' };
+  const Icon = view.icon;
+
+  const current = draft || {
+    channelTexts: { ...(template.channelTexts || {}) },
+    cascade: Array.isArray(template.cascade) ? template.cascade : [],
+    beforeMinutes: template.beforeMinutes,
+    afterMinutes: template.afterMinutes,
+    frequency: template.frequency
+  };
+
+  const patch = (next) => setDraft(d => ({ ...(d || current), ...next }));
+
+  const setText = (channel, value) =>
+    patch({ channelTexts: { ...current.channelTexts, [channel]: value } });
+
+  const dirty = !!draft && JSON.stringify({
+    channelTexts: draft.channelTexts, cascade: draft.cascade,
+    beforeMinutes: draft.beforeMinutes, afterMinutes: draft.afterMinutes, frequency: draft.frequency
+  }) !== JSON.stringify({
+    channelTexts: template.channelTexts || {}, cascade: template.cascade || [],
+    beforeMinutes: template.beforeMinutes, afterMinutes: template.afterMinutes, frequency: template.frequency
+  });
+
+  const save = async () => {
+    await onSave(template, {
+      channelTexts: current.channelTexts,
+      cascade: current.cascade,
+      beforeMinutes: current.beforeMinutes,
+      afterMinutes: current.afterMinutes,
+      frequency: current.frequency
+    });
+    setDraft(null);
+  };
+
+  const move = (index, delta) => {
+    const next = [...current.cascade];
+    const [item] = next.splice(index, 1);
+    next.splice(index + delta, 0, item);
+    patch({ cascade: next });
+  };
+
+  const stepOf = (name) => steps.find(a => a.name === name) || { name, title: name, provider: '', channel: null };
+
+  // Две ступени SMS (Имобис и Fromni) делят один текст: канал у них один и тот
+  // же, и держать два одинаковых поля значило бы предлагать их разойтись.
+  const sharesChannel = (channel) =>
+    current.cascade.filter(n => stepOf(n).channel === channel).length > 1;
+
+  return (
+    <article className={`ola-card ola-event ${template.isActive ? '' : 'off'}`}>
+      <header>
+        <span className={`ola-card-icon ${view.tone}`}><Icon size={17} /></span>
+        <h3>{view.title}</h3>
+        {template.medCenter && <span className="ola-badge accent">{template.medCenter.name}</span>}
+
+        <Switch checked={template.withConfirm} onChange={v => onToggle(template, 'withConfirm', v)}>
+          «Подтверждаю»
+        </Switch>
+        <Switch checked={template.isActive} onChange={v => onToggle(template, 'isActive', v)}>
+          включено
+        </Switch>
+      </header>
+
+      <div className="ola-card-body">
+        {/* Время — только у событий, которые его имеют. У записи и отмены
+            момент задан самим событием, и настраивать там нечего. */}
+        {(template.event === 'reminder' || template.event === 'review') && (
+          <div className="ola-timings">
+            {template.event === 'reminder' && (
+              <TimingField
+                label="Напомнить за"
+                minutes={current.beforeMinutes}
+                onChange={v => patch({ beforeMinutes: v })}
+              />
+            )}
+            {template.event === 'review' && (
+              <>
+                <TimingField
+                  label="Спросить через"
+                  minutes={current.afterMinutes}
+                  onChange={v => patch({ afterMinutes: v })}
+                />
+                <select
+                  className="ola-select ola-freq"
+                  value={current.frequency || 'each'}
+                  onChange={e => patch({ frequency: e.target.value })}
+                >
+                  <option value="each">по каждому визиту</option>
+                  <option value="daily">один раз за день</option>
+                </select>
+              </>
+            )}
+          </div>
+        )}
+
+        <h4 className="ola-order-title">Порядок доставки</h4>
+
+        {current.cascade.length === 0 && (
+          <div className="ola-cascade-empty">
+            Ни одной ступени — событие никуда не уйдёт. Добавьте канал ниже.
+          </div>
+        )}
+
+        <ol className="ola-order">
+          {current.cascade.map((name, i) => {
+            const step = stepOf(name);
+            const channel = step.channel;
+            const value = channel ? (current.channelTexts[channel] || '') : '';
+            const open = openStep === name;
+            const cost = channel === 'sms' ? smsCost(value) : null;
+            const fill = cost && cost.limit ? Math.min(100, (cost.chars / cost.limit) * 100) : 0;
+
+            return (
+              <li key={name} className={`ola-order-step ${open ? 'open' : ''} ${!value ? 'blank' : ''}`}>
+                <div className="ola-order-head">
+                  <span className="no">{i + 1}</span>
+                  <ChannelLogo channel={channel || 'notify'} size={22} />
+                  <button className="ola-order-name" onClick={() => setOpenStep(open ? null : name)}>
+                    {step.title}
+                    <span className="provider">{step.provider}</span>
+                    {!value && <span className="ola-order-blank">текст не задан — ступень пропустится</span>}
+                    <ChevronDown size={15} className="chev" />
+                  </button>
+                  <button className="ola-icon-btn" title="Выше" disabled={i === 0} onClick={() => move(i, -1)}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    className="ola-icon-btn" title="Ниже"
+                    disabled={i === current.cascade.length - 1} onClick={() => move(i, 1)}
+                  ><ArrowDown size={14} /></button>
+                  <button
+                    className="ola-icon-btn danger" title="Убрать ступень"
+                    onClick={() => patch({ cascade: current.cascade.filter(n => n !== name) })}
+                  ><X size={14} /></button>
+                </div>
+
+                {open && (
+                  <div className="ola-order-body">
+                    {sharesChannel(channel) && (
+                      <div className="ola-order-shared">
+                        Текст общий со второй ступенью {channel === 'sms' ? 'SMS' : channel}
+                      </div>
+                    )}
+
+                    <textarea
+                      className="ola-textarea tall"
+                      rows={3}
+                      value={value}
+                      placeholder="Что получит пациент этим каналом"
+                      onChange={e => setText(channel, e.target.value)}
+                    />
+
+                    {cost && (
+                      <div className={`ola-sms-cost ${cost.parts > 1 ? 'over' : ''}`}>
+                        <span>{cost.chars} из {cost.limit} симв.</span>
+                        <span className="ola-sms-bar"><i style={{ width: `${fill}%` }} /></span>
+                        <strong>{cost.parts <= 1 ? 'одна SMS' : `${cost.parts} SMS`}</strong>
+                      </div>
+                    )}
+
+                    <div className="ola-tokens">
+                      {placeholders.map(p => (
+                        <button
+                          key={p.key} type="button" className="ola-token" title={p.title}
+                          onClick={() => setText(channel, `${value}{{${p.key}}}`)}
+                        >{`{{${p.key}}}`}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="ola-chips">
+          {steps.filter(a => !current.cascade.includes(a.name)).map(a => (
+            <button
+              key={a.name} type="button" className="ola-add"
+              onClick={() => patch({ cascade: [...current.cascade, a.name] })}
+            >+ {a.title}</button>
+          ))}
+        </div>
+
+        <div className="ola-actions end">
+          <button className="ola-btn primary" disabled={!dirty} onClick={save}>
+            <Save size={14} /> Сохранить
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function TemplatesTab({ data, steps, reload }) {
+  const save = async (t, patch) => {
     try {
-      await notifApi.updateTemplate(t.id, { text: textOf(t), smsText: smsOf(t) });
-      setDrafts(d => {
-        const next = { ...d };
-        delete next[t.id];
-        delete next[`sms:${t.id}`];
-        return next;
-      });
-      toast.success('Текст сохранён');
+      await notifApi.updateTemplate(t.id, patch);
+      toast.success('Сохранено');
       reload();
     } catch {
       toast.error('Не удалось сохранить');
@@ -390,152 +607,292 @@ function TemplatesTab({ data, reload }) {
     }
   };
 
-  const showPreview = async (t) => {
-    try {
-      const { data } = await notifApi.preview(textOf(t));
-      setPreview(p => ({ ...p, [t.id]: data.text }));
-    } catch {
-      toast.error('Предпросмотр не получился');
-    }
-  };
-
-  if (!data) return <p className="ola-lead">Загрузка…</p>;
+  if (!data) return <div className="ola-loading">Загрузка…</div>;
 
   return (
     <>
-      <p className="ola-lead">
-        Что получает пациент при записи, переносе, отмене и напоминании. Подстановки
-        вставляются кнопками под полем; пустой SMS-текст означает, что уйдёт полный.
-        <Why>
-          <p>
-            Тексты уехали из МИС к нам вместе с самой отправкой: раз инициатор мы, то
-            и шаблон должен лежать здесь. Подстановки те же по смыслу, что на экране
-            Renovatio, но с русскими именами — их правит администратор, а не программист.
-          </p>
-          <p>
-            Короткий текст для SMS отдельным полем потому, что SMS считается сегментами
-            по 70 символов кириллицей. Полный текст с адресом клиники и ФИО врача
-            легко стоит трёх SMS вместо одной, и на рассылке в тысячу человек разница
-            заметна в счёте.
-          </p>
-        </Why>
-      </p>
-
-      {data.templates.map(t => {
-        const cost = smsCost(smsOf(t) || textOf(t));
-        const fill = cost.limit ? Math.min(100, (cost.chars / cost.limit) * 100) : 0;
-
-        return (
-          <article key={t.id} className={`ola-card ${t.isActive ? '' : 'off'}`}>
-            <header>
-              <h3>
-                {EVENT_TITLES[t.event] || t.event}
-                {t.event === 'reminder' && <span className="ola-badge">{beforeLabel(t.beforeMinutes)}</span>}
-                {t.event === 'review' && (
-                  <span className="ola-badge">
-                    через {beforeLabel(t.afterMinutes).replace('за ', '')} после визита
-                    {t.frequency === 'daily' ? ', раз в день' : ', по каждому визиту'}
-                  </span>
-                )}
-                {t.event.startsWith('lab_') && !t.isActive && (
-                  <span className="ola-badge warn">ждёт разбора события от МИС</span>
-                )}
-              </h3>
-              <Switch checked={t.withConfirm} onChange={v => toggle(t, 'withConfirm', v)}>
-                кнопка «Подтверждаю»
-              </Switch>
-              <Switch checked={t.isActive} onChange={v => toggle(t, 'isActive', v)}>
-                включено
-              </Switch>
-            </header>
-
-            <div className="ola-card-body">
-              <div className="ola-field">
-                <label>Полный текст — уходит в мессенджеры</label>
-                <textarea
-                  className="ola-textarea"
-                  rows={3}
-                  value={textOf(t)}
-                  onChange={e => setDrafts(d => ({ ...d, [t.id]: e.target.value }))}
-                />
-                <div className="ola-chips" style={{ marginTop: 9 }}>
-                  {data.placeholders.map(p => (
-                    <button
-                      key={p.key}
-                      type="button"
-                      className="ola-token"
-                      title={p.title}
-                      onClick={() => setDrafts(d => ({ ...d, [t.id]: `${textOf(t)}{{${p.key}}}` }))}
-                    >{`{{${p.key}}}`}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="ola-field">
-                <label>Короткий текст для SMS</label>
-                <textarea
-                  className="ola-textarea"
-                  rows={2}
-                  value={smsOf(t)}
-                  onChange={e => setDrafts(d => ({ ...d, [`sms:${t.id}`]: e.target.value }))}
-                  placeholder="Например: Альфа: результаты анализов готовы. Забрать в регистратуре."
-                />
-                <div className={`ola-sms-cost ${cost.parts > 1 ? 'over' : ''}`}>
-                  <span>{cost.chars} из {cost.limit} симв.</span>
-                  <span className="ola-sms-bar"><i style={{ width: `${fill}%` }} /></span>
-                  <strong>{cost.parts <= 1 ? 'одна SMS' : `${cost.parts} SMS — платим как за ${cost.parts}`}</strong>
-                </div>
-
-              </div>
-
-              {preview[t.id] && <div className="ola-preview">{preview[t.id]}</div>}
-
-              <div className="ola-actions end" style={{ marginTop: 14 }}>
-                <button className="ola-btn" onClick={() => showPreview(t)}>
-                  <Eye size={14} /> Посмотреть
-                </button>
-                <button className="ola-btn primary" disabled={!changed(t)} onClick={() => save(t)}>
-                  <Save size={14} /> Сохранить
-                </button>
-              </div>
-            </div>
-          </article>
-        );
-      })}
+      {data.templates.map(t => (
+        <TemplateCard
+          key={t.id}
+          template={t}
+          steps={steps}
+          placeholders={data.placeholders || []}
+          onSave={save}
+          onToggle={toggle}
+        />
+      ))}
     </>
   );
 }
 
 // ══ Вкладка «Рассылка» ════════════════════════════════════════════════════
 
-function DeliveryTab({ templates }) {
+/**
+ * Боты филиала (ver. 8.05). Раньше это был общий список, где бот привязывался к
+ * «организации» — ключу лицевого счёта у Fromni, к филиалам отношения не
+ * имевшему. Теперь бот лежит там же, где его настраивают: внутри своего филиала.
+ *
+ * Состояние вебхука показываем у платформы, а не в нашей базе: в базе записано,
+ * каким режим задумывался, а расхождение между задуманным и получившимся — это
+ * и есть обычная причина «бот молчит».
+ */
+function BranchBots({ medCenterId, bots, onChanged }) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ token: '', platform: 'telegram', deliveryMode: 'webhook' });
+  const [busy, setBusy] = useState(false);
+
+  const add = async () => {
+    if (!draft.token.trim()) return toast.error('Нужен токен');
+    setBusy(true);
+    try {
+      const { data } = await lineApi.addBot({ ...draft, medCenterId });
+      toast.success(`@${data.username}: ${data.note}`);
+      setDraft({ token: '', platform: 'telegram', deliveryMode: 'webhook' });
+      setAdding(false);
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось завести бота');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const update = async (bot, body) => {
+    try {
+      const { data } = await lineApi.updateBot(bot.id, body);
+      if (data.note) toast.success(data.note);
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось изменить');
+    }
+  };
+
+  const remove = async (bot) => {
+    if (!window.confirm(`Убрать бота @${bot.username}? Вебхук будет снят, подписчики останутся.`)) return;
+    try {
+      await lineApi.deleteBot(bot.id);
+      onChanged();
+    } catch {
+      toast.error('Не удалось убрать бота');
+    }
+  };
+
+  const taken = new Set(bots.map(b => b.platform));
+
+  return (
+    <div className="ola-field">
+      <label>Боты</label>
+
+      {bots.map(bot => {
+        const ok = bot.deliveryMode === 'polling'
+          ? !bot.webhook.url
+          : bot.webhook.url === bot.expectedWebhook;
+
+        return (
+          <div key={bot.id} className={`ola-bot ${bot.isActive ? '' : 'off'}`}>
+            <ChannelLogo channel={bot.platform === 'max' ? 'max' : 'telegram'} size={26} />
+            <div className="ola-bot-main">
+              <div className="ola-bot-name">
+                @{bot.username || '—'}
+                <span className="ola-bot-token">{bot.tokenTail}</span>
+              </div>
+              <div className={`ola-bot-state ${ok ? 'ok' : 'bad'}`}>
+                {bot.webhook.error
+                  ? bot.webhook.error
+                  : (bot.deliveryMode === 'webhook'
+                    ? (ok ? 'вебхук на месте' : `вебхук указывает не сюда: ${bot.webhook.url || 'не установлен'}`)
+                    : (ok ? 'забор обновлений' : 'вебхук не снят — забор работать не будет'))}
+                {bot.webhook.pending > 0 && ` · в очереди ${bot.webhook.pending}`}
+              </div>
+            </div>
+
+            <select
+              className="ola-select narrow" value={bot.deliveryMode}
+              onChange={e => update(bot, { deliveryMode: e.target.value })}
+            >
+              <option value="webhook">вебхук</option>
+              <option value="polling">забор</option>
+            </select>
+
+            <Switch checked={bot.isActive} onChange={v => update(bot, { isActive: v })}>работает</Switch>
+
+            <button className="ola-icon-btn danger" title="Убрать бота" onClick={() => remove(bot)}>
+              <X size={14} />
+            </button>
+          </div>
+        );
+      })}
+
+      {adding && (
+        <div className="ola-subcard">
+          <div className="ola-row">
+            <div className="ola-field narrow">
+              <label>Платформа</label>
+              <select className="ola-select" value={draft.platform}
+                onChange={e => setDraft(d => ({ ...d, platform: e.target.value }))}>
+                <option value="telegram">Telegram</option>
+                <option value="max">MAX</option>
+              </select>
+            </div>
+            <div className="ola-field">
+              <label>Токен</label>
+              <input
+                className="ola-input" type="password" autoComplete="off"
+                placeholder="от BotFather"
+                value={draft.token}
+                onChange={e => setDraft(d => ({ ...d, token: e.target.value }))}
+              />
+            </div>
+            <div className="ola-field narrow">
+              <label>Как получать</label>
+              <select className="ola-select" value={draft.deliveryMode}
+                onChange={e => setDraft(d => ({ ...d, deliveryMode: e.target.value }))}>
+                <option value="webhook">вебхук</option>
+                <option value="polling">забор</option>
+              </select>
+            </div>
+            <button className="ola-btn primary" onClick={add} disabled={busy}>
+              <Save size={14} /> {busy ? 'Проверяю…' : 'Завести'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!adding && (
+        <button className="ola-add" onClick={() => setAdding(true)}>
+          + бот {taken.size === 0 ? '' : (taken.has('telegram') ? 'MAX' : 'Telegram')}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Филиал целиком: его боты, его счёт у провайдера, его имя отправителя.
+ *
+ * Общая настройка Имобиса осталась основанием, а не исчезла: сеть чаще всего
+ * живёт на одном счету, и заставлять вписывать один токен девять раз значило бы
+ * менять одну беду на другую. Поэтому поля показывают, что унаследовано, а
+ * заполняются только там, где счёт действительно отдельный.
+ */
+function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
+  const [sender, setSender] = useState(branch.imobis.sender || '');
+  const [token, setToken] = useState('');
+
+  const senderDirty = sender !== (branch.imobis.sender || '');
+  const dirty = senderDirty || !!token.trim();
+
+  const save = async () => {
+    const patch = { imobis: {} };
+    if (senderDirty) patch.imobis.sender = sender;
+    if (token.trim()) patch.imobis.token = token.trim();
+    await onSave(branch.medCenterId, patch);
+    setToken('');
+  };
+
+  const working = branch.bots.filter(b => b.isActive).length;
+
+  return (
+    <section className={`ola-card ola-branch-card ${branch.isEnabled ? '' : 'off'}`}>
+      <header>
+        <span className="ola-card-icon cyan"><Building2 size={17} /></span>
+        <h3>{branch.name}</h3>
+        {branch.bots.length > 0 && (
+          <span className="ola-branch-bots">
+            {branch.bots.map(b => (
+              <ChannelLogo key={b.id} channel={b.platform === 'max' ? 'max' : 'telegram'} size={19} />
+            ))}
+            <span className="ola-badge">{working} из {branch.bots.length} работают</span>
+          </span>
+        )}
+        {branch.bots.length === 0 && <span className="ola-badge warn">без ботов</span>}
+
+        <Switch checked={branch.isEnabled} onChange={v => onSave(branch.medCenterId, { isEnabled: v })}>
+          подключён
+        </Switch>
+
+        <button
+          className={`ola-icon-btn ${open ? 'open' : ''}`}
+          title={open ? 'Свернуть' : 'Настроить'}
+          onClick={onToggleOpen}
+        ><ChevronDown size={15} /></button>
+      </header>
+
+      {open && (
+        <div className="ola-card-body">
+          <BranchBots medCenterId={branch.medCenterId} bots={branch.bots} onChanged={onChanged} />
+
+          <div className="ola-block">
+            <h4><Wallet size={13} /> Счёт у Имобиса</h4>
+            <div className="ola-row">
+              <div className="ola-field">
+                <label>
+                  Имя отправителя
+                  {branch.imobis.senderInherited && <span className="ola-badge">общее: {branch.imobis.senderInherited}</span>}
+                </label>
+                <input
+                  className="ola-input"
+                  placeholder={branch.imobis.senderInherited ? 'пусто — как в общих' : 'проходит модерацию у операторов'}
+                  value={sender}
+                  onChange={e => setSender(e.target.value)}
+                />
+              </div>
+              <div className="ola-field">
+                <label>
+                  Токен
+                  {branch.imobis.tokenSet && <span className="ola-badge">свой</span>}
+                  {branch.imobis.tokenInherited && <span className="ola-badge">общий</span>}
+                </label>
+                <input
+                  className="ola-input" type="password" autoComplete="off"
+                  placeholder={branch.imobis.tokenSet ? 'задан — впишите новый, чтобы заменить' : 'пусто — общий счёт сети'}
+                  value={token}
+                  onChange={e => setToken(e.target.value)}
+                />
+              </div>
+              <button className="ola-btn primary" disabled={!dirty} onClick={save}>
+                <Save size={14} /> Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DeliveryTab({ templates, safety, onSafetyChange }) {
   const [settings, setSettings] = useState(null);
   const [saved, setSaved] = useState(null);
-  const [approved, setApproved] = useState(null);
   const [balance, setBalance] = useState(null);
-  const [test, setTest] = useState({ phone: '', step: 'sms', templateId: '', busy: false });
+  const [branches, setBranches] = useState(null);
+  const [orphans, setOrphans] = useState([]);
+  const [openBranch, setOpenBranch] = useState(null);
+  const [imobisToken, setImobisToken] = useState('');
+  const [test, setTest] = useState({ phone: '', step: 'auto', templateId: '', busy: false });
+
+  const loadBranches = useCallback(() => {
+    notifApi.branches()
+      .then(({ data }) => { setBranches(data.branches); setOrphans(data.orphanBots || []); })
+      .catch(() => setBranches([]));
+  }, []);
 
   useEffect(() => {
     notifApi.settings()
-      .then(({ data }) => { setSettings(data); setSaved(JSON.stringify({ cascade: data.cascade, quietHours: data.quietHours, imobis: data.imobis })); })
+      .then(({ data }) => {
+        setSettings(data);
+        setSaved(JSON.stringify({ quietHours: data.quietHours, imobis: data.imobis }));
+      })
       .catch(() => toast.error('Не удалось загрузить настройки рассылки'));
-    notifApi.approved().then(({ data }) => setApproved(data)).catch(() => setApproved({ error: 'нет ответа' }));
     notifApi.balance().then(({ data }) => setBalance(data)).catch(() => setBalance({ balance: null }));
-  }, []);
+    loadBranches();
+  }, [loadBranches]);
 
   const dirty = useMemo(() => {
     if (!settings || !saved) return false;
-    return JSON.stringify({ cascade: settings.cascade, quietHours: settings.quietHours, imobis: settings.imobis }) !== saved;
-  }, [settings, saved]);
-
-  const moveStep = (index, delta) => {
-    setSettings(s => {
-      const next = [...s.cascade];
-      const [item] = next.splice(index, 1);
-      next.splice(index + delta, 0, item);
-      return { ...s, cascade: next };
-    });
-  };
+    return !!imobisToken.trim() ||
+      JSON.stringify({ quietHours: settings.quietHours, imobis: settings.imobis }) !== saved;
+  }, [settings, saved, imobisToken]);
 
   const setQuiet = (field, value) =>
     setSettings(s => ({ ...s, quietHours: { ...s.quietHours, [field]: value } }));
@@ -545,17 +902,41 @@ function DeliveryTab({ templates }) {
 
   const saveSettings = async () => {
     try {
-      const { data } = await notifApi.saveSettings({
-        cascade: settings.cascade,
-        quietHours: settings.quietHours,
-        imobis: settings.imobis
-      });
+      const body = { quietHours: settings.quietHours, imobis: { ...settings.imobis } };
+      // Токен отправляем только если его вписали заново: пустое поле означает
+      // «оставить как есть», а не «стереть доступ».
+      if (imobisToken.trim()) body.imobis.token = imobisToken.trim();
+      else delete body.imobis.token;
+
+      const { data } = await notifApi.saveSettings(body);
       const next = { ...settings, ...data };
       setSettings(next);
-      setSaved(JSON.stringify({ cascade: next.cascade, quietHours: next.quietHours, imobis: next.imobis }));
+      setSaved(JSON.stringify({ quietHours: next.quietHours, imobis: next.imobis }));
+      setImobisToken('');
+      notifApi.settings().then(({ data }) => setSettings(s => ({ ...s, credentials: data.credentials })));
+      loadBranches();
       toast.success('Настройки сохранены');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Не удалось сохранить');
+    }
+  };
+
+  const saveSafety = async (patch) => {
+    try {
+      await notifApi.saveSafety(patch);
+      await onSafetyChange();
+      toast.success('Предохранители сохранены');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось сохранить');
+    }
+  };
+
+  const saveBranch = async (medCenterId, patch) => {
+    try {
+      await notifApi.saveBranch(medCenterId, patch);
+      loadBranches();
+    } catch {
+      toast.error('Не удалось сохранить филиал');
     }
   };
 
@@ -563,8 +944,17 @@ function DeliveryTab({ templates }) {
     if (!test.phone.trim()) return toast.error('Нужен номер');
     setTest(t => ({ ...t, busy: true }));
     try {
-      const { data } = await notifApi.test({ phone: test.phone, step: test.step, templateId: test.templateId || undefined });
-      toast.success(`Ушло каналом ${data.channel || '—'}`);
+      const { data } = await notifApi.test({
+        phone: test.phone,
+        step: test.step,
+        templateId: test.templateId || undefined
+      });
+      // Имобис отвечает «принято», а доставку подтверждает отчётом — поэтому
+      // «ушло» здесь не то же, что «дошло», и путать их нельзя: именно на этом
+      // и обожглись, когда проверка сообщала об успехе, а в журнале лежал отказ.
+      if (data.result?.error) toast.error(data.result.error);
+      else if (data.result?.accepted) toast.success('Принято провайдером — исход смотрите в журнале');
+      else toast.success(`Ушло каналом ${data.result?.channel || '—'}`);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Не удалось отправить');
     } finally {
@@ -572,91 +962,127 @@ function DeliveryTab({ templates }) {
     }
   };
 
-  if (!settings) return <p className="ola-lead">Загрузка…</p>;
+  if (!settings) return <div className="ola-loading">Загрузка…</div>;
 
-  const titleOf = (name) => {
-    const known = settings.available.find(a => a.name === name);
-    return known ? known.title : name;
-  };
+  const creds = settings.credentials || {};
 
   return (
     <>
-      <section className="ola-card">
-        <header>
-          <h3>Порядок каскада</h3>
-        </header>
-        <div className="ola-card-body">
-          <p className="ola-lead">
-            Сообщение идёт по ступеням сверху вниз и останавливается на первой, которая доставила.
-            <Why>
-              <p>
-                Ступени с пометкой «Имобис» идут к провайдеру напрямую, с пометкой «Fromni» —
-                через агрегатора. Подряд идущие ступени одного провайдера уходят одним
-                запросом: их собственный каскад сам остановится на доставленной, и платить
-                за обе не придётся.
-              </p>
-              <p>
-                Прямая отправка появилась не ради экономии, хотя и ради неё тоже. Через
-                Fromni не видно, что стало с сообщением: её метод отвечает «принято», а
-                статус доставки уходит на её callback-сервер, занятый мостом Renovatio.
-                У Имобиса статус приходит нам.
-              </p>
-            </Why>
-          </p>
+      {/* Предохранители первыми: пока они закрыты, всё остальное на этой
+          вкладке настраивается вхолостую, и знать об этом надо до, а не после. */}
+      {safety && <SafetyPanel safety={safety} onChange={saveSafety} />}
 
-          <ol className="ola-cascade">
-            {settings.cascade.map((name, i) => {
-              const known = settings.available.find(a => a.name === name);
-              return (
-                <li key={name}>
-                  <span className="no">{i + 1}</span>
-                  <span className="name">
-                    {titleOf(name)}
-                    {known?.provider && <span className="provider">{known.provider}</span>}
-                  </span>
-                  <button className="ola-icon-btn" title="Выше" disabled={i === 0} onClick={() => moveStep(i, -1)}>
-                    <ArrowUp size={14} />
-                  </button>
-                  <button
-                    className="ola-icon-btn" title="Ниже"
-                    disabled={i === settings.cascade.length - 1}
-                    onClick={() => moveStep(i, 1)}
-                  ><ArrowDown size={14} /></button>
-                  <button
-                    className="ola-icon-btn danger" title="Убрать из каскада"
-                    disabled={settings.cascade.length === 1}
-                    onClick={() => setSettings(s => ({ ...s, cascade: s.cascade.filter(n => n !== name) }))}
-                  ><X size={14} /></button>
-                </li>
-              );
-            })}
-          </ol>
+      <h2 className="ola-section">Филиалы</h2>
 
-          <div className="ola-chips">
-            {settings.available.filter(a => !settings.cascade.includes(a.name)).map(a => (
-              <button
-                key={a.name} type="button" className="ola-add" title={a.provider}
-                onClick={() => setSettings(s => ({ ...s, cascade: [...s.cascade, a.name] }))}
-              >+ {a.title}</button>
+      {!branches && <div className="ola-loading">Загрузка…</div>}
+
+      {(branches || []).map(b => (
+        <BranchCard
+          key={b.medCenterId}
+          branch={b}
+          open={openBranch === b.medCenterId}
+          onToggleOpen={() => setOpenBranch(openBranch === b.medCenterId ? null : b.medCenterId)}
+          onSave={saveBranch}
+          onChanged={loadBranches}
+        />
+      ))}
+
+      {/* Боты без филиала: проверочные и те, что не встали при переносе.
+          Прятать их нельзя — иначе бот работает, а в настройке его нет. */}
+      {orphans.length > 0 && (
+        <section className="ola-card">
+          <header>
+            <span className="ola-card-icon amber"><Bot size={17} /></span>
+            <h3>Боты вне филиалов</h3>
+            <span className="ola-badge warn">{orphans.length}</span>
+          </header>
+          <div className="ola-card-body">
+            {orphans.map(bot => (
+              <div key={bot.id} className="ola-bot">
+                <ChannelLogo channel={bot.platform === 'max' ? 'max' : 'telegram'} size={26} />
+                <div className="ola-bot-main">
+                  <div className="ola-bot-name">
+                    @{bot.username || '—'}
+                    <span className="ola-badge">{bot.organization}</span>
+                  </div>
+                  <div className="ola-bot-state">не привязан к филиалу</div>
+                </div>
+                <select
+                  className="ola-select narrow" value=""
+                  onChange={async (e) => {
+                    if (!e.target.value) return;
+                    try {
+                      await lineApi.updateBot(bot.id, { medCenterId: e.target.value });
+                      loadBranches();
+                    } catch { toast.error('Не удалось привязать'); }
+                  }}
+                >
+                  <option value="">к филиалу…</option>
+                  {(branches || []).map(b => (
+                    <option key={b.medCenterId} value={b.medCenterId}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
             ))}
           </div>
+        </section>
+      )}
+
+      <h2 className="ola-section">Общее для сети</h2>
+
+      <section className="ola-card">
+        <header>
+          <span className="ola-card-icon amber"><Wallet size={17} /></span>
+          <h3>Счёт у Имобиса по умолчанию</h3>
+          {balance && balance.balance != null && (
+            <span className="ola-badge accent">
+              {balance.balance.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽
+            </span>
+          )}
+          {settings.imobis?.sandbox && <span className="ola-badge warn">песочница</span>}
+          {!creds.imobisTokenSet && <span className="ola-badge warn">токен не задан</span>}
+          {creds.imobisTokenFromEnv && <span className="ola-badge">из .env</span>}
+        </header>
+        <div className="ola-card-body">
+          <div className="ola-row">
+            <div className="ola-field">
+              <label>Токен</label>
+              <input
+                className="ola-input" type="password" autoComplete="off"
+                placeholder={creds.imobisTokenSet ? 'задан — впишите новый, чтобы заменить' : 'из личного кабинета app.imobis.ru'}
+                value={imobisToken}
+                onChange={e => setImobisToken(e.target.value)}
+              />
+            </div>
+            <div className="ola-field">
+              <label>Имя отправителя</label>
+              <input
+                className="ola-input" placeholder="Например, ALFA"
+                value={settings.imobis?.sender || ''}
+                onChange={e => setImobis('sender', e.target.value)}
+              />
+            </div>
+            <div className="ola-field narrow">
+              <Switch checked={settings.imobis?.sandbox} onChange={v => setImobis('sandbox', v)}>
+                песочница
+              </Switch>
+            </div>
+          </div>
+          {balance && balance.error && (
+            <div className="ola-bot-state bad">Баланс не получен: {balance.error}</div>
+          )}
         </div>
       </section>
 
       <section className="ola-card">
-        <header><h3><Moon size={15} /> Тихие часы</h3></header>
+        <header>
+          <span className="ola-card-icon violet"><Moon size={17} /></span>
+          <h3>Тихие часы</h3>
+          <Switch checked={settings.quietHours.enabled} onChange={v => setQuiet('enabled', v)}>
+            включены
+          </Switch>
+        </header>
         <div className="ola-card-body">
-          <p className="ola-lead">
-            Сообщение, попавшее в это время, не отменяется — оно ждёт утра и уходит,
-            когда можно. В журнале такая строка видна с пометкой об отсрочке.
-          </p>
-
-          <div className="ola-field">
-            <Switch checked={settings.quietHours.enabled} onChange={v => setQuiet('enabled', v)}>
-              не отправлять ночью
-            </Switch>
-          </div>
-
           <div className="ola-row">
             <div className="ola-field narrow">
               <label>С какого часа</label>
@@ -670,14 +1096,8 @@ function DeliveryTab({ templates }) {
             </div>
           </div>
 
-          <div className="ola-field" style={{ marginTop: 16 }}>
-            <label>
-              Каких ступеней это касается
-            </label>
-            <p className="ola-hint" style={{ marginTop: 0, marginBottom: 9 }}>
-              Наши боты обычно не молчат: сообщение в мессенджере не будит так, как SMS,
-              а человек, записавшийся поздно вечером, ждёт подтверждения сразу.
-            </p>
+          <div className="ola-field">
+            <label>Каких ступеней это касается</label>
             <div className="ola-checks">
               {settings.available.map(a => (
                 <Check1
@@ -697,81 +1117,10 @@ function DeliveryTab({ templates }) {
 
       <section className="ola-card">
         <header>
-          <h3><Wallet size={15} /> Имобис</h3>
-          {balance && balance.balance != null && (
-            <span className="ola-badge accent">
-              на счету {balance.balance.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽
-            </span>
-          )}
-          {settings.imobis?.sandbox && <span className="ola-badge warn">песочница</span>}
-          {!settings.imobisReady && <span className="ola-badge warn">токен не задан</span>}
+          <span className="ola-card-icon accent"><Send size={17} /></span>
+          <h3>Проверить отправку</h3>
         </header>
         <div className="ola-card-body">
-          <p className="ola-lead">
-            Прямая отправка SMS и ВКонтакте, минуя агрегатора.
-            <Why>
-              <p>
-                Имя отправителя нельзя придумать — оно проходит модерацию у операторов
-                связи. Какое одобрено на аккаунте, покажет <code>npm run imobis:check</code>.
-              </p>
-              <p>
-                Остаток на счету — единственная цифра о деньгах, которую их API отдаёт:
-                отчёта о расходах, детализации по каналам и прайса в нём нет. Сколько
-                потратили за период, портал считает сам по журналу отправок.
-              </p>
-              {!settings.imobisReady && (
-                <p>Токен берётся в личном кабинете app.imobis.ru и вписывается в
-                  <code>backend/.env</code> строкой <code>IMOBIS_TOKEN=…</code>.</p>
-              )}
-            </Why>
-          </p>
-
-          <div className="ola-row">
-            <div className="ola-field">
-              <label>Имя отправителя</label>
-              <input
-                className="ola-input" placeholder="Например, ALFA"
-                value={settings.imobis?.sender || ''}
-                onChange={e => setImobis('sender', e.target.value)}
-              />
-            </div>
-            <div className="ola-field">
-              <label>ID группы ВКонтакте</label>
-              <input
-                className="ola-input" placeholder="Нужен ступени «ВКонтакте напрямую»"
-                value={settings.imobis?.vkGroup || ''}
-                onChange={e => setImobis('vkGroup', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="ola-field" style={{ marginTop: 14 }}>
-            <Switch checked={settings.imobis?.sandbox} onChange={v => setImobis('sandbox', v)}>
-              песочница — сообщения не уходят
-            </Switch>
-          </div>
-
-          {balance && balance.error && (
-            <p className="ola-hint">Баланс не получен: {balance.error}</p>
-          )}
-        </div>
-      </section>
-
-      <section className="ola-card">
-        <header><h3><Send size={15} /> Проверить отправку</h3></header>
-        <div className="ola-card-body">
-          <p className="ola-lead">
-            Одно сообщение на указанный номер, минуя детектор.
-            <Why>
-              <p>
-                Нужно, чтобы убедиться: по SMS уходит текст из вики, а не тот, что остался
-                в МИС. Предохранитель второй ступени здесь не действует — он защищает от
-                веерной рассылки, а тут один номер, набранный руками.
-              </p>
-              <p>Результат появится в журнале событием «Проверочная отправка» — с каналом, которым в итоге ушло.</p>
-            </Why>
-          </p>
-
           <div className="ola-row">
             <div className="ola-field narrow">
               <label>Номер</label>
@@ -779,12 +1128,15 @@ function DeliveryTab({ templates }) {
                 value={test.phone} onChange={e => setTest(t => ({ ...t, phone: e.target.value }))} />
             </div>
             <div className="ola-field">
-              <label>Чем отправить</label>
+              <label>Какой ступенью</label>
+              {/* Ступени берутся из общего списка, а не из чьего-то каскада:
+                  проверяют обычно до того, как ступень туда поставят. */}
               <select className="ola-select" value={test.step} onChange={e => setTest(t => ({ ...t, step: e.target.value }))}>
-                <option value="sms">только SMS</option>
-                <option value="fromni">Fromni по каскаду (Notify, потом SMS)</option>
-                <option value="bot">только наш бот</option>
-                <option value="auto">как в бою: бот, потом Fromni</option>
+                <option value="auto">как в бою — по каскаду события</option>
+                <option value="bot">любой наш бот</option>
+                {settings.available.map(a => (
+                  <option key={a.name} value={a.name}>только «{a.title}» ({a.provider})</option>
+                ))}
               </select>
             </div>
             <div className="ola-field">
@@ -792,7 +1144,7 @@ function DeliveryTab({ templates }) {
               <select className="ola-select" value={test.templateId} onChange={e => setTest(t => ({ ...t, templateId: e.target.value }))}>
                 <option value="">выберите событие</option>
                 {(templates?.templates || []).map(t => (
-                  <option key={t.id} value={t.id}>{EVENT_TITLES[t.event] || t.event}</option>
+                  <option key={t.id} value={t.id}>{eventTitle(t.event)}</option>
                 ))}
               </select>
             </div>
@@ -803,48 +1155,12 @@ function DeliveryTab({ templates }) {
         </div>
       </section>
 
-      <section className="ola-card">
-        <header><h3><ListChecks size={15} /> Одобренные шаблоны Notify</h3></header>
-        <div className="ola-card-body">
-          <p className="ola-lead">
-            Тексты выше стоит писать под эти образцы.
-            <Why>
-              <p>
-                Метод отправки у агрегатора сам ищет наш текст среди зарегистрированных.
-                Совпал — уходит Notify. Не совпал — <strong>молча SMS</strong>, дороже, и
-                узнать об этом можно только по счёту.
-              </p>
-            </Why>
-          </p>
-
-          {!approved && <p className="ola-hint">Загрузка…</p>}
-          {approved?.error && <p className="ola-hint">Агрегатор не ответил: {approved.error}</p>}
-          {approved && !approved.error && (approved.templates || []).length === 0 && (
-            <p className="ola-hint">
-              Зарегистрированных шаблонов не нашлось. Возможно, они заведены на стороне
-              Имобиса, а не Fromni — тогда проверять придётся тестовой отправкой выше.
-            </p>
-          )}
-          {(approved?.templates || []).map(t => (
-            <div key={t.id || t.name} className="ola-card" style={{ marginBottom: 8 }}>
-              <div className="ola-card-body" style={{ padding: 12 }}>
-                <div className="ola-chips" style={{ marginBottom: 6 }}>
-                  <strong style={{ fontSize: 13 }}>{t.name || 'без названия'}</strong>
-                  {(t.channels || []).length > 0 && <span className="ola-chip plain">{t.channels.join(', ')}</span>}
-                </div>
-                <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{t.text}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <div className={`ola-savebar ${dirty ? 'dirty' : ''}`}>
         <span className={`state ${dirty ? 'dirty' : ''}`}>
           {dirty ? 'Есть несохранённые изменения' : 'Всё сохранено'}
         </span>
         <button className="ola-btn primary" onClick={saveSettings} disabled={!dirty}>
-          <Save size={15} /> Сохранить настройки
+          <Save size={15} /> Сохранить общие
         </button>
       </div>
     </>
@@ -889,38 +1205,32 @@ function LogTab() {
 
         <div className="ola-log-search">
           <Search size={16} />
-          <input
-            placeholder="Поиск по номеру телефона"
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-          />
+          <input placeholder="Поиск по номеру" value={phone} onChange={e => setPhone(e.target.value)} />
         </div>
       </div>
-
-      <p className="ola-lead">
-        Плитки считают за последние сутки; список показывает последние отправки
-        независимо от них.
-      </p>
 
       {log && log.rows.length === 0 && (
         <div className="ola-empty">
           <Inbox size={34} />
           <h3>Отправок не нашлось</h3>
-          <p>{status || phone ? 'Попробуйте снять фильтр или очистить поиск.' : 'Детектор ещё не находил событий, о которых нужно сообщить пациенту.'}</p>
+          <p>{status || phone ? 'Снимите фильтр или очистите поиск.' : 'Детектор ещё не находил событий.'}</p>
         </div>
       )}
 
       {(log?.rows || []).map(row => {
         const view = STATUS_VIEW[row.status] || STATUS_VIEW.pending;
         const Icon = view.icon;
+        const eview = EVENT_VIEW[row.event];
+        const EIcon = eview?.icon || FileText;
         return (
           <article key={row.id} className={`ola-row-card ${view.cls}`}>
             <div className="ola-row-top">
-              <Icon size={15} />
-              <span className="event">{EVENT_TITLES[row.event] || row.event}</span>
+              <span className={`ola-card-icon small ${eview?.tone || 'accent'}`}><EIcon size={14} /></span>
+              <span className="event">{eventTitle(row.event)}</span>
               <span className="phone">{row.phone || 'без телефона'}</span>
               {row.channel && <span className="ola-badge">{row.channel}</span>}
-              {row.postponedFrom && <span className="ola-badge warn">отложено на утро</span>}
+              {row.postponedFrom && <span className="ola-badge warn">отложено</span>}
+              <span className={`ola-row-status ${view.cls}`}><Icon size={13} /> {view.label}</span>
               <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
             </div>
             <div className="ola-row-text">{row.text}</div>
@@ -932,11 +1242,160 @@ function LogTab() {
   );
 }
 
+/**
+ * Предохранители: что уходит наружу и на какие номера (ver. 8.06).
+ *
+ * Прежде состояние жило в .env и на экране показывалось одной строкой про
+ * Fromni — строкой, которая врала: предохранитель стоял внутри ветки Fromni,
+ * ниже ветки Имобиса, и прямая отправка SMS шла мимо него. Настройка, состояние
+ * которой нельзя увидеть, не защищает, а создаёт ложное чувство защиты.
+ *
+ * Теперь это орган управления, и он устроен так, чтобы включение нельзя было
+ * сделать по инерции:
+ *
+ *   • выключение мгновенно, включение — через подтверждение с набором слова.
+ *     Несимметрично намеренно: остановить рассылку надо уметь одним движением,
+ *     а запустить — понимая, что делаешь;
+ *   • подтверждение называет последствие («сообщения пойдут живым пациентам»),
+ *     а не спрашивает «вы уверены?» — на такой вопрос отвечают не думая;
+ *   • видно, кто и когда менял: вопрос «кто это включил» задают через неделю;
+ *   • замок на сервере (NOTIFIER_LOCK_EXTERNAL) делает переключатель
+ *     неработающим — на время пилота снятие должно требовать доступа к серверу.
+ */
+function SafetyPanel({ safety, onChange }) {
+  const [confirming, setConfirming] = useState(null);
+  const [word, setWord] = useState('');
+  const [pilot, setPilot] = useState((safety.pilotPhones || []).join(', '));
+  const [busy, setBusy] = useState(false);
+
+  const open = (safety.providers || []).filter(p => p.allowed);
+  const piloted = (safety.pilotPhones || []).length > 0;
+  const CONFIRM = 'ОТПРАВЛЯТЬ';
+
+  const apply = async (allowExternal, extra = {}) => {
+    setBusy(true);
+    try {
+      await onChange({ allowExternal, ...extra });
+      setConfirming(null);
+      setWord('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = (provider, on) => {
+    const names = (safety.providers || []).filter(p => p.allowed).map(p => p.name);
+    const next = on ? [...names, provider.name] : names.filter(n => n !== provider.name);
+
+    // Выключение — сразу. Включение — через подтверждение.
+    if (!on) return apply(next);
+    setConfirming({ provider, next });
+    setWord('');
+  };
+
+  const savePilot = () => {
+    const list = pilot.split(',').map(s => s.trim()).filter(Boolean);
+    apply(undefined, { pilotPhones: list });
+  };
+
+  const pilotDirty = pilot !== (safety.pilotPhones || []).join(', ');
+
+  return (
+    <section className={`ola-card ola-safety ${open.length ? 'live' : (piloted ? 'safe' : '')}`}>
+      <header>
+        <span className={`ola-card-icon ${open.length ? 'red' : (piloted ? 'green' : 'amber')}`}>
+          {open.length ? <AlertTriangle size={17} /> : <ShieldCheck size={17} />}
+        </span>
+        <h3>
+          {open.length
+            ? `Отправка наружу включена: ${open.map(p => p.title).join(', ')}`
+            : 'Наружу ничего не уходит'}
+        </h3>
+        {safety.locked && <span className="ola-badge warn">замок на сервере</span>}
+        {safety.changedBy && (
+          <span className="ola-badge">
+            {safety.changedBy}, {new Date(safety.changedAt).toLocaleString('ru-RU')}
+          </span>
+        )}
+      </header>
+
+      <div className="ola-card-body">
+        <div className="ola-safety-rows">
+          {(safety.providers || []).map(p => (
+            <div key={p.name} className={`ola-safety-row ${p.allowed ? 'on' : ''}`}>
+              <span className="name">{p.title}</span>
+              <span className="state">
+                {p.allowed ? 'сообщения уходят пациентам' : 'помечается пропущенным'}
+              </span>
+              <Switch
+                checked={p.allowed}
+                disabled={safety.locked || busy}
+                onChange={v => toggle(p, v)}
+              >{p.allowed ? 'включено' : 'выключено'}</Switch>
+            </div>
+          ))}
+        </div>
+
+        <div className="ola-field">
+          <label>
+            Только эти номера
+            {!piloted && <span className="ola-badge warn">не сужено — вся сеть</span>}
+          </label>
+          <div className="ola-row">
+            <input
+              className="ola-input"
+              placeholder="+7 900 000-00-00, +7 900 111-11-11 — пусто означает всю сеть"
+              value={pilot}
+              onChange={e => setPilot(e.target.value)}
+            />
+            <button className="ola-btn primary" disabled={!pilotDirty || busy} onClick={savePilot}>
+              <Save size={14} /> Сохранить
+            </button>
+          </div>
+        </div>
+
+        {confirming && (
+          <div className="ola-confirm">
+            <AlertTriangle size={18} />
+            <div className="ola-confirm-body">
+              <strong>Включить «{confirming.provider.title}»?</strong>
+              <p>
+                После этого уведомления пойдут живым пациентам
+                {piloted
+                  ? ` — пока только на ${safety.pilotPhones.length} проверочны${safety.pilotPhones.length === 1 ? 'й номер' : 'х номера'}.`
+                  : ' по всей сети: круг получателей не сужен.'}
+                {' '}Убедитесь, что в МИС у тех же организаций сняты галки «Отправлять
+                сообщение», иначе пациент получит два уведомления об одном событии.
+              </p>
+              <div className="ola-row">
+                <input
+                  className="ola-input"
+                  placeholder={`Наберите ${CONFIRM}, чтобы подтвердить`}
+                  value={word}
+                  onChange={e => setWord(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  className="ola-btn danger-solid"
+                  disabled={word.trim().toUpperCase() !== CONFIRM || busy}
+                  onClick={() => apply(confirming.next)}
+                >Включить отправку</button>
+                <button className="ola-btn" onClick={() => setConfirming(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ══ Страница ══════════════════════════════════════════════════════════════
 
 export default function AdminOpenLine() {
   const [tab, setTab] = useState('lines');
   const [templates, setTemplates] = useState(null);
+  const [steps, setSteps] = useState([]);
   const [failed, setFailed] = useState(0);
 
   // Шаблоны нужны двум вкладкам сразу: «Тексты» их правят, «Рассылка» выбирает
@@ -952,6 +1411,13 @@ export default function AdminOpenLine() {
 
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
+  // Список ступеней нужен вкладке «Тексты» для каскада события, а живёт он в
+  // настройках рассылки. Забираем один раз на странице, чтобы карточка события
+  // не ходила за ним сама на каждый разворот.
+  useEffect(() => {
+    notifApi.settings().then(({ data }) => setSteps(data.available || [])).catch(() => {});
+  }, []);
+
   // Недоставленное за сутки — цифрой на вкладке журнала. Иначе о том, что
   // рассылка встала (кончился баланс, отвалился токен), узнаёшь, только если
   // заглянешь в журнал по своей воле, а заглядывают туда по жалобе.
@@ -961,17 +1427,13 @@ export default function AdminOpenLine() {
       .catch(() => {});
   }, [tab]);
 
+  const safety = templates?.safety;
+
   return (
     <div className="admin-page">
       <div className="ola-shell">
         <div className="ola-head">
-          <div>
-            <h1>Открытая линия и оповещения</h1>
-            <p>
-              Состав линий, тексты уведомлений пациентам и порядок доставки.
-              Рабочее окно колл-центра — в разделе «Открытая линия».
-            </p>
-          </div>
+          <h1>Открытая линия и оповещения</h1>
         </div>
 
         <nav className="ola-tabs">
@@ -990,25 +1452,18 @@ export default function AdminOpenLine() {
           })}
         </nav>
 
-        {/* Предохранитель показываем крупно и на всех вкладках: пока вторая
-            ступень выключена, половина отправок помечается пропущенной, и это
-            надо понимать сразу, а не выяснять по журналу. */}
-        {templates && !templates.safety?.fromniAllowed && (
-          <div className="ola-warning">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>Вторая ступень каскада выключена.</strong> Уведомления уходят только
-              подписчикам наших ботов, всё остальное помечается пропущенным. Включается
-              в <code>.env</code> строкой <code>NOTIFIER_ALLOW_FROMNI=true</code> — вместе
-              со снятием галок «Отправлять сообщение» в МИС у той же организации, иначе
-              пациент получит два уведомления об одном событии.
-            </div>
-          </div>
-        )}
-
+        {/* Единственный текст, оставленный в интерфейсе. Это не пояснение, а
+            состояние системы: пока предохранитель стоит, часть отправок
+            помечается пропущенной, и понимать это надо до того, как начнёшь
+            разбираться по журналу.
+            
+            Раньше здесь была одна строка про Fromni, и она врала: предохранитель
+            стоял внутри ветки Fromni, а прямая отправка через Имобис проходила
+            мимо него. Теперь перечисляем провайдеров поимённо — утверждение
+            «наружу ничего не уходит» должно быть проверяемым. */}
         {tab === 'lines' && <LinesTab />}
-        {tab === 'texts' && <TemplatesTab data={templates} reload={loadTemplates} />}
-        {tab === 'delivery' && <DeliveryTab templates={templates} />}
+        {tab === 'texts' && <TemplatesTab data={templates} steps={steps} reload={loadTemplates} />}
+        {tab === 'delivery' && <DeliveryTab templates={templates} safety={safety} onSafetyChange={loadTemplates} />}
         {tab === 'log' && <LogTab />}
       </div>
     </div>

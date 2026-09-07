@@ -15,12 +15,14 @@
  */
 
 const { Op } = require('sequelize');
-const { NotifOutbox, NotifAppointment, BotSubscriber, MessengerBot, Setting } = require('../../models');
+const { NotifOutbox, NotifAppointment, BotSubscriber, MessengerBot, Setting,
+        NotifTemplate, MedCenter, sequelize } = require('../../models');
 const { getChannel } = require('../messengers');
 const fromni = require('../messengers/fromni');
 const imobis = require('../messengers/imobis');
 const misClient = require('../misClient');
 const settings = require('./settings');
+const safety = require('./safety');
 
 // Какой организации принадлежит клиника МИС. Нужно, чтобы уйти во Fromni под
 // правильным аккаунтом: у каждой организации он свой. Заполняется в настройках,
@@ -28,26 +30,13 @@ const settings = require('./settings');
 const CLINIC_ORG_KEY = 'notif_clinic_org';
 const DEFAULT_ORG = process.env.FROMNI_DEFAULT_ORG || 'alfa';
 
-// ── Предохранители пилота ─────────────────────────────────────────────────
+// ── Предохранители ────────────────────────────────────────────────────────
 //
-// Детектор видит изменения по всей сети, а не только по пилотной клинике.
-// Значит без ограничителей первый же запуск отправит SMS тысячам живых
-// пациентов — поверх тех, что им уже шлёт МИС. Поэтому по умолчанию:
-//
-//   • вторая ступень (Fromni, то есть Notify и SMS) выключена: пока идёт
-//     обкатка, уведомления уходят только подписчикам наших ботов;
-//   • можно сузить круг до списка телефонов — всё остальное помечается
-//     пропущенным с причиной, а не исчезает молча.
-//
-// Оба ограничителя снимаются в .env осознанно, в момент боевого переключения.
-const ALLOW_FROMNI = process.env.NOTIFIER_ALLOW_FROMNI === 'true';
-const PILOT_PHONES = (process.env.NOTIFIER_PILOT_PHONES || '')
-  .split(',').map(s => misClient.normalizePhone(s.trim())).filter(Boolean);
-
-function allowedByPilot(phone) {
-  if (!PILOT_PHONES.length) return true;
-  return PILOT_PHONES.includes(misClient.normalizePhone(phone || ''));
-}
+// Переехали в services/notifications/safety.js и в базу (ver. 8.06): состояние
+// видно на экране и снимается осознанно, с записью, кто и когда его снял.
+// Подробности — в шапке того файла; коротко: предохранитель, состояние которого
+// нельзя увидеть, не защищает, а создаёт ложное чувство защиты, и ровно это с
+// ним и случилось.
 
 let clinicOrgCache = { at: 0, map: {} };
 
@@ -63,12 +52,19 @@ async function organizationFor(clinicId) {
  * Ищет живую подписку на наши боты по телефону. Телефон нормализуем: в МИС он
  * записан как придётся, а у подписчика лежит в приведённом виде.
  */
-async function subscriberFor(phone) {
+async function subscriberFor(phone, platform = null) {
   if (!phone) return null;
   const normalized = misClient.normalizePhone(phone);
 
   const rows = await BotSubscriber.findAll({
-    where: { phone: normalized, isBlocked: false, source: 'bot' },
+    where: {
+      phone: normalized, isBlocked: false, source: 'bot',
+      // С 8.04 Telegram и MAX — отдельные ступени каскада, и спрашивают всегда
+      // про одну из них. Раньше ступень называлась «bot» и брала первую
+      // подходящую подписку, из-за чего поднять MAX выше Telegram было нельзя:
+      // они шли одним шагом, и порядок решала выдача из базы.
+      ...(platform ? { platform } : {})
+    },
     order: [['identifiedAt', 'DESC']]
   });
 
@@ -95,14 +91,105 @@ function reportUrl() {
 }
 
 /**
+ * Свой каскад события, если он задан (ver. 8.03).
+ *
+ * Шаблон филиала имеет преимущество над общим: у детской клиники просьба об
+ * отзыве может ходить иначе, чем у стоматологии. Пусто — вернём null, и выбор
+ * уйдёт на уровень филиала, а оттуда в общие настройки.
+ *
+ * Каскад читается в момент отправки, а не кладётся в очередь вместе с текстом.
+ * Разница намеренная: текст — это обещание, данное пациенту при записи, и
+ * менять его задним числом нельзя; каскад — способ доставки, и правка «больше
+ * не шлём это по SMS» должна подействовать на то, что уже стоит в очереди.
+ */
+const eventCascadeCache = new Map();
+
+async function cascadeOfEvent(event, medCenterId) {
+  const key = `${event}|${medCenterId || ''}`;
+  const hit = eventCascadeCache.get(key);
+  if (hit && Date.now() - hit.at < 60000) return hit.value;
+
+  const rows = await NotifTemplate.findAll({
+    where: { event, isActive: true },
+    attributes: ['cascade', 'medCenterId']
+  });
+
+  const own = rows.find(r => r.medCenterId && r.medCenterId === medCenterId);
+  const common = rows.find(r => !r.medCenterId);
+  const picked = (own && Array.isArray(own.cascade) && own.cascade.length) ? own.cascade
+    : ((common && Array.isArray(common.cascade) && common.cascade.length) ? common.cascade : null);
+
+  eventCascadeCache.set(key, { at: Date.now(), value: picked });
+  return picked;
+}
+
+// Филиал портала по названию клиники из МИС. Сопоставление по имени, как в
+// templates.clinicInfo: своего идентификатора медцентра МИС не отдаёт, а
+// названия совпадают — на этом уже держится подстановка адреса и телефона.
+// Держим в памяти: справочник филиалов меняется раз в год, а спрашивают его на
+// каждую строку очереди.
+const branchByClinic = new Map();
+
+async function medCenterFor(clinicName) {
+  if (!clinicName) return null;
+
+  const key = String(clinicName).trim().toLowerCase();
+  if (branchByClinic.has(key)) return branchByClinic.get(key);
+
+  const mc = await MedCenter.findOne({
+    where: sequelize.where(sequelize.fn('lower', sequelize.col('name')), key)
+  });
+  const id = mc ? mc.id : null;
+  branchByClinic.set(key, id);
+  return id;
+}
+
+/**
+ * Текст, который уходит по конкретному каналу (ver. 8.03).
+ *
+ * До 8.03 текстов было два: полный «для мессенджеров» и короткий для SMS.
+ * Деление шло по длине, а не по каналу, и на два своих мессенджера одного
+ * текста перестало хватать — у Telegram разметка и кнопки, у MAX своя длина
+ * строки.
+ *
+ * Порядок поиска намеренно с запасными вариантами на каждом шаге: пустой канал
+ * не должен превращаться в пустое сообщение. Для SMS запасной — smsText, чтобы
+ * шаблоны, не переехавшие на channelTexts, продолжали слать короткий вариант.
+ *
+ * @param {Object} item строка очереди
+ * @param {string} channel 'telegram' | 'max' | 'sms' | 'long'
+ */
+function textFor(item, channel) {
+  const byChannel = (item.channelTexts && typeof item.channelTexts === 'object') ? item.channelTexts : {};
+  const own = byChannel[channel];
+  if (own && String(own).trim()) return own;
+
+  // Запасного текста «на все каналы» с 8.04 нет намеренно. Он приводил к тому,
+  // что абзац, написанный для мессенджера, уходил в SMS тремя сегментами —
+  // молча и на всей рассылке. Пустой канал теперь пропускается со своей
+  // причиной в журнале, и это видно, а не выясняется по счёту.
+  //
+  // smsText остаётся запасным для SMS: это тот самый короткий вариант, ради
+  // которого поле и заводили, и шаблоны, не переехавшие на channelTexts, должны
+  // продолжать работать.
+  if (channel === 'sms' && item.smsText) return item.smsText;
+  return null;
+}
+
+/**
  * Собирает маршрут Имобиса из имён ступеней. Порядок сохраняется, ступень без
  * необходимых реквизитов пропускается: канал ВК без группы и SMS без имени
  * отправителя всё равно не уйдут, а молчаливая ступень в маршруте хуже, чем её
  * отсутствие.
  */
 function imobisRoute(names, config, organization, texts) {
-  const sender = (config.senders && config.senders[organization]) || config.sender;
-  const group = (config.vkGroups && config.vkGroups[organization]) || config.vkGroup;
+  // config уже слит с настройкой филиала (settings.imobisFor), поэтому своё имя
+  // отправителя у филиала перекрывает общее просто тем, что лежит выше. Словари
+  // senders/vkGroups по организациям остались от 7.95 и служат запасным
+  // источником: в 8.05 их содержимое переехало в филиалы, но у сети, которая
+  // ещё не переехала, они должны продолжать работать.
+  const sender = config.sender || (config.senders && config.senders[organization]);
+  const group = config.vkGroup || (config.vkGroups && config.vkGroups[organization]);
 
   const route = [];
   for (const name of names) {
@@ -127,18 +214,32 @@ function imobisRoute(names, config, organization, texts) {
  * их ступени подряд — это один запрос, который сам остановится на доставленной.
  * Разбивать их на отдельные вызовы значило бы платить дважды.
  */
-async function deliver(item, clinicId = null) {
-  if (!allowedByPilot(item.phone)) {
-    return item.update({ status: 'skipped', error: 'пилот: телефон вне списка NOTIFIER_PILOT_PHONES' });
+async function deliver(item, clinicId = null, medCenterId = null) {
+  if (!await safety.allowedByPilot(item.phone)) {
+    return item.update({ status: 'skipped', error: 'пилот: телефон вне списка проверочных номеров' });
   }
 
-  const order = await settings.cascade();
-  const quiet = await settings.quietHours();
+  // Филиал, не подключённый к нашей рассылке, обслуживает МИС — слать поверх
+  // неё значит задваивать уведомление пациенту (ver. 8.03).
+  if (!await settings.branchEnabled(medCenterId)) {
+    return item.update({ status: 'skipped', error: 'филиал ещё не подключён к рассылке портала' });
+  }
+
+  // Каскад ищется от частного к общему: свой у события, потом у филиала, потом
+  // общий. Свой у события завели ради просьбы об отзыве — по SMS её выполнить
+  // нельзя, кнопок там нет, а деньги списываются.
+  const order = await settings.cascadeFor({
+    eventCascade: await cascadeOfEvent(item.event, medCenterId),
+    medCenterId
+  });
+  const quiet = await settings.quietHoursFor(medCenterId);
   const now = new Date();
   const groups = settings.groupSteps(order);
 
-  const short = item.smsText || item.text;
-  const texts = { long: item.text, sms: short };
+  // long остался ради ступеней Fromni и ВК, которые длину не считают; берём
+  // для него SMS-текст, потому что другого общего текста с 8.04 нет.
+  const sms = textFor(item, 'sms');
+  const texts = { long: sms, sms };
 
   const organization = await organizationFor(clinicId);
   let lastError = null;
@@ -152,15 +253,26 @@ async function deliver(item, clinicId = null) {
     silencedAll = false;
 
     if (group.provider === 'bot') {
-      const found = await subscriberFor(item.phone);
+      // Группа бота всегда из одной ступени — см. groupSteps: Telegram и MAX не
+      // сливаются, это два независимых отправления.
+      const platform = group.steps[0];
+
+      const body = textFor(item, platform);
+      if (!body) {
+        lastError = `для ${platform} не задан текст`;
+        continue;
+      }
+
+      const found = await subscriberFor(item.phone, platform);
       if (!found) continue;
+
       try {
-        const channel = getChannel(found.bot.platform);
+        const channel = getChannel(platform);
         const options = item.withConfirm && item.apptId
           ? { buttons: [[{ text: '✅ Подтверждаю', data: `confirm:${item.apptId}` }]] }
           : {};
-        await channel.sendText(found.bot, found.subscriber.externalUserId, item.text, options);
-        return item.update({ status: 'sent', channel: found.bot.platform, sentAt: new Date(), error: null });
+        await channel.sendText(found.bot, found.subscriber.externalUserId, body, options);
+        return item.update({ status: 'sent', channel: platform, sentAt: new Date(), error: null });
       } catch (err) {
         lastError = err.message;
         if (err.code === 'blocked') {
@@ -172,14 +284,28 @@ async function deliver(item, clinicId = null) {
       }
     }
 
+    // Дальше идут платные ступени, и все они текстовые: без текста ступень
+    // пропускается, а не уходит с чужим абзацем (см. textFor).
+    if (!texts.sms) {
+      lastError = 'для SMS не задан текст';
+      continue;
+    }
+
     if (!item.phone) {
       lastError = 'нет телефона пациента';
       continue;
     }
 
+    // Предохранитель — здесь, до любого внешнего провайдера. Внутри ветки он
+    // защищал только её, а провайдеров стало два.
+    if (!await safety.allowsProvider(group.provider)) {
+      lastError = `${group.provider}: отправка наружу выключена предохранителем`;
+      continue;
+    }
+
     if (group.provider === 'imobis') {
       try {
-        const config = await settings.imobis();
+        const config = await settings.imobisFor(medCenterId);
         const route = imobisRoute(group.names.filter(n => audible.includes(`imobis:${n}`)), config, organization, texts);
         if (!route.length) {
           lastError = 'у ступеней Имобиса нет имени отправителя или группы ВК';
@@ -190,7 +316,9 @@ async function deliver(item, clinicId = null) {
           phone: item.phone,
           customId: String(item.id),
           reportUrl: reportUrl(),
-          sandbox: !!config.sandbox
+          sandbox: !!config.sandbox,
+          // Токен из настроек; пусто — возьмётся IMOBIS_TOKEN из окружения.
+          token: config.token
         });
         // Статус пока «принято»: доставку подтвердит отчёт, который Имобис
         // пришлёт на наш адрес.
@@ -207,17 +335,14 @@ async function deliver(item, clinicId = null) {
       }
     }
 
-    // Fromni — прежняя ступень, остаётся запасной.
-    if (!ALLOW_FROMNI) {
-      lastError = 'вторая ступень выключена (NOTIFIER_ALLOW_FROMNI)';
-      continue;
-    }
+    // Fromni — прежняя ступень, остаётся запасной. Предохранитель проверен выше,
+    // одним условием на всех провайдеров.
     try {
       const names = group.steps.filter(step => audible.includes(step));
       if (!names.length) continue;
 
       const sent = await fromni.sendText(organization, item.phone,
-        { default: item.text, 'sms+webchat': short, sms: short }, names);
+        { default: texts.long, 'sms+webchat': texts.sms, sms: texts.sms }, names);
       return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null });
     } catch (err) {
       lastError = `Fromni: ${err.message}`;
@@ -239,29 +364,46 @@ async function deliver(item, clinicId = null) {
 }
 
 /**
- * Отправка одного сообщения вручную, для проверки.
+ * Отправка одного сообщения вручную, для проверки (переписана в 8.03).
  *
  * Отличается от боевой тремя вещами, и все три намеренны:
  *   • предохранитель второй ступени не действует — администратор набрал один
  *     номер и нажал кнопку, это не веерная рассылка;
  *   • тихие часы игнорируются: проверять канал в девять утра неудобно;
- *   • ступень можно назвать явно, чтобы убедиться именно в SMS, а не получить
+ *   • ступень называется явно, чтобы убедиться именно в SMS, а не получить
  *     сообщение в бот и остаться без ответа на исходный вопрос.
  *
- * @param {'auto'|'bot'|'fromni'|'sms'} step
+ * ЧТО БЫЛО НЕ ТАК. До 8.03 эта функция знала только два провайдера — наши боты
+ * и Fromni. Прямая отправка через Имобис появилась в 7.95, а сюда её не
+ * добавили, и выбор «только SMS» сводился к
+ *
+ *     fromniSteps.filter(name => name.startsWith('sms'))
+ *
+ * Ступень Имобиса называется «imobis:sms» и под это условие не подходит,
+ * поэтому проверка SMS напрямую отвечала «в каскаде нет подходящей ступени»
+ * даже при заведённом имени отправителя. Хуже того, при каскаде с Fromni
+ * фильтр находил «sms+webchat», сообщение уходило через агрегатора и проверка
+ * выглядела успешной — то есть отвечала не на тот вопрос, который задавали.
+ *
+ * Теперь ступень выбирается по имени из каскада, а отправка идёт тем же кодом,
+ * что и боевая: ветки провайдеров ниже повторяют deliver(). Расхождение между
+ * «как проверили» и «как уйдёт на самом деле» — ровно то, ради чего проверка и
+ * существует, и допускать его здесь нельзя.
+ *
+ * @param {string} step  'auto' | 'bot' | имя ступени каскада ('imobis:sms', 'sms+webchat', …)
  */
 async function sendTest(item, { step = 'auto' } = {}) {
   const order = await settings.cascade();
-  const fromniSteps = order.filter(name => name !== 'bot');
 
+  // Боты пробуются, когда просят их явно или когда просят «как в бою».
   if (step === 'auto' || step === 'bot') {
     const found = await subscriberFor(item.phone);
     if (found) {
       try {
         const channel = getChannel(found.bot.platform);
-        await channel.sendText(found.bot, found.subscriber.externalUserId, item.text);
+        await channel.sendText(found.bot, found.subscriber.externalUserId, textFor(item, found.bot.platform));
         await item.update({ status: 'sent', channel: found.bot.platform, sentAt: new Date() });
-        return { channel: found.bot.platform, text: item.text };
+        return { channel: found.bot.platform, text: textFor(item, found.bot.platform) };
       } catch (err) {
         if (step === 'bot') {
           await item.update({ status: 'failed', error: err.message });
@@ -269,36 +411,97 @@ async function sendTest(item, { step = 'auto' } = {}) {
         }
       }
     } else if (step === 'bot') {
-      await item.update({ status: 'failed', error: 'по этому номеру нет подписки на наши боты' });
-      return { channel: 'bot', error: 'по этому номеру нет подписки на наши боты' };
+      const why = 'по этому номеру нет подписки на наши боты';
+      await item.update({ status: 'failed', error: why });
+      return { channel: 'bot', error: why };
     }
   }
 
-  // Явно попросили SMS — сужаем каскад до последней ступени, иначе Fromni
-  // доставит через Notify и вопрос «дошёл ли наш текст по SMS» останется открытым.
-  const steps = step === 'sms'
-    ? fromniSteps.filter(name => name.startsWith('sms'))
-    : fromniSteps;
+  // Какие ступени пробовать дальше. Явно названная — только она, и это главное
+  // свойство проверки: спросили про SMS напрямую — получите ответ про неё.
+  //
+  // Названную ступень берём как есть, не сверяясь с каскадом. Проверяют обычно
+  // до того, как ступень туда поставят: «работает ли у нас вообще прямая SMS»
+  // — вопрос, на который надо ответить прежде, чем менять боевую доставку.
+  const wanted = step === 'auto' || step === 'bot'
+    ? order.filter(name => name !== 'bot')
+    : [step];
 
-  if (!steps.length) {
-    await item.update({ status: 'failed', error: 'в каскаде нет подходящей ступени' });
-    return { error: 'в каскаде нет подходящей ступени' };
+  if (!wanted.length) {
+    const why = 'в каскаде нет ступеней, кроме наших ботов';
+    await item.update({ status: 'failed', error: why });
+    return { error: why };
   }
 
-  const short = item.smsText || item.text;
-  const texts = { default: item.text, 'sms+webchat': short, sms: short };
-
-  try {
-    const organization = await organizationFor(null);
-    const sent = await fromni.sendText(organization, item.phone, texts, steps);
-    await item.update({ status: 'sent', channel: sent.channel, sentAt: new Date() });
-    return { channel: sent.channel, organization, text: steps.some(n => n.startsWith('sms')) ? short : item.text };
-  } catch (err) {
-    await item.update({ status: 'failed', error: err.message });
-    return { error: err.message };
+  if (!item.phone) {
+    await item.update({ status: 'failed', error: 'нет номера телефона' });
+    return { error: 'нет номера телефона' };
   }
+
+  const short = textFor(item, 'sms');
+  let lastError = null;
+
+  for (const group of settings.groupSteps(wanted)) {
+    if (group.provider === 'imobis') {
+      try {
+        const config = await settings.imobis();
+        const organization = await organizationFor(null);
+        const route = imobisRoute(group.names, config, organization, { long: item.text, sms: short });
+
+        if (!route.length) {
+          lastError = 'у ступеней Имобиса нет имени отправителя или группы ВК — заполните их в настройках';
+          continue;
+        }
+
+        const sent = await imobis.send(organization, route, {
+          phone: item.phone,
+          customId: String(item.id),
+          reportUrl: reportUrl(),
+          sandbox: !!config.sandbox,
+          // Токен из настроек; пусто — возьмётся IMOBIS_TOKEN из окружения.
+          token: config.token
+        });
+
+        // Как и в бою, это ещё не доставка: Имобис подтвердит её отчётом на наш
+        // адрес. В журнале строка так и останется — «принято», пока отчёт не
+        // придёт, и именно там видно «routing is not configured» и подобное.
+        await item.update({
+          status: 'sent',
+          channel: group.names.map(n => `imobis:${n}`).join('→'),
+          externalMessageId: sent.externalMessageId,
+          sentAt: new Date(),
+          error: null
+        });
+        return {
+          channel: group.names.map(n => `imobis:${n}`).join('→'),
+          organization,
+          accepted: true,
+          text: route[0].text
+        };
+      } catch (err) {
+        lastError = `Имобис: ${err.message}`;
+        continue;
+      }
+    }
+
+    try {
+      const organization = await organizationFor(null);
+      const texts = { default: short, 'sms+webchat': short, sms: short };
+      const sent = await fromni.sendText(organization, item.phone, texts, group.steps);
+      await item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null });
+      return {
+        channel: sent.channel,
+        organization,
+        text: group.steps.some(n => n.startsWith('sms')) ? short : item.text
+      };
+    } catch (err) {
+      lastError = `Fromni: ${err.message}`;
+    }
+  }
+
+  await item.update({ status: 'failed', error: lastError || 'ни одна ступень не сработала' });
+  return { error: lastError || 'ни одна ступень не сработала' };
 }
-
 /**
  * Один проход отправщика: берёт всё, чему подошёл срок.
  *
@@ -319,13 +522,16 @@ async function runOnce(limit = 100) {
     // достаём из снимка визита. Дублировать поле в очередь незачем: оно
     // требуется только на второй ступени и только в момент отправки.
     let clinicId = null;
+    let medCenterId = null;
     if (item.apptId) {
-      const snap = await NotifAppointment.findByPk(item.apptId, { attributes: ['clinicId'] });
+      const snap = await NotifAppointment.findByPk(item.apptId, { attributes: ['clinicId', 'clinicName'] });
       clinicId = snap ? snap.clinicId : null;
+      // Филиал портала — для его собственных настроек и текстов (ver. 8.03).
+      medCenterId = snap ? await medCenterFor(snap.clinicName) : null;
     }
 
     try {
-      const done = await deliver(item, clinicId);
+      const done = await deliver(item, clinicId, medCenterId);
       if (done.status === 'sent') sent++; else failed++;
     } catch (err) {
       // Непойманное здесь означало бы остановку всей очереди из-за одной строки.
@@ -339,6 +545,6 @@ async function runOnce(limit = 100) {
 }
 
 module.exports = {
-  runOnce, deliver, sendTest, subscriberFor, organizationFor, allowedByPilot,
-  CLINIC_ORG_KEY, ALLOW_FROMNI, PILOT_PHONES
+  runOnce, deliver, sendTest, subscriberFor, organizationFor,
+  CLINIC_ORG_KEY, safety
 };
