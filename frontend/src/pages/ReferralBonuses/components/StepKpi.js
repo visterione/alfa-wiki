@@ -10,6 +10,7 @@ import { buildKpiPdf } from '../utils/kpiPdfExport';
 import { mis, reviews, botSubscribers } from '../../../services/api';
 import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics, TabRefundsAnalytics } from '../../Statistics/components/Directories';
 import BotSubscribers from '../../Statistics/components/BotSubscribers';
+import Inpatient from '../../Statistics/components/Inpatient';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -80,6 +81,7 @@ const KPI_TABS = [
   { key: 'debtors',     label: 'Задолженности' },
   { key: 'refunds',     label: 'Возвраты' },
   { key: 'bots',        label: 'Боты' },
+  { key: 'inpatient',   label: 'Стационар' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2577,8 +2579,12 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       {/* Боты — подписчики Telegram/MAX (данные из bot_subscribers), не требует Excel */}
       {viewMode === 'bots' && <BotSubscribers periodStart={periodStart} periodEnd={periodEnd} />}
 
+      {/* Стационар — случаи лечения из порционного требования и деньги по ним из
+          МИС; переехал сюда из встраиваемой страницы backend/bot */}
+      {viewMode === 'inpatient' && <Inpatient periodStart={periodStart} periodEnd={periodEnd} />}
+
       {/* Остальные вкладки */}
-      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && viewMode !== 'refunds' && viewMode !== 'bots' && (
+      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && viewMode !== 'refunds' && viewMode !== 'bots' && viewMode !== 'inpatient' && (
         <>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>

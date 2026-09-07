@@ -794,6 +794,13 @@ export const misPayments = {
   query: (params) => api.get('/mis-payments', { params }),
 };
 
+export const inpatientReport = {
+  // Стационар: услуги поднимаются из МИС по каждому пациенту требования, и
+  // отчёт за месяц собирается десятками секунд — таймаут здесь свой, общий
+  // клиент столько ждать не рассчитан.
+  report: (params) => api.get('/inpatient-report/report', { params, timeout: 300000 }),
+};
+
 export const hourNorms = {
   get: (year, month) => api.get('/hour-norms', { params: { year, month } }),
   getPeriods: () => api.get('/hour-norms/periods'),
