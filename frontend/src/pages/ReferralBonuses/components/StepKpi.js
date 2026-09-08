@@ -1731,6 +1731,23 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
     [doctors],
   );
 
+  // Ширину сетки считаем от реальной ширины карточки. Раньше в основе лежала
+  // прикидка «зона сетки ~720 px», которая не знала ни ширины окна, ни того,
+  // открыт ли сайдбар: на месяце сетка получалась шире карточки и уезжала вправо.
+  // Ref именно callback'ом: карточка появляется не с первого рендера (до неё
+  // компонент отдаёт заглушки «нет сотрудников» / «нет данных»), и useEffect с
+  // пустыми зависимостями на неё бы уже не сработал.
+  const [cardW, setCardW] = useState(0);
+  const roRef = useRef(null);
+  const cardRef = useCallback(el => {
+    roRef.current?.disconnect();
+    roRef.current = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    roRef.current = new ResizeObserver(([entry]) => setCardW(entry.contentRect.width));
+    roRef.current.observe(el);
+  }, []);
+  useEffect(() => () => roRef.current?.disconnect(), []);
+
   const days = useMemo(() => {
     if (!periodStart || !periodEnd) return [];
     const result = [];
@@ -1795,10 +1812,19 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
     return <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных по сотрудникам с ролью «КабинетыИРабота» за выбранный период</div>;
   }
 
-  // Ширина ячейки — вписываемся в ~720px зоны сетки (остальное — имена + итог)
-  const CELL_W = Math.max(22, Math.min(36, Math.floor(720 / Math.max(days.length, 1))));
   const CELL_H = 34;
-  const LABEL_W = 240;
+  const TOTAL_W = 48;  // колонка «итого за период» справа
+  const GRID_PAD = 36; // padding 18 px по бокам скроллируемой сетки
+
+  // Колонка имён уступает дням первой: без имён сетка нечитаема, но и держать
+  // все 240 px, выдавливая дни за край, она не должна.
+  const avail   = Math.max(cardW - GRID_PAD, 0);
+  const LABEL_W = avail
+    ? Math.max(120, Math.min(240, avail - TOTAL_W - days.length * 22))
+    : 240;
+  const CELL_W  = avail
+    ? Math.max(22, Math.min(36, Math.floor((avail - LABEL_W - TOTAL_W) / Math.max(days.length, 1))))
+    : Math.max(22, Math.min(36, Math.floor(720 / Math.max(days.length, 1))));
 
   // Показываем разделитель месяца в заголовке если период > 1 месяца
   const multiMonth = days.length > 0 && (
@@ -1808,7 +1834,7 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
 
   return (
     // Внешняя карточка без overflow — чтобы не ломать ширину соседних блоков
-    <div style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10 }}>
+    <div ref={cardRef} style={{ background: 'var(--n-0)', border: '1px solid var(--rb-border)', borderRadius: 10, minWidth: 0 }}>
       {/* Скроллируемая сетка — только она горизонтально прокручивается */}
       <div style={{ overflowX: 'auto', padding: '16px 18px 8px' }}>
         {/* Заголовок: числа дней */}

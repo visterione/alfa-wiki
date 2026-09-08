@@ -1321,6 +1321,16 @@ export const openLine = {
   stats: (params) => api.get('/open-line/stats', { params })
 };
 
+// Виджеты связи для сайтов клиник (ver. 8.06). Настройка здесь, а сам виджет
+// отдаётся публичным контуром /api/widget — туда фронтенд портала не ходит.
+export const siteWidgets = {
+  list: () => api.get('/site-widgets'),
+  sources: () => api.get('/site-widgets/sources'),
+  create: (data) => api.post('/site-widgets', data),
+  update: (id, data) => api.put(`/site-widgets/${id}`, data),
+  remove: (id) => api.delete(`/site-widgets/${id}`)
+};
+
 // Уведомления пациентам (ver. 7.86): шаблоны текстов и журнал отправок.
 export const notifications = {
   templates: () => api.get('/notifications/templates'),

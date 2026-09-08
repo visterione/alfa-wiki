@@ -3436,6 +3436,46 @@ OmniMessage.belongsTo(OmniSession, { foreignKey: 'sessionId', as: 'session' });
 OmniShift.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 OmniShift.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 
+// === ВИДЖЕТ СВЯЗИ ДЛЯ САЙТОВ (ver. 8.06) ===
+//
+// Кнопка в углу сайта клиники, из которой человек попадает в наш бот или звонит
+// в регистратуру. Раньше её рисовал Битрикс; уходя от него, мы забираем не сам
+// виджет, а его настройку: на сайте стоит неизменный тег <script>, а какие
+// каналы показать, каким цветом и по какому номеру звонить — решает эта строка.
+//
+// Виджет свой на каждый сайт: у филиалов разные боты, разные номера и разное
+// оформление, а где-то канала может не быть вовсе.
+
+const SiteWidget = sequelize.define('SiteWidget', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  // Лежит открыто в коде чужого сайта — идентификатор, а не секрет.
+  key: { type: DataTypes.STRING(32), allowNull: false, unique: true },
+  name: { type: DataTypes.STRING(150), allowNull: false },   // внутреннее, наружу не уходит
+  medCenterId: { type: DataTypes.UUID, allowNull: true },
+  // [{ type: 'telegram' | 'max' | 'phone', enabled, label, value }] — порядок в
+  // массиве и есть порядок кнопок. Форма проверяется в services/siteWidget.js.
+  channels: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  // Цвет, угол, отступ снизу и подписи. Одним полем, а не колонками: набор
+  // оформления меняется чаще, чем стоит ради него ходить в миграции.
+  appearance: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  // Белый список адресов сайтов. Защита от встраивания виджета на чужую
+  // страницу, а не проверка права: Origin ставит браузер, и запрос не из
+  // браузера подставит туда что угодно. Пусто — «где угодно».
+  allowedOrigins: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+  updatedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'site_widgets',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['key'] },
+    { fields: ['medCenterId'] }
+  ]
+});
+
+SiteWidget.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+
 // === УВЕДОМЛЕНИЯ ПАЦИЕНТАМ (ver. 7.86) ===
 //
 // События берём опросом МИС по дате изменения: своего движка уведомлений
@@ -4598,6 +4638,7 @@ module.exports = {
   OmniSession,
   OmniShift,
   OmniMessage,
+  SiteWidget,
   NotifAppointment,
   NotifTemplate,
   NotifBranchSettings,

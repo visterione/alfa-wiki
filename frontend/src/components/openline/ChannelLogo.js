@@ -1,4 +1,5 @@
 import React from 'react';
+import { CHANNEL_BRANDS, brandGlyph } from './channelBrands';
 
 /**
  * Знак канала связи (ver. 8.03).
@@ -8,43 +9,25 @@ import React from 'react';
  * строки «Telegram-бот · Вики», и список читался только чтением. Знак различает
  * их раньше, чем человек дочитает подпись.
  *
- * Знаки Telegram и MAX взяты из ChannelAvatar.js — того же вида, что в списке
- * обращений, чтобы одно и то же в двух местах не выглядело разным. Там они
- * лежат аватаром собеседника, здесь — плиткой канала, и общий у них только
- * контур; выносить в третий файл ради двух path незачем.
+ * Знаки Telegram и MAX и их фирменные цвета лежат в channelBrands.js — там же,
+ * откуда их берут аватар собеседника и виджет для сайтов. Раньше знаки
+ * рисовались от руки и в каждом месте по-своему; с приходом настоящих (ver.
+ * 8.07) копии стали недопустимы: разъехавшийся знак виден сразу.
  *
  * SMS и Notify своего знака не имеют и иметь не могут: SMS — это не бренд, а
  * услуга оператора связи, а Notify живёт под маркой агрегатора, которая нам не
  * принадлежит. Им рисуется нейтральная плитка со значком.
  */
 
-// Фирменные цвета мессенджеров. Единственное место, где цвет задан значением, а
-// не токеном: это чужая айдентика, и рампами проекта её подменять нельзя —
-// узнаваемость знака в том и состоит. Совпадает с ChannelAvatar.js.
-const BRANDS = {
-  telegram: { from: '#2AABEE', to: '#1E96C8', title: 'Telegram' },
-  max:      { from: '#8E5BFF', to: '#4B6BFB', title: 'MAX' }
-};
+const BRANDS = CHANNEL_BRANDS;
 
 function Glyph({ channel }) {
-  if (channel === 'telegram') {
+  const brand = brandGlyph(channel);
+  if (brand) {
     return (
-      <path
-        fill="#FFFFFF"
-        d="M9.78 14.8l-.15 3.3c.22 0 .32-.1.44-.21l2.1-2 4.35 3.19c.8.44 1.37.21 1.58-.74l2.87-13.4c.26-1.2-.43-1.66-1.2-1.37L2.1 9.4c-1.17.45-1.15 1.1-.2 1.4l4.3 1.34 9.98-6.29c.47-.28.9-.13.55.18z"
-      />
-    );
-  }
-
-  if (channel === 'max') {
-    // Буква M ломаной линией: у MAX знак строится именно на ней. Текстом
-    // рисовать нельзя — шрифт на чужой машине окажется другим.
-    return (
-      <path
-        d="M5 17.5V7l7 7.2L19 7v10.5"
-        stroke="#FFFFFF" strokeWidth="2.8"
-        strokeLinecap="round" strokeLinejoin="round" fill="none"
-      />
+      <g transform={brand.transform}>
+        <path d={brand.d} fill={brand.fill} fillRule={brand.fillRule} clipRule={brand.fillRule} />
+      </g>
     );
   }
 
@@ -75,7 +58,6 @@ function Glyph({ channel }) {
 export default function ChannelLogo({ channel, size = 26, title, className = '' }) {
   const key = ['telegram', 'max', 'sms'].includes(channel) ? channel : 'notify';
   const brand = BRANDS[key];
-  const gradientId = `ch-logo-${key}`;
 
   return (
     <span
@@ -85,15 +67,9 @@ export default function ChannelLogo({ channel, size = 26, title, className = '' 
       aria-hidden={title ? undefined : 'true'}
     >
       <svg viewBox="0 0 24 24">
-        {brand && (
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={brand.from} />
-              <stop offset="1" stopColor={brand.to} />
-            </linearGradient>
-          </defs>
-        )}
-        {brand && <rect x="0" y="0" width="24" height="24" rx="7" fill={`url(#${gradientId})`} />}
+        {/* Плоский фирменный цвет, а не градиент: градиент был нашей выдумкой
+            времён самодельных знаков, а у настоящей марки цвет один. */}
+        {brand && <rect x="0" y="0" width="24" height="24" rx="7" fill={brand.color} />}
         <Glyph channel={key} />
       </svg>
     </span>

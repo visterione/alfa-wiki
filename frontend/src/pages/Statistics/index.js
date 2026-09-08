@@ -72,8 +72,10 @@ export default function StatisticsPage() {
       .catch(() => {});
   }, []);
 
+  // stat-app рядом с rb-app — только чтобы Layout.css мог дать этой странице
+  // min-width:0, не задевая зарплатный модуль с той же .rb-app (см. там же).
   return (
-    <div className="rb-app">
+    <div className="rb-app stat-app">
       {/* Top-level tabs */}
       <div style={{ padding: '12px 20px 0' }}>
         <div className="rb-clinic-tab-wrap" ref={wrapRef} style={{ marginBottom: 0 }}>

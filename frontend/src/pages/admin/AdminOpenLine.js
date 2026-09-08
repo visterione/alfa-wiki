@@ -3,10 +3,11 @@ import {
   Headphones, FileText, Radio, ScrollText, Plus, Users, Bot, Save, Power, X,
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
-  Star, FlaskConical, Building2, ChevronDown, ShieldCheck
+  Star, FlaskConical, Building2, ChevronDown, ShieldCheck, MonitorSmartphone
 } from 'lucide-react';
 import { openLine as lineApi, notifications as notifApi, users as usersApi } from '../../services/api';
 import ChannelLogo from '../../components/openline/ChannelLogo';
+import WidgetTab from './WidgetTab';
 import toast from 'react-hot-toast';
 import './AdminOpenLine.css';
 
@@ -48,7 +49,10 @@ const TABS = [
   { key: 'lines',    label: 'Линии',    icon: Headphones },
   { key: 'texts',    label: 'Тексты',   icon: FileText },
   { key: 'delivery', label: 'Рассылка', icon: Radio },
-  { key: 'log',      label: 'Журнал',   icon: ScrollText }
+  { key: 'log',      label: 'Журнал',   icon: ScrollText },
+  // Виджет стоит здесь, а не отдельным разделом: он ведёт в те же боты, что и
+  // линия, и заводит его тот же человек, что настраивает их.
+  { key: 'widget',   label: 'Виджет',   icon: MonitorSmartphone }
 ];
 
 // Событие узнаётся по значку раньше, чем по названию: карточек на вкладке семь,
@@ -1465,6 +1469,7 @@ export default function AdminOpenLine() {
         {tab === 'texts' && <TemplatesTab data={templates} steps={steps} reload={loadTemplates} />}
         {tab === 'delivery' && <DeliveryTab templates={templates} safety={safety} onSafetyChange={loadTemplates} />}
         {tab === 'log' && <LogTab />}
+        {tab === 'widget' && <WidgetTab />}
       </div>
     </div>
   );

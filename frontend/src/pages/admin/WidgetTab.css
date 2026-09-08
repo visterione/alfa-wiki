@@ -1,0 +1,370 @@
+/* Виджет связи для сайтов — вкладка настройки (ver. 8.06).
+ *
+ * Файл добавляет только то, чего нет в AdminOpenLine.css: поля, кнопки,
+ * карточки и переключатели берутся оттуда целиком. Заводить второй набор
+ * элементов на соседней вкладке было бы ровно той бедой, которую в 8.02
+ * разбирали на этом же экране.
+ *
+ * Единственные цвета, заданные значением, приходят из настройки самого виджета
+ * (--wgt-color) — это не оформление портала, а данные: так кнопка будет
+ * выглядеть на чужом сайте.
+ */
+
+.wgt-columns {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.wgt-settings { flex: 1 1 auto; min-width: 0; }
+
+/* ── Канал ────────────────────────────────────────────────────────────────
+ *
+ * Строка канала — это знак, две подписи и управление. Подпись и адрес стоят
+ * рядом, а не друг под другом: их правят вместе, и в столбик список из четырёх
+ * каналов занимал бы экран целиком.
+ */
+.wgt-channel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.wgt-channel.off { opacity: 0.55; }
+
+.wgt-channel-fields {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: 10px;
+}
+
+/* Название — подпись — адрес. Название короче остальных: в него влезает
+   «Регистратура», а больше туда и не пишут. */
+.wgt-channel-fields .ola-input:nth-child(1) { flex: 0 1 150px; min-width: 0; }
+.wgt-channel-fields .ola-input:nth-child(2) { flex: 1 1 190px; min-width: 0; }
+.wgt-channel-fields .ola-input:nth-child(3) { flex: 1 1 210px; min-width: 0; }
+
+.wgt-channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+/* Телефон своей марки не имеет, но цвет за ним закреплён так же прочно, как
+   синий за Telegram: звонок зелёный везде и не зависит от оформления сайта.
+   Значение то же, что в backend/widget/embed.js — как и у знаков, копий две. */
+.wgt-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.wgt-add { margin-top: 10px; }
+
+.wgt-hint {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+/* ── Цвет и тег ───────────────────────────────────────────────────────────*/
+
+.wgt-color {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wgt-color input[type="color"] {
+  width: 38px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  cursor: pointer;
+}
+
+.wgt-color .ola-input { flex: 1 1 auto; min-width: 0; }
+
+.wgt-snippet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+}
+
+.wgt-snippet code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.wgt-footer {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.wgt-spacer { flex: 1 1 auto; }
+
+.wgt-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.wgt-note svg { flex-shrink: 0; }
+
+/* ── Макет виджета ────────────────────────────────────────────────────────
+ *
+ * Здесь и только здесь цвета заданы значениями, а не токенами портала, и это
+ * не оплошность: макет показывает, как виджет выглядит НА ЧУЖОМ САЙТЕ. Возьми
+ * он токены темы вики — предпросмотр врал бы, причём по-разному в светлой и
+ * тёмной теме. Значения совпадают с backend/widget/embed.js; правя одно,
+ * загляни во второе.
+ */
+
+.wgt-preview { flex: 0 0 358px; }
+
+/* Рамка — кусок сайта: серые полоски вместо текста, чтобы кнопка читалась
+   именно как кнопка в углу страницы, а не как элемент админки. */
+.wgt-preview-frame {
+  position: relative;
+  height: 430px;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+}
+
+.wgt-preview-page {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.wgt-preview-page span {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--border-light);
+}
+
+.wgt-preview-page span:nth-child(1) { width: 62%; }
+.wgt-preview-page span:nth-child(2) { width: 88%; }
+.wgt-preview-page span:nth-child(3) { width: 44%; }
+
+/* ── Сам макет ────────────────────────────────────────────────────────────*/
+
+.wgt-mock {
+  display: flex;
+  /* Окошко приходит в разметку после кнопки, а стоять должно над ней — та же
+     причина и то же решение, что в настоящем виджете. */
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.4;
+}
+
+.wgt-mock.left { align-items: flex-start; }
+
+.wgt-mock.framed {
+  position: absolute;
+  bottom: var(--wgt-bottom);
+  right: 18px;
+}
+
+.wgt-mock.framed.left { left: 18px; right: auto; }
+
+/* В углу настоящей страницы — как на сайте. z-index выше содержимого портала,
+   но макет живёт только пока нажата кнопка на этой вкладке. */
+.wgt-mock.corner {
+  position: fixed;
+  bottom: var(--wgt-bottom);
+  right: 20px;
+  z-index: 9000;
+}
+
+.wgt-mock.corner.left { left: 20px; right: auto; }
+
+.wgt-mock-fab {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--wgt-color);
+  color: var(--wgt-fg);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.28);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  flex-shrink: 0;
+}
+
+.wgt-mock-fab:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(16, 24, 40, 0.34); }
+.wgt-mock-fab:active { transform: translateY(0); }
+
+/* Знак на кнопке меняется поворотом со сменой прозрачности — то же движение,
+   что в виджете. Оба знака лежат в кнопке всегда: подменённый узел появляется
+   мгновенно, и это читается как рывок. */
+.wgt-mock-glyph {
+  position: absolute;
+  display: flex;
+  transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.16s ease;
+}
+
+.wgt-mock-glyph.close { transform: rotate(-90deg) scale(0.4); opacity: 0; }
+.wgt-mock-fab.open .wgt-mock-glyph.chat { transform: rotate(90deg) scale(0.4); opacity: 0; }
+.wgt-mock-fab.open .wgt-mock-glyph.close { transform: none; opacity: 1; }
+
+.wgt-mock-panel {
+  width: 320px;
+  background: #ffffff;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.22), 0 0 0 1px rgba(16, 24, 40, 0.06);
+  transform-origin: bottom right;
+  animation: wgt-pop 0.16s ease-out;
+}
+
+.wgt-mock.left .wgt-mock-panel { transform-origin: bottom left; }
+
+@keyframes wgt-pop {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wgt-mock-panel { animation: none; }
+  .wgt-mock-fab,
+  .wgt-mock-glyph,
+  .wgt-mock-row .ch-logo svg,
+  .wgt-mock-row .wgt-mark svg { transition: none; }
+}
+
+.wgt-mock-list {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.wgt-mock-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.wgt-mock-row:hover { background: #f2f4f7; }
+
+/* Движение знаков под курсором — своё у каждого и все маленькие: самолётик
+   трогается с места, облачко подрастает, трубку снимают. Двигается знак внутри
+   плитки, а не плитка: повёрнутый фирменный квадрат выглядит поломкой.
+   Мимо контракта data-icon-motion намеренно — там анимируются внутренности
+   иконок lucide по nth-child, а здесь свои знаки целиком, и то же правило
+   обязано жить второй копией внутри виджета. */
+.wgt-mock-row .ch-logo svg,
+.wgt-mock-row .wgt-mark svg {
+  transition: transform 0.22s cubic-bezier(0.34, 1.3, 0.5, 1);
+}
+
+.wgt-mock-row:hover .ch-logo-telegram svg { transform: translate(2px, -1.5px); }
+.wgt-mock-row:hover .ch-logo-max svg { transform: scale(1.12); }
+.wgt-mock-row:hover .wgt-mark svg { transform: rotate(-14deg) scale(1.06); }
+
+.wgt-mock-row-main { flex: 1; min-width: 0; }
+.wgt-mock-label { font-size: 14px; font-weight: 600; color: #101828; }
+.wgt-mock-note {
+  font-size: 12.5px;
+  color: #667085;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wgt-mock-empty {
+  padding: 16px 10px;
+  text-align: center;
+  font-size: 12.5px;
+  color: #667085;
+}
+
+/* Знак канала внутри макета — в размер настоящего. Цвет плитки телефона задан
+   выше и оформлению виджета не подчиняется. */
+.wgt-mock .wgt-mark { border-radius: 11px; }
+
+/* Плашка «это предпросмотр». Нужна не для красоты: кнопка в углу портала без
+   подписи — это вопрос «а что это у меня внизу» от каждого, кто её увидит. */
+.wgt-mock-flag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 11px;
+  border-radius: 10px;
+  background: #101828;
+  color: #ffffff;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.28);
+}
+
+.wgt-mock-flag button {
+  border: 0;
+  border-radius: 7px;
+  padding: 4px 9px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wgt-mock-flag button:hover { background: rgba(255, 255, 255, 0.3); }
+
+/* Узкое окно: предпросмотр уходит под настройки, а не сжимает поля до
+   нечитаемого. Правило одно на весь файл — экран админский, с телефона его
+   почти не открывают. */
+@media (max-width: 1000px) {
+  .wgt-columns { flex-direction: column; }
+  .wgt-preview { flex: 1 1 auto; width: 100%; justify-content: flex-start; }
+  .wgt-channel { flex-wrap: wrap; }
+  .wgt-channel-fields { flex: 1 1 100%; }
+}

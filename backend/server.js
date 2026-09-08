@@ -325,6 +325,13 @@ app.use('/api/public', require('./routes/public'));
 // чтобы authenticate на модуле никогда не задел эти два маршрута.
 app.use('/api/wh-public', require('./routes/warehouse/public'));
 
+// Виджет связи для сайтов клиник (ver. 8.06): сам скрипт и его настройка.
+// Смонтирован здесь по тем же причинам, что два контура выше — авторизации у
+// него нет и быть не может (ключ виджета лежит в открытом коде чужой страницы),
+// а тела запроса нет вовсе. Всё, что умеет менять виджеты, живёт отдельно, в
+// /api/site-widgets, под требованием прав администратора.
+app.use('/api/widget', require('./routes/widget'));
+
 // Body parsing
 app.use(express.json({ limit: '10gb' }));
 app.use(express.urlencoded({ extended: true, limit: '10gb' }));
@@ -335,6 +342,7 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const { chatFileGuard } = require('./services/fileAccess');
+const { secureUploadHeaders } = require('./middleware/uploadSafety');
 const { onboardingFileGuard } = require('./services/onboarding/files');
 
 // Static files with proper MIME types
@@ -365,7 +373,7 @@ const serveStatic = express.static(path.join(__dirname, 'uploads'), { setHeaders
 // пускает только участника чата, куда файл отправляли (services/fileAccess.js).
 app.use('/uploads/chat-attachments', chatFileGuard, express.static(
   path.join(__dirname, 'uploads/chat-attachments'),
-  { setHeaders: setUploadHeaders }
+  { setHeaders: secureUploadHeaders(setUploadHeaders) }
 ));
 
 // Файлы анкет онбординга — вторая часть uploads за проверкой доступа. Причина
@@ -373,15 +381,21 @@ app.use('/uploads/chat-attachments', chatFileGuard, express.static(
 // express.static отдаёт файл любому, кто знает его имя.
 app.use('/uploads/onboarding', onboardingFileGuard, express.static(
   path.join(__dirname, 'uploads/onboarding'),
-  { setHeaders: setUploadHeaders }
+  { setHeaders: secureUploadHeaders(setUploadHeaders) }
 ));
 
 // Вложения открытой линии — третья закрытая часть uploads: это фотографии
 // направлений и анализов, присланные пациентами в бот. Пускаем только сотрудника
 // той линии, к которой относится обращение (services/openLineFiles.js).
+//
+// Проверки доступа тут мало (ver. 8.07). Расширение файла берётся из имени,
+// которое прислал отправитель, поэтому присланный в бот «справка.html»
+// открывался у оператора страницей на домене портала — то есть со скриптом,
+// видящим его токен в localStorage. Заголовки из middleware/uploadSafety.js
+// отдают всё, кроме картинок и pdf, файлом на диск.
 app.use('/uploads/open-line', require('./services/openLineFiles').openLineFileGuard, express.static(
   path.join(__dirname, 'uploads/open-line'),
-  { setHeaders: setUploadHeaders }
+  { setHeaders: secureUploadHeaders(setUploadHeaders) }
 ));
 
 app.use('/uploads', serveStatic);
@@ -434,6 +448,7 @@ app.use('/api/bot-subscribers', require('./routes/bot-subscribers'));
 // приходит без нашего JWT, подлинность проверяется секретом вебхука внутри.
 app.use('/api/messenger', require('./routes/messenger-webhook'));
 app.use('/api/open-line', require('./routes/open-line'));
+app.use('/api/site-widgets', require('./routes/site-widgets'));
 app.use('/api/notifications', require('./routes/notifications'));
 // Приём событий от МИС (ver. 7.88). Маршрут публичный намеренно: Renovatio
 // ходит без нашего токена, подлинность проверяется секретом в самом пути.
