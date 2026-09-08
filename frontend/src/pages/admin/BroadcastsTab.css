@@ -1,0 +1,189 @@
+/* Рекламные рассылки подписчикам ботов — вкладка (ver. 8.07).
+ *
+ * Файл добавляет только то, чего нет в AdminOpenLine.css: карточки, поля,
+ * кнопки, плашки и подтверждение приходят оттуда целиком. Тот же уговор, что и
+ * у вкладки виджета, и по той же причине — второй набор одинаковых на вид
+ * элементов на соседних вкладках уже однажды разбирали в 8.02.
+ *
+ * Вбитых цветов здесь нет: всё из рамп и семантических имён.
+ */
+
+/* ── Две колонки ──────────────────────────────────────────────────────────
+ *
+ * Список слева узкий и постоянный. Рассылка — вещь, к которой возвращаются:
+ * посмотреть, сколько ушло у вчерашней, пока сегодняшняя ещё в черновике, — и
+ * ради этого список должен быть виден всегда, а не открываться из редактора.
+ */
+.brc-columns {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.brc-list {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brc-new { justify-content: center; }
+
+.brc-editor {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brc-blank { flex: 1 1 auto; }
+
+/* ── Строка списка ────────────────────────────────────────────────────────*/
+
+.brc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.brc-item:hover { border-color: var(--n-400); }
+
+.brc-item.active {
+  border-color: var(--accent-400);
+  background: var(--accent-50);
+}
+
+.brc-item-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  /* Название длиннее колонки не должно её растягивать: ширина списка держит
+     ширину всей страницы, а имена рассылок пишут какие придётся. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brc-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.brc-item-count {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Медцентры ────────────────────────────────────────────────────────────
+ *
+ * У каждой галки видно, какими ботами она обслуживается. Медцентр без бота
+ * показан и выключен, а не спрятан: спрятанный выглядел бы как забытый в
+ * справочнике, и его бы пошли искать.
+ */
+.ola-check .brc-center-bots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+}
+
+.ola-check.no-bots { opacity: 0.5; cursor: default; }
+
+.brc-no-bot {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ── Картинка ─────────────────────────────────────────────────────────────*/
+
+.brc-image {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.brc-image img {
+  max-width: 260px;
+  max-height: 180px;
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  object-fit: contain;
+  background: var(--bg-tertiary);
+}
+
+.brc-text { min-height: 150px; }
+
+/* ── Проверочная отправка ─────────────────────────────────────────────────
+ *
+ * Пока её не сделали, карточка янтарная — это не украшение, а состояние: без
+ * проверки кнопка боевой отправки не работает, и причина должна быть видна
+ * рядом с ней, а не выясняться наведением на неактивную кнопку.
+ */
+.brc-test { border-color: var(--amber-300); }
+.brc-test.done { border-color: var(--green-300); }
+
+.brc-test .ola-row > .ola-select { flex: 0 1 150px; }
+
+/* ── Ход рассылки ─────────────────────────────────────────────────────────*/
+
+.brc-progress { margin-bottom: 14px; }
+
+.brc-bar {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.brc-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent-500);
+  transition: width 0.4s ease;
+}
+
+.brc-numbers {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.brc-numbers span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.brc-numbers .ok    { color: var(--green-700); }
+.brc-numbers .bad   { color: var(--red-600);   }
+.brc-numbers .muted { color: var(--text-secondary); }
+.brc-numbers .rest  { color: var(--text-secondary); font-weight: 500; margin-left: auto; }
+
+/* ── Узкие экраны ─────────────────────────────────────────────────────────
+ *
+ * Тот же порог, что у остальной вкладки: админку правят с ноутбука, и на 1100
+ * колонка списка съедает редактор.
+ */
+@media (max-width: 1100px) {
+  .brc-columns { flex-direction: column; }
+  .brc-list { flex: 1 1 auto; width: 100%; flex-direction: row; flex-wrap: wrap; }
+  .brc-item { flex: 1 1 220px; }
+  .brc-editor { width: 100%; }
+}

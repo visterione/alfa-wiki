@@ -236,6 +236,42 @@
 .wgt-mock-fab:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(16, 24, 40, 0.34); }
 .wgt-mock-fab:active { transform: translateY(0); }
 
+/* Круги на воде вокруг кнопки. Кольца лежат отдельной подложкой, а не в
+   box-shadow: тень занята подъёмом под курсором, и бесконечная анимация
+   перебила бы её насовсем. Полые — знак под ними виден. */
+.wgt-mock-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.wgt-mock-pulse::before,
+.wgt-mock-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2.5px solid var(--wgt-ring);
+  animation: wgt-ripple 2.8s cubic-bezier(0.2, 0.55, 0.3, 1) infinite;
+}
+
+/* Второе кольцо идёт следом, а не рядом: два одновременных читаются толстой
+   каймой, а не расходящейся волной. */
+.wgt-mock-pulse::after { animation-delay: 1.4s; }
+
+/* Кольцо держит видимость почти до конца пути и гаснет у самого края: при
+   быстром затухании оно исчезало у самой кнопки, и движение читалось как еле
+   заметный ореол. */
+@keyframes wgt-ripple {
+  0% { transform: scale(1); opacity: 0.85; }
+  60% { opacity: 0.3; }
+  100% { transform: scale(2.05); opacity: 0; }
+}
+
+/* При открытом окошке кольца не нужны: кнопку уже нашли. */
+.wgt-mock-fab.open .wgt-mock-pulse { display: none; }
+
 /* Знак на кнопке меняется поворотом со сменой прозрачности — то же движение,
    что в виджете. Оба знака лежат в кнопке всегда: подменённый узел появляется
    мгновенно, и это читается как рывок. */
@@ -271,6 +307,7 @@
   .wgt-mock-glyph,
   .wgt-mock-row .ch-logo svg,
   .wgt-mock-row .wgt-mark svg { transition: none; }
+  .wgt-mock-pulse { display: none; }
 }
 
 .wgt-mock-list {

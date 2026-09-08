@@ -28,6 +28,8 @@ const https = require('https');
 
 const API_BASE = process.env.MAX_API_BASE || 'https://botapi.max.ru';
 const TIMEOUT = 20000;
+// Загрузка картинки — единственный запрос, где мы отдаём мегабайты, а не строку.
+const UPLOAD_TIMEOUT = 120000;
 
 const agent = new https.Agent({ keepAlive: true, keepAliveMsecs: 5000, family: 4, maxSockets: 16 });
 
@@ -113,6 +115,70 @@ async function sendText(bot, userId, text, options = {}) {
 
   const id = result && result.message && result.message.body && result.message.body.mid;
   return { externalMessageId: id ? String(id) : null };
+}
+
+/**
+ * Загружает картинку и возвращает токен вложения.
+ *
+ * Загрузка здесь двухшаговая по устройству самого MAX: сначала спрашиваем, куда
+ * класть, потом кладём. Готовая ссылка на нашу картинку не годится по той же
+ * причине, что и в Telegram, — за ней пришли бы к нам входящим соединением.
+ *
+ * Ответ на второй шаг приходит в двух видах: у файлов и видео токен лежит
+ * сверху, у картинок — внутри photos, под ключом, который придумывает сервер.
+ * Разбираем оба, потому что форма ответа задокументирована слабее, чем хотелось
+ * бы, а узнать о расхождении на боевой рассылке — плохой способ.
+ */
+async function uploadImage(bot, buffer, fileName) {
+  const target = await call(bot.token, 'POST', '/uploads', {
+    params: { type: 'image' },
+    timeoutMs: UPLOAD_TIMEOUT
+  });
+  const url = target && (target.url || target.upload_url);
+  if (!url) throw new ChannelError('error', 'MAX не выдал адрес для загрузки картинки');
+
+  const form = new FormData();
+  form.append('data', new Blob([buffer]), fileName || 'image.jpg');
+
+  let res;
+  try {
+    res = await axios.post(url, form, { timeout: UPLOAD_TIMEOUT, httpsAgent: agent, validateStatus: () => true });
+  } catch (err) {
+    throw new ChannelError('network', err.code || err.message);
+  }
+  if (res.status < 200 || res.status >= 300) throw classify(res.status, res.data);
+
+  const body = res.data || {};
+  const token = body.token
+    || (body.photos && Object.values(body.photos)[0] && Object.values(body.photos)[0].token);
+  if (!token) throw new ChannelError('error', 'MAX не вернул токен загруженной картинки');
+  return token;
+}
+
+/**
+ * Отправляет картинку с подписью. Токен вложения переиспользуется между
+ * адресатами так же, как file_id в Telegram: картинка уходит на сервер один
+ * раз, дальше все получают ссылку на неё.
+ *
+ * @param {Object} photo
+ * @param {string} [photo.fileId]   уже загруженная картинка (токен вложения)
+ * @param {Buffer} [photo.buffer]   содержимое файла для первой загрузки
+ * @returns {Promise<{ externalMessageId: string, fileId: string|null }>}
+ */
+async function sendPhoto(bot, userId, photo, caption, options = {}) {
+  const token = photo.fileId || await uploadImage(bot, photo.buffer, photo.fileName);
+
+  const attachments = [{ type: 'image', payload: { token } }];
+  const keyboard = keyboardAttachment(options);
+  if (keyboard) attachments.push(keyboard);
+
+  const result = await call(bot.token, 'POST', '/messages', {
+    params: { user_id: Number(userId) },
+    body: { text: caption, attachments }
+  });
+
+  const id = result && result.message && result.message.body && result.message.body.mid;
+  return { externalMessageId: id ? String(id) : null, fileId: token };
 }
 
 /**
@@ -308,6 +374,7 @@ module.exports = {
   platform: 'max',
   ChannelError,
   sendText,
+  sendPhoto,
   answerCallback,
   parseUpdate,
   getMe,

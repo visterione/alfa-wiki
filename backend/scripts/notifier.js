@@ -25,9 +25,17 @@ const { Client } = require('pg');
 const { sequelize, NotifOutbox, NotifAppointment, Setting, BotSubscriber, MessengerBot } = require('../models');
 const detector = require('../services/notifications/detector');
 const sender = require('../services/notifications/sender');
+const broadcasts = require('../services/broadcasts');
 
 const DETECT_MS = Number(process.env.NOTIFIER_DETECT_MS || 60000);
 const SEND_MS = Number(process.env.NOTIFIER_SEND_MS || 20000);
+// Рассылки живут здесь же, третьим циклом (ver. 8.07). Отдельный процесс им не
+// нужен: они ходят в те же API тех же ботов, а поднимать в tmux ещё одно окно
+// значит завести ещё одно место, где забудут перезапустить после git pull.
+//
+// Тик чаще остальных и короче порции: сто адресатов при двадцати в секунду —
+// это пять секунд работы, ровно столько, сколько до следующего тика.
+const BROADCAST_MS = Number(process.env.NOTIFIER_BROADCAST_MS || 5000);
 
 // Тот же приём, что у забора обновлений: два запущенных экземпляра слали бы
 // уведомления дважды, а процессы поднимают руками в tmux.
@@ -83,6 +91,23 @@ async function sendTick() {
   }
 }
 
+
+// Заходы не должны накладываться: порция иногда затягивается — на 429 движок
+// честно ждёт столько, сколько попросила платформа.
+let broadcasting = false;
+
+async function broadcastTick() {
+  if (dry || broadcasting) return;
+  broadcasting = true;
+  try {
+    const { sent, failed } = await broadcasts.runOnce();
+    if (sent || failed) console.log(`[notifier] рассылка: отправлено ${sent}, не удалось ${failed}`);
+  } catch (err) {
+    console.error('[notifier] рассылка:', err.message);
+  } finally {
+    broadcasting = false;
+  }
+}
 
 /**
  * Разбор очереди. Отвечает на единственный вопрос, который возникает, когда
@@ -172,6 +197,7 @@ async function main() {
 
   await detectTick();
   await sendTick();
+  await broadcastTick();
 
   if (once) {
     if (lockClient) await lockClient.end().catch(() => {});
@@ -181,12 +207,14 @@ async function main() {
 
   const detectTimer = setInterval(() => { if (!stopping) detectTick(); }, DETECT_MS);
   const sendTimer = setInterval(() => { if (!stopping) sendTick(); }, SEND_MS);
+  const broadcastTimer = setInterval(() => { if (!stopping) broadcastTick(); }, BROADCAST_MS);
 
   const shutdown = async (signal) => {
     console.log(`[notifier] ${signal} — останавливаюсь`);
     stopping = true;
     clearInterval(detectTimer);
     clearInterval(sendTimer);
+    clearInterval(broadcastTimer);
     if (lockClient) await lockClient.end().catch(() => {});
     await sequelize.close();
     process.exit(0);

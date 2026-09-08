@@ -3,11 +3,12 @@ import {
   Headphones, FileText, Radio, ScrollText, Plus, Users, Bot, Save, Power, X,
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
-  Star, FlaskConical, Building2, ChevronDown, ShieldCheck, MonitorSmartphone
+  Star, FlaskConical, Building2, ChevronDown, ShieldCheck, MonitorSmartphone, Megaphone
 } from 'lucide-react';
 import { openLine as lineApi, notifications as notifApi, users as usersApi } from '../../services/api';
 import ChannelLogo from '../../components/openline/ChannelLogo';
 import WidgetTab from './WidgetTab';
+import BroadcastsTab from './BroadcastsTab';
 import toast from 'react-hot-toast';
 import './AdminOpenLine.css';
 
@@ -49,6 +50,10 @@ const TABS = [
   { key: 'lines',    label: 'Линии',    icon: Headphones },
   { key: 'texts',    label: 'Тексты',   icon: FileText },
   { key: 'delivery', label: 'Рассылка', icon: Radio },
+  // «Анонсы», а не «Рассылки»: соседняя вкладка уже называется так, и речь там
+  // о том, как уходят уведомления о визитах. Здесь — сообщение, которое мы шлём
+  // по своей инициативе всем сразу, и путать эти два дела нельзя.
+  { key: 'ads',      label: 'Анонсы',   icon: Megaphone },
   { key: 'log',      label: 'Журнал',   icon: ScrollText },
   // Виджет стоит здесь, а не отдельным разделом: он ведёт в те же боты, что и
   // линия, и заводит его тот же человек, что настраивает их.
@@ -1468,6 +1473,7 @@ export default function AdminOpenLine() {
         {tab === 'lines' && <LinesTab />}
         {tab === 'texts' && <TemplatesTab data={templates} steps={steps} reload={loadTemplates} />}
         {tab === 'delivery' && <DeliveryTab templates={templates} safety={safety} onSafetyChange={loadTemplates} />}
+        {tab === 'ads' && <BroadcastsTab />}
         {tab === 'log' && <LogTab />}
         {tab === 'widget' && <WidgetTab />}
       </div>

@@ -22,6 +22,24 @@ function hasValue(value) {
   return normalized !== '' && (!Number.isFinite(numeric) || numeric !== 0);
 }
 
+// Переносы из «Сводки» (премия или переплата, отложенная на следующий месяц)
+// приходят с одноразовым замком: `locked` + `carryOnce`. Обычный замок вечный, и
+// такая запись пережила бы не только сброс перед «своим» месяцем, но и все
+// следующие — премию начислили бы повторно, пока замок не снимут руками. Поэтому
+// одноразовый замок сброс не просто уважает, а снимает: запись остаётся и уходит
+// в зарплату текущего месяца, а удалит её уже следующий сброс.
+function isCarryOnce(item) {
+  return item?.locked === true && item?.carryOnce === true;
+}
+
+function keepLockedItems(items) {
+  return items.filter(item => item?.locked === true).map(item => {
+    if (!isCarryOnce(item)) return item;
+    const { carryOnce, ...rest } = item;
+    return { ...rest, locked: false };
+  });
+}
+
 function itemTitle(item) {
   if (!item || typeof item !== 'object') return String(item || 'Запись');
   const title = item.name || item.title || item.serviceName || item.label || item.description || item.code;
@@ -42,10 +60,21 @@ function getClinicChanges(clinicId, clinicData = {}) {
   const changes = [];
 
   for (const [key, label] of RESET_COLLECTIONS) {
-    const items = (Array.isArray(clinicData[key]) ? clinicData[key] : [])
-      .filter(item => item?.locked !== true);
+    const all = Array.isArray(clinicData[key]) ? clinicData[key] : [];
+    const items = all.filter(item => item?.locked !== true);
     if (items.length) {
       changes.push({ key, label, count: items.length, items: items.map(itemTitle) });
+    }
+    // Переносы показываем отдельной строкой: они не удаляются, но оператору важно
+    // видеть, что премия с прошлого месяца уйдёт в зарплату именно этого периода.
+    const carried = all.filter(isCarryOnce);
+    if (carried.length) {
+      changes.push({
+        key: `${key}:carry`,
+        label: `${label} — переносы (останутся, замок снимется)`,
+        count: carried.length,
+        items: carried.map(itemTitle),
+      });
     }
   }
 
@@ -97,7 +126,7 @@ function resetClinicData(clinicId, clinicData = {}) {
 
   for (const [key] of RESET_COLLECTIONS) {
     if (Array.isArray(clinicData[key])) {
-      result[key] = clinicData[key].filter(item => item?.locked === true);
+      result[key] = keepLockedItems(clinicData[key]);
     }
   }
 
@@ -180,4 +209,4 @@ function buildResetPreview(records, clinicIds) {
   };
 }
 
-module.exports = { buildResetPreview, resetClinicData, resetSettings };
+module.exports = { buildResetPreview, resetClinicData, resetSettings, keepLockedItems };

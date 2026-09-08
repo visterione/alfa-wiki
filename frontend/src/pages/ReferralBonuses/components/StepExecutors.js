@@ -6,6 +6,7 @@ import { clearExecCache } from '../utils/reportEngine';
 import { useTabSlider } from '../utils/useTabSlider';
 import { calcScheduleHoursForPeriod } from '../utils/scheduleUtils';
 import { toSubdivisionList } from '../utils/pdfUtils';
+import { keepLockedItems, toggleItemLock } from '../utils/resetLocks';
 import MonthYearPicker from './MonthYearPicker';
 import ClinicLogo from './ClinicLogo';
 
@@ -92,13 +93,16 @@ function resolveDefaultClinic(doctor, clinics, permissions) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function LockBtn({ locked, onClick }) {
+function LockBtn({ locked, onClick, title, carryOnce }) {
+  const defaultTitle = carryOnce
+    ? 'Перенос из сводки: переживёт ближайший сброс, дальше — как обычная запись'
+    : (locked ? 'Снять фиксацию (будет сброшен)' : 'Зафиксировать (не сбрасывать)');
   return (
     <button
       className="rb-btn rb-btn-xs"
       onClick={onClick}
-      title={locked ? 'Снять фиксацию (будет сброшен)' : 'Зафиксировать (не сбрасывать)'}
-      style={{ color: locked ? '#007AFF' : '#cbd5e1', background: 'transparent', border: 'none', padding: '0 2px', lineHeight: 1 }}
+      title={title || defaultTitle}
+      style={{ color: locked ? (carryOnce ? 'var(--accent-500)' : '#007AFF') : '#cbd5e1', background: 'transparent', border: 'none', padding: '0 2px', lineHeight: 1 }}
     >
       <svg viewBox="0 0 24 24" fill={locked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" width="13" height="13">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -201,7 +205,7 @@ function ItemsList({ items, section, onDelete, onUpdate, readOnly }) {
           )}
           {!readOnly && editIdx !== i && (
             <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-              <LockBtn locked={!!item.locked} onClick={() => onUpdate(section, i, { ...item, locked: !item.locked })} />
+              <LockBtn locked={!!item.locked} carryOnce={item.carryOnce === true} onClick={() => onUpdate(section, i, toggleItemLock(item))} />
               <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(section, i)} title="Удалить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -296,7 +300,7 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
           )}
           {!readOnly && editIdx !== i && (
             <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-              <LockBtn locked={!!e.locked} onClick={() => onUpdate(i, { ...e, locked: !e.locked })} />
+              <LockBtn locked={!!e.locked} carryOnce={e.carryOnce === true} onClick={() => onUpdate(i, toggleItemLock(e))} />
               <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -1773,7 +1777,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const handleResetSection = async (section) => {
     if (!window.confirm('Удалить все незафиксированные записи этого раздела?')) return;
     const current = getClinicData();
-    const arr = (current[section] || []).filter(it => it.locked === true);
+    const arr = keepLockedItems(current[section]);
     updateClinicData({ [section]: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), [section]: arr } } };
     await saveToServer(newData);
@@ -1783,10 +1787,10 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const handleResetAll = async () => {
     if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Выполненные услуги, Дополнительно, Кабинеты, Нормы часов, Основная ЗП, Аванс)? Ставки сохранятся, у ставок по ролям обнулятся только часы.')) return;
     const current = getClinicData();
-    const newDeductions     = (current.deductions     || []).filter(it => it.locked === true);
-    const newMaterials      = (current.materials      || []).filter(it => it.locked === true);
-    const newSvcMaterials   = (current.serviceMaterials || []).filter(it => it.locked === true);
-    const newExtras         = (current.extras         || []).filter(it => it.locked === true);
+    const newDeductions     = keepLockedItems(current.deductions);
+    const newMaterials      = keepLockedItems(current.materials);
+    const newSvcMaterials   = keepLockedItems(current.serviceMaterials);
+    const newExtras         = keepLockedItems(current.extras);
     const newNormServices   = (current.normServices   || []).filter(it => it.locked === true).map(it => ({
       ...it,
       rate:  it.lockedRate  ? it.rate  : 0,
@@ -1798,13 +1802,13 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const newRoleRates       = (current.roleRates        || []).map(it => (
       it.hoursWorked ? { ...it, hoursWorked: 0 } : it
     ));
-    const newRoleNormOverrides = (current.roleNormOverrides || []).filter(it => it.locked === true);
+    const newRoleNormOverrides = keepLockedItems(current.roleNormOverrides);
     const lockedCabs        = execData.clinicSettings?.global?.lockedCabinets || [];
     const newCabinets       = (execData.clinicSettings?.global?.cabinets || []).filter(c => lockedCabs.includes(c));
     const newGlobal = { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets };
     const resetMain    = current.lockedMainPayment ? {} : { mainPayment: 0 };
     const resetAdvance = current.lockedAdvance     ? {} : { advance: 0 };
-    const newExtraPayments = (current.extraPayments || []).filter(ep => ep.locked === true);
+    const newExtraPayments = keepLockedItems(current.extraPayments);
     updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, roleRates: newRoleRates, roleNormOverrides: newRoleNormOverrides, extraPayments: newExtraPayments, ...resetMain, ...resetAdvance });
     const newData = {
       ...execData,
@@ -1847,7 +1851,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const handleResetSvcMaterials = async () => {
     if (!window.confirm('Удалить все незафиксированные индивидуальные расходники?')) return;
     const current = getClinicData();
-    const arr = (current.serviceMaterials || []).filter(it => it.locked === true);
+    const arr = keepLockedItems(current.serviceMaterials);
     updateClinicData({ serviceMaterials: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), serviceMaterials: arr } } };
     await saveToServer(newData);
@@ -1987,7 +1991,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const handleResetExtras = async () => {
     if (!window.confirm('Удалить все незафиксированные записи раздела «Дополнительно»?')) return;
     const current = getClinicData();
-    const arr = (current.extras || []).filter(it => it.locked === true);
+    const arr = keepLockedItems(current.extras);
     updateClinicData({ extras: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), extras: arr } } };
     await saveToServer(newData);

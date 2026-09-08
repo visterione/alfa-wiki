@@ -1331,6 +1331,35 @@ export const siteWidgets = {
   remove: (id) => api.delete(`/site-widgets/${id}`)
 };
 
+// Рекламные рассылки подписчикам ботов (ver. 8.07). Отправляет не этот контур,
+// а движок в процессе notifier: две тысячи сообщений идут минутами, и держать
+// ради них открытым запрос значит потерять рассылку на первом же таймауте.
+// Здесь только черновик, запуск и остановка.
+export const broadcasts = {
+  list: () => api.get('/broadcasts'),
+  get: (id) => api.get(`/broadcasts/${id}`),
+  create: (data) => api.post('/broadcasts', data),
+  update: (id, data) => api.put(`/broadcasts/${id}`, data),
+  remove: (id) => api.delete(`/broadcasts/${id}`),
+
+  // Медцентры с их ботами: медцентр без бота видно в списке, потому что это
+  // настройка, а не забытая галка.
+  sources: () => api.get('/broadcasts/sources'),
+  audience: (medCenterIds) => api.post('/broadcasts/audience', { medCenterIds }),
+
+  uploadImage: (id, file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post(`/broadcasts/${id}/image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  test: (id, data) => api.post(`/broadcasts/${id}/test`, data),
+  start: (id) => api.post(`/broadcasts/${id}/start`),
+  pause: (id) => api.post(`/broadcasts/${id}/pause`)
+};
+
 // Уведомления пациентам (ver. 7.86): шаблоны текстов и журнал отправок.
 export const notifications = {
   templates: () => api.get('/notifications/templates'),

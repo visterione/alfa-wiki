@@ -19,6 +19,7 @@ const misClient = require('../misClient');
 const openLine = require('../openLine');
 const openLineFiles = require('../openLineFiles');
 const openLinePatient = require('../openLinePatient');
+const broadcasts = require('../broadcasts');
 
 // Категории подписчиков в МИС. Ставятся только боевым ботам: тестовый не должен
 // оставлять следов в карточках живых пациентов.
@@ -212,8 +213,9 @@ async function handleText(channel, bot, update) {
 
 
 /**
- * Нажатие кнопки под уведомлением. Пока она одна — «Подтверждаю» под записью и
- * напоминанием.
+ * Нажатие кнопки под сообщением бота. Их три: «Подтверждаю» под записью и
+ * напоминанием, оценка работы после закрытия обращения и отказ от рассылок под
+ * рекламным анонсом.
  */
 async function handleButton(channel, bot, update) {
   const [action, value, extra] = String(update.data || '').split(':');
@@ -228,6 +230,22 @@ async function handleButton(channel, bot, update) {
     if (session) {
       await channel.sendText(bot, update.chatId,
         'Спасибо, оценка учтена. Если понадобится что-то ещё — просто напишите сюда.');
+    }
+    return null;
+  }
+
+  // Отказ от рекламных рассылок (ver. 8.07). Отписка узкая и это сказано вслух:
+  // человек нажимает её под анонсом акции, а ждёт обычно, что «бот перестанет
+  // писать». Напоминания о визитах не прекращаются, и узнать об этом он должен
+  // здесь, а не когда пропустит приём.
+  if (action === 'unsub') {
+    const changed = await broadcasts.optOut(bot, update.externalUserId);
+    await channel.answerCallback(bot, update.callbackId, changed ? 'Больше не пришлём' : 'Вы уже отписаны');
+    if (changed) {
+      await channel.sendText(bot, update.chatId,
+        'Готово — рекламные рассылки вам больше не придут.\n\n' +
+        'Напоминания о визитах это не отменяет: они будут приходить как раньше. ' +
+        'И вопрос сюда написать по-прежнему можно.');
     }
     return null;
   }

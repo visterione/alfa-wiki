@@ -17,6 +17,8 @@ const https = require('https');
 
 const API_BASE = 'https://api.telegram.org';
 const TIMEOUT = 20000;
+// Загрузка картинки — единственный запрос, где мы отдаём мегабайты, а не строку.
+const UPLOAD_TIMEOUT = 120000;
 
 // Форс IPv4 и keep-alive — та же причина, что у клиента Fromni: из дата-центра
 // IPv6-маршрут до внешних API бывает неживым, а простаивающее соединение рвёт
@@ -85,6 +87,23 @@ async function call(token, method, payload, timeoutMs) {
   throw classify(res.status, body);
 }
 
+/**
+ * То же самое, но телом уходит файл. Отдельный вызов, потому что таймаут здесь
+ * нужен другой: JSON-запрос либо отвечает за секунду, либо не отвечает вовсе, а
+ * картинку в несколько мегабайт Telegram принимает заметно дольше.
+ */
+async function callUpload(token, method, form) {
+  let res;
+  try {
+    res = await client(token, UPLOAD_TIMEOUT).post(`/${method}`, form);
+  } catch (err) {
+    throw new ChannelError('network', err.code || err.message);
+  }
+  const body = res.data;
+  if (res.status === 200 && body && body.ok) return body.result;
+  throw classify(res.status, body);
+}
+
 // ── Отправка ──────────────────────────────────────────────────────────────
 
 /**
@@ -120,6 +139,61 @@ async function sendText(bot, chatId, text, options = {}) {
 
   const result = await call(bot.token, 'sendMessage', payload);
   return { externalMessageId: String(result.message_id) };
+}
+
+/**
+ * Отправляет картинку с подписью.
+ *
+ * Картинку можно отдать двумя способами, и разница между ними — вся суть
+ * рассылки. Первый раз файл уходит телом запроса, и Telegram возвращает его
+ * file_id; дальше все адресаты получают этот идентификатор строкой, и запрос
+ * снова становится дешёвым JSON-ом. Две тысячи загрузок одной и той же
+ * картинки не нужны никому — ни нам, ни Telegram.
+ *
+ * Третьего способа — отдать ссылку и дать Telegram скачать картинку самому —
+ * у нас нет. За ней он пришёл бы к нам входящим соединением, а такие до нас не
+ * доходят: ровно на этом сломался вебхук и появился поллер.
+ *
+ * Подпись под фотографией ограничена 1024 символами против 4096 у обычного
+ * сообщения. Здесь не режем: текст длиннее — ошибка составителя, и увидеть её
+ * надо в интерфейсе, а не половиной анонса у пациента.
+ *
+ * @param {Object} photo
+ * @param {string} [photo.fileId]   уже загруженная картинка
+ * @param {Buffer} [photo.buffer]   содержимое файла для первой загрузки
+ * @param {string} [photo.fileName] имя файла, Telegram берёт из него расширение
+ * @returns {Promise<{ externalMessageId: string, fileId: string|null }>}
+ */
+async function sendPhoto(bot, chatId, photo, caption, options = {}) {
+  const markup = options.buttons
+    ? { inline_keyboard: options.buttons.map(row => row.map(b => ({ text: b.text, callback_data: b.data }))) }
+    : null;
+
+  let result;
+  if (photo.fileId) {
+    result = await call(bot.token, 'sendPhoto', {
+      chat_id: chatId,
+      photo: photo.fileId,
+      caption,
+      parse_mode: options.parseMode || 'HTML',
+      reply_markup: markup || undefined
+    });
+  } else {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('caption', caption || '');
+    form.append('parse_mode', options.parseMode || 'HTML');
+    if (markup) form.append('reply_markup', JSON.stringify(markup));
+    form.append('photo', new Blob([photo.buffer]), photo.fileName || 'image.jpg');
+    result = await callUpload(bot.token, 'sendPhoto', form);
+  }
+
+  // Telegram отдаёт лесенку размеров одной картинки — file_id у всех разный,
+  // берём последний: он самый большой, и именно его увидят следующие адресаты.
+  const sizes = (result && result.photo) || [];
+  const fileId = sizes.length ? sizes[sizes.length - 1].file_id : null;
+
+  return { externalMessageId: String(result.message_id), fileId };
 }
 
 /**
@@ -281,6 +355,7 @@ module.exports = {
   platform: 'telegram',
   ChannelError,
   sendText,
+  sendPhoto,
   answerCallback,
   parseUpdate,
   getMe,

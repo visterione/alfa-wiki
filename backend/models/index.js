@@ -641,7 +641,13 @@ const BotSubscriber = sequelize.define('BotSubscriber', {
   // Человек заблокировал бота — Telegram отвечает 403. Помечаем сразу, чтобы
   // каскад не тратил на него попытку и уходил на следующую ступень.
   isBlocked: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-  blockedAt: { type: DataTypes.DATE, allowNull: true }
+  blockedAt: { type: DataTypes.DATE, allowNull: true },
+  // Отказ от рекламных рассылок (ver. 8.07). Не то же самое, что isBlocked:
+  // заблокировавший бота недоступен вообще, а отписавшийся продолжает получать
+  // напоминания о визитах и писать в открытую линию — он отказался от анонсов,
+  // а не от нас.
+  marketingOptOut: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  marketingOptOutAt: { type: DataTypes.DATE, allowNull: true }
 }, {
   tableName: 'bot_subscribers',
   timestamps: true,
@@ -3436,6 +3442,69 @@ OmniMessage.belongsTo(OmniSession, { foreignKey: 'sessionId', as: 'session' });
 OmniShift.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 OmniShift.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 
+// === РЕКЛАМНЫЕ РАССЫЛКИ ПОДПИСЧИКАМ (ver. 8.07) ===
+//
+// Третий повод, по которому бот пишет человеку сам. Первые два — напоминание о
+// визите из очереди уведомлений и ответ оператора — приходят по делу и адресно;
+// этот приходит всем сразу и по нашей инициативе, и потому устроен отдельно.
+//
+// В notif_outbox рассылке места нет: та очередь заточена под события МИС
+// (appt_id, дедуп-ключ с породившим значением) и при неудаче бота уходит
+// каскадом на платный SMS. Реклама, ушедшая SMS-кой, — это уже не оплошность,
+// а нарушение 38-ФЗ с адресатом-заявителем. Каскада здесь нет вовсе: не дошло
+// ботом — значит не дошло.
+const OmniBroadcast = sequelize.define('OmniBroadcast', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  title: { type: DataTypes.STRING(150), allowNull: false },      // для списка, пациент не видит
+  // Предел в 1024 символа не наш, а телеграмный: у сообщения с фотографией
+  // caption ограничен именно так. Держим его и для текста без картинки, чтобы
+  // добавленная позже картинка не обрезала уже написанное.
+  text: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
+  imagePath: { type: DataTypes.STRING(500), allowNull: true },   // относительно uploads
+  medCenterIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  status: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'draft' }, // draft|sending|paused|done|failed
+  // file_id у Telegram, токен вложения у MAX — по ключу платформы. Первая
+  // отправка загружает картинку телом запроса и запоминает идентификатор,
+  // остальные адресаты получают ссылку на него. Отдать картинку ссылкой нельзя:
+  // за ней мессенджер пришёл бы к нам входящим соединением, а они до нас не
+  // доходят — на этом сломался вебхук и появился поллер.
+  mediaIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+  startedAt: { type: DataTypes.DATE, allowNull: true },
+  finishedAt: { type: DataTypes.DATE, allowNull: true }
+}, {
+  tableName: 'omni_broadcasts',
+  timestamps: true,
+  indexes: [{ fields: ['status', 'createdAt'] }]
+});
+
+// Строка на адресата. Нужна ради прогресса, ответа на вопрос «а Иванову ушло?»
+// и — главное — чтобы пережить перезапуск: рассылка на сеть идёт минутами, и
+// без отметки на каждом половина базы получила бы сообщение дважды.
+const OmniBroadcastTarget = sequelize.define('OmniBroadcastTarget', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  broadcastId: { type: DataTypes.UUID, allowNull: false },
+  subscriberId: { type: DataTypes.UUID, allowNull: false },
+  botId: { type: DataTypes.UUID, allowNull: true },
+  status: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'pending' }, // pending|sent|failed|skipped
+  error: { type: DataTypes.TEXT, allowNull: true },
+  externalMessageId: { type: DataTypes.STRING(64), allowNull: true },
+  sentAt: { type: DataTypes.DATE, allowNull: true }
+}, {
+  tableName: 'omni_broadcast_targets',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['broadcastId', 'subscriberId'] },
+    { fields: ['broadcastId', 'status'] }
+  ]
+});
+
+OmniBroadcast.hasMany(OmniBroadcastTarget, { foreignKey: 'broadcastId', as: 'targets' });
+OmniBroadcastTarget.belongsTo(OmniBroadcast, { foreignKey: 'broadcastId', as: 'broadcast' });
+OmniBroadcastTarget.belongsTo(BotSubscriber, { foreignKey: 'subscriberId', as: 'subscriber' });
+OmniBroadcastTarget.belongsTo(MessengerBot, { foreignKey: 'botId', as: 'bot' });
+OmniBroadcast.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
+
 // === ВИДЖЕТ СВЯЗИ ДЛЯ САЙТОВ (ver. 8.06) ===
 //
 // Кнопка в углу сайта клиники, из которой человек попадает в наш бот или звонит
@@ -4635,6 +4704,8 @@ module.exports = {
   OmniLine,
   OmniLineOperator,
   OmniConversation,
+  OmniBroadcast,
+  OmniBroadcastTarget,
   OmniSession,
   OmniShift,
   OmniMessage,

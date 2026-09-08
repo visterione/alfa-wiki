@@ -97,6 +97,7 @@ function WidgetMock({ appearance, channels, corner, onExit }) {
   const style = {
     '--wgt-color': appearance.color,
     '--wgt-fg': foregroundFor(appearance.color),
+    '--wgt-ring': ringColor(appearance.color),
     '--wgt-bottom': `${corner ? Math.min(Number(appearance.bottomOffset) || 0, 200) : 18}px`
   };
 
@@ -110,6 +111,9 @@ function WidgetMock({ appearance, channels, corner, onExit }) {
         aria-expanded={open}
         title={open ? 'Закрыть' : (appearance.buttonLabel || 'Написать нам')}
       >
+        {/* Круги на воде — тот же приём, что в виджете: постоянное медленное
+            движение выдаёт кнопку в углу, пока человек читает страницу. */}
+        <span className="wgt-mock-pulse" />
         {/* Оба знака лежат в кнопке всегда и меняются поворотом — как в самом
             виджете. Подмена узла давала бы мгновенный скачок. */}
         <span className="wgt-mock-glyph chat"><SolidIcon name="chat" size={26} /></span>
@@ -174,6 +178,13 @@ function MockRow({ channel }) {
       </div>
     </a>
   );
+}
+
+/** Тот же цвет, но прозрачный: из него сделаны расходящиеся кольца у кнопки. */
+function ringColor(hex) {
+  const value = /^#[0-9a-f]{6}$/i.test(String(hex || '')) ? hex : '#2f6fed';
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(value.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, 0.7)`;
 }
 
 /**

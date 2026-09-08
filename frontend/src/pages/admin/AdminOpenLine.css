@@ -183,6 +183,14 @@
 .ola-badge.accent { background: var(--accent-100); color: var(--accent-700); }
 .ola-badge.warn   { background: var(--amber-100);  color: var(--amber-800);  }
 
+/* Тот же словарь состояний, что у строк журнала и плиток показателей
+   (.ola-row-status, .ola-stat): «получилось — ждёт — не вышло — не считается».
+   Заводить плашке свой набор имён значило бы держать в голове два. */
+.ola-badge.ok    { background: var(--green-100); color: var(--green-700); }
+.ola-badge.wait  { background: var(--amber-100); color: var(--amber-800); }
+.ola-badge.bad   { background: var(--red-100);   color: var(--red-600);   }
+.ola-badge.muted { background: var(--bg-tertiary); color: var(--text-secondary); }
+
 /* ── Блок внутри карточки ─────────────────────────────────────────────────*/
 
 .ola-block + .ola-block {

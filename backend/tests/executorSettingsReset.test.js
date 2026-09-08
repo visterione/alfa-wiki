@@ -97,3 +97,38 @@ test('role rates survive the reset while their period hours are zeroed', () => {
   assert.equal(result.hoursWorked, 0);
   assert.equal(clinic.roleRates[0].hoursWorked, 40);
 });
+
+test('carried-over bonus survives one reset and loses its lock', () => {
+  const clinic = {
+    extras: [
+      { name: 'Дежурство', amount: 3000 },
+      { name: 'Премия за 2026-08', amount: 4200, hours: 0, locked: true, carryOnce: true },
+      { name: 'Доплата', amount: 1000, locked: true },
+    ],
+  };
+
+  const afterFirst = resetClinicData('4', clinic);
+  assert.deepEqual(afterFirst.extras, [
+    { name: 'Премия за 2026-08', amount: 4200, hours: 0, locked: false },
+    { name: 'Доплата', amount: 1000, locked: true },
+  ]);
+  assert.equal(clinic.extras.length, 3);
+
+  // Второй сброс перенос уже удаляет: премия ушла в зарплату прошедшего месяца.
+  const afterSecond = resetClinicData('4', afterFirst);
+  assert.deepEqual(afterSecond.extras, [{ name: 'Доплата', amount: 1000, locked: true }]);
+});
+
+test('preview shows carried-over items separately from what is deleted', () => {
+  const clinic = {
+    deductions: [
+      { name: 'Штраф', value: 500 },
+      { name: 'Переплата за 2026-08', value: 1200, locked: true, carryOnce: true },
+    ],
+  };
+  const preview = buildResetPreview([{ misUserId: 1, doctorName: 'Врач', settings: { clinicSettings: { 4: clinic } } }], ['4']);
+  const changes = preview.employees[0].clinics[0].changes;
+  assert.deepEqual(changes.map(change => change.key), ['deductions', 'deductions:carry']);
+  assert.deepEqual(changes[0].items, ['Штраф: 500']);
+  assert.deepEqual(changes[1].items, ['Переплата за 2026-08: 1200']);
+});

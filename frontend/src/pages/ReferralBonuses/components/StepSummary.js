@@ -427,7 +427,11 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         value: parseFloat(Math.abs(overpay).toFixed(2)),
         valueType: 'rub',
         deductionType: 'final',
-        locked: false,
+        // Одноразовый замок: перед зарплатой делают сброс, и без него перенос
+        // затирался бы вместе с обычными записями месяца. Снимется сам на том
+        // сбросе, который переживёт, — повторно удержание не всплывёт.
+        locked: true,
+        carryOnce: true,
       });
       const newSettings = {
         ...settings,
@@ -477,6 +481,11 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         name: `Премия за ${periodLabel}`,
         amount: parseFloat(bonus.toFixed(2)),
         hours: 0,
+        // Одноразовый замок: перед зарплатой делают сброс, и без него перенесённая
+        // премия терялась. Снимется сам на том сбросе, который переживёт, — второй
+        // раз ту же премию не начислим.
+        locked: true,
+        carryOnce: true,
       });
       const newSettings = {
         ...settings,
@@ -572,7 +581,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           value: parseFloat(Math.abs(amount).toFixed(2)),
           valueType: 'rub',
           deductionType: 'final',
-          locked: false,
+          locked: true,
+          carryOnce: true,
         });
         newClinicData = { ...clinicData, deductions };
       } else {
@@ -581,6 +591,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           name: `Остаток (касса) за ${dateLabel}`,
           amount: parseFloat(amount.toFixed(2)),
           hours: 0,
+          locked: true,
+          carryOnce: true,
         });
         newClinicData = { ...clinicData, extras };
       }
@@ -1296,7 +1308,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                 <button
                                   onClick={e => { e.stopPropagation(); handleBonusCarry(rec, recalcKey, bonus, dateLabel, cr?.clinicId); }}
                                   disabled={!!bonusCarryLoading[recalcKey]}
-                                  title={bonusCarryDone[recalcKey] ? 'Премия перенесена на следующий месяц (можно повторить)' : 'Перенести премию на следующий месяц (в дополнительно)'}
+                                  title={bonusCarryDone[recalcKey] ? 'Премия перенесена на следующий месяц (можно повторить)' : 'Перенести премию на следующий месяц (в дополнительно, с замочком — сброс её не затрёт)'}
                                   style={{ padding: '3px 5px', background: bonusCarryDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${bonusCarryDone[recalcKey] ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: bonusCarryLoading[recalcKey] ? 0.4 : 1 }}
                                 >
                                   {bonusCarryDone[recalcKey] ? (
@@ -1363,7 +1375,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                 <button
                                   onClick={e => { e.stopPropagation(); handleRecalculate(rec, recalcKey, overpay, dateLabel, cr?.clinicId); }}
                                   disabled={!!recalcLoading[recalcKey]}
-                                  title={recalcDone[recalcKey] ? 'Переплата зафиксирована (можно повторить)' : 'Зафиксировать переплату в расходниках сотрудника'}
+                                  title={recalcDone[recalcKey] ? 'Переплата зафиксирована (можно повторить)' : 'Зафиксировать переплату в расходниках сотрудника (с замочком — сброс её не затрёт)'}
                                   style={{ padding: '3px 5px', background: recalcDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${recalcDone[recalcKey] ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: recalcLoading[recalcKey] ? 0.4 : 1 }}
                                 >
                                   {recalcDone[recalcKey] ? (

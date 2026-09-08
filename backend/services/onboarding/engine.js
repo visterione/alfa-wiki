@@ -39,10 +39,24 @@ async function log(applicationId, action, payload = {}, userId = null) {
 // Письма исполнителям намеренно не шлём: задача и так видна в разделе, а третий
 // канал приучает не читать ни один.
 
+/**
+ * Дописывает ссылку на заявку. Без неё уведомление читается как извещение «вот
+ * что случилось», и человек не понимает, куда идти: раздел онбординга он видит
+ * редко и в меню его не ищет — приходили с вопросом «а мне что теперь делать».
+ * Разметка та же, что у бота отзывов, где это уже работает: мессенджер открывает
+ * такие ссылки внутри портала, не перезагружая страницу.
+ */
+function withLink(text, applicationId) {
+  const body = String(text || '').trimEnd();
+  if (!applicationId) return body;
+  return `${body}\n\n[Открыть заявку →](/onboarding?app=${applicationId})`;
+}
+
 async function notify(userIds, text, metadata = {}) {
+  const message = withLink(text, metadata.applicationId);
   for (const userId of userIds) {
     try {
-      await notificationService.sendMessageToUser(userId, text, metadata);
+      await notificationService.sendMessageToUser(userId, message, metadata);
     } catch (error) {
       console.error(`[onboarding] Уведомление пользователю ${userId} не ушло:`, error.message);
     }

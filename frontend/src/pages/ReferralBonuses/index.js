@@ -603,12 +603,18 @@ export default function ReferralBonusesPage() {
 
         let deductions = [...(clinicData.deductions || [])];
         if (ndfl !== null) {
+          // НДФЛ удерживается из начисленной зарплаты, а не из оборота выполненных услуг,
+          // поэтому тип — 'final'. Раньше импорт ставил 'turnover': на цифру это не влияло
+          // (расчёт вынимает НДФЛ по имени и считает его от finalSalary), но в карточке
+          // сотрудника строка помечалась «оборот», и повторный импорт сбрасывал тип,
+          // исправленный руками. У удержания типа «оборот» без выполненных услуг база
+          // нулевая — у почасовика такая строка молча обнуляется.
           const ndflIdx = deductions.findIndex(d => d.name === 'НДФЛ');
           if (ndflIdx !== -1) {
             if (mode === 'overwrite' || !deductions[ndflIdx].locked)
-              deductions[ndflIdx] = { ...deductions[ndflIdx], value: ndfl, valueType: 'rub', deductionType: 'turnover' };
+              deductions[ndflIdx] = { ...deductions[ndflIdx], value: ndfl, valueType: 'rub', deductionType: 'final' };
           } else {
-            deductions.push({ name: 'НДФЛ', value: ndfl, valueType: 'rub', deductionType: 'turnover', locked: false });
+            deductions.push({ name: 'НДФЛ', value: ndfl, valueType: 'rub', deductionType: 'final', locked: false });
           }
           updates.deductions = deductions;
         }
@@ -1119,7 +1125,7 @@ export default function ReferralBonusesPage() {
             <div className="rb-modal-body rb-reset-modal-body">
               <section className="rb-reset-section">
                 <div className="rb-reset-section-title">1. Выберите клиники</div>
-                <p className="rb-reset-hint">Данные остальных клиник затронуты не будут. Записи с замочком сохранятся. Ставки сброс не трогает вовсе — у ставок по ролям обнуляются только часы.</p>
+                <p className="rb-reset-hint">Данные остальных клиник затронуты не будут. Записи с замочком сохранятся. Переносы из сводки этот сброс переживут, а замочек с них снимется — в следующий раз удалятся. Ставки сброс не трогает вовсе — у ставок по ролям обнуляются только часы.</p>
                 <div className="rb-reset-selection-actions">
                   <button type="button" onClick={() => {
                     setResetClinicIds(new Set([
