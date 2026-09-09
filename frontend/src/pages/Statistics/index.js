@@ -5,6 +5,7 @@ import { rbClinicId, rbSetClinicImportAliases } from '../ReferralBonuses/utils/c
 import StepKpi from '../ReferralBonuses/components/StepKpi';
 import Directories from './components/Directories';
 import ServicesPage from './components/Services';
+import OpenLineStats from '../OpenLineStats';
 import { useTabSlider } from '../ReferralBonuses/utils/useTabSlider';
 import '../ReferralBonuses/ReferralBonuses.css';
 
@@ -12,6 +13,12 @@ const MAIN_TABS = [
   { key: 'kpi',         label: 'Аналитика' },
   { key: 'directories', label: 'Справочники' },
   { key: 'services',    label: 'Услуги' },
+  // Показатели колл-центра переехали сюда из рабочего окна оператора
+  // (ver. 8.09): очередь обращений разбирают весь день, а показатели смотрят
+  // раз в неделю, и вкладке рядом с работой там было не место. Доступ остался
+  // прежним — его даёт состав линии, а не право на этот раздел, и не заведённый
+  // в линию увидит объяснение вместо таблицы.
+  { key: 'openline',    label: 'Открытая линия' },
 ];
 
 export default function StatisticsPage() {
@@ -98,6 +105,7 @@ export default function StatisticsPage() {
         <Directories doctors={doctors} excelSources={excelSources} />
       )}
       {mainTab === 'services' && <ServicesPage />}
+      {mainTab === 'openline' && <OpenLineStats />}
     </div>
   );
 }
