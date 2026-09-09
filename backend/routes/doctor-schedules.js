@@ -4,6 +4,50 @@ const { DoctorSchedule, MisScheduleCategoryMap, RbScheduleCategory, User, Execut
 const { authenticate } = require('../middleware/auth');
 const { importForUser } = require('../services/misScheduleImport');
 const { logRbActivity } = require('../services/rbLogger');
+const medCenters = require('../services/medCenters');
+const { canWriteScheduleClinic } = require('../utils/rbScheduleAccess');
+
+const CREATOR_INCLUDE = {
+  model: User,
+  as: 'creator',
+  attributes: ['id', 'displayName', 'username'],
+  required: false,
+};
+
+async function getSchedulePermission(req) {
+  if (req.user?.isAdmin) return null;
+  if (req.rbSchedulePermission !== undefined) return req.rbSchedulePermission;
+  req.rbSchedulePermission = await RbUserPermission.findOne({
+    where: { userId: req.user.id },
+    attributes: ['tabSchedule', 'clinics'],
+  });
+  return req.rbSchedulePermission;
+}
+
+async function requireScheduleWrite(req, res, clinicIds) {
+  if (req.user?.isAdmin) return true;
+  const permission = await getSchedulePermission(req);
+  if (!permission || permission.tabSchedule !== 'edit') {
+    res.status(403).json({ error: 'Нет прав на редактирование расписания' });
+    return false;
+  }
+  for (const clinicId of [...new Set(clinicIds.map(String))]) {
+    const canonicalClinicId = await medCenters.canonicalMisId(clinicId);
+    const allowed = canWriteScheduleClinic({
+      isAdmin: !!req.user?.isAdmin,
+      permission,
+      clinicId,
+      canonicalClinicId,
+    });
+    if (!allowed) {
+      res.status(403).json({
+        error: 'Нельзя изменять расписание медцентра, которого нет в ваших правах',
+      });
+      return false;
+    }
+  }
+  return true;
+}
 
 async function resolveDoctorName(misUserId, providedName) {
   if (providedName) return providedName;
@@ -51,6 +95,7 @@ router.get('/', authenticate, async (req, res) => {
 
     const rows = await DoctorSchedule.findAll({
       where: { misUserId },
+      include: [CREATOR_INCLUDE],
       order: [['dateFrom', 'ASC']],
     });
     res.json(rows);
@@ -67,6 +112,7 @@ router.post('/', authenticate, async (req, res) => {
     if (!misUserId || !clinicId || !dateFrom || !dateTo || !pattern) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+    if (!(await requireScheduleWrite(req, res, [clinicId]))) return;
     // Non-admins may not start a schedule inside a frozen half-period,
     // unless granted the bypassPeriodLock permission.
     if (isDateFrozen(dateFrom) && !(await canBypassLock(req))) {
@@ -86,6 +132,7 @@ router.post('/', authenticate, async (req, res) => {
       roleTitle:  roleTitle  || null,
       createdBy:  req.user?.id || null,
     });
+    await row.reload({ include: [CREATOR_INCLUDE] });
 
     const resolvedName = await resolveDoctorName(misUserId, doctorName);
     await logRbActivity({
@@ -124,6 +171,9 @@ router.put('/:id', authenticate, async (req, res) => {
     const oldExceptions = Array.isArray(row.exceptions) ? [...row.exceptions] : [];
 
     const { clinicId, dateFrom, dateTo, pattern, timeFrom, timeTo, exceptions, categoryId, cabinetId, roleTitle, doctorName } = req.body;
+    // Проверяем и исходный медцентр, и новый: нельзя править чужую запись или
+    // перенести свою запись в клинику за пределами области прав.
+    if (!(await requireScheduleWrite(req, res, [row.clinicId, clinicId ?? row.clinicId]))) return;
     // Non-admins may not move a schedule's start into a frozen half-period.
     // Only enforced when dateFrom actually changes — shrinking/splitting an entry
     // that legitimately predates the lock keeps its original (possibly frozen) start.
@@ -142,7 +192,7 @@ router.put('/:id', authenticate, async (req, res) => {
       ...(cabinetId   !== undefined && { cabinetId:  cabinetId  || null }),
       ...(roleTitle   !== undefined && { roleTitle:  roleTitle  || null }),
     });
-    await row.reload();
+    await row.reload({ include: [CREATOR_INCLUDE] });
 
     const after = {
       dateFrom: row.dateFrom, dateTo: row.dateTo, pattern: row.pattern,
@@ -221,6 +271,8 @@ router.delete('/:id', authenticate, async (req, res) => {
     const row = await DoctorSchedule.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
 
+    if (!(await requireScheduleWrite(req, res, [row.clinicId]))) return;
+
     // Non-admins may not delete a chain that reaches into a frozen half-period.
     // Frozen dates are a contiguous prefix, so a frozen start ⇒ the chain overlaps
     // the lock. The frontend instead shrinks such entries (PUT) to keep frozen days.
@@ -264,7 +316,7 @@ router.post('/import-from-mis', authenticate, async (req, res) => {
     const now      = new Date();
     const useMonth = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    const result = await importForUser(misUserId, useMonth);
+    const result = await importForUser(misUserId, useMonth, null, { createdBy: req.user?.id || null });
 
     await logRbActivity({
       userId:     req.user?.id,

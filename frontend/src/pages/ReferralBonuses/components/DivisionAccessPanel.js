@@ -1,18 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import toast from 'react-hot-toast';
-import { structuralDivisions as divisionsApi, referralBonusAccess, executorSettings as execSettingsApi } from '../../../services/api';
+import { structuralDivisions as divisionsApi, referralBonusAccess } from '../../../services/api';
 import { BASE_URL } from '../../../services/api';
-
-const execClinicDefault = () => ({
-  payType: 'salary', fixedSalary: 0, hourlyRate: 0, hoursWorked: 0,
-  executorPercent: 0, plusPercent: false, paymentMethod: 'card',
-  mainPaymentMethod: 'card', advance: 0, mainPayment: 0,
-  extraPayments: [], includeReferralBonuses: true, includeReferralDeductions: true,
-  includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
-  deductions: [], materials: [], serviceMaterials: [], extras: [],
-  normServices: [], roleRates: [],
-});
+import { clearExecCache } from '../utils/reportEngine';
 
 const PERM_OPTIONS = [
   { value: 'edit', label: 'Редактирование', color: '#16a34a' },
@@ -134,7 +125,7 @@ function Avatar({ user }) {
 
 export default function DivisionAccessPanel({
   divisionId, divisionName, divisionDoctorIds = [], divisionRates = [],
-  onRenamed, onMembersChanged, onDeleted, canDelete = false,
+  onRenamed, onMembersChanged, onRatesChanged, onDeleted, canDelete = false,
   doctors = [], getClinicName, getClinicColor,
   scheduleCategories = [], allRoles = [], allProfessions = [],
 }) {
@@ -212,6 +203,12 @@ export default function DivisionAccessPanel({
     setMemberVisible(v => (v < memberCandidates.length ? v + MEMBER_PAGE : v));
   };
 
+  const invalidateSyncedRates = (response) => {
+    const ids = response?.data?.ratesSyncedDoctorIds || [];
+    ids.forEach(clearExecCache);
+    return ids.length;
+  };
+
   const toggleMember = async (doctorId) => {
     const next = memberSet.has(doctorId)
       ? memberIds.filter(id => id !== doctorId)
@@ -221,10 +218,11 @@ export default function DivisionAccessPanel({
     try {
       const res = await divisionsApi.update(divisionId, { doctorIds: next });
       const saved = res.data?.doctorIds ?? next;
+      invalidateSyncedRates(res);
       setMemberIds(saved);
       onMembersChanged?.(divisionId, saved);
-    } catch {
-      toast.error('Ошибка сохранения состава');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Ошибка сохранения состава');
       setMemberIds(memberIds); // откат
     } finally {
       setMemberSaving(false);
@@ -242,49 +240,14 @@ export default function DivisionAccessPanel({
     return value;
   };
 
-  // ── Apply rates to all doctors in division ────────────────────────────────
+  // Сервер сохраняет ставку подразделения и настройки всех сотрудников в одной
+  // транзакции: частично применённой ставки после сетевой/серверной ошибки нет.
   const applyRates = async () => {
     if (!rateValue || !rateAmount) return;
     const rate = parseFloat(rateAmount);
     if (isNaN(rate) || rate < 0) return;
-    if (!actualDoctorIds.length) { toast.error('В подразделении нет сотрудников'); return; }
 
     setRateSaving(true);
-    let ok = 0, fail = 0;
-    for (const doctorId of actualDoctorIds) {
-      try {
-        const doctor = doctors.find(d => d.id === doctorId);
-        if (rateClinic !== 'global' && !(doctor?.clinics || []).map(String).includes(String(rateClinic))) {
-          continue;
-        }
-        const res = await execSettingsApi.get(doctorId);
-        const raw = res.data;
-        const settings = (raw && Object.keys(raw).length && raw.clinicSettings)
-          ? { ...raw, clinicSettings: { ...raw.clinicSettings } }
-          : { assistants: [], clinicSettings: { global: execClinicDefault() } };
-
-        const ck = rateClinic;
-        if (!settings.clinicSettings[ck]) {
-          const g = settings.clinicSettings['global'] || execClinicDefault();
-          settings.clinicSettings[ck] = { ...g };
-        }
-        const cs = settings.clinicSettings[ck];
-        const roleRates = [...(cs.roleRates || [])];
-        const existingIdx = roleRates.findIndex(r => r.roleTitle === rateValue);
-        if (existingIdx >= 0) {
-          if (rateOverwrite) roleRates[existingIdx] = { ...roleRates[existingIdx], rate };
-        } else {
-          roleRates.push({ roleTitle: rateValue, rate });
-        }
-        settings.clinicSettings[ck] = { ...cs, roleRates };
-        await execSettingsApi.save({ misUserId: doctorId, doctorName: doctor?.name, settings });
-        ok++;
-      } catch {
-        fail++;
-      }
-    }
-
-    // Save rate entry to division
     const entry = {
       id:        editingRateId || genId(),
       type:      rateType,
@@ -299,21 +262,24 @@ export default function DivisionAccessPanel({
       : [...savedRates, entry];
 
     try {
-      await divisionsApi.update(divisionId, { rates: newSaved });
-      setSavedRates(newSaved);
-    } catch {
-      toast.error('Ставка применена, но не сохранена в подразделении');
+      const res = await divisionsApi.update(divisionId, { rates: newSaved });
+      const saved = res.data?.rates ?? newSaved;
+      const updatedCount = invalidateSyncedRates(res);
+      setSavedRates(saved);
+      onRatesChanged?.(divisionId, saved);
+      toast.success(updatedCount > 0
+        ? `Ставка сохранена, обновлено сотрудников: ${updatedCount}`
+        : 'Ставка сохранена');
+
+      setEditingRateId(null);
+      setRateValue('');
+      setRateAmount('');
+      setShowRateForm(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Ошибка сохранения ставки');
+    } finally {
+      setRateSaving(false);
     }
-
-    setRateSaving(false);
-    if (fail > 0) toast.error(`Ошибок: ${fail}, успешно: ${ok}`);
-    else toast.success(`Ставка применена для ${ok} сотрудников`);
-
-    // Reset form
-    setEditingRateId(null);
-    setRateValue('');
-    setRateAmount('');
-    setShowRateForm(false);
   };
 
   const startEditRate = (entry) => {
@@ -339,38 +305,21 @@ export default function DivisionAccessPanel({
   // ── Remove rate from division and all doctors ─────────────────────────────
   const removeRate = async (entry) => {
     setRateRemoving(entry.id);
-    let ok = 0, fail = 0;
-    for (const doctorId of actualDoctorIds) {
-      try {
-        const doctor = doctors.find(d => d.id === doctorId);
-        const res = await execSettingsApi.get(doctorId);
-        const raw = res.data;
-        if (!raw || !raw.clinicSettings) { ok++; continue; }
-        const settings = { ...raw, clinicSettings: { ...raw.clinicSettings } };
-        const ck = entry.clinic;
-        if (settings.clinicSettings[ck]) {
-          const cs = settings.clinicSettings[ck];
-          const roleRates = (cs.roleRates || []).filter(r => r.roleTitle !== entry.value);
-          settings.clinicSettings[ck] = { ...cs, roleRates };
-          await execSettingsApi.save({ misUserId: doctorId, doctorName: doctor?.name, settings });
-        }
-        ok++;
-      } catch {
-        fail++;
-      }
-    }
-
     const newSaved = savedRates.filter(r => r.id !== entry.id);
     try {
-      await divisionsApi.update(divisionId, { rates: newSaved });
-      setSavedRates(newSaved);
-    } catch {
-      toast.error('Ставка удалена у сотрудников, но не обновлена в подразделении');
+      const res = await divisionsApi.update(divisionId, { rates: newSaved });
+      const saved = res.data?.rates ?? newSaved;
+      const updatedCount = invalidateSyncedRates(res);
+      setSavedRates(saved);
+      onRatesChanged?.(divisionId, saved);
+      toast.success(updatedCount > 0
+        ? `Ставка удалена, обновлено сотрудников: ${updatedCount}`
+        : 'Ставка удалена');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Ошибка удаления ставки');
+    } finally {
+      setRateRemoving(null);
     }
-
-    setRateRemoving(null);
-    if (fail > 0) toast.error(`Удалено с ошибками: ${fail}`);
-    else toast.success(`Ставка удалена у ${ok} сотрудников`);
   };
 
   useEffect(() => { setNameValue(divisionName); }, [divisionName]);
@@ -493,7 +442,8 @@ export default function DivisionAccessPanel({
     if (!deleteConfirmed || deleting) return;
     setDeleting(true);
     try {
-      await divisionsApi.delete(divisionId);
+      const res = await divisionsApi.delete(divisionId);
+      invalidateSyncedRates(res);
       toast.success(`Подразделение «${currentName}» удалено`);
       // Дальше родитель закроет настройки и уберёт строку из списка, поэтому
       // сбрасывать локальное состояние уже некому и незачем.

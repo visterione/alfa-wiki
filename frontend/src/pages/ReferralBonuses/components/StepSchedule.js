@@ -39,6 +39,25 @@ function fmtDateShort(dateStr) {
   return `${parseInt(d)} ${MONTH_NAMES_GEN[parseInt(m) - 1]}`;
 }
 
+function fmtCreatedAt(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(date);
+}
+
+function scheduleCreatorLabel(entry) {
+  if (entry.creator) {
+    const name = entry.creator.displayName || entry.creator.username || 'Не указан';
+    return entry.source === 'mis_import' ? `${name} (импорт из МИС)` : name;
+  }
+  if (entry.source === 'mis_import') return 'Система (импорт из МИС)';
+  return 'Не указан';
+}
+
 // Half-period freeze: a date is locked for non-admin edits once its half-month
 // has passed the cutoff — 1st half closes on the 18th of its own month, 2nd half
 // on the 3rd of the next month. Mirrors TabelTable's lock logic. `today` must be
@@ -779,7 +798,7 @@ const btnGhost = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, canEditFrozen = false, managingDivision, onDivisionRenamed, onDivisionMembersChanged, onDivisionDeleted, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
+export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, canEditFrozen = false, allowedClinicIds = [], managingDivision, onDivisionRenamed, onDivisionMembersChanged, onDivisionRatesChanged, onDivisionDeleted, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
   const { isAdmin } = useAuth();
   // Users who may edit frozen half-periods: admins or holders of bypassPeriodLock.
   const canBypassFreeze = isAdmin || canEditFrozen;
@@ -848,8 +867,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         .filter(Boolean)
     )];
   }, [selectedDoctor]);
-  const doctorClinics  = selectedDoctor
-    ? clinics.filter(c => (selectedDoctor.clinics || []).includes(String(c.id)))
+  const allowedClinicSet = useMemo(() => {
+    if (!Array.isArray(allowedClinicIds) || allowedClinicIds.length === 0) return null;
+    return new Set(allowedClinicIds.map(String));
+  }, [allowedClinicIds]);
+  const canManageClinic = useCallback(
+    clinicId => !allowedClinicSet || allowedClinicSet.has(String(clinicId)),
+    [allowedClinicSet]
+  );
+  const doctorClinics = selectedDoctor
+    ? clinics.filter(c =>
+        (selectedDoctor.clinics || []).includes(String(c.id)) && canManageClinic(c.id)
+      )
     : [];
 
   const [holidayDates, setHolidayDates] = useState(new Set());
@@ -930,6 +959,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       cabinetId:  r.cabinetId  || null,
       roleTitle:  r.roleTitle  || null,
       source:     r.source || 'manual',
+      createdBy:  r.createdBy || null,
+      createdAt:  r.createdAt || null,
+      creator:    r.creator || null,
     };
   }
 
@@ -1055,6 +1087,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const locked = isCellLocked(cell);
     if (cellEntries.length > 0 || locked) {
       setModal({ type: 'day', cell });
+    } else if (readOnly || doctorClinics.length === 0) {
+      return;
     } else {
       setForm(makeBlankForm(cell, doctorClinics));
       setModal({ type: 'form', cell, editId: null });
@@ -1099,6 +1133,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       categoryId: e.categoryId || null,
       cabinetId:  e.cabinetId  || null,
       roleTitle:  e.roleTitle  || null,
+      source:     e.source || 'manual',
+      createdBy:  e.createdBy || null,
+      createdAt:  e.createdAt || null,
+      creator:    e.creator || null,
     });
 
     // Если изменилось ТОЛЬКО время (медцентр/категория/кабинет/роль те же) — пишем override,
@@ -1325,11 +1363,16 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           categoryId: created.categoryId || null,
           cabinetId:  created.cabinetId  || null,
           roleTitle:  created.roleTitle  || null,
+          source:     created.source || 'manual',
+          createdBy:  created.createdBy || null,
+          createdAt:  created.createdAt || null,
+          creator:    created.creator || null,
         }]);
       }
       closeModal();
     } catch (err) {
       console.error('Save schedule error:', err);
+      toast.error(err?.response?.data?.error || 'Не удалось сохранить расписание');
     } finally {
       setSaving(false);
     }
@@ -1356,6 +1399,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       categoryId: e.categoryId || null,
       cabinetId:  e.cabinetId  || null,
       roleTitle:  e.roleTitle  || null,
+      source:     e.source || 'manual',
+      createdBy:  e.createdBy || null,
+      createdAt:  e.createdAt || null,
+      creator:    e.creator || null,
     });
     const beforeEx = filterEx(entry.exceptions, d => d < targetDate);
     const afterEx  = filterEx(entry.exceptions, d => d > targetDate);
@@ -1688,6 +1735,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         divisionRates={managingDivision.rates || []}
         onRenamed={onDivisionRenamed}
         onMembersChanged={onDivisionMembersChanged}
+        onRatesChanged={onDivisionRatesChanged}
         onDeleted={onDivisionDeleted}
         canDelete={!readOnly && !!managingDivision.canDelete}
         doctors={doctors}
@@ -2167,6 +2215,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 const isConfirming = confirmDel === e.id;
                 const cat = e.categoryId ? categories.find(c => c.id === e.categoryId) : null;
                 const cab = e.cabinetId  ? cabinets.find(c => c.id === e.cabinetId)   : null;
+                const canEditEntry = canManageClinic(e.clinicId);
                 return (
                   <div key={e.id} style={{
                     ...sectionStyle,
@@ -2204,6 +2253,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                               {e.roleTitle}
                             </div>
                           )}
+                          <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 7 }}>
+                            Создал: {scheduleCreatorLabel(e)}{fmtCreatedAt(e.createdAt) ? ` · ${fmtCreatedAt(e.createdAt)}` : ''}
+                          </div>
                         </div>
                         {cancelled && (() => {
                           const code = getExceptionCode(e, modal.cell) || 'ОТ';
@@ -2223,7 +2275,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                       </div>
 
                       {/* Actions */}
-                      {!readOnly && !modalCellLocked && (!isConfirming ? (
+                      {!readOnly && !modalCellLocked && canEditEntry && (!isConfirming ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
                         <button style={{ ...btnBlue, width: BTN_W }} onClick={() => handleToggleException(e.id, modal.cell)}>
                           {cancelled ? 'Восстановить' : 'Отменить'}
@@ -2271,6 +2323,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                       </div>
                     ))}
                   </div>
+                  {!readOnly && !canEditEntry && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: 'var(--rb-text-secondary)' }}>
+                      Редактирование недоступно: медцентр не входит в ваши права
+                    </div>
+                  )}
                   </div>
                 );
               })}
@@ -2285,7 +2342,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 Период закрыт для редактирования
               </div>
             )}
-            {!readOnly && !modalCellLocked && (
+            {!readOnly && !modalCellLocked && doctorClinics.length > 0 && (
             <div className="rb-modal-footer">
               <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openNewForm(modal.cell)}>
                 Создать
@@ -2759,4 +2816,3 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     </div>
   );
 }
-

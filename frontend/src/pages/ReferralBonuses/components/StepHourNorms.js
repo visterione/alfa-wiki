@@ -100,6 +100,11 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
     divisionPanelRef.current?.updateDoctorIds(id, doctorIds);
   };
 
+  const handleDivisionRatesChanged = (id, rates) => {
+    setManagingDivision(prev => prev?.id === id ? { ...prev, rates } : prev);
+    divisionPanelRef.current?.updateRates(id, rates);
+  };
+
   const handleDivisionDeleted = (id) => {
     setManagingDivision(prev => prev?.id === id ? null : prev);
     divisionPanelRef.current?.removeDivision(id);
@@ -328,9 +333,11 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             getClinicName={getClinicName}
             readOnly={permSchedule === 'read'}
             canEditFrozen={canEditFrozen}
+            allowedClinicIds={permissions.clinics || []}
             managingDivision={scheduleView === 'divisions' ? managingDivision : null}
             onDivisionRenamed={handleDivisionRenamed}
             onDivisionMembersChanged={handleDivisionMembersChanged}
+            onDivisionRatesChanged={handleDivisionRatesChanged}
             onDivisionDeleted={handleDivisionDeleted}
             scheduleCategories={categories}
             allRoles={allScheduleRoles}

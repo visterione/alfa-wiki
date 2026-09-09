@@ -60,14 +60,12 @@ async function getCabinetId(clinicId, room) {
  * Import MIS schedule for one user for one month.
  * @param {string|number} misUserId
  * @param {string} month  "YYYY-MM"
+ * @param {number|null} endDay  last day to import (e.g. 14); null = full month
+ * @param {{ createdBy?: string|null }} options  инициатор ручного импорта;
+ *   у фонового импорта остаётся null
  * @returns {{ imported: number, newCategories: number, month: string }}
  */
-/**
- * @param {string|number} misUserId
- * @param {string} month  "YYYY-MM"
- * @param {number|null} endDay  last day to import (e.g. 14); null = full month
- */
-async function importForUser(misUserId, month, endDay = null) {
+async function importForUser(misUserId, month, endDay = null, { createdBy = null } = {}) {
   const [yyyy, mm] = month.split('-');
   const daysInMonth = new Date(Number(yyyy), Number(mm), 0).getDate();
   const effectiveEnd = endDay ? Math.min(endDay, daysInMonth) : daysInMonth;
@@ -176,6 +174,7 @@ async function importForUser(misUserId, month, endDay = null) {
       roleTitle:  null,
       source:     'mis_import',
       misData:    r,
+      createdBy,
     });
   }
 

@@ -182,7 +182,7 @@ function ItemsList({ items, section, onDelete, onUpdate, readOnly }) {
             <>
               <div
                 className="rb-exec-item-name"
-                style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: readOnly ? 'default' : 'pointer' }}
+                style={{ flex: 1, minWidth: 0, cursor: readOnly ? 'default' : 'pointer' }}
                 onClick={() => !readOnly && startEdit(i)}
                 title={readOnly ? undefined : 'Нажмите для редактирования'}
               >
@@ -283,7 +283,7 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
             <>
               <div
                 className="rb-exec-item-name"
-                style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: readOnly ? 'default' : 'pointer' }}
+                style={{ flex: 1, minWidth: 0, cursor: readOnly ? 'default' : 'pointer' }}
                 onClick={() => !readOnly && startEdit(i)}
                 title={readOnly ? undefined : 'Нажмите для редактирования'}
               >{e.name}</div>
@@ -3298,7 +3298,7 @@ function AssistantsList({ assistants, onDelete, readOnly }) {
         const val = a.value ?? a.percent ?? 0;
         return (
           <div key={i} className="rb-exec-item">
-            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
               {a.name}
             </div>
             <span style={{ fontSize: 12, color: 'var(--rb-danger)', fontWeight: 600, whiteSpace: 'nowrap', width: 60, textAlign: 'right', display: 'inline-block', flexShrink: 0 }}>

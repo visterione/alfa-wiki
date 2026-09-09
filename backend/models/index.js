@@ -4331,6 +4331,12 @@ const DoctorSchedule = sequelize.define('DoctorSchedule', {
   ],
 });
 
+// Автор нужен в дневной карточке расписания. constraints: false сохраняет
+// совместимость с историческими строками, где createdBy мог остаться пустым или
+// ссылаться на уже удалённого пользователя.
+DoctorSchedule.belongsTo(User, { foreignKey: 'createdBy', as: 'creator', constraints: false });
+User.hasMany(DoctorSchedule, { foreignKey: 'createdBy', as: 'doctorSchedulesCreated', constraints: false });
+
 // === TABEL RECORD MODELS (табели учёта рабочего времени) ===
 const TabelRecord = sequelize.define('TabelRecord', {
   id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },

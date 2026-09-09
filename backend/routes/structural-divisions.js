@@ -1,8 +1,13 @@
 const express = require('express');
 const router  = express.Router();
-const { StructuralDivision, DivisionAccess, User, ExecutorSettings } = require('../models');
+const { StructuralDivision, DivisionAccess, User, ExecutorSettings, RbEmployee, sequelize } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity } = require('../services/rbLogger');
+const {
+  applyDivisionRates,
+  removeDivisionRates,
+  syncDivisionRates,
+} = require('../utils/divisionRates');
 
 function userAttrs() {
   return ['id', 'displayName', 'username', 'avatar'];
@@ -22,6 +27,85 @@ async function requireOwnerOrAdmin(req, res, divId) {
     res.status(403).json({ error: 'Нет доступа' }); return null;
   }
   return div;
+}
+
+function normalizeDoctorIds(ids) {
+  return [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))];
+}
+
+function employeeClinicIds(employee) {
+  if (!employee) return null;
+  return new Set((Array.isArray(employee.clinics) ? employee.clinics : [])
+    .map(clinic => typeof clinic === 'object' ? clinic?.id : clinic)
+    .filter(clinic => clinic !== null && clinic !== undefined && clinic !== '')
+    .map(String));
+}
+
+/**
+ * Синхронизирует ставки при изменении состава или набора ставок подразделения.
+ * Выполняется в той же транзакции, что и StructuralDivision, поэтому состав не
+ * может сохраниться отдельно от настроек сотрудников.
+ */
+async function syncMemberRates({
+  divisionId, oldDoctorIds, newDoctorIds, oldRates, newRates,
+  ratesChanged, updatedBy, transaction,
+}) {
+  const oldSet = new Set(normalizeDoctorIds(oldDoctorIds));
+  const newSet = new Set(normalizeDoctorIds(newDoctorIds));
+  const affectedIds = [...new Set([...oldSet, ...newSet])];
+  if (affectedIds.length === 0) return [];
+
+  const [settingRows, employees] = await Promise.all([
+    ExecutorSettings.findAll({
+      where: { misUserId: affectedIds },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    }),
+    RbEmployee.findAll({
+      where: { misUserId: affectedIds },
+      attributes: ['misUserId', 'name', 'clinics'],
+      transaction,
+    }),
+  ]);
+  const settingsById = new Map(settingRows.map(row => [String(row.misUserId), row]));
+  const employeesById = new Map(employees.map(row => [String(row.misUserId), row]));
+  const changedIds = [];
+
+  for (const doctorId of affectedIds) {
+    const existed = oldSet.has(doctorId);
+    const remains = newSet.has(doctorId);
+    if (existed && remains && !ratesChanged) continue;
+
+    const row = settingsById.get(doctorId);
+    const rawSettings = row?.settings || {};
+    let result;
+    if (existed && !remains) {
+      result = removeDivisionRates(rawSettings, divisionId, oldRates);
+    } else if (!existed && remains) {
+      result = applyDivisionRates(rawSettings, divisionId, newRates, {
+        eligibleClinicIds: employeeClinicIds(employeesById.get(doctorId)),
+      });
+    } else {
+      result = syncDivisionRates(rawSettings, divisionId, oldRates, newRates, {
+        eligibleClinicIds: employeeClinicIds(employeesById.get(doctorId)),
+      });
+    }
+    if (!result.changed) continue;
+
+    if (row) {
+      await row.update({ settings: result.settings, updatedBy }, { transaction });
+    } else {
+      const employee = employeesById.get(doctorId);
+      await ExecutorSettings.create({
+        misUserId: doctorId,
+        doctorName: employee?.name || doctorId,
+        settings: result.settings,
+        updatedBy,
+      }, { transaction });
+    }
+    changedIds.push(doctorId);
+  }
+  return changedIds;
 }
 
 // GET / — list
@@ -77,7 +161,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// PUT /:id — update name/doctorIds
+// PUT /:id — update name/doctorIds/rates
 router.put('/:id', authenticate, async (req, res) => {
   try {
     const div = await StructuralDivision.findByPk(req.params.id);
@@ -92,28 +176,53 @@ router.put('/:id', authenticate, async (req, res) => {
     if (name !== undefined && perm !== 'owner' && !isAdmin) {
       return res.status(403).json({ error: 'Только владелец может переименовывать' });
     }
-    if ((doctorIds !== undefined || rates !== undefined) && perm === null) {
+    if ((doctorIds !== undefined || rates !== undefined) && !['owner', 'edit', 'public'].includes(perm) && !isAdmin) {
       return res.status(403).json({ error: 'Нет доступа' });
     }
+    if (doctorIds !== undefined && !Array.isArray(doctorIds)) {
+      return res.status(400).json({ error: 'doctorIds должен быть массивом' });
+    }
+    if (rates !== undefined && !Array.isArray(rates)) {
+      return res.status(400).json({ error: 'rates должен быть массивом' });
+    }
 
-    const oldDoctorIds = div.doctorIds || [];
+    const oldName = div.name;
+    const oldDoctorIds = normalizeDoctorIds(div.doctorIds);
+    const oldRates = Array.isArray(div.rates) ? div.rates : [];
+    const newDoctorIds = doctorIds !== undefined ? normalizeDoctorIds(doctorIds) : oldDoctorIds;
+    const newRates = rates !== undefined ? rates : oldRates;
+    let ratesSyncedDoctorIds = [];
 
-    await div.update({
-      ...(name      !== undefined && { name: name.trim() }),
-      ...(doctorIds !== undefined && { doctorIds }),
-      ...(rates     !== undefined && { rates }),
+    await sequelize.transaction(async transaction => {
+      if (doctorIds !== undefined || rates !== undefined) {
+        ratesSyncedDoctorIds = await syncMemberRates({
+          divisionId: div.id,
+          oldDoctorIds,
+          newDoctorIds,
+          oldRates,
+          newRates,
+          ratesChanged: rates !== undefined,
+          updatedBy: req.user.id,
+          transaction,
+        });
+      }
+      await div.update({
+        ...(name      !== undefined && { name: name.trim() }),
+        ...(doctorIds !== undefined && { doctorIds: newDoctorIds }),
+        ...(rates     !== undefined && { rates: newRates }),
+      }, { transaction });
     });
 
     const textChanges = [];
     const diffChanges = [];
 
-    if (name !== undefined && name.trim() !== div.name) {
-      textChanges.push(`переименовано «${div.name}» → «${name.trim()}»`);
-      diffChanges.push({ field: 'name', label: 'Название', before: div.name, after: name.trim() });
+    if (name !== undefined && name.trim() !== oldName) {
+      textChanges.push(`переименовано «${oldName}» → «${name.trim()}»`);
+      diffChanges.push({ field: 'name', label: 'Название', before: oldName, after: name.trim() });
     }
 
     if (doctorIds !== undefined) {
-      const newIds = doctorIds || [];
+      const newIds = newDoctorIds;
       const addedIds   = newIds.filter(id => !oldDoctorIds.includes(id));
       const removedIds = oldDoctorIds.filter(id => !newIds.includes(id));
 
@@ -148,7 +257,7 @@ router.put('/:id', authenticate, async (req, res) => {
       });
     }
 
-    res.json({ ...div.toJSON(), myPermission: perm });
+    res.json({ ...div.toJSON(), myPermission: perm, ratesSyncedDoctorIds });
   } catch (err) {
     console.error('PUT structural-divisions error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -160,6 +269,20 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const div = await requireOwnerOrAdmin(req, res, req.params.id);
     if (!div) return;
+    let ratesSyncedDoctorIds = [];
+    await sequelize.transaction(async transaction => {
+      ratesSyncedDoctorIds = await syncMemberRates({
+        divisionId: div.id,
+        oldDoctorIds: div.doctorIds || [],
+        newDoctorIds: [],
+        oldRates: div.rates || [],
+        newRates: [],
+        ratesChanged: false,
+        updatedBy: req.user.id,
+        transaction,
+      });
+      await div.destroy({ transaction });
+    });
     await logRbActivity({
       userId:     req.user.id,
       tab:        'schedule',
@@ -169,8 +292,7 @@ router.delete('/:id', authenticate, async (req, res) => {
       summary:    `Удалено подразделение «${div.name}»`,
       diff:       { before: { name: div.name, doctorCount: (div.doctorIds || []).length } },
     });
-    await div.destroy();
-    res.json({ ok: true });
+    res.json({ ok: true, ratesSyncedDoctorIds });
   } catch (err) {
     console.error('DELETE structural-divisions error:', err);
     res.status(500).json({ error: 'Server error' });

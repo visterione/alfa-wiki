@@ -19,6 +19,7 @@ router.get('/', authenticate, async (req, res) => {
     let settings = record ? record.settings : {};
     // АУП скрыт от всех без флага (даже от админов).
     if (!canSeeAup(req.user)) settings = stripAupSettings(settings);
+    res.set('Cache-Control', 'no-store');
     res.json(settings || {});
   } catch (err) {
     console.error('Get executor settings error:', err);

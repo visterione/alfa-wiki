@@ -39,6 +39,9 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
     updateDoctorIds: (id, doctorIds) => {
       setDivisions(prev => prev.map(d => d.id === id ? { ...d, doctorIds } : d));
     },
+    updateRates: (id, rates) => {
+      setDivisions(prev => prev.map(d => d.id === id ? { ...d, rates } : d));
+    },
     // Само удаление живёт в настройках подразделения (за модалкой с подтверждением),
     // сюда приходит только уже случившийся факт — убрать строку из списка.
     removeDivision: (id) => {

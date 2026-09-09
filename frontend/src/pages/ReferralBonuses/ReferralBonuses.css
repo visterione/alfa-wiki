@@ -35,7 +35,8 @@
 .rb-header h1 svg { width: 24px; height: 24px; color: var(--rb-primary); }
 
 /* Layout: two panels */
-.rb-layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+.rb-layout { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 20px; align-items: start; min-width: 0; }
+.rb-layout > * { min-width: 0; }
 @media (max-width: 900px) { .rb-layout { grid-template-columns: 1fr; } }
 
 /* Left panel - doctors list */
@@ -124,7 +125,7 @@
 .rb-placeholder p { font-size: 14px; margin: 0; }
 
 /* Doctor card header */
-.rb-doctor-card { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: clip; }
+.rb-doctor-card { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: clip; min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
 .rb-doctor-card-header { padding: 16px 20px; background: linear-gradient(135deg, var(--accent-50), var(--accent-100)); border-bottom: 1px solid var(--rb-border); display: flex; align-items: flex-start; gap: 14px; position: sticky; top: 0; z-index: 20; }
 .rb-doctor-card-info h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; margin-top: 0; }
 .rb-doctor-card-info p { font-size: 13px; color: var(--rb-text-secondary); margin: 0; }
@@ -426,14 +427,14 @@
 .rb-exec-section-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .rb-exec-section-title svg { width: 16px; height: 16px; color: var(--rb-primary); }
 .rb-exec-section-body { padding: 14px 16px; }
-.rb-exec-flat-section { padding: 20px 0; border-top: 2px solid var(--rb-primary); margin-top: 8px; }
+.rb-exec-flat-section { padding: 20px 0; border-top: 2px solid var(--rb-primary); margin-top: 8px; min-width: 0; max-width: 100%; }
 .rb-exec-flat-section:first-of-type { border-top: none; padding-top: 8px; }
 .rb-exec-flat-label { font-size: 14px; font-weight: 600; color: var(--rb-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
 .rb-exec-flat-label svg { width: 16px; height: 16px; flex-shrink: 0; }
 .rb-exec-sep { border-top: 1px dashed var(--rb-border); padding-top: 10px; margin-top: 10px; }
-.rb-exec-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-.rb-exec-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--n-50); border: 1px solid var(--rb-border); border-radius: 8px; }
-.rb-exec-item-name { flex: 1; font-size: 13px; font-weight: 500; }
+.rb-exec-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; min-width: 0; max-width: 100%; }
+.rb-exec-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--n-50); border: 1px solid var(--rb-border); border-radius: 8px; min-width: 0; max-width: 100%; }
+.rb-exec-item-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .rb-exec-item-value { font-size: 13px; font-weight: 600; color: var(--rb-danger); white-space: nowrap; }
 .rb-exec-add-form { border: 1px dashed var(--rb-border-dark); border-radius: 8px; padding: 12px; background: var(--n-50); display: none; margin-bottom: 8px; }
 .rb-exec-add-form.visible { display: block; }
