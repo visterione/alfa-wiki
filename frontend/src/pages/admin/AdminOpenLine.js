@@ -645,9 +645,42 @@ function TemplatesTab({ data, steps, reload }) {
  * каким режим задумывался, а расхождение между задуманным и получившимся — это
  * и есть обычная причина «бот молчит».
  */
+/**
+ * Категория подписчика в МИС (ver. 8.08). Номер вписывается руками: справочника
+ * категорий публичное API МИС не отдаёт, а заведены они там по одной на бота —
+ * не «Telegram», а «Telegram, Альфа Дети». Пусто — бот никого не помечает.
+ *
+ * Сохраняем по Enter и по уходу из поля, а не на каждую набранную цифру: иначе
+ * в базу успевал бы лечь недонабранный номер, и первая же подписка ушла бы в
+ * чужую категорию.
+ */
+function BotCategory({ bot, onSave }) {
+  const [value, setValue] = useState(bot.misCategoryId ?? '');
+
+  useEffect(() => { setValue(bot.misCategoryId ?? ''); }, [bot.misCategoryId]);
+
+  const commit = () => {
+    if (String(value) === String(bot.misCategoryId ?? '')) return;
+    onSave({ misCategoryId: value });
+  };
+
+  return (
+    <input
+      className="ola-input mis-cat"
+      inputMode="numeric"
+      placeholder="кат. МИС"
+      title="Номер категории в МИС, которая ставится подписчику этого бота"
+      value={value}
+      onChange={e => setValue(e.target.value.replace(/\D/g, ''))}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+    />
+  );
+}
+
 function BranchBots({ medCenterId, bots, onChanged }) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ token: '', platform: 'telegram', deliveryMode: 'webhook' });
+  const [draft, setDraft] = useState({ token: '', platform: 'telegram', deliveryMode: 'webhook', misCategoryId: '' });
   const [busy, setBusy] = useState(false);
 
   const add = async () => {
@@ -656,7 +689,7 @@ function BranchBots({ medCenterId, bots, onChanged }) {
     try {
       const { data } = await lineApi.addBot({ ...draft, medCenterId });
       toast.success(`@${data.username}: ${data.note}`);
-      setDraft({ token: '', platform: 'telegram', deliveryMode: 'webhook' });
+      setDraft({ token: '', platform: 'telegram', deliveryMode: 'webhook', misCategoryId: '' });
       setAdding(false);
       onChanged();
     } catch (err) {
@@ -704,6 +737,13 @@ function BranchBots({ medCenterId, bots, onChanged }) {
               <div className="ola-bot-name">
                 @{bot.username || '—'}
                 <span className="ola-bot-token">{bot.tokenTail}</span>
+                {/* Бот без категории работает как обычно, и заметить пропажу
+                    иначе негде: подписки просто не доходят до карточек в МИС. */}
+                {!bot.misCategoryId && (
+                  <span className="ola-badge warn" title="Подписчики этого бота не помечаются в карточке пациента">
+                    без категории МИС
+                  </span>
+                )}
               </div>
               <div className={`ola-bot-state ${ok ? 'ok' : 'bad'}`}>
                 {bot.webhook.error
@@ -714,6 +754,8 @@ function BranchBots({ medCenterId, bots, onChanged }) {
                 {bot.webhook.pending > 0 && ` · в очереди ${bot.webhook.pending}`}
               </div>
             </div>
+
+            <BotCategory bot={bot} onSave={body => update(bot, body)} />
 
             <select
               className="ola-select narrow" value={bot.deliveryMode}
@@ -750,6 +792,14 @@ function BranchBots({ medCenterId, bots, onChanged }) {
                 placeholder="от BotFather"
                 value={draft.token}
                 onChange={e => setDraft(d => ({ ...d, token: e.target.value }))}
+              />
+            </div>
+            <div className="ola-field narrow">
+              <label>Категория МИС</label>
+              <input
+                className="ola-input" inputMode="numeric" placeholder="номер"
+                value={draft.misCategoryId}
+                onChange={e => setDraft(d => ({ ...d, misCategoryId: e.target.value.replace(/\D/g, '') }))}
               />
             </div>
             <div className="ola-field narrow">

@@ -1,0 +1,204 @@
+/* Показатели открытой линии (ver. 7.99, переехали в «Статистику» в 8.09).
+
+   Свой файл, а не кусок OpenLine.css: вкладка живёт теперь в другом разделе, и
+   тащить туда весь стиль рабочего окна оператора — вместе с чатом, списком
+   обращений и лентой — ради одной таблицы нельзя. Заодно исчезла общая
+   зависимость: пока файл был один, правка чата могла задеть показатели, о чём
+   узнавали не сразу.
+
+   Классы, которые раньше брались у чата (.chat-loading, .chat-empty) и у
+   страницы линии (.ol-empty-page, .ol-stars, .ol-spin), продублированы здесь
+   под своими именами. Это не копия ради копии: там они принадлежат чату и
+   меняются вместе с ним, а таблице нужен свой, независимый вид.
+
+   Таблица, а не карточки: величины сравнивают между людьми, а сравнение
+   столбиком — то, ради чего таблицы и существуют. */
+
+.ols-spin { animation: ols-rotate 1s linear infinite; }
+@keyframes ols-rotate { to { transform: rotate(360deg); } }
+
+.ols-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--text-disabled);
+}
+.ols-stars .on { color: var(--amber-500); fill: currentColor; }
+
+.ols-loading { display: flex; justify-content: center; padding: 40px; }
+
+.ols-empty {
+  padding: 40px 20px;
+  color: var(--text-tertiary);
+  text-align: center;
+  font-size: 14px;
+}
+
+.ols-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.ols-denied h2 { margin: 0; font-size: 18px; color: var(--text-secondary); }
+.ols-denied p { margin: 0; max-width: 420px; font-size: 14px; }
+
+/* Раздел «Статистика» прокручивается сам, поэтому своей прокрутки и растяжки
+   здесь нет — в рабочем окне оператора они были нужны, внутри вкладки мешают. */
+.ols-root { padding: 20px; }
+
+.ols-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ols-periods {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background: var(--bg-primary);
+}
+
+.ols-period {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 100px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ols-period.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.ols-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ols-refresh:hover { background: var(--bg-hover); }
+
+.ols-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ols-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-primary);
+  box-shadow: 0 1px 2px rgba(20, 29, 45, .05), 0 6px 14px rgba(20, 29, 45, .05);
+}
+
+.ols-total-value { font-size: 24px; font-weight: 700; color: var(--text-primary); }
+.ols-total-label { font-size: 12px; color: var(--text-tertiary); }
+
+/* Таблица шире экрана не помещается, и прокручиваться должна она, а не
+   страница: иначе на ноутбуке уезжает вся раскладка раздела. */
+.ols-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-primary);
+}
+
+.ols-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ols-table th {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ols-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.ols-table tbody tr:last-child td { border-bottom: none; }
+.ols-table tbody tr:hover { background: var(--bg-hover); }
+
+.ols-person { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+
+.ols-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.ols-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.ols-rating { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.ols-rating-value { font-weight: 600; }
+.ols-rating-value em, .ols-note, .ols-share-value em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.ols-share { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+
+.ols-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.ols-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--primary) 78%, #ffffff), var(--primary));
+}
+
+.ols-share-value { white-space: nowrap; font-weight: 600; }
+
+@media (max-width: 768px) {
+  .ols-root { padding: 12px; }
+}

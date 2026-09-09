@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Inbox, MessageCircle, Archive, Send, Check, Search, ArrowLeft,
-  AlertTriangle, Paperclip, Headphones, Star, CornerDownRight
+  AlertTriangle, Paperclip, Headphones, Star, CornerDownRight, UserCheck
 } from 'lucide-react';
 import { openLine as openLineApi } from '../services/api';
-import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import OpenLineStats from './OpenLineStats';
 import ChannelAvatar from '../components/openline/ChannelAvatar';
+import TransferMenu from '../components/openline/TransferMenu';
+import QuickReplyPicker from '../components/openline/QuickReplyPicker';
 import toast from 'react-hot-toast';
 // Оформление берём у мессенджера целиком, а не повторяем своим набором классов:
 // это одна и та же работа, только собеседник другой — сотрудник там, пациент
@@ -19,13 +19,15 @@ import './OpenLine.css';
 /**
  * Открытая линия: обращения пациентов из ботов (ver. 7.85, интерфейс — 8.02).
  *
- * Рабочее окно оператора колл-центра, и только оно: обращения и показатели.
+ * Рабочее окно оператора колл-центра, и только оно: обращения, и больше ничего.
  * До 8.02 здесь же лежали вкладки «Уведомления» и «Настройка линий» — состав
  * линий, тексты уведомлений всей сети и токены провайдера в одном клике от
  * очереди. Прав это не нарушало, но лишние вкладки в рабочем окне сбивали, а
  * промах мимо вкладки уводил человека туда, где ему делать нечего. Всё это
  * переехало в отдельный раздел админки (pages/admin/AdminOpenLine.js) со своим
- * правом openLineAdmin.
+ * правом openLineAdmin, а в 8.09 следом ушли и «Показатели» — в раздел
+ * «Статистика», к остальному сравнению людей за период. Полосы вкладок здесь
+ * больше нет вовсе: из одной кнопки она была подписью к самой себе.
  *
  * Три списка, а не один с фильтром: очередь — то, что надо разобрать, «мои» —
  * то, что надо довести, архив — то, куда лезут раз в месяц при разборе жалобы.
@@ -109,6 +111,12 @@ function dayLabel(value) {
 const dayKey = (value) => new Date(value).toDateString();
 const userName = (u) => (u ? (u.displayName || u.username) : '');
 
+// Карточка пациента в МИС. Адрес тот же, что в зарплатном модуле и справочниках,
+// — держать его в одном месте не вышло: раздел один, а страницы разные, и
+// импорт ради строки связал бы открытую линию с зарплатой.
+const MIS_WEB_BASE = 'https://rnova.medcentralfa.ru:3010';
+const misCardUrl = (patientId) => `${MIS_WEB_BASE}/patients/default/detail/id/${patientId}`;
+
 /**
  * Вложение в переписке. Картинку показываем сразу — обычно это фотография
  * направления или анализа, и открывать её отдельным кликом только мешает.
@@ -155,12 +163,6 @@ function Stars({ value }) {
 
 export default function OpenLine() {
   const { user } = useAuth();
-  // Экран держим в адресе, как в «Задачах»: ссылка на журнал уведомлений должна
-  // открываться журналом, а не сбрасывать человека в очередь обращений.
-  const [params, setParams] = useSearchParams();
-  const asked = params.get('screen');
-  const screen = ['notifications', 'settings', 'stats'].includes(asked) ? asked : 'conversations';
-
   const [state, setState] = useState(null);          // смена и линии сотрудника
   const [scope, setScope] = useState('queue');
   const [query, setQuery] = useState('');
@@ -173,6 +175,7 @@ export default function OpenLine() {
 
   const bottomRef = useRef(null);
   const fieldRef = useRef(null);
+  const fileRef = useRef(null);
 
   /**
    * Поле ответа растёт под текст: оператор пишет абзацами, а в одну строку из
@@ -277,6 +280,54 @@ export default function OpenLine() {
     }
   };
 
+  /**
+   * Заготовка вставляется в поле, а не уходит пациенту.
+   *
+   * Почти всегда её надо дописать — поздороваться, назвать время, добавить «до
+   * встречи». Отправка по щелчку экономила бы одно нажатие и стоила бы неверно
+   * отправленного ответа, который уже не отозвать.
+   *
+   * Дописываем к набранному, а не затираем его: оператор мог начать печатать и
+   * посреди фразы вспомнить про заготовку.
+   */
+  const insertQuick = (text) => {
+    setDraft(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n${text}` : text));
+    // Высоту и фокус возвращаем после того, как React дорисует новое значение:
+    // до этого scrollHeight у поля ещё прежний.
+    setTimeout(() => { fieldRef.current?.focus(); fitField(); }, 0);
+  };
+
+  /**
+   * Файл от оператора: памятка, бланк, схема проезда.
+   *
+   * Ждать ответа обязательно — пока файл уходит в мессенджер, поле блокируется
+   * тем же признаком, что и при обычной отправке. Иначе на большом файле
+   * оператор успевает нажать скрепку второй раз и присылает пациенту то же
+   * самое дважды.
+   */
+  const sendFile = async (file) => {
+    if (!file || sending || !activeId) return;
+
+    setSending(true);
+    try {
+      const { data } = await openLineApi.sendFile(activeId, file, draft.trim());
+      // Подпись ушла вместе с файлом — поле надо освободить, иначе следующим
+      // нажатием «Отправить» тот же текст уйдёт вторым сообщением.
+      if (draft.trim()) {
+        setDraft('');
+        if (fieldRef.current) fieldRef.current.style.height = 'auto';
+      }
+      if (data.deliveryError) toast.error(data.deliveryError);
+      await loadThread(activeId);
+      loadList();
+    } catch (err) {
+      toast.error(err.response?.data?.error
+        || (err.response?.status === 413 ? 'Файл слишком большой' : 'Файл не отправлен'));
+    } finally {
+      setSending(false);
+    }
+  };
+
   const send = async (e) => {
     e.preventDefault();
     const text = draft.trim();
@@ -352,32 +403,9 @@ export default function OpenLine() {
 
   // ── Отрисовка ───────────────────────────────────────────────────────────
 
-  const screenTabs = (
-    <nav className="ol-screens">
-      <button
-        className={screen === 'conversations' ? 'active' : ''}
-        onClick={() => setParams({})}
-      >Обращения</button>
-      <button
-        className={screen === 'stats' ? 'active' : ''}
-        onClick={() => setParams({ screen: 'stats' })}
-      >Показатели</button>
-    </nav>
-  );
-
-  if (screen === 'stats') {
-    return (
-      <div className="ol-page">
-        {screenTabs}
-        <OpenLineStats />
-      </div>
-    );
-  }
-
   if (state && !state.isOperator) {
     return (
       <div className="ol-page">
-        {screenTabs}
         <div className="ol-empty-page">
           <Inbox size={40} />
           <h2>Вы не заведены ни в одну линию</h2>
@@ -394,8 +422,6 @@ export default function OpenLine() {
 
   return (
     <div className="ol-page">
-      {screenTabs}
-
       <div className="ol-chat">
         <div className="alfa-chat">
           <div className={`chat-sidebar ${activeId ? 'mobile-hidden' : ''}`}>
@@ -491,13 +517,33 @@ export default function OpenLine() {
                     <ChannelAvatar platform={subscriber?.platform} size={40} />
                   </div>
                   <div className="chat-main-info">
-                    <div className="chat-main-name" title={personTitle(subscriber)}>
-                      {personTitle(subscriber)}
+                    <div className="chat-main-name ol-head-name">
+                      <span className="ol-head-name-text" title={personTitle(subscriber)}>
+                        {personTitle(subscriber)}
+                      </span>
+                      {/* Ссылка на карточку в МИС — значком, а не именем целиком
+                          (ver. 8.09). Заголовок здесь и так кликабелен на вид:
+                          сделать ссылкой всю строку значило бы, что оператор,
+                          решивший выделить телефон, каждый раз уезжает в МИС.
+                          Значок появляется только когда карточка найдена. */}
+                      {subscriber?.patientMisId && (
+                        <a
+                          className="ol-mis-link"
+                          href={misCardUrl(subscriber.patientMisId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Открыть карточку пациента в Renovatio"
+                        >R</a>
+                      )}
                     </div>
                     <div className="chat-main-status">
                       {conversation.line?.medCenter?.name || conversation.line?.name}
                       {conversation.status === 'queued' && ' · в очереди'}
-                      {conversation.status === 'assigned' && (isMine ? ' · у вас' : ` · ведёт ${userName(conversation.assignee)}`)}
+                      {/* «У вас» здесь не пишем: своё обращение оператор открыл
+                          сам и из списка «Мои», а строка под именем пациента
+                          нужна для того, чего он не знает, — какой это медцентр
+                          и кто ведёт разговор, если не он. */}
+                      {conversation.status === 'assigned' && !isMine && ` · ведёт ${userName(conversation.assignee)}`}
                       {conversation.status === 'closed' && ' · обращение закрыто'}
                     </div>
                   </div>
@@ -507,6 +553,12 @@ export default function OpenLine() {
                       <button className="btn btn-primary ol-head-btn" onClick={() => take(conversation.id)}>
                         Взять себе
                       </button>
+                    )}
+                    {canWrite && (
+                      <TransferMenu
+                        conversationId={conversation.id}
+                        onDone={() => { loadList(); loadThread(conversation.id); }}
+                      />
                     )}
                     {conversation.status === 'assigned' && isMine && (
                       <button className="btn ol-head-btn" onClick={() => closeConversation(conversation.id)}>
@@ -547,6 +599,19 @@ export default function OpenLine() {
                     }
 
                     const m = row.message;
+
+                    // Служебная отметка переписки — передача обращения. Не
+                    // сообщение: наружу не уходила, автора-пузыря у неё нет, и
+                    // выглядеть она должна как подпись в ленте, а не как чья-то
+                    // реплика.
+                    if (m.direction === 'sys') {
+                      return (
+                        <div key={row.key} className="ol-note">
+                          <span><UserCheck size={12} /> {m.text} · {timeLabel(m.createdAt)}</span>
+                        </div>
+                      );
+                    }
+
                     const own = m.direction === 'out';
                     const hasAttachments = (m.attachments || []).length > 0;
 
@@ -583,6 +648,27 @@ export default function OpenLine() {
                 </div>
 
                 <form className="chat-input" onSubmit={send}>
+                  <QuickReplyPicker onPick={insertQuick} disabled={!canWrite || sending} />
+
+                  {/* Скрепка открывает обычный выбор файла: своего окна с
+                      предпросмотром здесь нет намеренно — оператор посылает
+                      памятку или бланк, а не подбирает фотографию. */}
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    hidden
+                    onChange={e => { sendFile(e.target.files[0]); e.target.value = ''; }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-icon-chat"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={!canWrite || sending}
+                    title="Отправить файл"
+                  >
+                    <Paperclip size={20} />
+                  </button>
+
                   <div className="chat-input-wrapper">
                     <textarea
                       ref={fieldRef}

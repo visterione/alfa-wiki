@@ -70,6 +70,7 @@ const ReviewBoard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [selectedReview, setSelectedReview] = useState(null);
   const [editingReview, setEditingReview] = useState(null);
 
@@ -370,12 +371,6 @@ const ReviewBoard = () => {
     const review = reviewsList.find(r => r.id === draggableId);
     if (!review) return;
 
-    // Только позитивные в final
-    if (newStatus === 'final' && review.rating < 4) {
-      toast.error('В финальный этап можно перемещать только позитивные отзывы (★★★★+)');
-      return;
-    }
-
     // Проверяем допустимость перехода по workflow-сценарию
     if (oldStatus !== newStatus) {
       const workflowAllowed = isTransitionAllowedByWorkflow(board?.workflowConfig, oldStatus, newStatus, review);
@@ -421,6 +416,15 @@ const ReviewBoard = () => {
       }
       toast.success('Отзыв перемещён');
       loadData();
+
+      // Раньше негатив вообще не пускали в финальную колонку: решение вносили
+      // кнопкой «Финализировать» в карточке, и только она переводила статус.
+      // Теперь перетащить можно любой отзыв, а диалог решения для негатива
+      // открывается сам — заполнять его необязательно.
+      const moved = reviewsList.find(r => r.id === draggableId);
+      if (newStatus === 'final' && moved && moved.rating <= 3 && !moved.finalizedAt) {
+        openFinalizeModal({ ...moved, status: 'final' });
+      }
     } catch (err) {
       console.error('Error moving review:', err);
       toast.error('Ошибка при перемещении');
@@ -532,23 +536,33 @@ const ReviewBoard = () => {
     setShowFinalizeModal(true);
   };
 
-  const handleFinalize = async (e) => {
-    e.preventDefault();
-
-    if (!finalizeData.decisionCategory) {
-      toast.error('Выберите категорию решения');
-      return;
-    }
+  // Диалог открывается сам после перетаскивания, поэтому закрытие любым способом —
+  // крестиком, «Пропустить», кликом по фону — всё равно финализирует отзыв. Иначе он
+  // завис бы в финальной колонке со статусом final, но без записи о решении и без PDF.
+  const submitFinalize = async () => {
+    if (finalizing) return;
 
     try {
+      setFinalizing(true);
       const response = await reviews.finalizeReview(selectedReview.id, finalizeData);
       setReviewsList(prev => prev.map(r => r.id === selectedReview.id ? response.data : r));
       setShowFinalizeModal(false);
-      toast.success('Отзыв финализирован');
+      // Пустую форму закрывают чаще, чем заполняют, и сообщать про сохранение
+      // «ничего» незачем — сразу после перетаскивания уже был свой тост.
+      if (finalizeData.decisionCategory || finalizeData.decisionDescription.trim()) {
+        toast.success('Решение сохранено');
+      }
     } catch (err) {
       console.error('Error finalizing review:', err);
       toast.error(err.response?.data?.error || 'Ошибка при финализации');
+    } finally {
+      setFinalizing(false);
     }
+  };
+
+  const handleFinalize = async (e) => {
+    e.preventDefault();
+    await submitFinalize();
   };
 
   // Add comment
@@ -943,8 +957,6 @@ const ReviewBoard = () => {
             // Явно настроенные пользователи для этой колонки (показываем секцию даже если 0 карточек)
             const configuredIds = new Set(board?.columnSettings?.[column.id]?.visibleUserIds || []);
 
-            // final принимает только позитивные отзывы — разрешаем дроп,
-            // но блокируем негативные в handleDragEnd
             const isDropDisabled = !access.canWrite;
 
             // Все карточки колонки (для глобальной индексации при Draggable)
@@ -1039,9 +1051,6 @@ const ReviewBoard = () => {
                 <div className="column-header" style={{ borderTopColor: column.color }}>
                   <h3>{board?.columnNames?.[column.id] || column.label}</h3>
                   <div className="column-header-right">
-                    {column.id === 'final' && (
-                      <span className="column-positive-hint" title="Только позитивные отзывы">★★★★+</span>
-                    )}
                     <span className="column-count">{allCards.length}</span>
                   </div>
                 </div>
@@ -1408,9 +1417,9 @@ const ReviewBoard = () => {
             <div className="modal-header">
               <h2>Детали отзыва</h2>
               <div className="header-actions">
-                {access.canWrite && selectedReview.status === 'verification_done' && (
+                {access.canWrite && selectedReview.status === 'final' && !selectedReview.finalizedAt && (
                   <button className="btn-finalize" onClick={() => { setShowDetailsModal(false); openFinalizeModal(selectedReview); }}>
-                    Финализировать
+                    Внести решение
                   </button>
                 )}
                 <button className="btn-close" onClick={() => setShowDetailsModal(false)}>
@@ -1734,24 +1743,23 @@ const ReviewBoard = () => {
 
       {/* Finalize Modal */}
       {showFinalizeModal && selectedReview && (
-        <div className="modal-overlay" onClick={() => setShowFinalizeModal(false)}>
+        <div className="modal-overlay" onClick={submitFinalize}>
           <div className="modal-content finalize-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Финализация отзыва</h2>
-              <button className="btn-close" onClick={() => setShowFinalizeModal(false)}>
+              <h2>Решение по отзыву</h2>
+              <button className="btn-close" onClick={submitFinalize}>
                 <X size={20} />
               </button>
             </div>
 
             <form onSubmit={handleFinalize}>
               <div className="form-group">
-                <label>Категория решения *</label>
+                <label>Категория решения</label>
                 <select
                   value={finalizeData.decisionCategory}
                   onChange={(e) => setFinalizeData(prev => ({ ...prev, decisionCategory: e.target.value }))}
-                  required
                 >
-                  <option value="">Выберите категорию</option>
+                  <option value="">Не указана</option>
                   {DECISION_CATEGORIES.map(c => (
                     <option key={c.id} value={c.id}>{c.label}</option>
                   ))}
@@ -1769,11 +1777,11 @@ const ReviewBoard = () => {
               </div>
 
               <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setShowFinalizeModal(false)}>
-                  Отмена
+                <button type="button" className="btn-cancel" onClick={submitFinalize} disabled={finalizing}>
+                  Пропустить
                 </button>
-                <button type="submit" className="btn-submit">
-                  Финализировать
+                <button type="submit" className="btn-submit" disabled={finalizing}>
+                  Сохранить
                 </button>
               </div>
             </form>

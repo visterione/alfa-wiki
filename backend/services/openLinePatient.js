@@ -140,6 +140,10 @@ async function refresh(subscriber, force = false) {
       patientCard: chosen.number || null,
       patientName: fullName(chosen) || null,
       patientBirthDate: chosen.birth_date || null,
+      // Идентификатор выбранного, а не всего списка (ver. 8.09): по нему
+      // строится ссылка на карточку в МИС из шапки чата, и указывать она должна
+      // на того же человека, чьё имя там написано.
+      patientMisId: chosen.patient_id != null ? String(chosen.patient_id) : null,
       patientCheckedAt: new Date()
     });
   } catch (err) {

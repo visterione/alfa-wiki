@@ -38,6 +38,7 @@ const {
 } = require('../models');
 const { getChannel } = require('./messengers');
 const patients = require('./openLinePatient');
+const files = require('./openLineFiles');
 
 const DEFAULT_OFFLINE_REPLY =
   'Сейчас все операторы заняты или смена завершена. ' +
@@ -278,7 +279,7 @@ async function operatorLineIds(userId) {
 
 const SUBSCRIBER_FIELDS = [
   'id', 'platform', 'phone', 'firstName', 'lastName', 'username', 'patientIds',
-  'patientCard', 'patientName', 'patientBirthDate', 'isBlocked'
+  'patientCard', 'patientName', 'patientBirthDate', 'patientMisId', 'isBlocked'
 ];
 
 function conversationInclude(search) {
@@ -355,6 +356,9 @@ async function withPreviews(rows) {
            "conversationId", direction, text, attachments, "createdAt"
     FROM omni_messages
     WHERE "conversationId" IN (:ids)
+      -- Служебные отметки (передача чата) в превью не годятся: строка списка
+      -- отвечает на вопрос «о чём там разговор», а не «что мы с этим делали».
+      AND direction <> 'sys'
     ORDER BY "conversationId", "createdAt" DESC
   `, { replacements: { ids }, type: sequelize.QueryTypes.SELECT });
 
@@ -511,7 +515,14 @@ async function rate(sessionId, score) {
  * Ответ оператора. Сначала отправляем в мессенджер и только потом сохраняем:
  * сообщение, которое не ушло, не должно висеть в переписке как отправленное.
  */
-async function reply(userId, conversationId, text) {
+/**
+ * Общее начало любого ответа — текстом или файлом.
+ *
+ * Проверки и взятие в работу вынесены сюда, потому что расходиться им нельзя:
+ * ветка, где файл уходит пациенту в закрытом обращении или в чужом чате, — это
+ * та же ошибка, что и для текста, только найденная позже.
+ */
+async function prepareReply(userId, conversationId) {
   const conversation = await loadForOperator(userId, conversationId);
 
   if (conversation.status === 'closed') {
@@ -533,28 +544,23 @@ async function reply(userId, conversationId, text) {
   const bot = await MessengerBot.findByPk(conversation.botId);
   if (!bot) throw new OpenLineError('not_found', 'Бот этого обращения больше не подключён');
 
-  const channel = getChannel(bot.platform);
+  return { conversation, session, subscriber, bot, channel: getChannel(bot.platform) };
+}
 
-  let externalMessageId = null;
-  let deliveryError = null;
-  try {
-    const sent = await channel.sendText(bot, subscriber.externalUserId, text);
-    externalMessageId = sent.externalMessageId;
-  } catch (err) {
-    deliveryError = err.message;
-    if (err.code === 'blocked') {
-      await subscriber.update({ isBlocked: true, blockedAt: new Date() });
-      deliveryError = 'Пациент заблокировал бота — сообщение не доставлено';
-    }
-  }
-
+/**
+ * Записывает исход отправки в переписку. Недоставленное сохраняется наравне с
+ * ушедшим и с пометкой: оператор должен узнать об этом от нас, а не по молчанию
+ * пациента.
+ */
+async function recordOutgoing({ conversation, session, userId, text, attachments, sent, deliveryError }) {
   const message = await OmniMessage.create({
-    conversationId,
+    conversationId: conversation.id,
     sessionId: session ? session.id : null,
     direction: 'out',
     authorUserId: userId,
-    text,
-    externalMessageId,
+    text: text || '',
+    attachments: attachments || [],
+    externalMessageId: sent ? sent.externalMessageId : null,
     deliveryError
   });
 
@@ -566,6 +572,166 @@ async function reply(userId, conversationId, text) {
 
   await conversation.update({ lastMessageAt: new Date() });
   return { message, deliveryError };
+}
+
+/** Ошибку доставки переводим в человеческую только там, где знаем причину. */
+async function deliveryFailure(err, subscriber) {
+  if (err.code === 'blocked') {
+    await subscriber.update({ isBlocked: true, blockedAt: new Date() });
+    return 'Пациент заблокировал бота — сообщение не доставлено';
+  }
+  return err.message;
+}
+
+async function reply(userId, conversationId, text) {
+  const { conversation, session, subscriber, bot, channel } = await prepareReply(userId, conversationId);
+
+  let sent = null;
+  let deliveryError = null;
+  try {
+    sent = await channel.sendText(bot, subscriber.externalUserId, text);
+  } catch (err) {
+    deliveryError = await deliveryFailure(err, subscriber);
+  }
+
+  return recordOutgoing({ conversation, session, userId, text, sent, deliveryError });
+}
+
+/**
+ * Ответ файлом (ver. 8.09).
+ *
+ * До этого переписка была односторонней по вложениям: пациент мог прислать
+ * фотографию направления, а оператор в ответ — только текст. Памятку перед
+ * гастроскопией, бланк, схему проезда приходилось диктовать словами или просить
+ * человека звонить.
+ *
+ * Файл сначала кладётся к себе и только потом уходит в мессенджер. Порядок
+ * важен: не ушло — вложение всё равно остаётся в переписке с пометкой «не
+ * доставлено», и оператор видит, что именно он посылал. Обратный порядок при
+ * сбое оставлял бы историю без того, о чём шла речь.
+ *
+ * @param {Object} file  { buffer, originalName, mimetype, size }
+ * @param {string} [caption]  подпись; у мессенджеров она часть того же сообщения
+ */
+async function replyWithFile(userId, conversationId, file, caption = '') {
+  const { conversation, session, subscriber, bot, channel } = await prepareReply(userId, conversationId);
+
+  const attachment = await files.saveOutgoing(file, conversation.id);
+
+  let sent = null;
+  let deliveryError = null;
+  try {
+    sent = attachment.kind === 'photo'
+      ? await channel.sendPhoto(bot, subscriber.externalUserId,
+        { buffer: file.buffer, fileName: attachment.title }, caption)
+      : await channel.sendDocument(bot, subscriber.externalUserId,
+        { buffer: file.buffer, fileName: attachment.title }, caption);
+  } catch (err) {
+    deliveryError = await deliveryFailure(err, subscriber);
+  }
+
+  return recordOutgoing({
+    conversation, session, userId, text: caption, attachments: [attachment], sent, deliveryError
+  });
+}
+
+/**
+ * Кому можно передать обращение: состав линии, на которой оно живёт (ver. 8.09).
+ *
+ * Спрашивается у самого обращения, а не берётся общим списком сотрудников:
+ * передавать можно только тому, кто на этой линии работает, — иначе чат уедет
+ * человеку, который его даже не откроет.
+ */
+async function transferTargets(userId, conversationId) {
+  const conversation = await loadForOperator(userId, conversationId);
+
+  const rows = await OmniLineOperator.findAll({
+    where: { lineId: conversation.lineId },
+    include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+  });
+
+  // На смене ли человек — показываем, но не запрещаем: передать вечернему
+  // сотруднику вопрос, ответ на который нужен утром, вполне разумно.
+  const onShift = await OmniShift.findAll({
+    where: { lineId: conversation.lineId, endedAt: null },
+    attributes: ['userId']
+  });
+  const shiftIds = new Set(onShift.map(r => r.userId));
+
+  return rows
+    .filter(r => r.user && r.userId !== userId)
+    .map(r => ({ ...r.user.get({ plain: true }), onShift: shiftIds.has(r.userId) }))
+    .sort((a, b) => (Number(b.onShift) - Number(a.onShift))
+      || String(a.displayName || a.username).localeCompare(String(b.displayName || b.username), 'ru'));
+}
+
+/**
+ * Передать обращение другому сотруднику (ver. 8.09).
+ *
+ * До этого передать чат было нечем: взявший его либо доводил разговор сам, либо
+ * закрывал обращение — и тогда пациенту уходила просьба оценить работу, которой
+ * ещё не было. Оператор, у которого кончилась смена или который не знает
+ * ответа, оставался с чужим вопросом на руках.
+ *
+ * Передача меняет исполнителя и у обращения, и у текущей сессии. Второе важнее
+ * первого: показатели считаются по сессиям, и без этого разобранное обращение
+ * зачлось бы тому, кто его только принял, а разговор довёл другой.
+ *
+ * В ленте остаётся отметка. Принявший должен видеть, откуда у него этот чат, а
+ * при разборе жалобы через месяц — кто и когда его передал; в списке обращений
+ * такое не восстанавливается.
+ */
+async function transfer(userId, conversationId, targetUserId) {
+  const conversation = await loadForOperator(userId, conversationId);
+
+  if (conversation.status === 'closed') {
+    throw new OpenLineError('not_yours', 'Обращение закрыто — передавать нечего');
+  }
+  // Чужое обращение перехватывать нельзя: это была бы передача себе от чужого
+  // имени. Ничьё из очереди передать можно — это просто назначение исполнителя.
+  if (conversation.assigneeUserId && conversation.assigneeUserId !== userId) {
+    throw new OpenLineError('not_yours', 'Обращение ведёт другой сотрудник');
+  }
+  if (String(targetUserId) === String(userId)) {
+    throw new OpenLineError('not_found', 'Обращение и так у вас');
+  }
+
+  const isTargetOperator = await OmniLineOperator.count({
+    where: { lineId: conversation.lineId, userId: targetUserId }
+  });
+  if (!isTargetOperator) {
+    throw new OpenLineError('not_found', 'Этот сотрудник не работает на линии обращения');
+  }
+
+  const [from, to] = await Promise.all([
+    User.findByPk(userId, { attributes: ['id', 'username', 'displayName'] }),
+    User.findByPk(targetUserId, { attributes: ['id', 'username', 'displayName'] })
+  ]);
+  if (!to) throw new OpenLineError('not_found', 'Сотрудник не найден');
+
+  const session = await currentSession(conversationId);
+
+  await conversation.update({
+    status: 'assigned',
+    assigneeUserId: targetUserId,
+    assignedAt: new Date()
+  });
+  if (session) await session.update({ assigneeUserId: targetUserId, assignedAt: new Date() });
+
+  const name = (u) => (u ? (u.displayName || u.username) : 'сотрудник');
+  await OmniMessage.create({
+    conversationId,
+    sessionId: session ? session.id : null,
+    // 'sys' — служебная отметка переписки, а не сообщение пациенту: наружу она
+    // не уходит и в превью списка не попадает. Три буквы потому, что колонка
+    // direction — VARCHAR(3), и расширять её ради одной пометки дороже, чем
+    // назвать пометку короче.
+    direction: 'sys',
+    authorUserId: userId,
+    text: `${name(from)} передал обращение: ${name(to)}`
+  });
+
+  return loadForOperator(userId, conversationId);
 }
 
 // ── Продуктивность ────────────────────────────────────────────────────────
@@ -699,5 +865,8 @@ module.exports = {
   close,
   rate,
   reply,
+  replyWithFile,
+  transfer,
+  transferTargets,
   stats
 };

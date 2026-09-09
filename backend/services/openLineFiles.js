@@ -69,6 +69,45 @@ async function saveIncoming(channel, bot, media, conversationId) {
 }
 
 /**
+ * Кладёт файл оператора в тот же каталог, что и присланные пациентом (ver. 8.09).
+ *
+ * Отдельного каталога для исходящих нет намеренно: файл в переписке принадлежит
+ * переписке, кто бы его ни отправил, и проверка доступа у него та же. Развести
+ * их значило бы завести вторую проверку, которая обязана совпадать с первой, —
+ * а совпадать вечно она не будет.
+ *
+ * Имя на диске случайное, а исходное остаётся только в описании вложения:
+ * человек называет файлы как хочет, включая «..» и слэши, и склеивать такое с
+ * путём нельзя.
+ *
+ * @param {Object} file  { buffer, originalName, mimetype }
+ * @returns {Promise<Object>} описание вложения для omni_messages.attachments
+ */
+async function saveOutgoing(file, conversationId) {
+  const dir = path.join(ROOT, conversationId);
+  await fs.promises.mkdir(dir, { recursive: true });
+
+  const original = String(file.originalName || 'файл');
+  // Расширение берём из имени, но не длиннее разумного: «.jpeg» бывает, а
+  // «.<двадцать букв>» — это уже не расширение, а часть имени.
+  const ext = (path.extname(original) || '').slice(0, 8).toLowerCase();
+  const name = crypto.randomUUID() + ext;
+
+  await fs.promises.writeFile(path.join(dir, name), file.buffer);
+
+  return {
+    // Картинку лента показывает сразу, остальное — плашкой со скрепкой. Судим
+    // по типу, а не по расширению: тип приходит от браузера вместе с файлом, а
+    // расширение человек может написать любое.
+    kind: /^image\//.test(file.mimetype || '') ? 'photo' : 'file',
+    title: original,
+    url: `/uploads/open-line/${conversationId}/${name}`,
+    mime: file.mimetype || null,
+    size: file.buffer.length
+  };
+}
+
+/**
  * Линия, которой принадлежит файл, — по самой ссылке в переписке.
  *
  * Нужно из-за слияния переписок в 7.99: до него каталог назывался по id
@@ -120,4 +159,4 @@ async function openLineFileGuard(req, res, next) {
   }
 }
 
-module.exports = { saveIncoming, openLineFileGuard, ROOT };
+module.exports = { saveIncoming, saveOutgoing, openLineFileGuard, ROOT, MAX_BYTES };

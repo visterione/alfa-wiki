@@ -613,7 +613,9 @@ const TelegramSubscriber = sequelize.define('TelegramSubscriber', {
 
 // === PATIENT BOT SUBSCRIBER MODEL ===
 // Подписчики клиентских ботов (Telegram / MAX) по 6 организациям.
-// Категория в МИС зависит ТОЛЬКО от платформы (2 категории), organization — разрез для статистики.
+// Категория в МИС берётся у бота (messenger_bots."misCategoryId", ver. 8.08):
+// она заведена на каждый медцентр и мессенджер отдельно. organization — разрез
+// для статистики.
 const BotSubscriber = sequelize.define('BotSubscriber', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   platform: { type: DataTypes.STRING(20), allowNull: false },        // 'telegram' | 'max'
@@ -631,6 +633,12 @@ const BotSubscriber = sequelize.define('BotSubscriber', {
   patientCard: { type: DataTypes.STRING(30), allowNull: true },       // номер карты
   patientName: { type: DataTypes.STRING(250), allowNull: true },      // ФИО полностью
   patientBirthDate: { type: DataTypes.STRING(20), allowNull: true },  // как отдаёт МИС, ДД.ММ.ГГГГ
+  // Чья именно карточка выбрана из patientIds (ver. 8.09). Раньше выбор жил
+  // только в снимке — имя и номер карты, — а идентификатора не оставалось, и
+  // ссылку на карточку в МИС из шапки чата построить было не из чего: брать
+  // первый id из patientIds нельзя, там семья, и старшего среди них выбирает
+  // openLinePatient.pickOldest, а не порядок в массиве.
+  patientMisId: { type: DataTypes.STRING(20), allowNull: true },
   patientCheckedAt: { type: DataTypes.DATE, allowNull: true },        // когда снимок обновляли
   status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'started' }, // started | identified | tagged
   source: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'bot' },      // bot | import (Fromni backfill)
@@ -682,6 +690,12 @@ const MessengerBot = sequelize.define('MessengerBot', {
   // организацию, а филиал угадывался по ней. У проверочных ботов пусто
   // намеренно — они не обслуживают пациентов.
   medCenterId: { type: DataTypes.UUID, allowNull: true },
+  // Категория подписчика в МИС (ver. 8.08). Заведена не на платформу, а на
+  // каждого бота отдельно: сеть хочет видеть в карточке пациента, из какого
+  // именно медцентра и мессенджера он пришёл, — «Telegram» на всю сеть такого
+  // не отвечает. Пусто — бот не помечает никого: так живут проверочные боты и
+  // те, кому категорию в МИС ещё не завели.
+  misCategoryId: { type: DataTypes.INTEGER, allowNull: true },
   lastUpdateId: { type: DataTypes.BIGINT, allowNull: false, defaultValue: 0 }, // курсор getUpdates
   // Какую линию открытой линии кормит бот. Связь явная: на медцентр приходится
   // два бота (Telegram и MAX), а небольшие центры со временем могут делить одну.
@@ -3421,6 +3435,38 @@ const OmniMessage = sequelize.define('OmniMessage', {
   indexes: [{ fields: ['conversationId', 'createdAt'] }]
 });
 
+/**
+ * Быстрые ответы оператора (ver. 8.09).
+ *
+ * Комплект один на всю сеть, а не по сотруднику: колл-центр отвечает от лица
+ * клиники, и «как проехать» должно звучать одинаково у всех, кто сегодня на
+ * смене. Персональные заготовки этого не дают — они дают пять разных ответов на
+ * один вопрос.
+ *
+ * Правит их сам оператор, без администратора. Это решение заказчика и оно
+ * осознанное: заготовка нужна тому, кто отвечает, и правится она в тот момент,
+ * когда стало ясно, что формулировка не работает. Заявка администратору на
+ * такое — способ не завести заготовок вовсе.
+ */
+const OmniQuickReply = sequelize.define('OmniQuickReply', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  // Короткое имя в списке. Ответ бывает в пять строк, и выбирать из пяти строк
+  // текста, когда пациент ждёт, невозможно.
+  title: { type: DataTypes.STRING(80), allowNull: false },
+  text: { type: DataTypes.TEXT, allowNull: false },
+  // Порядок задаёт сам оператор: часто используемое должно быть сверху, а по
+  // алфавиту оно оказывается где придётся.
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+  updatedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'omni_quick_replies',
+  timestamps: true,
+  indexes: [{ fields: ['sortOrder'] }]
+});
+
+OmniQuickReply.belongsTo(User, { foreignKey: 'updatedBy', as: 'editor' });
+
 OmniLine.hasMany(OmniLineOperator, { foreignKey: 'lineId', as: 'operators' });
 OmniLineOperator.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 OmniLineOperator.belongsTo(User, { foreignKey: 'userId', as: 'user' });
@@ -4709,6 +4755,7 @@ module.exports = {
   OmniSession,
   OmniShift,
   OmniMessage,
+  OmniQuickReply,
   SiteWidget,
   NotifAppointment,
   NotifTemplate,

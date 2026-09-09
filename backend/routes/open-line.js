@@ -8,14 +8,45 @@
  */
 
 const express = require('express');
+const multer = require('multer');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { OmniLine, OmniLineOperator, MessengerBot, MedCenter, User } = require('../models');
+const { OmniLine, OmniLineOperator, MessengerBot, MedCenter, User, OmniQuickReply } = require('../models');
 const openLine = require('../services/openLine');
 const fileAccess = require('../services/fileAccess');
+const openLineFiles = require('../services/openLineFiles');
 const { getChannel } = require('../services/messengers');
 const crypto = require('crypto');
 
 const router = express.Router();
+
+// Файл держим в памяти: он уходит в мессенджер телом запроса и одновременно
+// ложится к нам на диск. Промежуточный файл во временной папке пришлось бы
+// читать обратно ради того же самого.
+//
+// Потолок общий с входящими (openLineFiles.MAX_BYTES): столько отдаёт Bot API
+// одним файлом, и разрешать оператору больше, чем платформа согласится
+// доставить, — это обещание, которое мы не сдержим.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: openLineFiles.MAX_BYTES }
+});
+
+/**
+ * Ошибка multer — это ответ оператору («файл слишком большой»), а не наша
+ * авария: через общий fail она стала бы пятисоткой без объяснения. Тот же
+ * приём, что у картинки рассылки.
+ */
+function uploadFile(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    const mb = Math.round(openLineFiles.MAX_BYTES / (1024 * 1024));
+    res.status(400).json({
+      error: err.code === 'LIMIT_FILE_SIZE'
+        ? `Файл больше ${mb} МБ — столько мессенджер всё равно не примет`
+        : (err.message || 'Не удалось принять файл')
+    });
+  });
+}
 
 // Коды ошибок логики → коды HTTP. Держим в одном месте, чтобы маршруты не
 // повторяли одну и ту же лесенку if-ов.
@@ -140,6 +171,142 @@ router.post('/conversations/:id/messages', authenticate, async (req, res) => {
     res.json(result);
   } catch (err) {
     fail(res, err, 'POST /messages');
+  }
+});
+
+// Файл от оператора: памятка, бланк, схема проезда (ver. 8.09).
+router.post('/conversations/:id/files', authenticate, uploadFile, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не приложен' });
+
+    // Имя приходит от multer в latin1 — русские названия иначе превращаются в
+    // «Ð¿Ð°Ð¼ÑÑ‚ÐºÐ°.pdf». Тот же приём, что в аккредитациях.
+    const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+
+    const result = await openLine.replyWithFile(req.user.id, req.params.id, {
+      buffer: req.file.buffer,
+      originalName,
+      mimetype: req.file.mimetype
+    }, String(req.body.caption || '').trim());
+
+    res.json(result);
+  } catch (err) {
+    fail(res, err, 'POST /files');
+  }
+});
+
+// Кому можно передать это обращение — состав его линии.
+router.get('/conversations/:id/transfer-targets', authenticate, async (req, res) => {
+  try {
+    res.json(await openLine.transferTargets(req.user.id, req.params.id));
+  } catch (err) {
+    fail(res, err, 'GET /transfer-targets');
+  }
+});
+
+router.post('/conversations/:id/transfer', authenticate, async (req, res) => {
+  try {
+    const userId = req.body && req.body.userId;
+    if (!userId) return res.status(400).json({ error: 'Не выбран сотрудник' });
+    res.json(await openLine.transfer(req.user.id, req.params.id, userId));
+  } catch (err) {
+    fail(res, err, 'POST /transfer');
+  }
+});
+
+// ── Быстрые ответы ────────────────────────────────────────────────────────
+//
+// Правит их сам оператор, без администратора: заготовка нужна тому, кто
+// отвечает, и правится в тот момент, когда стало ясно, что формулировка не
+// работает. Заявка администратору на такое — способ не завести заготовок вовсе.
+//
+// Поэтому здесь не requireAdmin, а своя проверка: заведён ли человек хоть в
+// одну линию. Комплект общий на сеть, так что правка видна всем — это и
+// задумано, колл-центр отвечает от лица клиники, а не от своего.
+
+async function requireOperator(req, res, next) {
+  try {
+    if (req.user.isAdmin) return next();
+    const lines = await openLine.linesOfUser(req.user.id);
+    if (!lines.length) {
+      return res.status(403).json({ error: 'Быстрые ответы правит тот, кто работает на линии', code: 'not_operator' });
+    }
+    next();
+  } catch (err) {
+    fail(res, err, 'проверка состава линии');
+  }
+}
+
+const QUICK_TITLE_MAX = 80;
+const QUICK_TEXT_MAX = 4000;
+
+function quickReplyFields(body) {
+  const title = String(body && body.title || '').trim();
+  const text = String(body && body.text || '').trim();
+
+  // Код 'invalid' в STATUS_BY_CODE не значится и потому даёт 400 — как и должно
+  // быть у неверно заполненной формы. Ошибиться здесь легко: 'not_found' рядом
+  // выглядит так же, но ответит 404, и человек увидит «не найдено» вместо
+  // «название пустое».
+  const bad = (message) => new openLine.OpenLineError('invalid', message);
+
+  if (!title) throw bad('У заготовки должно быть название');
+  if (!text) throw bad('Пустую заготовку сохранять нечего');
+  if (title.length > QUICK_TITLE_MAX) throw bad(`Название длиннее ${QUICK_TITLE_MAX} символов`);
+  if (text.length > QUICK_TEXT_MAX) throw bad(`Текст длиннее ${QUICK_TEXT_MAX} символов`);
+
+  return { title, text };
+}
+
+router.get('/quick-replies', authenticate, requireOperator, async (req, res) => {
+  try {
+    res.json(await OmniQuickReply.findAll({ order: [['sortOrder', 'ASC'], ['createdAt', 'ASC']] }));
+  } catch (err) {
+    fail(res, err, 'GET /quick-replies');
+  }
+});
+
+router.post('/quick-replies', authenticate, requireOperator, async (req, res) => {
+  try {
+    const { title, text } = quickReplyFields(req.body);
+    // Новая заготовка встаёт в конец: место в списке — это про то, как часто ею
+    // пользуются, а у только что заведённой такого сведения ещё нет.
+    const last = await OmniQuickReply.max('sortOrder');
+    res.json(await OmniQuickReply.create({
+      title, text,
+      sortOrder: Number.isFinite(last) ? last + 1 : 0,
+      createdBy: req.user.id,
+      updatedBy: req.user.id
+    }));
+  } catch (err) {
+    fail(res, err, 'POST /quick-replies');
+  }
+});
+
+router.put('/quick-replies/:id', authenticate, requireOperator, async (req, res) => {
+  try {
+    const row = await OmniQuickReply.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Заготовка не найдена' });
+
+    const { title, text } = quickReplyFields(req.body);
+    const patch = { title, text, updatedBy: req.user.id };
+    if (req.body.sortOrder !== undefined) patch.sortOrder = Number(req.body.sortOrder) || 0;
+
+    await row.update(patch);
+    res.json(row);
+  } catch (err) {
+    fail(res, err, 'PUT /quick-replies/:id');
+  }
+});
+
+router.delete('/quick-replies/:id', authenticate, requireOperator, async (req, res) => {
+  try {
+    const row = await OmniQuickReply.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Заготовка не найдена' });
+    await row.destroy();
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err, 'DELETE /quick-replies/:id');
   }
 });
 
@@ -308,6 +475,7 @@ router.get('/bots', authenticate, requireAdmin, async (req, res) => {
         deliveryMode: bot.deliveryMode,
         isActive: bot.isActive,
         lineId: bot.lineId,
+        misCategoryId: bot.misCategoryId,
         tokenTail: maskToken(bot.token),
         expectedWebhook: botWebhookUrl(bot),
         webhook
@@ -322,8 +490,16 @@ router.get('/bots', authenticate, requireAdmin, async (req, res) => {
 
 router.post('/bots', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { token, platform = 'telegram', medCenterId, title, deliveryMode = 'webhook' } = req.body || {};
+    const { token, platform = 'telegram', medCenterId, title, deliveryMode = 'webhook', misCategoryId } = req.body || {};
     if (!token) return res.status(400).json({ error: 'Нужен токен' });
+
+    // Категория подписчика в МИС (ver. 8.08). Спрашивается сразу при заведении:
+    // бот без категории работает как обычно, но подписки к нему не доходят до
+    // карточек пациентов, а заметить это можно только по счётчику на «Ботах».
+    const category = String(misCategoryId ?? '').trim();
+    if (category && !/^\d+$/.test(category)) {
+      return res.status(400).json({ error: 'Категория МИС — это номер' });
+    }
 
     // Филиал, а не «организация» (ver. 8.05): настраивают филиал, а ключ счёта у
     // провайдера — его свойство. Пустой филиал допустим для проверочного бота:
@@ -351,7 +527,7 @@ router.post('/bots', authenticate, requireAdmin, async (req, res) => {
 
     const existing = await MessengerBot.findOne({ where: { token: String(token).trim() } });
     const bot = existing
-      ? await existing.update({ platform, organization, medCenterId: medCenterId || null, username: me.username, title: title || me.first_name, isActive: true })
+      ? await existing.update({ platform, organization, medCenterId: medCenterId || null, username: me.username, title: title || me.first_name, misCategoryId: category ? Number(category) : existing.misCategoryId, isActive: true })
       : await MessengerBot.create({
           platform,
           organization,
@@ -359,6 +535,7 @@ router.post('/bots', authenticate, requireAdmin, async (req, res) => {
           token: String(token).trim(),
           username: me.username,
           title: title || me.first_name,
+          misCategoryId: category ? Number(category) : null,
           webhookSecret: crypto.randomBytes(24).toString('hex'),
           isActive: true
         });
@@ -375,7 +552,18 @@ router.put('/bots/:id', authenticate, requireAdmin, async (req, res) => {
     const bot = await MessengerBot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Бот не найден' });
 
-    const { deliveryMode, isActive, medCenterId, title } = req.body || {};
+    const { deliveryMode, isActive, medCenterId, title, misCategoryId } = req.body || {};
+
+    // Категория подписчика в МИС (ver. 8.08). Пустая строка — это «категории у
+    // бота нет», а не ноль: обнулять поле должно быть так же просто, как
+    // заполнять, иначе завести её проверочному боту по ошибке будет нечем.
+    if (misCategoryId !== undefined) {
+      const value = String(misCategoryId).trim();
+      if (value && !/^\d+$/.test(value)) {
+        return res.status(400).json({ error: 'Категория МИС — это номер' });
+      }
+      await bot.update({ misCategoryId: value ? Number(value) : null });
+    }
 
     if (medCenterId !== undefined || title !== undefined) {
       const patch = { title: title !== undefined ? title : bot.title };

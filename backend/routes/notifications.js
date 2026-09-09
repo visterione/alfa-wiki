@@ -586,6 +586,7 @@ router.get('/branches', authenticate, requireAdmin, async (req, res) => {
         username: bot.username,
         deliveryMode: bot.deliveryMode,
         isActive: bot.isActive,
+        misCategoryId: bot.misCategoryId,
         tokenTail: bot.token ? `…${String(bot.token).slice(-6)}` : '',
         expectedWebhook: botWebhookUrl(bot),
         webhook

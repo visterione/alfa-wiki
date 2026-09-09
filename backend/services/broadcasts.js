@@ -34,6 +34,7 @@ const { OmniBroadcast, OmniBroadcastTarget, BotSubscriber, MessengerBot,
         User, sequelize } = require('../models');
 const { getChannel } = require('./messengers');
 const settings = require('./notifications/settings');
+const consent = require('./notifications/consent');
 
 // Каталог картинок. Лежит в открытой части uploads: анонс акции — то же самое,
 // что висит на сайте клиники, закрывать в нём нечего. Вложения открытой линии
@@ -108,7 +109,7 @@ async function audience(medCenterIds) {
   for (const bot of bots) {
     const subscribers = await BotSubscriber.findAll({
       where: subscriberFilter(bot),
-      attributes: ['id', 'externalUserId']
+      attributes: ['id', 'externalUserId', 'patientIds']
     });
     subscribers.forEach(s => pairs.push({ subscriber: s, bot }));
   }
@@ -452,6 +453,19 @@ async function runOnce() {
   // запущенная ночью не отменяется, а досыпается следующим заходом.
   if (!audible.length) return { sent: 0, failed: 0, quiet: true };
 
+  // Согласие на оповещения спрашиваем на всю порцию сразу — сотня карточек
+  // одним запросом (ver. 8.08). Поштучно это было бы сто походов в МИС внутри
+  // цикла, идущего двадцать сообщений в секунду.
+  //
+  // МИС не ответила — заход прекращаем целиком, не тронув ни одного адресата.
+  // Они останутся в очереди и уйдут следующим заходом: реклама не срочна, а
+  // разослать её, не проверив отказы, — ровно то, ради чего эта проверка и
+  // писалась.
+  if (!await consent.prefetch(audible.map(t => t.subscriber.patientIds || []))) {
+    console.warn(`[broadcasts] «${active.title}»: МИС не отвечает, отказы не проверены — ждём`);
+    return { sent: 0, failed: 0, unverified: true };
+  }
+
   const mediaIds = { ...active.mediaIds };
   let sent = 0;
   let failed = 0;
@@ -470,6 +484,14 @@ async function runOnce() {
     // зафиксировали: между запуском и его строкой в очереди проходят минуты.
     if (target.subscriber.marketingOptOut || target.subscriber.isBlocked) {
       await target.update({ status: 'skipped', error: 'отписался или заблокировал бота' });
+      continue;
+    }
+
+    // Отказ от оповещений в карточке МИС. Ответ уже в кэше — prefetch выше
+    // сходил за всей порцией, — так что похода в МИС здесь нет.
+    const allowed = await consent.check({ patientId: target.subscriber.patientIds || [] });
+    if (!allowed.allowed) {
+      await target.update({ status: 'skipped', error: allowed.reason });
       continue;
     }
 

@@ -23,6 +23,7 @@ const imobis = require('../messengers/imobis');
 const misClient = require('../misClient');
 const settings = require('./settings');
 const safety = require('./safety');
+const consent = require('./consent');
 
 // Какой организации принадлежит клиника МИС. Нужно, чтобы уйти во Fromni под
 // правильным аккаунтом: у каждой организации он свой. Заполняется в настройках,
@@ -214,9 +215,31 @@ function imobisRoute(names, config, organization, texts) {
  * их ступени подряд — это один запрос, который сам остановится на доставленной.
  * Разбивать их на отдельные вызовы значило бы платить дважды.
  */
+// На сколько откладывается строка, согласие по которой не удалось проверить.
+// Столько же, сколько живёт пауза после отказа МИС, — раньше спрашивать нечего.
+const CONSENT_RETRY_MS = 60 * 1000;
+
 async function deliver(item, clinicId = null, medCenterId = null) {
   if (!await safety.allowedByPilot(item.phone)) {
     return item.update({ status: 'skipped', error: 'пилот: телефон вне списка проверочных номеров' });
+  }
+
+  // Отказ от оповещений — здесь, до выбора каскада и раньше всех остальных
+  // условий: он закрывает все каналы разом, и ветка, в которой его забыли бы
+  // спросить, означала бы сообщение вопреки подписи (ver. 8.08).
+  const allowed = await consent.check({ patientId: item.patientId, phone: item.phone });
+  if (!allowed.allowed) {
+    // «Не знаем» и «нельзя» — разные вещи, и поступаем с ними по-разному.
+    // Недоступность МИС не повод ни отправить, ни выбросить: строку
+    // откладываем, и она уйдёт, как только согласие удастся проверить.
+    if (allowed.unknown) {
+      return item.update({
+        plannedAt: new Date(Date.now() + CONSENT_RETRY_MS),
+        postponedFrom: item.postponedFrom || new Date(),
+        error: allowed.reason
+      });
+    }
+    return item.update({ status: 'skipped', error: allowed.reason });
   }
 
   // Филиал, не подключённый к нашей рассылке, обслуживает МИС — слать поверх
@@ -393,6 +416,15 @@ async function deliver(item, clinicId = null, medCenterId = null) {
  * @param {string} step  'auto' | 'bot' | имя ступени каскада ('imobis:sms', 'sms+webchat', …)
  */
 async function sendTest(item, { step = 'auto' } = {}) {
+  // Предохранитель пилота проверку намеренно не касается, а отказ от оповещений
+  // — касается: проверяют канал обычно на живом номере, и подпись пациента не
+  // перестаёт действовать оттого, что сообщение отправили из админки.
+  const allowed = await consent.check({ patientId: item.patientId, phone: item.phone });
+  if (!allowed.allowed) {
+    await item.update({ status: 'skipped', error: allowed.reason });
+    return { error: allowed.reason };
+  }
+
   const order = await settings.cascade();
 
   // Боты пробуются, когда просят их явно или когда просят «как в бою».
@@ -546,5 +578,5 @@ async function runOnce(limit = 100) {
 
 module.exports = {
   runOnce, deliver, sendTest, subscriberFor, organizationFor,
-  CLINIC_ORG_KEY, safety
+  CLINIC_ORG_KEY, safety, consent
 };

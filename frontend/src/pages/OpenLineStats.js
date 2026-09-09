@@ -2,9 +2,21 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Star, RefreshCw, User as UserIcon } from 'lucide-react';
 import { openLine as openLineApi, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
+import './OpenLineStats.css';
 
 /**
  * Показатели открытой линии: рейтинг сотрудников и продуктивность (ver. 7.99).
+ *
+ * Живут вкладкой раздела «Статистика» (ver. 8.09), а не в рабочем окне
+ * оператора. Раньше они висели второй вкладкой над очередью обращений, и это
+ * было не то место: очередь разбирают весь день, а показатели смотрят раз в
+ * неделю, и вкладка рядом с работой означала промах мимо неё несколько раз в
+ * день. Доска показателей — это про сравнение людей за период, то есть ровно то
+ * же занятие, что и остальные вкладки «Статистики».
+ *
+ * Кто их видит, не изменилось: доступ по-прежнему даёт состав линии, а не право
+ * на раздел. Сотрудник, не заведённый ни в одну линию, откроет вкладку и увидит
+ * объяснение, а не пустую таблицу.
  *
  * Главная величина здесь — доля разобранного, и считается она не от общего
  * потока за месяц, а от того, что приходило на линию, пока человек был на
@@ -53,7 +65,7 @@ const userName = (u) => u.displayName || u.username;
 
 function Stars({ value }) {
   return (
-    <span className="ol-stars">
+    <span className="ols-stars">
       {[1, 2, 3, 4, 5].map(n => (
         <Star key={n} size={13} className={value != null && n <= Math.round(value) ? 'on' : ''} />
       ))}
@@ -87,7 +99,7 @@ export default function OpenLineStats() {
 
   if (denied) {
     return (
-      <div className="ol-empty-page">
+      <div className="ols-denied">
         <h2>Показатели недоступны</h2>
         <p>Их видит тот, кто работает на линии: администратор добавляет сотрудников в состав линии медцентра.</p>
       </div>
@@ -114,7 +126,7 @@ export default function OpenLineStats() {
           ))}
         </div>
         <button className="ols-refresh" onClick={load} title="Обновить">
-          <RefreshCw size={15} className={loading ? 'ol-spin' : ''} />
+          <RefreshCw size={15} className={loading ? 'ols-spin' : ''} />
         </button>
       </div>
 
@@ -143,10 +155,10 @@ export default function OpenLineStats() {
         </div>
       )}
 
-      {loading && !data && <div className="chat-loading"><div className="loading-spinner" /></div>}
+      {loading && !data && <div className="ols-loading"><div className="loading-spinner" /></div>}
 
       {!loading && operators.length === 0 && (
-        <div className="chat-empty">За период никто не разбирал обращений</div>
+        <div className="ols-empty">За период никто не разбирал обращений</div>
       )}
 
       {operators.length > 0 && (

@@ -45,6 +45,27 @@ async function getPatientsByPhone(mobile) {
 }
 
 /**
+ * Карточки пациентов по их идентификаторам, пачкой (ver. 8.08).
+ *
+ * getPatient принимает id списком через запятую, и это важно: согласие на
+ * сообщения (send_sms) проверяется у каждого адресата, а у рекламной рассылки
+ * адресатов тысячи. Сотня карточек одним запросом возвращается за полсекунды —
+ * поштучно это была бы сотня запросов.
+ *
+ * Несуществующий id МИС молча пропускает: в ответе просто нет такой карточки.
+ * Поэтому сверять надо по тому, что вернулось, а не по длине ответа.
+ */
+async function getPatientsByIds(ids) {
+  const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean);
+  if (!list.length) return [];
+
+  const res = await misRequest('getPatient', { id: list.join(',') });
+  const data = res && typeof res === 'object' && 'data' in res ? res.data : res;
+  if (data == null) return [];
+  return Array.isArray(data) ? data : [data];
+}
+
+/**
  * Телефон в том виде, в каком его ждёт МИС: «+7 (XXX) XXX-XX-XX».
  * Публичное API форм хранит его как «+7XXXXXXXXXX».
  */
@@ -135,6 +156,7 @@ module.exports = {
   normalizePhone,
   formatMobile,
   getPatientsByPhone,
+  getPatientsByIds,
   createPatient,
   addPatientCategory,
   confirmAppointment,

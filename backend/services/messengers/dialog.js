@@ -21,23 +21,69 @@ const openLineFiles = require('../openLineFiles');
 const openLinePatient = require('../openLinePatient');
 const broadcasts = require('../broadcasts');
 
-// Категории подписчиков в МИС. Ставятся только боевым ботам: тестовый не должен
-// оставлять следов в карточках живых пациентов.
-const CATEGORY_BY_PLATFORM = {
-  telegram: process.env.MIS_CATEGORY_TELEGRAM,
-  max: process.env.MIS_CATEGORY_MAX
-};
-
 const GREETING =
   'Здравствуйте! Это бот медцентра «Альфа».\n\n' +
   'Здесь можно получать напоминания о визитах и задавать вопросы колл-центру.\n\n' +
   'Чтобы мы вас узнали, нажмите кнопку ниже и поделитесь номером телефона — ' +
-  'тем самым, на который оформлена карта.';
+  'тем самым, на который оформлена карта.\n\n' +
+  // Про второй способ говорим сразу: кнопку видно не везде (в вебе и на части
+  // клиентов клавиатура свёрнута), и человек, который её не нашёл, иначе просто
+  // напишет номер в надежде, что поймут.
+  'Если кнопки не видно — пришлите номер сообщением: +79991234567.';
 
 const MENU =
   'Что дальше:\n' +
   '• напоминания о визитах будут приходить сюда автоматически;\n' +
   '• чтобы задать вопрос, просто напишите его сообщением.';
+
+const PHONE_HINT =
+  'Похоже, это номер телефона, но разобрать его не получилось.\n\n' +
+  'Пришлите его в формате +79991234567 — или нажмите кнопку ниже, ' +
+  'тогда вводить ничего не придётся.';
+
+/**
+ * Пытается прочитать в сообщении номер телефона (ver. 8.08).
+ *
+ * Кнопка «поделиться контактом» — не единственный путь: часть людей просто
+ * набирает номер в ответ, и до 8.08 такое сообщение пропадало. В линию оно не
+ * уходило (без телефона обращение не создаётся), а бот повторял просьбу нажать
+ * кнопку — человек оказывался в замкнутом круге. Причём кнопки он мог и не
+ * видеть: в вебе и на части клиентов клавиатура сворачивается.
+ *
+ * Номер набирают как придётся: 8 или +7, со скобками, через дефисы и пробелы.
+ * Приводить всё это к 7XXXXXXXXXX умеет misClient.normalizePhone — тот же, что
+ * разбирает номер из карточки контакта, так что оба пути дают одинаковый ключ.
+ *
+ * Три исхода, и различать их важно: 'ok' — номер разобран; 'malformed' — на
+ * номер похоже, но не сходится (тогда показываем маску); null — это обычный
+ * текст, вопрос оператору, и трогать его нельзя.
+ */
+function readPhone(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+
+  // Буквы означают, что человек пишет, а не диктует номер. «Мой телефон
+  // 89991234567» намеренно не разбираем: такое сообщение уместнее показать
+  // целиком, чем молча вынуть из него цифры.
+  if (!/^[\d\s()+\-.]+$/.test(raw)) return null;
+
+  const digits = raw.replace(/\D/g, '');
+  // Слишком коротко, чтобы быть даже испорченным номером: скорее номер кабинета
+  // или год. Такое отдаём оператору как обычный текст.
+  if (digits.length < 6) return null;
+
+  // Длину проверяем до нормализации, а не после. misClient.normalizePhone
+  // достраивает десятизначный номер семёркой, и «+7 999 123 45 6» — номер, в
+  // котором потеряна цифра, — превратился бы в правдоподобный 77999123456 и
+  // прошёл бы дальше. Ошибку заметили бы через месяц, когда напоминание ушло бы
+  // в пустоту.
+  const ok = (digits.length === 11 && /^[78]/.test(digits))
+    // Без кода страны набирают мобильный, а он всегда начинается с девятки.
+    || (digits.length === 10 && digits.startsWith('9'));
+  if (!ok) return { status: 'malformed' };
+
+  return { status: 'ok', phone: misClient.normalizePhone(digits) };
+}
 
 /**
  * Ищет карточки пациента по телефону. Один номер может принадлежать семье —
@@ -55,13 +101,27 @@ async function findPatients(phone) {
   }
 }
 
-async function tagInMis(patientIds, platform) {
-  const categoryId = CATEGORY_BY_PLATFORM[platform];
+/**
+ * Помечает найденные карточки категорией бота (ver. 8.08).
+ *
+ * Категория заведена в МИС на каждого бота отдельно, а не на платформу: сети
+ * важно видеть в карточке, из какого медцентра пришёл человек, — «Telegram» на
+ * всю сеть такого не отвечает. Раньше категорий было две и лежали они в .env;
+ * обе так и остались пустыми, то есть за всё время не проставилось ни одной.
+ *
+ * Пустая категория — не ошибка: так живут проверочные боты и боевые, для
+ * которых категорию в МИС ещё не завели. Подписка при этом проходит как обычно,
+ * просто остаётся в статусе identified.
+ */
+async function tagInMis(patientIds, bot) {
+  const categoryId = bot.misCategoryId;
   if (!categoryId || !patientIds || !patientIds.length) return false;
 
   let ok = true;
   for (const patientId of patientIds) {
     try {
+      // МИС отвечает true и на повторное добавление уже стоящей категории, так
+      // что бояться второго прохода незачем.
       await misClient.addPatientCategory(patientId, categoryId);
     } catch (err) {
       console.error(`[dialog] категория ${categoryId} пациенту ${patientId}:`, err.message);
@@ -69,6 +129,28 @@ async function tagInMis(patientIds, platform) {
     }
   }
   return ok;
+}
+
+/**
+ * Догоняет категорию тем, кто подписался раньше, чем её завели.
+ *
+ * Пометка ставится в момент «поделиться контактом», но не сработать она может по
+ * двум причинам: МИС не ответила на поиск по телефону или категории у бота ещё
+ * не было — а до 8.08 её не было ни у кого. Оставлять таких людей без категории
+ * навсегда неправильно, поэтому пробуем ещё раз на первом же их сообщении.
+ *
+ * Лишнего похода в МИС здесь нет: карточки к этому моменту уже перечитаны в
+ * openLine.acceptIncoming, и если их так и не нашлось, мы просто выходим.
+ */
+async function tagLate(bot, subscriber) {
+  if (!subscriber || subscriber.status === 'tagged' || bot.organization === 'test') return;
+
+  const patientIds = (subscriber.patientIds || []).map(String).filter(Boolean);
+  if (!patientIds.length) return;
+
+  if (await tagInMis(patientIds, bot)) {
+    await subscriber.update({ status: 'tagged', taggedAt: new Date() });
+  }
 }
 
 /**
@@ -118,25 +200,23 @@ async function handleStart(channel, bot, update) {
   });
 }
 
-async function handleContact(channel, bot, update) {
-  // Телефон принимаем только собственный. Кнопкой «поделиться контактом» можно
-  // прислать чужую визитку из адресной книги, и без этой проверки человек
-  // подписал бы на уведомления постороннего.
-  if (update.contactUserId && update.contactUserId !== update.externalUserId) {
-    await channel.sendText(bot, update.chatId,
-      'Пожалуйста, отправьте свой номер — кнопкой ниже, а не карточкой из контактов.',
-      { requestContact: '📱 Поделиться номером телефона' });
-    return;
-  }
-
-  const phone = misClient.normalizePhone(update.phone);
+/**
+ * Знакомство: телефон получен, ищем карту и помечаем её категорией бота.
+ *
+ * Путей сюда два — кнопка «поделиться контактом» и номер, набранный руками, — и
+ * дальше первой строки они не различаются: номер в обоих случаях уже приведён к
+ * 7XXXXXXXXXX. Различие только в ответе: набранный руками номер повторяем
+ * вслух, чтобы опечатка была видна сразу, а не всплыла, когда напоминание уйдёт
+ * чужому человеку.
+ */
+async function identify(channel, bot, update, phone, { echo = false } = {}) {
   const patientIds = await findPatients(phone);
 
   const patch = { phone, identifiedAt: new Date(), status: 'identified' };
   if (patientIds && patientIds.length) {
     patch.patientIds = patientIds;
     // Тестового бота в МИС не отмечаем — он ходит по живой базе пациентов.
-    if (bot.organization !== 'test' && await tagInMis(patientIds, bot.platform)) {
+    if (bot.organization !== 'test' && await tagInMis(patientIds, bot)) {
       patch.status = 'tagged';
       patch.taggedAt = new Date();
     }
@@ -151,18 +231,48 @@ async function handleContact(channel, bot, update) {
     ? 'Мы нашли вашу карту — напоминания о визитах будут приходить сюда.'
     : 'Карту по этому номеру мы пока не нашли. Ничего страшного: сообщите номер администратору при следующем визите, и напоминания заработают.';
 
-  await channel.sendText(bot, update.chatId, `Спасибо, номер получен.\n\n${found}`, { removeKeyboard: true });
+  const got = echo
+    ? `Спасибо, записали номер ${misClient.formatMobile(phone)}.`
+    : 'Спасибо, номер получен.';
+
+  await channel.sendText(bot, update.chatId, `${got}\n\n${found}`, { removeKeyboard: true });
   await channel.sendText(bot, update.chatId, MENU);
+  return subscriber;
+}
+
+async function handleContact(channel, bot, update) {
+  // Телефон принимаем только собственный. Кнопкой «поделиться контактом» можно
+  // прислать чужую визитку из адресной книги, и без этой проверки человек
+  // подписал бы на уведомления постороннего.
+  if (update.contactUserId && update.contactUserId !== update.externalUserId) {
+    await channel.sendText(bot, update.chatId,
+      'Пожалуйста, отправьте свой номер — кнопкой ниже, а не карточкой из контактов.',
+      { requestContact: '📱 Поделиться номером телефона' });
+    return;
+  }
+
+  await identify(channel, bot, update, misClient.normalizePhone(update.phone));
 }
 
 async function handleText(channel, bot, update) {
   const subscriber = await upsertSubscriber(bot, update);
 
   // Пока человек не назвался, разговаривать не о чем: оператору нужна карточка,
-  // а не безымянный чат.
+  // а не безымянный чат. Но прежде чем повторять просьбу — смотрим, не номер ли
+  // это: набранный руками он приходит обычным текстом, и не принять его значило
+  // бы гонять человека по кругу.
   if (!subscriber.phone) {
+    const parsed = readPhone(update.text);
+
+    if (parsed && parsed.status === 'ok') {
+      await identify(channel, bot, update, parsed.phone, { echo: true });
+      return;
+    }
+
     await channel.sendText(bot, update.chatId,
-      'Чтобы мы могли ответить, сначала поделитесь номером телефона.',
+      parsed ? PHONE_HINT
+        : 'Чтобы мы могли ответить, сначала поделитесь номером телефона: ' +
+          'нажмите кнопку ниже или пришлите его сообщением в формате +79991234567.',
       { requestContact: '📱 Поделиться номером телефона' });
     return;
   }
@@ -209,6 +319,10 @@ async function handleText(channel, bot, update) {
 
   const notice = await openLine.offlineNoticeFor(accepted.session, accepted.line);
   if (notice) await channel.sendText(bot, update.chatId, notice);
+
+  // В самом конце: категория в МИС человеку ничего не меняет, а вопрос его
+  // оператору доставить важнее.
+  await tagLate(bot, subscriber);
 }
 
 
@@ -288,4 +402,4 @@ async function handleUpdate(channel, bot, update) {
   }
 }
 
-module.exports = { handleUpdate, upsertSubscriber };
+module.exports = { handleUpdate, upsertSubscriber, readPhone };

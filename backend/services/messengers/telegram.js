@@ -197,6 +197,41 @@ async function sendPhoto(bot, chatId, photo, caption, options = {}) {
 }
 
 /**
+ * Отправляет файл — не картинку (ver. 8.09).
+ *
+ * Нужен оператору открытой линии: памятка перед исследованием, бланк, схема
+ * проезда. Отдельный метод, а не флаг у sendPhoto, потому что и метод у
+ * Telegram другой, и смысл другой: картинка показывается в переписке, документ
+ * скачивается.
+ *
+ * Картинку сюда слать не надо, хотя технически можно: sendDocument покажет её
+ * файлом со скрепкой вместо изображения, и пациенту придётся скачивать
+ * фотографию, чтобы её увидеть. Выбор между методами делает вызывающий по типу
+ * файла.
+ *
+ * Подпись у документа ограничена теми же 1024 символами, что и у фотографии.
+ *
+ * @param {Object} file
+ * @param {Buffer} file.buffer
+ * @param {string} [file.fileName]  под этим именем файл увидит получатель
+ */
+async function sendDocument(bot, chatId, file, caption, options = {}) {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) {
+    form.append('caption', caption);
+    form.append('parse_mode', options.parseMode || 'HTML');
+  }
+  form.append('document', new Blob([file.buffer]), file.fileName || 'file');
+
+  const result = await callUpload(bot.token, 'sendDocument', form);
+  return {
+    externalMessageId: String(result.message_id),
+    fileId: result.document ? result.document.file_id : null
+  };
+}
+
+/**
  * Гасит «часики» на нажатой кнопке. Telegram ждёт этого ответа несколько секунд,
  * и без него у человека кнопка выглядит зависшей.
  */
@@ -356,6 +391,7 @@ module.exports = {
   ChannelError,
   sendText,
   sendPhoto,
+  sendDocument,
   answerCallback,
   parseUpdate,
   getMe,

@@ -252,14 +252,6 @@
   color: var(--text-secondary);
 }
 
-.column-positive-hint {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--amber-500);
-  opacity: 0.85;
-  letter-spacing: 0.02em;
-}
-
 /* Единый Droppable-контейнер колонки (скроллится, обёртывает и секции, и плоский список) */
 .column-content-wrap {
   flex: 1;

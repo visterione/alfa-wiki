@@ -1301,6 +1301,29 @@ export const openLine = {
   close: (id) => api.post(`/open-line/conversations/${id}/close`),
   send: (id, text) => api.post(`/open-line/conversations/${id}/messages`, { text }),
 
+  // Файл от оператора (ver. 8.09). Заголовок обязателен, хотя границу multipart
+  // в итоге проставляет браузер: у нашего экземпляра axios по умолчанию стоит
+  // application/json, а с ним FormData отправился бы как JSON — то есть пустым
+  // объектом вместо файла. Отсюда же и общий вид со всеми остальными
+  // загрузками в этом файле.
+  sendFile: (id, file, caption = '') => {
+    const form = new FormData();
+    form.append('file', file);
+    if (caption) form.append('caption', caption);
+    return api.post(`/open-line/conversations/${id}/files`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  transferTargets: (id) => api.get(`/open-line/conversations/${id}/transfer-targets`),
+  transfer: (id, userId) => api.post(`/open-line/conversations/${id}/transfer`, { userId }),
+
+  // Быстрые ответы: комплект один на сеть, правит их сам оператор.
+  quickReplies: () => api.get('/open-line/quick-replies'),
+  createQuickReply: (data) => api.post('/open-line/quick-replies', data),
+  updateQuickReply: (id, data) => api.put(`/open-line/quick-replies/${id}`, data),
+  deleteQuickReply: (id) => api.delete(`/open-line/quick-replies/${id}`),
+
   // Настройка линий — администратору
   lines: () => api.get('/open-line/lines'),
 

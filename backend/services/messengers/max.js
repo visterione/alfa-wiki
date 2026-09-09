@@ -129,13 +129,13 @@ async function sendText(bot, userId, text, options = {}) {
  * Разбираем оба, потому что форма ответа задокументирована слабее, чем хотелось
  * бы, а узнать о расхождении на боевой рассылке — плохой способ.
  */
-async function uploadImage(bot, buffer, fileName) {
+async function upload(bot, buffer, fileName, type = 'image') {
   const target = await call(bot.token, 'POST', '/uploads', {
-    params: { type: 'image' },
+    params: { type },
     timeoutMs: UPLOAD_TIMEOUT
   });
   const url = target && (target.url || target.upload_url);
-  if (!url) throw new ChannelError('error', 'MAX не выдал адрес для загрузки картинки');
+  if (!url) throw new ChannelError('error', `MAX не выдал адрес для загрузки (${type})`);
 
   const form = new FormData();
   form.append('data', new Blob([buffer]), fileName || 'image.jpg');
@@ -151,9 +151,12 @@ async function uploadImage(bot, buffer, fileName) {
   const body = res.data || {};
   const token = body.token
     || (body.photos && Object.values(body.photos)[0] && Object.values(body.photos)[0].token);
-  if (!token) throw new ChannelError('error', 'MAX не вернул токен загруженной картинки');
+  if (!token) throw new ChannelError('error', 'MAX не вернул токен загруженного файла');
   return token;
 }
+
+/** Прежнее имя: картинка — частный случай загрузки, и звали её так повсюду. */
+const uploadImage = (bot, buffer, fileName) => upload(bot, buffer, fileName, 'image');
 
 /**
  * Отправляет картинку с подписью. Токен вложения переиспользуется между
@@ -169,6 +172,39 @@ async function sendPhoto(bot, userId, photo, caption, options = {}) {
   const token = photo.fileId || await uploadImage(bot, photo.buffer, photo.fileName);
 
   const attachments = [{ type: 'image', payload: { token } }];
+  const keyboard = keyboardAttachment(options);
+  if (keyboard) attachments.push(keyboard);
+
+  const result = await call(bot.token, 'POST', '/messages', {
+    params: { user_id: Number(userId) },
+    body: { text: caption, attachments }
+  });
+
+  const id = result && result.message && result.message.body && result.message.body.mid;
+  return { externalMessageId: id ? String(id) : null, fileId: token };
+}
+
+/**
+ * Отправляет файл — не картинку (ver. 8.09).
+ *
+ * Устроен так же, как отправка картинки, и отличается ровно двумя вещами: тип
+ * загрузки 'file' вместо 'image' и тип вложения в сообщении. Разделены они по
+ * той же причине, что и в Telegram: картинку получатель видит в переписке,
+ * документ скачивает, и подменять одно другим нельзя.
+ *
+ * ЧЕГО ЗДЕСЬ НЕТ, в отличие от картинки: переиспользования токена между
+ * адресатами. У рассылки одна картинка уходит тысяче человек, и там это
+ * экономит тысячу загрузок; в открытой линии файл отправляют одному человеку
+ * один раз, и хранить его токен негде и незачем.
+ *
+ * @param {Object} file
+ * @param {Buffer} file.buffer
+ * @param {string} [file.fileName]  под этим именем файл увидит получатель
+ */
+async function sendDocument(bot, userId, file, caption, options = {}) {
+  const token = await upload(bot, file.buffer, file.fileName, 'file');
+
+  const attachments = [{ type: 'file', payload: { token } }];
   const keyboard = keyboardAttachment(options);
   if (keyboard) attachments.push(keyboard);
 
@@ -375,6 +411,7 @@ module.exports = {
   ChannelError,
   sendText,
   sendPhoto,
+  sendDocument,
   answerCallback,
   parseUpdate,
   getMe,

@@ -2111,42 +2111,44 @@ router.post('/:id/finalize', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Нет прав на финализацию' });
     }
 
-    if (review.status === 'final') {
+    // Сам по себе статус final больше не значит «финализирован»: отзыв попадает в
+    // финальную колонку перетаскиванием, а решение вносят уже после. Признак
+    // выполненной финализации — finalizedAt.
+    if (review.finalizedAt) {
       return res.status(400).json({ error: 'Отзыв уже финализирован' });
     }
 
     const { decisionCategory, decisionDescription } = req.body;
 
-    if (!decisionCategory) {
-      return res.status(400).json({ error: 'Категория решения обязательна' });
-    }
-
-    if (!DECISION_CATEGORIES.find(c => c.id === decisionCategory)) {
+    // Категория необязательна: диалог решения открывается автоматически, и человек
+    // вправе закрыть его, ничего не заполнив.
+    if (decisionCategory && !DECISION_CATEGORIES.find(c => c.id === decisionCategory)) {
       return res.status(400).json({ error: 'Недопустимая категория решения' });
     }
 
+    // Обновляем отзыв. Решение записываем до генерации PDF: раньше отчёт собирали
+    // первым, и блок «Принятое решение» в него не попадал — в момент сборки поля
+    // ещё были пустыми.
+    await review.update({
+      status: 'final',
+      decisionCategory: decisionCategory || null,
+      decisionDescription: decisionDescription || null,
+      finalizedAt: new Date(),
+      finalizedBy: req.user.id
+    });
+
     // Генерируем PDF
-    let pdfPath = null;
     try {
       const pdfService = require('../services/pdfService');
-      pdfPath = await pdfService.generateReviewPdf(review, review.board, review.history);
+      const pdfPath = await pdfService.generateReviewPdf(review, review.board, review.history);
+      if (pdfPath) await review.update({ reportPdfPath: pdfPath });
     } catch (pdfError) {
       console.error('Error generating PDF:', pdfError);
       // Продолжаем без PDF
     }
 
-    // Обновляем отзыв
-    await review.update({
-      status: 'final',
-      decisionCategory,
-      decisionDescription: decisionDescription || null,
-      finalizedAt: new Date(),
-      finalizedBy: req.user.id,
-      reportPdfPath: pdfPath
-    });
-
     // Добавляем запись в историю
-    const categoryLabel = DECISION_CATEGORIES.find(c => c.id === decisionCategory)?.label || decisionCategory;
+    const categoryLabel = DECISION_CATEGORIES.find(c => c.id === decisionCategory)?.label || 'без категории';
     await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.FINALIZED, {
       newValue: categoryLabel,
       comment: decisionDescription
