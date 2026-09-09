@@ -11,7 +11,10 @@ const telegram = require('../services/messengers/telegram');
 test('оба канала выглядят одинаково снаружи', () => {
   // Разговор с пациентом, открытая линия и каскад уведомлений написаны против
   // этого набора и не должны знать, чей код исполняется.
-  for (const method of ['sendText', 'answerCallback', 'parseUpdate', 'getMe', 'getUpdates', 'cursorOf']) {
+  // sendPhoto и sendDocument здесь с 8.09: открытая линия выбирает между ними
+  // по типу файла и не должна знать, какой платформе пишет.
+  for (const method of ['sendText', 'sendPhoto', 'sendDocument', 'answerCallback',
+                        'parseUpdate', 'getMe', 'getUpdates', 'cursorOf']) {
     assert.equal(typeof telegram[method], 'function', `telegram.${method}`);
     assert.equal(typeof max[method], 'function', `max.${method}`);
   }
@@ -121,4 +124,43 @@ test('нажатие кнопки', () => {
 test('неинтересные события отбрасываются', () => {
   assert.equal(max.parseUpdate({ update_type: 'bot_added' }), null);
   assert.equal(max.parseUpdate({ update_type: 'message_created', message: { sender: {}, body: {} } }), null);
+});
+
+// ── Размер фотографии для ленты ───────────────────────────────────────────
+
+test('в ленту берётся средний размер фотографии, а не самый большой', () => {
+  // Telegram присылает лесенку размеров одной фотографии. В ленте она
+  // показывается шириной 260 точек, и до 8.10 ради этого качался оригинал —
+  // полтора мегабайта на миниатюру.
+  const sizes = [
+    { file_id: 's', width: 90 },
+    { file_id: 'm', width: 320 },
+    { file_id: 'l', width: 800 },
+    { file_id: 'xl', width: 1280 }
+  ];
+
+  // Наименьший из тех, что не хуже 640 точек: с запасом на экраны с двойной
+  // плотностью и без заметной потери.
+  assert.equal(telegram.previewSize(sizes), 'l');
+});
+
+test('когда лесенки нет, превью совпадает с оригиналом', () => {
+  // Тогда второй файл не сохраняется — openLineFiles сверяет идентификаторы.
+  assert.equal(telegram.previewSize([{ file_id: 'one', width: 120 }]), 'one');
+  assert.equal(telegram.previewSize([]), null);
+  assert.equal(telegram.previewSize(undefined), null);
+});
+
+test('у фотографии в разборе обновления есть и полный размер, и превью', () => {
+  const update = telegram.parseUpdate({
+    message: {
+      chat: { id: 1 }, from: { id: 2 }, message_id: 3,
+      photo: [{ file_id: 'small', width: 90 }, { file_id: 'big', width: 1280 }]
+    }
+  });
+
+  assert.equal(update.media.kind, 'photo');
+  // Полный — тот, что открывается по щелчку: на снимке анализа важен мелкий шрифт.
+  assert.equal(update.media.fileId, 'big');
+  assert.equal(update.media.previewFileId, 'big', 'из двух размеров ниже 640 берётся больший');
 });

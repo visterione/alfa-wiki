@@ -458,6 +458,14 @@
 
 .ola-chip button:hover { background: var(--red-100); color: var(--red-600); }
 
+/* Звёздочка «старший оператор» (ver. 8.10). Красной при наведении быть не
+   должна — красный на соседней кнопке означает «убрать из состава», а эта
+   ничего не удаляет. */
+.ola-chip .ola-senior:hover { background: var(--amber-100); color: var(--amber-600); }
+.ola-chip .ola-senior.on { color: var(--amber-500); }
+.ola-chip .ola-senior.on svg { fill: currentColor; }
+.ola-chip.senior { border-color: var(--amber-300); }
+
 /* Кнопка-подстановка в тексте шаблона. Моноширинная: это код, а не слово. */
 .ola-token {
   padding: 4px 9px;

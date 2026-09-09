@@ -381,6 +381,22 @@ router.post('/lines/:id/operators', authenticate, requireAdmin, async (req, res)
   }
 });
 
+// Старший оператор линии: единственное, что он видит сверх обычного, — архив
+// закрытых обращений (ver. 8.10).
+router.put('/lines/:id/operators/:userId', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const row = await OmniLineOperator.findOne({
+      where: { lineId: req.params.id, userId: req.params.userId }
+    });
+    if (!row) return res.status(404).json({ error: 'Сотрудник не в составе линии' });
+
+    await row.update({ isSenior: !!(req.body && req.body.isSenior) });
+    res.json(row);
+  } catch (err) {
+    fail(res, err, 'PUT /operators/:userId');
+  }
+});
+
 router.delete('/lines/:id/operators/:userId', authenticate, requireAdmin, async (req, res) => {
   try {
     await OmniLineOperator.destroy({ where: { lineId: req.params.id, userId: req.params.userId } });

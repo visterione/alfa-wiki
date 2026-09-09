@@ -3322,7 +3322,13 @@ const OmniLineOperator = sequelize.define('OmniLineOperator', {
   // Признак на связи, а не на пользователе: сотрудник может числиться на
   // нескольких линиях и открыть не все.
   onShift: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-  shiftStartedAt: { type: DataTypes.DATE, allowNull: true }
+  shiftStartedAt: { type: DataTypes.DATE, allowNull: true },
+  // Старший оператор линии (ver. 8.10). Единственное, что он видит сверх
+  // обычного, — архив закрытых обращений. Архив нужен для разбора спорных
+  // ситуаций, то есть для чтения чужих разговоров с пациентами задним числом, и
+  // открывать это всей смене незачем. Признак на связи, а не на пользователе:
+  // старший в своём филиале — рядовой оператор в соседнем.
+  isSenior: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }
 }, {
   tableName: 'omni_line_operators',
   timestamps: true,

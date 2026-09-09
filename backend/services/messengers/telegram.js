@@ -250,6 +250,36 @@ async function answerCallback(bot, callbackId, text) {
  * Приводит обновление Telegram к общему для всех каналов виду.
  * Возвращает null для того, что нам неинтересно (правки сообщений и т.п.).
  */
+/**
+ * Размер картинки для ленты оператора (ver. 8.10).
+ *
+ * Telegram присылает одну и ту же фотографию лесенкой размеров — примерно 90,
+ * 320, 800 и 1280 точек по ширине, — и до сих пор мы забирали только самый
+ * большой. В ленте он показывается шириной 260 точек, то есть полтора мегабайта
+ * скачивались, чтобы нарисовать миниатюру; в переписке с десятком фотографий
+ * направлений это десяток лишних мегабайт на каждое открытие чата.
+ *
+ * Берём наименьший из тех, что не хуже 640 точек: с запасом на экраны с двойной
+ * плотностью и без заметной потери. Полный размер никуда не девается — он
+ * по-прежнему качается и открывается по щелчку, потому что на снимке анализа
+ * важен как раз мелкий шрифт.
+ *
+ * Лесенки может и не быть (один размер) — тогда превью совпадает с оригиналом,
+ * и второй файл не сохраняется.
+ */
+const PREVIEW_MIN_WIDTH = 640;
+
+function previewSize(sizes) {
+  if (!Array.isArray(sizes) || !sizes.length) return null;
+
+  const enough = sizes.filter(p => (p.width || 0) >= PREVIEW_MIN_WIDTH);
+  const chosen = enough.length
+    ? enough.reduce((a, b) => ((a.width || 0) <= (b.width || 0) ? a : b))
+    : sizes[sizes.length - 1];
+
+  return chosen ? chosen.file_id : null;
+}
+
 function parseUpdate(update) {
   if (update.message) {
     const m = update.message;
@@ -277,7 +307,7 @@ function parseUpdate(update) {
     // Вложения приводим к одному виду: тип и идентификатор файла у Telegram.
     // Ссылку получаем позже, при скачивании к себе — она живёт около часа.
     const media =
-      (m.photo && { kind: 'photo', fileId: m.photo[m.photo.length - 1].file_id }) ||
+      (m.photo && { kind: 'photo', fileId: m.photo[m.photo.length - 1].file_id, previewFileId: previewSize(m.photo) }) ||
       (m.document && { kind: 'file', fileId: m.document.file_id, title: m.document.file_name }) ||
       (m.voice && { kind: 'voice', fileId: m.voice.file_id }) ||
       (m.video && { kind: 'video', fileId: m.video.file_id }) ||
@@ -394,6 +424,7 @@ module.exports = {
   sendDocument,
   answerCallback,
   parseUpdate,
+  previewSize,
   getMe,
   cursorOf,
   fileLink,

@@ -153,7 +153,10 @@ async function shiftState(userId) {
     since: onShift ? rows.find(r => r.onShift).shiftStartedAt : null,
     queue,
     mine,
-    lines: rows.map(r => ({ id: r.lineId, name: r.line.name, onShift: r.onShift })),
+    // Старший хотя бы на одной линии — значит вкладку «Архив» ему показывать
+    // (ver. 8.10). Интерфейс узнаёт это отсюда, а не гадает по составу.
+    canSeeArchive: rows.some(r => r.isSenior),
+    lines: rows.map(r => ({ id: r.lineId, name: r.line.name, onShift: r.onShift, isSenior: r.isSenior })),
     lineIds
   };
 }
@@ -270,10 +273,17 @@ async function offlineNoticeFor(session, line) {
 // ── Работа оператора ──────────────────────────────────────────────────────
 
 async function operatorLineIds(userId) {
-  const rows = await OmniLineOperator.findAll({ where: { userId }, attributes: ['lineId', 'onShift'] });
+  const rows = await OmniLineOperator.findAll({
+    where: { userId },
+    attributes: ['lineId', 'onShift', 'isSenior']
+  });
   return {
     all: rows.map(r => r.lineId),
-    onShift: rows.filter(r => r.onShift).map(r => r.lineId)
+    onShift: rows.filter(r => r.onShift).map(r => r.lineId),
+    // Линии, где человек старший. Архив показывается только по ним, а не по
+    // всем его линиям: старший в одном филиале не получает права разбирать
+    // переписку соседнего.
+    senior: rows.filter(r => r.isSenior).map(r => r.lineId)
   };
 }
 
@@ -312,24 +322,45 @@ function conversationInclude(search) {
 }
 
 /**
+ * Условие выборки для каждого из трёх списков. Вынесено отдельно, потому что по
+ * нему же считаются счётчики на вкладках: разойтись им нельзя, иначе на вкладке
+ * будет число, не совпадающее с тем, что в ней лежит.
+ */
+function scopeWhere(userId, scope, lines) {
+  if (scope === 'mine') return { assigneeUserId: userId, status: 'assigned' };
+  if (scope === 'closed') return { lineId: { [Op.in]: lines.senior }, status: 'closed' };
+  return { lineId: { [Op.in]: lines.onShift }, status: 'queued' };
+}
+
+/**
  * Списки для экрана оператора:
  *   queue  — ничьи обращения линий, где человек сейчас на смене
  *   mine   — взятые им
- *   closed — архив по всем его линиям (для разбора спорных ситуаций)
+ *   closed — архив линий, где он старший оператор (ver. 8.10)
+ *
+ * Счётчики возвращаются вместе со списком, а не отдельным запросом. Так они
+ * нужны интерфейсу: числа стоят на всех трёх вкладках сразу, а не только на
+ * открытой, — иначе вкладка «Очередь» молчит ровно тогда, когда в очереди
+ * что-то появилось. Отдельный запрос за счётчиками означал бы второй поход в
+ * базу каждые пять секунд ради тех же самых строк.
+ *
+ * Считаем без учёта поиска: счётчик отвечает на вопрос «сколько там всего», а
+ * не «сколько нашлось по фамилии Иванов». Иначе набранная в поиске буква
+ * обнуляла бы соседние вкладки.
  */
 async function listConversations(userId, { scope = 'queue', limit = 50, offset = 0, q = '' } = {}) {
   const lines = await operatorLineIds(userId);
   if (!lines.all.length) throw new OpenLineError('not_operator', 'Вы не заведены ни в одну линию');
 
-  const where =
-    scope === 'mine'
-      ? { assigneeUserId: userId, status: 'assigned' }
-      : scope === 'closed'
-        ? { lineId: { [Op.in]: lines.all }, status: 'closed' }
-        : { lineId: { [Op.in]: lines.onShift }, status: 'queued' };
+  // Архив закрыт для тех, кто не старший ни на одной линии. Проверка на
+  // сервере, а не только скрытая вкладка: вкладку прячет интерфейс, а адрес
+  // запроса подобрать несложно.
+  if (scope === 'closed' && !lines.senior.length) {
+    throw new OpenLineError('not_operator', 'Архив обращений доступен старшему оператору линии');
+  }
 
   const rows = await OmniConversation.findAll({
-    where,
+    where: scopeWhere(userId, scope, lines),
     include: conversationInclude(q),
     order: [['lastMessageAt', 'DESC']],
     limit,
@@ -337,9 +368,21 @@ async function listConversations(userId, { scope = 'queue', limit = 50, offset =
     subQuery: false
   });
 
+  const counts = {
+    queue: lines.onShift.length
+      ? await OmniConversation.count({ where: scopeWhere(userId, 'queue', lines) })
+      : 0,
+    mine: await OmniConversation.count({ where: scopeWhere(userId, 'mine', lines) }),
+    // Архив не считаем вовсе, когда его не видно: и запрос лишний, и число,
+    // которое некому показать.
+    closed: lines.senior.length
+      ? await OmniConversation.count({ where: scopeWhere(userId, 'closed', lines) })
+      : 0
+  };
+
   // Строка списка показывает последнюю реплику — как в мессенджере. Одним
   // запросом на всю страницу, а не по запросу на строку.
-  return withPreviews(rows);
+  return { items: await withPreviews(rows), counts, canSeeArchive: lines.senior.length > 0 };
 }
 
 /**

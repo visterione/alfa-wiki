@@ -63,9 +63,41 @@ async function saveIncoming(channel, bot, media, conversationId) {
     kind: media.kind,
     title: media.title || null,
     url: `/uploads/open-line/${conversationId}/${name}`,
+    previewUrl: await savePreview(channel, bot, media, dir, conversationId),
     mime: contentType,
     size
   };
+}
+
+/**
+ * Уменьшенная копия фотографии для ленты (ver. 8.10).
+ *
+ * Telegram отдаёт одну и ту же фотографию лесенкой размеров, и до сих пор мы
+ * брали только самый большой. В ленте он показывается шириной 260 точек — то
+ * есть полтора мегабайта скачивались, чтобы нарисовать миниатюру. Забираем
+ * заодно средний: он у платформы уже готов, своего уменьшения делать не надо.
+ *
+ * Полный размер остаётся и открывается по щелчку: на снимке анализа важен как
+ * раз мелкий шрифт.
+ *
+ * Неудача здесь ничего не ломает и ничего не сообщает наружу. Превью — это
+ * ускорение, а не содержимое: не получилось — лента покажет полный файл, как
+ * показывала раньше. Ронять из-за этого приём сообщения пациента нельзя.
+ */
+async function savePreview(channel, bot, media, dir, conversationId) {
+  const previewId = media.previewFileId;
+  if (media.kind !== 'photo' || !previewId || previewId === media.fileId) return null;
+
+  try {
+    const link = await channel.fileLink(bot, previewId);
+    const name = `preview-${crypto.randomUUID()}.jpg`;
+    const { stream } = await channel.fileStream(link.url);
+    await pipeline(stream, fs.createWriteStream(path.join(dir, name)));
+    return `/uploads/open-line/${conversationId}/${name}`;
+  } catch (err) {
+    console.warn('[open-line] превью не сохранено, останется полный размер:', err.message);
+    return null;
+  }
 }
 
 /**

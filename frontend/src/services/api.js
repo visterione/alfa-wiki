@@ -1338,6 +1338,9 @@ export const openLine = {
   updateLine: (id, data) => api.put(`/open-line/lines/${id}`, data),
   addOperator: (lineId, userId) => api.post(`/open-line/lines/${lineId}/operators`, { userId }),
   removeOperator: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/operators/${userId}`),
+  // Старший оператор линии: единственное отличие — ему виден архив обращений.
+  setSenior: (lineId, userId, isSenior) =>
+    api.put(`/open-line/lines/${lineId}/operators/${userId}`, { isSenior }),
   bindBot: (lineId, botId) => api.put(`/open-line/lines/${lineId}/bots/${botId}`),
 
   // Рейтинг сотрудников и KPI (ver. 7.99): считается по обращениям и сменам.

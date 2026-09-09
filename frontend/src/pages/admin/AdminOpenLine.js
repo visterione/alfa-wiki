@@ -188,6 +188,7 @@ function LinesTab() {
   const update = guard((line, patch) => lineApi.updateLine(line.id, patch), 'Не удалось сохранить');
   const addOperator = guard((line, userId) => lineApi.addOperator(line.id, userId), 'Не удалось добавить сотрудника');
   const removeOperator = guard((line, userId) => lineApi.removeOperator(line.id, userId), 'Не удалось убрать сотрудника');
+  const setSenior = guard((line, o) => lineApi.setSenior(line.id, o.userId, !o.isSenior), 'Не удалось изменить');
   const bindBot = guard((lineId, botId) => lineApi.bindBot(lineId, botId), 'Не удалось привязать бота');
 
   if (!data) return <div className="ola-loading">Загрузка…</div>;
@@ -287,11 +288,23 @@ function LinesTab() {
 
               <div className="ola-block">
                 <h4><Users size={13} /> Состав</h4>
+                {/* Звёздочка — старший оператор. Единственное, что она даёт, —
+                    архив закрытых обращений: это чтение чужих разговоров с
+                    пациентами задним числом, и всей смене оно ни к чему
+                    (ver. 8.10). Отдельного экрана прав не заводили: состав линии
+                    и есть то место, где про людей на ней всё и решается. */}
                 <div className="ola-chips">
                   {(line.operators || []).map(o => (
-                    <span key={o.userId} className={`ola-chip ${o.onShift ? 'on-shift' : ''}`}>
+                    <span key={o.userId} className={`ola-chip ${o.onShift ? 'on-shift' : ''} ${o.isSenior ? 'senior' : ''}`}>
                       {o.onShift && <span className="dot" title="На смене" />}
                       {o.user ? (o.user.displayName || o.user.username) : o.userId}
+                      <button
+                        className={`ola-senior ${o.isSenior ? 'on' : ''}`}
+                        title={o.isSenior
+                          ? 'Старший оператор: видит архив обращений. Снять'
+                          : 'Сделать старшим — откроется архив обращений линии'}
+                        onClick={() => setSenior(line, o)}
+                      ><Star size={12} /></button>
                       <button title="Убрать из состава" onClick={() => removeOperator(line, o.userId)}><X size={12} /></button>
                     </span>
                   ))}

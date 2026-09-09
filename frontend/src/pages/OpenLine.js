@@ -50,10 +50,18 @@ import './OpenLine.css';
 
 const POLL_MS = 5000;
 
+// Через сколько тактов опроса переписка перечитывается без явного повода.
+// Тридцать секунд: обычно её обновляет сам список, увидев изменение, а это —
+// подстраховка для случая, когда открытого чата в списке нет.
+const THREAD_REFRESH_TICKS = 6;
+
 const SCOPES = [
   { key: 'queue',  label: 'Очередь', icon: Inbox },
   { key: 'mine',   label: 'Мои',     icon: MessageCircle },
-  { key: 'closed', label: 'Архив',   icon: Archive }
+  // Архив видит только старший оператор линии (ver. 8.10). Это чтение чужих
+  // разговоров с пациентами задним числом — нужное для разбора спорных
+  // ситуаций, но не всей смене.
+  { key: 'closed', label: 'Архив',   icon: Archive, senior: true }
 ];
 
 /** «79001234567» → «+7 (900) 123-45-67». Хранится нормализованным, читается — нет. */
@@ -131,12 +139,22 @@ function renderAttachment(a, key, fileToken) {
     return <span key={key} className="ol-chip">{a.title || a.kind}</span>;
   }
 
-  const href = fileToken ? `${a.url}?t=${encodeURIComponent(fileToken)}` : a.url;
+  const withToken = (url) => (fileToken ? `${url}?t=${encodeURIComponent(fileToken)}` : url);
+  const href = withToken(a.url);
 
   if (a.kind === 'photo') {
+    // В ленте — уменьшенная копия, по щелчку — полный размер (ver. 8.10). До
+    // этого в ленте висел оригинал: полтора мегабайта, чтобы нарисовать
+    // картинку шириной 260 точек. У сообщений, принятых раньше, превью нет —
+    // тогда показываем полный, как и показывали.
     return (
       <a key={key} href={href} target="_blank" rel="noreferrer" className="ol-photo">
-        <img src={href} alt={a.title || 'Вложение'} loading="lazy" />
+        <img
+          src={a.previewUrl ? withToken(a.previewUrl) : href}
+          alt={a.title || 'Вложение'}
+          loading="lazy"
+          decoding="async"
+        />
       </a>
     );
   }
@@ -167,6 +185,10 @@ export default function OpenLine() {
   const [scope, setScope] = useState('queue');
   const [query, setQuery] = useState('');
   const [conversations, setConversations] = useState([]);
+  // Сколько лежит в каждом списке. Приезжают вместе со списком, а не отдельным
+  // запросом: числа нужны на всех вкладках сразу, иначе «Очередь» молчит ровно
+  // тогда, когда в ней что-то появилось.
+  const [counts, setCounts] = useState({ queue: 0, mine: 0, closed: 0 });
   const [activeId, setActiveId] = useState(null);
   const [thread, setThread] = useState(null);        // { conversation, messages, sessions }
   const [draft, setDraft] = useState('');
@@ -176,6 +198,15 @@ export default function OpenLine() {
   const bottomRef = useRef(null);
   const fieldRef = useRef(null);
   const fileRef = useRef(null);
+
+  // Открытая переписка и её подпись — в ссылках, а не в зависимостях загрузки
+  // списка: список перечитывается каждые пять секунд, и упоминание activeId в
+  // его зависимостях пересоздавало бы таймер на каждом переключении чата.
+  const activeIdRef = useRef(null);
+  const threadSigRef = useRef(null);
+  const tickRef = useRef(0);
+
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
 
   /**
    * Поле ответа растёт под текст: оператор пишет абзацами, а в одну строку из
@@ -200,26 +231,47 @@ export default function OpenLine() {
     }
   }, []);
 
-  const loadList = useCallback(async () => {
-    try {
-      const { data } = await openLineApi.conversations(scope, query.trim());
-      setConversations(data);
-    } catch (err) {
-      if (err.response?.status !== 403) toast.error('Не удалось загрузить список обращений');
-    } finally {
-      setLoading(false);
-    }
-  }, [scope, query]);
+  /**
+   * Подпись переписки: по ней видно, изменилось ли в ней что-нибудь.
+   *
+   * Три поля, и каждое означает событие, которое оператор должен увидеть без
+   * перезагрузки: новое сообщение, смену исполнителя (в том числе передачу) и
+   * закрытие обращения.
+   */
+  const signatureOf = (c) => (c ? `${c.status}|${c.assigneeUserId || ''}|${c.lastMessageAt || ''}` : null);
 
   const loadThread = useCallback(async (id) => {
     if (!id) return;
     try {
       const { data } = await openLineApi.conversation(id);
       setThread(data);
+      threadSigRef.current = signatureOf(data.conversation);
     } catch {
       toast.error('Не удалось открыть переписку');
     }
   }, []);
+
+  const loadList = useCallback(async () => {
+    try {
+      const { data } = await openLineApi.conversations(scope, query.trim());
+      setConversations(data.items);
+      setCounts(data.counts);
+
+      // Переписка перечитывается только тогда, когда в ней что-то изменилось.
+      //
+      // Раньше она тянулась целиком каждые пять секунд, а переписка здесь
+      // вечная: у постоянного пациента это сотни сообщений за год, и все они
+      // ехали заново шесть раз в минуту — при том что меняются они несколько
+      // раз в час. Список и так приходит рядом и знает, было ли новое
+      // сообщение, — сравниваем подписи и ходим за перепиской по делу.
+      const open = data.items.find(c => c.id === activeIdRef.current);
+      if (open && signatureOf(open) !== threadSigRef.current) loadThread(open.id);
+    } catch (err) {
+      if (err.response?.status !== 403) toast.error('Не удалось загрузить список обращений');
+    } finally {
+      setLoading(false);
+    }
+  }, [scope, query, loadThread]);
 
   // Состояние перечитываем и по таймеру: вместе с ним приезжает токен доступа к
   // вложениям, а он живёт сутки — у оператора, не закрывавшего вкладку смену
@@ -240,15 +292,43 @@ export default function OpenLine() {
 
   useEffect(() => { loadThread(activeId); }, [activeId, loadThread]);
 
-  // Опрос: список и открытая переписка. Пока оператор печатает, черновик не
-  // трогаем — обновляется только то, что пришло с сервера.
+  // Право на архив могли снять, пока человек в нём стоял, — возвращаем его в
+  // очередь, а не оставляем на вкладке, которой больше нет.
   useEffect(() => {
-    const timer = setInterval(() => {
+    if (scope === 'closed' && state && !state.canSeeArchive) setScope('queue');
+  }, [scope, state]);
+
+  // Опрос. Пока оператор печатает, черновик не трогаем — обновляется только то,
+  // что пришло с сервера.
+  //
+  // Переписку сам опрос больше не тянет: за неё отвечает loadList, который
+  // сходит за ней, если увидит изменение. Раз в THREAD_REFRESH_TICKS всё-таки
+  // перечитываем без повода — на случай, когда открытого чата в текущем списке
+  // нет (человек смотрит «Очередь», а обращение уже у него) и сравнивать не с
+  // чем.
+  //
+  // В свёрнутой вкладке не опрашиваем вовсе: оператор держит портал открытым
+  // всю смену, и вкладка, лежащая в фоне, всё это время дёргала сервер дважды в
+  // пять секунд впустую. Вернулись — перечитываем сразу, не дожидаясь такта.
+  useEffect(() => {
+    const tick = () => {
+      if (document.hidden) return;
       loadList();
-      if (activeId) loadThread(activeId);
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [loadList, loadThread, activeId]);
+      tickRef.current += 1;
+      if (activeIdRef.current && tickRef.current % THREAD_REFRESH_TICKS === 0) {
+        loadThread(activeIdRef.current);
+      }
+    };
+
+    const timer = setInterval(tick, POLL_MS);
+    const onVisible = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [loadList, loadThread]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -415,6 +495,11 @@ export default function OpenLine() {
     );
   }
 
+  // Архив выпадает из полосы у всех, кроме старших. Прячем и на случай, если
+  // человек уже стоял на нём в момент, когда право сняли: иначе он остался бы
+  // смотреть на пустой список с ошибкой доступа.
+  const visibleScopes = SCOPES.filter(sc => !sc.senior || state?.canSeeArchive);
+
   const conversation = thread?.conversation;
   const isMine = conversation?.assigneeUserId === user?.id;
   const canWrite = conversation && conversation.status !== 'closed' && (isMine || !conversation.assigneeUserId);
@@ -441,7 +526,7 @@ export default function OpenLine() {
             </div>
 
             <nav className="ol-scopes">
-              {SCOPES.map(({ key, label, icon: Icon }) => (
+              {visibleScopes.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
                   className={`ol-scope ${scope === key ? 'active' : ''}`}
@@ -449,9 +534,12 @@ export default function OpenLine() {
                 >
                   <Icon size={15} />
                   {label}
-                  {key === scope && conversations.length > 0 && (
-                    <span className="ol-scope-count">{conversations.length}</span>
-                  )}
+                  {/* Число стоит на всех вкладках, а не только на открытой
+                      (ver. 8.10). Счётчик, который видно лишь после того, как
+                      вкладку открыли, отвечает на вопрос, который к этому
+                      моменту уже не задают: смысл его в том, чтобы позвать
+                      туда, куда оператор сейчас не смотрит. */}
+                  {counts[key] > 0 && <span className="ol-scope-count">{counts[key]}</span>}
                 </button>
               ))}
             </nav>
@@ -465,7 +553,7 @@ export default function OpenLine() {
                     ? 'Ничего не найдено'
                     : scope === 'queue'
                       ? (state?.onShift ? 'Очередь пуста' : 'Начните смену в меню пользователя, чтобы видеть очередь')
-                      : scope === 'mine' ? 'Взятых обращений нет' : 'Архив пуст'}
+                      : scope === 'mine' ? 'Взятых обращений нет' : 'В архиве пусто'}
                 </div>
               )}
 
