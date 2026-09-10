@@ -137,9 +137,21 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
   const [scheduledAt, setScheduledAt] = useState('');
   const fileRef = useRef(null);
 
-  // Состояние с сервера подхватываем на каждое обновление: пока рассылка идёт,
-  // отсюда приезжают счётчики.
-  useEffect(() => { setDraft(broadcast); }, [broadcast]);
+  // Фоновое обновление нужно для счётчиков, но не имеет права перетирать
+  // несохранённый черновик. Раньше любой идущий рядом анонс обновлял список раз
+  // в пять секунд — и выбранный медцентр исчезал прямо во время набора текста.
+  useEffect(() => {
+    setDraft(current => {
+      if (!current || current.id !== broadcast.id || current.status !== 'draft') return broadcast;
+      return {
+        ...current,
+        status: broadcast.status,
+        scheduledAt: broadcast.scheduledAt,
+        counts: broadcast.counts,
+        issues: broadcast.issues
+      };
+    });
+  }, [broadcast]);
 
   // А отметку о проверке сбрасываем только при переходе к ДРУГОЙ рассылке.
   //
@@ -612,7 +624,8 @@ export default function BroadcastsTab() {
 
   // Идущая рассылка обновляется сама: смотреть на застывший счётчик и гадать,
   // работает ли движок, — худшее, что можно предложить у кнопки «Остановить».
-  const sending = items?.some(b => b.status === 'sending' || b.status === 'scheduled');
+  const selectedStatus = items?.find(b => b.id === selectedId)?.status;
+  const sending = selectedStatus === 'sending' || selectedStatus === 'scheduled';
   useEffect(() => {
     if (!sending) return undefined;
     const timer = setInterval(() => load(selectedId), 5000);

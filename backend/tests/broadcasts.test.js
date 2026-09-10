@@ -25,7 +25,7 @@ test('рассылка не видит заблокировавших, отпи�
 
   assert.equal(filter.isBlocked, false);
   assert.equal(filter.marketingOptOut, false);
-  assert.equal(filter.botId, 'bot-1');
+  assert.equal(filter.botId, undefined, 'устаревший botId не должен скрывать живую подписку организации');
   // source='bot' — это и есть отсечение выгрузки из Fromni (source='import'),
   // у которой пуст botId. Включение отложено решением заказчика.
   assert.equal(filter.source, 'bot');
@@ -76,6 +76,12 @@ test('отложенный запуск принимает только буду
   );
   assert.throws(() => broadcasts.parseScheduledAt('', now), /дату и время/);
   assert.throws(() => broadcasts.parseScheduledAt('2026-09-10T05:59:00.000Z', now), /будущем/);
+});
+
+test('временная сетевая ошибка получает ограниченный номер повторной попытки', () => {
+  assert.equal(broadcasts.MAX_NETWORK_ATTEMPTS, 3);
+  assert.equal(broadcasts.nextNetworkAttempt(null), 1);
+  assert.equal(broadcasts.nextNetworkAttempt('временная ошибка, попытка 1/3: ECONNABORTED'), 2);
 });
 
 // ── Отправка одного сообщения ─────────────────────────────────────────────

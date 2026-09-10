@@ -54,6 +54,7 @@ const PER_SECOND = Number(process.env.BROADCAST_PER_SECOND || 20);
 // Сколько адресатов разбирать за один заход. При двадцати в секунду это ровно
 // пять секунд работы — столько же, сколько между тиками таймера.
 const BATCH = Number(process.env.BROADCAST_BATCH || 100);
+const MAX_NETWORK_ATTEMPTS = Math.max(1, Number(process.env.BROADCAST_NETWORK_ATTEMPTS) || 3);
 
 class BroadcastError extends Error {
   constructor(code, message) {
@@ -64,6 +65,10 @@ class BroadcastError extends Error {
 }
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function nextNetworkAttempt(error) {
+  return Number(String(error || '').match(/попытка (\d+)\//)?.[1] || 0) + 1;
+}
 
 // ── Аудитория ─────────────────────────────────────────────────────────────
 
@@ -94,12 +99,10 @@ async function botsFor(medCenterIds) {
  */
 function subscriberFilter(bot) {
   return {
-    // Один и тот же ключ организации мог пережить замену токена. Chat id
-    // старого бота внешне выглядит валидным, но новый бот получает на нём
-    // «chat not found». Тестовая отправка при этом проходит, потому что в ней
-    // вводят id уже текущего бота. Берём только тех, кто действительно запускал
-    // именно этот экземпляр.
-    botId: bot.id,
+    // Подписчик уникален по паре «платформа + организация + пользователь».
+    // botId появился позднее и у части живых подписок остался старым после
+    // переподключения токена. Отсекать по нему нельзя: это как раз превращало
+    // оставшегося живого адресата в ложное «в медцентре нет подписчиков».
     platform: bot.platform,
     organization: bot.organization,
     source: 'bot',
@@ -198,7 +201,10 @@ async function withCounts(broadcast) {
   const issueRows = await OmniBroadcastTarget.findAll({
     where: {
       broadcastId: broadcast.id,
-      status: { [Op.in]: ['failed', 'skipped'] }
+      [Op.or]: [
+        { status: { [Op.in]: ['failed', 'skipped'] } },
+        { status: 'pending', error: { [Op.ne]: null } }
+      ]
     },
     attributes: ['status', 'error', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
     group: ['status', 'error'],
@@ -342,8 +348,10 @@ async function activate(broadcast) {
 
   const pairs = await audience(broadcast.medCenterIds);
   if (!pairs.length) {
-    throw new BroadcastError('empty_audience',
-      'В выбранных медцентрах нет подписчиков. Проверьте, что у ботов проставлен медцентр');
+    const bots = await botsFor(broadcast.medCenterIds);
+    throw new BroadcastError('empty_audience', bots.length
+      ? 'У подключённых ботов нет доступных подписчиков: пациенты ещё не запускали их либо ранее заблокировали'
+      : 'В выбранных медцентрах нет активных ботов');
   }
 
   await OmniBroadcastTarget.bulkCreate(
@@ -598,7 +606,7 @@ async function runOnce() {
         mediaIds[target.bot.platform] = result.fileId;
         await active.update({ mediaIds });
       }
-      await target.update({ status: 'sent', externalMessageId: result.externalMessageId, sentAt: new Date() });
+      await target.update({ status: 'sent', error: null, externalMessageId: result.externalMessageId, sentAt: new Date() });
       sent++;
     } catch (err) {
       // Заблокировавшего помечаем сразу: иначе каскад уведомлений будет тратить
@@ -612,6 +620,27 @@ async function runOnce() {
       // ответили бы тем же самым.
       if (err.code === 'rate_limited') {
         await sleep((err.retryAfter || 1) * 1000);
+        continue;
+      }
+
+      // Таймаут или обрыв соединения ничего не говорит о получателе. Раньше
+      // ECONNABORTED сразу становился окончательным failed, хотя следующий
+      // запрос обычно проходит. Номер попытки храним в уже имеющемся поле
+      // error, чтобы не требовать отдельной миграции очереди.
+      if (err.code === 'network') {
+        const attempt = nextNetworkAttempt(target.error);
+        if (attempt < MAX_NETWORK_ATTEMPTS) {
+          await target.update({
+            status: 'pending',
+            error: `временная ошибка, попытка ${attempt}/${MAX_NETWORK_ATTEMPTS}: ${err.message}`
+          });
+          continue;
+        }
+        await target.update({
+          status: 'failed',
+          error: `сеть не ответила после ${MAX_NETWORK_ATTEMPTS} попыток: ${err.message}`
+        });
+        failed++;
         continue;
       }
       await target.update({ status: 'failed', error: err.message });
@@ -651,8 +680,9 @@ async function optOut(bot, externalUserId) {
 
 module.exports = {
   TEXT_LIMIT,
+  MAX_NETWORK_ATTEMPTS,
   BroadcastError,
-  validate, validateSendable, parseScheduledAt, subscriberFilter, deliver,
+  validate, validateSendable, parseScheduledAt, nextNetworkAttempt, subscriberFilter, deliver,
   list, get, create, update, remove, withCounts,
   audience, audienceSize,
   saveImage, removeImage,
