@@ -62,11 +62,20 @@ function combineSalaries(reports) {
   const combined = {
     ...salaries[0],
     payType: 'combined',
-    basePayLabel: 'Начисления по медцентрам',
+    basePayLabel: 'Основное начисление',
     hasClinicSettings: true,
     paymentMethod: commonMethod(reports, 'paymentMethod'),
     mainPaymentMethod: commonMethod(reports, 'mainPaymentMethod'),
     sourceClinicSummaries: reports.map(sourceSummary),
+    // Веб-отчёт не должен терять границы исходных расчётов. Суммы выше нужны
+    // первому уровню дерева, а эти неизменённые salary — второму уровню
+    // «медцентр» и третьему с настоящими услугами/направлениями/взысканиями.
+    sourceClinicReports: reports.map(report => ({
+      clinicId: String(report.clinicId),
+      clinicLabel: report.clinicLabel,
+      clinicColor: report.clinicColor,
+      salary: report.salary || {},
+    })),
     extraPayments: reports.flatMap(report => (report.salary?.extraPayments || []).map(item => ({
       ...item,
       sourceClinicId: String(report.clinicId),
@@ -125,7 +134,16 @@ export function groupClinicReportsByAccrual(
     const targetSettings = execSettings?.clinicSettings?.[targetId] || {};
     const targetReport = reports.find(report => String(report.clinicId) === targetId);
     const salary = reports.length === 1
-      ? { ...reports[0].salary, sourceClinicSummaries: reports.map(sourceSummary) }
+      ? {
+          ...reports[0].salary,
+          sourceClinicSummaries: reports.map(sourceSummary),
+          sourceClinicReports: reports.map(report => ({
+            clinicId: String(report.clinicId),
+            clinicLabel: report.clinicLabel,
+            clinicColor: report.clinicColor,
+            salary: report.salary || {},
+          })),
+        }
       : combineSalaries(reports);
 
     return {

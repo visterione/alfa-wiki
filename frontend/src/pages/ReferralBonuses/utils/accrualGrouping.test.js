@@ -43,6 +43,8 @@ test('объединяет готовые расчёты в выбранный �
     report('3', 200, { materials: 15, ndfl: 10, mainPayment: 30, paymentMethod: 'cash' }),
     report('4', 300),
   ];
+  source[0].salary.performedSections = [{ code: 'A', name: 'Услуга Альфа' }];
+  source[1].salary.performedSections = [{ code: 'K', name: 'Услуга 3К' }];
   const settings = { clinicSettings: {
     2: { accrualClinicId: '2' },
     3: { accrualClinicId: '2' },
@@ -58,6 +60,10 @@ test('объединяет готовые расчёты в выбранный �
   expect(result.salary.finalDeductionsTotal).toBe(10);
   expect(result.salary.finalMaterialsTotal).toBe(15);
   expect(result.salary.paymentMethod).toBe('mixed');
+  expect(result.salary.basePayLabel).toBe('Основное начисление');
+  expect(result.salary.sourceClinicReports.map(item => item.clinicId)).toEqual(['2', '3', '4']);
+  expect(result.salary.sourceClinicReports[0].salary.performedSections).toEqual([{ code: 'A', name: 'Услуга Альфа' }]);
+  expect(result.salary.sourceClinicReports[1].salary.performedSections).toEqual([{ code: 'K', name: 'Услуга 3К' }]);
   expect(result.salary.sourceClinicSummaries).toEqual([
     expect.objectContaining({ clinicId: '2', accrued: 110, withheld: 15, paid: 20, remainder: 75 }),
     expect.objectContaining({ clinicId: '3', accrued: 215, withheld: 25, paid: 30, remainder: 160 }),

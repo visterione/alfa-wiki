@@ -7,8 +7,9 @@ function fmtMethod(m) { return m === 'cash' ? 'наличные' : (m === 'mixed
 const MIS_WEB_BASE = 'https://rnova.medcentralfa.ru:3010';
 const patientCardUrl = (patientId) => `${MIS_WEB_BASE}/patients/default/detail/id/${patientId}`;
 
-function SalaryRow({ label, value, color = 'var(--rb-text)', children, expandable }) {
+function SalaryRow({ label, value, color = 'var(--rb-text)', children, expandable, detailOnly = false }) {
   const [expanded, setExpanded] = useState(false);
+  if (detailOnly) return children || null;
   return (
     <div>
       <div
@@ -250,7 +251,7 @@ function AnesthTable({ services }) {
   );
 }
 
-function SubSection({ label, value, color, type, children, indent = 24 }) {
+function SubSection({ label, value, color, type = '', children, indent = 24, marker }) {
   const [expanded, setExpanded] = useState(false);
   const hasChildren = !!children;
   return (
@@ -261,7 +262,10 @@ function SubSection({ label, value, color, type, children, indent = 24 }) {
         onClick={hasChildren ? (e) => { e.stopPropagation(); setExpanded(s => !s); } : (e) => e.stopPropagation()}
       >
         <div className="rb-salary-row-body">
-          <div className="rb-salary-row-label">{label}</div>
+          <div className="rb-salary-row-label" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            {marker && <span style={{ width: 8, height: 8, borderRadius: '50%', background: marker, flexShrink: 0 }} />}
+            {label}
+          </div>
         </div>
         <div className="rb-salary-row-value" style={{ fontSize: 12, color }}>{value}</div>
         {hasChildren && (
@@ -275,39 +279,238 @@ function SubSection({ label, value, color, type, children, indent = 24 }) {
   );
 }
 
-function AccrualSources({ items }) {
-  if (!items?.length) return null;
-  return (
-    <div style={{ marginBottom: 12, border: '1px solid var(--rb-border)', borderRadius: 7, overflowX: 'auto' }}>
-      <div style={{ padding: '7px 10px', background: 'var(--accent-50)', color: 'var(--accent-700)', fontSize: 12, fontWeight: 700 }}>
-        Состав начисления
-      </div>
-      <table className="rb-report-table rb-report-table--bordered" style={{ margin: 0 }}>
-        <thead>
-          <tr><th>Медцентр</th><th style={{ textAlign: 'right' }}>Начислено</th><th style={{ textAlign: 'right' }}>Удержано</th><th style={{ textAlign: 'right' }}>Выплачено</th><th style={{ textAlign: 'right' }}>К доплате</th></tr>
-        </thead>
-        <tbody>
-          {items.map(item => (
-            <tr key={item.clinicId}>
-              <td style={{ fontWeight: 600 }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: item.clinicColor || 'var(--n-400)', marginRight: 6 }} />
-                {item.clinicLabel}
-              </td>
-              <td style={{ textAlign: 'right' }}>{fmtRub(item.accrued)}</td>
-              <td style={{ textAlign: 'right', color: item.withheld > 0 ? 'var(--rb-danger)' : 'inherit' }}>{fmtRub(item.withheld)}</td>
-              <td style={{ textAlign: 'right' }}>{fmtRub(item.paid)}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700, color: item.remainder >= 0 ? 'var(--rb-success)' : 'var(--rb-danger)' }}>
-                {item.remainder < 0 ? '−' : ''}{fmtRub(Math.abs(item.remainder))}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+function num(value) {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export default function SalaryBlock({ salary }) {
+function basePayDisplayLabel(salary = {}) {
+  const rawLabel = salary.basePayLabel;
+  if (rawLabel === 'Бонусы за выполненные услуги (по тарифам)' || rawLabel === 'Бонусы за выполненные услуги') {
+    return 'Выполненные услуги';
+  }
+  return salary.payType === 'hourly' ? 'Почасовой оклад' : (rawLabel || 'Оклад');
+}
+
+function salaryAccounting(salary = {}) {
+  const deductions = salary.deductions || [];
+  const legacyNdfl = deductions.find(item => (item.name || '').trim() === 'НДФЛ');
+  const preFinalSalary = num(salary.basePay) + num(salary.holidaySurchargeTotal)
+    + num(salary.referralBonuses) + num(salary.performedBonusTotal) + num(salary.extrasTotal)
+    + num(salary.assistanceIncomeTotal) + num(salary.anesthesiologistIncomeTotal)
+    + num(salary.nurseIncomeTotal) - num(salary.referralCostTotal);
+  const legacyNdflAmount = legacyNdfl
+    ? (legacyNdfl.deductionType !== 'final'
+        ? (legacyNdfl.valueType === 'percent'
+            ? num(salary.performedServicesSum) * num(legacyNdfl.value) / 100
+            : num(legacyNdfl.value))
+        : (legacyNdfl.valueType === 'percent'
+            ? preFinalSalary * num(legacyNdfl.value) / 100
+            : num(legacyNdfl.value)))
+    : 0;
+
+  return {
+    deductionsTotal: Math.max(0, num(salary.finalDeductionsTotal) - (legacyNdfl ? legacyNdflAmount : 0)),
+    ndfl: num(salary.ndflTotal) || legacyNdflAmount,
+    legacyNdflAmount,
+    hasLegacyNdfl: !!legacyNdfl,
+    deductionsForDisplay: legacyNdfl ? deductions.filter(item => item !== legacyNdfl) : deductions,
+  };
+}
+
+function performedSectionTotal(salary = {}) {
+  const doctor = salary.payType === 'percent' ? num(salary.basePay) : num(salary.performedBonusTotal);
+  return doctor + num(salary.assistanceIncomeTotal) + num(salary.nurseIncomeTotal)
+    + num(salary.anesthesiologistIncomeTotal);
+}
+
+function sectionInfo(salary = {}, section) {
+  const performed = performedSectionTotal(salary);
+  const accounting = salaryAccounting(salary);
+  const definitions = {
+    wage: {
+      visible: salary.payType !== 'percent'
+        && (num(salary.basePay) !== 0 || num(salary.holidaySurchargeTotal) !== 0 || num(salary.hoursWorked) !== 0),
+      value: fmtRub(num(salary.basePay) + num(salary.holidaySurchargeTotal)),
+      color: 'var(--rb-text)',
+      hasDetails: (salary.basePerformedSections || []).length > 0 || (salary.hourlyRatesBreakdown || []).length > 0
+        || (salary.normServices || []).length > 0 || salary.payType === 'hourly' || salary.payType === 'prorated',
+    },
+    referral: {
+      visible: num(salary.referralBonuses) !== 0,
+      value: `+${fmtRub(num(salary.referralBonuses))}`,
+      color: 'var(--rb-success)', type: 'plus',
+      hasDetails: (salary.referralSections || []).length > 0,
+    },
+    performed: {
+      visible: performed !== 0 || (salary.basePerformedSections || []).length > 0
+        || (salary.anesthesiologistIncomeSections || []).length > 0,
+      value: `${performed >= 0 ? '+' : '−'}${fmtRub(Math.abs(performed))}`,
+      color: performed >= 0 ? 'var(--rb-success)' : 'var(--rb-danger)', type: performed >= 0 ? 'plus' : 'minus',
+      hasDetails: (salary.performedSections || []).length > 0 || (salary.basePerformedSections || []).length > 0
+        || (salary.assistanceIncomeSections || []).length > 0
+        || (salary.nurseIncomeSections || []).length > 0 || (salary.anesthesiologistIncomeSections || []).length > 0,
+    },
+    extras: {
+      visible: num(salary.extrasTotal) !== 0,
+      value: `+${fmtRub(num(salary.extrasTotal))}`,
+      color: 'var(--rb-success)', type: 'plus',
+      hasDetails: (salary.extras || []).length > 0,
+    },
+    deductions: {
+      visible: accounting.deductionsTotal !== 0 || accounting.deductionsForDisplay.length > 0
+        || num(salary.assistancePaidTotal) !== 0 || num(salary.anesthesiologistPaidTotal) !== 0 || num(salary.nursePaidTotal) !== 0,
+      value: `−${fmtRub(accounting.deductionsTotal)}`,
+      color: 'var(--rb-danger)', type: 'minus',
+      hasDetails: accounting.deductionsForDisplay.length > 0 || (salary.assistanceSections || []).length > 0
+        || (salary.anesthesiologistSections || []).length > 0 || (salary.nurseSections || []).length > 0
+        || num(salary.assistancePaidTotal) !== 0 || num(salary.anesthesiologistPaidTotal) !== 0 || num(salary.nursePaidTotal) !== 0,
+    },
+    materials: {
+      visible: num(salary.finalMaterialsTotal) !== 0 || num(salary.svcMatFinalTotal) !== 0
+        || (salary.materials || []).length > 0 || (salary.svcMatBreakdown || []).length > 0
+        || (salary.svcMatTurnoverBreakdown || []).length > 0 || (salary.serviceMaterials || []).length > 0,
+      value: `−${fmtRub(num(salary.finalMaterialsTotal) + num(salary.svcMatFinalTotal))}`,
+      color: 'var(--rb-danger)', type: 'minus',
+      hasDetails: (salary.materials || []).length > 0 || (salary.svcMatBreakdown || []).length > 0
+        || (salary.svcMatTurnoverBreakdown || []).length > 0 || (salary.serviceMaterials || []).length > 0,
+    },
+    referralCost: {
+      visible: num(salary.referralCostTotal) !== 0,
+      value: `−${fmtRub(num(salary.referralCostTotal))}`,
+      color: 'var(--rb-danger)', type: 'minus',
+      hasDetails: (salary.executorSections || []).length > 0,
+    },
+  };
+  return definitions[section] || { visible: false, value: '', hasDetails: false };
+}
+
+function ClinicDetails({ sources, section }) {
+  return sources.map(source => {
+    const info = sectionInfo(source.salary, section);
+    if (!info.visible) return null;
+    const detailSalary = section === 'performed' && source.salary?.payType === 'percent'
+      ? {
+          ...source.salary,
+          performedBonusTotal: source.salary.basePay,
+          performedSections: source.salary.basePerformedSections || [],
+        }
+      : source.salary;
+    const details = info.hasDetails
+      ? <SalaryBlock salary={detailSalary} detailSection={section} />
+      : null;
+    return (
+      <SubSection
+        key={`${section}-${source.clinicId}`}
+        indent={20}
+        label={source.clinicLabel}
+        value={info.value}
+        color={info.color}
+        type={info.type}
+        marker={source.clinicColor || 'var(--n-400)'}
+      >
+        {details}
+      </SubSection>
+    );
+  });
+}
+
+function GroupedDetails({ sources, section, children, groupWages = false }) {
+  if (!sources?.length) return children || null;
+  if (!groupWages) return <ClinicDetails sources={sources} section={section} />;
+
+  const groups = new Map();
+  sources.forEach(source => {
+    const info = sectionInfo(source.salary, section);
+    if (!info.visible) return;
+    const label = basePayDisplayLabel(source.salary);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(source);
+  });
+
+  return [...groups.entries()].map(([label, group]) => (
+    <SalaryRow
+      key={label}
+      label={label}
+      value={fmtRub(group.reduce((sum, source) => sum + num(source.salary?.basePay) + num(source.salary?.holidaySurchargeTotal), 0))}
+      expandable
+    >
+      <ClinicDetails sources={group} section={section} />
+    </SalaryRow>
+  ));
+}
+
+function paymentMetrics(salary = {}) {
+  const accounting = salaryAccounting(salary);
+  const extra = (salary.extraPayments || []).reduce((sum, item) => sum + num(item?.amount), 0);
+  const vacation = (salary.extraPayments || [])
+    .filter(item => (item?.label || '').trim() === 'Отпускные')
+    .reduce((sum, item) => sum + num(item?.amount), 0);
+  const deductions = accounting.deductionsTotal + num(salary.finalMaterialsTotal) + num(salary.svcMatFinalTotal);
+  const ndfl = accounting.ndfl;
+  const gross = num(salary.finalSalary) + (accounting.hasLegacyNdfl ? accounting.legacyNdflAmount : 0) + deductions;
+  const withheld = deductions + ndfl;
+  const advance = num(salary.advance);
+  const main = num(salary.mainPayment) + extra - vacation;
+  const premium = num(salary.normPremiumAmount);
+  const remainder = gross - withheld - advance - num(salary.mainPayment) - premium - extra;
+  return { gross, withheld, ndfl, advance, main, premium, vacation, remainder };
+}
+
+function PaymentTree({ sources }) {
+  const total = sources.reduce((result, source) => {
+    const current = paymentMetrics(source.salary);
+    Object.keys(result).forEach(key => { result[key] += current[key]; });
+    return result;
+  }, { gross: 0, withheld: 0, ndfl: 0, advance: 0, main: 0, premium: 0, vacation: 0, remainder: 0 });
+  const hasBreakdown = total.withheld > 0 || total.advance > 0 || total.main > 0
+    || total.premium > 0 || total.vacation > 0;
+  const rows = [
+    { key: 'gross', label: 'Начислено' },
+    { key: 'withheld', label: 'Удержано', negative: true },
+    { key: 'ndfl', label: 'НДФЛ', negative: true },
+    { key: 'advance', label: 'Аванс' },
+    { key: 'main', label: 'Основная ЗП' },
+    { key: 'premium', label: 'Премия' },
+    { key: 'vacation', label: 'Отпускные' },
+    { key: 'remainder', label: total.remainder < 0 ? 'Переплата' : 'Остаток к доплате', remainder: true },
+  ];
+
+  return rows.map(row => {
+    const value = total[row.key];
+    if (row.remainder && !hasBreakdown) return null;
+    if (!row.remainder && value <= 0) return null;
+    const totalNegative = row.negative || (row.remainder && value < 0);
+    return (
+      <SalaryRow
+        key={row.key}
+        label={row.label}
+        value={`${totalNegative ? '−' : ''}${fmtRub(Math.abs(value))}`}
+        color={totalNegative ? 'var(--rb-danger)' : (row.remainder ? 'var(--rb-success)' : 'var(--rb-text-secondary)')}
+        expandable
+      >
+        {sources.map(source => {
+          const sourceValue = paymentMetrics(source.salary)[row.key];
+          if (!row.remainder && sourceValue <= 0) return null;
+          const sourceNegative = row.negative || (row.remainder && sourceValue < 0);
+          return (
+            <SubSection
+              key={`${row.key}-${source.clinicId}`}
+              indent={20}
+              label={source.clinicLabel}
+              value={`${sourceNegative ? '−' : ''}${fmtRub(Math.abs(sourceValue))}`}
+              color={sourceNegative ? 'var(--rb-danger)' : (row.remainder ? 'var(--rb-success)' : 'var(--rb-text-secondary)')}
+              type={sourceNegative ? 'minus' : undefined}
+              marker={source.clinicColor || 'var(--n-400)'}
+            />
+          );
+        })}
+      </SalaryRow>
+    );
+  });
+}
+
+export default function SalaryBlock({ salary, detailSection = null }) {
   const {
     basePay, basePayLabel: rawBasePayLabel,
     referralBonuses, referralSections = [],
@@ -348,8 +551,10 @@ export default function SalaryBlock({ salary }) {
     hourlyRatesBreakdown = [],
     holidaySurchargeTotal = 0,
     holidaySurchargeBreakdown = [],
-    sourceClinicSummaries = [],
+    sourceClinicReports = [],
   } = salary;
+
+  const showing = section => !detailSection || detailSection === section;
 
   // Парсим старый формат "Почасовой оклад (100 ₽ × 90 ч)" для обратной совместимости
   let _hourlyRate = hourlyRate, _hoursWorked = hoursWorked;
@@ -361,10 +566,7 @@ export default function SalaryBlock({ salary }) {
     }
   }
 
-  const basePayLabel = rawBasePayLabel === 'Бонусы за выполненные услуги (по тарифам)' || rawBasePayLabel === 'Бонусы за выполненные услуги'
-    ? 'Выполненные услуги'
-    : payType === 'hourly' ? 'Почасовой оклад'
-    : rawBasePayLabel;
+  const basePayLabel = basePayDisplayLabel({ basePayLabel: rawBasePayLabel, payType });
 
   const preFinalSalary = (basePay || 0) + (holidaySurchargeTotal || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0) + (nurseIncomeTotal || 0) - (referralCostTotal || 0);
 
@@ -385,6 +587,9 @@ export default function SalaryBlock({ salary }) {
   const effectiveNdflTotal = ndflTotal || ndflFromListAmount;
   const deductionsForDisplay = ndflFromList ? deductions.filter(d => d !== ndflFromList) : deductions;
   const adjustedFinalDeductionsTotal = Math.max(0, finalDeductionsTotal - (ndflFromList ? ndflFromListAmount : 0));
+  const displayedDeductionsTotal = sourceClinicReports.length > 0
+    ? sourceClinicReports.reduce((sum, source) => sum + salaryAccounting(source.salary).deductionsTotal, 0)
+    : adjustedFinalDeductionsTotal;
 
   const turnoverDeductionItems = deductionsForDisplay.filter(d => d.deductionType !== 'final');
   const finalDeductionItems    = deductionsForDisplay.filter(d => d.deductionType === 'final');
@@ -394,33 +599,36 @@ export default function SalaryBlock({ salary }) {
   // Отработанные часы сами по себе делают листок непустым: без этого почасовик с нулевой
   // ставкой держался в отчёте только за счёт аванса или основной ЗП и исчезал вместе с ними.
   const hasHourlyTime       = payType === 'hourly' && (_hoursWorked || 0) > 0;
-  const hasWage             = (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0 || hasHourlyTime;
+  const hasWage             = sourceClinicReports.length > 0
+    ? sourceClinicReports.some(source => sectionInfo(source.salary, 'wage').visible)
+    : (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0 || hasHourlyTime;
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
-  const hasDeductions       = !interim && (adjustedFinalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0);
+  const hasDeductions       = !interim && (displayedDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0);
   const hasMaterials        = payType !== 'normed' && payType !== 'prorated' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasRoleDoctor       = (performedBonusTotal || 0) > 0;
   const hasRoleAssistant    = (assistanceIncomeTotal || 0) > 0;
   const hasRoleAnesthesiologist = (anesthesiologistIncomeTotal || 0) !== 0 || anesthesiologistIncomeSections.length > 0;
   const hasRoleNurse        = (nurseIncomeTotal || 0) > 0;
-  const hasPerformedBlock   = hasRoleDoctor || hasRoleAssistant || hasRoleAnesthesiologist || hasRoleNurse;
+  const hasPerformedBlock   = hasRoleDoctor || hasRoleAssistant || hasRoleAnesthesiologist || hasRoleNurse
+    || sourceClinicReports.some(source => sectionInfo(source.salary, 'performed').visible);
   // Показываем листок даже при нулевом окладе, если есть аванс/основная ЗП/НДФЛ
   const hasPaymentInfo      = (advance || 0) > 0 || (mainPayment || 0) > 0 || effectiveNdflTotal > 0 || extraPayments.length > 0;
   const hasAny = hasWage || hasReferral || hasPerformedBlock || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasPaymentInfo || hasClinicSettings;
 
   if (!hasAny) return null;
 
-  return (
-    <div className="rb-salary-block">
-      <div className="rb-salary-block-title">
-        Расчётный лист
-      </div>
-
-      <AccrualSources items={sourceClinicSummaries} />
-
-      {hasWage && (
-        <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub((basePay || 0) + (holidaySurchargeTotal || 0))} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly' || (payType === 'prorated' && (normFixedSalary > 0 || hoursWorked > 0))}>
+  const content = (
+    <>
+      {showing('wage') && hasWage && (
+        <SalaryRow
+          detailOnly={!!detailSection || sourceClinicReports.length > 0}
+          label={basePayLabel || 'Оклад'}
+          value={fmtRub((basePay || 0) + (holidaySurchargeTotal || 0))}
+          expandable={sourceClinicReports.length > 0 || basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly' || (payType === 'prorated' && (normFixedSalary > 0 || hoursWorked > 0))}
+        >
+          <GroupedDetails sources={sourceClinicReports} section="wage" groupWages>
           {payType === 'hourly' && (hourlyRatesBreakdown.length > 0 || _hourlyRate > 0 || _hoursWorked > 0) && (
             <table className="rb-report-table rb-report-table--bordered">
               <thead><tr><th>Деятельность</th><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
@@ -560,11 +768,13 @@ export default function SalaryBlock({ salary }) {
               </tbody>
             </table>
           )}
+          </GroupedDetails>
         </SalaryRow>
       )}
 
-      {hasReferral && (
-        <SalaryRow label="Бонусы за направления" value={`+${fmtRub(referralBonuses)}`} color="var(--rb-success)" expandable={referralSections.length > 0}>
+      {showing('referral') && hasReferral && (
+        <SalaryRow detailOnly={!!detailSection} label="Бонусы за направления" value={`+${fmtRub(referralBonuses)}`} color="var(--rb-success)" expandable={sourceClinicReports.length > 0 || referralSections.length > 0}>
+          <GroupedDetails sources={sourceClinicReports} section="referral">
           {referralSections.map(({ executor, services }, i) => {
             const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
             return (
@@ -573,20 +783,25 @@ export default function SalaryBlock({ salary }) {
               </SubSection>
             );
           })}
+          </GroupedDetails>
         </SalaryRow>
       )}
 
-      {hasPerformedBlock && (() => {
-        const combinedTotal = (performedBonusTotal || 0) + (assistanceIncomeTotal || 0) + (nurseIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0);
+      {showing('performed') && hasPerformedBlock && (() => {
+        const combinedTotal = sourceClinicReports.length > 0
+          ? sourceClinicReports.reduce((sum, source) => sum + performedSectionTotal(source.salary), 0)
+          : (performedBonusTotal || 0) + (assistanceIncomeTotal || 0) + (nurseIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0);
         const combinedPos = combinedTotal >= 0;
         return (
           <SalaryRow
+            detailOnly={!!detailSection}
             icon={combinedPos ? '+' : '−'}
             label="Выполненные услуги"
             value={(combinedPos ? '+' : '−') + fmtRub(Math.abs(combinedTotal))}
             color={combinedPos ? 'var(--rb-success)' : 'var(--rb-danger)'}
             expandable
           >
+            <GroupedDetails sources={sourceClinicReports} section="performed">
             {/* Врач */}
             {hasRoleDoctor && (
               <SubSection indent={20} label="Врач" value={`+${fmtRub(performedBonusTotal)}`} color="var(--rb-success)" type="plus">
@@ -643,12 +858,14 @@ export default function SalaryBlock({ salary }) {
                 </SubSection>
               );
             })()}
+            </GroupedDetails>
           </SalaryRow>
         );
       })()}
 
-      {hasExtras && (
-        <SalaryRow label="Дополнительно" value={`+${fmtRub(extrasTotal)}`} color="var(--rb-success)" expandable={extras.length > 0}>
+      {showing('extras') && hasExtras && (
+        <SalaryRow detailOnly={!!detailSection} label="Дополнительно" value={`+${fmtRub(extrasTotal)}`} color="var(--rb-success)" expandable={sourceClinicReports.length > 0 || extras.length > 0}>
+          <GroupedDetails sources={sourceClinicReports} section="extras">
           <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th>Описание</th><th style={{ textAlign: 'right' }}>Сумма</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
             <tbody>
@@ -667,16 +884,19 @@ export default function SalaryBlock({ salary }) {
               })}
             </tbody>
           </table>
+          </GroupedDetails>
         </SalaryRow>
       )}
 
-      {hasDeductions && (
+      {showing('deductions') && hasDeductions && (
         <SalaryRow
+          detailOnly={!!detailSection}
           label="Взыскания"
-          value={`−${fmtRub(adjustedFinalDeductionsTotal)}`}
+          value={`−${fmtRub(displayedDeductionsTotal)}`}
           color="var(--rb-danger)"
-          expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0}
+          expandable={sourceClinicReports.length > 0 || [...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0}
         >
+          <GroupedDetails sources={sourceClinicReports} section="deductions">
           <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th style={{ textAlign: 'center' }}>Название</th><th style={{ textAlign: 'center' }}>Тип</th><th style={{ textAlign: 'center' }}>Значение</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
             <tbody>
@@ -756,16 +976,19 @@ export default function SalaryBlock({ salary }) {
           {(turnoverDeductionItems.length > 0 || assistanceSections.length > 0 || anesthesiologistSections.length > 0 || nurseSections.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0) && (
             <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', paddingTop: 4, fontStyle: 'italic' }}>* Уже учтено при расчёте бонусов за выполнение услуг</div>
           )}
+          </GroupedDetails>
         </SalaryRow>
       )}
 
-      {hasMaterials && (
+      {showing('materials') && hasMaterials && (
         <SalaryRow
+          detailOnly={!!detailSection}
           label="Материалы-расходники"
           value={`−${fmtRub(finalMaterialsTotal + svcMatFinalTotal)}`}
           color="var(--rb-danger)"
-          expandable={[...turnoverMaterialItems, ...finalMaterialItems].length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0}
+          expandable={sourceClinicReports.length > 0 || [...turnoverMaterialItems, ...finalMaterialItems].length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0}
         >
+          <GroupedDetails sources={sourceClinicReports} section="materials">
           <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th>Название</th><th>Тип</th><th style={{ textAlign: 'right' }}>Значение</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
             <tbody>
@@ -813,21 +1036,27 @@ export default function SalaryBlock({ salary }) {
               Индивидуальные расходники настроены ({serviceMaterials.length} шт.), но ни один не совпал с услугами в Excel. Проверьте точность названий услуг.
             </div>
           )}
+          </GroupedDetails>
         </SalaryRow>
       )}
 
-      {hasReferralCost && (
-        <SalaryRow label="Бонусы направителям" value={`−${fmtRub(referralCostTotal)}`} color="var(--rb-danger)" expandable={executorSections.length > 0}>
+      {showing('referralCost') && hasReferralCost && (
+        <SalaryRow detailOnly={!!detailSection} label="Бонусы направителям" value={`−${fmtRub(referralCostTotal)}`} color="var(--rb-danger)" expandable={sourceClinicReports.length > 0 || executorSections.length > 0}>
+          <GroupedDetails sources={sourceClinicReports} section="referralCost">
           {executorSections.map(({ referrer, services, total }, i) => (
             <SubSection key={i} label={referrer} value={`−${fmtRub(total)}`} color="var(--rb-danger)" type="minus">
               <ServiceTable sections={services} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'Начислено']} negative />
             </SubSection>
           ))}
+          </GroupedDetails>
         </SalaryRow>
       )}
 
       {/* Payment section */}
-      {(() => {
+      {showing('payment') && (() => {
+        if (sourceClinicReports.length > 0 && !detailSection) {
+          return <PaymentTree sources={sourceClinicReports} />;
+        }
         const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
         const deductionsWithoutNdfl = adjustedFinalDeductionsTotal + (finalMaterialsTotal || 0) + (svcMatFinalTotal || 0);
         const totalUderzhano = deductionsWithoutNdfl + effectiveNdflTotal;
@@ -919,6 +1148,15 @@ export default function SalaryBlock({ salary }) {
           </>
         );
       })()}
+    </>
+  );
+
+  if (detailSection) return content;
+
+  return (
+    <div className="rb-salary-block">
+      <div className="rb-salary-block-title">Расчётный лист</div>
+      {content}
     </div>
   );
 }

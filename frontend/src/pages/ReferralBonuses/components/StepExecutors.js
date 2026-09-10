@@ -2188,7 +2188,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </button>
             )}
           </div>
-          {/* Ряд 2: Место трудоустройства + Подразделение + кнопка расширения */}
+          {/* Ряд 2: место 25% + центр начисления 25% + подразделение 50%. */}
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
             {/* Место трудоустройства */}
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -2247,8 +2247,30 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Место труд.: <b>{data.employmentPlace}</b></span>
               )}
             </div>
+            {activeClinic !== 'global' && activeClinic !== 'aup' && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                  <span>Начисление</span>
+                  <select
+                    value={data.accrualClinicId || activeClinic}
+                    disabled={readOnly}
+                    onChange={e => handlePaymentFieldChange('accrualClinicId', e.target.value)}
+                    style={{
+                      width: '100%', height: 26, padding: '0 26px 0 8px', fontSize: 12,
+                      border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                      background: 'var(--n-0)', color: 'var(--rb-text)', outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    {clinicTabs
+                      .filter(tab => tab.id !== 'global' && !tab.aup)
+                      .map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
             {/* Подразделение (1С) */}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 2, minWidth: 0 }}>
               {!readOnly && (() => {
                 const sdChips = toSubdivisionList(data.pdfSubdivision);
                 const sdQ = pdfSubdivisionInput.trim().toLowerCase();
@@ -2462,23 +2484,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               >+</button>
             )}
           </div>
-          {activeClinic !== 'global' && activeClinic !== 'aup' && (
-            <div className="rb-exec-field" style={{ maxWidth: 360, marginBottom: 12 }}>
-              <label>Начислять в отчёт</label>
-              <select
-                value={data.accrualClinicId || activeClinic}
-                onChange={e => handlePaymentFieldChange('accrualClinicId', e.target.value)}
-                title="В отчёте выбранного медцентра будут суммироваться начисления этой клиники"
-              >
-                {clinicTabs
-                  .filter(tab => tab.id !== 'global' && !tab.aup)
-                  .map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
-              </select>
-              <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', lineHeight: 1.35 }}>
-                Расчёт останется отдельным, но его итог попадёт в лист выбранного медцентра.
-              </span>
-            </div>
-          )}
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>Тип оплаты</div>
             <div className="rb-paytype-toggle">
               {['salary', 'hourly', 'percent', 'normed', 'prorated'].map((type, i) => (
