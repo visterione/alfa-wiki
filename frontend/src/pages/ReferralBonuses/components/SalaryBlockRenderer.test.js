@@ -99,6 +99,11 @@ test('взыскания разных медцентров не смешиваю
   const rowByLabel = label => [...host.querySelectorAll('.rb-salary-row')]
     .find(row => row.querySelector('.rb-salary-row-label')?.textContent === label);
 
+  const accruedRow = rowByLabel('Начислено');
+  expect(accruedRow).toBeTruthy();
+  expect(accruedRow.classList.contains('expandable')).toBe(false);
+  expect(accruedRow.querySelector('.rb-report-toggle-icon')).toBeNull();
+
   act(() => { rowByLabel('Взыскания').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   act(() => { rowByLabel('Альфа').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
 

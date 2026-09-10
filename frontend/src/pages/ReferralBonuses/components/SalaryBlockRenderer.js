@@ -457,7 +457,27 @@ function paymentMetrics(salary = {}) {
   return { gross, withheld, ndfl, advance, main, premium, vacation, remainder };
 }
 
-function PaymentTree({ sources }) {
+function PaymentSummaryRow({ label, value, negative = false, danger, method, muted = false }) {
+  const isNegative = negative || value < 0;
+  const useDangerColor = (danger ?? negative) || value < 0;
+  return (
+    <div className="rb-salary-row" style={{ background: 'var(--n-50)', alignItems: 'center' }}>
+      <div className="rb-salary-row-body">
+        <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)', opacity: muted ? 0.7 : 1 }}>{label}</div>
+      </div>
+      {method && (
+        <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>
+          {fmtMethod(method)}
+        </div>
+      )}
+      <div className="rb-salary-row-value" style={{ color: useDangerColor ? 'var(--rb-danger)' : 'var(--rb-text-secondary)', opacity: muted ? 0.7 : 1 }}>
+        {isNegative ? '−' : ''}{fmtRub(Math.abs(value))}
+      </div>
+    </div>
+  );
+}
+
+function PaymentSummary({ sources, paymentMethod, mainPaymentMethod }) {
   const total = sources.reduce((result, source) => {
     const current = paymentMetrics(source.salary);
     Object.keys(result).forEach(key => { result[key] += current[key]; });
@@ -465,49 +485,37 @@ function PaymentTree({ sources }) {
   }, { gross: 0, withheld: 0, ndfl: 0, advance: 0, main: 0, premium: 0, vacation: 0, remainder: 0 });
   const hasBreakdown = total.withheld > 0 || total.advance > 0 || total.main > 0
     || total.premium > 0 || total.vacation > 0;
-  const rows = [
-    { key: 'gross', label: 'Начислено' },
-    { key: 'withheld', label: 'Удержано', negative: true },
-    { key: 'ndfl', label: 'НДФЛ', negative: true },
-    { key: 'advance', label: 'Аванс' },
-    { key: 'main', label: 'Основная ЗП' },
-    { key: 'premium', label: 'Премия' },
-    { key: 'vacation', label: 'Отпускные' },
-    { key: 'remainder', label: total.remainder < 0 ? 'Переплата' : 'Остаток к доплате', remainder: true },
-  ];
 
-  return rows.map(row => {
-    const value = total[row.key];
-    if (row.remainder && !hasBreakdown) return null;
-    if (!row.remainder && value <= 0) return null;
-    const totalNegative = row.negative || (row.remainder && value < 0);
+  if (!hasBreakdown) {
     return (
-      <SalaryRow
-        key={row.key}
-        label={row.label}
-        value={`${totalNegative ? '−' : ''}${fmtRub(Math.abs(value))}`}
-        color={totalNegative ? 'var(--rb-danger)' : (row.remainder ? 'var(--rb-success)' : 'var(--rb-text-secondary)')}
-        expandable
-      >
-        {sources.map(source => {
-          const sourceValue = paymentMetrics(source.salary)[row.key];
-          if (!row.remainder && sourceValue <= 0) return null;
-          const sourceNegative = row.negative || (row.remainder && sourceValue < 0);
-          return (
-            <SubSection
-              key={`${row.key}-${source.clinicId}`}
-              indent={20}
-              label={source.clinicLabel}
-              value={`${sourceNegative ? '−' : ''}${fmtRub(Math.abs(sourceValue))}`}
-              color={sourceNegative ? 'var(--rb-danger)' : (row.remainder ? 'var(--rb-success)' : 'var(--rb-text-secondary)')}
-              type={sourceNegative ? 'minus' : undefined}
-              marker={source.clinicColor || 'var(--n-400)'}
-            />
-          );
-        })}
-      </SalaryRow>
+      <div className="rb-salary-total-row">
+        <div className="rb-salary-total-label">Начислено</div>
+        <div className={`rb-salary-total-value ${total.gross >= 0 ? 'positive' : 'negative'}`}>
+          {total.gross < 0 ? '−' : ''}{fmtRub(Math.abs(total.gross))}
+        </div>
+      </div>
     );
-  });
+  }
+
+  return (
+    <>
+      <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
+        <PaymentSummaryRow label="Начислено" value={total.gross} />
+        {total.withheld > 0 && <PaymentSummaryRow label="Удержано" value={total.withheld} negative />}
+        {total.ndfl > 0 && <PaymentSummaryRow label="НДФЛ*" value={total.ndfl} negative danger={false} muted />}
+        {total.advance > 0 && <PaymentSummaryRow label="Аванс" value={total.advance} method={paymentMethod} />}
+        {total.main > 0 && <PaymentSummaryRow label="Основная ЗП" value={total.main} method={mainPaymentMethod} />}
+        {total.premium > 0 && <PaymentSummaryRow label="Премия" value={total.premium} />}
+        {total.vacation > 0 && <PaymentSummaryRow label="Отпускные" value={total.vacation} />}
+      </div>
+      <div className="rb-salary-total-row">
+        <div className="rb-salary-total-label">{total.remainder < 0 ? 'Переплата' : 'Остаток к доплате'}</div>
+        <div className={`rb-salary-total-value ${total.remainder >= 0 ? 'positive' : 'negative'}`}>
+          {total.remainder < 0 ? '−' : ''}{fmtRub(Math.abs(total.remainder))}
+        </div>
+      </div>
+    </>
+  );
 }
 
 export default function SalaryBlock({ salary, detailSection = null }) {
@@ -1055,7 +1063,13 @@ export default function SalaryBlock({ salary, detailSection = null }) {
       {/* Payment section */}
       {showing('payment') && (() => {
         if (sourceClinicReports.length > 0 && !detailSection) {
-          return <PaymentTree sources={sourceClinicReports} />;
+          return (
+            <PaymentSummary
+              sources={sourceClinicReports}
+              paymentMethod={paymentMethod}
+              mainPaymentMethod={mainPaymentMethod}
+            />
+          );
         }
         const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
         const deductionsWithoutNdfl = adjustedFinalDeductionsTotal + (finalMaterialsTotal || 0) + (svcMatFinalTotal || 0);
