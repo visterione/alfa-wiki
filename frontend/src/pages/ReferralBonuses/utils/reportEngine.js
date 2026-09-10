@@ -7,6 +7,7 @@ import { rbNormalizeName, rbNamesMatch } from './nameMatching';
 import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch, rbProfessionTitle } from './clinicUtils';
 import { rbParseDate } from './excelUtils';
 import { calcScheduleHoursForPeriod, calcHolidayHoursForPeriod } from './scheduleUtils';
+import { groupClinicReportsByAccrual } from './accrualGrouping';
 
 // ── Default executor clinic settings ──────────────────────────────────────────
 export function execClinicDefault() {
@@ -25,6 +26,7 @@ export function execClinicDefault() {
     includeReferralBonuses: true,
     includeReferralDeductions: true,
     includeCorpInvoices: true,
+    accrualClinicId: null,
     assistancePercent: 0,
     assistanceValueType: 'percent',
     cabinets: [],
@@ -1691,9 +1693,16 @@ export async function buildReport({
     });
   }
 
+  const groupedClinicReports = groupClinicReportsByAccrual(
+    clinicReports,
+    execSettings,
+    doctorClinicIds,
+    { getClinicName: rbGetClinicName, getClinicColor: rbGetClinicColor }
+  );
+
   const grandTotal = interim
-    ? clinicReports.reduce((s, cr) => s + (cr.salary?.finalSalary || 0), 0)
+    ? groupedClinicReports.reduce((s, cr) => s + (cr.salary?.finalSalary || 0), 0)
     : globalGrandTotal;
 
-  return { clinicReports, grandTotal, periodLabel };
+  return { clinicReports: groupedClinicReports, grandTotal, periodLabel };
 }

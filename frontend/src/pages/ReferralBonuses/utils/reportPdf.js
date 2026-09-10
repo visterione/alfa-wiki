@@ -256,6 +256,7 @@ function buildPayslipContent({ clinicId, clinicLabel, salary, doctorName, tabelN
   const leftRows  = buildLeftRows(salary, periodCell);
   const rightRows = buildRightRows(salary, periodCell);
   const maxLen    = Math.max(leftRows.length, rightRows.length, 1);
+  const sourceSummaries = salary.sourceClinicSummaries || [];
 
   const header1 = [
     TH('Вид',      { rowSpan: 2 }),
@@ -336,6 +337,25 @@ function buildPayslipContent({ clinicId, clinicLabel, salary, doctorName, tabelN
       layout: 'noBorders',
       margin: [0, 0, 0, 12],
     },
+
+    ...(sourceSummaries.length > 0 ? [{
+      table: {
+        headerRows: 1,
+        widths: ['*', 72, 72, 72, 72],
+        body: [
+          [TH('Медцентр'), TH('Начислено'), TH('Удержано'), TH('Выплачено'), TH('К доплате')],
+          ...sourceSummaries.map(source => [
+            { text: source.clinicLabel || source.clinicId || '—', style: 'td' },
+            { text: fmt2(source.accrued), style: 'tdR' },
+            { text: fmt2(source.withheld), style: 'tdR' },
+            { text: fmt2(source.paid), style: 'tdR' },
+            { text: fmt2(source.remainder), style: 'tdBoldR' },
+          ]),
+        ],
+      },
+      layout: tableLayout,
+      margin: [0, 0, 0, 12],
+    }] : []),
 
     // Таблица начислений/удержаний
     {

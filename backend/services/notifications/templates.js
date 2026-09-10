@@ -9,7 +9,7 @@
  * сам, тогда как `{{patient_first_name}}` придётся каждый раз подсматривать.
  */
 
-const { NotifTemplate, MedCenter, sequelize } = require('../../models');
+const { NotifTemplate, MedCenter, Organization, sequelize } = require('../../models');
 
 const WEEKDAYS = ['воскресенье', 'понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу'];
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -21,6 +21,11 @@ function firstName(fullName) {
   // фамилией в уведомлении веет казёнщиной.
   const parts = String(fullName).trim().split(/\s+/);
   return parts.length > 1 ? parts[1] : parts[0];
+}
+
+function nameParts(fullName) {
+  const [lastName = '', first = '', middleName = ''] = String(fullName || '').trim().split(/\s+/);
+  return { lastName, firstName: first || lastName, middleName };
 }
 
 function shortDoctor(fullName) {
@@ -39,6 +44,22 @@ function timeWords(date) {
   if (!date) return '';
   const p = (n) => String(n).padStart(2, '0');
   return `${p(date.getHours())}:${p(date.getMinutes())}`;
+}
+
+function numericDate(date, withYear = true) {
+  if (!date) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(date.getDate())}.${p(date.getMonth() + 1)}${withYear ? `.${date.getFullYear()}` : ''}`;
+}
+
+function numericDateTime(date, withYear = true) {
+  if (!date) return '';
+  return `${numericDate(date, withYear)} ${timeWords(date)}`;
+}
+
+function formattedDateTime(date, withYear = true) {
+  if (!date) return '';
+  return `${dateWords(date)}${withYear ? ` ${date.getFullYear()}` : ''} в ${timeWords(date)}`;
 }
 
 /**
@@ -60,17 +81,62 @@ function render(text, values) {
 }
 
 function valuesFor(snap, extra = {}) {
+  const patient = nameParts(snap.patientName);
+  const start = snap.timeStart;
+  const end = snap.timeEnd;
+  const reserved = snap.reservedAt;
+  const visit = snap.visitAt || start;
+  const documentAt = snap.documentAt;
+  const current = extra.currentAt || new Date();
+
   return {
+    'логин_пациента': snap.patientNumber || '',
+    'фио_пациента': snap.patientName || '',
+    'имя_пациента': patient.firstName,
+    'фамилия_пациента': patient.lastName,
+    'отчество_пациента': patient.middleName,
     'имя': firstName(snap.patientName),
     'фио': snap.patientName || '',
     'врач': shortDoctor(snap.doctorName),
     'врач_полностью': snap.doctorName || '',
-    'дата': dateWords(snap.timeStart),
-    'время': timeWords(snap.timeStart),
-    'день_недели': snap.timeStart ? WEEKDAYS[snap.timeStart.getDay()] : '',
+    'полное_фио_врача': snap.doctorName || '',
+    'фио_врача': shortDoctor(snap.doctorName),
+    'дата_и_время_начала': numericDateTime(start),
+    'дата_и_время_начала_без_года': numericDateTime(start, false),
+    'дата_и_время_начала_формат': formattedDateTime(start),
+    'дата_и_время_начала_формат_без_года': formattedDateTime(start, false),
+    'дата_начала': numericDate(start),
+    'дата_начала_без_года': numericDate(start, false),
+    'время_начала': timeWords(start),
+    'дата_и_время_окончания': numericDateTime(end),
+    'дата_окончания': numericDate(end),
+    'время_окончания': timeWords(end),
+    'дата_резерва': numericDate(reserved),
+    'дата_резерва_без_года': numericDate(reserved, false),
+    'время_резерва': timeWords(reserved),
+    'дата_и_время_резерва': numericDateTime(reserved),
+    'специальность_резерва': snap.reserveSpecialty || '',
+    'кабинет': snap.room || '',
+    'название_организации': extra.organizationName || '',
+    'телефон_организации': extra.organizationPhone || '',
+    'название_клиники': extra.clinicName || '',
+    'телефон_клиники': extra.clinicPhone || '',
+    'адрес_клиники': extra.clinicAddress || '',
+    'текущая_дата': numericDate(current),
+    'текущая_дата_без_года': numericDate(current, false),
+    'название_документа': snap.documentName || '',
+    'фио_автора_документа': snap.documentAuthorName || '',
+    'дата_визита': numericDate(visit),
+    'время_визита': timeWords(visit),
+    'дата_документа': numericDate(documentAt),
+    'время_документа': timeWords(documentAt),
+    'название_клиники_документа': snap.documentClinicName || '',
+    // Короткие имена оставлены для уже настроенных шаблонов.
+    'дата': dateWords(start),
+    'время': timeWords(start),
+    'день_недели': start ? WEEKDAYS[start.getDay()] : '',
     'клиника': extra.clinicName || '',
     'адрес': extra.clinicAddress || '',
-    'телефон_клиники': extra.clinicPhone || '',
     'старая_дата': extra.previousAt ? dateWords(extra.previousAt) : '',
     'старое_время': extra.previousAt ? timeWords(extra.previousAt) : ''
   };
@@ -90,17 +156,38 @@ async function clinicInfo(snap) {
     where: sequelize.where(
       sequelize.fn('lower', sequelize.col('name')),
       clinicName.trim().toLowerCase()
-    )
+    ),
+    include: [{ model: Organization, as: 'organization', attributes: ['name', 'phone'], required: false }]
   });
   if (!mc) return { clinicName };
 
   const phones = Array.isArray(mc.phones) ? mc.phones : [];
+  const clinicPhone = phones.length
+    ? (typeof phones[0] === 'object' ? (phones[0].value || '') : String(phones[0]))
+    : '';
   return {
     clinicName,
     clinicAddress: mc.address || '',
-    clinicPhone: phones.length ? (phones[0].value || '') : '',
+    clinicPhone,
+    organizationName: mc.organization?.name || '',
+    organizationPhone: mc.organization?.phone || '',
     medCenterId: mc.id
   };
+}
+
+/**
+ * Выбирает только фактические шаблоны филиала (ver. 8.11).
+ *
+ * Общего запасного текста больше нет: в сообщениях вручную стоят разные ссылки
+ * на карты, а в SMS — их сокращённые варианты. Если филиал не сопоставился со
+ * справочником или у него нет шаблона, безопаснее не отправить ничего, чем
+ * отправить адрес другой клиники.
+ */
+function templatesForEvent(all, event, medCenterId) {
+  if (!medCenterId) return [];
+  return all.filter(t => (
+    t.event === event && t.medCenterId && String(t.medCenterId) === String(medCenterId)
+  ));
 }
 
 /**
@@ -115,8 +202,7 @@ async function build(event, snap, found = {}) {
   const values = valuesFor(snap, { ...info, previousAt: found.previousAt });
 
   const all = await NotifTemplate.findAll({ where: { isActive: true } });
-  const forEvent = (name) => all.filter(t =>
-    t.event === name && (!t.medCenterId || t.medCenterId === info.medCenterId));
+  const forEvent = (name) => templatesForEvent(all, name, info.medCenterId);
 
   const out = [];
 
@@ -130,7 +216,7 @@ async function build(event, snap, found = {}) {
     }
 
     out.push({
-      text: render(template.text, values),
+      text: render(template.text || '', values),
       // Короткий текст для SMS. Пусто — уйдёт обычный: пусть лучше заплатят за
       // два сегмента, чем человек не получит уведомления вовсе.
       smsText: template.smsText ? render(template.smsText, values) : null,
@@ -177,9 +263,15 @@ async function build(event, snap, found = {}) {
       // Записались за час до приёма — напоминание за сутки уже неактуально.
       if (plannedAt <= new Date()) continue;
 
+      const channelTexts = {};
+      for (const [channel, raw] of Object.entries(template.channelTexts || {})) {
+        if (raw && String(raw).trim()) channelTexts[channel] = render(raw, values);
+      }
+
       out.push({
-        text: render(template.text, values),
+        text: render(template.text || '', values),
         smsText: template.smsText ? render(template.smsText, values) : null,
+        channelTexts,
         withConfirm: template.withConfirm,
         plannedAt,
         dedupKey: `${snap.apptId}:reminder:${template.beforeMinutes}:${snap.timeStart.toISOString()}`
@@ -190,4 +282,7 @@ async function build(event, snap, found = {}) {
   return out.map(({ template, ...item }) => item);
 }
 
-module.exports = { build, render, valuesFor, firstName, shortDoctor };
+module.exports = {
+  build, render, valuesFor, firstName, nameParts, shortDoctor,
+  numericDate, numericDateTime, formattedDateTime, templatesForEvent
+};

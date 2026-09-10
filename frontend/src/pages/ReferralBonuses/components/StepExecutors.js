@@ -38,6 +38,7 @@ function execClinicDefault() {
     includeReferralBonuses: true,
     includeReferralDeductions: true,
     includeCorpInvoices: true,
+    accrualClinicId: null,
     assistancePercent: 0,
     cabinets: [],
     deductions: [],
@@ -1447,7 +1448,15 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       // АУП — виртуальная клиника, её нет в selectedDoctor.clinics у нового участника;
       // сохраняем её для допущенных, иначе вкладка АУП вырезалась бы до записи.
       if (clinicId === 'global' || realDoctorClinicIds.has(String(clinicId)) || (clinicId === 'aup' && canSeeAup)) {
-        clinicSettings[clinicId] = settings;
+        const requestedTarget = settings?.accrualClinicId;
+        const accrualClinicId = clinicId === 'global'
+          ? null
+          : (clinicId === 'aup'
+              ? 'aup'
+              : (requestedTarget != null && realDoctorClinicIds.has(String(requestedTarget))
+                  ? String(requestedTarget)
+                  : String(clinicId)));
+        clinicSettings[clinicId] = { ...settings, accrualClinicId };
       }
     });
     const disabledClinics = (data?.disabledClinics || []).filter(id => realDoctorClinicIds.has(String(id)) || (String(id) === 'aup' && canSeeAup));
@@ -1472,6 +1481,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         paymentMethod: globalData.paymentMethod,
         mainPayment: globalData.mainPayment || 0,
         mainPaymentMethod: globalData.mainPaymentMethod || 'card',
+        accrualClinicId: clinicId === 'global' ? null : clinicId,
       };
     }
     return cs[clinicId];
@@ -1578,6 +1588,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           paymentMethod: globalData.paymentMethod,
           mainPayment: globalData.mainPayment || 0,
           mainPaymentMethod: globalData.mainPaymentMethod || 'card',
+          accrualClinicId: clinicId === 'global' ? null : clinicId,
         };
         return { ...prev, clinicSettings: cs };
       }
@@ -2451,6 +2462,23 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               >+</button>
             )}
           </div>
+          {activeClinic !== 'global' && activeClinic !== 'aup' && (
+            <div className="rb-exec-field" style={{ maxWidth: 360, marginBottom: 12 }}>
+              <label>Начислять в отчёт</label>
+              <select
+                value={data.accrualClinicId || activeClinic}
+                onChange={e => handlePaymentFieldChange('accrualClinicId', e.target.value)}
+                title="В отчёте выбранного медцентра будут суммироваться начисления этой клиники"
+              >
+                {clinicTabs
+                  .filter(tab => tab.id !== 'global' && !tab.aup)
+                  .map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
+              </select>
+              <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', lineHeight: 1.35 }}>
+                Расчёт останется отдельным, но его итог попадёт в лист выбранного медцентра.
+              </span>
+            </div>
+          )}
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>Тип оплаты</div>
             <div className="rb-paytype-toggle">
               {['salary', 'hourly', 'percent', 'normed', 'prorated'].map((type, i) => (

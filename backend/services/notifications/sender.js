@@ -24,6 +24,7 @@ const misClient = require('../misClient');
 const settings = require('./settings');
 const safety = require('./safety');
 const consent = require('./consent');
+const doctorBlocklist = require('./doctorBlocklist');
 
 // Какой организации принадлежит клиника МИС. Нужно, чтобы уйти во Fromni под
 // правильным аккаунтом: у каждой организации он свой. Заполняется в настройках,
@@ -94,9 +95,9 @@ function reportUrl() {
 /**
  * Свой каскад события, если он задан (ver. 8.03).
  *
- * Шаблон филиала имеет преимущество над общим: у детской клиники просьба об
- * отзыве может ходить иначе, чем у стоматологии. Пусто — вернём null, и выбор
- * уйдёт на уровень филиала, а оттуда в общие настройки.
+ * Берём настройку только фактического шаблона филиала. Общего шаблона текста с
+ * 8.11 нет: он мог содержать ссылку на карту другой клиники. Пустой каскад
+ * по-прежнему означает, что способ доставки берётся из настройки филиала.
  *
  * Каскад читается в момент отправки, а не кладётся в очередь вместе с текстом.
  * Разница намеренная: текст — это обещание, данное пациенту при записи, и
@@ -115,10 +116,12 @@ async function cascadeOfEvent(event, medCenterId) {
     attributes: ['cascade', 'medCenterId']
   });
 
-  const own = rows.find(r => r.medCenterId && r.medCenterId === medCenterId);
-  const common = rows.find(r => !r.medCenterId);
-  const picked = (own && Array.isArray(own.cascade) && own.cascade.length) ? own.cascade
-    : ((common && Array.isArray(common.cascade) && common.cascade.length) ? common.cascade : null);
+  const own = rows.find(r => (
+    r.medCenterId && medCenterId && String(r.medCenterId) === String(medCenterId)
+  ));
+  const picked = (own && Array.isArray(own.cascade) && own.cascade.length)
+    ? own.cascade
+    : null;
 
   eventCascadeCache.set(key, { at: Date.now(), value: picked });
   return picked;
@@ -259,10 +262,11 @@ async function deliver(item, clinicId = null, medCenterId = null) {
   const now = new Date();
   const groups = settings.groupSteps(order);
 
-  // long остался ради ступеней Fromni и ВК, которые длину не считают; берём
-  // для него SMS-текст, потому что другого общего текста с 8.04 нет.
+  // У Notify и SMS разные тексты: в SMS администратор может поставить короткую
+  // ссылку и уложиться в один сегмент, а Notify длину не считает.
   const sms = textFor(item, 'sms');
-  const texts = { long: sms, sms };
+  const notify = textFor(item, 'notify');
+  const texts = { long: notify, sms };
 
   const organization = await organizationFor(clinicId);
   let lastError = null;
@@ -307,13 +311,6 @@ async function deliver(item, clinicId = null, medCenterId = null) {
       }
     }
 
-    // Дальше идут платные ступени, и все они текстовые: без текста ступень
-    // пропускается, а не уходит с чужим абзацем (см. textFor).
-    if (!texts.sms) {
-      lastError = 'для SMS не задан текст';
-      continue;
-    }
-
     if (!item.phone) {
       lastError = 'нет телефона пациента';
       continue;
@@ -327,6 +324,10 @@ async function deliver(item, clinicId = null, medCenterId = null) {
     }
 
     if (group.provider === 'imobis') {
+      if (!texts.sms) {
+        lastError = 'для SMS не задан текст';
+        continue;
+      }
       try {
         const config = await settings.imobisFor(medCenterId);
         const route = imobisRoute(group.names.filter(n => audible.includes(`imobis:${n}`)), config, organization, texts);
@@ -361,7 +362,10 @@ async function deliver(item, clinicId = null, medCenterId = null) {
     // Fromni — прежняя ступень, остаётся запасной. Предохранитель проверен выше,
     // одним условием на всех провайдеров.
     try {
-      const names = group.steps.filter(step => audible.includes(step));
+      const names = group.steps.filter(step => {
+        if (!audible.includes(step)) return false;
+        return step.startsWith('sms') ? !!texts.sms : !!texts.long;
+      });
       if (!names.length) continue;
 
       const sent = await fromni.sendText(organization, item.phone,
@@ -471,6 +475,7 @@ async function sendTest(item, { step = 'auto' } = {}) {
   }
 
   const short = textFor(item, 'sms');
+  const long = textFor(item, 'notify');
   let lastError = null;
 
   for (const group of settings.groupSteps(wanted)) {
@@ -518,13 +523,20 @@ async function sendTest(item, { step = 'auto' } = {}) {
 
     try {
       const organization = await organizationFor(null);
-      const texts = { default: short, 'sms+webchat': short, sms: short };
-      const sent = await fromni.sendText(organization, item.phone, texts, group.steps);
+      const names = group.steps.filter(name => (
+        name.startsWith('sms') ? !!short : !!long
+      ));
+      if (!names.length) {
+        lastError = 'для выбранной ступени не задан текст';
+        continue;
+      }
+      const texts = { default: long, 'sms+webchat': short, sms: short };
+      const sent = await fromni.sendText(organization, item.phone, texts, names);
       await item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null });
       return {
         channel: sent.channel,
         organization,
-        text: group.steps.some(n => n.startsWith('sms')) ? short : item.text
+        text: names.some(n => n.startsWith('sms')) ? short : long
       };
     } catch (err) {
       lastError = `Fromni: ${err.message}`;
@@ -545,6 +557,9 @@ async function runOnce(limit = 100) {
     order: [['plannedAt', 'ASC']],
     limit
   });
+  // Отправщик обычно живёт отдельным процессом. Читаем запрет свежим один раз
+  // на проход, чтобы сохранение в админке не ждало истечения локального кэша.
+  const blockedDoctors = due.length ? await doctorBlocklist.read({ fresh: true }) : [];
 
   let sent = 0;
   let failed = 0;
@@ -555,14 +570,23 @@ async function runOnce(limit = 100) {
     // требуется только на второй ступени и только в момент отправки.
     let clinicId = null;
     let medCenterId = null;
+    let snap = null;
     if (item.apptId) {
-      const snap = await NotifAppointment.findByPk(item.apptId, { attributes: ['clinicId', 'clinicName'] });
+      snap = await NotifAppointment.findByPk(item.apptId, {
+        attributes: ['clinicId', 'clinicName', 'doctorId', 'doctorName']
+      });
       clinicId = snap ? snap.clinicId : null;
       // Филиал портала — для его собственных настроек и текстов (ver. 8.03).
       medCenterId = snap ? await medCenterFor(snap.clinicName) : null;
     }
 
     try {
+      // Повторная проверка непосредственно перед отправкой закрывает очередь,
+      // созданную до того, как врача добавили в стоп-лист.
+      if (snap && doctorBlocklist.matches(snap, blockedDoctors)) {
+        await item.update({ status: 'skipped', error: 'служебный врач: отправка заблокирована' });
+        continue;
+      }
       const done = await deliver(item, clinicId, medCenterId);
       if (done.status === 'sent') sent++; else failed++;
     } catch (err) {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
-function fmtMethod(m) { return m === 'cash' ? 'наличные' : 'карта'; }
+function fmtMethod(m) { return m === 'cash' ? 'наличные' : (m === 'mixed' ? 'смешанно' : 'карта'); }
 
 // Ссылка на карточку пациента в веб-интерфейсе МИС (Renovatio) по внутреннему patient_id
 const MIS_WEB_BASE = 'https://rnova.medcentralfa.ru:3010';
@@ -275,6 +275,38 @@ function SubSection({ label, value, color, type, children, indent = 24 }) {
   );
 }
 
+function AccrualSources({ items }) {
+  if (!items?.length) return null;
+  return (
+    <div style={{ marginBottom: 12, border: '1px solid var(--rb-border)', borderRadius: 7, overflowX: 'auto' }}>
+      <div style={{ padding: '7px 10px', background: 'var(--accent-50)', color: 'var(--accent-700)', fontSize: 12, fontWeight: 700 }}>
+        Состав начисления
+      </div>
+      <table className="rb-report-table rb-report-table--bordered" style={{ margin: 0 }}>
+        <thead>
+          <tr><th>Медцентр</th><th style={{ textAlign: 'right' }}>Начислено</th><th style={{ textAlign: 'right' }}>Удержано</th><th style={{ textAlign: 'right' }}>Выплачено</th><th style={{ textAlign: 'right' }}>К доплате</th></tr>
+        </thead>
+        <tbody>
+          {items.map(item => (
+            <tr key={item.clinicId}>
+              <td style={{ fontWeight: 600 }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: item.clinicColor || 'var(--n-400)', marginRight: 6 }} />
+                {item.clinicLabel}
+              </td>
+              <td style={{ textAlign: 'right' }}>{fmtRub(item.accrued)}</td>
+              <td style={{ textAlign: 'right', color: item.withheld > 0 ? 'var(--rb-danger)' : 'inherit' }}>{fmtRub(item.withheld)}</td>
+              <td style={{ textAlign: 'right' }}>{fmtRub(item.paid)}</td>
+              <td style={{ textAlign: 'right', fontWeight: 700, color: item.remainder >= 0 ? 'var(--rb-success)' : 'var(--rb-danger)' }}>
+                {item.remainder < 0 ? '−' : ''}{fmtRub(Math.abs(item.remainder))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function SalaryBlock({ salary }) {
   const {
     basePay, basePayLabel: rawBasePayLabel,
@@ -316,6 +348,7 @@ export default function SalaryBlock({ salary }) {
     hourlyRatesBreakdown = [],
     holidaySurchargeTotal = 0,
     holidaySurchargeBreakdown = [],
+    sourceClinicSummaries = [],
   } = salary;
 
   // Парсим старый формат "Почасовой оклад (100 ₽ × 90 ч)" для обратной совместимости
@@ -383,6 +416,8 @@ export default function SalaryBlock({ salary }) {
       <div className="rb-salary-block-title">
         Расчётный лист
       </div>
+
+      <AccrualSources items={sourceClinicSummaries} />
 
       {hasWage && (
         <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub((basePay || 0) + (holidaySurchargeTotal || 0))} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly' || (payType === 'prorated' && (normFixedSalary > 0 || hoursWorked > 0))}>

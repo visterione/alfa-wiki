@@ -20,6 +20,7 @@ const qs = require('qs');
 const { Op } = require('sequelize');
 const { NotifAppointment, NotifOutbox, Setting, sequelize } = require('../../models');
 const templates = require('./templates');
+const doctorBlocklist = require('./doctorBlocklist');
 
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
@@ -91,6 +92,13 @@ async function writeWatermark(at) {
 // ── Разбор одного визита ──────────────────────────────────────────────────
 
 function toSnapshot(appt) {
+  const specialties = (Array.isArray(appt.services) ? appt.services : [])
+    .flatMap(service => [service?.profession_title, service?.profession])
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .map(value => typeof value === 'object' ? (value.title || value.name || '') : String(value || ''))
+    .map(value => value.trim())
+    .filter(Boolean);
+
   return {
     apptId: Number(appt.id),
     clinicId: appt.clinic_id != null ? Number(appt.clinic_id) : null,
@@ -98,8 +106,19 @@ function toSnapshot(appt) {
     patientId: appt.patient_id != null ? Number(appt.patient_id) : null,
     phone: appt.patient_phone || null,
     patientName: appt.patient_name || null,
+    patientNumber: appt.patient_number != null ? String(appt.patient_number) : null,
+    doctorId: appt.doctor_id != null ? String(appt.doctor_id) : null,
     doctorName: appt.doctor || null,
     timeStart: parseMisDate(appt.time_start),
+    timeEnd: parseMisDate(appt.time_end),
+    reservedAt: parseMisDate(appt.date_created),
+    reserveSpecialty: [...new Set(specialties)].join(', ') || null,
+    room: appt.room != null ? String(appt.room) : null,
+    reserveAuthorName: appt.author_name || null,
+    documentName: appt.document_name || appt.document_title || null,
+    documentAuthorName: appt.document_author_name || null,
+    documentAt: parseMisDate(appt.document_date || appt.document_at),
+    documentClinicName: appt.document_clinic_name || null,
     statusId: appt.status_id != null ? Number(appt.status_id) : null,
     confirmStatus: appt.confirm_status != null ? Number(appt.confirm_status) : null,
     dateCompleted: parseMisDate(appt.date_completed),
@@ -156,6 +175,10 @@ async function runOnce(now = new Date()) {
   const from = previous ? new Date(previous.getTime() - OVERLAP_MS) : new Date(now.getTime() - 60000);
 
   const rows = await fetchChanged(from, now);
+  // Один свежий снимок настройки на весь проход: изменение из админки должно
+  // подхватиться следующим опросом даже когда детектор работает отдельным
+  // процессом, но ходить в БД для каждого визита незачем.
+  const blockedDoctors = await doctorBlocklist.read({ fresh: true });
   let events = 0;
 
   for (const row of rows) {
@@ -168,6 +191,17 @@ async function runOnce(now = new Date()) {
     // Снимок обновляем всегда: даже когда писать пациенту не о чем, следующий
     // раз сравнивать надо уже с новым состоянием.
     await NotifAppointment.upsert(snap);
+
+    // Запрет действует не только на новое событие: если визит уже поставил
+    // напоминание в очередь, а затем ему назначили служебного врача, снимаем и
+    // эту старую строку. Иначе блокировка зависела бы от момента её настройки.
+    if (doctorBlocklist.matches(snap, blockedDoctors)) {
+      await NotifOutbox.update(
+        { status: 'skipped', error: 'служебный врач: отправка заблокирована' },
+        { where: { apptId: snap.apptId, status: 'pending' } }
+      );
+      continue;
+    }
 
     if (!found) continue;
     events += await enqueue(found, snap);
@@ -231,4 +265,4 @@ async function enqueue(found, snap) {
   return added;
 }
 
-module.exports = { runOnce, eventFor, dedupKey, parseMisDate, fetchChanged, WATERMARK_KEY, sequelize };
+module.exports = { runOnce, eventFor, dedupKey, parseMisDate, toSnapshot, fetchChanged, WATERMARK_KEY, sequelize };

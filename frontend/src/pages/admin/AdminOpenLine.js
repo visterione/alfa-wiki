@@ -5,7 +5,9 @@ import {
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
   Star, FlaskConical, Building2, ChevronDown, ShieldCheck, MonitorSmartphone, Megaphone
 } from 'lucide-react';
-import { openLine as lineApi, notifications as notifApi, users as usersApi } from '../../services/api';
+import {
+  openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
+} from '../../services/api';
 import ChannelLogo from '../../components/openline/ChannelLogo';
 import WidgetTab from './WidgetTab';
 import BroadcastsTab from './BroadcastsTab';
@@ -39,9 +41,9 @@ import './AdminOpenLine.css';
  * просьбу оценить приём незачем слать по SMS — выполнить её там нельзя, а
  * деньги списываются.
  *
- * Появились филиалы. Пока это только переопределения поверх общих настроек, но
- * дальше сеть расходится: у филиалов разные боты, разные лицевые счета у
- * провайдера и разные привычки в текстах.
+ * Появились филиалы. С 8.11 тексты у каждого только свои: ссылки на карту
+ * вписываются прямо в сообщение, а для SMS используются отдельные сокращённые
+ * варианты, поэтому общего безопасного текста у сети нет.
  */
 
 // ── Справочники ───────────────────────────────────────────────────────────
@@ -120,12 +122,18 @@ function smsCost(text) {
 
 // ── Общие мелочи интерфейса ───────────────────────────────────────────────
 
-function Switch({ checked, onChange, children, disabled }) {
+function Switch({ checked, onChange, children, disabled, label }) {
   return (
-    <label className="ola-switch">
-      <input type="checkbox" checked={!!checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
+    <label className="ola-switch" title={label}>
+      <input
+        type="checkbox"
+        checked={!!checked}
+        disabled={disabled}
+        aria-label={label}
+        onChange={e => onChange(e.target.checked)}
+      />
       <span className="track" />
-      <span>{children}</span>
+      {children && <span>{children}</span>}
     </label>
   );
 }
@@ -332,7 +340,7 @@ function LinesTab() {
                     disabled={replies[line.id] === undefined || reply === (line.offlineReply || '')}
                     onClick={() => update(line, { offlineReply: reply })}
                   >
-                    <Save size={14} /> Сохранить
+                    Сохранить
                   </button>
                 </div>
               </div>
@@ -463,6 +471,16 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
   const sharesChannel = (channel) =>
     current.cascade.filter(n => stepOf(n).channel === channel).length > 1;
 
+  const placeholderGroups = useMemo(() => {
+    const groups = new Map();
+    for (const placeholder of placeholders) {
+      const name = placeholder.group || 'Дополнительно';
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push(placeholder);
+    }
+    return [...groups.entries()];
+  }, [placeholders]);
+
   return (
     <article className={`ola-card ola-event ${template.isActive ? '' : 'off'}`}>
       <header>
@@ -470,15 +488,20 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
         <h3>{view.title}</h3>
         {template.medCenter && <span className="ola-badge accent">{template.medCenter.name}</span>}
 
-        <Switch checked={template.withConfirm} onChange={v => onToggle(template, 'withConfirm', v)}>
-          «Подтверждаю»
-        </Switch>
-        <Switch checked={template.isActive} onChange={v => onToggle(template, 'isActive', v)}>
-          включено
-        </Switch>
+        <Switch
+          checked={template.isActive}
+          onChange={v => onToggle(template, 'isActive', v)}
+          label={template.isActive ? 'Выключить событие' : 'Включить событие'}
+        />
       </header>
 
       <div className="ola-card-body">
+        <div className="ola-event-options">
+          <Check1 checked={template.withConfirm} onChange={v => onToggle(template, 'withConfirm', v)}>
+            Добавлять кнопку «Подтверждаю»
+          </Check1>
+        </div>
+
         {/* Время — только у событий, которые его имеют. У записи и отмены
             момент задан самим событием, и настраивать там нечего. */}
         {(template.event === 'reminder' || template.event === 'review') && (
@@ -575,14 +598,24 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
                       </div>
                     )}
 
-                    <div className="ola-tokens">
-                      {placeholders.map(p => (
-                        <button
-                          key={p.key} type="button" className="ola-token" title={p.title}
-                          onClick={() => setText(channel, `${value}{{${p.key}}}`)}
-                        >{`{{${p.key}}}`}</button>
-                      ))}
-                    </div>
+                    <details className="ola-placeholder-picker">
+                      <summary>Вставить значение</summary>
+                      <div className="ola-placeholder-groups">
+                        {placeholderGroups.map(([group, items]) => (
+                          <section key={group}>
+                            <h5>{group}</h5>
+                            <div className="ola-tokens">
+                              {items.map(p => (
+                                <button
+                                  key={p.key} type="button" className="ola-token" title={`{{${p.key}}}`}
+                                  onClick={() => setText(channel, `${value}{{${p.key}}}`)}
+                                >{p.title}</button>
+                              ))}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    </details>
                   </div>
                 )}
               </li>
@@ -601,7 +634,131 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
 
         <div className="ola-actions end">
           <button className="ola-btn primary" disabled={!dirty} onClick={save}>
-            <Save size={14} /> Сохранить
+            Сохранить
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function BlockedDoctorsPanel() {
+  const [available, setAvailable] = useState([]);
+  const [saved, setSaved] = useState([]);
+  const [draft, setDraft] = useState([]);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([
+      notifApi.blockedDoctors(),
+      misApi.getDoctors({ show_all: true, roles: ['doctor'] })
+    ]).then(([blockedResult, doctorsResult]) => {
+      if (!active) return;
+
+      if (blockedResult.status === 'fulfilled') {
+        const rows = blockedResult.value.data?.doctors || [];
+        setSaved(rows);
+        setDraft(rows);
+      } else {
+        toast.error('Не удалось загрузить блокировку врачей');
+      }
+
+      if (doctorsResult.status === 'fulfilled') {
+        const raw = doctorsResult.value.data?.data || [];
+        const rows = raw.map(doctor => ({
+          id: String(doctor.id),
+          name: doctor.name || [doctor.last_name, doctor.first_name, doctor.middle_name].filter(Boolean).join(' '),
+          specialty: (doctor.professions || [])
+            .map(item => typeof item === 'object' ? (item.title || item.name || '') : String(item || ''))
+            .filter(Boolean).join(', ')
+        })).filter(doctor => doctor.id && doctor.name)
+          .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        setAvailable(rows);
+      } else {
+        toast.error('Не удалось загрузить врачей из МИС');
+      }
+      setLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const selectedIds = useMemo(() => new Set(draft.map(doctor => String(doctor.id))), [draft]);
+  const suggestions = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase('ru');
+    if (!needle) return [];
+    return available.filter(doctor => (
+      !selectedIds.has(doctor.id) &&
+      `${doctor.name} ${doctor.specialty}`.toLocaleLowerCase('ru').includes(needle)
+    )).slice(0, 8);
+  }, [available, query, selectedIds]);
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const add = (doctor) => {
+    setDraft(current => [...current, { id: doctor.id, name: doctor.name }]);
+    setQuery('');
+  };
+  const remove = (id) => setDraft(current => current.filter(doctor => String(doctor.id) !== String(id)));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await notifApi.saveBlockedDoctors(draft);
+      setSaved(data.doctors || []);
+      setDraft(data.doctors || []);
+      toast.success('Блокировка сохранена');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <article className="ola-card ola-doctor-blocklist">
+      <header>
+        <span className="ola-card-icon red"><Ban size={17} /></span>
+        <h3>Блокировать отправку для врачей</h3>
+        {draft.length > 0 && <span className="ola-badge">{draft.length}</span>}
+      </header>
+      <div className="ola-card-body">
+        <div className="ola-doctor-search">
+          <Search size={16} />
+          <input
+            className="ola-input"
+            value={query}
+            disabled={loading}
+            placeholder={loading ? 'Загрузка врачей…' : 'Найти врача в МИС'}
+            onChange={event => setQuery(event.target.value)}
+          />
+          {suggestions.length > 0 && (
+            <div className="ola-doctor-suggestions">
+              {suggestions.map(doctor => (
+                <button key={doctor.id} type="button" onClick={() => add(doctor)}>
+                  <strong>{doctor.name}</strong>
+                  {doctor.specialty && <span>{doctor.specialty}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="ola-chips ola-blocked-doctors">
+          {draft.map(doctor => (
+            <span className="ola-chip" key={doctor.id || doctor.name}>
+              {doctor.name || `Врач ${doctor.id}`}
+              <button type="button" aria-label={`Убрать ${doctor.name}`} onClick={() => remove(doctor.id)}>
+                <X size={13} />
+              </button>
+            </span>
+          ))}
+        </div>
+
+        <div className="ola-actions end">
+          <button className="ola-btn primary" disabled={!dirty || saving} onClick={save}>
+            {saving ? 'Сохраняем…' : 'Сохранить'}
           </button>
         </div>
       </div>
@@ -610,6 +767,8 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
 }
 
 function TemplatesTab({ data, steps, reload }) {
+  const [selectedMedCenterId, setSelectedMedCenterId] = useState('');
+
   const save = async (t, patch) => {
     try {
       await notifApi.updateTemplate(t.id, patch);
@@ -631,18 +790,50 @@ function TemplatesTab({ data, steps, reload }) {
 
   if (!data) return <div className="ola-loading">Загрузка…</div>;
 
+  const medCenters = data.medCenters || [];
+  const selected = medCenters.some(mc => mc.id === selectedMedCenterId)
+    ? selectedMedCenterId
+    : (medCenters[0]?.id || '');
+  const visibleTemplates = (data.templates || []).filter(t => t.medCenterId === selected);
+
   return (
     <>
-      {data.templates.map(t => (
-        <TemplateCard
-          key={t.id}
-          template={t}
-          steps={steps}
-          placeholders={data.placeholders || []}
-          onSave={save}
-          onToggle={toggle}
-        />
-      ))}
+      <BlockedDoctorsPanel />
+
+      <div className="ola-template-scope">
+        <label htmlFor="ola-template-medcenter"><Building2 size={16} /> Филиал</label>
+        <select
+          id="ola-template-medcenter"
+          className="ola-select"
+          value={selected}
+          onChange={e => setSelectedMedCenterId(e.target.value)}
+        >
+          {medCenters.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
+        </select>
+      </div>
+
+      {medCenters.length === 0 && (
+        <div className="ola-empty"><Building2 size={34} /><h3>Нет действующих филиалов</h3></div>
+      )}
+
+      {medCenters.length > 0 && visibleTemplates.length === 0 && (
+        <div className="ola-empty"><FileText size={34} /><h3>Для филиала нет настроенных событий</h3></div>
+      )}
+
+      {visibleTemplates.length > 0 && (
+        <div className="ola-event-grid">
+          {visibleTemplates.map(t => (
+            <TemplateCard
+              key={t.id}
+              template={t}
+              steps={steps}
+              placeholders={data.placeholders || []}
+              onSave={save}
+              onToggle={toggle}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -923,7 +1114,7 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
                 />
               </div>
               <button className="ola-btn primary" disabled={!dirty} onClick={save}>
-                <Save size={14} /> Сохранить
+                Сохранить
               </button>
             </div>
           </div>
@@ -1216,7 +1407,9 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
               <select className="ola-select" value={test.templateId} onChange={e => setTest(t => ({ ...t, templateId: e.target.value }))}>
                 <option value="">выберите событие</option>
                 {(templates?.templates || []).map(t => (
-                  <option key={t.id} value={t.id}>{eventTitle(t.event)}</option>
+                  <option key={t.id} value={t.id}>
+                    {t.medCenter?.name ? `${t.medCenter.name} — ` : ''}{eventTitle(t.event)}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1232,7 +1425,7 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
           {dirty ? 'Есть несохранённые изменения' : 'Всё сохранено'}
         </span>
         <button className="ola-btn primary" onClick={saveSettings} disabled={!dirty}>
-          <Save size={15} /> Сохранить общие
+          Сохранить общие
         </button>
       </div>
     </>
@@ -1421,7 +1614,7 @@ function SafetyPanel({ safety, onChange }) {
               onChange={e => setPilot(e.target.value)}
             />
             <button className="ola-btn primary" disabled={!pilotDirty || busy} onClick={savePilot}>
-              <Save size={14} /> Сохранить
+              Сохранить
             </button>
           </div>
         </div>

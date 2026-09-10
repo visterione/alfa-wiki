@@ -97,9 +97,9 @@ function SidebarCalendar() {
   // Состояние для переключения между месячным и недельным видом
   const [calendarView, setCalendarView] = useState(() => {
     try {
-      return localStorage.getItem(CALENDAR_VIEW_KEY) || 'month';
+      return localStorage.getItem(CALENDAR_VIEW_KEY) || 'week';
     } catch {
-      return 'month';
+      return 'week';
     }
   });
   // Состояния для анимаций
@@ -387,6 +387,9 @@ function QuickAccessButtons({ onClose }) {
   // Онбординг врача (ver. 7.30) — тот же гранулярный флаг. Внутри модуля
   // человек видит только заявки тех филиалов, где он назначен исполнителем.
   const canAccessOnboarding = isAdmin || user?.adminAccess?.onboarding === true;
+  // Рабочее окно линии теперь является обычным пользовательским разделом в
+  // быстром доступе. Настройка линий остаётся отдельным правом в админке.
+  const canAccessOpenLine = isAdmin || user?.adminAccess?.openLine === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -484,6 +487,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnStatistics = location.pathname.startsWith('/statistics');
   const isOnTasks = location.pathname.startsWith('/tasks');
   const isOnOnboarding = location.pathname.startsWith('/onboarding');
+  const isOnOpenLine = location.pathname.startsWith('/open-line');
 
   const handleClick = (path) => {
     navigate(path);
@@ -624,6 +628,29 @@ function QuickAccessButtons({ onClose }) {
           </span>
         )}
       </button>
+
+      <button
+        className={`quick-access-btn open-line ${isOnOpenLine ? 'active' : ''} ${!canAccessOpenLine ? 'locked' : ''}`}
+        data-icon-motion={canAccessOpenLine ? 'message' : undefined}
+        onClick={() => canAccessOpenLine ? handleClick('/open-line') : toast.error('Нет доступа к разделу «Открытая линия»')}
+        title={canAccessOpenLine ? 'Открытая линия' : 'Открытая линия (нет доступа)'}
+      >
+        <Headphones size={20} />
+        {!canAccessOpenLine && <Lock size={10} className="quick-access-lock" />}
+      </button>
+
+      {[1, 2, 3, 4].map((slot) => (
+        <button
+          key={`placeholder-${slot}`}
+          type="button"
+          className="quick-access-btn placeholder locked"
+          title="Раздел появится позже"
+          aria-label="Раздел появится позже"
+          disabled
+        >
+          <Lock size={16} />
+        </button>
+      ))}
     </div>
   );
 }

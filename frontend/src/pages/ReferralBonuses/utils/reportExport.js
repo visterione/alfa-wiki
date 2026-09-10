@@ -128,6 +128,35 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, doctorSpecialty, clinic
     salTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
     ws.mergeCells(`A${salTitleRow.number}:F${salTitleRow.number}`);
 
+    if ((sal.sourceClinicSummaries || []).length > 0) {
+      const sourceTitle = ws.addRow(['Состав начисления']);
+      sourceTitle.getCell(1).font = fontBold;
+      ws.mergeCells(`A${sourceTitle.number}:F${sourceTitle.number}`);
+
+      const sourceHeader = ws.addRow(['Медцентр', '', 'Начислено', 'Удержано', 'Выплачено', 'К доплате']);
+      sourceHeader.eachCell({ includeEmpty: true }, (cell, c) => {
+        if (c <= 6) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+      });
+      ws.mergeCells(`A${sourceHeader.number}:B${sourceHeader.number}`);
+      (sal.sourceClinicSummaries || []).forEach(source => {
+        const row = ws.addRow([
+          source.clinicLabel || source.clinicId || '—', '',
+          parseFloat((source.accrued || 0).toFixed(2)),
+          parseFloat((source.withheld || 0).toFixed(2)),
+          parseFloat((source.paid || 0).toFixed(2)),
+          parseFloat((source.remainder || 0).toFixed(2)),
+        ]);
+        row.eachCell({ includeEmpty: true }, (cell, c) => {
+          if (c <= 6) { cell.font = fontNormal; cell.border = allBorders; }
+        });
+        ws.mergeCells(`A${row.number}:B${row.number}`);
+        [3, 4, 5, 6].forEach(c => { row.getCell(c).numFmt = '#,##0.00'; });
+        row.getCell(6).font = { ...fontBold, color: { argb: (source.remainder || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
+        autoWidth(row, 6);
+      });
+      ws.addRow([]);
+    }
+
     // Оклад / выработка
     if ((sal.basePay || 0) > 0 || sal.basePayLabel) {
       const _hasWageChildren = (sal.basePerformedSections || []).length > 0 || (sal.payType === 'hourly' && (sal.hourlyRate || 0) > 0) || (sal.payType === 'normed' && (sal.normServices || []).length > 0) || sal.payType === 'prorated';
@@ -435,7 +464,8 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, doctorSpecialty, clinic
     const _remainder = (sal.finalSalary || 0) - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
 
     const addPayRow = (label, method, value) => {
-      const row = ws.addRow([label, '', '', method ? (method === 'cash' ? 'наличные' : 'карта') : '', '', parseFloat((value || 0).toFixed(2))]);
+      const methodLabel = method === 'cash' ? 'наличные' : (method === 'mixed' ? 'смешанно' : (method ? 'карта' : ''));
+      const row = ws.addRow([label, '', '', methodLabel, '', parseFloat((value || 0).toFixed(2))]);
       row.getCell(1).font = fontNormal;
       row.getCell(4).font = { ...fontNormal, color: { argb: 'FF64748B' } };
       row.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };

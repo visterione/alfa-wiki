@@ -61,6 +61,7 @@ async function logRbActivity({
 
 const SCALAR_LABELS = {
   payType:           'Тип выплаты',
+  accrualClinicId:   'Начислять в отчёт',
   fixedSalary:       'Оклад',
   hourlyRate:        'Ставка/час',
   hoursWorked:       'Отработано часов',

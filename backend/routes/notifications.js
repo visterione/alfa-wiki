@@ -23,6 +23,7 @@ const templates = require('../services/notifications/templates');
 const sender = require('../services/notifications/sender');
 const safety = require('../services/notifications/safety');
 const notifSettings = require('../services/notifications/settings');
+const doctorBlocklist = require('../services/notifications/doctorBlocklist');
 const imobis = require('../services/messengers/imobis');
 const { NotifOutbox: Outbox } = require('../models');
 
@@ -90,32 +91,116 @@ const EVENTS = [
   'lab_full', 'lab_partial'
 ];
 
+const TEMPLATE_CHANNELS = ['telegram', 'max', 'notify', 'sms'];
+
 // Подстановки показываем в интерфейсе списком: администратор вставляет их
 // кнопкой, а не переписывает из документации.
 const PLACEHOLDERS = [
-  { key: 'имя', title: 'Имя пациента' },
-  { key: 'фио', title: 'ФИО пациента' },
-  { key: 'дата', title: 'Дата визита' },
-  { key: 'время', title: 'Время визита' },
-  { key: 'день_недели', title: 'День недели' },
-  { key: 'врач', title: 'Врач (фамилия и инициалы)' },
-  { key: 'врач_полностью', title: 'Врач полностью' },
-  { key: 'клиника', title: 'Название клиники' },
-  { key: 'адрес', title: 'Адрес клиники' },
-  { key: 'телефон_клиники', title: 'Телефон клиники' },
-  { key: 'старая_дата', title: 'Прежняя дата (перенос)' },
-  { key: 'старое_время', title: 'Прежнее время (перенос)' }
+  { key: 'логин_пациента', title: 'Логин пациента', group: 'Пациент' },
+  { key: 'фио_пациента', title: 'ФИО пациента', group: 'Пациент' },
+  { key: 'имя_пациента', title: 'Имя пациента', group: 'Пациент' },
+  { key: 'фамилия_пациента', title: 'Фамилия пациента', group: 'Пациент' },
+  { key: 'отчество_пациента', title: 'Отчество пациента', group: 'Пациент' },
+  { key: 'дата_и_время_начала', title: 'Дата и время начала', group: 'Визит' },
+  { key: 'дата_и_время_начала_без_года', title: 'Дата и время начала (без года)', group: 'Визит' },
+  { key: 'дата_и_время_начала_формат', title: 'Дата и время начала (формат)', group: 'Визит' },
+  { key: 'дата_и_время_начала_формат_без_года', title: 'Дата и время начала (формат без года)', group: 'Визит' },
+  { key: 'дата_начала', title: 'Дата начала', group: 'Визит' },
+  { key: 'дата_начала_без_года', title: 'Дата начала (без года)', group: 'Визит' },
+  { key: 'время_начала', title: 'Время начала', group: 'Визит' },
+  { key: 'дата_и_время_окончания', title: 'Дата и время окончания', group: 'Визит' },
+  { key: 'дата_окончания', title: 'Дата окончания', group: 'Визит' },
+  { key: 'время_окончания', title: 'Время окончания', group: 'Визит' },
+  { key: 'полное_фио_врача', title: 'Полное ФИО врача', group: 'Врач' },
+  { key: 'фио_врача', title: 'ФИО врача', group: 'Врач' },
+  { key: 'дата_резерва', title: 'Дата резерва', group: 'Резерв' },
+  { key: 'дата_резерва_без_года', title: 'Дата резерва (без года)', group: 'Резерв' },
+  { key: 'время_резерва', title: 'Время резерва', group: 'Резерв' },
+  { key: 'дата_и_время_резерва', title: 'Дата и время резерва', group: 'Резерв' },
+  { key: 'специальность_резерва', title: 'Специальность резерва', group: 'Резерв' },
+  { key: 'кабинет', title: 'Кабинет', group: 'Резерв' },
+  { key: 'название_организации', title: 'Название организации', group: 'Филиал' },
+  { key: 'телефон_организации', title: 'Телефон организации', group: 'Филиал' },
+  { key: 'название_клиники', title: 'Название клиники', group: 'Филиал' },
+  { key: 'телефон_клиники', title: 'Телефон клиники', group: 'Филиал' },
+  { key: 'адрес_клиники', title: 'Адрес клиники', group: 'Филиал' },
+  { key: 'текущая_дата', title: 'Текущая дата', group: 'Даты' },
+  { key: 'текущая_дата_без_года', title: 'Текущая дата (без года)', group: 'Даты' },
+  { key: 'название_документа', title: 'Название документа', group: 'Документ' },
+  { key: 'фио_автора_документа', title: 'ФИО автора документа', group: 'Документ' },
+  { key: 'дата_визита', title: 'Дата визита', group: 'Документ' },
+  { key: 'время_визита', title: 'Время визита', group: 'Документ' },
+  { key: 'дата_документа', title: 'Дата документа', group: 'Документ' },
+  { key: 'время_документа', title: 'Время документа', group: 'Документ' },
+  { key: 'название_клиники_документа', title: 'Название клиники документа', group: 'Документ' },
+  { key: 'день_недели', title: 'День недели', group: 'Дополнительно' },
+  { key: 'старая_дата', title: 'Прежняя дата (перенос)', group: 'Дополнительно' },
+  { key: 'старое_время', title: 'Прежнее время (перенос)', group: 'Дополнительно' }
 ];
+
+function previewValues(medCenter = null) {
+  const start = new Date(Date.now() + 24 * 3600 * 1000);
+  const clinicName = medCenter?.name || 'Альфа';
+  const phones = Array.isArray(medCenter?.phones) ? medCenter.phones : [];
+  const sample = {
+    patientNumber: 'PAT-12345',
+    patientName: 'Иванов Иван Иванович',
+    doctorName: 'Петрова Мария Сергеевна',
+    timeStart: start,
+    timeEnd: new Date(start.getTime() + 40 * 60000),
+    reservedAt: new Date(),
+    reserveSpecialty: 'Терапевт',
+    room: '305',
+    documentName: 'Медицинское заключение',
+    documentAuthorName: 'Петрова Мария Сергеевна',
+    documentAt: new Date(),
+    documentClinicName: clinicName
+  };
+  return templates.valuesFor(sample, {
+    clinicName,
+    clinicAddress: medCenter?.address || 'ул. Владимирская, 93',
+    clinicPhone: phones[0]?.value || '+7 (861) 000-00-00',
+    organizationName: 'ООО «Альфа»',
+    organizationPhone: '+7 (861) 000-00-00',
+    previousAt: new Date(start.getTime() - 48 * 3600 * 1000)
+  });
+}
+
+router.get('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
+  try {
+    res.json({ doctors: await doctorBlocklist.read() });
+  } catch (err) {
+    console.error('[notifications] GET /blocked-doctors:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const doctors = req.body?.doctors;
+    if (!Array.isArray(doctors)) return res.status(400).json({ error: 'Нужен список врачей' });
+    if (doctors.length > 500) return res.status(400).json({ error: 'Слишком большой список врачей' });
+    res.json({ doctors: await doctorBlocklist.write(doctors) });
+  } catch (err) {
+    console.error('[notifications] PUT /blocked-doctors:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // ── Шаблоны ───────────────────────────────────────────────────────────────
 
 router.get('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
     const rows = await NotifTemplate.findAll({
+      where: { medCenterId: { [Op.ne]: null } },
       include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }],
       order: [['event', 'ASC'], ['beforeMinutes', 'ASC']]
     });
-    const medCenters = await MedCenter.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] });
+    const medCenters = await MedCenter.findAll({
+      attributes: ['id', 'name'],
+      where: { servesPatients: true, isActive: true },
+      order: [['name', 'ASC']]
+    });
 
     res.json({
       templates: rows,
@@ -134,15 +219,30 @@ router.get('/templates', authenticate, requireAdmin, async (req, res) => {
 
 router.post('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { event, text, smsText, medCenterId, beforeMinutes, withConfirm } = req.body || {};
+    const { event, text, smsText, channelTexts, medCenterId, beforeMinutes, withConfirm } = req.body || {};
     if (!EVENTS.includes(event)) return res.status(400).json({ error: 'Неизвестное событие' });
-    if (!text || !text.trim()) return res.status(400).json({ error: 'Пустой текст' });
+    if (!medCenterId) return res.status(400).json({ error: 'Нужно выбрать филиал' });
+
+    const medCenter = await MedCenter.findOne({
+      where: { id: medCenterId, servesPatients: true, isActive: true }
+    });
+    if (!medCenter) return res.status(400).json({ error: 'Филиал не найден или не принимает пациентов' });
+
+    const cleanChannelTexts = {};
+    for (const channel of TEMPLATE_CHANNELS) {
+      const value = String(channelTexts?.[channel] ?? '').trim();
+      if (value) cleanChannelTexts[channel] = value;
+    }
+    if (!String(text || '').trim() && Object.keys(cleanChannelTexts).length === 0) {
+      return res.status(400).json({ error: 'Пустой текст' });
+    }
 
     const row = await NotifTemplate.create({
       event,
-      text: text.trim(),
+      text: String(text || '').trim() || null,
       smsText: smsText ? String(smsText).trim() : null,
-      medCenterId: medCenterId || null,
+      channelTexts: cleanChannelTexts,
+      medCenterId,
       beforeMinutes: event === 'reminder' ? (Number(beforeMinutes) || 1440) : null,
       withConfirm: !!withConfirm
     });
@@ -157,9 +257,12 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const row = await NotifTemplate.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Шаблон не найден' });
+    if (!row.medCenterId) {
+      return res.status(409).json({ error: 'Общие шаблоны больше не используются; примените миграцию 8.11' });
+    }
 
     const { text, smsText, channelTexts, cascade, beforeMinutes, afterMinutes,
-            frequency, withConfirm, isActive, medCenterId } = req.body || {};
+            frequency, withConfirm, isActive } = req.body || {};
 
     // Тексты каналов (ver. 8.03). Пустые ключи выбрасываем, а не храним пустыми
     // строками: «нет своего текста» и «текст из одного пробела» — разные вещи,
@@ -167,7 +270,7 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
     let nextChannelTexts = row.channelTexts;
     if (channelTexts !== undefined && channelTexts && typeof channelTexts === 'object') {
       nextChannelTexts = {};
-      for (const channel of ['telegram', 'max', 'sms']) {
+      for (const channel of TEMPLATE_CHANNELS) {
         const value = String(channelTexts[channel] ?? '').trim();
         if (value) nextChannelTexts[channel] = value;
       }
@@ -190,8 +293,7 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
       beforeMinutes: row.event === 'reminder' && beforeMinutes !== undefined
         ? (Number(beforeMinutes) || null) : row.beforeMinutes,
       withConfirm: withConfirm !== undefined ? !!withConfirm : row.withConfirm,
-      isActive: isActive !== undefined ? !!isActive : row.isActive,
-      medCenterId: medCenterId !== undefined ? (medCenterId || null) : row.medCenterId
+      isActive: isActive !== undefined ? !!isActive : row.isActive
     });
     res.json(row);
   } catch (err) {
@@ -217,19 +319,7 @@ router.delete('/templates/:id', authenticate, requireAdmin, async (req, res) => 
 router.post('/templates/preview', authenticate, requireAdmin, async (req, res) => {
   try {
     const text = (req.body && req.body.text) || '';
-    const sample = {
-      patientName: 'Иванов Иван Иванович',
-      doctorName: 'Петрова Мария Сергеевна',
-      timeStart: new Date(Date.now() + 24 * 3600 * 1000),
-      clinicName: 'Альфа'
-    };
-    const values = templates.valuesFor(sample, {
-      clinicName: sample.clinicName,
-      clinicAddress: 'ул. Владимирская, 93',
-      clinicPhone: '+7 (861) 000-00-00',
-      previousAt: new Date(Date.now() - 48 * 3600 * 1000)
-    });
-    res.json({ text: templates.render(text, values) });
+    res.json({ text: templates.render(text, previewValues()) });
   } catch (err) {
     console.error('[notifications] POST /templates/preview:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -316,31 +406,38 @@ router.post('/test', authenticate, requireAdmin, async (req, res) => {
 
     let bodyText = text;
     let bodySms = smsText;
+    let bodyChannels = {};
+    let sampleMedCenter = null;
 
     if (templateId) {
-      const template = await NotifTemplate.findByPk(templateId);
+      const template = await NotifTemplate.findByPk(templateId, {
+        include: [{
+          model: MedCenter,
+          as: 'medCenter',
+          attributes: ['name', 'address', 'phones']
+        }]
+      });
       if (!template) return res.status(404).json({ error: 'Шаблон не найден' });
       bodyText = template.text;
       bodySms = template.smsText;
+      bodyChannels = template.channelTexts || {};
+      sampleMedCenter = template.medCenter;
     }
-    if (!bodyText) return res.status(400).json({ error: 'Нечего отправлять' });
+    if (!bodyText && !bodySms && Object.keys(bodyChannels).length === 0) {
+      return res.status(400).json({ error: 'Нечего отправлять' });
+    }
 
     // Подставляем те же примерные значения, что и в предпросмотре: проверяем
     // канал и текст, а не выборку из МИС.
-    const sample = {
-      patientName: 'Иванов Иван Иванович',
-      doctorName: 'Петрова Мария Сергеевна',
-      timeStart: new Date(Date.now() + 24 * 3600 * 1000),
-      clinicName: 'Альфа'
-    };
-    const values = templates.valuesFor(sample, {
-      clinicName: sample.clinicName,
-      clinicAddress: 'ул. Владимирская, 93',
-      clinicPhone: '+7 (861) 000-00-00'
-    });
+    const values = previewValues(sampleMedCenter);
 
-    const rendered = templates.render(bodyText, values);
+    const rendered = bodyText ? templates.render(bodyText, values) : '';
     const renderedSms = bodySms ? templates.render(bodySms, values) : null;
+    const renderedChannels = Object.fromEntries(
+      Object.entries(bodyChannels)
+        .filter(([, value]) => value && String(value).trim())
+        .map(([channel, value]) => [channel, templates.render(String(value), values)])
+    );
 
     // Строка в очереди — чтобы проверка была видна в журнале наравне с боевыми
     // отправками, со своим исходом и причиной.
@@ -350,6 +447,7 @@ router.post('/test', authenticate, requireAdmin, async (req, res) => {
       phone: String(phone),
       text: rendered,
       smsText: renderedSms,
+      channelTexts: renderedChannels,
       withConfirm: false,
       status: 'pending'
     });

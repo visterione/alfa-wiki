@@ -807,7 +807,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
             <MissingBonusBanner clinicReports={reportData.clinicReports} doctor={selectedDoctor} canEdit={!readOnly} onSaved={handleGenerate} />
             <MissingSubdivisionBanner clinicReports={reportData.clinicReports} />
             {/* Clinic reports */}
-            {reportData.clinicReports.map(({ clinicLabel, clinicColor, clinicId, salary }, idx) => {
+            {reportData.clinicReports.map(({ clinicLabel, clinicColor, clinicId, salary, sourceClinics }, idx) => {
               const isMulti = reportData.clinicReports.length > 1;
               const isAup = String(clinicId) === 'aup';
               return (
@@ -819,6 +819,11 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
                     <div style={{ flex: 1 }}>
                       <div className="rb-report-title" style={{ color: clinicColor }}>{isAup ? <span className="rb-aup-text">{clinicLabel}</span> : clinicLabel}</div>
                       {isMulti && <div style={{ fontSize: 11, color: isAup ? '#b0b0b0' : 'var(--rb-text-secondary)', marginTop: 2 }}>Расчётный лист {idx + 1} из {reportData.clinicReports.length}</div>}
+                      {sourceClinics?.length > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
+                          Начисления из: {sourceClinics.map(source => source.clinicLabel).join(', ')}
+                        </div>
+                      )}
                     </div>
                     {reportData.periodLabel && <div style={{ fontSize: 15, color: isAup ? '#e6d9a8' : 'var(--rb-text)' }}>{reportData.periodLabel}</div>}
                   </div>
@@ -1341,6 +1346,11 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                               ? <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#bf953f', flexShrink: 0 }} />
                               : <ClinicLogo clinicId={cr.clinicId} color={cr.clinicColor} size={24} dotSize={10} />}
                             <div className="rb-report-title" style={{ color: cr.clinicColor }}>{isAup ? <span className="rb-aup-text">{cr.clinicLabel}</span> : cr.clinicLabel}</div>
+                            {cr.sourceClinics?.length > 0 && (
+                              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>
+                                Начисления из: {cr.sourceClinics.map(source => source.clinicLabel).join(', ')}
+                              </div>
+                            )}
                             {r.periodLabel && <div style={{ marginLeft: 'auto', fontSize: 11, color: isAup ? '#e6d9a8' : 'var(--rb-text-secondary)' }}>{r.periodLabel}</div>}
                           </div>
                           <SalaryBlock salary={cr.salary} />

@@ -3612,8 +3612,21 @@ const NotifAppointment = sequelize.define('NotifAppointment', {
   patientId: { type: DataTypes.INTEGER, field: 'patient_id' },
   phone: { type: DataTypes.STRING(30) },
   patientName: { type: DataTypes.STRING(255), field: 'patient_name' },
+  patientNumber: { type: DataTypes.STRING(100), field: 'patient_number' },
+  doctorId: { type: DataTypes.STRING(50), field: 'doctor_id' },
   doctorName: { type: DataTypes.STRING(255), field: 'doctor_name' },
   timeStart: { type: DataTypes.DATE, field: 'time_start' },
+  timeEnd: { type: DataTypes.DATE, field: 'time_end' },
+  reservedAt: { type: DataTypes.DATE, field: 'reserved_at' },
+  reserveSpecialty: { type: DataTypes.STRING(500), field: 'reserve_specialty' },
+  room: { type: DataTypes.STRING(255) },
+  reserveAuthorName: { type: DataTypes.STRING(255), field: 'reserve_author_name' },
+  // Поля документов заполняются push-событиями лаборатории, когда МИС их
+  // передаёт. Для обычного визита они остаются NULL.
+  documentName: { type: DataTypes.STRING(500), field: 'document_name' },
+  documentAuthorName: { type: DataTypes.STRING(255), field: 'document_author_name' },
+  documentAt: { type: DataTypes.DATE, field: 'document_at' },
+  documentClinicName: { type: DataTypes.STRING(255), field: 'document_clinic_name' },
   statusId: { type: DataTypes.SMALLINT, field: 'status_id' },
   confirmStatus: { type: DataTypes.SMALLINT, field: 'confirm_status' },
   // Момент завершения приёма: от него отсчитывается просьба об отзыве. Время
@@ -3625,7 +3638,9 @@ const NotifAppointment = sequelize.define('NotifAppointment', {
 const NotifTemplate = sequelize.define('NotifTemplate', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   event: { type: DataTypes.STRING(20), allowNull: false },   // created | moved | cancelled | reminder
-  medCenterId: { type: DataTypes.UUID, allowNull: true },     // пусто — общий на сеть
+  // У шаблона всегда есть конкретный филиал (ver. 8.11). Общие шаблоны
+  // оказались двусмысленны: ссылка и даже длина SMS у филиалов различаются.
+  medCenterId: { type: DataTypes.UUID, allowNull: false },
   // Запасной текст на все каналы сразу. С 8.04 не заполняется и в интерфейсе
   // не показывается: один абзац на мессенджер и на SMS — это разные деньги и
   // разный разговор. Колонка оставлена ради старого отправщика, который
@@ -3634,7 +3649,7 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   // Короткий текст для SMS. Кириллица даёт 70 символов на сегмент, и лишний
   // символ стоит второй SMS — поэтому текст отдельный, а не обрезанный.
   smsText: { type: DataTypes.TEXT, allowNull: true },
-  // Свой текст на каждый канал: { telegram, max, sms } (ver. 8.03). Деление на
+  // Свой текст на каждый канал: { telegram, max, notify, sms } (ver. 8.03). Деление на
   // text/smsText было по длине, а не по каналу, и на два своих мессенджера
   // одного «текста для мессенджеров» перестало хватать. Пустой ключ означает
   // «взять text», поэтому шаблон без заполненных каналов работает как прежде.

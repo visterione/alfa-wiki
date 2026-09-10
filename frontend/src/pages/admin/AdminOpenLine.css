@@ -39,13 +39,25 @@
 
 /* ── Оболочка ─────────────────────────────────────────────────────────────
  *
- * Ширина одна на все вкладки. 1180 px — это примерно 100 знаков в поле текста
- * шаблона: длиннее строка читается хуже, а SMS всё равно короче. Админская
- * обёртка даёт всю ширину окна, поэтому колонку центрируем сами.
+ * Админская область уже ограничивает безопасные поля страницы, поэтому второй
+ * max-width здесь только отнимал рабочее место. Полупрозрачные поверхности
+ * остаются локальными переменными модуля и одинаково работают в обеих темах.
  */
+.admin-page:has(.ola-shell) {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 8% 2%, color-mix(in srgb, var(--accent-300) 18%, transparent), transparent 28rem),
+    radial-gradient(circle at 94% 12%, color-mix(in srgb, var(--cyan-200) 13%, transparent), transparent 32rem);
+}
+
 .ola-shell {
-  max-width: 1180px;
-  margin: 0 auto;
+  --ola-glass: color-mix(in srgb, var(--bg-primary) 84%, transparent);
+  --ola-glass-strong: color-mix(in srgb, var(--bg-primary) 94%, transparent);
+  --ola-line: color-mix(in srgb, var(--border) 68%, transparent);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .ola-head {
@@ -57,8 +69,8 @@
 }
 
 .ola-head h1 {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: clamp(24px, 2vw, 30px);
+  font-weight: 750;
   color: var(--text-primary);
   margin: 0 0 4px;
   letter-spacing: -0.01em;
@@ -79,20 +91,26 @@
  */
 .ola-tabs {
   display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  margin-bottom: 20px;
-  background: var(--bg-tertiary);
-  border-radius: 11px;
+  gap: 3px;
+  padding: 5px;
+  margin-bottom: 22px;
+  border: 1px solid var(--ola-line);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 55%, transparent),
+              0 8px 24px rgba(var(--overlay-ink), 0.07);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
 
 .ola-tab {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 15px;
+  min-height: 38px;
+  padding: 8px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 11px;
   background: transparent;
   font-size: 13.5px;
   font-weight: 600;
@@ -105,9 +123,10 @@
 .ola-tab:hover { color: var(--text-primary); }
 
 .ola-tab.active {
-  background: var(--bg-primary);
+  background: linear-gradient(180deg, var(--ola-glass-strong), color-mix(in srgb, var(--bg-secondary) 78%, transparent));
   color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(var(--overlay-ink), 0.12);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 75%, transparent),
+              0 2px 7px rgba(var(--overlay-ink), 0.13);
 }
 
 .ola-tab svg { opacity: 0.75; }
@@ -132,20 +151,28 @@
  * без прищуривания. Прежние карточки отличались от фона на одну ступень рампы.
  */
 .ola-card {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
-  border-radius: 14px;
-  margin-bottom: 14px;
+  background: linear-gradient(145deg, var(--ola-glass-strong), var(--ola-glass));
+  border: 1px solid var(--ola-line);
+  border-radius: 20px;
+  margin-bottom: 18px;
   overflow: hidden;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 72%, transparent),
+              0 14px 34px rgba(var(--overlay-ink), 0.08),
+              0 2px 6px rgba(var(--overlay-ink), 0.04);
+  backdrop-filter: blur(20px) saturate(135%);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
 }
 
 .ola-card > header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border-light);
-  background: var(--bg-secondary);
+  min-height: 58px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--ola-line);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-primary) 78%, transparent),
+    color-mix(in srgb, var(--bg-secondary) 62%, transparent));
 }
 
 .ola-card > header h3 {
@@ -162,7 +189,7 @@
 
 .ola-card > header h3 svg { color: var(--text-secondary); flex-shrink: 0; }
 
-.ola-card-body { padding: 18px; }
+.ola-card-body { padding: 20px; }
 
 /* Выключенная линия или шаблон: приглушаем содержимое, но не заголовок —
    иначе непонятно, что именно выключено. */
@@ -235,18 +262,29 @@
 .ola-select,
 .ola-textarea {
   width: 100%;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--bg-primary);
+  box-sizing: border-box;
+  padding: 9px 13px;
+  border: 1px solid var(--ola-line);
+  border-radius: 12px;
+  background-color: color-mix(in srgb, var(--bg-primary) 88%, transparent);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13.5px;
-  line-height: 1.5;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: inset 0 1px 2px rgba(var(--overlay-ink), 0.055),
+              0 1px 0 color-mix(in srgb, var(--n-0) 45%, transparent);
+  transition: border-color 0.16s, box-shadow 0.16s, background-color 0.16s;
 }
 
-.ola-textarea { resize: vertical; min-height: 62px; }
+.ola-input,
+.ola-select { height: 42px; }
+
+.ola-textarea {
+  min-height: 92px;
+  resize: vertical;
+  appearance: none;
+  -webkit-appearance: none;
+}
 
 .ola-input::placeholder,
 .ola-textarea::placeholder { color: var(--text-tertiary); }
@@ -256,10 +294,20 @@
 .ola-textarea:focus {
   outline: none;
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 3px var(--accent-100);
+  background-color: var(--bg-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-300) 34%, transparent),
+              inset 0 1px 2px rgba(var(--overlay-ink), 0.04);
 }
 
-.ola-select { cursor: pointer; }
+.ola-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
 
 /* Ряд полей: имя отправителя и группа ВК стоят рядом, а не столбиком —
    вместе они одна настройка одного провайдера. */
@@ -279,30 +327,39 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--bg-primary);
+  min-height: 38px;
+  padding: 8px 15px;
+  border: 1px solid var(--ola-line);
+  border-radius: 11px;
+  background: linear-gradient(180deg, var(--ola-glass-strong), color-mix(in srgb, var(--bg-secondary) 76%, transparent));
   color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 64%, transparent),
+              0 2px 5px rgba(var(--overlay-ink), 0.07);
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .ola-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
   border-color: var(--n-400);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 72%, transparent),
+              0 5px 12px rgba(var(--overlay-ink), 0.11);
 }
+
+.ola-btn:active:not(:disabled) { transform: translateY(0); }
 
 .ola-btn:disabled { opacity: 0.45; cursor: default; }
 
 .ola-btn.primary {
-  background: var(--accent-500);
+  background: linear-gradient(180deg, var(--accent-400), var(--accent-600));
   border-color: var(--accent-500);
   color: var(--n-0);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 34%, transparent),
+              0 5px 12px color-mix(in srgb, var(--accent-600) 24%, transparent);
 }
 
 .ola-btn.primary:hover:not(:disabled) {
@@ -365,8 +422,10 @@
   height: 21px;
   flex-shrink: 0;
   border-radius: 11px;
-  background: var(--n-300);
-  transition: background 0.18s;
+  border: 1px solid color-mix(in srgb, var(--n-500) 26%, transparent);
+  background: linear-gradient(180deg, var(--n-300), var(--n-200));
+  box-shadow: inset 0 1px 3px rgba(var(--overlay-ink), 0.15);
+  transition: background 0.18s, border-color 0.18s;
 }
 
 .ola-switch .track::after {
@@ -378,11 +437,14 @@
   height: 17px;
   border-radius: 50%;
   background: var(--n-0);
-  box-shadow: 0 1px 3px rgba(var(--overlay-ink), 0.25);
+  box-shadow: 0 1px 3px rgba(var(--overlay-ink), 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.72);
   transition: transform 0.18s;
 }
 
-.ola-switch input:checked + .track { background: var(--accent-500); }
+.ola-switch input:checked + .track {
+  border-color: var(--accent-600);
+  background: linear-gradient(180deg, var(--accent-400), var(--accent-600));
+}
 .ola-switch input:checked + .track::after { transform: translateX(15px); }
 .ola-switch input:focus-visible + .track { box-shadow: 0 0 0 3px var(--accent-100); }
 
@@ -918,7 +980,53 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin: 0;
+}
+
+.ola-placeholder-picker {
   margin: 10px 0 14px;
+  border: 1px solid var(--ola-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 76%, transparent);
+  overflow: hidden;
+}
+
+.ola-placeholder-picker > summary {
+  padding: 9px 12px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ola-placeholder-picker[open] > summary {
+  color: var(--accent-700);
+  border-bottom: 1px solid var(--ola-line);
+}
+
+.ola-placeholder-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  max-height: 320px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.ola-placeholder-groups section { min-width: 0; }
+.ola-placeholder-groups h5 {
+  margin: 0 0 7px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ola-placeholder-groups .ola-token {
+  font-family: inherit;
+  font-size: 11px;
 }
 
 /* ── Сгиб ─────────────────────────────────────────────────────────────────
@@ -1018,6 +1126,134 @@
 .ola-card-body > .ola-actions.end:first-child { margin-top: 0; }
 .ola-shell > .ola-actions.end { margin-bottom: 14px; }
 
+.ola-template-scope {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 480px);
+  padding: 10px 12px 10px 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--ola-line);
+  border-radius: 16px;
+  background: var(--ola-glass);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 62%, transparent),
+              0 8px 22px rgba(var(--overlay-ink), 0.07);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.ola-doctor-blocklist {
+  max-width: 760px;
+  margin-bottom: 18px;
+}
+
+.ola-doctor-search {
+  position: relative;
+}
+
+.ola-doctor-search > svg {
+  position: absolute;
+  z-index: 2;
+  top: 13px;
+  left: 13px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.ola-doctor-search > .ola-input { padding-left: 39px; }
+
+.ola-doctor-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  padding: 5px;
+  border: 1px solid var(--ola-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-primary) 94%, transparent);
+  box-shadow: 0 16px 38px rgba(var(--overlay-ink), 0.16);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.ola-doctor-suggestions button {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ola-doctor-suggestions button:hover { background: var(--accent-50); }
+.ola-doctor-suggestions strong { font-size: 13px; font-weight: 650; }
+.ola-doctor-suggestions span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ola-blocked-doctors { margin-top: 12px; }
+
+.ola-template-scope label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.ola-template-scope label svg { color: var(--accent-500); }
+.ola-template-scope .ola-select { flex: 1; min-width: 0; }
+
+/* На широком рабочем экране события образуют две самостоятельные панели.
+   Раньше карточка растягивала короткие настройки на всю доступную строку, а по
+   краям при этом всё равно оставались поля из-за ограничения оболочки. */
+.ola-event-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.ola-event-grid .ola-card { margin-bottom: 0; }
+
+.ola-event-options {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--ola-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-secondary) 68%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 46%, transparent);
+}
+
+/* Здесь именно параметр содержимого сообщения, а не включатель события,
+   поэтому оставляем обычную галочку без второй «кнопочной» оболочки. */
+.ola-event-options .ola-check {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13.5px;
+}
+
+.ola-event-options .ola-check:hover,
+.ola-event-options .ola-check.on { border: 0; background: transparent; }
+.ola-event-options .ola-check input { width: 17px; height: 17px; }
+
 /* ══ Добавлено в 8.04 ═════════════════════════════════════════════════════
  *
  * Порядок доставки с текстами внутри, время события, ключи провайдеров, боты.
@@ -1035,14 +1271,15 @@
   flex-wrap: wrap;
   gap: 14px;
   align-items: center;
-  padding: 12px 14px;
+  min-height: 58px;
+  padding: 10px 12px;
   margin-bottom: 16px;
   border: 1px solid var(--border-light);
-  border-radius: 11px;
-  background: var(--bg-secondary);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-secondary) 68%, transparent);
 }
 
-.ola-timing { display: inline-flex; align-items: center; gap: 8px; }
+.ola-timing { display: inline-flex; min-height: 42px; align-items: center; gap: 8px; }
 
 .ola-timing-label {
   font-size: 13px;
@@ -1073,14 +1310,19 @@
 .ola-order { list-style: none; margin: 0 0 12px; padding: 0; }
 
 .ola-order-step {
-  border: 1px solid var(--border-light);
-  border-radius: 11px;
-  background: var(--bg-secondary);
+  border: 1px solid var(--ola-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
   overflow: hidden;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-0) 42%, transparent);
 }
 
 .ola-order-step + .ola-order-step { margin-top: 7px; }
-.ola-order-step.open { background: var(--bg-primary); border-color: var(--accent-300); }
+.ola-order-step.open {
+  background: var(--ola-glass-strong);
+  border-color: var(--accent-300);
+  box-shadow: 0 7px 18px rgba(var(--overlay-ink), 0.07);
+}
 
 /* Ступень без текста пропускается при отправке. Помечаем её здесь, а не
    предупреждением в стороне: решение принимают, глядя на строку. */
@@ -1369,3 +1611,22 @@
 }
 
 .ola-btn.danger-solid:hover:not(:disabled) { background: var(--red-700); border-color: var(--red-700); }
+
+@media (max-width: 1180px) {
+  .ola-event-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .ola-card > header { padding: 13px 15px; }
+  .ola-card-body { padding: 15px; }
+  .ola-timings { align-items: stretch; }
+  .ola-timing { width: 100%; }
+  .ola-timing-label { flex: 1; }
+  .ola-freq { width: 100%; }
+  .ola-order-head { gap: 7px; padding: 9px; }
+  .ola-order-name .provider,
+  .ola-order-blank { display: none; }
+  .ola-template-scope { width: 100%; box-sizing: border-box; }
+  .ola-placeholder-groups { grid-template-columns: 1fr; }
+  .ola-doctor-suggestions button { align-items: flex-start; flex-direction: column; gap: 2px; }
+}

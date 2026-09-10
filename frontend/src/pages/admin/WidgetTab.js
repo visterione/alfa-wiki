@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Plus, Save, Trash2, Copy, Check, ArrowUp, ArrowDown,
-  MonitorSmartphone, Building2, X, Eye, EyeOff
+  Plus, Trash2, Copy, Check, ArrowUp, ArrowDown,
+  MonitorSmartphone, X, Eye, EyeOff
 } from 'lucide-react';
 import { siteWidgets as api } from '../../services/api';
 import ChannelLogo from '../../components/openline/ChannelLogo';
@@ -508,7 +508,7 @@ function WidgetCard({ widget, sources, onChanged, cornerOn, onCorner }) {
           </button>
           <button className="ola-btn danger" onClick={remove}><Trash2 size={15} /> Удалить</button>
           <button className="ola-btn primary" disabled={!dirty || busy} onClick={save}>
-            <Save size={15} /> Сохранить
+            Сохранить
           </button>
         </div>
       </div>
@@ -583,13 +583,6 @@ export default function WidgetTab() {
         />
       ))}
 
-      {rows.length > 0 && (
-        <div className="wgt-note">
-          <Building2 size={15} />
-          Проверять виджет надо на самом сайте по https, а не на dev-сервере: до сайта он
-          доезжает через nginx, и кэш настройки живёт пять минут.
-        </div>
-      )}
     </>
   );
 }

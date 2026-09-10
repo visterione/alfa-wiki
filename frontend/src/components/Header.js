@@ -4,7 +4,7 @@ import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
   Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot, Newspaper,
-  ArrowLeft, KeyRound, Building2, MessageCircle, Radio
+  ArrowLeft, KeyRound, Building2, Radio
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ShiftWidget from './openline/ShiftWidget';
@@ -500,19 +500,9 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                       Журнал страниц
                     </Link>
                   )}
-                  {/* Открытая линия и уведомления пациентам (ver. 7.96).
-                      Спрятано в админское меню намеренно: модуль ещё
-                      достраивается, и раздавать к нему доступ рано. Когда
-                      закончим — вернётся кнопкой в быстрый доступ. */}
-                  {(isAdmin || user?.adminAccess?.openLine) && (
-                    <Link to="/open-line" className="header-dropdown-item" data-icon-motion="message" onClick={() => setShowDropdown(false)}>
-                      <span className="header-dropdown-item-icon"><MessageCircle size={17} /></span>
-                      Открытая линия
-                    </Link>
-                  )}
                   {/* Настройки линий, тексты уведомлений и журнал отправок
                       (ver. 8.02). Отдельный пункт и отдельное право: рабочее
-                      окно выше открыто десяткам операторов колл-центра, а сюда
+                      окно открыто десяткам операторов колл-центра, а сюда
                       ходят единицы. */}
                   {(isAdmin || user?.adminAccess?.openLineAdmin) && (
                     <Link to="/admin/open-line" className="header-dropdown-item" data-icon-motion="settings" onClick={() => setShowDropdown(false)}>

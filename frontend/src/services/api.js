@@ -1389,6 +1389,8 @@ export const broadcasts = {
 // Уведомления пациентам (ver. 7.86): шаблоны текстов и журнал отправок.
 export const notifications = {
   templates: () => api.get('/notifications/templates'),
+  blockedDoctors: () => api.get('/notifications/blocked-doctors'),
+  saveBlockedDoctors: (doctors) => api.put('/notifications/blocked-doctors', { doctors }),
   createTemplate: (data) => api.post('/notifications/templates', data),
   updateTemplate: (id, data) => api.put(`/notifications/templates/${id}`, data),
   deleteTemplate: (id) => api.delete(`/notifications/templates/${id}`),

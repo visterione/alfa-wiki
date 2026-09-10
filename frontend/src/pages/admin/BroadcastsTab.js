@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Plus, Save, Trash2, Send, Image as ImageIcon, X, Play, Pause,
+  Plus, Trash2, Send, Image as ImageIcon, X, Play, Pause,
   Users, AlertTriangle, Check, Clock, Ban, Megaphone
 } from 'lucide-react';
 import { broadcasts as api } from '../../services/api';
@@ -378,7 +378,7 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
           {editable && (
             <div className="ola-row">
               <button className="ola-btn primary" disabled={!ready || busy} onClick={save}>
-                <Save size={14} /> Сохранить
+                Сохранить
               </button>
               <button className="ola-btn danger" disabled={busy} onClick={remove}>
                 <Trash2 size={14} /> Удалить
