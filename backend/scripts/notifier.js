@@ -26,6 +26,7 @@ const { sequelize, NotifOutbox, NotifAppointment, Setting, BotSubscriber, Messen
 const detector = require('../services/notifications/detector');
 const sender = require('../services/notifications/sender');
 const broadcasts = require('../services/broadcasts');
+const emailBroadcasts = require('../services/emailBroadcasts');
 
 const DETECT_MS = Number(process.env.NOTIFIER_DETECT_MS || 60000);
 const SEND_MS = Number(process.env.NOTIFIER_SEND_MS || 20000);
@@ -95,6 +96,7 @@ async function sendTick() {
 // Заходы не должны накладываться: порция иногда затягивается — на 429 движок
 // честно ждёт столько, сколько попросила платформа.
 let broadcasting = false;
+let emailing = false;
 
 async function broadcastTick() {
   if (dry || broadcasting) return;
@@ -106,6 +108,19 @@ async function broadcastTick() {
     console.error('[notifier] рассылка:', err.message);
   } finally {
     broadcasting = false;
+  }
+}
+
+async function emailBroadcastTick() {
+  if (dry || emailing) return;
+  emailing = true;
+  try {
+    const { sent, failed } = await emailBroadcasts.runOnce();
+    if (sent || failed) console.log(`[notifier] почтовая рассылка: отправлено ${sent}, не удалось ${failed}`);
+  } catch (err) {
+    console.error('[notifier] почтовая рассылка:', err.message);
+  } finally {
+    emailing = false;
   }
 }
 
@@ -198,6 +213,7 @@ async function main() {
   await detectTick();
   await sendTick();
   await broadcastTick();
+  await emailBroadcastTick();
 
   if (once) {
     if (lockClient) await lockClient.end().catch(() => {});
@@ -208,6 +224,7 @@ async function main() {
   const detectTimer = setInterval(() => { if (!stopping) detectTick(); }, DETECT_MS);
   const sendTimer = setInterval(() => { if (!stopping) sendTick(); }, SEND_MS);
   const broadcastTimer = setInterval(() => { if (!stopping) broadcastTick(); }, BROADCAST_MS);
+  const emailBroadcastTimer = setInterval(() => { if (!stopping) emailBroadcastTick(); }, SEND_MS);
 
   const shutdown = async (signal) => {
     console.log(`[notifier] ${signal} — останавливаюсь`);
@@ -215,6 +232,7 @@ async function main() {
     clearInterval(detectTimer);
     clearInterval(sendTimer);
     clearInterval(broadcastTimer);
+    clearInterval(emailBroadcastTimer);
     if (lockClient) await lockClient.end().catch(() => {});
     await sequelize.close();
     process.exit(0);

@@ -178,7 +178,7 @@ async function runOnce(now = new Date()) {
   // Один свежий снимок настройки на весь проход: изменение из админки должно
   // подхватиться следующим опросом даже когда детектор работает отдельным
   // процессом, но ходить в БД для каждого визита незачем.
-  const blockedDoctors = await doctorBlocklist.read({ fresh: true });
+  const blockedDoctors = await doctorBlocklist.readAll({ fresh: true });
   let events = 0;
 
   for (const row of rows) {
@@ -195,7 +195,8 @@ async function runOnce(now = new Date()) {
     // Запрет действует не только на новое событие: если визит уже поставил
     // напоминание в очередь, а затем ему назначили служебного врача, снимаем и
     // эту старую строку. Иначе блокировка зависела бы от момента её настройки.
-    if (doctorBlocklist.matches(snap, blockedDoctors)) {
+    const medCenterId = await doctorBlocklist.medCenterIdFor(snap.clinicName);
+    if (doctorBlocklist.matchesFor(snap, blockedDoctors, medCenterId)) {
       await NotifOutbox.update(
         { status: 'skipped', error: 'служебный врач: отправка заблокирована' },
         { where: { apptId: snap.apptId, status: 'pending' } }

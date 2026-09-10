@@ -16,8 +16,8 @@
  *     завтра он не нужен. Единственное исключение — 429: там платформа прямо
  *     говорит, через сколько секунд можно, и это не отложенная попытка, а пауза
  *     внутри той же;
- *   • отложенного запуска и фильтров сложнее медцентра. Заказчик отказался от
- *     них сознательно, и пока модуль не начали использовать, гадать о них рано.
+ *   • фильтров сложнее медцентра. Отложенный запуск и повторное использование
+ *     сохранённых шаблонов появились в 8.13, когда раздел стал самостоятельным.
  *
  * ПОЧЕМУ РАССЫЛКА ЗАПИСЫВАЕТ АДРЕСАТОВ ЗАРАНЕЕ. Набор фиксируется в момент
  * запуска, строкой на человека. Так рассылка переживает перезапуск процесса:
@@ -94,6 +94,12 @@ async function botsFor(medCenterIds) {
  */
 function subscriberFilter(bot) {
   return {
+    // Один и тот же ключ организации мог пережить замену токена. Chat id
+    // старого бота внешне выглядит валидным, но новый бот получает на нём
+    // «chat not found». Тестовая отправка при этом проходит, потому что в ней
+    // вводят id уже текущего бота. Берём только тех, кто действительно запускал
+    // именно этот экземпляр.
+    botId: bot.id,
     platform: bot.platform,
     organization: bot.organization,
     source: 'bot',
@@ -162,8 +168,9 @@ function validateSendable(broadcast) {
   }
 }
 
-async function list() {
+async function list({ templates = false } = {}) {
   return OmniBroadcast.findAll({
+    where: { isTemplate: Boolean(templates) },
     order: [['createdAt', 'DESC']],
     limit: 50,
     include: [{ model: User, as: 'author', attributes: ['id', 'displayName', 'username'] }]
@@ -188,7 +195,22 @@ async function withCounts(broadcast) {
   rows.forEach(r => { counts[r.status] = Number(r.count); });
   counts.total = counts.pending + counts.sent + counts.failed + counts.skipped;
 
-  return { ...broadcast.toJSON(), counts };
+  const issueRows = await OmniBroadcastTarget.findAll({
+    where: {
+      broadcastId: broadcast.id,
+      status: { [Op.in]: ['failed', 'skipped'] }
+    },
+    attributes: ['status', 'error', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+    group: ['status', 'error'],
+    order: [[sequelize.fn('COUNT', sequelize.col('id')), 'DESC']],
+    raw: true
+  });
+
+  return {
+    ...broadcast.toJSON(),
+    counts,
+    issues: issueRows.map(row => ({ status: row.status, error: row.error || 'причина не указана', count: Number(row.count) }))
+  };
 }
 
 async function get(id) {
@@ -206,6 +228,7 @@ async function create(data, userId) {
     text: String(data.text),
     medCenterIds: Array.isArray(data.medCenterIds) ? data.medCenterIds : [],
     imagePath: data.imagePath || null,
+    isTemplate: Boolean(data.isTemplate),
     createdBy: userId
   });
 }
@@ -266,6 +289,16 @@ async function removeImage(imagePath) {
   await fs.unlink(full).catch(() => {});
 }
 
+async function copyImage(imagePath) {
+  if (!imagePath) return null;
+  const source = path.resolve(__dirname, '..', 'uploads', imagePath);
+  if (!source.startsWith(IMAGE_DIR + path.sep)) return null;
+  await fs.mkdir(IMAGE_DIR, { recursive: true });
+  const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(source)}`;
+  await fs.copyFile(source, path.join(IMAGE_DIR, name));
+  return `broadcasts/${name}`;
+}
+
 async function imageBuffer(broadcast) {
   if (!broadcast.imagePath) return null;
   const full = path.resolve(__dirname, '..', 'uploads', broadcast.imagePath);
@@ -304,17 +337,7 @@ async function deliver(channel, bot, subscriber, broadcast, buffer, fileId) {
  * подписавшийся через минуту после запуска в эту рассылку уже не попадёт, и это
  * правильнее, чем догонять его анонсом посреди чужой очереди.
  */
-async function start(id) {
-  const broadcast = await get(id);
-  if (broadcast.status !== 'draft' && broadcast.status !== 'paused') {
-    throw new BroadcastError('bad_state', 'Рассылка уже отправлена или идёт');
-  }
-
-  if (broadcast.status === 'paused') {
-    await broadcast.update({ status: 'sending' });
-    return broadcast;
-  }
-
+async function activate(broadcast) {
   validateSendable(broadcast);
 
   const pairs = await audience(broadcast.medCenterIds);
@@ -332,8 +355,66 @@ async function start(id) {
     { ignoreDuplicates: true }
   );
 
-  await broadcast.update({ status: 'sending', startedAt: new Date() });
+  await broadcast.update({ status: 'sending', startedAt: new Date(), scheduledAt: null });
   return broadcast;
+}
+
+async function start(id) {
+  const broadcast = await get(id);
+  if (broadcast.isTemplate) {
+    throw new BroadcastError('bad_state', 'Сначала создайте рассылку из шаблона');
+  }
+  if (broadcast.status !== 'draft' && broadcast.status !== 'paused') {
+    throw new BroadcastError('bad_state', 'Рассылка уже отправлена или идёт');
+  }
+
+  if (broadcast.status === 'paused') {
+    await broadcast.update({ status: 'sending' });
+    return broadcast;
+  }
+  return activate(broadcast);
+}
+
+function parseScheduledAt(value, now = new Date()) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) {
+    throw new BroadcastError('bad_state', 'Укажите дату и время запуска');
+  }
+  if (date.getTime() <= now.getTime()) {
+    throw new BroadcastError('bad_state', 'Время запуска должно быть в будущем');
+  }
+  return date;
+}
+
+async function schedule(id, value, now = new Date()) {
+  const broadcast = await get(id);
+  if (broadcast.isTemplate || broadcast.status !== 'draft') {
+    throw new BroadcastError('bad_state', 'Запланировать можно только обычный черновик');
+  }
+  validateSendable(broadcast);
+  await broadcast.update({ status: 'scheduled', scheduledAt: parseScheduledAt(value, now) });
+  return broadcast;
+}
+
+async function unschedule(id) {
+  const broadcast = await get(id);
+  if (broadcast.status !== 'scheduled') {
+    throw new BroadcastError('bad_state', 'Эта рассылка не запланирована');
+  }
+  await broadcast.update({ status: 'draft', scheduledAt: null });
+  return broadcast;
+}
+
+async function duplicate(id, { asTemplate = false } = {}, userId = null) {
+  const source = await get(id);
+  const imagePath = await copyImage(source.imagePath);
+  return create({
+    title: asTemplate ? source.title : `${source.title} — копия`,
+    text: source.text,
+    medCenterIds: source.medCenterIds,
+    imagePath,
+    isTemplate: asTemplate
+  }, userId);
 }
 
 async function pause(id) {
@@ -401,6 +482,20 @@ async function sendTest(id, externalUserId, botId) {
  * рассылка, запущенная ночью, не отменяется и не теряется, а ждёт утра.
  */
 async function runOnce() {
+  const due = await OmniBroadcast.findOne({
+    where: { status: 'scheduled', isTemplate: false, scheduledAt: { [Op.lte]: new Date() } },
+    order: [['scheduledAt', 'ASC']]
+  });
+  if (due) {
+    try {
+      await activate(due);
+      console.log(`[broadcasts] «${due.title}» запущена по расписанию`);
+    } catch (err) {
+      await due.update({ status: 'failed', finishedAt: new Date() });
+      console.error(`[broadcasts] «${due.title}» не запущена по расписанию: ${err.message}`);
+    }
+  }
+
   const active = await OmniBroadcast.findOne({
     where: { status: 'sending' },
     order: [['startedAt', 'ASC']]
@@ -557,9 +652,9 @@ async function optOut(bot, externalUserId) {
 module.exports = {
   TEXT_LIMIT,
   BroadcastError,
-  validate, validateSendable, subscriberFilter, deliver,
+  validate, validateSendable, parseScheduledAt, subscriberFilter, deliver,
   list, get, create, update, remove, withCounts,
   audience, audienceSize,
   saveImage, removeImage,
-  start, pause, sendTest, runOnce, optOut
+  start, schedule, unschedule, duplicate, pause, sendTest, runOnce, optOut
 };

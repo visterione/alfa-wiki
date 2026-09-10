@@ -3,9 +3,8 @@
 /**
  * Рекламные рассылки подписчикам ботов (ver. 8.07).
  *
- * Право — полного администратора, как и у остальной настройки открытой линии.
- * Отдельного гранулярного не заводили: отправка на всю базу подписчиков — не то
- * действие, которое стоит раздавать шире, чем настройку самих ботов.
+ * У раздела собственное гранулярное право: сотруднику можно разрешить готовить
+ * анонсы, не открывая настройки ботов и служебных уведомлений.
  *
  * Отправляет не этот контур, а движок в процессе notifier. Маршрут только
  * переводит рассылку в работу: две тысячи сообщений идут минутами, и держать
@@ -14,11 +13,12 @@
 
 const express = require('express');
 const multer = require('multer');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { MedCenter, MessengerBot } = require('../models');
 const broadcasts = require('../services/broadcasts');
 
 const router = express.Router();
+const requireAnnouncements = requireAdminAccess('announcements');
 
 const STATUS_BY_CODE = {
   not_found: 404,
@@ -60,7 +60,7 @@ const upload = multer({
  * заведён бот, и отдельно говорим, у скольких он есть: медцентр без бота в
  * списке выглядел бы как забытая галка, а это настройка, а не недосмотр.
  */
-router.get('/sources', authenticate, requireAdmin, async (req, res) => {
+router.get('/sources', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const centers = await MedCenter.findAll({
       where: { servesPatients: true },
@@ -85,7 +85,7 @@ router.get('/sources', authenticate, requireAdmin, async (req, res) => {
 
 // Размер аудитории до отправки. Спрашивается на каждое движение галок, поэтому
 // возвращает только цифры.
-router.post('/audience', authenticate, requireAdmin, async (req, res) => {
+router.post('/audience', authenticate, requireAnnouncements, async (req, res) => {
   try {
     res.json(await broadcasts.audienceSize(req.body.medCenterIds || []));
   } catch (err) {
@@ -95,16 +95,16 @@ router.post('/audience', authenticate, requireAdmin, async (req, res) => {
 
 // ── Рассылки ──────────────────────────────────────────────────────────────
 
-router.get('/', authenticate, requireAdmin, async (req, res) => {
+router.get('/', authenticate, requireAnnouncements, async (req, res) => {
   try {
-    const rows = await broadcasts.list();
+    const rows = await broadcasts.list({ templates: req.query.kind === 'templates' });
     res.json(await Promise.all(rows.map(r => broadcasts.withCounts(r))));
   } catch (err) {
     fail(res, err, 'list');
   }
 });
 
-router.get('/:id', authenticate, requireAdmin, async (req, res) => {
+router.get('/:id', authenticate, requireAnnouncements, async (req, res) => {
   try {
     res.json(await broadcasts.withCounts(await broadcasts.get(req.params.id)));
   } catch (err) {
@@ -112,7 +112,7 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/', authenticate, requireAdmin, async (req, res) => {
+router.post('/', authenticate, requireAnnouncements, async (req, res) => {
   try {
     res.status(201).json(await broadcasts.create(req.body, req.user.id));
   } catch (err) {
@@ -120,7 +120,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-router.put('/:id', authenticate, requireAdmin, async (req, res) => {
+router.put('/:id', authenticate, requireAnnouncements, async (req, res) => {
   try {
     res.json(await broadcasts.update(req.params.id, req.body));
   } catch (err) {
@@ -128,7 +128,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireAnnouncements, async (req, res) => {
   try {
     await broadcasts.remove(req.params.id);
     res.json({ ok: true });
@@ -151,7 +151,7 @@ function uploadImage(req, res, next) {
   });
 }
 
-router.post('/:id/image', authenticate, requireAdmin, uploadImage, async (req, res) => {
+router.post('/:id/image', authenticate, requireAnnouncements, uploadImage, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не приложен' });
 
@@ -178,7 +178,7 @@ router.post('/:id/image', authenticate, requireAdmin, uploadImage, async (req, r
  * картинкой переносится не так, как в поле ввода, а кнопка отписки выглядит
  * иначе в каждом мессенджере.
  */
-router.post('/:id/test', authenticate, requireAdmin, async (req, res) => {
+router.post('/:id/test', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const { externalUserId, botId } = req.body;
     if (!externalUserId) return res.status(400).json({ error: 'Укажите свой id в мессенджере' });
@@ -190,7 +190,7 @@ router.post('/:id/test', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/:id/start', authenticate, requireAdmin, async (req, res) => {
+router.post('/:id/start', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const broadcast = await broadcasts.start(req.params.id);
     console.log(`[broadcasts] «${broadcast.title}» запущена пользователем ${req.user.username}`);
@@ -200,13 +200,42 @@ router.post('/:id/start', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/:id/pause', authenticate, requireAdmin, async (req, res) => {
+router.post('/:id/pause', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const broadcast = await broadcasts.pause(req.params.id);
     console.log(`[broadcasts] «${broadcast.title}» остановлена пользователем ${req.user.username}`);
     res.json(await broadcasts.withCounts(broadcast));
   } catch (err) {
     fail(res, err, 'pause');
+  }
+});
+
+router.post('/:id/schedule', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const broadcast = await broadcasts.schedule(req.params.id, req.body.scheduledAt);
+    res.json(await broadcasts.withCounts(broadcast));
+  } catch (err) {
+    fail(res, err, 'schedule');
+  }
+});
+
+router.post('/:id/unschedule', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const broadcast = await broadcasts.unschedule(req.params.id);
+    res.json(await broadcasts.withCounts(broadcast));
+  } catch (err) {
+    fail(res, err, 'unschedule');
+  }
+});
+
+router.post('/:id/copy', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const copy = await broadcasts.duplicate(req.params.id, {
+      asTemplate: req.body?.asTemplate === true
+    }, req.user.id);
+    res.status(201).json(copy);
+  } catch (err) {
+    fail(res, err, 'copy');
   }
 });
 

@@ -655,9 +655,11 @@ export const email = {
   // === HISTORY ===
   getHistory: (params) => api.get('/email/history', { params }),
   getHistoryDetail: (id) => api.get(`/email/history/${id}`),
+  cancelScheduled: (id) => api.post(`/email/history/${id}/cancel`),
 
   // === RECIPIENTS ===
   getUsers: () => api.get('/email/recipients/users'),
+  getRoles: () => api.get('/email/recipients/roles'),
   getUsersByRole: (roleId) => api.get(`/email/recipients/by-role/${roleId}`),
   parseExcel: (file) => {
     const fd = new FormData();
@@ -1362,7 +1364,7 @@ export const siteWidgets = {
 // ради них открытым запрос значит потерять рассылку на первом же таймауте.
 // Здесь только черновик, запуск и остановка.
 export const broadcasts = {
-  list: () => api.get('/broadcasts'),
+  list: (kind) => api.get('/broadcasts', { params: kind ? { kind } : undefined }),
   get: (id) => api.get(`/broadcasts/${id}`),
   create: (data) => api.post('/broadcasts', data),
   update: (id, data) => api.put(`/broadcasts/${id}`, data),
@@ -1383,14 +1385,17 @@ export const broadcasts = {
 
   test: (id, data) => api.post(`/broadcasts/${id}/test`, data),
   start: (id) => api.post(`/broadcasts/${id}/start`),
-  pause: (id) => api.post(`/broadcasts/${id}/pause`)
+  pause: (id) => api.post(`/broadcasts/${id}/pause`),
+  schedule: (id, scheduledAt) => api.post(`/broadcasts/${id}/schedule`, { scheduledAt }),
+  unschedule: (id) => api.post(`/broadcasts/${id}/unschedule`),
+  copy: (id, asTemplate = false) => api.post(`/broadcasts/${id}/copy`, { asTemplate })
 };
 
 // Уведомления пациентам (ver. 7.86): шаблоны текстов и журнал отправок.
 export const notifications = {
   templates: () => api.get('/notifications/templates'),
-  blockedDoctors: () => api.get('/notifications/blocked-doctors'),
-  saveBlockedDoctors: (doctors) => api.put('/notifications/blocked-doctors', { doctors }),
+  blockedDoctors: (medCenterId) => api.get('/notifications/blocked-doctors', { params: { medCenterId } }),
+  saveBlockedDoctors: (medCenterId, doctors) => api.put('/notifications/blocked-doctors', { medCenterId, doctors }),
   createTemplate: (data) => api.post('/notifications/templates', data),
   updateTemplate: (id, data) => api.put(`/notifications/templates/${id}`, data),
   deleteTemplate: (id) => api.delete(`/notifications/templates/${id}`),

@@ -45,9 +45,7 @@
  */
 .admin-page:has(.ola-shell) {
   min-height: 100%;
-  background:
-    radial-gradient(circle at 8% 2%, color-mix(in srgb, var(--accent-300) 18%, transparent), transparent 28rem),
-    radial-gradient(circle at 94% 12%, color-mix(in srgb, var(--cyan-200) 13%, transparent), transparent 32rem);
+  background: var(--bg-primary);
 }
 
 .ola-shell {
@@ -1223,11 +1221,25 @@
 .ola-event-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 18px;
-  align-items: start;
+  align-items: stretch;
 }
 
-.ola-event-grid .ola-card { margin-bottom: 0; }
+.ola-event-grid .ola-card {
+  margin-bottom: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.ola-event-grid .ola-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ola-event-grid .ola-card-body > .ola-actions:last-child { margin-top: auto; }
 
 .ola-event-options {
   display: flex;

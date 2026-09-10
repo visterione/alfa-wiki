@@ -21,10 +21,11 @@ const max = require('../services/messengers/max');
 // ── Аудитория ─────────────────────────────────────────────────────────────
 
 test('рассылка не видит заблокировавших, отписавшихся и выгрузку из Fromni', () => {
-  const filter = broadcasts.subscriberFilter({ platform: 'telegram', organization: 'alfa' });
+  const filter = broadcasts.subscriberFilter({ id: 'bot-1', platform: 'telegram', organization: 'alfa' });
 
   assert.equal(filter.isBlocked, false);
   assert.equal(filter.marketingOptOut, false);
+  assert.equal(filter.botId, 'bot-1');
   // source='bot' — это и есть отсечение выгрузки из Fromni (source='import'),
   // у которой пуст botId. Включение отложено решением заказчика.
   assert.equal(filter.source, 'bot');
@@ -65,6 +66,16 @@ test('черновик может быть пустым, а отправляем
     /медцентр/
   );
   assert.doesNotThrow(() => broadcasts.validateSendable({ text: 'Акция', medCenterIds: ['id'] }));
+});
+
+test('отложенный запуск принимает только будущее время', () => {
+  const now = new Date('2026-09-10T06:00:00.000Z');
+  assert.equal(
+    broadcasts.parseScheduledAt('2026-09-10T06:30:00.000Z', now).toISOString(),
+    '2026-09-10T06:30:00.000Z'
+  );
+  assert.throws(() => broadcasts.parseScheduledAt('', now), /дату и время/);
+  assert.throws(() => broadcasts.parseScheduledAt('2026-09-10T05:59:00.000Z', now), /будущем/);
 });
 
 // ── Отправка одного сообщения ─────────────────────────────────────────────

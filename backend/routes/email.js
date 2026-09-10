@@ -2,7 +2,7 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { EmailTemplate, EmailLog, EmailFavoriteRecipient, EmailFavoriteTemplate, User, Role } = require('../models');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
 const { Op } = require('sequelize');
 const multer = require('multer');
@@ -10,6 +10,7 @@ const XLSX = require('xlsx-js-style');
 const { parsePagination } = require('../utils/pagination');
 
 const router = express.Router();
+const requireAnnouncements = requireAdminAccess('announcements');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // In-memory store для активных задач рассылки
@@ -26,7 +27,7 @@ setInterval(() => {
 // === EMAIL TEMPLATES ===
 
 // GET /api/email/templates - Получить все шаблоны
-router.get('/templates', authenticate, async (req, res) => {
+router.get('/templates', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const templates = await EmailTemplate.findAll({
       where: {
@@ -46,7 +47,7 @@ router.get('/templates', authenticate, async (req, res) => {
 });
 
 // POST /api/email/templates - Создать шаблон
-router.post('/templates', authenticate, [
+router.post('/templates', authenticate, requireAnnouncements, [
   body('name').trim().notEmpty().withMessage('Название обязательно'),
   body('subject').trim().notEmpty().withMessage('Тема обязательна'),
   body('htmlContent').notEmpty().withMessage('Содержимое обязательно')
@@ -74,7 +75,7 @@ router.post('/templates', authenticate, [
 });
 
 // PUT /api/email/templates/:id - Обновить шаблон
-router.put('/templates/:id', authenticate, async (req, res) => {
+router.put('/templates/:id', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const template = await EmailTemplate.findByPk(req.params.id);
 
@@ -96,7 +97,7 @@ router.put('/templates/:id', authenticate, async (req, res) => {
 });
 
 // DELETE /api/email/templates/:id - Удалить шаблон
-router.delete('/templates/:id', authenticate, async (req, res) => {
+router.delete('/templates/:id', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const template = await EmailTemplate.findByPk(req.params.id);
 
@@ -119,7 +120,7 @@ router.delete('/templates/:id', authenticate, async (req, res) => {
 // === EMAIL SENDING ===
 
 // POST /api/email/send - Запустить рассылку (возвращает jobId сразу, отправка идёт в фоне)
-router.post('/send', authenticate, [
+router.post('/send', authenticate, requireAnnouncements, [
   body('subject').trim().notEmpty().withMessage('Тема обязательна'),
   body('htmlContent').notEmpty().withMessage('Содержимое обязательно'),
   body('recipients').isArray({ min: 1 }).withMessage('Укажите получателей')
@@ -129,9 +130,32 @@ router.post('/send', authenticate, [
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { subject, htmlContent, recipients, attachments = [] } = req.body;
+  const { subject, htmlContent, recipients, attachments = [], scheduledAt } = req.body;
   const senderInfo = req.user.displayName || req.user.username;
   const sentBy = req.user.id;
+
+  if (scheduledAt) {
+    const when = new Date(scheduledAt);
+    if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+      return res.status(400).json({ error: 'Время отправки должно быть в будущем' });
+    }
+    try {
+      const log = await EmailLog.create({
+        subject,
+        htmlContent,
+        recipients: recipients.map(r => ({ email: r.email, userId: r.userId, displayName: r.displayName })),
+        attachments: attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType })),
+        sentBy,
+        sentAt: null,
+        scheduledAt: when,
+        status: 'scheduled'
+      });
+      return res.json({ scheduled: true, id: log.id, total: recipients.length });
+    } catch (error) {
+      console.error('❌ Error scheduling email broadcast:', error);
+      return res.status(500).json({ error: 'Не удалось запланировать рассылку' });
+    }
+  }
 
   const jobId = randomUUID();
   sendJobs.set(jobId, {
@@ -188,7 +212,7 @@ router.post('/send', authenticate, [
 });
 
 // GET /api/email/send/status/:jobId - Статус задачи рассылки
-router.get('/send/status/:jobId', authenticate, (req, res) => {
+router.get('/send/status/:jobId', authenticate, requireAnnouncements, (req, res) => {
   const job = sendJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Задача не найдена' });
   res.json(job);
@@ -197,17 +221,18 @@ router.get('/send/status/:jobId', authenticate, (req, res) => {
 // === EMAIL HISTORY ===
 
 // GET /api/email/history - История рассылок
-router.get('/history', authenticate, async (req, res) => {
+router.get('/history', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 200 });
 
-    // Админы видят все, обычные пользователи - только свои
-    const where = req.user.isAdmin ? {} : { sentBy: req.user.id };
+    // История общая для раздела: иначе два сотрудника с правом «Анонсы» не
+    // понимают, что коллега уже отправил то же письмо.
+    const where = {};
 
     const { count, rows } = await EmailLog.findAndCountAll({
       where,
       include: [{ model: User, as: 'sender', attributes: ['id', 'displayName', 'username'] }],
-      order: [['sentAt', 'DESC']],
+      order: [['createdAt', 'DESC']],
       limit,
       offset
     });
@@ -220,7 +245,7 @@ router.get('/history', authenticate, async (req, res) => {
 });
 
 // GET /api/email/history/:id - Детали рассылки
-router.get('/history/:id', authenticate, async (req, res) => {
+router.get('/history/:id', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const log = await EmailLog.findByPk(req.params.id, {
       include: [{ model: User, as: 'sender', attributes: ['id', 'displayName', 'username'] }]
@@ -230,11 +255,6 @@ router.get('/history/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Лог не найден' });
     }
 
-    // Проверка прав доступа
-    if (!req.user.isAdmin && log.sentBy !== req.user.id) {
-      return res.status(403).json({ error: 'Нет прав на просмотр' });
-    }
-
     res.json(log);
   } catch (error) {
     console.error('❌ Error fetching email log:', error);
@@ -242,10 +262,26 @@ router.get('/history/:id', authenticate, async (req, res) => {
   }
 });
 
+router.post('/history/:id/cancel', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const [changed] = await EmailLog.update(
+      { status: 'canceled' },
+      { where: { id: req.params.id, status: 'scheduled' } }
+    );
+    if (!changed) {
+      return res.status(400).json({ error: 'Отменить можно только запланированную рассылку' });
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Error canceling scheduled email:', error);
+    res.status(500).json({ error: 'Не удалось отменить рассылку' });
+  }
+});
+
 // === RECIPIENT HELPERS ===
 
 // GET /api/email/recipients/users - Получить всех пользователей для выбора получателей
-router.get('/recipients/users', authenticate, async (req, res) => {
+router.get('/recipients/users', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const users = await User.findAll({
       where: {
@@ -262,8 +298,24 @@ router.get('/recipients/users', authenticate, async (req, res) => {
   }
 });
 
+// Справочник ролей принадлежит форме рассылки. Не заставляем пользователя с
+// правом «Анонсы» дополнительно получать административное право на редактор
+// ролей только ради выбора аудитории.
+router.get('/recipients/roles', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const roles = await Role.findAll({
+      attributes: ['id', 'name', 'description'],
+      order: [['name', 'ASC']]
+    });
+    res.json(roles);
+  } catch (error) {
+    console.error('❌ Error fetching email recipient roles:', error);
+    res.status(500).json({ error: 'Ошибка загрузки ролей' });
+  }
+});
+
 // GET /api/email/recipients/by-role/:roleId - Получить пользователей по роли
-router.get('/recipients/by-role/:roleId', authenticate, async (req, res) => {
+router.get('/recipients/by-role/:roleId', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const { UserRole } = require('../models');
 
@@ -292,7 +344,7 @@ router.get('/recipients/by-role/:roleId', authenticate, async (req, res) => {
 // === FAVORITES ===
 
 // GET /api/email/favorites/recipients - Получить избранных получателей
-router.get('/favorites/recipients', authenticate, async (req, res) => {
+router.get('/favorites/recipients', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const favorites = await EmailFavoriteRecipient.findAll({
       where: { userId: req.user.id },
@@ -306,7 +358,7 @@ router.get('/favorites/recipients', authenticate, async (req, res) => {
 });
 
 // POST /api/email/favorites/recipients - Добавить избранного получателя
-router.post('/favorites/recipients', authenticate, [
+router.post('/favorites/recipients', authenticate, requireAnnouncements, [
   body('email').isEmail().withMessage('Некорректный email'),
   body('displayName').optional().trim()
 ], async (req, res) => {
@@ -335,7 +387,7 @@ router.post('/favorites/recipients', authenticate, [
 });
 
 // DELETE /api/email/favorites/recipients/:id - Удалить избранного получателя
-router.delete('/favorites/recipients/:id', authenticate, async (req, res) => {
+router.delete('/favorites/recipients/:id', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const favorite = await EmailFavoriteRecipient.findOne({
       where: { id: req.params.id, userId: req.user.id }
@@ -354,7 +406,7 @@ router.delete('/favorites/recipients/:id', authenticate, async (req, res) => {
 });
 
 // GET /api/email/favorites/templates - Получить избранные шаблоны (список ID)
-router.get('/favorites/templates', authenticate, async (req, res) => {
+router.get('/favorites/templates', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const favorites = await EmailFavoriteTemplate.findAll({
       where: { userId: req.user.id },
@@ -368,7 +420,7 @@ router.get('/favorites/templates', authenticate, async (req, res) => {
 });
 
 // POST /api/email/favorites/templates/:templateId - Переключить избранный шаблон
-router.post('/favorites/templates/:templateId', authenticate, async (req, res) => {
+router.post('/favorites/templates/:templateId', authenticate, requireAnnouncements, async (req, res) => {
   try {
     const { templateId } = req.params;
 
@@ -392,7 +444,7 @@ router.post('/favorites/templates/:templateId', authenticate, async (req, res) =
 // === EXCEL IMPORT ===
 
 // POST /api/email/recipients/parse-excel - Извлечь email-адреса из Excel-файла
-router.post('/recipients/parse-excel', authenticate, upload.single('file'), (req, res) => {
+router.post('/recipients/parse-excel', authenticate, requireAnnouncements, upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Файл не передан' });

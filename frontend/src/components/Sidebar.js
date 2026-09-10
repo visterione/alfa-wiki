@@ -22,7 +22,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
-  Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
+  Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo, Megaphone
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -390,6 +390,7 @@ function QuickAccessButtons({ onClose }) {
   // Рабочее окно линии теперь является обычным пользовательским разделом в
   // быстром доступе. Настройка линий остаётся отдельным правом в админке.
   const canAccessOpenLine = isAdmin || user?.adminAccess?.openLine === true;
+  const canAccessAnnouncements = isAdmin || user?.adminAccess?.announcements === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -488,6 +489,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnTasks = location.pathname.startsWith('/tasks');
   const isOnOnboarding = location.pathname.startsWith('/onboarding');
   const isOnOpenLine = location.pathname.startsWith('/open-line');
+  const isOnAnnouncements = location.pathname.startsWith('/announcements');
 
   const handleClick = (path) => {
     navigate(path);
@@ -639,7 +641,16 @@ function QuickAccessButtons({ onClose }) {
         {!canAccessOpenLine && <Lock size={10} className="quick-access-lock" />}
       </button>
 
-      {[1, 2, 3, 4].map((slot) => (
+      <button
+        className={`quick-access-btn announcements ${isOnAnnouncements ? 'active' : ''} ${!canAccessAnnouncements ? 'locked' : ''}`}
+        onClick={() => canAccessAnnouncements ? handleClick('/announcements') : toast.error('Нет доступа к разделу «Анонсы»')}
+        title={canAccessAnnouncements ? 'Анонсы' : 'Анонсы (нет доступа)'}
+      >
+        <Megaphone size={20} />
+        {!canAccessAnnouncements && <Lock size={10} className="quick-access-lock" />}
+      </button>
+
+      {[1, 2, 3].map((slot) => (
         <button
           key={`placeholder-${slot}`}
           type="button"

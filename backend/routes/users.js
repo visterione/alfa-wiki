@@ -318,7 +318,8 @@ router.post('/', authenticate, requireAdminAccess('users'), [
         media: false,
         backup: false,
         settings: false,
-        courses: false
+        courses: false,
+        announcements: false
       }
     });
 

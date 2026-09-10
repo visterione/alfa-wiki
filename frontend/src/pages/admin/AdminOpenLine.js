@@ -3,14 +3,13 @@ import {
   Headphones, FileText, Radio, ScrollText, Plus, Users, Bot, Save, Power, X,
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
-  Star, FlaskConical, Building2, ChevronDown, ShieldCheck, MonitorSmartphone, Megaphone
+  Star, FlaskConical, Building2, ChevronDown, ShieldCheck, MonitorSmartphone
 } from 'lucide-react';
 import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
 } from '../../services/api';
 import ChannelLogo from '../../components/openline/ChannelLogo';
 import WidgetTab from './WidgetTab';
-import BroadcastsTab from './BroadcastsTab';
 import toast from 'react-hot-toast';
 import './AdminOpenLine.css';
 
@@ -52,10 +51,6 @@ const TABS = [
   { key: 'lines',    label: 'Линии',    icon: Headphones },
   { key: 'texts',    label: 'Тексты',   icon: FileText },
   { key: 'delivery', label: 'Рассылка', icon: Radio },
-  // «Анонсы», а не «Рассылки»: соседняя вкладка уже называется так, и речь там
-  // о том, как уходят уведомления о визитах. Здесь — сообщение, которое мы шлём
-  // по своей инициативе всем сразу, и путать эти два дела нельзя.
-  { key: 'ads',      label: 'Анонсы',   icon: Megaphone },
   { key: 'log',      label: 'Журнал',   icon: ScrollText },
   // Виджет стоит здесь, а не отдельным разделом: он ведёт в те же боты, что и
   // линия, и заводит его тот же человек, что настраивает их.
@@ -642,7 +637,7 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
   );
 }
 
-function BlockedDoctorsPanel() {
+function BlockedDoctorsPanel({ medCenterId }) {
   const [available, setAvailable] = useState([]);
   const [saved, setSaved] = useState([]);
   const [draft, setDraft] = useState([]);
@@ -653,7 +648,7 @@ function BlockedDoctorsPanel() {
   useEffect(() => {
     let active = true;
     Promise.allSettled([
-      notifApi.blockedDoctors(),
+      notifApi.blockedDoctors(medCenterId),
       misApi.getDoctors({ show_all: true, roles: ['doctor'] })
     ]).then(([blockedResult, doctorsResult]) => {
       if (!active) return;
@@ -683,7 +678,7 @@ function BlockedDoctorsPanel() {
       setLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [medCenterId]);
 
   const selectedIds = useMemo(() => new Set(draft.map(doctor => String(doctor.id))), [draft]);
   const suggestions = useMemo(() => {
@@ -705,7 +700,7 @@ function BlockedDoctorsPanel() {
   const save = async () => {
     setSaving(true);
     try {
-      const { data } = await notifApi.saveBlockedDoctors(draft);
+      const { data } = await notifApi.saveBlockedDoctors(medCenterId, draft);
       setSaved(data.doctors || []);
       setDraft(data.doctors || []);
       toast.success('Блокировка сохранена');
@@ -798,8 +793,6 @@ function TemplatesTab({ data, steps, reload }) {
 
   return (
     <>
-      <BlockedDoctorsPanel />
-
       <div className="ola-template-scope">
         <label htmlFor="ola-template-medcenter"><Building2 size={16} /> Филиал</label>
         <select
@@ -811,6 +804,8 @@ function TemplatesTab({ data, steps, reload }) {
           {medCenters.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
         </select>
       </div>
+
+      {selected && <BlockedDoctorsPanel key={selected} medCenterId={selected} />}
 
       {medCenters.length === 0 && (
         <div className="ola-empty"><Building2 size={34} /><h3>Нет действующих филиалов</h3></div>
@@ -1729,7 +1724,6 @@ export default function AdminOpenLine() {
         {tab === 'lines' && <LinesTab />}
         {tab === 'texts' && <TemplatesTab data={templates} steps={steps} reload={loadTemplates} />}
         {tab === 'delivery' && <DeliveryTab templates={templates} safety={safety} onSafetyChange={loadTemplates} />}
-        {tab === 'ads' && <BroadcastsTab />}
         {tab === 'log' && <LogTab />}
         {tab === 'widget' && <WidgetTab />}
       </div>

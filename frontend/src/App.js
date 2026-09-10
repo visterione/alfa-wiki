@@ -54,6 +54,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const WhatsNew = lazy(() => import('./pages/WhatsNew'));
 const AdminReleaseNotes = lazy(() => import('./pages/admin/AdminReleaseNotes'));
 const AdminOpenLine = lazy(() => import('./pages/admin/AdminOpenLine'));
+const Announcements = lazy(() => import('./pages/Announcements'));
 const Warehouse = lazy(() => import('./pages/warehouse/Warehouse'));
 // Публичные карточки по QR грузятся отдельным чанком: их открывают с телефона по
 // одной ссылке, и тянуть ради этого весь бандл портала незачем.
@@ -195,6 +196,10 @@ function AppRoutes() {
             там делать нечего, и один промах мимо вкладки уводил его туда. */}
         <Route path="admin/open-line" element={
           <ProtectedRoute requireAdminAccess="openLineAdmin"><AdminOpenLine /></ProtectedRoute>
+        } />
+
+        <Route path="announcements" element={
+          <ProtectedRoute requireAdminAccess="announcements"><Announcements /></ProtectedRoute>
         } />
 
         {/* Reviews module */}

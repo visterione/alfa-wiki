@@ -559,7 +559,7 @@ async function runOnce(limit = 100) {
   });
   // Отправщик обычно живёт отдельным процессом. Читаем запрет свежим один раз
   // на проход, чтобы сохранение в админке не ждало истечения локального кэша.
-  const blockedDoctors = due.length ? await doctorBlocklist.read({ fresh: true }) : [];
+  const blockedDoctors = due.length ? await doctorBlocklist.readAll({ fresh: true }) : null;
 
   let sent = 0;
   let failed = 0;
@@ -583,7 +583,7 @@ async function runOnce(limit = 100) {
     try {
       // Повторная проверка непосредственно перед отправкой закрывает очередь,
       // созданную до того, как врача добавили в стоп-лист.
-      if (snap && doctorBlocklist.matches(snap, blockedDoctors)) {
+      if (snap && doctorBlocklist.matchesFor(snap, blockedDoctors, medCenterId)) {
         await item.update({ status: 'skipped', error: 'служебный врач: отправка заблокирована' });
         continue;
       }

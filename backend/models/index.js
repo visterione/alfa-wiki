@@ -126,7 +126,11 @@ const User = sequelize.define('User', {
       // совсем другой круг людей. Одним флагом на оба раздела пришлось бы
       // выбирать между «оператор видит настройки» и «настройщик не видит
       // очередь», и обе развилки плохи.
-      openLineAdmin: false
+      openLineAdmin: false,
+      // Самостоятельный раздел массовых рассылок. Он отделён от настройки
+      // открытой линии: право позволяет запускать анонсы, но не менять ботов,
+      // шаблоны сервисных уведомлений и состав операторов.
+      announcements: false
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -2317,8 +2321,14 @@ const EmailLog = sequelize.define('EmailLog', {
   },
   sentAt: {
     type: DataTypes.DATE,
+    allowNull: true,
     defaultValue: DataTypes.NOW,
     comment: 'Время отправки'
+  },
+  scheduledAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Время автоматического запуска почтовой рассылки'
   },
   status: {
     type: DataTypes.STRING(50),
@@ -3514,7 +3524,9 @@ const OmniBroadcast = sequelize.define('OmniBroadcast', {
   text: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
   imagePath: { type: DataTypes.STRING(500), allowNull: true },   // относительно uploads
   medCenterIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
-  status: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'draft' }, // draft|sending|paused|done|failed
+  isTemplate: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  scheduledAt: { type: DataTypes.DATE, allowNull: true },
+  status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'draft' }, // draft|scheduled|sending|paused|done|failed
   // file_id у Telegram, токен вложения у MAX — по ключу платформы. Первая
   // отправка загружает картинку телом запроса и запоминает идентификатор,
   // остальные адресаты получают ссылку на него. Отдать картинку ссылкой нельзя:

@@ -397,6 +397,14 @@
   gap: 8px;
 }
 
+.email-send-actions { display: flex; align-items: center; gap: 8px; }
+.email-schedule-field {
+  display: flex; align-items: center; gap: 6px; padding: 0 8px;
+  min-height: 36px; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-secondary); background: var(--bg-primary);
+}
+.email-schedule-field input { border: 0; outline: 0; color: var(--text-primary); background: transparent; font: inherit; font-size: 12px; }
+
 .email-send-progress {
   display: flex;
   align-items: center;
@@ -661,7 +669,11 @@
 
   .email-compose-footer {
     padding: 10px 16px;
+    align-items: stretch;
+    flex-direction: column;
   }
+
+  .email-send-actions { flex-wrap: wrap; }
 
   .email-attachments-preview {
     padding: 10px 16px;

@@ -245,7 +245,8 @@ export default function AdminUsers() {
       reviews: false,
       parser: false,
       medCenters: false,
-      onboarding: false
+      onboarding: false,
+      announcements: false
     },
     salaryPerm: { ...SALARY_PERM_DEFAULT },
     statisticsTabs: {
@@ -537,7 +538,7 @@ export default function AdminUsers() {
         adminAccess: user.adminAccess || {
           pages: false, sidebar: false, users: false, roles: false, media: false,
           backup: false, settings: false, courses: false, journal: false, reviews: false,
-          parser: false, medCenters: false, onboarding: false
+          parser: false, medCenters: false, onboarding: false, announcements: false
         },
         salaryPerm,
         statisticsTabs: user.statisticsTabs ? {
@@ -582,7 +583,7 @@ export default function AdminUsers() {
         adminAccess: {
           pages: false, sidebar: false, users: false, roles: false, media: false,
           backup: false, settings: false, courses: false, journal: false, reviews: false,
-          parser: false, medCenters: false
+          parser: false, medCenters: false, announcements: false
         },
         salaryPerm: { ...SALARY_PERM_DEFAULT },
         warehousePerm: { ...WAREHOUSE_PERM_DEFAULT },
@@ -1413,13 +1414,14 @@ export default function AdminUsers() {
                         // заведён (OmniLineOperator). Состав и есть право
                         // отвечать — здесь только видимость самого раздела.
                         { key: 'openLine',    label: 'Открытая линия',  checked: form.isAdmin || !!form.adminAccess.openLine,   onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, openLine: v}}); } },
+                        { key: 'announcements', label: 'Анонсы', checked: form.isAdmin || !!form.adminAccess.announcements, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, announcements: v}}); } },
                       ],
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         setForm({...form,
                           canEditServices: newVal, canEditDoctorCards: newVal,
                           canEditAnalyses: newVal, canManagePromotions: newVal,
-                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal, openLine: newVal}
+                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal, openLine: newVal, announcements: newVal}
                         });
                       },
                     },

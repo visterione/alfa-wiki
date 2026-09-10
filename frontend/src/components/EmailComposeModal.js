@@ -1,22 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, FileText, Send, Plus, Edit, Trash2, Save, Star, Table2, Code2, AlignLeft } from 'lucide-react';
+import { X, Upload, FileText, Send, Plus, Edit, Trash2, Save, Star, Table2, Code2, AlignLeft, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Editor from './Editor';
-import { email, roles as rolesApi, media } from '../services/api';
+import { email, media } from '../services/api';
 import { BASE_URL } from '../services/api';
 import './EmailComposeModal.css';
 
-const EmailComposeModal = ({ onClose }) => {
+const localDateTimeValue = (date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+};
+
+const EmailComposeModal = ({ onClose, initialDraft = null }) => {
   // States
-  const [subject, setSubject] = useState('');
-  const [htmlContent, setHtmlContent] = useState('');
-  const [recipients, setRecipients] = useState([]);
-  const [attachments, setAttachments] = useState([]);
+  const [subject, setSubject] = useState(initialDraft?.subject || '');
+  const [htmlContent, setHtmlContent] = useState(initialDraft?.htmlContent || '');
+  const [recipients, setRecipients] = useState(initialDraft?.recipients || []);
+  const [attachments, setAttachments] = useState(initialDraft?.attachments || []);
   const [templates, setTemplates] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [sending, setSending] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
   const [sendProgress, setSendProgress] = useState(null); // { jobId, sent, failed, total, status }
   const [uploading, setUploading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -61,7 +67,7 @@ const EmailComposeModal = ({ onClose }) => {
       const [templatesRes, usersRes, rolesRes, favRecipientsRes, favTemplatesRes] = await Promise.all([
         email.getTemplates(),
         email.getUsers(),
-        rolesApi.list(),
+        email.getRoles(),
         email.getFavoriteRecipients(),
         email.getFavoriteTemplates()
       ]);
@@ -400,22 +406,27 @@ const EmailComposeModal = ({ onClose }) => {
     return () => clearInterval(pollIntervalRef.current);
   }, []);
 
-  // Send email
-  const handleSend = async () => {
+  const messageIsValid = () => {
     if (!subject.trim()) {
       toast.error('Введите тему письма');
-      return;
+      return false;
     }
 
     if (recipients.length === 0) {
       toast.error('Выберите получателей');
-      return;
+      return false;
     }
 
     if (!htmlContent.trim() || htmlContent === '<p></p>') {
       toast.error('Введите текст письма');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  // Send email
+  const handleSend = async () => {
+    if (!messageIsValid()) return;
 
     setSending(true);
     try {
@@ -425,6 +436,27 @@ const EmailComposeModal = ({ onClose }) => {
     } catch (error) {
       console.error('Error sending email:', error);
       toast.error('Ошибка запуска рассылки');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSchedule = async () => {
+    if (!messageIsValid()) return;
+    if (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now()) {
+      toast.error('Выберите будущую дату и время');
+      return;
+    }
+    setSending(true);
+    try {
+      await email.send({
+        subject, htmlContent, recipients, attachments,
+        scheduledAt: new Date(scheduledAt).toISOString()
+      });
+      toast.success(`Почтовая рассылка запланирована на ${new Date(scheduledAt).toLocaleString('ru-RU')}`);
+      onClose();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Не удалось запланировать рассылку');
     } finally {
       setSending(false);
     }
@@ -845,13 +877,24 @@ const EmailComposeModal = ({ onClose }) => {
               </button>
             </div>
           ) : (
-            <button
-              className="btn btn-primary"
-              onClick={handleSend}
-              disabled={sending || uploading}
-            >
-              {sending ? 'Запуск...' : <><Send size={16} /> Отправить</>}
-            </button>
+            <div className="email-send-actions">
+              <label className="email-schedule-field">
+                <Clock size={15} />
+                <input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  min={localDateTimeValue(new Date(Date.now() + 60000))}
+                  onChange={e => setScheduledAt(e.target.value)}
+                  aria-label="Дата и время отложенной отправки"
+                />
+              </label>
+              <button className="btn btn-ghost" onClick={handleSchedule} disabled={!scheduledAt || sending || uploading}>
+                Запланировать
+              </button>
+              <button className="btn btn-primary" onClick={handleSend} disabled={sending || uploading}>
+                {sending ? 'Запуск...' : <><Send size={16} /> Отправить</>}
+              </button>
+            </div>
           )}
         </div>
       </div>

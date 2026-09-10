@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus, Trash2, Send, Image as ImageIcon, X, Play, Pause,
-  Users, AlertTriangle, Check, Clock, Ban, Megaphone
+  Users, AlertTriangle, Check, Clock, Ban, Megaphone, Copy, Bookmark, CalendarClock
 } from 'lucide-react';
 import { broadcasts as api } from '../../services/api';
 import ChannelLogo from '../../components/openline/ChannelLogo';
@@ -34,9 +34,14 @@ import './BroadcastsTab.css';
 
 const LIMIT = 1024;
 const CONFIRM = 'РАЗОСЛАТЬ';
+const localDateTimeValue = (date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+};
 
 const STATUS_VIEW = {
   draft:   { label: 'черновик',  icon: Clock,         cls: 'muted' },
+  scheduled: { label: 'запланирована', icon: CalendarClock, cls: 'wait' },
   sending: { label: 'идёт',      icon: Play,          cls: 'wait'  },
   paused:  { label: 'остановлена', icon: Pause,       cls: 'muted' },
   done:    { label: 'разослана', icon: Check,         cls: 'ok'    },
@@ -51,15 +56,15 @@ function StatusBadge({ status }) {
 
 // ══ Список ════════════════════════════════════════════════════════════════
 
-function BroadcastList({ items, selectedId, onSelect, onCreate }) {
+function BroadcastList({ items, selectedId, onSelect, onCreate, templateMode }) {
   return (
     <aside className="brc-list">
       <button className="ola-btn primary brc-new" onClick={onCreate}>
-        <Plus size={14} /> Новая рассылка
+        <Plus size={14} /> {templateMode ? 'Новый шаблон' : 'Новая рассылка'}
       </button>
 
       {!items.length && (
-        <div className="ola-empty"><Megaphone size={28} /><span>Рассылок пока нет</span></div>
+        <div className="ola-empty"><Megaphone size={28} /><span>{templateMode ? 'Шаблонов пока нет' : 'Рассылок пока нет'}</span></div>
       )}
 
       {items.map(item => (
@@ -105,9 +110,23 @@ function Progress({ counts }) {
   );
 }
 
+function DeliveryIssues({ issues = [] }) {
+  if (!issues.length) return null;
+  return (
+    <div className="brc-issues">
+      <strong>Почему не доставлено</strong>
+      {issues.map((issue, index) => (
+        <div key={`${issue.status}-${issue.error}-${index}`}>
+          <span>{issue.count}</span> {issue.error}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ══ Редактор ══════════════════════════════════════════════════════════════
 
-function Editor({ broadcast, sources, onSaved, onDeleted }) {
+function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
   const [draft, setDraft] = useState(broadcast);
   const [audience, setAudience] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -115,6 +134,7 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
   const [test, setTest] = useState({ externalUserId: '', botId: '' });
   const [confirming, setConfirming] = useState(false);
   const [word, setWord] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
   const fileRef = useRef(null);
 
   // Состояние с сервера подхватываем на каждое обновление: пока рассылка идёт,
@@ -138,6 +158,7 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
   }, [broadcast.id]);
 
   const editable = draft.status === 'draft';
+  const isTemplate = Boolean(draft.isTemplate);
   const centerIds = useMemo(() => draft.medCenterIds || [], [draft.medCenterIds]);
 
   // Размер аудитории спрашиваем на каждое движение галок: это единственная
@@ -264,6 +285,50 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
     }
   };
 
+  const schedule = async () => {
+    if (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now()) {
+      toast.error('Выберите будущую дату и время');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.update(draft.id, { title: draft.title, text: draft.text, medCenterIds: centerIds });
+      await api.schedule(draft.id, new Date(scheduledAt).toISOString());
+      toast.success(`Запланировано на ${new Date(scheduledAt).toLocaleString('ru-RU')}`);
+      onSaved(draft.id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось запланировать');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unschedule = async () => {
+    setBusy(true);
+    try {
+      await api.unschedule(draft.id);
+      toast.success('Отложенная отправка отменена');
+      onSaved(draft.id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось отменить');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (asTemplate) => {
+    setBusy(true);
+    try {
+      const { data } = await api.copy(draft.id, asTemplate);
+      toast.success(asTemplate ? 'Шаблон сохранён' : 'Создан новый черновик');
+      onCopied(data.id, asTemplate);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось создать копию');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async () => {
     setBusy(true);
     try {
@@ -284,7 +349,7 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
       <div className="ola-card">
         <header>
           <span className="ola-card-icon accent"><Megaphone size={17} /></span>
-          <h3>{draft.title || 'Новая рассылка'}</h3>
+          <h3>{draft.title || (isTemplate ? 'Новый шаблон' : 'Новая рассылка')}</h3>
           <StatusBadge status={draft.status} />
         </header>
 
@@ -388,10 +453,20 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
         </div>
       </div>
 
+      {isTemplate && (
+        <div className="ola-card">
+          <div className="ola-card-body">
+            <button className="ola-btn primary" disabled={!ready || busy} onClick={() => copy(false)}>
+              <Copy size={14} /> Создать рассылку по шаблону
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Проверочная отправка. Держится отдельной карточкой, а не строкой в
           форме: пропустить её нельзя, и выглядеть она должна как шаг, а не как
           необязательное поле внизу. */}
-      {editable && (
+      {editable && !isTemplate && (
         <div className={`ola-card brc-test ${tested ? 'done' : ''}`}>
           <header>
             <span className={`ola-card-icon ${tested ? 'green' : 'amber'}`}>
@@ -432,9 +507,10 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
       )}
 
       {/* Запуск и ход */}
-      <div className="ola-card">
+      {!isTemplate && <div className="ola-card">
         <div className="ola-card-body">
           {draft.counts?.total > 0 && <Progress counts={draft.counts} />}
+          <DeliveryIssues issues={draft.issues} />
 
           {draft.status === 'sending' && (
             <button className="ola-btn danger" disabled={busy} onClick={pause}>
@@ -448,14 +524,35 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
             </button>
           )}
 
+          {draft.status === 'scheduled' && (
+            <div className="brc-scheduled">
+              <span><CalendarClock size={16} /> Отправка {new Date(draft.scheduledAt).toLocaleString('ru-RU')}</span>
+              <button className="ola-btn danger" disabled={busy} onClick={unschedule}>Отменить</button>
+            </div>
+          )}
+
+          {['done', 'failed'].includes(draft.status) && (
+            <div className="ola-row">
+              <button className="ola-btn primary" disabled={busy} onClick={() => copy(false)}><Copy size={14} /> Повторить</button>
+              <button className="ola-btn" disabled={busy} onClick={() => copy(true)}><Bookmark size={14} /> Сохранить как шаблон</button>
+            </div>
+          )}
+
           {editable && !confirming && (
-            <button
-              className="ola-btn primary"
-              disabled={!ready || !tested || busy}
-              onClick={() => { setConfirming(true); setWord(''); }}
-            >
-              <Send size={14} /> Разослать{audience?.total ? ` — ${audience.total} адресатов` : ''}
-            </button>
+            <div className="brc-launch-actions">
+              <button
+                className="ola-btn primary"
+                disabled={!ready || !tested || busy}
+                onClick={() => { setConfirming(true); setWord(''); }}
+              >
+                <Send size={14} /> Разослать{audience?.total ? ` — ${audience.total} адресатов` : ''}
+              </button>
+              <label className="brc-schedule-input">
+                <CalendarClock size={15} />
+                <input type="datetime-local" min={localDateTimeValue(new Date(Date.now() + 60000))} value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
+              </label>
+              <button className="ola-btn" disabled={!ready || !tested || !scheduledAt || busy} onClick={schedule}>Запланировать</button>
+            </div>
           )}
 
           {confirming && (
@@ -487,7 +584,7 @@ function Editor({ broadcast, sources, onSaved, onDeleted }) {
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </section>
   );
 }
@@ -498,23 +595,24 @@ export default function BroadcastsTab() {
   const [items, setItems] = useState(null);
   const [sources, setSources] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  const [mode, setMode] = useState('history');
 
   const load = useCallback(async (keepId) => {
     try {
-      const { data } = await api.list();
+      const { data } = await api.list(mode === 'templates' ? 'templates' : undefined);
       setItems(data);
       setSelectedId(id => keepId || (data.some(b => b.id === id) ? id : (data[0]?.id || null)));
     } catch {
       toast.error('Не удалось загрузить рассылки');
     }
-  }, []);
+  }, [mode]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.sources().then(({ data }) => setSources(data)).catch(() => {}); }, []);
 
   // Идущая рассылка обновляется сама: смотреть на застывший счётчик и гадать,
   // работает ли движок, — худшее, что можно предложить у кнопки «Остановить».
-  const sending = items?.some(b => b.status === 'sending');
+  const sending = items?.some(b => b.status === 'sending' || b.status === 'scheduled');
   useEffect(() => {
     if (!sending) return undefined;
     const timer = setInterval(() => load(selectedId), 5000);
@@ -523,7 +621,11 @@ export default function BroadcastsTab() {
 
   const create = async () => {
     try {
-      const { data } = await api.create({ title: 'Новая рассылка', text: '', medCenterIds: [] });
+      const isTemplate = mode === 'templates';
+      const { data } = await api.create({
+        title: isTemplate ? 'Новый шаблон' : 'Новая рассылка',
+        text: '', medCenterIds: [], isTemplate
+      });
       await load(data.id);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Не удалось создать');
@@ -535,17 +637,32 @@ export default function BroadcastsTab() {
   const selected = items.find(b => b.id === selectedId) || null;
 
   return (
-    <div className="brc-columns">
-      <BroadcastList items={items} selectedId={selectedId} onSelect={setSelectedId} onCreate={create} />
-      {selected
-        ? <Editor
-            key={selected.id}
-            broadcast={selected}
-            sources={sources}
-            onSaved={(id) => load(id)}
-            onDeleted={() => load()}
-          />
-        : <div className="ola-empty brc-blank"><Megaphone size={32} /><span>Выберите рассылку слева</span></div>}
-    </div>
+    <>
+      <div className="brc-view-tabs">
+        <button className={mode === 'history' ? 'active' : ''} onClick={() => { setMode('history'); setItems(null); }}>История и черновики</button>
+        <button className={mode === 'templates' ? 'active' : ''} onClick={() => { setMode('templates'); setItems(null); }}>Шаблоны</button>
+      </div>
+      <div className="brc-columns">
+        <BroadcastList items={items} selectedId={selectedId} onSelect={setSelectedId} onCreate={create} templateMode={mode === 'templates'} />
+        {selected
+          ? <Editor
+              key={selected.id}
+              broadcast={selected}
+              sources={sources}
+              onSaved={(id) => load(id)}
+              onDeleted={() => load()}
+              onCopied={(id, asTemplate) => {
+                const nextMode = asTemplate ? 'templates' : 'history';
+                setSelectedId(id);
+                if (nextMode === mode) load(id);
+                else {
+                  setItems(null);
+                  setMode(nextMode);
+                }
+              }}
+            />
+          : <div className="ola-empty brc-blank"><Megaphone size={32} /><span>Выберите {mode === 'templates' ? 'шаблон' : 'рассылку'} слева</span></div>}
+      </div>
+    </>
   );
 }

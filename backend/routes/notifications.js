@@ -168,7 +168,9 @@ function previewValues(medCenter = null) {
 
 router.get('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
   try {
-    res.json({ doctors: await doctorBlocklist.read() });
+    const medCenterId = String(req.query.medCenterId || '').trim();
+    if (!medCenterId) return res.status(400).json({ error: 'Не указан филиал' });
+    res.json({ doctors: await doctorBlocklist.read({ medCenterId }) });
   } catch (err) {
     console.error('[notifications] GET /blocked-doctors:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -177,10 +179,12 @@ router.get('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
 
 router.put('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
   try {
+    const medCenterId = String(req.body?.medCenterId || '').trim();
     const doctors = req.body?.doctors;
+    if (!medCenterId) return res.status(400).json({ error: 'Не указан филиал' });
     if (!Array.isArray(doctors)) return res.status(400).json({ error: 'Нужен список врачей' });
     if (doctors.length > 500) return res.status(400).json({ error: 'Слишком большой список врачей' });
-    res.json({ doctors: await doctorBlocklist.write(doctors) });
+    res.json({ doctors: await doctorBlocklist.write(medCenterId, doctors) });
   } catch (err) {
     console.error('[notifications] PUT /blocked-doctors:', err);
     res.status(500).json({ error: 'Internal server error' });

@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic,
+  Edit2, Trash2, Smile, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2, Mic,
   Bold, Italic, Underline, Strikethrough, Code, EyeOff, Link2, BarChart3, PlusCircle,
   CheckCircle, Copy, Clock, AlertCircle
 } from 'lucide-react';
@@ -23,7 +23,6 @@ import ReactionDetailsModal from '../components/chat/ReactionDetailsModal';
 import VoiceMessage from '../components/chat/VoiceMessage';
 import UserBadge from '../components/chat/UserBadge';
 import PollMessage from '../components/chat/PollMessage';
-import EmailComposeModal from '../components/EmailComposeModal';
 import AvatarCropper from '../components/AvatarCropper';
 import { renderRichHtml, stripFormatting, toggleMarkup } from '../utils/richText';
 import './Dashboard.css';
@@ -84,7 +83,6 @@ export default function Dashboard() {
   // Пригласительная ссылка группы (ver. 7.58) — своя модалка, см. ChatInviteModal
   const [showInviteLink, setShowInviteLink] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
-  const [showEmailCompose, setShowEmailCompose] = useState(false);
   // Мобильное меню действий (заменяет chat-sidebar-header на телефонах)
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [usersList, setUsersList] = useState([]);
@@ -2205,7 +2203,6 @@ export default function Dashboard() {
           <div className="chat-sidebar-header">
             <h2><MessageCircle size={20} /> Сообщения</h2>
             <div className="chat-sidebar-actions">
-              <button className="btn-icon-chat" onClick={() => setShowEmailCompose(true)} title="Email-рассылка"><Mail size={20} /></button>
               <button className="btn-icon-chat" onClick={openNewGroup} title="Создать группу"><Users size={20} /></button>
               <button className="btn-icon-chat" onClick={() => { setShowNewChat(true); loadUsers(); }} title="Новый чат"><UserPlus size={20} /></button>
             </div>
@@ -2219,7 +2216,6 @@ export default function Dashboard() {
                 <div className="chat-search-menu-dropdown">
                   <button type="button" onClick={() => { setShowChatMenu(false); setShowNewChat(true); loadUsers(); }}><UserPlus size={18} /> Новый чат</button>
                   <button type="button" onClick={() => { setShowChatMenu(false); openNewGroup(); }}><Users size={18} /> Создать группу</button>
-                  <button type="button" onClick={() => { setShowChatMenu(false); setShowEmailCompose(true); }}><Mail size={18} /> Email-рассылка</button>
                 </div>
               )}
             </div>
@@ -3442,11 +3438,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Email Compose Modal */}
-      {showEmailCompose && (
-        <EmailComposeModal onClose={() => setShowEmailCompose(false)} />
       )}
 
       {/* Chat Notifications - Show only for non-active chats */}

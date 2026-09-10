@@ -636,6 +636,7 @@
 /* Розовый остаётся отдельным опознавательным цветом рабочего окна линии и не
    пересекается с цветами остальных модулей. */
 .quick-access-btn.open-line   { --qa-fill: #EC4899; --qa-fill-deep: #DB2777; }
+.quick-access-btn.announcements { --qa-fill: #F59E0B; --qa-fill-deep: #D97706; }
 .quick-access-btn.placeholder { --qa-fill: #9CA3AF; --qa-fill-deep: #6B7280; }
 
 @media (prefers-reduced-motion: reduce) {

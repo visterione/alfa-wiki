@@ -10,11 +10,12 @@
  * где doctor_id ещё не сохранялся.
  */
 
-const { Setting } = require('../../models');
+const { Setting, MedCenter, sequelize } = require('../../models');
 
 const KEY = 'notif_blocked_doctors';
 const CACHE_MS = 60 * 1000;
-let cache = { at: 0, doctors: [] };
+let cache = { at: 0, state: { default: [], branches: {} } };
+const medCenterCache = new Map();
 
 function cleanName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
@@ -41,22 +42,55 @@ function normalizeDoctors(value) {
   return result;
 }
 
-async function read({ fresh = false } = {}) {
-  if (!fresh && Date.now() - cache.at < CACHE_MS) return cache.doctors;
-  const row = await Setting.findByPk(KEY);
-  const doctors = normalizeDoctors(row?.value?.doctors || row?.value || []);
-  cache = { at: Date.now(), doctors };
-  return doctors;
+function normalizeState(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value) && value.branches) {
+    const branches = {};
+    for (const [medCenterId, doctors] of Object.entries(value.branches || {})) {
+      branches[String(medCenterId)] = normalizeDoctors(doctors);
+    }
+    return { default: normalizeDoctors(value.default || value.doctors || []), branches };
+  }
+  return { default: normalizeDoctors(value?.doctors || value || []), branches: {} };
 }
 
-async function write(doctors) {
+async function readAll({ fresh = false } = {}) {
+  if (!fresh && Date.now() - cache.at < CACHE_MS) return cache.state;
+  const row = await Setting.findByPk(KEY);
+  const state = normalizeState(row?.value);
+  cache = { at: Date.now(), state };
+  return state;
+}
+
+function doctorsFor(state, medCenterId) {
+  const key = medCenterId == null ? '' : String(medCenterId);
+  if (key && Object.prototype.hasOwnProperty.call(state?.branches || {}, key)) {
+    return state.branches[key];
+  }
+  return state?.default || [];
+}
+
+async function read({ fresh = false, medCenterId = null } = {}) {
+  return doctorsFor(await readAll({ fresh }), medCenterId);
+}
+
+async function write(medCenterId, doctors) {
+  const key = String(medCenterId || '').trim();
+  if (!key) throw new Error('Не указан филиал');
   const normalized = normalizeDoctors(doctors);
+  const current = await readAll({ fresh: true });
+  const state = {
+    // Первый переход со старого общего списка превращает выбранный филиал в
+    // явную настройку, а остальные оставляет пустыми. Иначе старый Кузин
+    // продолжал бы блокироваться в Kids до ручного сохранения каждого филиала.
+    default: Object.keys(current.branches).length ? current.default : [],
+    branches: { ...current.branches, [key]: normalized }
+  };
   await Setting.upsert({
     key: KEY,
-    value: { doctors: normalized },
-    description: 'Врачи и служебные ресурсы МИС, для которых запрещены пациентские уведомления'
+    value: state,
+    description: 'Врачи и служебные ресурсы МИС, для которых запрещены уведомления в конкретных филиалах'
   });
-  cache = { at: Date.now(), doctors: normalized };
+  cache = { at: Date.now(), state };
   return normalized;
 }
 
@@ -69,8 +103,29 @@ function matches(snap, doctors) {
   ));
 }
 
-async function isBlocked(snap) {
-  return matches(snap, await read());
+async function medCenterIdFor(clinicName) {
+  const key = cleanName(clinicName).toLocaleLowerCase('ru-RU');
+  if (!key) return null;
+  if (medCenterCache.has(key)) return medCenterCache.get(key);
+  const row = await MedCenter.findOne({
+    where: sequelize.where(sequelize.fn('lower', sequelize.col('name')), key),
+    attributes: ['id']
+  });
+  const id = row?.id || null;
+  medCenterCache.set(key, id);
+  return id;
 }
 
-module.exports = { KEY, normalizeDoctors, matches, read, write, isBlocked };
+function matchesFor(snap, state, medCenterId) {
+  return matches(snap, doctorsFor(state, medCenterId));
+}
+
+async function isBlocked(snap, medCenterId = null) {
+  const branchId = medCenterId || await medCenterIdFor(snap?.clinicName);
+  return matchesFor(snap, await readAll(), branchId);
+}
+
+module.exports = {
+  KEY, normalizeDoctors, normalizeState, doctorsFor, matches, matchesFor,
+  read, readAll, write, medCenterIdFor, isBlocked
+};

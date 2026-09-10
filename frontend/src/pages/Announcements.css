@@ -1,0 +1,23 @@
+.ann-shell { min-height: 100%; }
+.ann-head { align-items: center; margin-bottom: 16px; }
+.ann-head h1 { margin: 0; }
+.ann-head p { margin: 3px 0 0; color: var(--text-secondary); font-size: 13px; }
+.ann-title-icon {
+  width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center;
+  color: var(--accent-600); background: var(--ola-glass-strong); border: 1px solid var(--ola-line);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--shadow-color) 14%, transparent);
+}
+.ann-tabs { margin-bottom: 18px; }
+.ann-email-toolbar { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.ann-email-list { padding: 0 !important; overflow: hidden; }
+.ann-email-item { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 14px 18px; border-top: 1px solid var(--ola-line); }
+.ann-email-item:first-child { border-top: 0; }
+.ann-email-item > div:first-child { min-width: 0; display: grid; gap: 4px; }
+.ann-email-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ann-email-item span, .ann-email-item time { color: var(--text-secondary); font-size: 12px; }
+.ann-email-state { flex: 0 0 auto; display: grid; justify-items: end; gap: 6px; }
+.ann-repeat { min-height: 29px !important; padding: 4px 9px !important; font-size: 12px !important; }
+@media (max-width: 680px) {
+  .ann-email-item { align-items: flex-start; flex-direction: column; }
+  .ann-email-state { justify-items: start; }
+}
