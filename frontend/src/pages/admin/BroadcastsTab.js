@@ -16,16 +16,9 @@ import './BroadcastsTab.css';
  * «Рассылка» отличается принципиально: та настраивает, как уходят уведомления о
  * визитах, и отправляет их МИС; эта отправляет по нашей инициативе и всем сразу.
  *
- * ДВА МЕСТА, ГДЕ ИНТЕРФЕЙС НАМЕРЕННО МЕШАЕТ:
- *
- *   1. Боевая отправка не работает, пока не сделана проверочная. Это не
- *      придирка: подпись под картинкой переносится не так, как в поле ввода, а
- *      кнопка отписки в каждом мессенджере выглядит по-своему. Единственная
- *      возможность увидеть сообщение глазами пациента — получить его самому, и
- *      стоит она полминуты против двух тысяч человек на другой чаше.
- *   2. Запуск подтверждается набранным словом, как снятие предохранителя на
- *      соседней вкладке. Отменить отправленное нельзя — можно только
- *      остановить остаток.
+ * Проверочная отправка доступна как инструмент предпросмотра, но не является
+ * обязательным шагом. Немедленный запуск и планирование доступны сразу после
+ * заполнения сообщения и выбора хотя бы одного медцентра.
  *
  * Счётчик под текстом считает до 1024 символов. Предел телеграмный: столько
  * вмещает подпись под фотографией. Он же держится для рассылки без картинки —
@@ -33,11 +26,17 @@ import './BroadcastsTab.css';
  */
 
 const LIMIT = 1024;
-const CONFIRM = 'РАЗОСЛАТЬ';
-const localDateTimeValue = (date) => {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-};
+const MOSCOW_TIMEZONE = 'Europe/Moscow';
+const moscowDateTimeValue = (date) => new Intl.DateTimeFormat('sv-SE', {
+  timeZone: MOSCOW_TIMEZONE,
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  hourCycle: 'h23'
+}).format(date).replace(' ', 'T');
+const parseMoscowDateTime = (value) => value ? new Date(`${value}:00+03:00`) : null;
+const formatMoscowDateTime = (value) => new Date(value).toLocaleString('ru-RU', {
+  timeZone: MOSCOW_TIMEZONE, day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit'
+});
 
 const STATUS_VIEW = {
   draft:   { label: 'черновик',  icon: Clock,         cls: 'muted' },
@@ -132,9 +131,8 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
   const [busy, setBusy] = useState(false);
   const [tested, setTested] = useState(false);
   const [test, setTest] = useState({ externalUserId: '', botId: '' });
-  const [confirming, setConfirming] = useState(false);
-  const [word, setWord] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
+  const [sendMode, setSendMode] = useState('now');
   const fileRef = useRef(null);
 
   // Фоновое обновление нужно для счётчиков, но не имеет права перетирать
@@ -165,8 +163,6 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
   // где эти правки происходят, а не здесь: проверять надо то, что уйдёт людям.
   useEffect(() => {
     setTested(false);
-    setConfirming(false);
-    setWord('');
   }, [broadcast.id]);
 
   const editable = draft.status === 'draft';
@@ -275,8 +271,6 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
     setBusy(true);
     try {
       const { data } = await api.start(draft.id);
-      setConfirming(false);
-      setWord('');
       toast.success(`Рассылка пошла: ${data.counts.total} адресатов`);
       onSaved(draft.id);
     } catch (err) {
@@ -298,15 +292,16 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
   };
 
   const schedule = async () => {
-    if (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now()) {
+    const when = parseMoscowDateTime(scheduledAt);
+    if (!when || Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
       toast.error('Выберите будущую дату и время');
       return;
     }
     setBusy(true);
     try {
       await api.update(draft.id, { title: draft.title, text: draft.text, medCenterIds: centerIds });
-      await api.schedule(draft.id, new Date(scheduledAt).toISOString());
-      toast.success(`Запланировано на ${new Date(scheduledAt).toLocaleString('ru-RU')}`);
+      await api.schedule(draft.id, when.toISOString());
+      toast.success(`Запланировано на ${formatMoscowDateTime(when)} МСК`);
       onSaved(draft.id);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Не удалось запланировать');
@@ -475,16 +470,14 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
         </div>
       )}
 
-      {/* Проверочная отправка. Держится отдельной карточкой, а не строкой в
-          форме: пропустить её нельзя, и выглядеть она должна как шаг, а не как
-          необязательное поле внизу. */}
+      {/* Проверочная отправка остаётся доступной, но не блокирует запуск. */}
       {editable && !isTemplate && (
         <div className={`ola-card brc-test ${tested ? 'done' : ''}`}>
           <header>
             <span className={`ola-card-icon ${tested ? 'green' : 'amber'}`}>
               {tested ? <Check size={17} /> : <Send size={17} />}
             </span>
-            <h3>{tested ? 'Проверочная отправка сделана' : 'Сначала отправьте себе'}</h3>
+            <h3>{tested ? 'Проверочная отправка сделана' : 'Проверочная отправка — необязательно'}</h3>
           </header>
           <div className="ola-card-body">
             <div className="ola-row">
@@ -538,7 +531,7 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
 
           {draft.status === 'scheduled' && (
             <div className="brc-scheduled">
-              <span><CalendarClock size={16} /> Отправка {new Date(draft.scheduledAt).toLocaleString('ru-RU')}</span>
+              <span><CalendarClock size={16} /> Отправка {formatMoscowDateTime(draft.scheduledAt)} МСК</span>
               <button className="ola-btn danger" disabled={busy} onClick={unschedule}>Отменить</button>
             </div>
           )}
@@ -550,51 +543,40 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
             </div>
           )}
 
-          {editable && !confirming && (
-            <div className="brc-launch-actions">
-              <button
-                className="ola-btn primary"
-                disabled={!ready || !tested || busy}
-                onClick={() => { setConfirming(true); setWord(''); }}
-              >
-                <Send size={14} /> Разослать{audience?.total ? ` — ${audience.total} адресатов` : ''}
-              </button>
-              <label className="brc-schedule-input">
-                <CalendarClock size={15} />
-                <input type="datetime-local" min={localDateTimeValue(new Date(Date.now() + 60000))} value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
-              </label>
-              <button className="ola-btn" disabled={!ready || !tested || !scheduledAt || busy} onClick={schedule}>Запланировать</button>
+          {editable && (
+            <div className="brc-send-planner">
+              <div className="brc-send-mode" role="group" aria-label="Время отправки">
+                <button className={sendMode === 'now' ? 'active' : ''} onClick={() => setSendMode('now')}>Сейчас</button>
+                <button className={sendMode === 'later' ? 'active' : ''} onClick={() => setSendMode('later')}>По времени</button>
+              </div>
+              {sendMode === 'later' && (
+                <label className="brc-schedule-input">
+                  <CalendarClock size={15} />
+                  <input
+                    type="datetime-local"
+                    min={moscowDateTimeValue(new Date(Date.now() + 60000))}
+                    value={scheduledAt}
+                    onChange={e => { setScheduledAt(e.target.value); setSendMode('later'); }}
+                  />
+                  <span>МСК</span>
+                </label>
+              )}
+              {sendMode === 'now' ? (
+                <button
+                  className="ola-btn primary"
+                  disabled={!ready || busy}
+                  onClick={start}
+                >
+                  <Send size={14} /> Разослать сейчас{audience?.total ? ` — ${audience.total}` : ''}
+                </button>
+              ) : (
+                <button className="ola-btn primary" disabled={!ready || !scheduledAt || busy} onClick={schedule}>
+                  <CalendarClock size={14} /> Запланировать{scheduledAt ? ` на ${scheduledAt.slice(11)}` : ''}
+                </button>
+              )}
             </div>
           )}
 
-          {confirming && (
-            <div className="ola-confirm">
-              <AlertTriangle size={18} />
-              <div className="ola-confirm-body">
-                <strong>Разослать «{draft.title}»?</strong>
-                <p>
-                  Сообщение уйдёт {audience?.total || 0} подписчикам от имени их ботов.
-                  Отменить отправленное нельзя — можно только остановить остаток.
-                  Ответы придут в очередь открытой линии.
-                </p>
-                <div className="ola-row">
-                  <input
-                    className="ola-input"
-                    placeholder={`Наберите ${CONFIRM}, чтобы подтвердить`}
-                    value={word}
-                    onChange={e => setWord(e.target.value)}
-                    autoFocus
-                  />
-                  <button
-                    className="ola-btn danger-solid"
-                    disabled={word.trim().toUpperCase() !== CONFIRM || busy}
-                    onClick={start}
-                  >Разослать</button>
-                  <button className="ola-btn" onClick={() => setConfirming(false)}>Отмена</button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>}
     </section>

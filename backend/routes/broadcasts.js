@@ -23,8 +23,7 @@ const requireAnnouncements = requireAdminAccess('announcements');
 const STATUS_BY_CODE = {
   not_found: 404,
   bad_state: 400,
-  empty_audience: 400,
-  no_test: 400
+  empty_audience: 400
 };
 
 function fail(res, err, where) {

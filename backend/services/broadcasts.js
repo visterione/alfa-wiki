@@ -60,7 +60,7 @@ class BroadcastError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'BroadcastError';
-    this.code = code; // not_found | bad_state | empty_audience | no_test
+    this.code = code; // not_found | bad_state | empty_audience
   }
 }
 

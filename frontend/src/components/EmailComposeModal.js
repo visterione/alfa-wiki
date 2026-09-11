@@ -6,10 +6,11 @@ import { email, media } from '../services/api';
 import { BASE_URL } from '../services/api';
 import './EmailComposeModal.css';
 
-const localDateTimeValue = (date) => {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-};
+const moscowDateTimeValue = (date) => new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+}).format(date).replace(' ', 'T');
+const parseMoscowDateTime = (value) => value ? new Date(`${value}:00+03:00`) : null;
 
 const EmailComposeModal = ({ onClose, initialDraft = null }) => {
   // States
@@ -23,6 +24,7 @@ const EmailComposeModal = ({ onClose, initialDraft = null }) => {
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [sending, setSending] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
+  const [sendMode, setSendMode] = useState('now');
   const [sendProgress, setSendProgress] = useState(null); // { jobId, sent, failed, total, status }
   const [uploading, setUploading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -443,7 +445,8 @@ const EmailComposeModal = ({ onClose, initialDraft = null }) => {
 
   const handleSchedule = async () => {
     if (!messageIsValid()) return;
-    if (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now()) {
+    const when = parseMoscowDateTime(scheduledAt);
+    if (!when || Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
       toast.error('Выберите будущую дату и время');
       return;
     }
@@ -451,9 +454,9 @@ const EmailComposeModal = ({ onClose, initialDraft = null }) => {
     try {
       await email.send({
         subject, htmlContent, recipients, attachments,
-        scheduledAt: new Date(scheduledAt).toISOString()
+        scheduledAt: when.toISOString()
       });
-      toast.success(`Почтовая рассылка запланирована на ${new Date(scheduledAt).toLocaleString('ru-RU')}`);
+      toast.success(`Почтовая рассылка запланирована на ${scheduledAt.slice(0, 10)} ${scheduledAt.slice(11)} МСК`);
       onClose();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Не удалось запланировать рассылку');
@@ -878,22 +881,32 @@ const EmailComposeModal = ({ onClose, initialDraft = null }) => {
             </div>
           ) : (
             <div className="email-send-actions">
-              <label className="email-schedule-field">
-                <Clock size={15} />
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  min={localDateTimeValue(new Date(Date.now() + 60000))}
-                  onChange={e => setScheduledAt(e.target.value)}
-                  aria-label="Дата и время отложенной отправки"
-                />
-              </label>
-              <button className="btn btn-ghost" onClick={handleSchedule} disabled={!scheduledAt || sending || uploading}>
-                Запланировать
-              </button>
-              <button className="btn btn-primary" onClick={handleSend} disabled={sending || uploading}>
-                {sending ? 'Запуск...' : <><Send size={16} /> Отправить</>}
-              </button>
+              <div className="email-send-mode" role="group" aria-label="Время отправки">
+                <button className={sendMode === 'now' ? 'active' : ''} onClick={() => setSendMode('now')}>Сейчас</button>
+                <button className={sendMode === 'later' ? 'active' : ''} onClick={() => setSendMode('later')}>По времени</button>
+              </div>
+              {sendMode === 'later' && (
+                <label className="email-schedule-field">
+                  <Clock size={15} />
+                  <input
+                    type="datetime-local"
+                    value={scheduledAt}
+                    min={moscowDateTimeValue(new Date(Date.now() + 60000))}
+                    onChange={e => setScheduledAt(e.target.value)}
+                    aria-label="Дата и время отложенной отправки"
+                  />
+                  <span>МСК</span>
+                </label>
+              )}
+              {sendMode === 'later' ? (
+                <button className="btn btn-primary" onClick={handleSchedule} disabled={!scheduledAt || sending || uploading}>
+                  {sending ? 'Сохраняем...' : <><Clock size={16} /> Запланировать</>}
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={handleSend} disabled={sending || uploading}>
+                  {sending ? 'Запуск...' : <><Send size={16} /> Отправить сейчас</>}
+                </button>
+              )}
             </div>
           )}
         </div>
