@@ -3884,6 +3884,10 @@ const CashPayment = sequelize.define('CashPayment', {
   misUserId: { type: DataTypes.STRING(50), allowNull: false },
   doctorName: { type: DataTypes.STRING(255), allowNull: false },
   periodLabel: { type: DataTypes.STRING(100), allowNull: true },
+  // Медцентр, за который выдали деньги. Пусто у выдач до ver. 8.18: их нельзя
+  // отнести ни к одной клинике, поэтому в сводке они идут отдельной строкой
+  // «без медцентра», пока медцентр не проставят вручную.
+  clinicId: { type: DataTypes.STRING(50), allowNull: true },
   amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   issuedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   issuedByUserId: { type: DataTypes.UUID, allowNull: true },

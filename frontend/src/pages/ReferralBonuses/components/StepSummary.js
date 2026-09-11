@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { salaryRecords, executorSettings as execSettingsApi, cashPayments as cashPaymentsApi } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
+import { allocateCashByRow, sumCash } from '../utils/cashAllocation';
 import SalaryBlock from './SalaryBlockRenderer';
 
 function downloadBlob(blob, filename) {
@@ -551,8 +552,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     }
   };
 
-  const handleCashOverpay = async (rec, amount, dateLabel, clinicId) => {
-    const key = rec.id;
+  // Фиксация остатка/переплаты по кассе теперь привязана к строке медцентра, а не ко
+  // всей записи: выдача принадлежит медцентру, и остаток закрывается в его настройках.
+  const handleCashOverpay = async (rec, rowKey, amount, dateLabel, clinicId) => {
+    const key = rowKey;
     setCashOverpayLoading(prev => ({ ...prev, [key]: true }));
     try {
       const res = await execSettingsApi.get(rec.misUserId);
@@ -803,6 +806,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       });
   }, [allRows, committedFilters, clinics, sortBy]);
 
+  // Выдача из кассы принадлежит медцентру, а не врачу целиком: раскладываем её по
+  // строкам, иначе одна выплата гасила бы остаток каждого медцентра сразу.
+  const cashByRow = useMemo(() => allocateCashByRow(filtered, cashPaymentsMap), [filtered, cashPaymentsMap]);
+
   // Вспомогательная функция: получить карту кассовых выплат (свежий запрос)
   // Логика матчинга идентична loadData: сначала по salaryRecordId, затем по misUserId+periodLabel
   const fetchCashMap = async () => {
@@ -846,6 +853,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     setExportingPayout(true);
     try {
       const liveCashMap = await fetchCashMap();
+      const liveCashByRow = allocateCashByRow(filtered, liveCashMap);
       const payoutRows = filtered.filter(({ cr }) => {
         const s = cr?.salary || {};
         const remainder = calcRemainder(s);
@@ -882,7 +890,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const writtenOff = !!(rec.reportData?.bonusWriteOff?.[key]);
         // Списанная премия — «хвост», от которого отказались: в выплате обнуляем.
         const remainder = writtenOff ? 0 : calcRemainder(s);
-        const cashPaid = writtenOff ? 0 : (liveCashMap[rec.id] || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+        const buckets = liveCashByRow.get(key) || { assigned: [], unassigned: [] };
+        const cashPaid = writtenOff ? 0 : sumCash(buckets.assigned) + sumCash(buckets.unassigned);
         ws.addRow({
           name:      rec.doctorName || '—',
           bonus:     remainder,
@@ -919,6 +928,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     setExporting(true);
     try {
       const liveCashMap = await fetchCashMap();
+      const liveCashByRow = allocateCashByRow(filtered, liveCashMap);
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('Сводка зарплат');
 
@@ -974,20 +984,18 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       };
 
       const dataRows = [];
-      const seenRecForCash = new Set();
       filtered.forEach(({ key, rec, cr, clinicName }) => {
         const s = cr?.salary || {};
         const _rowExtraTotal = (s.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
         const remainder = calcRemainder(s);
-        const cashPaidForRow = !seenRecForCash.has(rec.id)
-          ? (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0)
-          : 0;
-        seenRecForCash.add(rec.id);
-        const netRemainder = remainder - cashPaidForRow;
+        const buckets = liveCashByRow.get(key) || { assigned: [], unassigned: [] };
+        // Остаток закрывает только касса своего медцентра. Нераспределённые выдачи
+        // в столбце видны, но остаток медцентра не трогают — как и в таблице.
+        const cashPaid = sumCash(buckets.assigned) + sumCash(buckets.unassigned);
+        const netRemainder = remainder - sumCash(buckets.assigned);
         // Списанная переплата — обнуляем в столбце «Переплата», списанная премия — в «Премия».
         const overpayWrittenOff = !!(rec.reportData?.overpayWriteOff?.[key]);
         const bonusWrittenOff   = !!(rec.reportData?.bonusWriteOff?.[key]);
-        const cashPaid = (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
         const detailStr = buildDetail(s);
         const row = ws.addRow({
           name:       rec.doctorName || '—',
@@ -1035,14 +1043,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       });
 
       // Итоговая строка
-      const excelCashTotal = (() => {
-        const seen = new Set();
-        return filtered.reduce((s, { rec }) => {
-          if (seen.has(rec.id)) return s;
-          seen.add(rec.id);
-          return s + (liveCashMap[rec.id] || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
-        }, 0);
-      })();
+      const excelCashTotal = filtered.reduce((acc, { key }) => {
+        const b = liveCashByRow.get(key) || { assigned: [], unassigned: [] };
+        return acc + sumCash(b.assigned) + sumCash(b.unassigned);
+      }, 0);
       const totalRow = ws.addRow({
         name:       'ИТОГО',
         total:      filtered.reduce((s, r) => {
@@ -1057,26 +1061,16 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const et = (sal.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
           return s + parseFloat(sal.mainPayment || 0) + et;
         }, 0),
-        bonus:   (() => {
-          const seenB = new Set();
-          return filtered.reduce((s, r) => {
-            const rem = calcRemainder(r.cr?.salary);
-            const cash = !seenB.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
-            seenB.add(r.rec.id);
-            if (r.rec.reportData?.bonusWriteOff?.[r.key]) return s;
-            const net = rem - cash; return s + (net >= 0 ? net : 0);
-          }, 0);
-        })(),
-        overpay: (() => {
-          const seenO = new Set();
-          return filtered.reduce((s, r) => {
-            const rem = calcRemainder(r.cr?.salary);
-            const cash = !seenO.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
-            seenO.add(r.rec.id);
-            if (r.rec.reportData?.overpayWriteOff?.[r.key]) return s;
-            const net = rem - cash; return s + (net < 0 ? net : 0);
-          }, 0);
-        })(),
+        bonus:   filtered.reduce((s, r) => {
+          if (r.rec.reportData?.bonusWriteOff?.[r.key]) return s;
+          const net = calcRemainder(r.cr?.salary) - sumCash((liveCashByRow.get(r.key) || {}).assigned);
+          return s + (net >= 0 ? net : 0);
+        }, 0),
+        overpay: filtered.reduce((s, r) => {
+          if (r.rec.reportData?.overpayWriteOff?.[r.key]) return s;
+          const net = calcRemainder(r.cr?.salary) - sumCash((liveCashByRow.get(r.key) || {}).assigned);
+          return s + (net < 0 ? net : 0);
+        }, 0),
         cashPaid: excelCashTotal || null,
       });
       totalRow.font = { bold: true, name: 'Calibri', size: 11 };
@@ -1121,14 +1115,13 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             .filter(ep => (ep.label || '').trim() === 'Отпускные')
             .reduce((es, ep) => es + (parseFloat(ep.amount) || 0), 0);
         }, 0);
-        const totalCashPaid = (() => {
-          const seen = new Set();
-          return filtered.reduce((s, { rec }) => {
-            if (seen.has(rec.id)) return s;
-            seen.add(rec.id);
-            return s + (cashPaymentsMap[rec.id] || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
-          }, 0);
-        })();
+        // Итог по кассе — сумма того, что попало в видимые строки. При отборе по
+        // медцентру выдачи скрытых клиник в него не входят, иначе плашка не сходилась
+        // бы со столбцом.
+        const totalCashPaid = filtered.reduce((acc, { key }) => {
+          const b = cashByRow.get(key) || { assigned: [], unassigned: [] };
+          return acc + sumCash(b.assigned) + sumCash(b.unassigned);
+        }, 0);
         return (
         <>
         {/* ── Totals bar — всегда виден ── */}
@@ -1265,6 +1258,14 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 const remainder   = calcRemainder(s);
                 const bonus       = remainder >= 0 ? remainder : 0;
                 const overpay     = remainder < 0  ? remainder : 0;
+                // Флаг фиксации до ver. 8.18 хранился по записи — читаем и старый ключ,
+                // чтобы галочка не пропала на уже обработанных записях.
+                const cashFixed   = !!(cashOverpayDone[key] || cashOverpayDone[rec.id]);
+                const rowCashBuckets   = cashByRow.get(key) || { assigned: [], unassigned: [] };
+                const rowCashTotal        = sumCash(rowCashBuckets.assigned);
+                const unassignedCashTotal = sumCash(rowCashBuckets.unassigned);
+                // Остаток медцентра: его собственный остаток минус выданное за него из кассы.
+                const netRem      = remainder - rowCashTotal;
                 const isOpen    = expandedKey === key;
                 const dateLabel = rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '—');
                 const recalcKey = key;
@@ -1298,7 +1299,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ fontWeight: 700, color: 'var(--accent-800)' }}>{fmtRub(total)}</div>
-                        {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0 || (() => { const rowCash = cashPaymentsMap[rec.id] || []; return rowCash.length > 0; })()) && (
+                        {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0 || rowCashTotal > 0 || unassignedCashTotal > 0) && (
                           <div style={{ fontSize: 11, color: 'var(--rb-text)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
                             {(body + extraTotal) > 0 && <span>Основная ЗП: {fmtRub(body + extraTotal)}</span>}
@@ -1336,36 +1337,47 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                               </span>
                             )}
                             {(() => {
-                              const rowCash = cashPaymentsMap[rec.id] || [];
-                              if (!rowCash.length) return null;
-                              const rowCashTotal = rowCash.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
-                              const allRem = (rec.reportData?.clinicReports || []).reduce((s, c) => {
-                                const sal = c.salary || {};
-                                return s + calcRemainder(sal);
-                              }, 0);
-                              const netRem = allRem - rowCashTotal;
+                              if (rowCashTotal === 0 && unassignedCashTotal === 0) return null;
                               return (
                                 <>
-                                  <span style={{ color: 'var(--green-700)' }}>Касса: −{fmtRub(rowCashTotal)}</span>
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <span style={{ color: netRem < 0 ? (cashOverpayDone[rec.id] ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
-                                    {netRem !== 0 && (
-                                      <button
-                                        onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRem, dateLabel, cr?.clinicId); }}
-                                        disabled={!!cashOverpayLoading[rec.id]}
-                                        title={cashOverpayDone[rec.id]
-                                          ? 'Уже зафиксировано (можно повторить)'
-                                          : netRem < 0 ? 'Добавить переплату в расходники' : 'Добавить остаток в дополнительно'}
-                                        style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
-                                      >
-                                        {cashOverpayDone[rec.id] ? (
-                                          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
-                                        ) : (
-                                          <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
+                                  {rowCashTotal > 0 && (
+                                    <>
+                                      <span style={{ color: 'var(--green-700)' }}>Касса: −{fmtRub(rowCashTotal)}</span>
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <span style={{ color: netRem < 0 ? (cashFixed ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
+                                        {netRem !== 0 && (
+                                          <button
+                                            onClick={e => { e.stopPropagation(); handleCashOverpay(rec, recalcKey, netRem, dateLabel, cr?.clinicId); }}
+                                            disabled={!!cashOverpayLoading[recalcKey]}
+                                            title={cashFixed
+                                              ? 'Уже зафиксировано (можно повторить)'
+                                              : netRem < 0 ? 'Добавить переплату в расходники' : 'Добавить остаток в дополнительно'}
+                                            style={{ padding: '3px 5px', background: cashFixed ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashFixed ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[recalcKey] ? 0.4 : 1 }}
+                                          >
+                                            {cashFixed ? (
+                                              <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+                                            ) : (
+                                              <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
+                                            )}
+                                          </button>
                                         )}
-                                      </button>
-                                    )}
-                                  </span>
+                                      </span>
+                                    </>
+                                  )}
+                                  {/* Выдачи до ver. 8.18 медцентра не знают. Показываем их один раз на
+                                      запись и в остаток медцентра не включаем — распределять выдумкой
+                                      нельзя, медцентр проставляется вручную в «Архив → Касса». */}
+                                  {unassignedCashTotal > 0 && (
+                                    <span
+                                      title="Выдача не привязана к медцентру и не вычтена из остатка. Укажите медцентр в разделе «Архив → Касса»"
+                                      style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#b45309' }}
+                                    >
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                                      </svg>
+                                      Касса без медцентра: −{fmtRub(unassignedCashTotal)}
+                                    </span>
+                                  )}
                                 </>
                               );
                             })()}
@@ -1468,13 +1480,18 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             </div>
                             {recCashPayments.length > 0 && (
                               <div style={{ borderTop: '2px dashed var(--green-200)', marginTop: 8, paddingTop: 10 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green-700)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green-700)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы — по врачу за период</div>
                                 {recCashPayments.map(p => (
                                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--green-50)' }}>
                                     <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120 }}>
                                       {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                     </span>
-                                    <span style={{ fontWeight: 600, color: 'var(--green-600)', flex: 1 }}>−{fmtRub(p.amount)}</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--green-600)', minWidth: 110 }}>−{fmtRub(p.amount)}</span>
+                                    <span style={{ flex: 1, color: p.clinicId ? 'var(--rb-text)' : '#b45309' }}>
+                                      {p.clinicId
+                                        ? (clinics.find(c => String(c.id) === String(p.clinicId))?.name || p.clinicId)
+                                        : 'без медцентра'}
+                                    </span>
                                     <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
                                     {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
                                   </div>

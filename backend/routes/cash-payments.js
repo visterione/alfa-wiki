@@ -27,12 +27,13 @@ router.post('/',
   body('misUserId').optional({ nullable: true }).isString().trim(),
   body('doctorName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
   body('periodLabel').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  body('clinicId').optional({ nullable: true }).isString().trim().isLength({ max: 50 }),
   body('amount').notEmpty().withMessage('amount обязателен').isFloat({ min: 0.01 }).withMessage('amount должен быть положительным числом'),
   body('note').optional({ nullable: true }).isString().isLength({ max: 1000 }),
   validate,
   async (req, res) => {
   try {
-    const { salaryRecordId, misUserId, doctorName, periodLabel, amount, note } = req.body;
+    const { salaryRecordId, misUserId, doctorName, periodLabel, clinicId, amount, note } = req.body;
 
     if (!salaryRecordId && !misUserId) {
       return res.status(400).json({ error: 'Необходим salaryRecordId или misUserId' });
@@ -61,6 +62,7 @@ router.post('/',
 
     const payment = await CashPayment.create({
       ...paymentData,
+      clinicId:       clinicId ? String(clinicId).trim() : null,
       amount:         parseFloat(amount),
       issuedAt:       new Date(),
       issuedByUserId: req.user.id,
@@ -77,7 +79,7 @@ router.post('/',
       misUserId:  paymentData.misUserId || null,
       doctorName: paymentData.doctorName || null,
       summary:    `Выдача из кассы: ${paymentData.doctorName || ''}, ${parseFloat(amount).toFixed(2)} ₽`,
-      diff:       { after: { amount: parseFloat(amount), periodLabel: paymentData.periodLabel, note } },
+      diff:       { after: { amount: parseFloat(amount), periodLabel: paymentData.periodLabel, clinicId: payment.clinicId, note } },
     });
 
     res.json(payment);
@@ -112,12 +114,13 @@ router.put('/:id',
   body('amount').optional({ nullable: true }).isFloat({ min: 0.01 }).withMessage('amount должен быть положительным числом'),
   body('note').optional({ nullable: true }).isString().isLength({ max: 1000 }),
   body('financistName').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  body('clinicId').optional({ nullable: true }).isString().isLength({ max: 50 }),
   validate,
   async (req, res) => {
   try {
     const payment = await CashPayment.findByPk(req.params.id);
     if (!payment) return res.status(404).json({ error: 'Not found' });
-    const { amount, note, financistName } = req.body;
+    const { amount, note, financistName, clinicId } = req.body;
 
     const changes = {};
     if (amount != null) {
@@ -138,6 +141,14 @@ router.put('/:id',
       if (oldName !== newName) changes.financistName = { from: oldName, to: newName };
       payment.financistName = newName;
     }
+    // Медцентр правят и у старых выдач, у которых его не было вовсе: именно так
+    // сводка начинает считать остаток по клинике, а не по врачу целиком.
+    if (clinicId !== undefined) {
+      const oldClinic = payment.clinicId || null;
+      const newClinic = clinicId ? String(clinicId).trim() : null;
+      if (oldClinic !== newClinic) changes.clinicId = { from: oldClinic, to: newClinic };
+      payment.clinicId = newClinic;
+    }
 
     if (Object.keys(changes).length > 0) {
       const editorName = formatFinancistName(req.user.displayName || req.user.username || '');
@@ -145,7 +156,7 @@ router.put('/:id',
       history.push({ editedBy: editorName, editedAt: new Date().toISOString(), changes });
       payment.editHistory = history;
 
-      const CASH_LABELS = { amount: 'Сумма', note: 'Комментарий', financistName: 'Кассир' };
+      const CASH_LABELS = { amount: 'Сумма', note: 'Комментарий', financistName: 'Кассир', clinicId: 'Медцентр' };
       const diffChanges = Object.entries(changes).map(([field, { from, to }]) => ({
         field,
         label: CASH_LABELS[field] || field,
@@ -189,7 +200,7 @@ router.delete('/:id', authenticate, async (req, res) => {
       misUserId:  payment.misUserId || null,
       doctorName: payment.doctorName || null,
       summary:    `Удалена выдача из кассы: ${payment.doctorName || ''}, ${parseFloat(payment.amount).toFixed(2)} ₽`,
-      diff:       { before: { amount: payment.amount, periodLabel: payment.periodLabel, note: payment.note } },
+      diff:       { before: { amount: payment.amount, periodLabel: payment.periodLabel, clinicId: payment.clinicId, note: payment.note } },
     });
 
     await payment.destroy();

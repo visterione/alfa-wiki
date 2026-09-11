@@ -270,6 +270,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
   const [editAmount, setEditAmount] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editFinancistName, setEditFinancistName] = useState('');
+  const [editClinicId, setEditClinicId] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
   const startEdit = (p) => {
@@ -277,13 +278,14 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
     setEditAmount(parseFloat(p.amount).toFixed(2));
     setEditNote(p.note || '');
     setEditFinancistName(p.financistName || '');
+    setEditClinicId(p.clinicId ? String(p.clinicId) : '');
   };
   const cancelEdit = () => setEditingPayId(null);
   const saveEdit = async (p) => {
     if (!onCashEdit) return;
     setEditSaving(true);
     try {
-      await onCashEdit(p.id, { amount: parseFloat(editAmount), note: editNote.trim() || null, financistName: editFinancistName.trim() || null });
+      await onCashEdit(p.id, { amount: parseFloat(editAmount), note: editNote.trim() || null, financistName: editFinancistName.trim() || null, clinicId: editClinicId || null });
       setEditingPayId(null);
     } finally {
       setEditSaving(false);
@@ -440,6 +442,18 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                         placeholder="Выдал..."
                         style={{ width: 110, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }}
                       />
+                      <select
+                        value={editClinicId}
+                        onChange={e => setEditClinicId(e.target.value)}
+                        title="Медцентр, за который выданы деньги"
+                        style={{ width: 130, padding: '2px 4px', fontSize: 12, border: `1px solid ${editClinicId ? 'var(--rb-border)' : 'var(--rb-danger)'}`, borderRadius: 4, background: 'var(--n-0)', boxSizing: 'border-box' }}
+                      >
+                        <option value="">— медцентр —</option>
+                        {reps.map((cr, i) => {
+                          const cl = (clinics || []).find(c => String(c.id) === String(cr.clinicId));
+                          return <option key={i} value={String(cr.clinicId)}>{cl ? cl.name : (cr.clinicLabel || cr.clinicId)}</option>;
+                        })}
+                      </select>
                       <input
                         type="text"
                         value={editNote}
@@ -458,7 +472,13 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                     </>
                   ) : (
                     <>
-                      <span style={{ fontWeight: 600, color: 'var(--green-600)', flex: 1 }}>−{fmtRub(p.amount)}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--green-600)', minWidth: 100 }}>−{fmtRub(p.amount)}</span>
+                      <span style={{ flex: 1, color: p.clinicId ? 'var(--rb-text)' : '#b45309' }}
+                        title={p.clinicId ? undefined : 'Медцентр не указан — в сводке такая выдача не вычитается из остатка медцентра'}>
+                        {p.clinicId
+                          ? ((clinics || []).find(c => String(c.id) === String(p.clinicId))?.name || p.clinicId)
+                          : 'без медцентра'}
+                      </span>
                       <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
                       {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
                       {onCashEdit && (
@@ -572,9 +592,19 @@ function StandalonePaymentsSection({ payments, fmtRub, readOnly, onCashDelete, o
 // ─── Cash payment modal ───────────────────────────────────────────────────────
 const MODAL_MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
-function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setCashNote, cashStandalonePeriod, setCashStandalonePeriod, cashStandaloneDoctor, setCashStandaloneDoctor, doctors = [], onSubmit, onClose, submitting }) {
+function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setCashNote, cashClinicId, setCashClinicId, cashStandalonePeriod, setCashStandalonePeriod, cashStandaloneDoctor, setCashStandaloneDoctor, doctors = [], clinics = [], onSubmit, onClose, submitting }) {
   const [doctorSearch, setDoctorSearch] = useState('');
   const [dropOpen, setDropOpen] = useState(false);
+
+  // У выдачи по зарплатному листу выбор ограничен медцентрами самой записи: выдать
+  // за медцентр, в котором врач в этом периоде не работал, нельзя.
+  const recordClinics = (cashModal.record?.reportData?.clinicReports || []).map(cr => {
+    const cl = clinics.find(c => String(c.id) === String(cr.clinicId));
+    return { id: String(cr.clinicId), name: cl ? cl.name : (cr.clinicLabel || String(cr.clinicId)) };
+  });
+  const clinicOptions = cashModal.isStandalone
+    ? clinics.map(c => ({ id: String(c.id), name: c.name }))
+    : recordClinics;
 
   const subtitle = cashModal.isStandalone
     ? 'Выплата без зарплатного листа'
@@ -584,7 +614,8 @@ function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setC
     .filter(d => !doctorSearch || d.name.toLowerCase().includes(doctorSearch.toLowerCase()))
     .slice(0, 40);
 
-  const canSubmit = cashAmount && (!cashModal.isStandalone || cashStandaloneDoctor);
+  // Медцентр обязателен: без него сводка не сможет отнести выдачу к остатку клиники.
+  const canSubmit = cashAmount && cashClinicId && (!cashModal.isStandalone || cashStandaloneDoctor);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -633,6 +664,13 @@ function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setC
             </div>
           </>
         )}
+
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Медцентр <span style={{ color: 'var(--rb-danger)' }}>*</span></label>
+        <select value={cashClinicId} onChange={e => setCashClinicId(e.target.value)}
+          style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: `1.5px solid ${cashClinicId ? 'var(--rb-primary)' : 'var(--rb-border)'}`, borderRadius: 6, marginBottom: 12, boxSizing: 'border-box', background: 'var(--n-0)' }}>
+          <option value="">— выберите медцентр —</option>
+          {clinicOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
 
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Сумма, ₽</label>
         <input type="number" min="0" step="0.01" value={cashAmount} onChange={e => setCashAmount(e.target.value)} autoFocus={!cashModal.isStandalone}
@@ -922,6 +960,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [cashNote, setCashNote]           = useState('');
   const [cashStandalonePeriod, setCashStandalonePeriod] = useState({ year: '', month: '' });
   const [cashStandaloneDoctor, setCashStandaloneDoctor] = useState(null); // { id, name }
+  const [cashClinicId, setCashClinicId]   = useState('');
   const [cashSubmitting, setCashSubmitting] = useState(false);
   const [kassaSearch, setKassaSearch]     = useState('');
   const [kassaSortDir, setKassaSortDir]   = useState('desc'); // 'asc' | 'desc'
@@ -930,6 +969,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [kassaEditAmount, setKassaEditAmount] = useState('');
   const [kassaEditNote, setKassaEditNote] = useState('');
   const [kassaEditFinancistName, setKassaEditFinancistName] = useState('');
+  const [kassaEditClinicId, setKassaEditClinicId] = useState('');
   const [kassaEditSaving, setKassaEditSaving] = useState(false);
 
   // Tabel archive
@@ -1039,6 +1079,9 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     setCashModal({ record });
     setCashAmount(netRemainder > 0 ? parseFloat(netRemainder).toFixed(2) : '');
     setCashNote('');
+    // Когда медцентр в записи один, выбирать нечего — подставляем его сразу.
+    const reps = record?.reportData?.clinicReports || [];
+    setCashClinicId(reps.length === 1 && reps[0].clinicId != null ? String(reps[0].clinicId) : '');
   }, []);
 
   const handleOpenStandaloneModal = useCallback(() => {
@@ -1048,6 +1091,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     setCashNote('');
     setCashStandalonePeriod({ year: String(now.getFullYear()), month: String(now.getMonth() + 1) });
     setCashStandaloneDoctor(null);
+    setCashClinicId('');
   }, []);
 
   const handleCashSubmit = async () => {
@@ -1065,6 +1109,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
           misUserId: doc.id,
           doctorName: doc.name,
           periodLabel,
+          clinicId: cashClinicId || null,
           amount: parseFloat(cashAmount),
           note: cashNote.trim() || undefined,
         });
@@ -1077,6 +1122,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       } else {
         const res = await cashPaymentsApi.create({
           salaryRecordId: cashModal.record.id,
+          clinicId: cashClinicId || null,
           amount: parseFloat(cashAmount),
           note: cashNote.trim() || undefined,
         });
@@ -1230,12 +1276,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     </div>
   );
 
-  const startKassaEdit = (p) => { setKassaEditId(p.id); setKassaEditAmount(parseFloat(p.amount).toFixed(2)); setKassaEditNote(p.note || ''); setKassaEditFinancistName(p.financistName || ''); };
+  const startKassaEdit = (p) => { setKassaEditId(p.id); setKassaEditAmount(parseFloat(p.amount).toFixed(2)); setKassaEditNote(p.note || ''); setKassaEditFinancistName(p.financistName || ''); setKassaEditClinicId(p.clinicId ? String(p.clinicId) : ''); };
   const cancelKassaEdit = () => setKassaEditId(null);
   const saveKassaEdit = async (p) => {
     setKassaEditSaving(true);
     try {
-      await handleCashEdit(p.id, { amount: parseFloat(kassaEditAmount), note: kassaEditNote.trim() || null, financistName: kassaEditFinancistName.trim() || null });
+      await handleCashEdit(p.id, { amount: parseFloat(kassaEditAmount), note: kassaEditNote.trim() || null, financistName: kassaEditFinancistName.trim() || null, clinicId: kassaEditClinicId || null });
       setKassaEditId(null);
     } catch { /* error already toasted */ } finally { setKassaEditSaving(false); }
   };
@@ -1967,6 +2013,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   <th style={{ width: 22, padding: '0 4px' }} />
                   <th>ФИО сотрудника</th>
                   <th>Период</th>
+                  <th>Медцентр</th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => { setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc'); setKassaPage(1); }}>
                     Дата выдачи {kassaSortDir === 'desc' ? '↓' : '↑'}
                   </th>
@@ -1984,6 +2031,21 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                     </td>
                     <td style={{ fontWeight: 500 }}>{p.doctorName}</td>
                     <td>{p.periodLabel || '—'}</td>
+                    <td>
+                      {kassaEditId === p.id ? (
+                        <select value={kassaEditClinicId} onChange={e => setKassaEditClinicId(e.target.value)}
+                          style={{ width: '100%', padding: '2px 4px', fontSize: 12, border: `1px solid ${kassaEditClinicId ? 'var(--rb-border)' : 'var(--rb-danger)'}`, borderRadius: 4, background: 'var(--n-0)', boxSizing: 'border-box' }}>
+                          <option value="">— медцентр —</option>
+                          {(clinics || []).map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                        </select>
+                      ) : p.clinicId ? (
+                        ((clinics || []).find(c => String(c.id) === String(p.clinicId))?.name || p.clinicId)
+                      ) : (
+                        <span style={{ color: '#b45309' }} title="Медцентр не указан — в сводке такая выдача не вычитается из остатка медцентра">
+                          не указан
+                        </span>
+                      )}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
@@ -2045,7 +2107,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--rb-border)' }}>
-                  <td colSpan={4} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8, border: 'none' }}>
+                  <td colSpan={5} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8, border: 'none' }}>
                     {kassaSearch ? `${kassaFiltered.length} из ${kassaData.length} записей` : `${kassaData.length} записей`}
                     {kassaTotalPages > 1 && (
                       <span style={{ fontWeight: 400, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
@@ -2096,7 +2158,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             )}
           </div>
         )}
-        {cashModal?.isStandalone && <CashPaymentModal cashModal={cashModal} cashAmount={cashAmount} setCashAmount={setCashAmount} cashNote={cashNote} setCashNote={setCashNote} cashStandalonePeriod={cashStandalonePeriod} setCashStandalonePeriod={setCashStandalonePeriod} cashStandaloneDoctor={cashStandaloneDoctor} setCashStandaloneDoctor={setCashStandaloneDoctor} doctors={doctors} onSubmit={handleCashSubmit} onClose={() => setCashModal(null)} submitting={cashSubmitting} />}
+        {cashModal?.isStandalone && <CashPaymentModal cashModal={cashModal} cashAmount={cashAmount} setCashAmount={setCashAmount} cashNote={cashNote} setCashNote={setCashNote} cashClinicId={cashClinicId} setCashClinicId={setCashClinicId} cashStandalonePeriod={cashStandalonePeriod} setCashStandalonePeriod={setCashStandalonePeriod} cashStandaloneDoctor={cashStandaloneDoctor} setCashStandaloneDoctor={setCashStandaloneDoctor} doctors={doctors} clinics={clinics} onSubmit={handleCashSubmit} onClose={() => setCashModal(null)} submitting={cashSubmitting} />}
       </>
     );
   }
@@ -2246,7 +2308,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         </>
       )}
 
-      {cashModal && <CashPaymentModal cashModal={cashModal} cashAmount={cashAmount} setCashAmount={setCashAmount} cashNote={cashNote} setCashNote={setCashNote} cashStandalonePeriod={cashStandalonePeriod} setCashStandalonePeriod={setCashStandalonePeriod} onSubmit={handleCashSubmit} onClose={() => setCashModal(null)} submitting={cashSubmitting} doctorName={selectedDoctor?.name} />}
+      {cashModal && <CashPaymentModal cashModal={cashModal} cashAmount={cashAmount} setCashAmount={setCashAmount} cashNote={cashNote} setCashNote={setCashNote} cashClinicId={cashClinicId} setCashClinicId={setCashClinicId} cashStandalonePeriod={cashStandalonePeriod} setCashStandalonePeriod={setCashStandalonePeriod} clinics={clinics} onSubmit={handleCashSubmit} onClose={() => setCashModal(null)} submitting={cashSubmitting} doctorName={selectedDoctor?.name} />}
     </>
   );
 }
