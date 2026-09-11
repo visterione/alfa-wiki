@@ -171,6 +171,13 @@ async function upsertSubscriber(bot, update, patch = {}) {
     username: update.from.username,
     firstName: update.from.firstName,
     lastName: update.from.lastName,
+    // Человек пишет нашему боту — значит это уже не выгрузка, чем бы строка ни
+    // была заведена (ver. 8.17). Раньше source проставлялся только при
+    // создании, и подписчик, приехавший из Fromni, оставался 'import' навсегда:
+    // /start обновлял строку, но происхождение не менял. Пока отправщик читал
+    // source как право на доставку, такой человек не получал ничего в бот и
+    // починить это из интерфейса было нельзя.
+    source: 'bot',
     // Человек вернулся и пишет — значит бот точно не заблокирован.
     isBlocked: false,
     blockedAt: null
@@ -184,7 +191,6 @@ async function upsertSubscriber(bot, update, patch = {}) {
   return BotSubscriber.create({
     ...where,
     ...base,
-    source: 'bot',
     status: 'started',
     startedAt: new Date(),
     ...patch

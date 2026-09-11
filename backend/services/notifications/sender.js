@@ -16,7 +16,7 @@
 
 const { Op } = require('sequelize');
 const { NotifOutbox, NotifAppointment, BotSubscriber, MessengerBot, Setting,
-        NotifTemplate, MedCenter, sequelize } = require('../../models');
+        NotifTemplate } = require('../../models');
 const { getChannel } = require('../messengers');
 const fromni = require('../messengers/fromni');
 const imobis = require('../messengers/imobis');
@@ -25,6 +25,7 @@ const settings = require('./settings');
 const safety = require('./safety');
 const consent = require('./consent');
 const doctorBlocklist = require('./doctorBlocklist');
+const branches = require('./branches');
 
 // Какой организации принадлежит клиника МИС. Нужно, чтобы уйти во Fromni под
 // правильным аккаунтом: у каждой организации он свой. Заполняется в настройках,
@@ -60,14 +61,31 @@ async function subscriberFor(phone, platform = null) {
 
   const rows = await BotSubscriber.findAll({
     where: {
-      phone: normalized, isBlocked: false, source: 'bot',
+      phone: normalized, isBlocked: false,
+      // По source здесь не отбираем (ver. 8.17). Раньше стояло source: 'bot', и
+      // это был неверный вопрос: source — откуда мы узнали о человеке, а не
+      // можем ли мы ему написать. Написать можно тогда, когда у подписки есть
+      // наш живой бот, и ровно это проверяет цикл ниже.
+      //
+      // ЧТО БЫЛО НЕ ТАК. Строка, приехавшая выгрузкой из Fromni, остаётся
+      // source: 'import' навсегда: dialog.upsertSubscriber проставляет source
+      // только при создании, а человек, уже лежащий в выгрузке, новую строку не
+      // заводит — у неё тот же ключ (платформа, организация, id пользователя).
+      // Он нажимал /start, делился номером, блокировал и разблокировал бота;
+      // подписка обрастала botId и статусом «опознан», а отправщик её всё равно
+      // не находил — и каскад молча уходил на SMS. Снаружи это выглядело как
+      // «телеграм не работает», а в журнале не было даже причины: ступень бота
+      // пропускалась без записи.
+      //
       // С 8.04 Telegram и MAX — отдельные ступени каскада, и спрашивают всегда
       // про одну из них. Раньше ступень называлась «bot» и брала первую
       // подходящую подписку, из-за чего поднять MAX выше Telegram было нельзя:
       // они шли одним шагом, и порядок решала выдача из базы.
       ...(platform ? { platform } : {})
     },
-    order: [['identifiedAt', 'DESC']]
+    // NULLS LAST: у выгрузки телефон опознан не был, и без этого Postgres
+    // ставит такие строки первыми — впереди той, где человек назвался сам.
+    order: [['identifiedAt', 'DESC NULLS LAST']]
   });
 
   for (const row of rows) {
@@ -127,26 +145,11 @@ async function cascadeOfEvent(event, medCenterId) {
   return picked;
 }
 
-// Филиал портала по названию клиники из МИС. Сопоставление по имени, как в
-// templates.clinicInfo: своего идентификатора медцентра МИС не отдаёт, а
-// названия совпадают — на этом уже держится подстановка адреса и телефона.
-// Держим в памяти: справочник филиалов меняется раз в год, а спрашивают его на
-// каждую строку очереди.
-const branchByClinic = new Map();
-
-async function medCenterFor(clinicName) {
-  if (!clinicName) return null;
-
-  const key = String(clinicName).trim().toLowerCase();
-  if (branchByClinic.has(key)) return branchByClinic.get(key);
-
-  const mc = await MedCenter.findOne({
-    where: sequelize.where(sequelize.fn('lower', sequelize.col('name')), key)
-  });
-  const id = mc ? mc.id : null;
-  branchByClinic.set(key, id);
-  return id;
-}
+// Филиал портала по клинике визита — общим сопоставлением модуля (ver. 8.17),
+// по id клиники МИС с запасным вариантом по имени. Своё сопоставление по имени
+// жило здесь до 8.17 и расходилось со справочником ровно там же, где остальные
+// два; см. шапку branches.js.
+const medCenterFor = (snap) => branches.idFor(snap);
 
 /**
  * Текст, который уходит по конкретному каналу (ver. 8.03).
@@ -291,7 +294,13 @@ async function deliver(item, clinicId = null, medCenterId = null) {
       }
 
       const found = await subscriberFor(item.phone, platform);
-      if (!found) continue;
+      if (!found) {
+        // Причину записываем обязательно. Молчаливый continue был здесь самой
+        // дорогой строкой модуля: ступень бота пропускалась без следа, и
+        // «почему не пришло в телеграм» приходилось выяснять по базе.
+        lastError = `${platform}: по этому номеру нет подписки на наш бот`;
+        continue;
+      }
 
       try {
         const channel = getChannel(platform);
@@ -577,7 +586,7 @@ async function runOnce(limit = 100) {
       });
       clinicId = snap ? snap.clinicId : null;
       // Филиал портала — для его собственных настроек и текстов (ver. 8.03).
-      medCenterId = snap ? await medCenterFor(snap.clinicName) : null;
+      medCenterId = snap ? await medCenterFor(snap) : null;
     }
 
     try {

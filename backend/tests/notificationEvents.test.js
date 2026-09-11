@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { eventFor, dedupKey, parseMisDate, toSnapshot } = require('../services/notifications/detector');
+const { eventFor, dedupKey, parseMisDate, toSnapshot, windowFor } = require('../services/notifications/detector');
 const {
   render, valuesFor, firstName, shortDoctor, templatesForEvent
 } = require('../services/notifications/templates');
@@ -101,6 +101,61 @@ test('снимок сохраняет данные для расширенных
   assert.equal(snap.reserveSpecialty, 'Терапевт, Кардиолог');
   assert.equal(snap.room, '305');
   assert.equal(snap.reserveAuthorName, 'Сидорова Анна');
+});
+
+// ── Окно опроса МИС ───────────────────────────────────────────────────────
+//
+// Разбирается отдельно, потому что именно здесь однажды встали уведомления по
+// всей сети: окно росло от водяного знака до «сейчас», переставало помещаться
+// в таймаут МИС, и перезапуск процесса ничего не менял — знак лежит в базе.
+
+test('первый запуск берёт последнюю минуту, а не всю историю', () => {
+  const now = at('2026-09-11T12:00:00Z');
+  const { from, to, skippedFrom } = windowFor(null, now);
+
+  assert.equal(from.toISOString(), '2026-09-11T11:59:00.000Z');
+  assert.equal(to.toISOString(), now.toISOString());
+  assert.equal(skippedFrom, null);
+});
+
+test('обычный заход начинается с нахлёстом назад и кончается сейчас', () => {
+  const now = at('2026-09-11T12:00:00Z');
+  const { from, to, skippedFrom } = windowFor(at('2026-09-11T11:59:00Z'), now);
+
+  // Нахлёст — 90 секунд: часы МИС и наши расходятся, повторы отсекает ключ.
+  assert.equal(from.toISOString(), '2026-09-11T11:57:30.000Z');
+  assert.equal(to.toISOString(), now.toISOString());
+  assert.equal(skippedFrom, null);
+});
+
+test('отставший детектор идёт шагами, а не просит весь отрезок разом', () => {
+  const now = at('2026-09-11T12:00:00Z');
+  // Знак отстал на полтора часа — в MAX_GAP_MS это ещё укладывается.
+  const { from, to, skippedFrom } = windowFor(at('2026-09-11T10:30:00Z'), now);
+
+  assert.equal(from.toISOString(), '2026-09-11T10:28:30.000Z');
+  assert.equal(to.toISOString(), '2026-09-11T10:58:30.000Z');
+  assert.ok(to < now, 'верхняя граница не дотягивается до «сейчас» одним шагом');
+  assert.equal(skippedFrom, null);
+});
+
+test('суточный перерыв не догоняется: знак переносится к текущему моменту', () => {
+  const now = at('2026-09-11T12:00:00Z');
+  const { from, to, skippedFrom } = windowFor(at('2026-09-10T09:06:11Z'), now);
+
+  assert.ok(skippedFrom, 'о пропуске надо сообщить наружу');
+  assert.equal(from.toISOString(), '2026-09-11T11:30:00.000Z');
+  assert.equal(to.toISOString(), now.toISOString());
+});
+
+test('окно никогда не шире получаса, сколько бы детектор ни стоял', () => {
+  const now = at('2026-09-11T12:00:00Z');
+  for (const behind of [0, 1, 60, 3600, 86400, 86400 * 30]) {
+    const { from, to } = windowFor(new Date(now.getTime() - behind * 1000), now);
+    assert.ok(to.getTime() - from.getTime() <= 30 * 60 * 1000,
+      `отставание ${behind}с дало окно шире получаса`);
+    assert.ok(to > from, `отставание ${behind}с дало пустое окно`);
+  }
 });
 
 // ── Шаблоны ───────────────────────────────────────────────────────────────

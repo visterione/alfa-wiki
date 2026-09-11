@@ -10,12 +10,12 @@
  * где doctor_id ещё не сохранялся.
  */
 
-const { Setting, MedCenter, sequelize } = require('../../models');
+const { Setting } = require('../../models');
+const branchDirectory = require('./branches');
 
 const KEY = 'notif_blocked_doctors';
 const CACHE_MS = 60 * 1000;
 let cache = { at: 0, state: { default: [], branches: {} } };
-const medCenterCache = new Map();
 
 function cleanName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
@@ -103,25 +103,19 @@ function matches(snap, doctors) {
   ));
 }
 
-async function medCenterIdFor(clinicName) {
-  const key = cleanName(clinicName).toLocaleLowerCase('ru-RU');
-  if (!key) return null;
-  if (medCenterCache.has(key)) return medCenterCache.get(key);
-  const row = await MedCenter.findOne({
-    where: sequelize.where(sequelize.fn('lower', sequelize.col('name')), key),
-    attributes: ['id']
-  });
-  const id = row?.id || null;
-  medCenterCache.set(key, id);
-  return id;
-}
+// Филиал портала по клинике визита — общим сопоставлением модуля (ver. 8.17).
+// Здесь промах опаснее, чем кажется: не найдя филиала, стоп-лист берёт список
+// default, а он с 8.15 пуст у сети, где настроен хотя бы один филиал. То есть
+// служебный врач филиала, чьё имя разошлось со справочником, переставал
+// блокироваться — и «вы записаны к врачу Дневной стационар» уходило пациенту.
+const medCenterIdFor = (snap) => branchDirectory.idFor(snap);
 
 function matchesFor(snap, state, medCenterId) {
   return matches(snap, doctorsFor(state, medCenterId));
 }
 
 async function isBlocked(snap, medCenterId = null) {
-  const branchId = medCenterId || await medCenterIdFor(snap?.clinicName);
+  const branchId = medCenterId || await medCenterIdFor(snap);
   return matchesFor(snap, await readAll(), branchId);
 }
 

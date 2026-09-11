@@ -9,7 +9,8 @@
  * сам, тогда как `{{patient_first_name}}` придётся каждый раз подсматривать.
  */
 
-const { NotifTemplate, MedCenter, Organization, sequelize } = require('../../models');
+const { NotifTemplate } = require('../../models');
+const branches = require('./branches');
 
 const WEEKDAYS = ['воскресенье', 'понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу'];
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -143,23 +144,19 @@ function valuesFor(snap, extra = {}) {
 }
 
 /**
- * Данные клиники. Название берём прямо из визита — МИС отдаёт его готовой
- * строкой, и сопоставлять справочники ради подстановки незачем. Адрес и телефон
- * есть только у нас, поэтому их ищем по имени; не нашли — подстановки останутся
- * пустыми, но уведомление всё равно уйдёт.
+ * Данные клиники. Название в подстановку берём прямо из визита — МИС отдаёт его
+ * готовой строкой, и ровно так пациент привык слышать клинику. Адрес, телефон и
+ * юрлицо есть только у нас, поэтому филиал ищется в справочнике; не нашёлся —
+ * подстановки останутся пустыми.
+ *
+ * Поиск — общий для всего модуля (ver. 8.17), по id клиники с запасным
+ * сопоставлением по имени. Здесь у промаха цена выше, чем пустая подстановка:
+ * без medCenterId шаблоны филиала не найдутся и событие не заведётся вовсе.
  */
 async function clinicInfo(snap) {
   const clinicName = snap.clinicName || '';
-  if (!clinicName) return {};
-
-  const mc = await MedCenter.findOne({
-    where: sequelize.where(
-      sequelize.fn('lower', sequelize.col('name')),
-      clinicName.trim().toLowerCase()
-    ),
-    include: [{ model: Organization, as: 'organization', attributes: ['name', 'phone'], required: false }]
-  });
-  if (!mc) return { clinicName };
+  const mc = await branches.find(snap);
+  if (!mc) return clinicName ? { clinicName } : {};
 
   const phones = Array.isArray(mc.phones) ? mc.phones : [];
   const clinicPhone = phones.length
