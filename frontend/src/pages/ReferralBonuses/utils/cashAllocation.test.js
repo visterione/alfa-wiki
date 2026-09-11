@@ -24,7 +24,7 @@ test('выдача с медцентром попадает только в ег
   rows.forEach(r => expect(map.get(r.key).unassigned).toHaveLength(0));
 });
 
-test('выдача без медцентра показывается один раз, а не в каждой строке', () => {
+test('старая выдача без медцентра остаётся выплатой по врачу и показывается один раз', () => {
   const map = allocateCashByRow(rows, { 'rec-1': [payment('p1', 33325, null)] });
 
   expect(sumCash(map.get('rec-1_0').unassigned)).toBe(33325);
@@ -50,7 +50,7 @@ test('несколько выдач по одному медцентру скл�
   expect(sumCash(map.get('rec-1_0').unassigned)).toBe(200);
 });
 
-test('выдача с медцентром, которого нет в записи, не теряется', () => {
+test('выдача с медцентром, которого нет в записи, не теряется — считается как старая', () => {
   const map = allocateCashByRow(rows, { 'rec-1': [payment('p1', 700, '99')] });
 
   expect(sumCash(map.get('rec-1_0').unassigned)).toBe(700);

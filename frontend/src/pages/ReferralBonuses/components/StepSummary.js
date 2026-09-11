@@ -19,6 +19,13 @@ function downloadBlob(blob, filename) {
 const fmtRub = v =>
   parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 
+// Вся касса, показанная в строке: своя по медцентру плюс выдачи без медцентра,
+// которые висят на первой строке записи.
+function rowCashPaid(byRow, key) {
+  const b = byRow.get(key) || { assigned: [], unassigned: [] };
+  return sumCash(b.assigned) + sumCash(b.unassigned);
+}
+
 // Вычисляет остаток к доплате (к выплате = финалсалари − аванс − тело − доп.выплаты)
 function calcRemainder(sal) {
   if (!sal) return 0;
@@ -890,8 +897,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const writtenOff = !!(rec.reportData?.bonusWriteOff?.[key]);
         // Списанная премия — «хвост», от которого отказались: в выплате обнуляем.
         const remainder = writtenOff ? 0 : calcRemainder(s);
-        const buckets = liveCashByRow.get(key) || { assigned: [], unassigned: [] };
-        const cashPaid = writtenOff ? 0 : sumCash(buckets.assigned) + sumCash(buckets.unassigned);
+        const cashPaid = writtenOff ? 0 : rowCashPaid(liveCashByRow, key);
         ws.addRow({
           name:      rec.doctorName || '—',
           bonus:     remainder,
@@ -989,10 +995,11 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const _rowExtraTotal = (s.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
         const remainder = calcRemainder(s);
         const buckets = liveCashByRow.get(key) || { assigned: [], unassigned: [] };
-        // Остаток закрывает только касса своего медцентра. Нераспределённые выдачи
-        // в столбце видны, но остаток медцентра не трогают — как и в таблице.
+        // Касса вычитается из остатка той строки, в которой показана: у выдачи со
+        // своим медцентром это его строка, у выдачи без медцентра — первая строка
+        // записи, как было до ver. 8.18.
         const cashPaid = sumCash(buckets.assigned) + sumCash(buckets.unassigned);
-        const netRemainder = remainder - sumCash(buckets.assigned);
+        const netRemainder = remainder - cashPaid;
         // Списанная переплата — обнуляем в столбце «Переплата», списанная премия — в «Премия».
         const overpayWrittenOff = !!(rec.reportData?.overpayWriteOff?.[key]);
         const bonusWrittenOff   = !!(rec.reportData?.bonusWriteOff?.[key]);
@@ -1043,10 +1050,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       });
 
       // Итоговая строка
-      const excelCashTotal = filtered.reduce((acc, { key }) => {
-        const b = liveCashByRow.get(key) || { assigned: [], unassigned: [] };
-        return acc + sumCash(b.assigned) + sumCash(b.unassigned);
-      }, 0);
+      const excelCashTotal = filtered.reduce((acc, { key }) => acc + rowCashPaid(liveCashByRow, key), 0);
       const totalRow = ws.addRow({
         name:       'ИТОГО',
         total:      filtered.reduce((s, r) => {
@@ -1063,12 +1067,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         }, 0),
         bonus:   filtered.reduce((s, r) => {
           if (r.rec.reportData?.bonusWriteOff?.[r.key]) return s;
-          const net = calcRemainder(r.cr?.salary) - sumCash((liveCashByRow.get(r.key) || {}).assigned);
+          const net = calcRemainder(r.cr?.salary) - rowCashPaid(liveCashByRow, r.key);
           return s + (net >= 0 ? net : 0);
         }, 0),
         overpay: filtered.reduce((s, r) => {
           if (r.rec.reportData?.overpayWriteOff?.[r.key]) return s;
-          const net = calcRemainder(r.cr?.salary) - sumCash((liveCashByRow.get(r.key) || {}).assigned);
+          const net = calcRemainder(r.cr?.salary) - rowCashPaid(liveCashByRow, r.key);
           return s + (net < 0 ? net : 0);
         }, 0),
         cashPaid: excelCashTotal || null,
@@ -1118,10 +1122,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         // Итог по кассе — сумма того, что попало в видимые строки. При отборе по
         // медцентру выдачи скрытых клиник в него не входят, иначе плашка не сходилась
         // бы со столбцом.
-        const totalCashPaid = filtered.reduce((acc, { key }) => {
-          const b = cashByRow.get(key) || { assigned: [], unassigned: [] };
-          return acc + sumCash(b.assigned) + sumCash(b.unassigned);
-        }, 0);
+        const totalCashPaid = filtered.reduce((acc, { key }) => acc + rowCashPaid(cashByRow, key), 0);
         return (
         <>
         {/* ── Totals bar — всегда виден ── */}
@@ -1258,14 +1259,18 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 const remainder   = calcRemainder(s);
                 const bonus       = remainder >= 0 ? remainder : 0;
                 const overpay     = remainder < 0  ? remainder : 0;
-                // Флаг фиксации до ver. 8.18 хранился по записи — читаем и старый ключ,
-                // чтобы галочка не пропала на уже обработанных записях.
-                const cashFixed   = !!(cashOverpayDone[key] || cashOverpayDone[rec.id]);
                 const rowCashBuckets   = cashByRow.get(key) || { assigned: [], unassigned: [] };
                 const rowCashTotal        = sumCash(rowCashBuckets.assigned);
-                const unassignedCashTotal = sumCash(rowCashBuckets.unassigned);
+                const legacyCashTotal     = sumCash(rowCashBuckets.unassigned);
                 // Остаток медцентра: его собственный остаток минус выданное за него из кассы.
                 const netRem      = remainder - rowCashTotal;
+                const cashFixed   = !!cashOverpayDone[key];
+                // Выдачи без медцентра остаются тем, чем были: выплатой врачу за период
+                // целиком. Считаем и показываем их ровно как до ver. 8.18 — от общего
+                // остатка по всем медцентрам записи, — только один раз, а не в каждой
+                // строке. Флаг фиксации у них тоже прежний, по записи.
+                const legacyRem   = (rec.reportData?.clinicReports || []).reduce((acc, c) => acc + calcRemainder(c.salary || {}), 0) - legacyCashTotal;
+                const legacyFixed = !!cashOverpayDone[rec.id];
                 const isOpen    = expandedKey === key;
                 const dateLabel = rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '—');
                 const recalcKey = key;
@@ -1299,7 +1304,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ fontWeight: 700, color: 'var(--accent-800)' }}>{fmtRub(total)}</div>
-                        {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0 || rowCashTotal > 0 || unassignedCashTotal > 0) && (
+                        {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0 || rowCashTotal > 0 || legacyCashTotal > 0) && (
                           <div style={{ fontSize: 11, color: 'var(--rb-text)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
                             {(body + extraTotal) > 0 && <span>Основная ЗП: {fmtRub(body + extraTotal)}</span>}
@@ -1337,47 +1342,37 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                               </span>
                             )}
                             {(() => {
-                              if (rowCashTotal === 0 && unassignedCashTotal === 0) return null;
+                              if (rowCashTotal === 0 && legacyCashTotal === 0) return null;
+                              const cashBlock = (total, net, fixed, flagKey) => (
+                                <>
+                                  <span style={{ color: 'var(--green-700)' }}>Касса: −{fmtRub(total)}</span>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ color: net < 0 ? (fixed ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {net < 0 ? '−' : ''}{fmtRub(Math.abs(net))}</span>
+                                    {net !== 0 && (
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleCashOverpay(rec, flagKey, net, dateLabel, cr?.clinicId); }}
+                                        disabled={!!cashOverpayLoading[flagKey]}
+                                        title={fixed
+                                          ? 'Уже зафиксировано (можно повторить)'
+                                          : net < 0 ? 'Добавить переплату в расходники' : 'Добавить остаток в дополнительно'}
+                                        style={{ padding: '3px 5px', background: fixed ? '#f0fdf4' : '#f8fafc', border: `1px solid ${fixed ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[flagKey] ? 0.4 : 1 }}
+                                      >
+                                        {fixed ? (
+                                          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+                                        ) : (
+                                          <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
+                                        )}
+                                      </button>
+                                    )}
+                                  </span>
+                                </>
+                              );
                               return (
                                 <>
-                                  {rowCashTotal > 0 && (
-                                    <>
-                                      <span style={{ color: 'var(--green-700)' }}>Касса: −{fmtRub(rowCashTotal)}</span>
-                                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <span style={{ color: netRem < 0 ? (cashFixed ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
-                                        {netRem !== 0 && (
-                                          <button
-                                            onClick={e => { e.stopPropagation(); handleCashOverpay(rec, recalcKey, netRem, dateLabel, cr?.clinicId); }}
-                                            disabled={!!cashOverpayLoading[recalcKey]}
-                                            title={cashFixed
-                                              ? 'Уже зафиксировано (можно повторить)'
-                                              : netRem < 0 ? 'Добавить переплату в расходники' : 'Добавить остаток в дополнительно'}
-                                            style={{ padding: '3px 5px', background: cashFixed ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashFixed ? 'var(--green-300)' : 'var(--n-200)'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[recalcKey] ? 0.4 : 1 }}
-                                          >
-                                            {cashFixed ? (
-                                              <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
-                                            ) : (
-                                              <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
-                                            )}
-                                          </button>
-                                        )}
-                                      </span>
-                                    </>
-                                  )}
-                                  {/* Выдачи до ver. 8.18 медцентра не знают. Показываем их один раз на
-                                      запись и в остаток медцентра не включаем — распределять выдумкой
-                                      нельзя, медцентр проставляется вручную в «Архив → Касса». */}
-                                  {unassignedCashTotal > 0 && (
-                                    <span
-                                      title="Выдача не привязана к медцентру и не вычтена из остатка. Укажите медцентр в разделе «Архив → Касса»"
-                                      style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#b45309' }}
-                                    >
-                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                                      </svg>
-                                      Касса без медцентра: −{fmtRub(unassignedCashTotal)}
-                                    </span>
-                                  )}
+                                  {/* Касса своего медцентра — остаток по нему одному. */}
+                                  {rowCashTotal > 0 && cashBlock(rowCashTotal, netRem, cashFixed, recalcKey)}
+                                  {/* Касса без медцентра — прежний остаток по врачу за период. */}
+                                  {legacyCashTotal > 0 && cashBlock(legacyCashTotal, legacyRem, legacyFixed, rec.id)}
                                 </>
                               );
                             })()}
@@ -1480,17 +1475,17 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             </div>
                             {recCashPayments.length > 0 && (
                               <div style={{ borderTop: '2px dashed var(--green-200)', marginTop: 8, paddingTop: 10 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green-700)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы — по врачу за период</div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green-700)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
                                 {recCashPayments.map(p => (
                                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--green-50)' }}>
                                     <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120 }}>
                                       {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                     <span style={{ fontWeight: 600, color: 'var(--green-600)', minWidth: 110 }}>−{fmtRub(p.amount)}</span>
-                                    <span style={{ flex: 1, color: p.clinicId ? 'var(--rb-text)' : '#b45309' }}>
+                                    <span style={{ flex: 1, color: 'var(--rb-text)' }}>
                                       {p.clinicId
                                         ? (clinics.find(c => String(c.id) === String(p.clinicId))?.name || p.clinicId)
-                                        : 'без медцентра'}
+                                        : ''}
                                     </span>
                                     <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
                                     {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}

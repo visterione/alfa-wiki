@@ -446,7 +446,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                         value={editClinicId}
                         onChange={e => setEditClinicId(e.target.value)}
                         title="Медцентр, за который выданы деньги"
-                        style={{ width: 130, padding: '2px 4px', fontSize: 12, border: `1px solid ${editClinicId ? 'var(--rb-border)' : 'var(--rb-danger)'}`, borderRadius: 4, background: 'var(--n-0)', boxSizing: 'border-box' }}
+                        style={{ width: 130, padding: '2px 4px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, background: 'var(--n-0)', boxSizing: 'border-box' }}
                       >
                         <option value="">— медцентр —</option>
                         {reps.map((cr, i) => {
@@ -473,11 +473,10 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                   ) : (
                     <>
                       <span style={{ fontWeight: 600, color: 'var(--green-600)', minWidth: 100 }}>−{fmtRub(p.amount)}</span>
-                      <span style={{ flex: 1, color: p.clinicId ? 'var(--rb-text)' : '#b45309' }}
-                        title={p.clinicId ? undefined : 'Медцентр не указан — в сводке такая выдача не вычитается из остатка медцентра'}>
+                      <span style={{ flex: 1, color: 'var(--rb-text)' }}>
                         {p.clinicId
                           ? ((clinics || []).find(c => String(c.id) === String(p.clinicId))?.name || p.clinicId)
-                          : 'без медцентра'}
+                          : ''}
                       </span>
                       <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
                       {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
@@ -2034,16 +2033,14 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                     <td>
                       {kassaEditId === p.id ? (
                         <select value={kassaEditClinicId} onChange={e => setKassaEditClinicId(e.target.value)}
-                          style={{ width: '100%', padding: '2px 4px', fontSize: 12, border: `1px solid ${kassaEditClinicId ? 'var(--rb-border)' : 'var(--rb-danger)'}`, borderRadius: 4, background: 'var(--n-0)', boxSizing: 'border-box' }}>
+                          style={{ width: '100%', padding: '2px 4px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, background: 'var(--n-0)', boxSizing: 'border-box' }}>
                           <option value="">— медцентр —</option>
                           {(clinics || []).map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                         </select>
                       ) : p.clinicId ? (
                         ((clinics || []).find(c => String(c.id) === String(p.clinicId))?.name || p.clinicId)
                       ) : (
-                        <span style={{ color: '#b45309' }} title="Медцентр не указан — в сводке такая выдача не вычитается из остатка медцентра">
-                          не указан
-                        </span>
+                        <span style={{ color: 'var(--rb-text-secondary)' }}>—</span>
                       )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
