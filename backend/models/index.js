@@ -4760,6 +4760,17 @@ const {
 
 associateOnboarding({ User, MedCenter });
 
+// === ВАКАНСИИ (ver. 8.20) ===
+// Второе поколение онбординга, живёт параллельно с первым и заменит его, когда
+// сюда переедут заявки. Отдельный файл по той же причине, что склад и
+// онбординг: десять моделей в index.js потерялись бы.
+const {
+  models: vacancyModels,
+  associateVacancies,
+} = require('./vacancies')(sequelize, DataTypes);
+
+associateVacancies({ User, MedCenter });
+
 MessengerBot.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 NotifBranchSettings.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 NotifTemplate.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
@@ -4769,6 +4780,7 @@ module.exports = {
   Sequelize,
   ...warehouseModels,
   ...onboardingModels,
+  ...vacancyModels,
   Role,
   User,
   Folder,

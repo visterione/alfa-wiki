@@ -344,6 +344,7 @@ if (process.env.NODE_ENV !== 'test') {
 const { chatFileGuard } = require('./services/fileAccess');
 const { secureUploadHeaders } = require('./middleware/uploadSafety');
 const { onboardingFileGuard } = require('./services/onboarding/files');
+const { vacancyFileGuard } = require('./services/vacancies/files');
 
 // Static files with proper MIME types
 const setUploadHeaders = (res, filePath) => {
@@ -381,6 +382,14 @@ app.use('/uploads/chat-attachments', chatFileGuard, express.static(
 // express.static отдаёт файл любому, кто знает его имя.
 app.use('/uploads/onboarding', onboardingFileGuard, express.static(
   path.join(__dirname, 'uploads/onboarding'),
+  { setHeaders: secureUploadHeaders(setUploadHeaders) }
+));
+
+// Файлы анкет раздела «Вакансии» — отдельная папка со своим guard'ом по той же
+// причине. Второе поколение не делит с первым ни таблицы, ни каталог: старый
+// модуль уедет целиком, и разбирать общую папку по именам файлов не придётся.
+app.use('/uploads/vacancies', vacancyFileGuard, express.static(
+  path.join(__dirname, 'uploads/vacancies'),
   { setHeaders: secureUploadHeaders(setUploadHeaders) }
 ));
 
@@ -471,6 +480,13 @@ app.use('/api/mis-appointments',    misAppointmentsRoutes);
 app.use('/api/mis-payments',        misPaymentsRoutes);
 app.use('/api/directories',         directoriesRoutes);
 app.use('/api/onboarding',          require('./routes/onboarding'));
+// Порядок важен. Первый роутер — ежедневная работа (заявки, задачи): её видит
+// и тот, кто назначен исполнителем, а не только админ. Второй — настройка
+// (шаблоны, вакансии, исполнители), и он закрыт правом админа целиком. Пути у
+// них не пересекаются, поэтому запрос к настройке проходит первый роутер
+// насквозь и упирается в проверку второго.
+app.use('/api/vacancies',           require('./routes/vacancyWork'));
+app.use('/api/vacancies',           require('./routes/vacancies'));
 app.use('/api/ambulance-reports',   ambulanceReportsRoutes);
 app.use('/api/certificate-registry', certificateRegistryRoutes);
 app.use('/api/doctor-day-report',   doctorDayReportRoutes);
@@ -620,6 +636,7 @@ async function startServer() {
       require('./cron/submissionsRetryCron');
       require('./cron/competitorPricesCron');
       require('./cron/onboardingSlaCron');
+      require('./cron/vacancySlaCron');
 
       const { initMissedCallsBot } = require('./services/notificationService');
       await initMissedCallsBot();

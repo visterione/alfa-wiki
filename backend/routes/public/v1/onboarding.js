@@ -36,7 +36,7 @@ const validation = require('../../../services/onboarding/validation');
 const engine = require('../../../services/onboarding/engine');
 const mailer = require('../../../services/onboarding/mailer');
 const files = require('../../../services/onboarding/files');
-const misVerify = require('../../../services/onboarding/misVerify');
+const misVerify = require('../../../services/misStaff');
 const { misRequest } = require('../../../services/misClient');
 
 const CODE_TTL_MS = 15 * 60 * 1000;

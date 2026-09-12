@@ -1,0 +1,459 @@
+/**
+ * Публичные страницы вакансий (ver. 8.20).
+ *
+ * Эти страницы открываются без входа в портал, и переменных темы здесь нет:
+ * оболочка приложения с её токенами до них не доходит. Поэтому цвета заданы
+ * прямо — тот же набор, что в письмах, чтобы письмо и страница читались как одно
+ * целое.
+ *
+ * Верстается под телефон в первую очередь: QR сканируют телефоном, и анкету на
+ * нём же и заполняют. Крупные поля и отступы — не щедрость, а попадание пальцем.
+ */
+
+.vcy {
+  min-height: 100vh;
+  padding: 16px;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.vcy-card {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 26px 24px 30px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .07);
+}
+
+.vcy h1 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.4px;
+}
+
+.vcy h2 {
+  margin: 26px 0 12px;
+  font-size: 17px;
+  font-weight: 650;
+}
+.vcy-block:first-of-type h2 { margin-top: 14px; }
+
+.vcy-lead { margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #3a3a3c; }
+.vcy-note { margin: 0 0 14px; font-size: 13px; line-height: 1.55; color: #86868B; }
+
+.vcy-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e5e5ea;
+  font-size: 15px;
+  font-weight: 600;
+}
+.vcy-branch small { font-weight: 400; font-size: 13px; color: #86868B; }
+
+.vcy-back {
+  margin-bottom: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #007AFF;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* ── Список вакансий ───────────────────────────────────────────────────── */
+
+.vcy-vacancies { display: flex; flex-direction: column; gap: 10px; }
+
+.vcy-vacancy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid #e5e5ea;
+  border-radius: 14px;
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.vcy-vacancy:hover {
+  border-color: #007AFF;
+  box-shadow: 0 6px 18px rgba(0, 122, 255, .12);
+}
+.vcy-vacancy:active { transform: translateY(1px); }
+.vcy-vacancy b { font-size: 16px; font-weight: 600; }
+.vcy-vacancy span { font-size: 13.5px; line-height: 1.55; color: #6e6e73; }
+
+/* ── Поля ──────────────────────────────────────────────────────────────── */
+
+.vcy-form { display: flex; flex-direction: column; gap: 18px; }
+
+.vcy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+.vcy-field > span { font-weight: 500; }
+.vcy-field small { font-size: 12.5px; line-height: 1.5; color: #86868B; }
+
+.vcy-req { color: #FF3B30; font-style: normal; margin-left: 2px; }
+
+.vcy-field input[type="text"],
+.vcy-field input[type="email"],
+.vcy-field input[type="tel"],
+.vcy-field input[type="date"],
+.vcy-field input[type="number"],
+.vcy-field input[type="time"],
+.vcy-field select,
+.vcy-field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d2d2d7;
+  border-radius: 11px;
+  background: #fff;
+  color: #1d1d1f;
+  /* 16px — не размер ради красоты: на меньшем Safari на iPhone зумит страницу
+     при фокусе, и человек дальше заполняет анкету в увеличенном виде. */
+  font: inherit;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+.vcy-field textarea { resize: vertical; min-height: 92px; line-height: 1.5; }
+
+.vcy-field input:focus,
+.vcy-field select:focus,
+.vcy-field textarea:focus {
+  outline: none;
+  border-color: #007AFF;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, .15);
+}
+
+.vcy-field.is-bad > span { color: #FF3B30; }
+.vcy-field.is-bad input,
+.vcy-field.is-bad select,
+.vcy-field.is-bad textarea { border-color: #FF3B30; }
+
+/* Поле, отмеченное при возврате на доработку: остальное человек уже заполнил и
+   перечитывать не должен. */
+.vcy-field.is-marked {
+  padding: 12px 14px;
+  margin-left: -14px;
+  margin-right: -14px;
+  border-radius: 12px;
+  background: rgba(255, 149, 0, .08);
+  box-shadow: inset 2px 0 0 #FF9500;
+}
+
+.vcy-field.is-check {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.vcy-field.is-check input { width: 20px; height: 20px; margin-top: 1px; accent-color: #007AFF; flex: none; }
+.vcy-field.is-check > span { flex: 1; font-weight: 400; line-height: 1.5; }
+.vcy-field.is-check small { flex-basis: 100%; }
+
+/* ── Виджеты ───────────────────────────────────────────────────────────── */
+
+.vcy-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.vcy-days button {
+  min-width: 46px;
+  padding: 10px 4px;
+  border: 1px solid #d2d2d7;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.vcy-days button.is-on { background: #007AFF; border-color: #007AFF; color: #fff; font-weight: 600; }
+
+.vcy-timerange { display: flex; align-items: center; gap: 10px; }
+.vcy-timerange input { flex: 1; }
+
+.vcy-professions { display: flex; flex-wrap: wrap; gap: 8px; }
+.vcy-professions select { flex-basis: 100%; }
+
+.vcy-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px 7px 13px;
+  border-radius: 20px;
+  background: #eef1f6;
+  font-size: 13.5px;
+}
+.vcy-tag button {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .08);
+  color: #3a3a3c;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ── Файлы ─────────────────────────────────────────────────────────────── */
+
+.vcy-files { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+
+.vcy-file {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: #f5f5f7;
+  font-size: 13.5px;
+}
+.vcy-file span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vcy-file small { color: #86868B; font-size: 12px; }
+.vcy-file button {
+  flex: none;
+  width: 22px; height: 22px;
+  border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, .08);
+  font-size: 15px; line-height: 1;
+  cursor: pointer;
+}
+
+.vcy-upload {
+  display: inline-block;
+  padding: 11px 18px;
+  border: 1px dashed #b9b9c0;
+  border-radius: 11px;
+  color: #007AFF;
+  font-size: 14px;
+  cursor: pointer;
+}
+.vcy-upload input { display: none; }
+.vcy-upload.is-busy { opacity: .55; cursor: progress; }
+
+/* ── Повторяемые блоки ─────────────────────────────────────────────────── */
+
+.vcy-row {
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #e5e5ea;
+  border-radius: 13px;
+}
+.vcy-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: #86868B;
+}
+.vcy-row-head button {
+  border: 0;
+  background: none;
+  color: #FF3B30;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.vcy-row .vcy-field:last-child { margin-bottom: 0; }
+
+/* ── Шаги, навигация, состояния ────────────────────────────────────────── */
+
+.vcy-progress {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin-bottom: 18px;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.vcy-progress::-webkit-scrollbar { display: none; }
+.vcy-progress button {
+  flex: none;
+  padding: 7px 14px;
+  border: 1px solid #e5e5ea;
+  border-radius: 20px;
+  background: #fff;
+  color: #6e6e73;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vcy-progress button.is-on { background: #1d1d1f; border-color: #1d1d1f; color: #fff; font-weight: 500; }
+
+.vcy-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e5ea;
+}
+.vcy-saved { flex: 1; text-align: center; font-size: 12.5px; color: #86868B; }
+
+.vcy-btn {
+  padding: 13px 24px;
+  border: 0;
+  border-radius: 11px;
+  background: #007AFF;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vcy-btn:disabled { opacity: .45; cursor: not-allowed; }
+.vcy-btn.is-ghost { background: #f5f5f7; color: #1d1d1f; font-weight: 500; }
+
+.vcy-error {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border-radius: 11px;
+  background: rgba(255, 59, 48, .09);
+  color: #c0271d;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.vcy-revision {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 149, 0, .1);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.vcy-revision p { margin: 8px 0 0; }
+
+/* ── Код из письма ─────────────────────────────────────────────────────── */
+
+.vcy-code { display: flex; gap: 8px; margin: 18px 0; }
+.vcy-code input {
+  width: 100%;
+  min-width: 0;
+  padding: 14px 0;
+  border: 1px solid #d2d2d7;
+  border-radius: 12px;
+  text-align: center;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+.vcy-code input:focus {
+  outline: none;
+  border-color: #007AFF;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, .15);
+}
+
+/* Приманка: настоящий посетитель её не видит и не заполняет. Убрана с экрана
+   позиционированием, а не display:none — часть ботов пропускает скрытые поля. */
+.vcy-honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+@media (min-width: 700px) {
+  .vcy { padding: 40px 16px 60px; }
+  .vcy-card { padding: 34px 36px 38px; }
+}
+
+/* ── Выбор услуг ───────────────────────────────────────────────────────── */
+
+.vcy-group { margin-bottom: 14px; }
+.vcy-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0 8px;
+  border-bottom: 1px solid #e5e5ea;
+}
+
+.vcy-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.vcy-group-title span { font-size: 12.5px; font-weight: 400; color: #86868B; }
+
+.vcy-group-all {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #007AFF;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vcy-service { padding: 9px 0; border-bottom: 1px solid #f0f0f3; }
+.vcy-service.is-on { background: rgba(0, 122, 255, .04); }
+
+.vcy-service > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  cursor: pointer;
+}
+.vcy-service > label input { width: 20px; height: 20px; margin-top: 1px; flex: none; accent-color: #007AFF; }
+.vcy-service > label > span { flex: 1; font-size: 14px; line-height: 1.45; }
+.vcy-service > label small { display: block; margin-top: 2px; color: #86868B; font-size: 12.5px; }
+
+.vcy-service-more {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0 4px 31px;
+}
+.vcy-service-more label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 150px;
+  font-size: 11.5px;
+  color: #86868B;
+}
+.vcy-service-more input {
+  padding: 9px 11px;
+  border: 1px solid #d2d2d7;
+  border-radius: 9px;
+  font: inherit;
+  /* 16px по той же причине, что и в анкете: на меньшем Safari на iPhone зумит
+     страницу при фокусе. */
+  font-size: 16px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .vcy-service-more { padding-left: 0; }
+}

@@ -15,6 +15,7 @@ const { auditLog, rateLimitByIp, limitBodySize } = require('../../middleware/pub
 const formsRoutes = require('./v1/forms');
 const bookingRoutes = require('./v1/booking');
 const onboardingRoutes = require('./v1/onboarding');
+const vacancyRoutes = require('./v1/vacancies');
 
 // Порядок важен: сначала лог и грубые лимиты, потом разбор тела, потом маршруты
 router.use(auditLog());
@@ -52,6 +53,12 @@ router.use('/v1/booking', bookingRoutes);
 // с улицы, у которого нет и не будет аккаунта в портале. Право предъявляется
 // токеном заявки, спам отсекают приманка, лимит по IP выше и код на почту.
 router.use('/v1/onboarding', onboardingRoutes);
+
+// Вакансии (ver. 8.20) — второе поколение того же контура. Ключа тоже не
+// требует и защищено так же: приманка, лимит по IP выше и код на почту.
+// Отличие в точке входа: человек приходит по QR своего медцентра и сначала
+// выбирает вакансию, а уже потом подтверждает адрес.
+router.use('/v1/vacancies', vacancyRoutes);
 
 router.use((req, res) => {
   res.locals.errorCode = 'not_found';

@@ -385,6 +385,13 @@ export function SocketProvider({ children }) {
       window.dispatchEvent(new CustomEvent('onboarding-changed', { detail: data }));
     });
 
+    // То же для второго поколения онбординга. Свой сигнал, а не общий: пока
+    // модули живут рядом, вкладка одного не должна перезагружаться из-за
+    // событий другого.
+    socket.on('vacancies:changed', (data) => {
+      window.dispatchEvent(new CustomEvent('vacancies-changed', { detail: data }));
+    });
+
     /**
      * Сигнал складского модуля: остаток ушёл ниже минимума, позиция кончилась.
      *

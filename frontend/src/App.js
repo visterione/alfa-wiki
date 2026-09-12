@@ -18,6 +18,10 @@ const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Favorites = lazy(() => import('./pages/Favorites'));
 const ChatJoin = lazy(() => import('./pages/ChatJoin'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Vacancies = lazy(() => import('./pages/Vacancies'));
+const VacancyStart = lazy(() => import('./pages/Vacancy/VacancyStart'));
+const VacancyForm = lazy(() => import('./pages/Vacancy/VacancyForm'));
+const VacancyServices = lazy(() => import('./pages/Vacancy/VacancyServices'));
 const OpenLine = lazy(() => import('./pages/OpenLine'));
 // Публичные страницы анкеты: их открывает врач, у которого нет и не будет
 // аккаунта в портале.
@@ -139,6 +143,15 @@ function AppRoutes() {
       <Route path="/anketa" element={<AnketaStart />} />
       <Route path="/anketa/:token" element={<AnketaForm />} />
       <Route path="/anketa/:token/services" element={<AnketaServices />} />
+
+      {/* Вакансии (ver. 8.20) — второе поколение того же публичного контура.
+          Вне ProtectedRoute по той же причине: заполняют с телефона, на котором
+          портал не залогинен. Отличие в точке входа — у каждого медцентра свой
+          адрес с его латинским кодом, и вакансии человек видит только этого
+          филиала. */}
+      <Route path="/vacancy/a/:token" element={<VacancyForm />} />
+      <Route path="/vacancy/a/:token/services" element={<VacancyServices />} />
+      <Route path="/vacancy/:code" element={<VacancyStart />} />
       
       <Route path="/" element={
         <ProtectedRoute>
@@ -181,6 +194,16 @@ function AppRoutes() {
             ролей под этот процесс намеренно не заводили. */}
         <Route path="onboarding" element={
           <ProtectedRoute requireAdminAccess="onboarding"><Onboarding /></ProtectedRoute>
+        } />
+
+        {/* Вакансии (ver. 8.20) — второе поколение онбординга, пока рядом со
+            старым разделом. Гранулярного флага у него нет: настройку видит
+            админ, а заявки и задачи — тот, кто назначен исполнителем шага.
+            Проверку делает бэкенд (services/vacancies/access.js), потому что
+            назначение и есть право, и вывести его из полей пользователя
+            нельзя. */}
+        <Route path="vacancies" element={
+          <ProtectedRoute><Vacancies /></ProtectedRoute>
         } />
 
         {/* Открытая линия (ver. 7.85): обращения пациентов из ботов Telegram/MAX.

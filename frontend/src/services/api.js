@@ -1209,6 +1209,54 @@ export const warehouseApi = {
 
 // ── Онбординг врача (ver. 7.30) ───────────────────────────────────────────
 
+/**
+ * Вакансии (ver. 8.20) — второе поколение онбординга. Живёт параллельно с
+ * onboarding выше и заменит его, когда сюда переедут заявки.
+ */
+export const vacancies = {
+  templates:  () => api.get('/vacancies/templates'),
+  list:       () => api.get('/vacancies/openings'),
+  createOpening: (data)     => api.post('/vacancies/openings', data),
+  saveOpening:   (id, data) => api.put(`/vacancies/openings/${id}`, data),
+  deleteOpening: (id)       => api.delete(`/vacancies/openings/${id}`),
+  medCenters: () => api.get('/vacancies/med-centers'),
+
+  // Чем бывает поле и какие у него бывают роли. Реестр приходит с сервера —
+  // второй его список на фронте разошёлся бы с первым на ближайшей правке.
+  meta:       () => api.get('/vacancies/meta'),
+
+  // Ссылка и QR филиала: их печатают и вешают в регистратуре.
+  materials:  (code) => api.get(`/vacancies/materials/${encodeURIComponent(code)}`),
+
+  template:        (id)       => api.get(`/vacancies/templates/${id}`),
+  createTemplate:  (data)     => api.post('/vacancies/templates', data),
+  saveTemplate:    (id, data) => api.put(`/vacancies/templates/${id}`, data),
+  publishTemplate: (id, data) => api.post(`/vacancies/templates/${id}/publish`, data),
+  deleteTemplate:  (id)       => api.delete(`/vacancies/templates/${id}`),
+  saveProcess:     (id, data) => api.put(`/vacancies/templates/${id}/process`, data),
+
+  // Исполнители шагов: таблица «шаблон + шаг + филиал → люди».
+  assignments:    (id)                 => api.get(`/vacancies/templates/${id}/assignments`),
+  saveAssignment: (id, stepKey, data)  => api.put(`/vacancies/templates/${id}/assignments/${stepKey}`, data),
+
+  // Ежедневная работа. Её видит не только админ, но и тот, кто назначен
+  // исполнителем хоть на один шаг, — маршруты лежат в отдельном роутере.
+  overview:     ()              => api.get('/vacancies/overview'),
+  applications: (params)        => api.get('/vacancies/applications', { params }),
+  application:  (id)            => api.get(`/vacancies/applications/${id}`),
+  approve:      (id, data)      => api.post(`/vacancies/applications/${id}/approve`, data),
+  revision:     (id, data)      => api.post(`/vacancies/applications/${id}/revision`, data),
+  reject:       (id, data)      => api.post(`/vacancies/applications/${id}/reject`, data),
+  cancelApp:    (id, data)      => api.post(`/vacancies/applications/${id}/cancel`, data),
+  appServices:  (id)            => api.get(`/vacancies/applications/${id}/services`),
+  misUsers:     (id, q)         => api.get(`/vacancies/applications/${id}/mis-users`, { params: { q } }),
+
+  myTasks:      ()              => api.get('/vacancies/tasks/my'),
+  claimTask:    (taskId)        => api.post(`/vacancies/tasks/${taskId}/claim`),
+  verifyTask:   (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/verify`, data),
+  completeTask: (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/complete`, data)
+};
+
 export const onboarding = {
   overview:      ()                 => api.get('/onboarding/overview'),
 
@@ -1287,6 +1335,34 @@ export const anketa = {
   servicesList:  (token)            => anketaApi.get(`/${token}/services`),
   saveServices:  (token, data)      => anketaApi.post(`/${token}/services`, data),
   submitServices:(token)            => anketaApi.post(`/${token}/services/submit`),
+};
+
+// Публичный контур вакансий (ver. 8.20). Отдельный клиент без Authorization по
+// той же причине, что и у анкеты первого поколения: её заполняет человек без
+// аккаунта, и подставлять сюда токен залогиненного в том же браузере сотрудника
+// нельзя.
+const vacancyApi = axios.create({
+  baseURL: `${BASE_URL}/api/public/v1/vacancies`,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+export const vacancyPublic = {
+  branch:      (code)             => vacancyApi.get(`/b/${encodeURIComponent(code)}`),
+  requestCode: (data)             => vacancyApi.post('/request-code', data),
+  verifyCode:  (data)             => vacancyApi.post('/verify-code', data),
+
+  load:        (token)            => vacancyApi.get(`/a/${token}`),
+  saveDraft:   (token, data)      => vacancyApi.put(`/a/${token}`, data),
+  submit:      (token, data)      => vacancyApi.post(`/a/${token}/submit`, data),
+  deleteFile:  (token, fileId)    => vacancyApi.delete(`/a/${token}/files/${fileId}`),
+  uploadFile:  (token, formData)  => vacancyApi.post(`/a/${token}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+
+  // Экран выбора услуг: шаг, который кандидат закрывает сам.
+  services:       (token)       => vacancyApi.get(`/a/${token}/services`),
+  saveServices:   (token, data) => vacancyApi.post(`/a/${token}/services`, data),
+  submitServices: (token)       => vacancyApi.post(`/a/${token}/services/submit`),
 };
 
 export default api;

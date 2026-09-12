@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const sla = require('../services/onboarding/sla');
+const sla = require('../services/workingHours');
 const access = require('../services/onboarding/access');
 const assignments = require('../services/onboarding/assignments');
 

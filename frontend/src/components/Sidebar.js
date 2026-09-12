@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo, Megaphone
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi, vacancies as vacanciesApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -390,6 +390,32 @@ function QuickAccessButtons({ onClose }) {
   // Рабочее окно линии теперь является обычным пользовательским разделом в
   // быстром доступе. Настройка линий остаётся отдельным правом в админке.
   const canAccessOpenLine = isAdmin || user?.adminAccess?.openLine === true;
+  // Вакансии (ver. 8.20) — второе поколение онбординга. Гранулярного флага у
+  // раздела нет намеренно: настройку видит админ, а заявки и задачи — тот, кто
+  // назначен исполнителем хоть на один шаг. Право «быть исполнителем» уже
+  // выражено назначением, и второе место настройки того же самого разошлось бы
+  // с первым. Поэтому видимость кнопки спрашиваем у бэкенда, а не выводим из
+  // флагов пользователя.
+  const [canAccessVacancies, setCanAccessVacancies] = useState(false);
+  const [vacanciesCount, setVacanciesCount] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const { data } = await vacanciesApi.overview();
+        if (!alive) return;
+        setCanAccessVacancies(true);
+        setVacanciesCount(data.myTasksCount || 0);
+      } catch {
+        // 403 — раздела у человека нет, и это штатный ответ, а не сбой.
+        if (alive) setCanAccessVacancies(false);
+      }
+    };
+    load();
+    window.addEventListener('vacancies-changed', load);
+    return () => { alive = false; window.removeEventListener('vacancies-changed', load); };
+  }, []);
   const canAccessAnnouncements = isAdmin || user?.adminAccess?.announcements === true;
 
   // Загружаем количество непрочитанных сообщений
@@ -488,6 +514,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnStatistics = location.pathname.startsWith('/statistics');
   const isOnTasks = location.pathname.startsWith('/tasks');
   const isOnOnboarding = location.pathname.startsWith('/onboarding');
+  const isOnVacancies = location.pathname.startsWith('/vacancies');
   const isOnOpenLine = location.pathname.startsWith('/open-line');
   const isOnAnnouncements = location.pathname.startsWith('/announcements');
 
@@ -620,7 +647,7 @@ function QuickAccessButtons({ onClose }) {
         className={`quick-access-btn onboarding ${isOnOnboarding ? 'active' : ''} ${!canAccessOnboarding ? 'locked' : ''}`}
         data-icon-motion={canAccessOnboarding ? 'clipboard' : undefined}
         onClick={() => canAccessOnboarding ? handleClick('/onboarding') : toast.error('Нет доступа к разделу «Онбординг врача»')}
-        title={canAccessOnboarding ? 'Онбординг врача' : 'Онбординг врача (нет доступа)'}
+        title={canAccessOnboarding ? 'Онбординг врача (старый)' : 'Онбординг врача (нет доступа)'}
       >
         <ClipboardList size={20} />
         {!canAccessOnboarding && <Lock size={10} className="quick-access-lock" />}
@@ -630,6 +657,25 @@ function QuickAccessButtons({ onClose }) {
           </span>
         )}
       </button>
+
+      {/* Вакансии живут рядом со старым онбордингом, а не вместо него: пока
+          заявки идут через первое поколение, обе кнопки нужны одновременно.
+          Когда старый модуль уедет, эта останется одна. */}
+      {canAccessVacancies && (
+        <button
+          className={`quick-access-btn vacancies ${isOnVacancies ? 'active' : ''}`}
+          data-icon-motion="briefcase"
+          onClick={() => handleClick('/vacancies')}
+          title="Вакансии"
+        >
+          <Briefcase size={20} />
+          {vacanciesCount > 0 && (
+            <span className="quick-access-badge">
+              {vacanciesCount > 99 ? '99+' : vacanciesCount}
+            </span>
+          )}
+        </button>
+      )}
 
       <button
         className={`quick-access-btn open-line ${isOnOpenLine ? 'active' : ''} ${!canAccessOpenLine ? 'locked' : ''}`}

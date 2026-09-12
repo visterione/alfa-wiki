@@ -1,0 +1,849 @@
+/**
+ * Вакансии (ver. 8.20).
+ *
+ * Оформление — тот же визуальный язык, что у «Задач» и онбординга: две
+ * стеклянные панели с настоящим вырезом до фона страницы между ними, подсветка
+ * активного пункта отдельным слоем под кнопками, мягкие тени. Значения
+ * повторяют Onboarding.css один в один — радиусы, размытие, тени. Приблизительный
+ * перенос («примерно такой же радиус») читается как другой модуль, даже когда
+ * отличия по отдельности незаметны.
+ *
+ * Свой файл, а не общий с онбордингом, потому что старый модуль уедет целиком,
+ * вместе со своими стилями. Общий файл пришлось бы в этот момент разбирать по
+ * строчкам, выясняя, что из него ещё используется.
+ */
+
+.vac {
+  position: relative;
+  isolation: isolate;
+  padding: 18px 22px 32px;
+}
+
+.vac-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  min-height: calc(100vh - 126px);
+  background: transparent;
+  overflow: visible;
+}
+
+.vac-side,
+.vac-main {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-light) 70%, rgba(255,255,255,.38));
+  border-radius: 26px;
+  background:
+    linear-gradient(145deg,
+      color-mix(in srgb, var(--bg-primary) 88%, rgba(255,255,255,.18)),
+      color-mix(in srgb, var(--bg-primary) 68%, transparent));
+  -webkit-backdrop-filter: blur(26px) saturate(145%);
+  backdrop-filter: blur(26px) saturate(145%);
+  box-shadow:
+    0 18px 44px rgba(19, 28, 45, .08),
+    0 2px 8px rgba(19, 28, 45, .05),
+    inset 0 1px 0 rgba(255,255,255,.58);
+}
+
+.vac-side { padding: 18px 12px; }
+.vac-main { display: flex; flex-direction: column; overflow: visible; }
+
+.vac-side-brand {
+  display: flex;
+  align-items: baseline;
+  padding: 2px 12px 18px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -.45px;
+}
+
+/* ── Навигация ─────────────────────────────────────────────────────────── */
+
+.vac-nav {
+  --vac-nav-top: 0px;
+  --vac-nav-height: 36px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Подсветка активного пункта — отдельный слой под кнопками: так она едет между
+   разделами, а не перерисовывается скачком. Положение измеряет index.js. */
+.vac-nav::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: 3px;
+  right: 3px;
+  top: 0;
+  height: var(--vac-nav-height);
+  opacity: 0;
+  transform: translate3d(0, var(--vac-nav-top), 0);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, rgba(255,255,255,.5));
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--primary-light) 74%, rgba(255,255,255,.5)),
+      color-mix(in srgb, var(--bg-primary) 78%, transparent));
+  box-shadow:
+    0 7px 18px color-mix(in srgb, var(--primary) 12%, transparent),
+    inset 0 1px 0 rgba(255,255,255,.7);
+  transition:
+    transform 520ms cubic-bezier(.22, 1, .36, 1),
+    height 360ms cubic-bezier(.22, 1, .36, 1),
+    opacity 180ms ease;
+}
+.vac-nav.is-ready::before { opacity: 1; }
+
+.vac-nav button { position: relative; z-index: 1; }
+
+.vac-nav button {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 220ms ease, transform 220ms ease;
+}
+.vac-nav button:hover { color: var(--text-primary); transform: translateX(2px); }
+.vac-nav button.is-on { color: var(--primary); font-weight: 550; }
+.vac-nav button.is-on svg {
+  filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--primary) 28%, transparent));
+}
+
+.vac-nav-count {
+  margin-left: auto;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ── Шапка и полотно ───────────────────────────────────────────────────── */
+
+.vac-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  min-height: 72px;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border-light);
+  background: linear-gradient(180deg, rgba(255,255,255,.1), transparent);
+}
+
+.vac-title { font-size: 22px; font-weight: 650; letter-spacing: -.5px; }
+
+.vac-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px 22px 38px;
+}
+.vac-content > * { flex: 0 0 auto; }
+
+.vac-empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-align: center;
+  padding: 28px 16px;
+  border-radius: var(--radius-lg);
+  line-height: 1.6;
+  border: 1px solid color-mix(in srgb, var(--border-light) 76%, rgba(255,255,255,.38));
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--bg-primary) 96%, rgba(255,255,255,.12)),
+    color-mix(in srgb, var(--bg-primary) 84%, transparent));
+  box-shadow: 0 9px 24px rgba(20,29,45,.055), inset 0 1px 0 rgba(255,255,255,.5);
+}
+.vac-empty.is-left { text-align: left; }
+
+.vac-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.vac-badge-muted { background: var(--bg-tertiary); color: var(--text-secondary); }
+.vac-badge-ok    { background: rgba(52, 199, 89, 0.14); color: var(--green-600); }
+.vac-badge-warn  { background: rgba(255, 149, 0, 0.16); color: var(--amber-800); }
+.vac-badge-info  { background: var(--primary-light); color: var(--primary-hover); }
+
+/* ── Списки ────────────────────────────────────────────────────────────── */
+
+.vac-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.vac-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  padding: 0 10px 10px;
+}
+.vac-table td { padding: 11px 10px; border-top: 1px solid var(--border-light); vertical-align: middle; }
+.vac-table th:first-child, .vac-table td:first-child { width: 34%; }
+
+.vac-name { font-weight: 550; }
+.vac-sub  { color: var(--text-secondary); font-size: 12.5px; }
+
+/* Ссылка, на которую вешается QR. Моноширинная, потому что её сверяют глазами
+   с тем, что напечатано на табличке. */
+.vac-link {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1180px) {
+  .vac-shell { grid-template-columns: 190px minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .vac { padding: 14px 14px 32px; }
+  .vac-shell { display: block; min-height: 0; overflow: visible; }
+  .vac-side { margin-bottom: 10px; border: 1px solid var(--border-light); padding: 10px; }
+  .vac-main { border-radius: 22px; }
+  .vac-side-brand { display: none; }
+  .vac-nav { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+  .vac-nav::before { display: none; }
+  .vac-nav::-webkit-scrollbar { display: none; }
+  .vac-nav button { white-space: nowrap; width: auto; }
+  .vac-nav button.is-on { background: var(--primary-light); }
+  .vac-table th:nth-child(3), .vac-table td:nth-child(3) { display: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Конструктор анкеты
+
+   Плотная сетка вместо просторной формы: у шаблона врача четырнадцать блоков и
+   полсотни полей, и при «воздушной» вёрстке до нижнего блока пришлось бы
+   прокручивать четыре экрана. Поэтому поле — это одна строка, а всё редкое
+   (ключ, роль, границы, подсказка) прячется за раскрытием.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.vac-table tr.is-clickable { cursor: pointer; }
+.vac-table tr.is-clickable:hover td { background: var(--bg-secondary); }
+
+/* ── Кнопки и поля ─────────────────────────────────────────────────────── */
+
+.vac-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+.vac-btn:hover:not(:disabled) { background: var(--primary-hover); }
+.vac-btn:active:not(:disabled) { transform: translateY(1px); }
+.vac-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.vac-btn.is-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-light);
+}
+.vac-btn.is-ghost:hover:not(:disabled) { background: var(--bg-secondary); color: var(--text-primary); }
+.vac-btn.is-danger { color: var(--error); }
+.vac-btn.is-danger:hover:not(:disabled) { background: rgba(255, 59, 48, .1); color: var(--error); }
+
+.vac-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.vac-icon:hover:not(:disabled) { background: var(--bg-secondary); color: var(--text-primary); }
+.vac-icon:disabled { opacity: .3; cursor: not-allowed; }
+.vac-icon.is-danger:hover:not(:disabled) { background: rgba(255, 59, 48, .1); color: var(--error); }
+
+.vac-input {
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+}
+.vac-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.vac-input.is-title { font-size: 15px; font-weight: 550; }
+.vac-input.is-narrow { flex: none; width: 168px; }
+/* Ключ — служебное имя, и выглядеть должен служебно: его сверяют посимвольно */
+.vac-input.is-key {
+  flex: none;
+  width: 150px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.vac-lab {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 190px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.vac-lab.is-wide { flex: 2 1 280px; }
+.vac-lab.is-tiny { flex: 0 1 130px; }
+
+.vac-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vac-check input { accent-color: var(--primary); }
+
+/* ── Заголовки секций и пояснения ──────────────────────────────────────── */
+
+.vac-sect {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.vac-sect:first-child { margin-top: 0; }
+
+.vac-hint {
+  padding: 9px 13px;
+  border-radius: 11px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.vac-hint.is-inline { flex: 1 1 100%; background: transparent; padding: 2px 0 0; }
+
+.vac-errors {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 59, 48, .25);
+  background: rgba(255, 59, 48, .07);
+  color: var(--red-700);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.vac-errors svg { flex: none; margin-top: 2px; }
+
+/* ── Шапка редактора ───────────────────────────────────────────────────── */
+
+.vac-editor-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+.vac-editor-titles {
+  flex: 1 1 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.vac-editor-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Шаги анкеты ───────────────────────────────────────────────────────── */
+
+.vac-steps { display: flex; flex-direction: column; gap: 6px; }
+
+.vac-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+.vac-step .vac-input:first-of-type { flex: 1 1 auto; }
+.vac-step-grip { flex: none; color: var(--text-tertiary); }
+
+/* ── Блоки ─────────────────────────────────────────────────────────────── */
+
+.vac-builder { display: flex; flex-direction: column; }
+
+.vac-block {
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-primary);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.vac-block.is-open { box-shadow: 0 8px 22px rgba(20, 29, 45, .06); }
+
+.vac-block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.vac-block-head .vac-input.is-title { flex: 1 1 auto; border-color: transparent; background: transparent; }
+.vac-block-head .vac-input.is-title:focus { border-color: color-mix(in srgb, var(--primary) 55%, transparent); background: var(--bg-primary); }
+
+.vac-block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 12px 14px;
+  border-top: 1px solid var(--border-light);
+}
+.vac-block-body > .vac-btn { align-self: flex-start; }
+
+.vac-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+
+/* ── Поля ──────────────────────────────────────────────────────────────── */
+
+.vac-fields { display: flex; flex-direction: column; gap: 5px; }
+
+.vac-field {
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+.vac-field-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.vac-field-main > .vac-input:first-child { flex: 1 1 auto; }
+
+.vac-field-more {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 10px 12px;
+}
+
+@media (max-width: 900px) {
+  /* На узком экране строка поля в один ряд не помещается: подпись занимает всю
+     ширину, а тип, галочка и кнопки становятся вторым рядом под ней. */
+  .vac-field-main { flex-wrap: wrap; }
+  .vac-field-main > .vac-input:first-child { flex: 1 1 100%; }
+  .vac-block-head { flex-wrap: wrap; }
+  .vac-block-head .vac-input.is-title { flex: 1 1 100%; }
+  .vac-input.is-narrow { width: auto; flex: 1 1 130px; }
+  .vac-step { flex-wrap: wrap; }
+  .vac-editor-acts { width: 100%; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Процесс и исполнители
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Вкладки редактора ─────────────────────────────────────────────────── */
+
+.vac-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 13px;
+  background: var(--bg-secondary);
+  align-self: flex-start;
+}
+.vac-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease;
+}
+.vac-tabs button:hover { color: var(--text-primary); }
+.vac-tabs button.is-on {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 550;
+  box-shadow: 0 2px 6px rgba(20, 29, 45, .07);
+}
+
+/* Точка у названия вкладки — единственный способ увидеть, что правка осталась
+   на соседней: сохранение общее, а видна всегда одна вкладка. */
+.vac-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber-800, #92400e);
+}
+
+/* ── Шаги процесса ─────────────────────────────────────────────────────── */
+
+/* Заархивированный шаг остаётся на экране, но приглушён: он больше не
+   появляется у новых заявок, а у старых доживает свой век. */
+.vac-block.is-archived { opacity: .62; }
+.vac-block.is-archived .vac-input.is-title { text-decoration: line-through; }
+
+/* Чего шаг ждёт — прижато вправо, чтобы колонка читалась сверху вниз при
+   свёрнутых карточках. */
+.vac-after-note {
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.vac-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.vac-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.vac-chip:hover { border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
+.vac-chip.is-on {
+  background: var(--primary-light);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  color: var(--primary-hover);
+  font-weight: 550;
+}
+
+/* ── Исполнители ───────────────────────────────────────────────────────── */
+
+.vac-branchbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 20px 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.vac-branchbar:first-child { margin-top: 0; }
+.vac-branchbar .vac-input { max-width: 260px; }
+
+.vac-stepcard {
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-primary);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.vac-stepcard header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.vac-stepcard header b { font-size: 14px; font-weight: 550; }
+.vac-stepcard header small { color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
+
+.vac-assignees { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.vac-assignees .vac-input { max-width: 320px; width: 100%; }
+
+.vac-assignee {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  max-width: 320px;
+  padding: 5px 6px 5px 5px;
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+.vac-assignee-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.vac-assignee-who b { font-size: 13px; font-weight: 500; }
+.vac-assignee-who small { color: var(--text-tertiary); font-size: 11.5px; }
+
+.vac-avatar {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.vac-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vac-nobody {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--amber-800, #92400e);
+  font-size: 12.5px;
+}
+
+@media (max-width: 900px) {
+  .vac-tabs { align-self: stretch; }
+  .vac-tabs button { flex: 1; justify-content: center; padding: 7px 8px; }
+  .vac-after-note { max-width: 100%; margin-left: 0; flex-basis: 100%; }
+  .vac-assignee, .vac-assignees .vac-input { max-width: 100%; }
+}
+
+/* ── QR филиала ────────────────────────────────────────────────────────── */
+
+.vac-qr {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  background: var(--bg-primary);
+}
+.vac-qr img {
+  width: 208px;
+  height: 208px;
+  border-radius: 12px;
+  /* Белая подложка обязательна: в тёмной теме QR на прозрачном фоне
+     перестаёт читаться сканером. */
+  background: #fff;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.vac-qr-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1 1 260px; }
+.vac-qr-side b { font-size: 15px; font-weight: 600; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Работа с заявками
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Просрочка — засечка у левого края строки: заливкой строка спорила бы с
+   бейджем в той же строке. */
+.vac-table tr.is-late td:first-child { box-shadow: inset 2px 0 0 var(--error); }
+.vac-late { color: var(--error); font-size: 12.5px; }
+
+/* Готовность чек-листа точками, а не процентом: их пересчитывают глазами, и
+   «3 из 7» читается быстрее, чем «43 %». */
+.vac-dots { display: flex; gap: 3px; }
+.vac-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+}
+.vac-dots i.is-done { background: var(--green-600, #16a34a); }
+
+/* ── Карточка заявки ───────────────────────────────────────────────────── */
+
+.vac-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+  background: rgba(18, 24, 38, .45);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+.vac-card {
+  width: 100%;
+  max-width: 880px;
+  border-radius: 22px;
+  background: var(--bg-primary);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .3);
+  overflow: hidden;
+}
+
+.vac-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-light);
+}
+.vac-card-head > div:first-child { flex: 1; min-width: 0; }
+.vac-card-head h2 { margin: 0 0 3px; font-size: 19px; font-weight: 650; letter-spacing: -.3px; }
+
+.vac-card-body { padding: 18px 20px 26px; }
+
+.vac-decide { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+
+.vac-decide-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+}
+.vac-decide-form textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+
+/* ── Шаги в карточке ───────────────────────────────────────────────────── */
+
+.vac-steps-list { display: flex; flex-direction: column; gap: 4px; }
+
+.vac-step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+.vac-step-row.is-done { background: transparent; }
+.vac-step-row.is-late { box-shadow: inset 2px 0 0 var(--error); }
+.vac-step-row.is-archived { opacity: .6; }
+
+.vac-step-mark { flex: none; color: var(--text-tertiary); padding-top: 1px; }
+.vac-step-row.is-done .vac-step-mark { color: var(--green-600, #16a34a); }
+
+.vac-step-main { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vac-step-main b { font-size: 13.5px; font-weight: 550; }
+.vac-step-main small { color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
+
+.vac-step-state { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vac-step-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vac-step-close { display: flex; gap: 8px; flex-wrap: wrap; flex: 1 1 240px; }
+.vac-step-close .vac-input { flex: 1 1 160px; }
+
+/* ── Ответы кандидата ──────────────────────────────────────────────────── */
+
+.vac-answers section { margin-bottom: 16px; }
+.vac-answers h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.vac-answer {
+  display: flex;
+  gap: 14px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-light);
+  font-size: 13.5px;
+}
+.vac-answer:first-of-type { border-top: 0; }
+.vac-answer > span { flex: 0 0 200px; color: var(--text-secondary); }
+.vac-answer > b { flex: 1; font-weight: 500; min-width: 0; word-break: break-word; }
+
+/* Поле, отмеченное при возврате на доработку. */
+.vac-answer.is-marked {
+  background: rgba(255, 149, 0, .09);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 0 -10px;
+}
+
+.vac-answer-row {
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+.vac-answer-row .vac-answer { border-top: 0; padding: 3px 0; }
+.vac-answer-row .vac-answer > span { flex: 0 0 170px; }
+
+.vac-answer-files { display: flex; flex-direction: column; gap: 3px; }
+.vac-answer-files a { color: var(--primary); }
+
+/* ── Журнал ────────────────────────────────────────────────────────────── */
+
+.vac-journal { display: flex; flex-direction: column; }
+.vac-journal-row {
+  display: flex;
+  gap: 14px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-light);
+  font-size: 12.5px;
+}
+.vac-journal-row > span:first-child { flex: 0 0 140px; }
+.vac-journal-row > span:nth-child(2) { flex: 1; }
+.vac-journal-row > span:last-child { flex: 0 0 140px; text-align: right; }
+
+@media (max-width: 900px) {
+  .vac-overlay { padding: 0; }
+  .vac-card { max-width: none; border-radius: 0; min-height: 100vh; }
+  .vac-answer { flex-direction: column; gap: 2px; }
+  .vac-answer > span { flex: none; font-size: 12px; }
+  .vac-journal-row { flex-wrap: wrap; gap: 4px 10px; }
+  .vac-journal-row > span { flex: none !important; text-align: left !important; }
+}

@@ -60,7 +60,7 @@ const ACTIVE_STATUSES = [
 //           (в нём только get*-методы плюс запись по пациентам), поэтому сами
 //           действия всё равно делаются руками в МИС, но верить галочке там, где
 //           можно спросить систему, незачем.
-// slaHours — в рабочих часах, см. services/onboarding/sla.js.
+// slaHours — в рабочих часах, см. services/workingHours.js.
 const STEPS = [
   {
     key: 'hr_check',

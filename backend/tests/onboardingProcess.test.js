@@ -339,7 +339,7 @@ test('автоматическая сверка по ФИО тоже запра�
 function withMisStub(calls, handler, medCenter = { misClinicIds: [] }) {
   const clientPath = require.resolve('../services/misClient');
   const modelsPath = require.resolve('../models');
-  const verifyPath = require.resolve('../services/onboarding/misVerify');
+  const verifyPath = require.resolve('../services/misStaff');
 
   const originals = { client: require.cache[clientPath], models: require.cache[modelsPath] };
 
@@ -362,7 +362,7 @@ function withMisStub(calls, handler, medCenter = { misClinicIds: [] }) {
   };
   delete require.cache[verifyPath];
 
-  const misVerify = require('../services/onboarding/misVerify');
+  const misVerify = require('../services/misStaff');
 
   // Возвращаем кэш на место сразу: модуль уже захватил подменённые зависимости,
   // а остальным тестам нужны настоящие.

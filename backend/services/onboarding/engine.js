@@ -15,10 +15,10 @@ const {
 } = require('../../models');
 const proc = require('./process');
 const assignments = require('./assignments');
-const sla = require('./sla');
+const sla = require('../workingHours');
 const mailer = require('./mailer');
 const chatLinks = require('./chatLinks');
-const misVerify = require('./misVerify');
+const misVerify = require('../misStaff');
 const notificationService = require('../notificationService');
 
 // ── Журнал ─────────────────────────────────────────────────────────────────

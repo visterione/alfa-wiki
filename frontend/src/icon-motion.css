@@ -232,6 +232,23 @@
   40%      { transform: translateY(-1.5px); }
 }
 
+/* ── Вакансии: портфель приподнимают за ручку ─────────────────────────────── */
+/* В наборе портфель собран из двух деталей и в непривычном порядке: первым идёт
+   корпус (rect), вторым ручка (path). Ручка трогается первой, корпус догоняет с
+   задержкой — так читается, что портфель подняли, а не подбросили целиком. */
+[data-icon-motion="briefcase"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  animation: icon-handle 0.5s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="briefcase"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
+  animation: icon-handle 0.5s cubic-bezier(.22, 1, .36, 1) 0.06s backwards;
+}
+
+@keyframes icon-handle {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-2px); }
+}
+
 /* ── Общие кадры, которые используют несколько иконок ─────────────────────── */
 @keyframes icon-pop {
   0%, 100% { transform: scale(1); }
