@@ -515,6 +515,24 @@ function QuickAccessButtons({ onClose }) {
   const isOnTasks = location.pathname.startsWith('/tasks');
   const isOnOnboarding = location.pathname.startsWith('/onboarding');
   const isOnVacancies = location.pathname.startsWith('/vacancies');
+
+  /**
+   * Пустые клетки в конце панели быстрого доступа.
+   *
+   * Их число считается, а не вбито: панель в пять колонок, и лишняя заглушка
+   * добавляет к ней целый ряд. Кнопка «Вакансии» есть не у всех, поэтому
+   * фиксированная тройка держала панель ровной только у половины людей — у
+   * остальных вылезал четвёртый ряд из одной кнопки и двух замков.
+   *
+   * FIXED_QUICK_BUTTONS — те, что показываются всегда, пусть и с замком: право
+   * доступа меняет вид кнопки, но не её наличие.
+   */
+  const FIXED_QUICK_BUTTONS = 12;
+  const quickButtons = FIXED_QUICK_BUTTONS + (canAccessVacancies ? 1 : 0);
+  const placeholderSlots = Array.from(
+    { length: (5 - (quickButtons % 5)) % 5 },
+    (_, index) => index + 1
+  );
   const isOnOpenLine = location.pathname.startsWith('/open-line');
   const isOnAnnouncements = location.pathname.startsWith('/announcements');
 
@@ -696,7 +714,7 @@ function QuickAccessButtons({ onClose }) {
         {!canAccessAnnouncements && <Lock size={10} className="quick-access-lock" />}
       </button>
 
-      {[1, 2, 3].map((slot) => (
+      {placeholderSlots.map((slot) => (
         <button
           key={`placeholder-${slot}`}
           type="button"
