@@ -2,7 +2,8 @@
 
 Из папки backend:
 
-  psql "$DATABASE_URL" -f "migrations/ver. 8.22 marketing-module.sql"
+  npm run migrate:8.22:check     посмотреть план
+  npm run migrate:8.22           применить
 
 Что делает. Сводит права трёх разделов — акций, карты рекламных площадок и
 анонсов — в один ключ adminAccess.marketing с тремя уровнями на вкладку:

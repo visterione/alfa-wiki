@@ -157,7 +157,9 @@
     "migrate:8.20": "node scripts/runSqlMigration.js 8.20",
     "migrate:8.20:check": "node scripts/runSqlMigration.js 8.20 --check",
     "migrate:8.21": "node scripts/runSqlMigration.js 8.21",
-    "migrate:8.21:check": "node scripts/runSqlMigration.js 8.21 --check"
+    "migrate:8.21:check": "node scripts/runSqlMigration.js 8.21 --check",
+    "migrate:8.22": "node scripts/runSqlMigration.js 8.22",
+    "migrate:8.22:check": "node scripts/runSqlMigration.js 8.22 --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
