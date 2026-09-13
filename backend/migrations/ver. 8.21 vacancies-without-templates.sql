@@ -67,6 +67,14 @@ CREATE INDEX IF NOT EXISTS vac_vacancies_status_idx ON vac_vacancies (status);
 
 ALTER TABLE vac_assignments ADD COLUMN IF NOT EXISTS "vacancyId" UUID;
 
+-- Старые уникальные индексы снимаются до вставки копий, а не после. Копия
+-- назначения несёт тот же templateId, stepKey, medCenterId и userId, что и
+-- строка-оригинал, которая на этот момент ещё жива: пока индекс по templateId
+-- на месте, первая же вставка падает на vac_assignments_branch_uniq.
+DROP INDEX IF EXISTS vac_assignments_branch_uniq;
+DROP INDEX IF EXISTS vac_assignments_network_uniq;
+DROP INDEX IF EXISTS vac_assignments_template_idx;
+
 INSERT INTO vac_assignments (id, "vacancyId", "templateId", "stepKey", "medCenterId", "userId", "createdAt", "updatedAt")
 SELECT gen_random_uuid(), v.id, a."templateId", a."stepKey", a."medCenterId", a."userId", NOW(), NOW()
 FROM vac_assignments a
@@ -81,9 +89,6 @@ ALTER TABLE vac_assignments
   ADD CONSTRAINT vac_assignments_vacancy_fk
   FOREIGN KEY ("vacancyId") REFERENCES vac_vacancies (id) ON DELETE CASCADE;
 
-DROP INDEX IF EXISTS vac_assignments_branch_uniq;
-DROP INDEX IF EXISTS vac_assignments_network_uniq;
-DROP INDEX IF EXISTS vac_assignments_template_idx;
 ALTER TABLE vac_assignments DROP COLUMN IF EXISTS "templateId";
 
 CREATE INDEX IF NOT EXISTS vac_assignments_vacancy_idx ON vac_assignments ("vacancyId");
@@ -133,10 +138,12 @@ ALTER TABLE vac_applications DROP COLUMN IF EXISTS "templateId";
 
 -- ── Отказ от флага isOpen и от шаблонов ───────────────────────────────────
 
-ALTER TABLE vac_vacancies DROP COLUMN IF EXISTS "templateId";
-ALTER TABLE vac_vacancies DROP COLUMN IF EXISTS "isOpen";
+-- Индексы снимаются до колонок: вместе с колонкой postgres удаляет их сам, и
+-- обратный порядок сыпал в вывод NOTICE о том, что индекса уже нет.
 DROP INDEX IF EXISTS vac_vacancies_open_idx;
 DROP INDEX IF EXISTS vac_vacancies_template_idx;
+ALTER TABLE vac_vacancies DROP COLUMN IF EXISTS "templateId";
+ALTER TABLE vac_vacancies DROP COLUMN IF EXISTS "isOpen";
 
 DROP TABLE IF EXISTS vac_templates;
 
