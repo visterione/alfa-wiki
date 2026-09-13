@@ -27,7 +27,14 @@
 // external  — значение берётся из внешнего справочника, а не вводится руками.
 //
 // Типа «филиал» здесь нет намеренно, хотя в первом поколении он был: место
-// работы теперь известно из вакансии, по QR-коду которой человек пришёл.
+// работы теперь известно из вакансии, по ссылке на которую человек пришёл.
+//
+// «Специальность» — это раздел прайса филиала, а не справочник профессий из
+// МИС, как было в 8.20. Оказалось, что верхний уровень дерева категорий в
+// «Реновации» и есть специальность: «Невролог», «Акушер-гинеколог»,
+// «Оториноларинголог». Раз так, берём их из своей таблицы прайса — тогда
+// выбранная в анкете специальность и раздел, из которого потом подтянутся
+// услуги, совпадают по построению, а не «обычно совпадают».
 const FIELD_TYPES = {
   text:        { label: 'Текст',                 lengthMax: true },
   textarea:    { label: 'Текст в несколько строк', lengthMax: true },
@@ -37,7 +44,7 @@ const FIELD_TYPES = {
   checkbox:    { label: 'Галочка' },
   weekdays:    { label: 'Дни недели' },
   timerange:   { label: 'Интервал времени' },
-  professions: { label: 'Специальности из МИС',  external: true },
+  speciality:  { label: 'Специальность из прайса', external: true },
   file:        { label: 'Файл',                  accept: true },
   files:       { label: 'Несколько файлов',      accept: true }
 };
@@ -70,10 +77,10 @@ const FIELD_ROLES = {
     hint: 'Точка отсчёта сроков процесса',
     types: ['date']
   },
-  professions: {
-    label: 'Специальности',
-    hint: 'Без них не работают шаги с МИС: по специальности подтягивается прайс',
-    types: ['professions']
+  speciality: {
+    label: 'Специальность',
+    hint: 'По ней кандидату подтянется раздел прайса на шаге выбора услуг',
+    types: ['speciality']
   }
 };
 
@@ -81,6 +88,9 @@ const FIELD_ROLES = {
 // сразу: латиница, цифры и подчёркивание, начиная с буквы. Кириллический ключ
 // пережил бы базу, но не первую выгрузку и не первый разбор JSON руками.
 const KEY_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/;
+
+// Имена, переехавшие в 8.21 вместе с отказом от МИС.
+const LEGACY_NAMES = { professions: 'speciality' };
 
 const MAX_BLOCKS = 40;
 const MAX_FIELDS_PER_BLOCK = 40;
@@ -167,7 +177,10 @@ function validateForm(raw) {
       }
       if (!label) errors.push(`Блок «${where}», поле «${fieldKey}»: не заполнена подпись`);
 
-      const type = trimmed(fieldRaw.type, 30);
+      // В 8.20 тип и роль назывались 'professions' и брались из МИС. Вакансии,
+      // собранные до 8.21, читаются дальше как есть: подменяем имя, а не
+      // требуем пересобрать анкету.
+      const type = LEGACY_NAMES[trimmed(fieldRaw.type, 30)] || trimmed(fieldRaw.type, 30);
       const spec = FIELD_TYPES[type];
       if (!spec) {
         errors.push(`Блок «${where}», поле «${fieldWhere}»: неизвестный тип «${type}»`);
@@ -213,7 +226,8 @@ function validateForm(raw) {
 
       // Роль — единственная настройка, которую нельзя проверить в пределах
       // поля: её осмысленность зависит от всего шаблона.
-      const role = trimmed(fieldRaw.role, 30);
+      const rawRole = trimmed(fieldRaw.role, 30);
+      const role = LEGACY_NAMES[rawRole] || rawRole;
       if (role) {
         const roleSpec = FIELD_ROLES[role];
         if (!roleSpec) {
@@ -463,13 +477,14 @@ function checkField(field, raw) {
       return { value: { from, to } };
     }
 
-    case 'professions': {
+    // Специальность — это имя раздела прайса, и хранится именно именем: у
+    // разделов в кэше прайса нет устойчивого идентификатора, общего для всех
+    // филиалов, а имя («Невролог») одинаково везде.
+    case 'speciality': {
       if (!Array.isArray(raw)) return {};
-      const value = raw
-        .filter(isPlainObject)
-        .map(p => ({ id: String(p.id || '').slice(0, 50), name: String(p.name || '').slice(0, 200) }))
-        .filter(p => p.id && p.name)
-        .slice(0, 20);
+      const value = [...new Set(
+        raw.filter(v => typeof v === 'string').map(v => v.trim()).filter(Boolean)
+      )].slice(0, 20);
       return value.length ? { value } : {};
     }
 

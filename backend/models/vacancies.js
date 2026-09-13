@@ -1,19 +1,17 @@
 /**
- * Модели раздела «Вакансии» (ver. 8.20).
+ * Модели раздела «Вакансии» (ver. 8.20, переработаны в 8.21).
  *
  * Второе поколение онбординга. Старый модуль (models/onboarding.js, таблицы
  * onb_*) остаётся рядом рабочим и будет удалён целиком, когда сюда переедут
  * живые заявки, — поэтому ничего общего с ним здесь нет, вплоть до отдельных
- * таблиц под то же самое (файлы, коды на почту, чаты). Разделять одну таблицу
- * между двумя модулями, один из которых доживает последние недели, дороже, чем
- * завести вторую: удаление старого станет отдельным коммитом без миграции
- * данных.
+ * таблиц под то же самое (файлы, коды на почту, чаты).
  *
- * Отличие от первого поколения одно, но оно меняет всё: анкета и процесс больше
- * не лежат в коде, а собираются в конструкторе и хранятся в шаблоне. Из этого
- * следуют роли полей (см. VacTemplate.form) и снимок анкеты в заявке
- * (см. VacApplication.formSnapshot) — двух этих вещей в onb_* нет и быть не
- * могло.
+ * В 8.20 между вакансией и анкетой стоял шаблон: анкета с процессом жили в нём,
+ * а вакансия была его публикацией в филиале. Слой не оправдался — чтобы завести
+ * одну вакансию, приходилось ходить по двум страницам и помнить, что где лежит.
+ * В 8.21 шаблоны убраны: анкета, процесс, письма, исполнители и чаты лежат
+ * прямо в вакансии. Повторяющуюся анкету теперь собирают заново — это решение
+ * заказчика, взвешенное против «бегания по страничкам».
  *
  * Файл экспортирует фабрику по образцу склада и онбординга: index.js передаёт
  * свой экземпляр sequelize, второго подключения к базе не появляется.
@@ -22,38 +20,40 @@
 module.exports = function defineVacancyModels(sequelize, DataTypes) {
   const ts = { timestamps: true };
 
-  // ── Шаблон: анкета плюс процесс ───────────────────────────────────────────
+  // ── Вакансия ──────────────────────────────────────────────────────────────
   //
-  // Один шаблон на должность: «Врач», «Медсестра», «Техничка». Анкета и процесс
-  // лежат в JSONB, а не разложены по таблицам блоков, полей и шагов. Причина
-  // та же, по которой анкета врача лежит в JSONB в старом модуле: и то и другое
-  // всегда читается и пишется целиком. Редактор присылает форму одним куском,
-  // движок при каждом переходе разбирает процесс целиком, и реляционный вид дал
-  // бы пять таблиц ради запросов, которых никто не делает.
+  // Всё о найме на одну должность в один филиал: что показать кандидату, какую
+  // анкету он заполнит, какой процесс за этим пойдёт и какими письмами с ним
+  // разговаривают.
+  //
+  // Анкета и процесс лежат в JSONB, а не разложены по таблицам блоков, полей и
+  // шагов. Причина та же, по которой анкета врача лежала в JSONB в первом
+  // поколении: и то и другое всегда читается и пишется целиком. Редактор
+  // присылает форму одним куском, движок при каждом переходе разбирает процесс
+  // целиком, и реляционный вид дал бы пять таблиц ради запросов, которых никто
+  // не делает.
   //
   // form: {
   //   blocks: [{ key, title, hint, repeat, fields: [{ key, label, type, role,
-  //              required, min, max, options, hint }] }],
+  //              required, min, max, accept, hint }] }],
   //   steps:  [{ key, title, blocks: [ключи блоков] }],
-  //   consentVersion: '2026-08-24'
+  //   consentVersion: '2026-09-13'
   // }
   //
-  // steps — шаги мастера, которым анкета показывается кандидату. Одним полотном
-  // она прокручивается на телефоне минуту, и до конца доходят не все.
+  // steps — шаги мастера, которыми анкета показывается кандидату. Одним
+  // полотном она прокручивается на телефоне минуту, и до конца доходят не все.
   //
   // consentVersion меняется вместе с текстом согласий: в заявке фиксируется та
   // версия, на которую человек согласился, иначе через год будет непонятно, под
   // чем именно стоит его галочка.
   //
-  // Про role. В первом поколении анкета была одна, и движок знал, что ФИО лежит
-  // в form.fullName, а дата выхода — в form.startDate. Теперь ключи полей
-  // придумывает тот, кто собирает анкету, и «ФИО» в анкете технички может
-  // называться как угодно. Поэтому у поля есть необязательная роль — чем это
-  // поле является для движка: 'fullName' (подпись заявки в списках и письмах),
-  // 'phone', 'birthDate', 'startDate' (точка отсчёта сроков), 'professions'
-  // (специальности из справочника МИС, без них не работают шаги с МИС).
-  // Роль в шаблоне не повторяется, 'fullName' обязателен — иначе список заявок
-  // окажется безымянным.
+  // Про role. Ключи полей придумывает тот, кто собирает анкету, и «ФИО» в
+  // анкете технички может называться как угодно. Поэтому у поля есть
+  // необязательная роль — чем это поле является для движка: 'fullName' (подпись
+  // заявки в списках и письмах), 'phone', 'birthDate', 'startDate' (точка
+  // отсчёта сроков), 'speciality' (раздел прайса, по которому кандидату
+  // показывают услуги). Роль в анкете не повторяется, 'fullName' обязателен —
+  // иначе список заявок окажется безымянным.
   //
   // process: {
   //   steps: [{ key, title, hint, scope, after, kind, slaHours, checklist,
@@ -61,89 +61,65 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
   // }
   //
   // kind — чем шаг выполняется: 'decision' (согласовать / вернуть на доработку /
-  // отклонить, ровно один на шаблон и корень всего процесса), 'manual' (отметка
-  // исполнителя) либо одно из встроенных умений — 'mis_account', 'mis_schedule',
-  // 'mis_services', 'services_pick'. Умения не создаются в конструкторе, а
-  // выбираются из списка: за каждым стоит код, который ходит в «Реновацию» или
-  // рисует кандидату экран выбора услуг. Это и есть граница между шаблоном и
-  // кодом — в данных «когда», в коде «чем».
+  // отклонить, ровно один на вакансию и корень всего процесса), 'manual'
+  // (отметка исполнителя) либо 'services_pick' — единственный оставшийся
+  // особый шаг, где кандидат сам отмечает по прайсу, что готов оказывать.
+  //
+  // Сверки с «Реновацией» здесь были в 8.20 и убраны в 8.21 по решению
+  // заказчика: выигрыш от «спросить систему вместо галочки» не окупал ни
+  // зависимости от доступности МИС, ни объяснений, почему шаг не закрывается.
   //
   // scope — 'branch' (исполнитель свой в каждом филиале), 'network' (один на
-  // сеть) или 'candidate' (шаг закрывает сам кандидат по своей ссылке, как
-  // выбор услуг). У последнего исполнителя нет, и в настройках он не
-  // показывается.
+  // сеть) или 'candidate' (шаг закрывает сам кандидат по своей ссылке). У
+  // последнего исполнителя нет, и в настройках он не показывается.
   //
   // after — список ключей шагов, после закрытия которых задача появляется; шаг
   // ждёт всех сразу. Ветвлений в движке нет намеренно: списком предшественников
   // выражается всё, что реально нужно, а «если филиал такой-то, то» превратило
-  // бы конструктор в язык программирования. Кольцо ловится проверкой при
-  // сохранении — иначе процесс молча не тронется с места, и понять почему
-  // будет неоткуда.
-  const VacTemplate = sequelize.define('VacTemplate', {
-    id:    { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    title: { type: DataTypes.STRING(150), allowNull: false, comment: 'Должность: «Врач», «Медсестра»' },
-    description: { type: DataTypes.TEXT, comment: 'Для тех, кто собирает вакансии, кандидат этого не видит' },
-
-    form:    { type: DataTypes.JSONB, allowNull: false, defaultValue: { blocks: [] } },
-    process: { type: DataTypes.JSONB, allowNull: false, defaultValue: { steps: [] } },
-
-    // Тексты писем кандидату. Вёрстка остаётся в коде: она выстрадана под
-    // почтовые клиенты (таблицы, инлайновые стили, отсутствие флексбокса), и
-    // отдавать её в редактор — это чинить письма после каждой правки.
-    emails: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
-
-    // Черновик не показывается при создании вакансии: собрать анкету из
-    // тридцати полей за один присест нельзя, а полуготовый шаблон, случайно
-    // выбранный в вакансии, обернётся заявками по недоделанной анкете.
-    isPublished: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-    isArchived:  { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-
-    createdBy: { type: DataTypes.UUID }
-  }, {
-    ...ts,
-    tableName: 'vac_templates',
-    indexes: [
-      { fields: ['isArchived'] },
-      { fields: ['isPublished'] }
-    ]
-  });
-
-  // ── Вакансия: публикация шаблона в филиале ────────────────────────────────
+  // бы конструктор в язык программирования.
   //
-  // Шаблон описывает должность вообще, вакансия — конкретное место работы.
-  // «Терапевт на Ленина» и «Невролог на Мира» — две вакансии на одном шаблоне
-  // «Врач»: анкета и процесс у них общие, различаются заголовок, описание и
-  // филиал.
-  //
-  // Филиал живёт здесь, а не в анкете. В первом поколении его выбирал сам врач
-  // первым блоком формы, потому что ссылка на анкету была одна на всю сеть.
-  // Теперь у каждого медцентра свой QR (адрес /vacancy/:код, код берётся из
-  // MedCenter.code — он латинский и не меняется при переименовании), человек
-  // приходит по нему и видит вакансии только этого филиала. Спрашивать у
-  // кандидата то, что уже известно из ссылки, незачем, и ошибиться он больше
-  // не может.
+  // emails — тексты писем кандидату. Вёрстка остаётся в коде: она выстрадана
+  // под почтовые клиенты, и отдавать её в редактор значит чинить письма после
+  // каждой правки.
   const VacVacancy = sequelize.define('VacVacancy', {
     id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    templateId:  { type: DataTypes.UUID, allowNull: false },
     medCenterId: { type: DataTypes.UUID, allowNull: false },
 
     title:       { type: DataTypes.STRING(200), allowNull: false, comment: 'Что видит кандидат в списке' },
     description: { type: DataTypes.TEXT, comment: 'Условия, график, требования — показывается перед анкетой' },
 
-    // Закрытая вакансия пропадает из списка по QR, но остаётся со своими
-    // заявками: их ещё доводить до выхода человека на работу, когда набор уже
-    // закрыт.
-    isOpen:    { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-    sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    form:    { type: DataTypes.JSONB, allowNull: false, defaultValue: { blocks: [], steps: [] } },
+    process: { type: DataTypes.JSONB, allowNull: false, defaultValue: { steps: [] } },
+    emails:  { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
 
+    // Состояние одной колонкой, а не парой флагов: «открыта, но не
+    // опубликована» — сочетание, которого не бывает.
+    //   draft  — собирается, по ссылке не открывается
+    //   open   — принимает отклики
+    //   closed — набор закрыт, поданные заявки доводятся до конца
+    status: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'draft',
+      comment: 'draft, open, closed'
+    },
+
+    // Короткий код для прямой ссылки. Филиальный QR (/vacancy/:код-медцентра)
+    // ведёт на список вакансий и висит табличкой в регистратуре; этот
+    // (/vacancy/j/:код) ведёт сразу в конкретную анкету и уходит человеку
+    // лично. Восемь знаков шестнадцатеричного алфавита: в нём нет ни O, ни l,
+    // ни I, и код можно продиктовать голосом.
+    publicCode: { type: DataTypes.STRING(16), allowNull: false, unique: true },
+
+    sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     createdBy: { type: DataTypes.UUID }
   }, {
     ...ts,
     tableName: 'vac_vacancies',
     indexes: [
-      { fields: ['templateId'] },
       { fields: ['medCenterId'] },
-      { fields: ['isOpen'] }
+      { fields: ['status'] },
+      { unique: true, fields: ['publicCode'] }
     ]
   });
 
@@ -166,12 +142,11 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
 
     vacancyId: { type: DataTypes.UUID, allowNull: false },
 
-    // Шаблон и филиал продублированы из вакансии сознательно. По филиалу
-    // считаются исполнители каждого шага, по шаблону — процесс, и оба нужны в
-    // каждом запросе списка задач. Через вакансию это лишний JOIN в самом
-    // горячем месте раздела. Вакансию при этом никто не переносит между
-    // филиалами — форма редактирования такого не даёт.
-    templateId:  { type: DataTypes.UUID, allowNull: false },
+    // Филиал продублирован из вакансии сознательно: по нему считаются
+    // исполнители каждого шага, и он нужен в каждом запросе списка задач —
+    // через вакансию это лишний JOIN в самом горячем месте раздела. Вакансию
+    // при этом никто не переносит между филиалами: форма редактирования такого
+    // не даёт.
     medCenterId: { type: DataTypes.UUID, allowNull: false },
 
     // Персональная ссылка кандидата. Аккаунта в портале у него нет и не
@@ -210,9 +185,10 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     // Согласия фиксируются не галочкой, а фактом: время, адрес и версия текста.
     consents: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
 
-    // doctor_id из «Реновации». Появляется на шаге с умением mis_account и
-    // дальше нужен остальным шагам с МИС. У шаблонов без таких шагов остаётся
-    // пустым.
+    // Наследие 8.20, когда шаги сверялись с «Реновацией»: сюда клался doctor_id.
+    // Сверок больше нет, поле не пишется и не читается. Колонку оставили в
+    // таблице, чтобы не гонять ALTER по бою ради одного пустого VARCHAR;
+    // уедет вместе со следующей правкой схемы, если такая понадобится.
     misUserId: { type: DataTypes.STRING(50) },
 
     submittedAt: { type: DataTypes.DATE },
@@ -236,9 +212,7 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
       { fields: ['status'] },
       { fields: ['email'] },
       { fields: ['vacancyId'] },
-      { fields: ['templateId'] },
       { fields: ['medCenterId'] },
-      { fields: ['misUserId'] },
       // Уникальность считается по паре «почта + вакансия», а не по одной почте,
       // как в первом поколении: откликаться на несколько вакансий сети один
       // человек вправе, а дважды на одну и ту же — нет. Частичный индекс
@@ -254,8 +228,8 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
   // В проекте ролей и так много, а здесь связка «шаг + филиал → пользователь»
   // себя оправдала в первом поколении и в складском модуле.
   //
-  // В отличие от onb_assignments здесь есть templateId: ключ шага уникален
-  // внутри шаблона, и 'hr_check' у врача и у технички — разные шаги с разными
+  // В отличие от onb_assignments здесь есть vacancyId: ключ шага уникален
+  // внутри вакансии, и 'hr_check' у врача и у технички — разные шаги с разными
   // исполнителями. У шага со scope 'network' филиал пустой («все филиалы»).
   //
   // Под тем же ключом шага хранится одна служебная точка, шагом не являющаяся:
@@ -266,7 +240,7 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
   // создать нельзя.
   const VacAssignment = sequelize.define('VacAssignment', {
     id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    templateId:  { type: DataTypes.UUID, allowNull: false },
+    vacancyId:   { type: DataTypes.UUID, allowNull: false },
     stepKey:     { type: DataTypes.STRING(60), allowNull: false },
     medCenterId: { type: DataTypes.UUID, comment: 'NULL — исполнитель общий на сеть' },
     userId:      { type: DataTypes.UUID, allowNull: false }
@@ -274,9 +248,9 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     ...ts,
     tableName: 'vac_assignments',
     indexes: [
-      { fields: ['templateId'] },
+      { fields: ['vacancyId'] },
       { fields: ['userId'] },
-      { unique: true, fields: ['templateId', 'stepKey', 'medCenterId', 'userId'] }
+      { unique: true, fields: ['vacancyId', 'stepKey', 'medCenterId', 'userId'] }
     ]
   });
 
@@ -438,10 +412,10 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
   // Ссылки на групповые чаты, которые уходят одним письмом, когда закрыт
   // последний шаг чек-листа.
   //
-  // Привязка к паре «шаблон + филиал», а не к одному филиалу, как в первом
-  // поколении: медсестру на Ленина зовут не туда, куда врача там же, и не туда,
-  // куда медсестру в соседнем медцентре. Пустой филиал означает «этот шаблон во
-  // всех филиалах» — так заводится общий чат сети.
+  // Привязка к вакансии, а не к филиалу, как в первом поколении: медсестру
+  // зовут не туда, куда врача в том же медцентре. Филиал у вакансии и так один,
+  // поэтому пустое поле medCenterId здесь означает только одно — «чат общий на
+  // сеть», и такой чат уходит всем, кого наняли по этой вакансии.
   //
   // Название и аватарка не собираются в момент отправки письма: превью тянется
   // из открытой страницы приглашения, а она может не ответить — и тогда письмо
@@ -449,8 +423,8 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
   // превью забирается при настройке и хранится здесь, а обновляется кнопкой.
   const VacChatLink = sequelize.define('VacChatLink', {
     id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    templateId:  { type: DataTypes.UUID, allowNull: false },
-    medCenterId: { type: DataTypes.UUID, comment: 'NULL — чат общий на сеть для этого шаблона' },
+    vacancyId:   { type: DataTypes.UUID, allowNull: false },
+    medCenterId: { type: DataTypes.UUID, comment: 'NULL — чат общий на сеть' },
 
     url: { type: DataTypes.STRING(500), allowNull: false },
 
@@ -477,14 +451,13 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     ...ts,
     tableName: 'vac_chat_links',
     indexes: [
-      { fields: ['templateId'] },
+      { fields: ['vacancyId'] },
       { fields: ['medCenterId'] },
       { fields: ['isActive'] }
     ]
   });
 
   const models = {
-    VacTemplate,
     VacVacancy,
     VacApplication,
     VacAssignment,
@@ -497,16 +470,13 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
   };
 
   function associateVacancies({ User, MedCenter }) {
-    VacVacancy.belongsTo(VacTemplate, { foreignKey: 'templateId', as: 'template' });
-    VacVacancy.belongsTo(MedCenter,   { foreignKey: 'medCenterId', as: 'medCenter' });
-    VacTemplate.hasMany(VacVacancy,   { foreignKey: 'templateId', as: 'vacancies' });
+    VacVacancy.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 
-    VacApplication.belongsTo(VacVacancy,  { foreignKey: 'vacancyId', as: 'vacancy' });
-    VacApplication.belongsTo(VacTemplate, { foreignKey: 'templateId', as: 'template' });
-    VacApplication.belongsTo(MedCenter,   { foreignKey: 'medCenterId', as: 'medCenter' });
-    VacApplication.belongsTo(User,        { foreignKey: 'decidedBy', as: 'decider' });
-    VacApplication.belongsTo(User,        { foreignKey: 'cancelledBy', as: 'canceller' });
-    VacVacancy.hasMany(VacApplication,    { foreignKey: 'vacancyId', as: 'applications' });
+    VacApplication.belongsTo(VacVacancy, { foreignKey: 'vacancyId', as: 'vacancy' });
+    VacApplication.belongsTo(MedCenter,  { foreignKey: 'medCenterId', as: 'medCenter' });
+    VacApplication.belongsTo(User,       { foreignKey: 'decidedBy', as: 'decider' });
+    VacApplication.belongsTo(User,       { foreignKey: 'cancelledBy', as: 'canceller' });
+    VacVacancy.hasMany(VacApplication,   { foreignKey: 'vacancyId', as: 'applications' });
 
     VacApplication.hasMany(VacTask, { foreignKey: 'applicationId', as: 'tasks', onDelete: 'CASCADE' });
     VacTask.belongsTo(VacApplication, { foreignKey: 'applicationId', as: 'application' });
@@ -523,12 +493,12 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     VacEvent.belongsTo(VacApplication, { foreignKey: 'applicationId', as: 'application' });
     VacEvent.belongsTo(User, { foreignKey: 'userId', as: 'author' });
 
-    VacAssignment.belongsTo(VacTemplate, { foreignKey: 'templateId', as: 'template' });
-    VacAssignment.belongsTo(User,        { foreignKey: 'userId', as: 'user' });
-    VacAssignment.belongsTo(MedCenter,   { foreignKey: 'medCenterId', as: 'medCenter' });
+    VacAssignment.belongsTo(VacVacancy, { foreignKey: 'vacancyId', as: 'vacancy' });
+    VacAssignment.belongsTo(User,       { foreignKey: 'userId', as: 'user' });
+    VacAssignment.belongsTo(MedCenter,  { foreignKey: 'medCenterId', as: 'medCenter' });
 
-    VacChatLink.belongsTo(VacTemplate, { foreignKey: 'templateId', as: 'template' });
-    VacChatLink.belongsTo(MedCenter,   { foreignKey: 'medCenterId', as: 'medCenter' });
+    VacChatLink.belongsTo(VacVacancy, { foreignKey: 'vacancyId', as: 'vacancy' });
+    VacChatLink.belongsTo(MedCenter,  { foreignKey: 'medCenterId', as: 'medCenter' });
 
     VacEmailCode.belongsTo(VacVacancy, { foreignKey: 'vacancyId', as: 'vacancy' });
   }

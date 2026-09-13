@@ -1,13 +1,13 @@
 'use strict';
 
 /**
- * Кто выполняет шаг для конкретной заявки (ver. 8.20).
+ * Кто выполняет шаг для конкретной заявки (ver. 8.20, переработано в 8.21).
  *
  * Ролей в модуле нет: исполнитель — конкретный пользователь. Настройка живёт в
- * vac_assignments и отвечает на один вопрос: «шаблон + шаг + филиал → кто».
+ * vac_assignments и отвечает на один вопрос: «вакансия + шаг + филиал → кто».
  *
- * Шаблон в ключе появился во втором поколении: ключи шагов уникальны внутри
- * шаблона, и `hr_check` у врача и у технички — разные шаги с разными людьми.
+ * Вакансия в ключе, а не шаблон: ключи шагов уникальны внутри вакансии, и
+ * `hr_check` у врача и у технички — разные шаги с разными людьми.
  */
 
 const { Op } = require('sequelize');
@@ -28,10 +28,10 @@ const processSchema = require('./processSchema');
  *
  * @returns {Promise<string[]>} id пользователей
  */
-async function resolveAssignees(templateId, stepKey, medCenterId) {
+async function resolveAssignees(vacancyId, stepKey, medCenterId) {
   const rows = await VacAssignment.findAll({
     where: {
-      templateId,
+      vacancyId,
       stepKey,
       [Op.or]: [{ medCenterId: medCenterId || null }, { medCenterId: null }]
     },
@@ -50,8 +50,8 @@ async function resolveAssignees(templateId, stepKey, medCenterId) {
  * иерархии подчинения в портале нет, и выдумывать её ради одного уведомления
  * незачем.
  */
-async function resolveEscalation(templateId, medCenterId) {
-  return resolveAssignees(templateId, processSchema.ESCALATION_KEY, medCenterId);
+async function resolveEscalation(vacancyId, medCenterId) {
+  return resolveAssignees(vacancyId, processSchema.ESCALATION_KEY, medCenterId);
 }
 
 /**
@@ -59,9 +59,9 @@ async function resolveEscalation(templateId, medCenterId) {
  * исполнителей — узнать об уволившемся кадровике лучше до того, как на нём
  * зависнет заявка.
  */
-async function brokenAssignees(templateId) {
+async function brokenAssignees(vacancyId) {
   const rows = await VacAssignment.findAll({
-    where: { templateId },
+    where: { vacancyId },
     include: [{ model: User, as: 'user', attributes: ['id', 'displayName', 'username', 'isActive'] }]
   });
   return rows
@@ -74,14 +74,13 @@ async function brokenAssignees(templateId) {
     }));
 }
 
-/** Все шаги всех шаблонов, на которые человек назначен, — основа его доступа. */
+/** Все шаги всех вакансий, на которые человек назначен, — основа его доступа. */
 async function stepsOfUser(userId) {
-  const rows = await VacAssignment.findAll({
+  return VacAssignment.findAll({
     where: { userId },
-    attributes: ['templateId', 'stepKey', 'medCenterId'],
+    attributes: ['vacancyId', 'stepKey', 'medCenterId'],
     raw: true
   });
-  return rows;
 }
 
 module.exports = {

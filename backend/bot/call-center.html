@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Колл-центр: быстрые данные</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cc-bg: #f8fafc;
+  --cc-card-bg: #ffffff;
+  --cc-border: #e2e8f0;
+  --cc-border-strong: #cbd5e1;
+  --cc-text: #1e293b;
+  --cc-text-secondary: #64748b;
+  --cc-text-muted: #94a3b8;
+  --cc-primary: #2563eb;
+  --cc-primary-soft: #eff6ff;
+  --cc-success: #16a34a;
+  --cc-danger: #dc2626;
+  --cc-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --cc-shadow-hover: 0 4px 16px rgba(0,0,0,0.10);
+  --cc-radius: 12px;
+}
+
+#cc-app *, #cc-app *::before, #cc-app *::after { box-sizing: border-box; }
+#cc-app :where(h1, h2, h3, h4, p, ul, ol, li, figure, blockquote) { margin: 0; padding: 0; }
+#cc-app :where(button, input, select, textarea) { margin: 0; }
+#cc-app {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  color: var(--cc-text);
+  font-size: 14px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 12px;
+  line-height: 1.45;
+}
+#cc-app button, #cc-app input, #cc-app textarea, #cc-app select { font-family: inherit; font-size: inherit; color: inherit; }
+
+/* ─── ПАНЕЛЬ СВЕРХУ ─── */
+/* Панель липкая: оператор ищет во время разговора, и прокрутка вниз не должна
+   уводить поле поиска с экрана — иначе к нему возвращаются колесом мыши. */
+.cc-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  /* Полупрозрачный белый, а не сплошной цвет фона: на вики страница лежит на
+     белом листе, и серая плашка поверх него читалась бы как чужая полоса. */
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  flex-wrap: wrap;
+}
+
+.cc-search {
+  position: relative;
+  flex: 1 1 320px;
+  min-width: 220px;
+}
+.cc-search-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 17px;
+  height: 17px;
+  color: var(--cc-text-muted);
+  pointer-events: none;
+}
+.cc-search input {
+  width: 100%;
+  height: 42px;
+  padding: 0 38px 0 40px;
+  border: 1px solid var(--cc-border);
+  border-radius: 10px;
+  background: var(--cc-card-bg);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cc-search input:focus {
+  border-color: var(--cc-primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+}
+.cc-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cc-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+}
+.cc-search-clear:hover { background: #f1f5f9; color: var(--cc-text); }
+.cc-search.filled .cc-search-clear { display: block; }
+
+.cc-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+
+.cc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--cc-border);
+  border-radius: 9px;
+  background: var(--cc-card-bg);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cc-btn:hover { background: #f8fafc; border-color: var(--cc-border-strong); }
+.cc-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.cc-btn.primary {
+  background: var(--cc-primary);
+  border-color: var(--cc-primary);
+  color: #fff;
+}
+.cc-btn.primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.cc-btn.active {
+  background: var(--cc-primary-soft);
+  border-color: #bfdbfe;
+  color: var(--cc-primary);
+}
+.cc-btn.danger { color: var(--cc-danger); }
+.cc-btn.danger:hover { background: #fef2f2; border-color: #fecaca; }
+.cc-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ─── ВКЛАДКИ ─── */
+.cc-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--cc-border);
+  margin-bottom: 18px;
+}
+.cc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--cc-text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.cc-tab:hover { background: #f1f5f9; color: var(--cc-text); }
+.cc-tab.active {
+  background: var(--cc-primary-soft);
+  border-color: #bfdbfe;
+  color: var(--cc-primary);
+  font-weight: 600;
+}
+.cc-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.07);
+  font-size: 11px;
+  font-weight: 700;
+}
+.cc-tab.active .cc-tab-count { background: rgba(37,99,235,0.14); }
+.cc-tab-edit {
+  display: none;
+  width: 22px;
+  height: 22px;
+  margin-right: -6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+.cc-app-editing .cc-tab.active .cc-tab-edit { display: inline-flex; }
+.cc-tab-edit:hover { background: rgba(0,0,0,0.08); }
+.cc-tab-edit svg { width: 13px; height: 13px; display: block; }
+
+.cc-tabs-add { display: none; }
+.cc-app-editing .cc-tabs-add { display: inline-flex; }
+
+/* ─── СЕТКА КАРТОЧЕК ─── */
+.cc-group-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cc-text-muted);
+  margin: 4px 0 12px;
+}
+.cc-group-title:not(:first-child) { margin-top: 26px; }
+.cc-group-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--cc-border);
+}
+
+.cc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.cc-card {
+  background: var(--cc-card-bg);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  box-shadow: var(--cc-shadow);
+  overflow: hidden;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.cc-card:hover { box-shadow: var(--cc-shadow-hover); border-color: var(--cc-border-strong); }
+
+.cc-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+.cc-card-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.cc-card-note {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--cc-text-secondary);
+  word-break: break-word;
+}
+.cc-card-tools { display: none; gap: 2px; flex-shrink: 0; }
+.cc-app-editing .cc-card-tools { display: flex; }
+.cc-icon-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--cc-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.cc-icon-btn:hover { background: #f1f5f9; color: var(--cc-text); }
+.cc-icon-btn.danger:hover { background: #fef2f2; color: var(--cc-danger); }
+.cc-icon-btn svg { width: 15px; height: 15px; display: block; }
+
+/* ─── СТРОКИ ЗНАЧЕНИЙ ─── */
+.cc-items { border-top: 1px solid var(--cc-border); }
+.cc-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 16px;
+}
+.cc-item + .cc-item { border-top: 1px dashed var(--cc-border); }
+.cc-item-body { flex: 1; min-width: 0; }
+.cc-item-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cc-text-muted);
+  margin-bottom: 3px;
+}
+.cc-item-value {
+  word-break: break-word;
+  white-space: pre-wrap;
+  font-size: 13.5px;
+}
+.cc-item-value.mono {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--cc-primary);
+}
+/* Текст заготовки бывает на десять строк. Полностью он нужен редко — при
+   копировании уходит всё равно целиком, — поэтому свёрнут до четырёх строк. */
+.cc-item-value.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cc-item-more {
+  margin-top: 4px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--cc-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.cc-item-more:hover { text-decoration: underline; }
+
+.cc-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.cc-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  background: var(--cc-card-bg);
+  color: var(--cc-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cc-copy:hover { background: var(--cc-primary-soft); border-color: #bfdbfe; color: var(--cc-primary); }
+.cc-copy svg { width: 14px; height: 14px; }
+.cc-copy.done {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: var(--cc-success);
+}
+.cc-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--cc-border);
+  border-radius: 8px;
+  background: var(--cc-card-bg);
+  color: var(--cc-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cc-open:hover { background: var(--cc-primary-soft); border-color: #bfdbfe; color: var(--cc-primary); }
+.cc-open svg { width: 14px; height: 14px; display: block; }
+
+mark.cc-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 0 1px; }
+
+/* ─── ПУСТЫЕ СОСТОЯНИЯ ─── */
+.cc-empty {
+  padding: 54px 20px;
+  text-align: center;
+  color: var(--cc-text-secondary);
+}
+.cc-empty svg { width: 38px; height: 38px; color: var(--cc-text-muted); margin-bottom: 12px; }
+.cc-empty-title { font-size: 15px; font-weight: 600; color: var(--cc-text); margin-bottom: 5px; }
+.cc-empty-hint { font-size: 13px; }
+
+.cc-add-card {
+  display: none;
+  width: 100%;
+  min-height: 92px;
+  border: 1.5px dashed var(--cc-border-strong);
+  border-radius: var(--cc-radius);
+  background: transparent;
+  color: var(--cc-text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cc-app-editing .cc-add-card { display: flex; }
+.cc-add-card:hover { background: var(--cc-primary-soft); border-color: var(--cc-primary); color: var(--cc-primary); }
+.cc-add-card svg { width: 18px; height: 18px; }
+
+/* ─── МОДАЛКИ ─── */
+.cc-overlay, .cc-toast {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--cc-text);
+}
+.cc-overlay *, .cc-overlay *::before, .cc-overlay *::after { box-sizing: border-box; }
+.cc-overlay h1, .cc-overlay h2, .cc-overlay h3, .cc-overlay p, .cc-overlay div { margin: 0; }
+.cc-overlay button, .cc-overlay input, .cc-overlay select, .cc-overlay textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.cc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15,23,42,0.45);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 16px;
+  overflow-y: auto;
+}
+.cc-overlay.open { display: flex; }
+.cc-modal {
+  width: 100%;
+  max-width: 620px;
+  background: var(--cc-card-bg);
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+  overflow: hidden;
+  margin: auto 0;
+}
+.cc-modal.narrow { max-width: 440px; }
+.cc-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--cc-border);
+}
+.cc-modal-title { font-size: 16px; font-weight: 600; }
+.cc-modal-body { padding: 18px 20px; }
+.cc-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--cc-border);
+  background: #fbfcfd;
+}
+
+.cc-field { margin-bottom: 14px; }
+.cc-field:last-child { margin-bottom: 0; }
+.cc-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cc-text-secondary);
+  margin-bottom: 5px;
+}
+.cc-field input[type=text], .cc-field select, .cc-field textarea,
+.cc-field-row input[type=text], .cc-field-row select, .cc-field-row textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--cc-border);
+  border-radius: 9px;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cc-field textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
+.cc-field input:focus, .cc-field select:focus, .cc-field textarea:focus,
+.cc-field-row input:focus, .cc-field-row select:focus, .cc-field-row textarea:focus {
+  border-color: var(--cc-primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+}
+.cc-field-hint { margin-top: 5px; font-size: 12px; color: var(--cc-text-muted); }
+
+.cc-fields-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cc-border);
+}
+.cc-fields-head-title { font-size: 13px; font-weight: 600; }
+.cc-field-row {
+  border: 1px solid var(--cc-border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #fbfcfd;
+}
+.cc-field-row-top {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cc-field-row-top input { flex: 1; min-width: 0; }
+.cc-field-row-top select { width: 140px; flex-shrink: 0; }
+.cc-field-row textarea { min-height: 68px; resize: vertical; line-height: 1.5; }
+.cc-field-row-tools { display: flex; justify-content: flex-end; gap: 2px; margin-top: 6px; }
+
+.cc-export-area {
+  width: 100%;
+  min-height: 220px;
+  padding: 11px;
+  border: 1px solid var(--cc-border);
+  border-radius: 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/* ─── ТОСТ ─── */
+.cc-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(14px);
+  z-index: 1100;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.cc-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.cc-toast.error { background: var(--cc-danger); }
+
+@media (max-width: 768px) {
+  #cc-app { padding: 0 10px; }
+  .cc-grid { grid-template-columns: 1fr; }
+  .cc-toolbar { gap: 8px; }
+  .cc-search { flex: 1 1 100%; }
+  .cc-toolbar-actions { width: 100%; }
+  .cc-toolbar-actions .cc-btn { flex: 1; justify-content: center; }
+  .cc-item { flex-wrap: wrap; }
+  .cc-item-actions { width: 100%; justify-content: flex-end; }
+  .cc-field-row-top { flex-wrap: wrap; }
+  .cc-field-row-top select { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div id="cc-app">
+  <div class="cc-toolbar">
+    <div class="cc-search" id="cc-search-wrap">
+      <svg class="cc-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" id="cc-search" placeholder="Поиск по всем вкладкам — название, текст, адрес" autocomplete="off">
+      <button class="cc-search-clear" data-act="clear-search" title="Очистить">&times;</button>
+    </div>
+    <div class="cc-toolbar-actions">
+      <button class="cc-btn" id="cc-edit-toggle" data-act="toggle-edit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <span id="cc-edit-toggle-text">Редактировать</span>
+      </button>
+      <button class="cc-btn" id="cc-export-btn" data-act="export" title="Выгрузить данные для сохранения в файл" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+        Выгрузить
+      </button>
+    </div>
+  </div>
+
+  <div class="cc-tabs" id="cc-tabs"></div>
+  <div id="cc-content"></div>
+</div>
+
+<!-- Карточка -->
+<div class="cc-overlay" id="cc-snippet-overlay" data-act="overlay-close">
+  <div class="cc-modal">
+    <div class="cc-modal-head">
+      <div class="cc-modal-title" id="cc-snippet-modal-title">Новая запись</div>
+      <button class="cc-icon-btn" data-act="close-snippet" title="Закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="cc-modal-body">
+      <div class="cc-field">
+        <label for="cc-f-title">Название</label>
+        <input type="text" id="cc-f-title" placeholder="Например: УЗИ органов брюшной полости">
+      </div>
+      <div class="cc-field">
+        <label for="cc-f-tab">Вкладка</label>
+        <select id="cc-f-tab"></select>
+      </div>
+      <div class="cc-field">
+        <label for="cc-f-note">Примечание</label>
+        <input type="text" id="cc-f-note" placeholder="Короткая подсказка — когда это нужно">
+        <div class="cc-field-hint">Видно под названием мелким шрифтом. Необязательно.</div>
+      </div>
+
+      <div class="cc-fields-head">
+        <div class="cc-fields-head-title">Что копируем</div>
+        <button class="cc-btn" data-act="add-field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Добавить поле
+        </button>
+      </div>
+      <div id="cc-fields-list"></div>
+    </div>
+    <div class="cc-modal-foot">
+      <button class="cc-btn" data-act="close-snippet">Отмена</button>
+      <button class="cc-btn primary" data-act="save-snippet">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Вкладка -->
+<div class="cc-overlay" id="cc-tab-overlay" data-act="overlay-close">
+  <div class="cc-modal narrow">
+    <div class="cc-modal-head">
+      <div class="cc-modal-title" id="cc-tab-modal-title">Новая вкладка</div>
+      <button class="cc-icon-btn" data-act="close-tab" title="Закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="cc-modal-body">
+      <div class="cc-field">
+        <label for="cc-f-tab-title">Название вкладки</label>
+        <input type="text" id="cc-f-tab-title" placeholder="Например: Подготовки к исследованиям">
+      </div>
+      <div class="cc-field">
+        <label>Положение</label>
+        <div style="display:flex;gap:8px">
+          <button class="cc-btn" data-act="tab-move" data-dir="-1" style="flex:1">Левее</button>
+          <button class="cc-btn" data-act="tab-move" data-dir="1" style="flex:1">Правее</button>
+        </div>
+      </div>
+    </div>
+    <div class="cc-modal-foot">
+      <button class="cc-btn danger" data-act="delete-tab" id="cc-delete-tab-btn">Удалить</button>
+      <div style="flex:1"></div>
+      <button class="cc-btn" data-act="close-tab">Отмена</button>
+      <button class="cc-btn primary" data-act="save-tab">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Подтверждение -->
+<div class="cc-overlay" id="cc-confirm-overlay" data-act="overlay-close">
+  <div class="cc-modal narrow">
+    <div class="cc-modal-head">
+      <div class="cc-modal-title">Подтвердите удаление</div>
+    </div>
+    <div class="cc-modal-body"><div id="cc-confirm-text"></div></div>
+    <div class="cc-modal-foot">
+      <button class="cc-btn" data-act="close-confirm">Отмена</button>
+      <button class="cc-btn primary" data-act="confirm-yes" style="background:var(--cc-danger);border-color:var(--cc-danger)">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Выгрузка -->
+<div class="cc-overlay" id="cc-export-overlay" data-act="overlay-close">
+  <div class="cc-modal">
+    <div class="cc-modal-head">
+      <div class="cc-modal-title">Выгрузка данных</div>
+      <button class="cc-icon-btn" data-act="close-export" title="Закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="cc-modal-body">
+      <div class="cc-field-hint" style="margin:0 0 10px">
+        Правки сейчас хранятся только в этом браузере. Чтобы их увидели остальные,
+        скопируйте блок ниже и замените им содержимое <b>var SEED</b> в начале скрипта страницы.
+      </div>
+      <textarea class="cc-export-area" id="cc-export-area" readonly></textarea>
+    </div>
+    <div class="cc-modal-foot">
+      <button class="cc-btn" data-act="close-export">Закрыть</button>
+      <button class="cc-btn primary" data-act="copy-export">Скопировать</button>
+    </div>
+  </div>
+</div>
+
+<div class="cc-toast" id="cc-toast"></div>
+
+<script>
+(function() {
+'use strict';
+
+/* Страница живёт в том же window, что и React-приложение портала, и при
+   возврате на неё скрипт выполняется заново (см. PageView.js — он вставляет
+   script заново). Поэтому сначала снимаем обработчики предыдущего запуска:
+   без этого на document накапливаются дубли и Escape срабатывает дважды. */
+if (window.__ccQuickTeardown) { try { window.__ccQuickTeardown(); } catch (e) {} }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ДАННЫЕ
+//
+// Пока у страницы нет своего API, набор лежит здесь, а правки из интерфейса
+// складываются в localStorage этого браузера. Кнопка «Выгрузить» отдаёт готовый
+// блок, которым заменяют SEED — так правка становится общей для всех.
+// Когда появится /api/quick-snippets, меняется только объект Store ниже;
+// остальной код про способ хранения ничего не знает.
+// ─────────────────────────────────────────────────────────────────────────────
+
+var SEED = {
+  tabs: [
+    { id: 'tab-prep',    title: 'Подготовки к исследованиям', sortOrder: 1 },
+    { id: 'tab-mail',    title: 'Электронные почты',          sortOrder: 2 },
+    { id: 'tab-links',   title: 'Ссылки и сайты',             sortOrder: 3 },
+    { id: 'tab-replies', title: 'Заготовки ответов',          sortOrder: 4 }
+  ],
+  snippets: [
+    {
+      id: 'sn-uzi-abd', tabId: 'tab-prep', sortOrder: 1,
+      title: 'УЗИ органов брюшной полости',
+      note: 'Пример записи — замените на настоящий текст',
+      items: [
+        { label: 'Текст подготовки', kind: 'text', value: 'Исследование проводится строго натощак: последний приём пищи за 6–8 часов до визита.\nЗа 2–3 дня исключите продукты, вызывающие газообразование: чёрный хлеб, молоко, сырые овощи и фрукты, газированные напитки.\nЗа час до исследования не пить и не курить.\nПри себе иметь пелёнку или полотенце.' },
+        { label: 'Ссылка на подготовку', kind: 'url', value: 'https://example.com/preparation/uzi-abdomen' }
+      ]
+    },
+    {
+      id: 'sn-colono', tabId: 'tab-prep', sortOrder: 2,
+      title: 'Колоноскопия',
+      note: 'Пример записи — замените на настоящий текст',
+      items: [
+        { label: 'Текст подготовки', kind: 'text', value: 'За 3 дня до исследования — бесшлаковая диета.\nНакануне последний приём пищи не позже 13:00, далее только прозрачные жидкости.\nПрепарат для очищения кишечника принимается по схеме, выданной врачом.\nВ день исследования не есть и не пить.' },
+        { label: 'Ссылка на подготовку', kind: 'url', value: 'https://example.com/preparation/colonoscopy' }
+      ]
+    },
+    {
+      id: 'sn-blood', tabId: 'tab-prep', sortOrder: 3,
+      title: 'Общий анализ крови',
+      note: 'Пример записи',
+      items: [
+        { label: 'Текст подготовки', kind: 'text', value: 'Кровь сдаётся натощак, с 8:00 до 11:00. Допускается пить воду без газа.\nЗа сутки исключить алкоголь и физические нагрузки.\nЕсли принимаете лекарства — сообщите об этом лаборанту.' }
+      ]
+    },
+    {
+      id: 'sn-mail-reg', tabId: 'tab-mail', sortOrder: 1,
+      title: 'Общая почта сети',
+      note: 'Пример записи — замените на настоящий адрес',
+      items: [
+        { label: 'Адрес', kind: 'email', value: 'info@example.com' }
+      ]
+    },
+    {
+      id: 'sn-mail-hr', tabId: 'tab-mail', sortOrder: 2,
+      title: 'Отдел кадров',
+      note: 'Пример записи — замените на настоящий адрес',
+      items: [
+        { label: 'Адрес', kind: 'email', value: 'hr@example.com' },
+        { label: 'Что писать в теме', kind: 'text', value: 'Вакансия — ФИО кандидата — должность' }
+      ]
+    },
+    {
+      id: 'sn-site', tabId: 'tab-links', sortOrder: 1,
+      title: 'Сайт сети',
+      note: 'Пример записи',
+      items: [
+        { label: 'Адрес сайта', kind: 'url', value: 'https://example.com' },
+        { label: 'Онлайн-запись', kind: 'url', value: 'https://example.com/online' }
+      ]
+    },
+    {
+      id: 'sn-reply-results', tabId: 'tab-replies', sortOrder: 1,
+      title: 'Когда будут готовы анализы',
+      note: 'Пример заготовки',
+      items: [
+        { label: 'Текст ответа', kind: 'text', value: 'Результаты будут готовы в течение указанного срока и придут на вашу электронную почту. Если письмо не пришло — проверьте, пожалуйста, папку «Спам», и перезвоните нам, мы отправим повторно.' }
+      ]
+    },
+    {
+      id: 'sn-reply-vacation', tabId: 'tab-replies', sortOrder: 2,
+      title: 'Врач в отпуске',
+      note: 'Пример заготовки',
+      items: [
+        { label: 'Текст ответа', kind: 'text', value: 'К сожалению, этот специалист сейчас в отпуске и вернётся к приёму позже. Я могу записать вас к другому врачу этого же профиля или поставить напоминание перезвонить вам, как только откроется расписание.' }
+      ]
+    }
+  ]
+};
+
+var STORAGE_KEY = 'cc-quick-data-v1';
+
+var Store = {
+  read: function() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && parsed.tabs && parsed.snippets) return parsed;
+      }
+    } catch (e) {}
+    return JSON.parse(JSON.stringify(SEED));
+  },
+  write: function(data) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      return true;
+    } catch (e) {
+      showToast('Не удалось сохранить правку в этом браузере', 'error');
+      return false;
+    }
+  },
+  reset: function() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  }
+};
+
+var KINDS = [
+  { value: 'text',  label: 'Текст' },
+  { value: 'url',   label: 'Ссылка' },
+  { value: 'email', label: 'Почта' },
+  { value: 'phone', label: 'Телефон' }
+];
+
+var ICONS = {
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  external: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.7a2 2 0 0 1-.4 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.5 2.7.6a2 2 0 0 1 1.7 2Z"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+  empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>'
+};
+
+// ─── СОСТОЯНИЕ ───
+var state = {
+  data: Store.read(),
+  activeTabId: null,
+  query: '',
+  editing: false,
+  expanded: {},       // какие длинные значения развёрнуты: ключ «id карточки:номер поля»
+  draftSnippet: null, // карточка в модалке
+  draftTabId: null,
+  confirmAction: null
+};
+
+var root = document.getElementById('cc-app');
+var tabsEl = document.getElementById('cc-tabs');
+var contentEl = document.getElementById('cc-content');
+var searchInput = document.getElementById('cc-search');
+var searchWrap = document.getElementById('cc-search-wrap');
+
+// ─── ВСПОМОГАТЕЛЬНОЕ ───
+function uid(prefix) {
+  return prefix + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// Подсветка идёт по уже экранированной строке, поэтому и запрос экранируем:
+// иначе поиск по «&» или «<» промахивается мимо разметки.
+function highlight(text, query) {
+  var safe = escapeHtml(text);
+  if (!query) return safe;
+  var q = escapeHtml(query);
+  try {
+    return safe.replace(new RegExp('(' + escapeRe(q) + ')', 'gi'), '<mark class="cc-hit">$1</mark>');
+  } catch (e) {
+    return safe;
+  }
+}
+
+function sortedTabs() {
+  return state.data.tabs.slice().sort(function(a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); });
+}
+
+function snippetsOfTab(tabId) {
+  return state.data.snippets
+    .filter(function(s) { return s.tabId === tabId; })
+    .sort(function(a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); });
+}
+
+function tabById(id) {
+  for (var i = 0; i < state.data.tabs.length; i++) if (state.data.tabs[i].id === id) return state.data.tabs[i];
+  return null;
+}
+
+function snippetById(id) {
+  for (var i = 0; i < state.data.snippets.length; i++) if (state.data.snippets[i].id === id) return state.data.snippets[i];
+  return null;
+}
+
+function matches(snippet, q) {
+  if (!q) return true;
+  var hay = [snippet.title || '', snippet.note || ''];
+  (snippet.items || []).forEach(function(it) { hay.push(it.label || '', it.value || ''); });
+  return hay.join('\n').toLowerCase().indexOf(q.toLowerCase()) !== -1;
+}
+
+function persist() { Store.write(state.data); }
+
+// ─── РЕНДЕР ───
+function render() {
+  root.classList.toggle('cc-app-editing', state.editing);
+  searchWrap.classList.toggle('filled', !!state.query);
+  document.getElementById('cc-export-btn').style.display = state.editing ? '' : 'none';
+  document.getElementById('cc-edit-toggle').classList.toggle('active', state.editing);
+  document.getElementById('cc-edit-toggle-text').textContent = state.editing ? 'Готово' : 'Редактировать';
+  renderTabs();
+  renderContent();
+}
+
+function renderTabs() {
+  var tabs = sortedTabs();
+  if (!state.activeTabId || !tabById(state.activeTabId)) {
+    state.activeTabId = tabs.length ? tabs[0].id : null;
+  }
+  var html = tabs.map(function(t) {
+    var count = snippetsOfTab(t.id).length;
+    var active = t.id === state.activeTabId && !state.query;
+    return '<button class="cc-tab' + (active ? ' active' : '') + '" data-act="select-tab" data-id="' + t.id + '">' +
+             '<span>' + escapeHtml(t.title) + '</span>' +
+             '<span class="cc-tab-count">' + count + '</span>' +
+             '<span class="cc-tab-edit" data-act="edit-tab" data-id="' + t.id + '" title="Изменить вкладку">' + ICONS.edit + '</span>' +
+           '</button>';
+  }).join('');
+  html += '<button class="cc-tab cc-tabs-add" data-act="add-tab" title="Добавить вкладку">' + ICONS.plus + '<span>Вкладка</span></button>';
+  tabsEl.innerHTML = html;
+}
+
+function renderContent() {
+  // Поиск идёт по всем вкладкам сразу: во время разговора оператор помнит слово,
+  // а не раздел, в который запись положил редактор.
+  if (state.query) {
+    var groups = sortedTabs().map(function(t) {
+      return { tab: t, list: snippetsOfTab(t.id).filter(function(s) { return matches(s, state.query); }) };
+    }).filter(function(g) { return g.list.length; });
+
+    if (!groups.length) {
+      contentEl.innerHTML = emptyHtml('Ничего не нашлось', 'Проверьте слово или очистите поиск — возможно, такой записи ещё нет.');
+      return;
+    }
+    contentEl.innerHTML = groups.map(function(g) {
+      return '<div class="cc-group-title">' + escapeHtml(g.tab.title) + '</div>' +
+             '<div class="cc-grid">' + g.list.map(function(s) { return cardHtml(s, state.query); }).join('') + '</div>';
+    }).join('');
+    return;
+  }
+
+  if (!state.activeTabId) {
+    contentEl.innerHTML = emptyHtml('Вкладок пока нет', 'Нажмите «Редактировать», затем «Вкладка» — и заведите первый раздел.');
+    return;
+  }
+
+  var list = snippetsOfTab(state.activeTabId);
+  if (!list.length && !state.editing) {
+    contentEl.innerHTML = emptyHtml('В этой вкладке пусто', 'Нажмите «Редактировать», чтобы добавить первую запись.');
+    return;
+  }
+  contentEl.innerHTML = '<div class="cc-grid">' +
+    list.map(function(s) { return cardHtml(s, ''); }).join('') +
+    '<button class="cc-add-card" data-act="add-snippet">' + ICONS.plus + 'Добавить запись</button>' +
+  '</div>';
+}
+
+function emptyHtml(title, hint) {
+  return '<div class="cc-empty">' + ICONS.empty +
+    '<div class="cc-empty-title">' + escapeHtml(title) + '</div>' +
+    '<div class="cc-empty-hint">' + escapeHtml(hint) + '</div></div>';
+}
+
+function cardHtml(s, query) {
+  var items = (s.items || []).map(function(it, idx) { return itemHtml(s, it, idx, query); }).join('');
+  return '<div class="cc-card" data-card="' + s.id + '">' +
+    '<div class="cc-card-head">' +
+      '<div class="cc-card-title">' + highlight(s.title || 'Без названия', query) +
+        (s.note ? '<div class="cc-card-note">' + highlight(s.note, query) + '</div>' : '') +
+      '</div>' +
+      '<div class="cc-card-tools">' +
+        '<button class="cc-icon-btn" data-act="move-snippet" data-id="' + s.id + '" data-dir="-1" title="Выше">' + ICONS.up + '</button>' +
+        '<button class="cc-icon-btn" data-act="move-snippet" data-id="' + s.id + '" data-dir="1" title="Ниже">' + ICONS.down + '</button>' +
+        '<button class="cc-icon-btn" data-act="edit-snippet" data-id="' + s.id + '" title="Изменить">' + ICONS.edit + '</button>' +
+        '<button class="cc-icon-btn danger" data-act="delete-snippet" data-id="' + s.id + '" title="Удалить">' + ICONS.trash + '</button>' +
+      '</div>' +
+    '</div>' +
+    (items ? '<div class="cc-items">' + items + '</div>' : '') +
+  '</div>';
+}
+
+function itemHtml(s, it, idx, query) {
+  var kind = it.kind || 'text';
+  var value = it.value || '';
+  var isLong = value.length > 180 || value.split('\n').length > 4;
+  var key = s.id + ':' + idx;
+  var open = !!state.expanded[key];
+  var mono = kind !== 'text';
+
+  var valueHtml = '<div class="cc-item-value' + (mono ? ' mono' : '') + (isLong && !open ? ' clamped' : '') + '">' +
+    highlight(value, query) + '</div>';
+  var moreBtn = isLong
+    ? '<button class="cc-item-more" data-act="toggle-more" data-key="' + escapeHtml(key) + '">' + (open ? 'Свернуть' : 'Показать полностью') + '</button>'
+    : '';
+
+  var open_btn = '';
+  if (kind === 'url') {
+    open_btn = '<a class="cc-open" href="' + escapeHtml(value) + '" target="_blank" rel="noopener noreferrer" title="Открыть в новой вкладке">' + ICONS.external + '</a>';
+  } else if (kind === 'email') {
+    open_btn = '<a class="cc-open" href="mailto:' + escapeHtml(value) + '" title="Написать письмо">' + ICONS.mail + '</a>';
+  } else if (kind === 'phone') {
+    open_btn = '<a class="cc-open" href="tel:' + escapeHtml(value.replace(/[^+\d]/g, '')) + '" title="Позвонить">' + ICONS.phone + '</a>';
+  }
+
+  return '<div class="cc-item">' +
+    '<div class="cc-item-body">' +
+      (it.label ? '<span class="cc-item-label">' + highlight(it.label, query) + '</span>' : '') +
+      valueHtml + moreBtn +
+    '</div>' +
+    '<div class="cc-item-actions">' +
+      '<button class="cc-copy" data-act="copy" data-card="' + s.id + '" data-idx="' + idx + '">' + ICONS.copy + '<span>Копировать</span></button>' +
+      open_btn +
+    '</div>' +
+  '</div>';
+}
+
+// ─── КОПИРОВАНИЕ ───
+// Основной путь — асинхронный clipboard, но он доступен только в защищённом
+// контексте. Портал открывают и по внутреннему http, поэтому оставлен откат
+// на execCommand: без него кнопка молча ничего не делает.
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function(resolve, reject) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    ok ? resolve() : reject(new Error('Браузер не дал скопировать'));
+  });
+}
+
+function handleCopy(btn) {
+  var s = snippetById(btn.getAttribute('data-card'));
+  if (!s) return;
+  var it = (s.items || [])[Number(btn.getAttribute('data-idx'))];
+  if (!it) return;
+
+  copyText(it.value || '').then(function() {
+    // Отклик на самой кнопке, а не тостом: оператор смотрит на кнопку, по которой
+    // щёлкнул, и всплывающая плашка внизу экрана проходит мимо внимания.
+    var label = btn.querySelector('span');
+    var prev = label ? label.textContent : '';
+    btn.classList.add('done');
+    btn.innerHTML = ICONS.check + '<span>Скопировано</span>';
+    setTimeout(function() {
+      btn.classList.remove('done');
+      btn.innerHTML = ICONS.copy + '<span>' + (prev || 'Копировать') + '</span>';
+    }, 1400);
+  }).catch(function(e) {
+    showToast(e.message || 'Не удалось скопировать', 'error');
+  });
+}
+
+// ─── МОДАЛКА КАРТОЧКИ ───
+function openSnippetModal(id) {
+  var existing = id ? snippetById(id) : null;
+  state.draftSnippet = existing
+    ? JSON.parse(JSON.stringify(existing))
+    : { id: null, tabId: state.activeTabId, title: '', note: '', items: [{ label: '', kind: 'text', value: '' }] };
+
+  document.getElementById('cc-snippet-modal-title').textContent = existing ? 'Изменить запись' : 'Новая запись';
+  document.getElementById('cc-f-title').value = state.draftSnippet.title || '';
+  document.getElementById('cc-f-note').value = state.draftSnippet.note || '';
+
+  var sel = document.getElementById('cc-f-tab');
+  sel.innerHTML = sortedTabs().map(function(t) {
+    return '<option value="' + t.id + '"' + (t.id === state.draftSnippet.tabId ? ' selected' : '') + '>' + escapeHtml(t.title) + '</option>';
+  }).join('');
+
+  renderFieldRows();
+  document.getElementById('cc-snippet-overlay').classList.add('open');
+  setTimeout(function() { document.getElementById('cc-f-title').focus(); }, 30);
+}
+
+function renderFieldRows() {
+  var list = document.getElementById('cc-fields-list');
+  var items = state.draftSnippet.items;
+  list.innerHTML = items.map(function(it, idx) {
+    var options = KINDS.map(function(k) {
+      return '<option value="' + k.value + '"' + ((it.kind || 'text') === k.value ? ' selected' : '') + '>' + k.label + '</option>';
+    }).join('');
+    return '<div class="cc-field-row" data-row="' + idx + '">' +
+      '<div class="cc-field-row-top">' +
+        '<input type="text" data-field="label" data-idx="' + idx + '" placeholder="Подпись поля — например «Ссылка на подготовку»" value="' + escapeHtml(it.label || '') + '">' +
+        '<select data-field="kind" data-idx="' + idx + '">' + options + '</select>' +
+      '</div>' +
+      '<textarea data-field="value" data-idx="' + idx + '" placeholder="Что копируется">' + escapeHtml(it.value || '') + '</textarea>' +
+      '<div class="cc-field-row-tools">' +
+        '<button class="cc-icon-btn" data-act="move-field" data-idx="' + idx + '" data-dir="-1" title="Выше">' + ICONS.up + '</button>' +
+        '<button class="cc-icon-btn" data-act="move-field" data-idx="' + idx + '" data-dir="1" title="Ниже">' + ICONS.down + '</button>' +
+        '<button class="cc-icon-btn danger" data-act="remove-field" data-idx="' + idx + '" title="Убрать поле">' + ICONS.trash + '</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// Значения полей собираются из DOM перед каждой перерисовкой списка — иначе
+// недописанный текст теряется, когда рядом добавляют или двигают поле.
+function collectFieldRows() {
+  var list = document.getElementById('cc-fields-list');
+  list.querySelectorAll('[data-field]').forEach(function(el) {
+    var idx = Number(el.getAttribute('data-idx'));
+    var field = el.getAttribute('data-field');
+    if (state.draftSnippet.items[idx]) state.draftSnippet.items[idx][field] = el.value;
+  });
+}
+
+function closeSnippetModal() {
+  document.getElementById('cc-snippet-overlay').classList.remove('open');
+  state.draftSnippet = null;
+}
+
+function saveSnippet() {
+  collectFieldRows();
+  var draft = state.draftSnippet;
+  draft.title = document.getElementById('cc-f-title').value.trim();
+  draft.note = document.getElementById('cc-f-note').value.trim();
+  draft.tabId = document.getElementById('cc-f-tab').value;
+
+  if (!draft.title) { showToast('Укажите название записи', 'error'); return; }
+  draft.items = draft.items.filter(function(it) { return (it.value || '').trim(); })
+    .map(function(it) { return { label: (it.label || '').trim(), kind: it.kind || 'text', value: it.value.trim() }; });
+  if (!draft.items.length) { showToast('Добавьте хотя бы одно поле для копирования', 'error'); return; }
+
+  if (draft.id) {
+    var existing = snippetById(draft.id);
+    existing.title = draft.title;
+    existing.note = draft.note;
+    existing.tabId = draft.tabId;
+    existing.items = draft.items;
+  } else {
+    var siblings = snippetsOfTab(draft.tabId);
+    draft.id = uid('sn');
+    draft.sortOrder = siblings.length ? (siblings[siblings.length - 1].sortOrder || 0) + 1 : 1;
+    state.data.snippets.push(draft);
+  }
+  state.activeTabId = draft.tabId;
+  persist();
+  closeSnippetModal();
+  render();
+  showToast('Запись сохранена');
+}
+
+// ─── МОДАЛКА ВКЛАДКИ ───
+function openTabModal(id) {
+  state.draftTabId = id || null;
+  var t = id ? tabById(id) : null;
+  document.getElementById('cc-tab-modal-title').textContent = t ? 'Вкладка' : 'Новая вкладка';
+  document.getElementById('cc-f-tab-title').value = t ? t.title : '';
+  document.getElementById('cc-delete-tab-btn').style.display = t ? '' : 'none';
+  document.querySelectorAll('[data-act="tab-move"]').forEach(function(b) { b.disabled = !t; });
+  document.getElementById('cc-tab-overlay').classList.add('open');
+  setTimeout(function() { document.getElementById('cc-f-tab-title').focus(); }, 30);
+}
+
+function closeTabModal() {
+  document.getElementById('cc-tab-overlay').classList.remove('open');
+  state.draftTabId = null;
+}
+
+function saveTab() {
+  var title = document.getElementById('cc-f-tab-title').value.trim();
+  if (!title) { showToast('Укажите название вкладки', 'error'); return; }
+  if (state.draftTabId) {
+    tabById(state.draftTabId).title = title;
+  } else {
+    var tabs = sortedTabs();
+    var t = { id: uid('tab'), title: title, sortOrder: tabs.length ? (tabs[tabs.length - 1].sortOrder || 0) + 1 : 1 };
+    state.data.tabs.push(t);
+    state.activeTabId = t.id;
+  }
+  persist();
+  closeTabModal();
+  render();
+}
+
+function moveTab(dir) {
+  var tabs = sortedTabs();
+  var i = tabs.findIndex(function(t) { return t.id === state.draftTabId; });
+  var j = i + dir;
+  if (i < 0 || j < 0 || j >= tabs.length) return;
+  var a = tabs[i].sortOrder || 0, b = tabs[j].sortOrder || 0;
+  tabs[i].sortOrder = b; tabs[j].sortOrder = a;
+  persist();
+  renderTabs();
+}
+
+function moveSnippet(id, dir) {
+  var s = snippetById(id);
+  if (!s) return;
+  var list = snippetsOfTab(s.tabId);
+  var i = list.findIndex(function(x) { return x.id === id; });
+  var j = i + dir;
+  if (j < 0 || j >= list.length) return;
+  var a = list[i].sortOrder || 0, b = list[j].sortOrder || 0;
+  list[i].sortOrder = b; list[j].sortOrder = a;
+  persist();
+  renderContent();
+}
+
+// ─── ПОДТВЕРЖДЕНИЕ ───
+function askConfirm(text, action) {
+  document.getElementById('cc-confirm-text').textContent = text;
+  state.confirmAction = action;
+  document.getElementById('cc-confirm-overlay').classList.add('open');
+}
+
+function closeConfirm() {
+  document.getElementById('cc-confirm-overlay').classList.remove('open');
+  state.confirmAction = null;
+}
+
+// ─── ВЫГРУЗКА ───
+function openExport() {
+  var payload = { tabs: sortedTabs(), snippets: state.data.snippets.slice() };
+  document.getElementById('cc-export-area').value = 'var SEED = ' + JSON.stringify(payload, null, 2) + ';';
+  document.getElementById('cc-export-overlay').classList.add('open');
+}
+
+// ─── ТОСТ ───
+var toastTimer;
+function showToast(msg, type) {
+  var el = document.getElementById('cc-toast');
+  el.textContent = msg;
+  el.className = 'cc-toast ' + (type || '');
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { el.classList.remove('show'); }, 2600);
+}
+
+// ─── СОБЫТИЯ ───
+// Одно делегирование на весь документ вместо inline-onclick: страница живёт в
+// общем window с React-приложением, и глобальные функции там — лишний риск.
+function onClick(e) {
+  var el = e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!el) return;
+  var act = el.getAttribute('data-act');
+
+  if (act === 'overlay-close') {
+    if (e.target === el) el.classList.remove('open');
+    return;
+  }
+
+  switch (act) {
+    case 'clear-search':
+      searchInput.value = ''; state.query = ''; render(); searchInput.focus(); break;
+    case 'toggle-edit':
+      state.editing = !state.editing; render(); break;
+    case 'select-tab':
+      state.activeTabId = el.getAttribute('data-id');
+      if (state.query) { searchInput.value = ''; state.query = ''; }
+      render();
+      break;
+    case 'add-tab': openTabModal(null); break;
+    case 'edit-tab':
+      e.stopPropagation();
+      openTabModal(el.getAttribute('data-id'));
+      break;
+    case 'save-tab': saveTab(); break;
+    case 'close-tab': closeTabModal(); break;
+    case 'tab-move': moveTab(Number(el.getAttribute('data-dir'))); break;
+    case 'delete-tab': {
+      var t = tabById(state.draftTabId);
+      if (!t) return;
+      var count = snippetsOfTab(t.id).length;
+      if (count) {
+        showToast('Сначала перенесите или удалите записи этой вкладки (' + count + ')', 'error');
+        return;
+      }
+      askConfirm('Вкладка «' + t.title + '» будет удалена.', function() {
+        state.data.tabs = state.data.tabs.filter(function(x) { return x.id !== t.id; });
+        state.activeTabId = null;
+        persist(); closeTabModal(); render();
+      });
+      break;
+    }
+    case 'add-snippet': openSnippetModal(null); break;
+    case 'edit-snippet': openSnippetModal(el.getAttribute('data-id')); break;
+    case 'save-snippet': saveSnippet(); break;
+    case 'close-snippet': closeSnippetModal(); break;
+    case 'move-snippet': moveSnippet(el.getAttribute('data-id'), Number(el.getAttribute('data-dir'))); break;
+    case 'delete-snippet': {
+      var s = snippetById(el.getAttribute('data-id'));
+      if (!s) return;
+      askConfirm('Запись «' + s.title + '» будет удалена безвозвратно.', function() {
+        state.data.snippets = state.data.snippets.filter(function(x) { return x.id !== s.id; });
+        persist(); closeConfirm(); render();
+      });
+      break;
+    }
+    case 'add-field':
+      collectFieldRows();
+      state.draftSnippet.items.push({ label: '', kind: 'text', value: '' });
+      renderFieldRows();
+      break;
+    case 'remove-field': {
+      collectFieldRows();
+      var idx = Number(el.getAttribute('data-idx'));
+      state.draftSnippet.items.splice(idx, 1);
+      if (!state.draftSnippet.items.length) state.draftSnippet.items.push({ label: '', kind: 'text', value: '' });
+      renderFieldRows();
+      break;
+    }
+    case 'move-field': {
+      collectFieldRows();
+      var from = Number(el.getAttribute('data-idx'));
+      var to = from + Number(el.getAttribute('data-dir'));
+      var items = state.draftSnippet.items;
+      if (to < 0 || to >= items.length) return;
+      var tmp = items[from]; items[from] = items[to]; items[to] = tmp;
+      renderFieldRows();
+      break;
+    }
+    case 'toggle-more': {
+      var key = el.getAttribute('data-key');
+      state.expanded[key] = !state.expanded[key];
+      renderContent();
+      break;
+    }
+    case 'copy': handleCopy(el); break;
+    case 'export': openExport(); break;
+    case 'close-export': document.getElementById('cc-export-overlay').classList.remove('open'); break;
+    case 'copy-export':
+      copyText(document.getElementById('cc-export-area').value)
+        .then(function() { showToast('Блок скопирован — вставьте его вместо var SEED'); })
+        .catch(function(err) { showToast(err.message || 'Не удалось скопировать', 'error'); });
+      break;
+    case 'confirm-yes':
+      if (state.confirmAction) { var fn = state.confirmAction; state.confirmAction = null; fn(); }
+      closeConfirm();
+      break;
+    case 'close-confirm': closeConfirm(); break;
+  }
+}
+
+var searchTimer;
+function onSearchInput() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function() {
+    state.query = searchInput.value.trim();
+    render();
+  }, 120);
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.cc-overlay.open').forEach(function(o) { o.classList.remove('open'); });
+    state.confirmAction = null;
+    return;
+  }
+  // «/» ставит курсор в поиск — привычка из мессенджеров, и оператору это
+  // экономит движение мышью на каждом звонке.
+  if (e.key === '/' && document.activeElement !== searchInput) {
+    var tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    e.preventDefault();
+    searchInput.focus();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.getElementById('cc-snippet-overlay').classList.contains('open')) {
+    saveSnippet();
+  }
+}
+
+document.addEventListener('click', onClick);
+searchInput.addEventListener('input', onSearchInput);
+document.addEventListener('keydown', onKeydown);
+
+window.__ccQuickTeardown = function() {
+  document.removeEventListener('click', onClick);
+  document.removeEventListener('keydown', onKeydown);
+  clearTimeout(toastTimer);
+  clearTimeout(searchTimer);
+};
+
+render();
+
+})();
+</script>
+</body>
+</html>

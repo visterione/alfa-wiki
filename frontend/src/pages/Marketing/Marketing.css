@@ -1,0 +1,354 @@
+/* Модуль «Маркетинг» (ver. 8.22).
+ *
+ * Файл дополняет общий набор .ola-* из AdminOpenLine.css, а не заводит второй:
+ * вкладки, карточки, поля, кнопки и значки берутся оттуда как есть. Здесь
+ * только то, чего в наборе нет, — полки акций, карта площадок и модальные окна.
+ *
+ * Цвета — из рамп и семантических имён. Единственное вбитое значение во всём
+ * файле — цвет метки и полки, но он и не оформление: у полки это фирменный
+ * цвет медцентра из справочника, у метки — её категория, и приходят оба
+ * данными, а не стилем.
+ */
+
+.mk-shell { min-height: 100%; }
+.mk-head { align-items: center; margin-bottom: 16px; }
+.mk-head h1 { margin: 0; }
+.mk-head p { margin: 3px 0 0; }
+
+.mk-spin { animation: mk-rotate 0.9s linear infinite; flex-shrink: 0; }
+@keyframes mk-rotate { to { transform: rotate(360deg); } }
+
+.mk-hint { margin: 6px 0 0; font-size: 12px; color: var(--text-secondary); }
+.mk-muted { color: var(--text-secondary); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+
+.mk-loading {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 44px 0; color: var(--text-secondary); font-size: 13.5px;
+}
+
+/* ── Вкладка «Акции» ─────────────────────────────────────────────────────── */
+
+.mk-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  margin-bottom: 18px;
+}
+
+.mk-search { flex: 1 1 260px; min-width: 0; }
+.mk-search input { min-width: 0; }
+
+.mk-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.mk-filters .ola-check { cursor: pointer; }
+.mk-filters .ola-check b {
+  font-size: 11.5px; font-weight: 700; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.mk-filters .ola-check.on b { color: var(--accent-700); }
+
+.mk-toolbar-actions { display: flex; gap: 8px; margin-left: auto; }
+
+/* Полка медцентра. Точка слева — фирменный цвет филиала из справочника: она
+ * заменила цветную крышку карточки, вычищенную по всему порталу в 7.73. */
+.mk-shelf { margin-bottom: 16px; }
+.mk-shelf > header { gap: 10px; }
+.mk-shelf-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.mk-shelf-body { display: grid; gap: 12px; }
+
+.mk-promo {
+  border: 1px solid var(--ola-line);
+  border-left: 3px solid var(--mk-promo-tone, var(--n-400));
+  border-radius: 12px;
+  padding: 13px 15px;
+  background: var(--ola-glass-strong);
+}
+
+/* Завершённая акция остаётся читаемой, но уходит на второй план: её смотрят,
+ * чтобы не заводить дубль, а не чтобы работать с ней. */
+.mk-promo.expired { opacity: 0.62; }
+
+.mk-promo-top { display: flex; align-items: flex-start; gap: 12px; }
+.mk-promo-top h4 {
+  margin: 0; flex: 1; min-width: 0;
+  font-size: 14px; font-weight: 650; line-height: 1.35; color: var(--text-primary);
+}
+
+.mk-promo-discount {
+  flex-shrink: 0;
+  padding: 3px 10px; border-radius: 9px;
+  background: var(--accent-100); color: var(--accent-700);
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-promo-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+
+.mk-promo-more {
+  margin-top: 9px; padding: 0;
+  border: none; background: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600; color: var(--accent-600);
+}
+.mk-promo-more svg { transition: transform 0.18s; }
+.mk-promo-more.open svg { transform: rotate(180deg); }
+
+.mk-promo-details {
+  margin-top: 11px; padding-top: 11px;
+  border-top: 1px solid var(--ola-line);
+  display: grid; gap: 9px;
+  font-size: 13px; color: var(--text-primary);
+}
+.mk-promo-details p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
+.mk-promo-cond { color: var(--text-secondary); }
+.mk-promo-details a { color: var(--accent-600); font-size: 12.5px; }
+
+.mk-promo-services ul {
+  margin: 0; padding-left: 18px;
+  max-height: 210px; overflow-y: auto;
+  font-size: 12.5px; color: var(--text-secondary);
+}
+.mk-promo-services li { margin-bottom: 2px; }
+
+.mk-footnote {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin: 18px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+}
+.mk-footnote svg { flex-shrink: 0; margin-top: 2px; color: var(--amber-600); }
+
+/* ── Модальное окно ──────────────────────────────────────────────────────── */
+
+.mk-modal-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(var(--overlay-ink), 0.45);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.mk-modal {
+  width: 100%; max-width: 560px; max-height: 90vh;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 18px;
+  background: var(--bg-primary);
+  box-shadow: 0 24px 64px rgba(var(--overlay-ink), 0.28);
+  overflow: hidden;
+}
+
+.mk-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 16px 18px; border-bottom: 1px solid var(--ola-line);
+}
+.mk-modal-head h3 { margin: 0; font-size: 15.5px; font-weight: 650; color: var(--text-primary); }
+
+.mk-modal-body { padding: 18px; overflow-y: auto; flex: 1; }
+
+.mk-modal-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 18px; border-top: 1px solid var(--ola-line);
+  background: var(--bg-secondary);
+}
+.mk-foot-right { display: flex; gap: 10px; margin-left: auto; }
+
+/* Скидка: число и единица одним органом — процент и рубль исключают друг друга,
+ * и в МИС это два разных поля, из которых можно заполнить только одно. */
+.mk-discount { display: flex; gap: 7px; }
+.mk-discount .ola-input { flex: 1; min-width: 0; }
+
+.mk-seg {
+  display: inline-flex; padding: 3px; gap: 2px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-secondary);
+}
+.mk-seg button {
+  min-width: 32px; padding: 0 8px;
+  border: none; border-radius: 7px; background: transparent;
+  font-size: 13.5px; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+}
+.mk-seg button.on { background: var(--bg-primary); color: var(--accent-600); box-shadow: 0 1px 3px rgba(var(--overlay-ink), 0.12); }
+
+.mk-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.mk-days button {
+  min-width: 42px; height: 34px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg-primary);
+  font-size: 13px; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mk-days button:hover { border-color: var(--n-400); }
+.mk-days button.on { border-color: var(--accent-400); background: var(--accent-50); color: var(--accent-700); }
+
+.mk-extra-toggle {
+  margin-top: 4px; padding: 0;
+  border: none; background: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: var(--accent-600);
+}
+.mk-extra { margin-top: 12px; }
+
+.mk-service-results {
+  list-style: none; margin: 8px 0 0; padding: 5px;
+  max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 11px;
+  background: var(--bg-primary);
+}
+.mk-service-results button {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 7px 9px; border: none; border-radius: 8px; background: none;
+  text-align: left; font-size: 13px; color: var(--text-primary); cursor: pointer;
+}
+.mk-service-results button:hover { background: var(--bg-hover); }
+.mk-service-results span { flex: 1; min-width: 0; }
+.mk-service-results b { color: var(--text-secondary); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.mk-service-chips { margin-top: 9px; }
+
+.mk-summary { margin: 16px 0 0; display: grid; gap: 1px; background: var(--ola-line); border: 1px solid var(--ola-line); border-radius: 12px; overflow: hidden; }
+.mk-summary > div { display: flex; gap: 14px; padding: 9px 13px; background: var(--bg-primary); }
+.mk-summary dt { flex: 0 0 132px; font-size: 12.5px; color: var(--text-secondary); }
+.mk-summary dd { margin: 0; flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--text-primary); word-break: break-word; }
+
+.mk-summary-services { margin-top: 12px; font-size: 13px; color: var(--text-secondary); }
+.mk-summary-services summary { cursor: pointer; font-weight: 600; color: var(--text-primary); }
+.mk-summary-services ul { margin: 8px 0 0; padding-left: 18px; max-height: 200px; overflow-y: auto; }
+
+/* ── Вкладка «Рекламы» ───────────────────────────────────────────────────── */
+
+.mk-map-wrap {
+  position: relative;
+  border: 1px solid var(--ola-line); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 8px 26px rgba(var(--overlay-ink), 0.08);
+}
+
+.mk-map { height: min(72vh, 640px); width: 100%; z-index: 1; }
+.mk-map-wrap .leaflet-control-attribution { display: none; }
+
+.mk-map-loading {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 600;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 11px;
+  background: var(--bg-primary); border: 1px solid var(--border);
+  font-size: 13px; color: var(--text-secondary);
+  box-shadow: 0 6px 18px rgba(var(--overlay-ink), 0.14);
+}
+
+.mk-map-hint {
+  position: absolute; top: 14px; right: 14px; z-index: 600;
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: 20px;
+  background: var(--bg-primary); border: 1px solid var(--border);
+  font-size: 12.5px; color: var(--text-secondary);
+  box-shadow: 0 4px 14px rgba(var(--overlay-ink), 0.12);
+}
+
+.mk-legend {
+  position: absolute; bottom: 18px; left: 18px; z-index: 600;
+  max-width: 232px; padding: 11px 13px;
+  border: 1px solid var(--border); border-radius: 13px;
+  background: var(--bg-primary);
+  box-shadow: 0 8px 22px rgba(var(--overlay-ink), 0.16);
+}
+
+.mk-legend-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  border: none; background: none; cursor: pointer; padding: 0;
+  font-size: 13.5px; font-weight: 650; color: var(--text-primary);
+}
+
+.mk-legend-items { margin-top: 10px; display: grid; gap: 7px; }
+.mk-legend-item { display: flex; align-items: center; gap: 9px; }
+.mk-legend-item i { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+.mk-legend-item span { flex: 1; font-size: 12.5px; color: var(--text-secondary); }
+.mk-legend-item b {
+  padding: 1px 7px; border-radius: 9px;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+  font-size: 11.5px; font-variant-numeric: tabular-nums;
+}
+
+/* Панель метки. Занимает край экрана, а не всплывает над картой: у метки
+ * бывают фотографии площадки, и разглядывать их в подсказке невозможно. */
+.mk-panel {
+  position: fixed; top: 0; right: 0; z-index: 2001;
+  width: min(420px, 100%); height: 100vh;
+  display: flex; flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-primary);
+  box-shadow: -8px 0 30px rgba(var(--overlay-ink), 0.18);
+  animation: mk-panel-in 0.22s ease;
+}
+@keyframes mk-panel-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.mk-panel-close { position: absolute; top: 14px; right: 14px; }
+.mk-panel-body { padding: 22px; overflow-y: auto; flex: 1; display: grid; gap: 13px; align-content: start; }
+
+.mk-panel-head { display: flex; align-items: flex-start; gap: 11px; padding-right: 42px; }
+.mk-panel-head i { width: 16px; height: 16px; border-radius: 5px; flex-shrink: 0; margin-top: 4px; }
+.mk-panel-head h3 { margin: 0; font-size: 18px; font-weight: 650; color: var(--text-primary); line-height: 1.3; }
+
+.mk-panel-desc { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--text-primary); white-space: pre-wrap; }
+.mk-panel-meta { font-size: 12px; color: var(--text-secondary); padding-top: 11px; border-top: 1px solid var(--ola-line); }
+
+.mk-panel-media { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+.mk-panel-media button {
+  position: relative; aspect-ratio: 4 / 3;
+  border: none; border-radius: 11px; overflow: hidden;
+  background: var(--bg-tertiary); cursor: pointer; padding: 0;
+}
+.mk-panel-media img, .mk-panel-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mk-play {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: rgba(var(--overlay-ink), 0.35); color: var(--n-0);
+}
+
+.mk-colors { display: flex; flex-wrap: wrap; gap: 7px; }
+.mk-color {
+  width: 30px; height: 30px; border-radius: 9px;
+  border: 2px solid transparent; cursor: pointer; transition: transform 0.15s;
+}
+.mk-color:hover { transform: scale(1.1); }
+.mk-color.on { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--text-primary); }
+
+.mk-upload {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 12px; border: 2px dashed var(--border); border-radius: 11px;
+  background: var(--bg-secondary); color: var(--text-secondary);
+  font-size: 13.5px; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.mk-upload:hover { border-color: var(--accent-400); color: var(--accent-600); }
+
+.mk-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 9px; margin-top: 11px; }
+.mk-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--bg-tertiary); }
+.mk-thumb.new { outline: 2px solid var(--accent-400); outline-offset: -2px; }
+.mk-thumb img, .mk-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mk-thumb button {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 20px; border-radius: 50%; border: none;
+  display: grid; place-items: center;
+  background: rgba(var(--overlay-ink), 0.66); color: var(--n-0); cursor: pointer;
+}
+
+.mk-viewer {
+  position: fixed; inset: 0; z-index: 2002;
+  display: grid; place-items: center;
+  background: rgba(var(--overlay-ink), 0.92);
+  cursor: pointer;
+}
+.mk-viewer > div { max-width: 92vw; max-height: 92vh; cursor: default; }
+.mk-viewer img, .mk-viewer video { max-width: 92vw; max-height: 92vh; border-radius: 12px; display: block; }
+.mk-viewer-close { position: absolute; top: 18px; right: 18px; color: var(--n-0); }
+
+/* ── Вложенные вкладки «Анонсов» ─────────────────────────────────────────── */
+
+.mk-subtabs { margin-bottom: 18px; }
+.mk-subtabs .ola-tab { min-height: 34px; padding: 6px 13px; font-size: 13px; }
+
+/* ── Узкий экран ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .mk-toolbar-actions { margin-left: 0; width: 100%; }
+  .mk-toolbar-actions .ola-btn.primary { flex: 1; justify-content: center; }
+  .mk-map { height: 62vh; }
+  .mk-legend { bottom: 12px; left: 12px; max-width: 178px; padding: 9px 11px; }
+  .mk-legend-item span { font-size: 11.5px; }
+  .mk-panel { width: 100%; }
+  .mk-panel-media { grid-template-columns: 1fr; }
+  .mk-summary > div { flex-direction: column; gap: 3px; }
+  .mk-summary dt { flex: none; }
+  .mk-modal { max-height: 94vh; }
+}

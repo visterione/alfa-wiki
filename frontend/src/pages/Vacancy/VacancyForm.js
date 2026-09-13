@@ -15,8 +15,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom';
 
 import { vacancyPublic as api } from '../../services/api';
-import { PhoneInput, WeekdayPicker, TimeRange, ProfessionPicker, FileField } from './fields';
-import './Vacancy.css';
+import { PhoneInput, WeekdayPicker, TimeRange, SpecialityPicker, FileField } from './fields';
+import Shell from './Shell';
 
 const SAVE_DELAY_MS = 700;
 
@@ -100,7 +100,7 @@ export default function VacancyForm() {
 
   if (done) {
     return (
-      <Shell state={state}>
+      <Shell branch={state.branch}>
         <h1>Анкета отправлена</h1>
         <p className="vcy-lead">
           Спасибо. Мы получили вашу анкету и передали её на рассмотрение —
@@ -113,7 +113,7 @@ export default function VacancyForm() {
 
   if (!state.editable) {
     return (
-      <Shell state={state}>
+      <Shell branch={state.branch}>
         <h1>Анкета закрыта</h1>
         <p className="vcy-lead">Эту заявку больше нельзя менять.</p>
       </Shell>
@@ -152,7 +152,9 @@ export default function VacancyForm() {
   };
 
   return (
-    <Shell state={state}>
+    <Shell branch={state.branch}>
+      <div className="vcy-vacancy-name">{state.vacancy?.title}</div>
+
       <div className="vcy-progress">
         {steps.map((s, index) => (
           <button
@@ -182,7 +184,7 @@ export default function VacancyForm() {
           block={block}
           values={values}
           files={files}
-          professions={state.professions || []}
+          specialities={state.specialities || []}
           problems={problems}
           revisionFields={state.revisionFields || []}
           uploading={uploading}
@@ -263,7 +265,7 @@ export default function VacancyForm() {
 // ── Блок ───────────────────────────────────────────────────────────────────
 
 function Block({
-  block, values, files, professions, problems, revisionFields,
+  block, values, files, specialities, problems, revisionFields,
   uploading, onChange, onUpload, onRemoveFile
 }) {
   if (block.repeat) {
@@ -292,7 +294,7 @@ function Block({
                 key={field.key}
                 field={field}
                 value={row[field.key]}
-                professions={professions}
+                specialities={specialities}
                 invalid={problems.some(p => p.startsWith(`${block.key}[${index}].${field.key}`))}
                 onChange={v => setRow(index, { ...row, [field.key]: v })}
               />
@@ -317,7 +319,7 @@ function Block({
           key={field.key}
           field={field}
           value={values[field.key]}
-          professions={professions}
+          specialities={specialities}
           files={files.filter(f => f.fieldKey === field.key)}
           uploading={uploading === field.key}
           invalid={problems.includes(field.key)}
@@ -334,7 +336,7 @@ function Block({
 // ── Поле ───────────────────────────────────────────────────────────────────
 
 function Field({
-  field, value, professions, files = [], uploading,
+  field, value, specialities, files = [], uploading,
   invalid, highlighted, onChange, onUpload, onRemoveFile
 }) {
   const cls = `vcy-field${invalid ? ' is-bad' : ''}${highlighted ? ' is-marked' : ''}`;
@@ -383,8 +385,8 @@ function Field({
 
       {field.type === 'timerange' && <TimeRange value={value} onChange={onChange} />}
 
-      {field.type === 'professions' && (
-        <ProfessionPicker value={value} options={professions} onChange={onChange} />
+      {field.type === 'speciality' && (
+        <SpecialityPicker value={value} options={specialities} onChange={onChange} />
       )}
 
       {(field.type === 'file' || field.type === 'files') && (
@@ -399,21 +401,5 @@ function Field({
 
       {field.hint && <small>{field.hint}</small>}
     </label>
-  );
-}
-
-function Shell({ state, children }) {
-  return (
-    <div className="vcy">
-      <div className="vcy-card">
-        {state?.vacancy && (
-          <div className="vcy-branch">
-            {state.vacancy.title}
-            {state.branch && <small>{state.branch}</small>}
-          </div>
-        )}
-        {children}
-      </div>
-    </div>
   );
 }

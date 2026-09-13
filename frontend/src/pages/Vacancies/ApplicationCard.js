@@ -106,7 +106,7 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
           <div>
             <h2>{data.fullName || 'Заявка без имени'}</h2>
             <div className="vac-sub">
-              {data.vacancy?.title || data.template?.title} · {data.medCenter?.name}
+              {data.vacancy?.title} · {data.medCenter?.name}
               {data.phone && <> · {data.phone}</>}
               {data.email && <> · {data.email}</>}
             </div>
@@ -406,7 +406,7 @@ function renderValue(field, value, files) {
   if (field.type === 'checkbox') return value ? 'да' : 'нет';
   if (field.type === 'weekdays') return (value || []).map(d => DAY_NAMES[d]).join(', ');
   if (field.type === 'timerange') return value?.from ? `${value.from}–${value.to}` : '';
-  if (field.type === 'professions') return (value || []).map(p => p.name).join(', ');
+  if (field.type === 'speciality') return (value || []).join(', ');
   if (field.type === 'date') return new Date(value).toLocaleDateString('ru-RU');
 
   if (field.type === 'file' || field.type === 'files') {
@@ -440,11 +440,8 @@ const EVENT_TEXT = {
   task_claimed: 'Задача взята',
   task_completed: 'Шаг закрыт',
   task_unassigned: 'Шаг открыт, но исполнитель не назначен',
-  closed_unverified: 'Шаг закрыт с расхождением по МИС',
-  mis_account_created: 'Учётная запись в МИС найдена',
   services_invited: 'Отправлено приглашение выбрать услуги',
   services_picked: 'Кандидат отметил услуги',
-  durations_applied: 'Длительности приёма перенесены',
   launched: 'Все шаги закрыты',
   sla_reminded: 'Напоминание о просрочке',
   sla_escalated: 'Просрочка эскалирована',

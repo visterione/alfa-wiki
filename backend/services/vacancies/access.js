@@ -47,17 +47,14 @@ async function resolve(user) {
 /**
  * Видна ли человеку заявка.
  *
- * Админу — любая. Исполнителю — та, где он назначен хоть на один шаг её
- * шаблона: либо на её филиал, либо сетевым назначением. Показывать кадровику
- * заявки филиалов, где он не участвует, незачем, а видеть заявку целиком там,
- * где он участвует, он должен — разграничения по полям во втором поколении нет
- * по решению заказчика.
+ * Админу — любая. Исполнителю — та, что подана на вакансию, где он назначен
+ * хоть на один шаг. Показывать кадровику отклики на вакансии, в которых он не
+ * участвует, незачем; а видеть заявку целиком там, где участвует, он должен —
+ * разграничения по полям во втором поколении нет по решению заказчика.
  */
 function canSeeApplication(acl, application) {
   if (acl.isAdmin) return true;
-  return acl.scopes.some(s =>
-    s.templateId === application.templateId
-    && (!s.medCenterId || s.medCenterId === application.medCenterId));
+  return acl.scopes.some(s => s.vacancyId === application.vacancyId);
 }
 
 /**
@@ -68,23 +65,15 @@ function canSeeApplication(acl, application) {
 function applicationScope(acl) {
   if (acl.isAdmin) return {};
 
-  const byTemplate = new Map();
-  for (const scope of acl.scopes) {
-    const set = byTemplate.get(scope.templateId) || new Set();
-    // Сетевое назначение (филиал пустой) открывает все филиалы этого шаблона.
-    set.add(scope.medCenterId || '*');
-    byTemplate.set(scope.templateId, set);
-  }
+  // Вакансия у заявки одна, и филиал у вакансии тоже один — значит достаточно
+  // перечислить вакансии, на шагах которых человек стоит. В 8.20 здесь была
+  // конструкция из шаблонов и филиалов, потому что один шаблон жил сразу в
+  // нескольких медцентрах; теперь этого случая нет.
+  const ids = [...new Set(acl.scopes.map(s => s.vacancyId))];
 
-  const conditions = [];
-  for (const [templateId, centers] of byTemplate) {
-    if (centers.has('*')) conditions.push({ templateId });
-    else conditions.push({ templateId, medCenterId: [...centers] });
-  }
-
-  // Ни одного назначения — ни одной заявки. Пустой список условий в Sequelize
-  // означал бы «всё», а это ровно противоположное тому, что нужно.
-  return conditions.length ? { [Op.or]: conditions } : { id: null };
+  // Ни одного назначения — ни одной заявки. Пустой список в Sequelize означал
+  // бы «всё», а это ровно противоположное тому, что нужно.
+  return ids.length ? { vacancyId: { [Op.in]: ids } } : { id: null };
 }
 
 module.exports = { canConfigure, resolve, canSeeApplication, applicationScope };

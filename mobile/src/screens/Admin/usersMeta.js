@@ -125,7 +125,6 @@ export const MODULE_RIGHTS = [
   ['courses', 'Курсы', 'access'],
   ['canEditDoctorCards', 'Карточки врачей', 'user'],
   ['canEditAnalyses', 'Анализы', 'user'],
-  ['canManagePromotions', 'Акции', 'user'],
   ['releaseNotes', 'Нововведения', 'access'],
   ['medCenters', 'Медцентры', 'access'],
   ['onboarding', 'Онбординг врача', 'access'],
@@ -138,6 +137,20 @@ export const MODULE_RIGHTS = [
  * (ver. 6.67) не переведён, и трогать его без отдельного захода решено не было —
  * слишком велика цена ошибки в расчётах.
  */
+/**
+ * Вкладки модуля «Маркетинг» (ver. 8.22).
+ *
+ * Акции и анонсы были здесь обычными галочками, пока лежали в разных разделах.
+ * Теперь это одна ветка с тремя уровнями на вкладку: акции смотрят регистраторы,
+ * а заводит их ответственный маркетолог, и «смотреть» отделено от «заводить»
+ * намеренно — заведённую акцию МИС не даёт ни изменить, ни удалить.
+ */
+export const MARKETING_TABS = [
+  {key: 'promotions', label: 'Акции'},
+  {key: 'ads', label: 'Рекламы'},
+  {key: 'announcements', label: 'Анонсы'},
+];
+
 export const SALARY_CLINICS = [
   {id: '2', name: 'Альфа', color: '#de64a1'},
   {id: '3', name: 'Кидс', color: '#ed9121'},
@@ -206,6 +219,12 @@ export const grantedRights = (user) => {
   return [
     ...ADMIN_RIGHTS.filter(([key]) => access[key]).map(([, label]) => label),
     ...(access.warehouse ? ['Складской учёт'] : []),
+    // Маркетинг показываем, если открыта хотя бы одна вкладка: в списке важно
+    // само наличие раздела, а уровни видны в дереве.
+    ...(MARKETING_TABS.some(tab => {
+      const level = (access.marketing || {})[tab.key];
+      return level === 'read' || level === 'edit';
+    }) ? ['Маркетинг'] : []),
     ...MODULE_RIGHTS
       .filter(([key, , where]) => (where === 'access' ? access[key] : user[key]))
       .map(([, label]) => label),

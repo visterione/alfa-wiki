@@ -1,16 +1,20 @@
 /**
- * Вход по QR-коду филиала (ver. 8.20).
+ * Вход кандидата (ver. 8.21).
  *
- * У каждого медцентра свой код, и человек, отсканировавший табличку в
- * регистратуре, видит вакансии только этого филиала. Место работы дальше нигде
- * не спрашивается: оно известно из адреса, по которому он пришёл, и ошибиться
- * он не может — в первом поколении филиал выбирался в анкете, и это был первый
- * же вопрос, на который человек с улицы не знал ответа.
+ * Два адреса ведут сюда, и они для разных случаев.
  *
- * Порядок шагов: выбрать вакансию → подтвердить почту кодом → анкета. Почта
- * спрашивается после выбора, а не до: код выдаётся под конкретную вакансию,
- * потому что на одну заявка у человека уже может быть, а на соседнюю он вправе
- * откликнуться.
+ * `/vacancy/:код-филиала` — табличка в регистратуре: человек видит список
+ * вакансий этого медцентра и выбирает. Место работы дальше нигде не
+ * спрашивается: оно известно из адреса, по которому он пришёл.
+ *
+ * `/vacancy/j/:код-вакансии` — прямая ссылка, её отправляют лично. Список тогда
+ * пропускается: человек уже знает, на что откликается, и лишний экран ему
+ * только мешает.
+ *
+ * Дальше в обоих случаях одно и то же: почта, код из письма, анкета. Почта
+ * спрашивается после выбора вакансии, а не до: код выдаётся под конкретную
+ * вакансию, потому что на одну заявка у человека уже может быть, а на соседнюю
+ * он вправе откликнуться.
  *
  * Внешнюю капчу не ставим намеренно: она тянет чужой скрипт, а значит правки
  * CSP и nginx, аккаунт и ключи — ради задачи, которую подтверждение адреса
@@ -21,16 +25,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { vacancyPublic as api } from '../../services/api';
-import './Vacancy.css';
+import Shell from './Shell';
 
-export default function VacancyStart() {
+export default function VacancyStart({ direct = false }) {
   const { code } = useParams();
   const navigate = useNavigate();
 
   const [branch, setBranch] = useState(null);
   const [vacancies, setVacancies] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [problem, setProblem] = useState('');
 
   const [chosen, setChosen] = useState(null);
   const [stage, setStage] = useState('list');
@@ -46,16 +50,28 @@ export default function VacancyStart() {
 
   useEffect(() => {
     let alive = true;
-    api.branch(code)
+    const request = direct ? api.direct(code) : api.branch(code);
+
+    request
       .then(({ data }) => {
         if (!alive) return;
         setBranch(data.branch);
-        setVacancies(data.vacancies || []);
+        if (direct) {
+          setVacancies([data.vacancy]);
+          setChosen(data.vacancy);
+          setStage('email');
+        } else {
+          setVacancies(data.vacancies || []);
+        }
       })
-      .catch(() => { if (alive) setNotFound(true); })
+      .catch(err => {
+        if (!alive) return;
+        setProblem(err.response?.data?.message || 'Страница не найдена');
+      })
       .finally(() => { if (alive) setLoading(false); });
+
     return () => { alive = false; };
-  }, [code]);
+  }, [code, direct]);
 
   const startCountdown = () => {
     setResendIn(60);
@@ -123,13 +139,14 @@ export default function VacancyStart() {
 
   if (loading) return <Shell><div className="vcy-note">Загружаем…</div></Shell>;
 
-  if (notFound) {
+  if (problem) {
     return (
-      <Shell>
-        <h1>Страница не найдена</h1>
-        <p className="vcy-lead">
-          Ссылка не открывается — возможно, в ней опечатка или этот медцентр
-          больше не набирает сотрудников. Уточните адрес у того, кто дал вам QR-код.
+      <Shell branch={branch}>
+        <h1>Страница не открылась</h1>
+        <p className="vcy-lead">{problem}</p>
+        <p className="vcy-note">
+          Возможно, набор уже закрыт или в ссылке опечатка. Уточните адрес у того,
+          кто её прислал.
         </p>
       </Shell>
     );
@@ -145,6 +162,9 @@ export default function VacancyStart() {
             ссылка не меняется, её можно сохранить.
           </p>
         )}
+        {Boolean(vacancies.length) && (
+          <p className="vcy-lead">Выберите подходящую — анкету заполните здесь же.</p>
+        )}
 
         <div className="vcy-vacancies">
           {vacancies.map(v => (
@@ -154,8 +174,11 @@ export default function VacancyStart() {
               key={v.id}
               onClick={() => { setChosen(v); setStage('email'); setError(''); }}
             >
-              <b>{v.title}</b>
-              {v.description && <span>{v.description}</span>}
+              <span className="vcy-vacancy-text">
+                <b>{v.title}</b>
+                {v.description && <span>{v.description}</span>}
+              </span>
+              <i aria-hidden="true">›</i>
             </button>
           ))}
         </div>
@@ -166,7 +189,9 @@ export default function VacancyStart() {
   if (stage === 'email') {
     return (
       <Shell branch={branch}>
-        <button type="button" className="vcy-back" onClick={() => setStage('list')}>← К списку вакансий</button>
+        {!direct && (
+          <button type="button" className="vcy-back" onClick={() => setStage('list')}>← К списку вакансий</button>
+        )}
         <h1>{chosen.title}</h1>
         {chosen.description && <p className="vcy-lead">{chosen.description}</p>}
 
@@ -174,6 +199,7 @@ export default function VacancyStart() {
           <label className="vcy-field">
             <span>Ваша электронная почта</span>
             <input
+              id="vcy-email"
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -187,6 +213,7 @@ export default function VacancyStart() {
 
           {/* Поле-приманка: человек его не видит, бот заполняет. */}
           <input
+            id="vcy-website"
             className="vcy-honeypot"
             tabIndex={-1}
             autoComplete="off"
@@ -214,12 +241,14 @@ export default function VacancyStart() {
         {digits.map((digit, index) => (
           <input
             key={index}
+            id={`vcy-code-${index}`}
             ref={el => { codeRefs.current[index] = el; }}
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={1}
             value={digit}
             disabled={busy}
+            aria-label={`Цифра ${index + 1}`}
             onChange={e => setDigit(index, e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Backspace' && !digits[index] && index > 0) codeRefs.current[index - 1]?.focus();
@@ -239,21 +268,5 @@ export default function VacancyStart() {
         {resendIn > 0 ? `Отправить ещё раз через ${resendIn} с` : 'Отправить код ещё раз'}
       </button>
     </Shell>
-  );
-}
-
-function Shell({ branch, children }) {
-  return (
-    <div className="vcy">
-      <div className="vcy-card">
-        {branch && (
-          <div className="vcy-branch">
-            {branch.name}
-            {branch.address && <small>{branch.address}</small>}
-          </div>
-        )}
-        {children}
-      </div>
-    </div>
   );
 }

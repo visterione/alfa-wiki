@@ -41,8 +41,8 @@ import {font} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {Card, SectionTitle, ToggleRow, PermControl, GroupHead} from './parts';
 import {
-  ADMIN_RIGHTS, MODULE_RIGHTS, SALARY_CLINICS, SALARY_TABS, SALARY_PERM_DEFAULT,
-  WAREHOUSE_PERM_DEFAULT,
+  ADMIN_RIGHTS, MODULE_RIGHTS, MARKETING_TABS, SALARY_CLINICS, SALARY_TABS,
+  SALARY_PERM_DEFAULT, WAREHOUSE_PERM_DEFAULT,
 } from './usersMeta';
 
 export default function PermissionsTree({form, setForm, canGrantAdmin, canGrantModules, whCatalogue}) {
@@ -62,6 +62,16 @@ export default function PermissionsTree({form, setForm, canGrantAdmin, canGrantM
   }));
   const setSalary = patch => setForm(f => ({
     ...f, salaryPerm: {...(f.salaryPerm || SALARY_PERM_DEFAULT), ...patch},
+  }));
+  // Уровни маркетинга лежат объектом внутри adminAccess, а не отдельными
+  // ключами: вкладок три, и все три относятся к одному разделу.
+  const marketing = (form.adminAccess || {}).marketing || {};
+  const setMarketing = (key, value) => setForm(f => ({
+    ...f,
+    adminAccess: {
+      ...(f.adminAccess || {}),
+      marketing: {...((f.adminAccess || {}).marketing || {}), [key]: value},
+    },
   }));
   const setWarehousePerm = (key, value) => setForm(f => ({
     ...f,
@@ -149,6 +159,38 @@ export default function PermissionsTree({form, setForm, canGrantAdmin, canGrantM
             />
           ))}
         </Branch>
+
+        {canGrantModules && (
+          <Branch
+            own={own}
+            label="Маркетинг"
+            expanded={open.marketing}
+            onExpand={() => toggle('marketing')}
+            value={admin || MARKETING_TABS.every(tab => marketing[tab.key] && marketing[tab.key] !== 'block')}
+            disabled={admin}
+            onChange={(value) => {
+              if (admin) return;
+              const level = value ? 'edit' : 'block';
+              setForm(f => ({
+                ...f,
+                adminAccess: {
+                  ...(f.adminAccess || {}),
+                  marketing: Object.fromEntries(MARKETING_TABS.map(tab => [tab.key, level])),
+                },
+              }));
+            }}>
+            {MARKETING_TABS.map(tab => (
+              <PermRow
+                key={tab.key}
+                own={own}
+                label={tab.label}
+                value={admin ? 'edit' : marketing[tab.key]}
+                disabled={admin}
+                onChange={value => setMarketing(tab.key, value)}
+              />
+            ))}
+          </Branch>
+        )}
 
         {canGrantModules && (
           <Branch

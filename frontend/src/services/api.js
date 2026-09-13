@@ -409,6 +409,14 @@ export const map = {
   reindex: () => api.post('/map/reindex')
 };
 
+// Маркетинг (ver. 8.22). Акции не хранятся у портала: читаем и заводим их прямо
+// в МИС, поэтому здесь нет ни update, ни delete — таких методов в API МИС нет.
+export const marketing = {
+  getPromos:      ()      => api.get('/marketing/promos'),
+  getPromoClinics:()      => api.get('/marketing/promo-clinics'),
+  createPromo:    (data)  => api.post('/marketing/promos', data)
+};
+
 // Courses
 export const courses = {
   // User endpoints
@@ -1214,30 +1222,32 @@ export const warehouseApi = {
  * onboarding выше и заменит его, когда сюда переедут заявки.
  */
 export const vacancies = {
-  templates:  () => api.get('/vacancies/templates'),
-  list:       () => api.get('/vacancies/openings'),
-  createOpening: (data)     => api.post('/vacancies/openings', data),
-  saveOpening:   (id, data) => api.put(`/vacancies/openings/${id}`, data),
-  deleteOpening: (id)       => api.delete(`/vacancies/openings/${id}`),
-  medCenters: () => api.get('/vacancies/med-centers'),
-
-  // Чем бывает поле и какие у него бывают роли. Реестр приходит с сервера —
+  // Чем бывает поле, какие бывают шаги и письма. Реестр приходит с сервера —
   // второй его список на фронте разошёлся бы с первым на ближайшей правке.
-  meta:       () => api.get('/vacancies/meta'),
-
-  // Ссылка и QR филиала: их печатают и вешают в регистратуре.
+  meta:       ()     => api.get('/vacancies/meta'),
+  medCenters: ()     => api.get('/vacancies/med-centers'),
   materials:  (code) => api.get(`/vacancies/materials/${encodeURIComponent(code)}`),
 
-  template:        (id)       => api.get(`/vacancies/templates/${id}`),
-  createTemplate:  (data)     => api.post('/vacancies/templates', data),
-  saveTemplate:    (id, data) => api.put(`/vacancies/templates/${id}`, data),
-  publishTemplate: (id, data) => api.post(`/vacancies/templates/${id}/publish`, data),
-  deleteTemplate:  (id)       => api.delete(`/vacancies/templates/${id}`),
-  saveProcess:     (id, data) => api.put(`/vacancies/templates/${id}/process`, data),
+  // Вакансия — единственная настраиваемая сущность раздела: анкета, процесс,
+  // письма, исполнители и чаты лежат прямо в ней.
+  openings:        ()         => api.get('/vacancies/openings'),
+  opening:         (id)       => api.get(`/vacancies/openings/${id}`),
+  createOpening:   (data)     => api.post('/vacancies/openings', data),
+  saveOpening:     (id, data) => api.put(`/vacancies/openings/${id}`, data),
+  saveProcess:     (id, data) => api.put(`/vacancies/openings/${id}/process`, data),
+  saveEmails:      (id, data) => api.put(`/vacancies/openings/${id}/emails`, data),
+  emailPreview:    (id, key)  => api.get(`/vacancies/openings/${id}/email-preview/${key}`),
+  specialities:    (id)       => api.get(`/vacancies/openings/${id}/specialities`),
+  openingMaterials:(id)       => api.get(`/vacancies/openings/${id}/materials`),
+  setStatus:       (id, data) => api.post(`/vacancies/openings/${id}/status`, data),
+  deleteOpening:   (id)       => api.delete(`/vacancies/openings/${id}`),
 
-  // Исполнители шагов: таблица «шаблон + шаг + филиал → люди».
-  assignments:    (id)                 => api.get(`/vacancies/templates/${id}/assignments`),
-  saveAssignment: (id, stepKey, data)  => api.put(`/vacancies/templates/${id}/assignments/${stepKey}`, data),
+  assignments:    (id)                => api.get(`/vacancies/openings/${id}/assignments`),
+  saveAssignment: (id, stepKey, data) => api.put(`/vacancies/openings/${id}/assignments/${stepKey}`, data),
+
+  chats:      (id)          => api.get(`/vacancies/openings/${id}/chats`),
+  addChat:    (id, data)    => api.post(`/vacancies/openings/${id}/chats`, data),
+  deleteChat: (id, chatId)  => api.delete(`/vacancies/openings/${id}/chats/${chatId}`),
 
   // Ежедневная работа. Её видит не только админ, но и тот, кто назначен
   // исполнителем хоть на один шаг, — маршруты лежат в отдельном роутере.
@@ -1249,11 +1259,9 @@ export const vacancies = {
   reject:       (id, data)      => api.post(`/vacancies/applications/${id}/reject`, data),
   cancelApp:    (id, data)      => api.post(`/vacancies/applications/${id}/cancel`, data),
   appServices:  (id)            => api.get(`/vacancies/applications/${id}/services`),
-  misUsers:     (id, q)         => api.get(`/vacancies/applications/${id}/mis-users`, { params: { q } }),
 
   myTasks:      ()              => api.get('/vacancies/tasks/my'),
   claimTask:    (taskId)        => api.post(`/vacancies/tasks/${taskId}/claim`),
-  verifyTask:   (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/verify`, data),
   completeTask: (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/complete`, data)
 };
 
@@ -1348,6 +1356,8 @@ const vacancyApi = axios.create({
 
 export const vacancyPublic = {
   branch:      (code)             => vacancyApi.get(`/b/${encodeURIComponent(code)}`),
+  // Прямая ссылка на одну вакансию, в обход списка филиала.
+  direct:      (code)             => vacancyApi.get(`/j/${encodeURIComponent(code)}`),
   requestCode: (data)             => vacancyApi.post('/request-code', data),
   verifyCode:  (data)             => vacancyApi.post('/verify-code', data),
 

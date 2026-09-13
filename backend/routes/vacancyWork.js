@@ -1,12 +1,15 @@
 'use strict';
 
 /**
- * Работа с заявками и задачами (ver. 8.20).
+ * Работа с заявками и задачами (ver. 8.20, переработано в 8.21).
  *
- * Отдельным файлом от routes/vacancies.js намеренно. Там настройка — шаблоны,
- * вакансии, исполнители, — и она доступна только админу. Здесь ежедневная
+ * Отдельным файлом от routes/vacancies.js намеренно. Там настройка — анкета,
+ * процесс, исполнители, письма, — и она доступна только админу. Здесь ежедневная
  * работа, и её видит ещё и тот, кто назначен исполнителем хоть на один шаг:
  * задача без возможности её открыть бессмысленна.
+ *
+ * Сверок с «Реновацией» здесь больше нет: в 8.20 шаги с умением подтверждались
+ * чтением из МИС, в 8.21 это убрано. Закрытие шага — отметка исполнителя.
  *
  * Маршруты ничего не решают сами: всё, что меняет состояние заявки, живёт в
  * services/vacancies/engine.js. Одно и то же событие приходит из трёх мест —
@@ -20,7 +23,7 @@ const { Op } = require('sequelize');
 const router = express.Router();
 
 const {
-  VacApplication, VacTemplate, VacVacancy, VacTask, VacEvent, VacFile,
+  VacApplication, VacVacancy, VacTask, VacEvent, VacFile,
   VacServiceChoice, MedCenter, User
 } = require('../models');
 const { authenticate } = require('../middleware/auth');
@@ -29,7 +32,6 @@ const engine = require('../services/vacancies/engine');
 const processSchema = require('../services/vacancies/processSchema');
 const formSchema = require('../services/vacancies/formSchema');
 const sla = require('../services/workingHours');
-const misStaff = require('../services/misStaff');
 
 const USER_FIELDS = ['id', 'displayName', 'username', 'avatar', 'position', 'isActive'];
 
@@ -49,8 +51,7 @@ async function withAccess(req, res, next) {
 router.use(authenticate, withAccess);
 
 const APP_INCLUDE = [
-  { model: VacTemplate, as: 'template', attributes: ['id', 'title', 'process'] },
-  { model: VacVacancy, as: 'vacancy', attributes: ['id', 'title'] },
+  { model: VacVacancy, as: 'vacancy', attributes: ['id', 'title', 'process'] },
   { model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }
 ];
 
@@ -65,7 +66,7 @@ const ARCHIVE_STATUSES = ['rejected', 'cancelled', 'launched'];
  * открыто.
  */
 function summarize(app, tasks) {
-  const process = app.template?.process || { steps: [] };
+  const process = app.vacancy?.process || { steps: [] };
   const checklist = processSchema.checklistSteps(process);
   const byStep = new Map(tasks.map(t => [t.stepKey, t]));
 
@@ -145,7 +146,6 @@ router.get('/applications', async (req, res) => {
       startDate: app.startDate,
       professions: app.professions,
       submittedAt: app.submittedAt,
-      template: app.template ? { id: app.template.id, title: app.template.title } : null,
       vacancy: app.vacancy ? { id: app.vacancy.id, title: app.vacancy.title } : null,
       medCenter: app.medCenter ? { id: app.medCenter.id, name: app.medCenter.name } : null,
       ...summarize(app, byApp.get(app.id) || [])
@@ -181,7 +181,7 @@ async function loadApplication(req, res, next) {
 router.get('/applications/:id', loadApplication, async (req, res) => {
   try {
     const app = req.application;
-    const process = app.template?.process || { steps: [] };
+    const process = app.vacancy?.process || { steps: [] };
 
     const [tasks, events, files] = await Promise.all([
       VacTask.findAll({
@@ -237,7 +237,6 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
       phone: app.phone,
       startDate: app.startDate,
       professions: app.professions,
-      misUserId: app.misUserId,
       submittedAt: app.submittedAt,
       decidedAt: app.decidedAt,
       decisionNote: app.decisionNote,
@@ -245,7 +244,6 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
       launchedAt: app.launchedAt,
       cancelReason: app.cancelReason,
       consents: app.consents,
-      template: app.template ? { id: app.template.id, title: app.template.title } : null,
       vacancy: app.vacancy ? { id: app.vacancy.id, title: app.vacancy.title } : null,
       medCenter: app.medCenter ? { id: app.medCenter.id, name: app.medCenter.name } : null,
 
@@ -278,14 +276,11 @@ function canDecide(req, app, process) {
   if (req.acl.isAdmin) return true;
   const step = engine.decisionStep(process);
   if (!step) return false;
-  return req.acl.scopes.some(s =>
-    s.templateId === app.templateId
-    && s.stepKey === step.key
-    && (!s.medCenterId || s.medCenterId === app.medCenterId));
+  return req.acl.scopes.some(s => s.vacancyId === app.vacancyId && s.stepKey === step.key);
 }
 
 function requireDecider(req, res, next) {
-  const process = req.application.template?.process || { steps: [] };
+  const process = req.application.vacancy?.process || { steps: [] };
   if (!canDecide(req, req.application, process)) {
     return res.status(403).json({ error: 'Решение по этой заявке принимает не вы' });
   }
@@ -357,7 +352,7 @@ router.get('/tasks/my', async (req, res) => {
     for (const task of tasks) {
       const app = task.application;
       if (!app || ARCHIVE_STATUSES.includes(app.status)) continue;
-      const step = processSchema.getStep(app.template?.process, task.stepKey);
+      const step = processSchema.getStep(app.vacancy?.process, task.stepKey);
       const overdue = Boolean(task.dueAt && task.dueAt < now);
       out.push({
         id: task.id,
@@ -428,19 +423,6 @@ router.post('/tasks/:taskId/claim', loadTask, async (req, res) => {
   }
 });
 
-/** Сверка с МИС до закрытия — чтобы человек увидел расхождение заранее. */
-router.post('/tasks/:taskId/verify', loadTask, async (req, res) => {
-  try {
-    const process = req.application.template?.process || { steps: [] };
-    const step = processSchema.getStep(process, req.task.stepKey);
-    if (!step) return res.status(400).json({ error: 'Такого шага в процессе больше нет' });
-    res.json(await engine.verifyStep(req.application, step, req.body?.misUserId));
-  } catch (error) {
-    console.error('[vacancies/work] verify:', error);
-    res.status(500).json({ error: 'Не удалось проверить в МИС' });
-  }
-});
-
 router.post('/tasks/:taskId/complete', loadTask, async (req, res) => {
   try {
     const task = req.task;
@@ -450,8 +432,7 @@ router.post('/tasks/:taskId/complete', loadTask, async (req, res) => {
     }
 
     const result = await engine.completeTask(req.application, task, req.user, {
-      note: String(req.body?.note || '').trim() || null,
-      misUserId: req.body?.misUserId
+      note: String(req.body?.note || '').trim() || null
     });
 
     if (!result.ok) return res.status(409).json(result);
@@ -459,20 +440,6 @@ router.post('/tasks/:taskId/complete', loadTask, async (req, res) => {
   } catch (error) {
     console.error('[vacancies/work] complete:', error);
     res.status(500).json({ error: 'Не удалось закрыть задачу' });
-  }
-});
-
-/**
- * Кандидаты из МИС, когда однозначного совпадения по ФИО не нашлось. Выбор
- * делает человек: два «Иванова И. И.» в одном филиале — повод показать список,
- * а не угадывать.
- */
-router.get('/applications/:id/mis-users', loadApplication, async (req, res) => {
-  try {
-    res.json(await misStaff.searchDoctors(req.application, String(req.query.q || '')));
-  } catch (error) {
-    console.error('[vacancies/work] mis-users:', error);
-    res.status(500).json({ error: 'Не удалось получить список из МИС' });
   }
 });
 

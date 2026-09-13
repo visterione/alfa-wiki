@@ -4,6 +4,7 @@
  * Публичный контур вакансий (ver. 8.20).
  *
  *   GET  /api/public/v1/vacancies/b/:code          — вакансии филиала (это и есть QR)
+ *   GET  /api/public/v1/vacancies/j/:code          — одна вакансия по прямой ссылке
  *   POST /api/public/v1/vacancies/request-code     — код на почту
  *   POST /api/public/v1/vacancies/verify-code      — обмен кода на заявку
  *   GET  /api/public/v1/vacancies/a/:token         — анкета и черновик
@@ -35,15 +36,14 @@ const { Op } = require('sequelize');
 const router = express.Router();
 
 const {
-  VacTemplate, VacVacancy, VacApplication, VacEmailCode, VacFile, VacEvent,
+  VacVacancy, VacApplication, VacEmailCode, VacFile, VacEvent,
   VacTask, VacServiceChoice, MedCenter
 } = require('../../../models');
 const formSchema = require('../../../services/vacancies/formSchema');
 const mailer = require('../../../services/vacancies/mailer');
 const files = require('../../../services/vacancies/files');
 const engine = require('../../../services/vacancies/engine');
-const misStaff = require('../../../services/misStaff');
-const { misRequest } = require('../../../services/misClient');
+const priceCatalogue = require('../../../services/vacancies/priceCatalogue');
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 const CODE_MAX_ATTEMPTS = 5;
@@ -87,35 +87,11 @@ async function log(applicationId, action, payload = {}) {
   }
 }
 
-// ── Справочник специальностей ──────────────────────────────────────────────
-//
-// Кэшируем: ручка открыта без ключа и без токена, а каждый её вызов иначе
-// превращается в поход в МИС. Меняется справочник раз в год, так что десять
-// минут задержки здесь ничего не стоят.
-const PROFESSIONS_TTL_MS = 10 * 60 * 1000;
-let professionsCache = { at: 0, list: [] };
-
-async function loadProfessions() {
-  if (Date.now() - professionsCache.at < PROFESSIONS_TTL_MS && professionsCache.list.length) {
-    return professionsCache.list;
-  }
-  try {
-    const response = await misRequest('getProfessions', { without_doctors: true });
-    if (Number(response?.error) === 0 && Array.isArray(response.data)) {
-      const list = response.data
-        .filter(p => !p.is_deleted)
-        .map(p => ({ id: String(p.id), name: p.name }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-      professionsCache = { at: Date.now(), list };
-      return list;
-    }
-  } catch (error) {
-    // Без справочника анкету всё равно можно открыть и заполнить остальное —
-    // черновик не потеряется. Отдаём последнее, что знали.
-    console.warn('[vacancies/public] Специальности из МИС недоступны:', error.message);
-  }
-  return professionsCache.list;
-}
+// Справочник специальностей и прайс берутся из своей таблицы, а не из МИС:
+// верхний уровень дерева категорий «Реновации» и есть специальность
+// («Невролог», «Акушер-гинеколог»), а прайс к нам и так синхронизируется. Из
+// публичного контура тем самым исчезли походы в чужой API — раньше каждое
+// открытие анкеты тянуло getProfessions.
 
 // ── Вакансии филиала ───────────────────────────────────────────────────────
 
@@ -131,27 +107,21 @@ router.get('/b/:code', async (req, res) => {
 
     const branch = await MedCenter.findOne({
       where: { code, isActive: true, isVirtual: false },
-      attributes: ['id', 'name', 'displayName', 'city', 'address']
+      attributes: ['id', 'name', 'displayName', 'color', 'logoUrl', 'city', 'address']
     });
     if (!branch) return fail(res, 404, 'not_found', 'Филиал не найден');
 
     const rows = await VacVacancy.findAll({
-      where: { medCenterId: branch.id, isOpen: true },
-      include: [{
-        model: VacTemplate, as: 'template', attributes: ['id', 'isPublished'],
-        where: { isPublished: true }, required: true
-      }],
+      where: { medCenterId: branch.id, status: 'open' },
       order: [['sortOrder', 'ASC'], ['title', 'ASC']]
     });
 
     res.json({
       ok: true,
-      branch: {
-        name: branch.displayName || branch.name,
-        city: branch.city || null,
-        address: branch.address || null
-      },
-      vacancies: rows.map(v => ({ id: v.id, title: v.title, description: v.description }))
+      branch: brandOf(branch),
+      vacancies: rows.map(v => ({
+        id: v.id, code: v.publicCode, title: v.title, description: v.description
+      }))
     });
   } catch (error) {
     console.error('[vacancies/public] branch:', error);
@@ -159,17 +129,78 @@ router.get('/b/:code', async (req, res) => {
   }
 });
 
+/**
+ * Одна вакансия по короткому коду — прямая ссылка в обход списка.
+ *
+ * Филиальный QR висит табличкой в регистратуре и ведёт на список: человек
+ * смотрит, что вообще есть. Этот адрес отправляют лично — в переписке или
+ * письмом, — и промежуточный экран со списком там только мешает: человек уже
+ * знает, на что откликается.
+ *
+ * Закрытую и черновую вакансию по прямой ссылке тоже не открыть, но сообщение
+ * другое: «набор закрыт», а не «страница не найдена». Ссылку могли отправить
+ * неделю назад, и человек должен понять, что дело не в опечатке.
+ */
+router.get('/j/:code', async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toLowerCase();
+    if (!code) return fail(res, 404, 'not_found', 'Вакансия не найдена');
+
+    const vacancy = await VacVacancy.findOne({
+      where: { publicCode: code },
+      include: [{
+        model: MedCenter, as: 'medCenter',
+        attributes: ['id', 'name', 'displayName', 'code', 'color', 'logoUrl', 'city', 'address']
+      }]
+    });
+    if (!vacancy) return fail(res, 404, 'not_found', 'Вакансия не найдена');
+
+    if (vacancy.status !== 'open') {
+      return fail(res, 410, 'vacancy_closed', 'Набор на эту вакансию уже закрыт');
+    }
+
+    res.json({
+      ok: true,
+      branch: brandOf(vacancy.medCenter),
+      vacancy: {
+        id: vacancy.id,
+        code: vacancy.publicCode,
+        title: vacancy.title,
+        description: vacancy.description
+      }
+    });
+  } catch (error) {
+    console.error('[vacancies/public] direct:', error);
+    fail(res, 500, 'server_error', 'Не удалось открыть вакансию');
+  }
+});
+
+/**
+ * Фирменность филиала для публичных страниц: цвет, знак, адрес.
+ *
+ * Берётся из справочника медцентров как есть. Логотип заполнен не у всех, адрес
+ * тоже — пустые поля отдаются как null, и страница честно обходится без них, а
+ * не оставляет дырку в шапке.
+ */
+function brandOf(mc) {
+  if (!mc) return null;
+  return {
+    name: mc.displayName || mc.name,
+    color: mc.color || null,
+    logoUrl: mc.logoUrl || null,
+    city: mc.city || null,
+    address: mc.address || null
+  };
+}
+
 // ── Подтверждение адреса ───────────────────────────────────────────────────
 
-/** Открытая вакансия по опубликованному шаблону — вместе с самим шаблоном. */
+/** Открытая вакансия. Черновик и закрытая по ссылке не откликаются. */
 async function loadOpenVacancy(vacancyId) {
   if (!vacancyId) return null;
   return VacVacancy.findOne({
-    where: { id: vacancyId, isOpen: true },
-    include: [
-      { model: VacTemplate, as: 'template', where: { isPublished: true }, required: true },
-      { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName'] }
-    ]
+    where: { id: vacancyId, status: 'open' },
+    include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'color', 'logoUrl', 'city', 'address'] }]
   });
 }
 
@@ -206,7 +237,7 @@ router.post('/request-code', async (req, res) => {
       requestIp: clientIp(req)
     });
 
-    const sent = await mailer.sendVerificationCode(vacancy.template, email, code);
+    const sent = await mailer.sendVerificationCode(vacancy, email, code);
     if (!sent.success) return fail(res, 502, 'mail_failed', 'Не удалось отправить письмо. Попробуйте позже');
 
     res.json({ ok: true, sent: true });
@@ -251,7 +282,6 @@ router.post('/verify-code', async (req, res) => {
     if (!app) {
       app = await VacApplication.create({
         vacancyId: vacancy.id,
-        templateId: vacancy.templateId,
         medCenterId: vacancy.medCenterId,
         email,
         accessToken: crypto.randomBytes(24).toString('hex'),
@@ -259,10 +289,10 @@ router.post('/verify-code', async (req, res) => {
         // Снимок снимается здесь, а не при отправке: черновик заполняют в
         // несколько заходов с телефона, и правка шаблона посреди этого меняла
         // бы форму прямо под руками у человека.
-        formSnapshot: vacancy.template.form || { blocks: [], steps: [] }
+        formSnapshot: vacancy.form || { blocks: [], steps: [] }
       });
       await log(app.id, 'created', { ip: clientIp(req), vacancy: vacancy.title });
-      await mailer.sendDraftLink(vacancy.template, app, vacancy.title);
+      await mailer.sendDraftLink(vacancy, app, vacancy.title);
     } else if (!app.emailVerifiedAt) {
       await app.update({ emailVerifiedAt: new Date() });
     }
@@ -285,7 +315,7 @@ async function loadApplication(req, res, next) {
       where: { accessToken: token },
       include: [
         { model: VacVacancy, as: 'vacancy', attributes: ['id', 'title', 'description'] },
-        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName'] }
+        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'color', 'logoUrl', 'city', 'address'] }
       ]
     });
     if (!app) return fail(res, 404, 'not_found', 'Заявка не найдена');
@@ -314,8 +344,12 @@ router.get('/a/:token', loadApplication, async (req, res) => {
     const app = req.application;
     const form = app.formSnapshot?.blocks?.length ? app.formSnapshot : { blocks: [], steps: [] };
 
-    const needsProfessions = formSchema.flatFields(form).some(f => f.type === 'professions');
-    const professions = needsProfessions ? await loadProfessions() : [];
+    // Список специальностей нужен, только если такое поле в анкете есть: у
+    // технички ходить в прайс незачем.
+    const needsSpeciality = formSchema.flatFields(form).some(f => f.type === 'speciality');
+    const specialities = needsSpeciality
+      ? await priceCatalogue.specialities(app.medCenterId)
+      : [];
 
     const fileRows = await VacFile.findAll({
       where: { applicationId: app.id },
@@ -329,11 +363,11 @@ router.get('/a/:token', loadApplication, async (req, res) => {
       form,
       values: app.form || {},
       files: fileRows,
-      professions,
+      specialities,
       revisionFields: app.revisionFields || [],
       decisionNote: app.status === 'revision' ? app.decisionNote : null,
       vacancy: app.vacancy ? { title: app.vacancy.title, description: app.vacancy.description } : null,
-      branch: app.medCenter ? (app.medCenter.displayName || app.medCenter.name) : null
+      branch: brandOf(app.medCenter)
     });
   } catch (error) {
     console.error('[vacancies/public] read:', error);
@@ -361,7 +395,7 @@ router.put('/a/:token', loadApplication, async (req, res) => {
       fullName: roles.fullName ?? null,
       phone: roles.phone ?? null,
       startDate: roles.startDate ?? null,
-      professions: roles.professions ?? []
+      professions: roles.speciality ?? []
     });
 
     res.json({ ok: true, savedAt: new Date().toISOString() });
@@ -493,14 +527,14 @@ router.post('/a/:token/submit', loadApplication, async (req, res) => {
       fullName: roles.fullName ?? null,
       phone: roles.phone ?? null,
       startDate: roles.startDate ?? null,
-      professions: roles.professions ?? []
+      professions: roles.speciality ?? []
     });
 
     await log(app.id, 'submitted', { ip: clientIp(req) });
     await engine.onSubmitted(app);
 
-    const template = await VacTemplate.findByPk(app.templateId);
-    await mailer.sendSubmitted(template, app, app.vacancy?.title);
+    const vacancy = await VacVacancy.findByPk(app.vacancyId, { attributes: ['id', 'title', 'emails'] });
+    await mailer.sendSubmitted(vacancy, app, app.vacancy?.title);
 
     res.json({ ok: true, status: app.status });
   } catch (error) {
@@ -518,8 +552,8 @@ router.post('/a/:token/submit', loadApplication, async (req, res) => {
 
 /** Шаг выбора услуг этого шаблона, если он вообще есть в процессе. */
 async function servicesStep(app) {
-  const template = await VacTemplate.findByPk(app.templateId, { attributes: ['id', 'process'] });
-  return (template?.process?.steps || []).find(s => s.kind === 'services_pick' && !s.archived) || null;
+  const vacancy = await VacVacancy.findByPk(app.vacancyId, { attributes: ['id', 'process'] });
+  return (vacancy?.process?.steps || []).find(s => s.kind === 'services_pick' && !s.archived) || null;
 }
 
 /**
@@ -549,8 +583,8 @@ router.get('/a/:token/services', loadApplication, async (req, res) => {
   if (!gate.ok) return fail(res, 409, gate.code, gate.message);
 
   try {
-    const catalog = await misStaff.servicesForApplication(app);
-    if (!catalog.ok) return fail(res, 502, 'mis_unavailable', catalog.reason);
+    const catalog = await priceCatalogue.servicesFor(app.medCenterId, app.professions || []);
+    if (!catalog.ok) return fail(res, 409, 'no_catalogue', catalog.reason);
 
     const chosen = await VacServiceChoice.findAll({ where: { applicationId: app.id } });
     const byId = new Map(chosen.filter(c => c.serviceId).map(c => [String(c.serviceId), c]));
@@ -559,6 +593,7 @@ router.get('/a/:token/services', loadApplication, async (req, res) => {
       ok: true,
       submitted: gate.submitted,
       vacancy: app.vacancy ? { title: app.vacancy.title } : null,
+      branch: brandOf(app.medCenter),
       services: catalog.services.map(s => {
         const pick = byId.get(String(s.serviceId));
         return {

@@ -416,7 +416,12 @@ function QuickAccessButtons({ onClose }) {
     window.addEventListener('vacancies-changed', load);
     return () => { alive = false; window.removeEventListener('vacancies-changed', load); };
   }, []);
-  const canAccessAnnouncements = isAdmin || user?.adminAccess?.announcements === true;
+  // Маркетинг (ver. 8.22) пришёл на место «Анонсов»: те стали его вкладкой.
+  // Кнопка видна, если открыта хотя бы одна вкладка из трёх — модуль сам решит,
+  // какую показать первой.
+  const marketingLevels = user?.adminAccess?.marketing || {};
+  const canAccessMarketing = isAdmin
+    || ['promotions', 'ads', 'announcements'].some(k => marketingLevels[k] === 'read' || marketingLevels[k] === 'edit');
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -534,7 +539,7 @@ function QuickAccessButtons({ onClose }) {
     (_, index) => index + 1
   );
   const isOnOpenLine = location.pathname.startsWith('/open-line');
-  const isOnAnnouncements = location.pathname.startsWith('/announcements');
+  const isOnMarketing = location.pathname.startsWith('/marketing');
 
   const handleClick = (path) => {
     navigate(path);
@@ -706,12 +711,12 @@ function QuickAccessButtons({ onClose }) {
       </button>
 
       <button
-        className={`quick-access-btn announcements ${isOnAnnouncements ? 'active' : ''} ${!canAccessAnnouncements ? 'locked' : ''}`}
-        onClick={() => canAccessAnnouncements ? handleClick('/announcements') : toast.error('Нет доступа к разделу «Анонсы»')}
-        title={canAccessAnnouncements ? 'Анонсы' : 'Анонсы (нет доступа)'}
+        className={`quick-access-btn marketing ${isOnMarketing ? 'active' : ''} ${!canAccessMarketing ? 'locked' : ''}`}
+        onClick={() => canAccessMarketing ? handleClick('/marketing') : toast.error('Нет доступа к разделу «Маркетинг»')}
+        title={canAccessMarketing ? 'Маркетинг' : 'Маркетинг (нет доступа)'}
       >
         <Megaphone size={20} />
-        {!canAccessAnnouncements && <Lock size={10} className="quick-access-lock" />}
+        {!canAccessMarketing && <Lock size={10} className="quick-access-lock" />}
       </button>
 
       {placeholderSlots.map((slot) => (

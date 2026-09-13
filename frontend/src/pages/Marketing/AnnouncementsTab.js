@@ -1,11 +1,21 @@
+/**
+ * Вкладка «Анонсы» (ver. 8.22) — бывший самостоятельный раздел /announcements.
+ *
+ * Содержимое перенесено без изменений: те же рассылки через ботов и ту же
+ * историю почтовых отправок. Ушли только собственный заголовок и оболочка —
+ * теперь они принадлежат модулю «Маркетинг», а не разделу.
+ *
+ * Новое здесь одно: уровень доступа. Раньше флаг adminAccess.announcements
+ * либо открывал раздел целиком, либо не открывал вовсе; теперь историю
+ * рассылок можно дать посмотреть, не давая права запускать новые.
+ */
+
 import React, { useCallback, useEffect, useState } from 'react';
-import { Bot, Clock, Copy, Mail, Megaphone, Plus, RefreshCw } from 'lucide-react';
-import BroadcastsTab from './admin/BroadcastsTab';
-import EmailComposeModal from '../components/EmailComposeModal';
-import { email } from '../services/api';
+import { Bot, Clock, Copy, Mail, Plus, RefreshCw } from 'lucide-react';
+import BroadcastsTab from '../admin/BroadcastsTab';
+import EmailComposeModal from '../../components/EmailComposeModal';
+import { email } from '../../services/api';
 import toast from 'react-hot-toast';
-import './admin/AdminOpenLine.css';
-import './Announcements.css';
 
 const EMAIL_STATUS = {
   scheduled: 'запланирована',
@@ -23,7 +33,7 @@ function fmt(value) {
   }).format(new Date(value));
 }
 
-function EmailAnnouncements() {
+function EmailAnnouncements({ canEdit }) {
   const [compose, setCompose] = useState(null);
   const [logs, setLogs] = useState(null);
 
@@ -52,9 +62,11 @@ function EmailAnnouncements() {
   return (
     <section className="ann-email">
       <div className="ann-email-toolbar">
-        <button className="ola-btn primary" onClick={() => setCompose({})}>
-          <Plus size={15} /> Новая почтовая рассылка
-        </button>
+        {canEdit ? (
+          <button className="ola-btn primary" onClick={() => setCompose({})}>
+            <Plus size={15} /> Новая почтовая рассылка
+          </button>
+        ) : <span />}
         <button className="ola-btn" onClick={load} title="Обновить"><RefreshCw size={15} /></button>
       </div>
 
@@ -75,8 +87,8 @@ function EmailAnnouncements() {
                   {EMAIL_STATUS[log.status] || log.status}
                 </span>
                 <time>{fmt(log.scheduledAt || log.sentAt || log.createdAt)}</time>
-                {log.status === 'scheduled' && <button className="ola-btn ann-repeat danger" onClick={() => cancel(log.id)}>Отменить</button>}
-                <button className="ola-btn ann-repeat" onClick={() => setCompose(log)}><Copy size={13} /> Повторить</button>
+                {canEdit && log.status === 'scheduled' && <button className="ola-btn ann-repeat danger" onClick={() => cancel(log.id)}>Отменить</button>}
+                {canEdit && <button className="ola-btn ann-repeat" onClick={() => setCompose(log)}><Copy size={13} /> Повторить</button>}
               </div>
             </article>
           ))}
@@ -88,26 +100,20 @@ function EmailAnnouncements() {
   );
 }
 
-export default function Announcements() {
+export default function AnnouncementsTab({ level }) {
   const [channel, setChannel] = useState('bots');
 
   return (
-    <div className="admin-page">
-      <div className="ola-shell ann-shell">
-        <div className="ola-head ann-head">
-          <span className="ann-title-icon"><Megaphone size={22} /></span>
-          <div><h1>Анонсы</h1><p>Рекламные рассылки через ботов и электронную почту</p></div>
-        </div>
-        <nav className="ola-tabs ann-tabs">
-          <button className={`ola-tab ${channel === 'bots' ? 'active' : ''}`} onClick={() => setChannel('bots')}>
-            <Bot size={15} /> Боты
-          </button>
-          <button className={`ola-tab ${channel === 'email' ? 'active' : ''}`} onClick={() => setChannel('email')}>
-            <Mail size={15} /> Почта
-          </button>
-        </nav>
-        {channel === 'bots' ? <BroadcastsTab /> : <EmailAnnouncements />}
-      </div>
+    <div className="mk-subtabs-wrap">
+      <nav className="ola-tabs mk-subtabs">
+        <button className={`ola-tab ${channel === 'bots' ? 'active' : ''}`} onClick={() => setChannel('bots')}>
+          <Bot size={15} /> Боты
+        </button>
+        <button className={`ola-tab ${channel === 'email' ? 'active' : ''}`} onClick={() => setChannel('email')}>
+          <Mail size={15} /> Почта
+        </button>
+      </nav>
+      {channel === 'bots' ? <BroadcastsTab /> : <EmailAnnouncements canEdit={level === 'edit'} />}
     </div>
   );
 }

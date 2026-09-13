@@ -1,22 +1,20 @@
 /**
- * Кто отвечает за шаг (ver. 8.20).
+ * Кто отвечает за шаг (ver. 8.20, переработано в 8.21).
  *
  * Ролей под процесс не заводим: исполнитель — конкретный человек, а настройка
- * сводится к таблице «шаблон + шаг + филиал → люди». В первом поколении это
+ * сводится к таблице «вакансия + шаг + филиал → люди». В первом поколении это
  * себя оправдало, и в складском модуле права считаются так же — по факту
  * назначения.
  *
- * Экран устроен по филиалам, а не по шагам целиком: филиалов одиннадцать, шагов
- * с филиальным исполнителем у врача шесть, и всё сразу — это семь десятков
- * строк. Настраивают их тоже по одному филиалу: человека нанимают в конкретный
- * медцентр.
+ * Переключателя филиалов здесь больше нет: филиал у вакансии один, и выбирать
+ * не из чего. В 8.20, когда анкета жила в шаблоне сразу для нескольких
+ * медцентров, он был нужен — сейчас это лишний вопрос с единственным ответом.
  *
- * Сетевые шаги показываются здесь же, но филиал на них не влияет — у них один
- * исполнитель на всю сеть. Отдельным экраном их не выносим: тогда пришлось бы
- * помнить, какой шаг где настраивается.
+ * Сетевые шаги показываются отдельной группой: у них один исполнитель на всю
+ * сеть, и филиал вакансии на них не влияет.
  *
  * В списке для выбора — все работающие сотрудники, а не только те, кто может
- * открыть раздел. Назначение исполнителем и право собирать шаблоны — разные
+ * открыть раздел. Назначение исполнителем и право собирать вакансии — разные
  * вещи: кадровик и маркетолог шаги выполняют, а конструктор им не нужен.
  */
 
@@ -26,25 +24,24 @@ import { X, Building2, UserPlus, Network } from 'lucide-react';
 
 import { vacancies as api, BASE_URL } from '../../services/api';
 
-export default function AssignmentsEditor({ templateId }) {
+export default function AssignmentsEditor({ vacancyId }) {
   const [data, setData] = useState(null);
-  const [branch, setBranch] = useState('');
   const [saving, setSaving] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const { data: res } = await api.assignments(templateId);
+      const { data: res } = await api.assignments(vacancyId);
       setData(res);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Не удалось загрузить исполнителей');
     }
-  }, [templateId]);
+  }, [vacancyId]);
 
   useEffect(() => { load(); }, [load]);
 
   if (!data) return <div className="vac-empty">Загружаем…</div>;
 
-  const currentBranch = branch || data.medCenters[0]?.id || '';
+  const currentBranch = data.medCenter?.id || '';
 
   const assigneesFor = (stepKey, medCenterId) => data.assignments
     .filter(a => a.stepKey === stepKey && (a.medCenterId || null) === (medCenterId || null));
@@ -52,7 +49,7 @@ export default function AssignmentsEditor({ templateId }) {
   const save = async (stepKey, medCenterId, userIds) => {
     setSaving(`${stepKey}:${medCenterId || 'net'}`);
     try {
-      await api.saveAssignment(templateId, stepKey, { medCenterId, userIds });
+      await api.saveAssignment(vacancyId, stepKey, { medCenterId, userIds });
       await load();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Не удалось сохранить');
@@ -79,19 +76,8 @@ export default function AssignmentsEditor({ templateId }) {
         <>
           <div className="vac-branchbar">
             <Building2 size={15} />
-            <span>Филиал</span>
-            <select
-              className="vac-input"
-              value={currentBranch}
-              onChange={e => setBranch(e.target.value)}
-            >
-              {data.medCenters.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
-            </select>
+            <span>Шаги филиала — {data.medCenter?.name || 'филиал не указан'}</span>
           </div>
-
-          {data.medCenters.length === 0 && (
-            <div className="vac-empty">В справочнике нет ни одного работающего филиала.</div>
-          )}
 
           {branchSteps.map(step => (
             <StepAssignees
@@ -184,7 +170,7 @@ function StepAssignees({ step, users, current, busy, onSave }) {
         {!current.length && (
           <div className="vac-nobody">
             <UserPlus size={14} />
-            Без исполнителя заявки остановятся на этом шаге, и шаблон не опубликовать.
+            Без исполнителя заявки остановятся на этом шаге, и набор не открыть.
           </div>
         )}
       </div>

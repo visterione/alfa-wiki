@@ -28,6 +28,17 @@ function branchUrl(code) {
   return `${publicBase()}/vacancy/${encodeURIComponent(code)}`;
 }
 
+/**
+ * Прямая ссылка на конкретную вакансию.
+ *
+ * Филиальный QR ведёт на список и висит табличкой в регистратуре; этот уходит
+ * человеку лично — в переписке или письмом, — и промежуточный экран со списком
+ * ему только мешает: он уже знает, на что откликается.
+ */
+function vacancyUrl(code) {
+  return `${publicBase()}/vacancy/j/${encodeURIComponent(code)}`;
+}
+
 /** Персональная ссылка кандидата на его заявку. */
 function applicationUrl(token) {
   return `${publicBase()}/vacancy/a/${token}`;
@@ -42,7 +53,10 @@ function applicationUrl(token) {
  * складывают вчетверо и носят в папке.
  */
 async function branchMaterials(code) {
-  const url = branchUrl(code);
+  return withQr(branchUrl(code));
+}
+
+async function withQr(url) {
   const [qrPng, qrSvg] = await Promise.all([
     QRCode.toDataURL(url, { errorCorrectionLevel: 'Q', margin: 1, width: 512, type: 'image/png' }),
     QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'Q', margin: 1, width: 512 })
@@ -57,4 +71,12 @@ async function branchMaterials(code) {
   };
 }
 
-module.exports = { publicBase, branchUrl, applicationUrl, branchMaterials, DEFAULT_BASE };
+/** То же самое для прямой ссылки на вакансию. */
+async function vacancyMaterials(code) {
+  return withQr(vacancyUrl(code));
+}
+
+module.exports = {
+  publicBase, branchUrl, vacancyUrl, applicationUrl,
+  branchMaterials, vacancyMaterials, DEFAULT_BASE
+};

@@ -58,7 +58,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const WhatsNew = lazy(() => import('./pages/WhatsNew'));
 const AdminReleaseNotes = lazy(() => import('./pages/admin/AdminReleaseNotes'));
 const AdminOpenLine = lazy(() => import('./pages/admin/AdminOpenLine'));
-const Announcements = lazy(() => import('./pages/Announcements'));
+const Marketing = lazy(() => import('./pages/Marketing'));
 const Warehouse = lazy(() => import('./pages/warehouse/Warehouse'));
 // Публичные карточки по QR грузятся отдельным чанком: их открывают с телефона по
 // одной ссылке, и тянуть ради этого весь бандл портала незачем.
@@ -151,6 +151,9 @@ function AppRoutes() {
           филиала. */}
       <Route path="/vacancy/a/:token" element={<VacancyForm />} />
       <Route path="/vacancy/a/:token/services" element={<VacancyServices />} />
+      {/* Прямая ссылка на одну вакансию: её отправляют человеку лично, и список
+          филиала он пропускает — на что откликается, он уже знает. */}
+      <Route path="/vacancy/j/:code" element={<VacancyStart direct />} />
       <Route path="/vacancy/:code" element={<VacancyStart />} />
       
       <Route path="/" element={
@@ -221,9 +224,22 @@ function AppRoutes() {
           <ProtectedRoute requireAdminAccess="openLineAdmin"><AdminOpenLine /></ProtectedRoute>
         } />
 
-        <Route path="announcements" element={
-          <ProtectedRoute requireAdminAccess="announcements"><Announcements /></ProtectedRoute>
+        {/* Маркетинг (ver. 8.22): акции, карта рекламных площадок и анонсы.
+            Права здесь не флаг, а уровень на каждую вкладку, поэтому
+            requireAdminAccess не годится — он проверяет истинность ключа, а
+            ключ marketing это объект и истинен всегда. Отбор вкладок и отказ
+            в доступе делает сам модуль.
+
+            Анонсы жили самостоятельным разделом до 8.22; ссылки на них
+            остались в письмах и закладках, поэтому адрес не исчезает, а ведёт
+            на свою вкладку. */}
+        <Route path="marketing" element={
+          <ProtectedRoute><Marketing /></ProtectedRoute>
         } />
+        <Route path="marketing/:tab" element={
+          <ProtectedRoute><Marketing /></ProtectedRoute>
+        } />
+        <Route path="announcements" element={<Navigate to="/marketing/announcements" replace />} />
 
         {/* Reviews module */}
         <Route path="reviews" element={

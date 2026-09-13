@@ -17,7 +17,7 @@
 const cron = require('node-cron');
 const { Op } = require('sequelize');
 
-const { VacTask, VacApplication, VacTemplate, VacEmailCode } = require('../models');
+const { VacTask, VacApplication, VacVacancy, VacEmailCode } = require('../models');
 const processSchema = require('../services/vacancies/processSchema');
 const assignments = require('../services/vacancies/assignments');
 const engine = require('../services/vacancies/engine');
@@ -44,7 +44,7 @@ async function run() {
     where: { completedAt: null, dueAt: { [Op.lt]: now } },
     include: [{
       model: VacApplication, as: 'application',
-      include: [{ model: VacTemplate, as: 'template', attributes: ['id', 'process'] }]
+      include: [{ model: VacVacancy, as: 'vacancy', attributes: ['id', 'process'] }]
     }]
   });
 
@@ -54,7 +54,7 @@ async function run() {
     // движком, но подстраховка дешевле разбора жалоб.
     if (!app || ['cancelled', 'rejected'].includes(app.status)) continue;
 
-    const step = processSchema.getStep(app.template?.process, task.stepKey);
+    const step = processSchema.getStep(app.vacancy?.process, task.stepKey);
     const label = step?.title || task.stepKey;
     const hours = await sla.overdueWorkingHours(task.dueAt, now);
 
@@ -76,7 +76,7 @@ async function run() {
       // эскалируется через 4 часа после срока, а не через сутки.
       const budget = step?.slaHours || 8;
       if (!task.escalatedAt && hours >= budget) {
-        const targets = await assignments.resolveEscalation(app.templateId, app.medCenterId);
+        const targets = await assignments.resolveEscalation(app.vacancyId, app.medCenterId);
         if (targets.length) {
           await engine.notify(targets,
             `🚨 Заявка стоит: ${label}\n`

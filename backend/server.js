@@ -68,6 +68,7 @@ const salaryRecordsRoutes = require('./routes/salary-records');
 const cashPaymentsRoutes = require('./routes/cash-payments');
 const rbExcelSourcesRoutes = require('./routes/rb-excel-sources');
 const promotionsRoutes = require('./routes/promotions');
+const marketingRoutes = require('./routes/marketing');
 const partnerServicesRoutes = require('./routes/partner-services');
 const doctorSchedulesRoutes      = require('./routes/doctor-schedules');
 const rbScheduleDictsRoutes      = require('./routes/rb-schedule-dicts');
@@ -467,6 +468,9 @@ app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);
 app.use('/api/cash-payments', cashPaymentsRoutes);
 app.use('/api/promotions', promotionsRoutes);
+// Маркетинг (ver. 8.22). Акции ушли отсюда в МИС, но /api/promotions остаётся:
+// на вики-страницах ещё висит старая HTML-версия, и пока ею пользуются.
+app.use('/api/marketing', marketingRoutes);
 app.use('/api/partner-services', partnerServicesRoutes);
 app.use('/api/doctor-schedules',     doctorSchedulesRoutes);
 app.use('/api/rb-schedule-dicts',    rbScheduleDictsRoutes);

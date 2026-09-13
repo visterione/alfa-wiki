@@ -108,41 +108,44 @@ export function TimeRange({ value, onChange }) {
   );
 }
 
-// ── Специальности из МИС ───────────────────────────────────────────────────
+// ── Специальность ──────────────────────────────────────────────────────────
 
 /**
- * Свободным текстом специальность вводить нельзя: по ней подтягивается прайс на
- * шаге выбора услуг, и текстовое значение обрушило бы всю ветку в ручную работу.
+ * Специальность — это раздел прайса филиала, а не свободный текст: по ней
+ * человеку потом покажут услуги, которые он готов оказывать, и текстовое
+ * значение обрушило бы всю ветку в ручную работу.
  *
- * Если справочник не приехал (МИС недоступен), поле не исчезает, а честно
- * говорит об этом: остальную анкету заполнить можно, черновик не потеряется.
+ * Рядом с названием стоит, сколько в разделе позиций. Это не украшение: в одном
+ * филиале у «Невролога» две дюжины услуг, а в другом раздела нет вовсе, и
+ * увидеть это лучше при выборе, чем на следующем экране.
+ *
+ * Если прайс филиала не выгружен, поле не исчезает, а честно об этом говорит:
+ * остальную анкету заполнить можно, черновик не потеряется.
  */
-export function ProfessionPicker({ value, options, onChange }) {
+export function SpecialityPicker({ value, options, onChange }) {
   const chosen = Array.isArray(value) ? value : [];
-  const chosenIds = new Set(chosen.map(p => p.id));
 
   if (!options.length) {
-    return <div className="vcy-note">Справочник специальностей сейчас недоступен. Заполните остальное — мы уточним специальность отдельно.</div>;
+    return <div className="vcy-note">Список специальностей сейчас недоступен. Заполните остальное — мы уточним специальность отдельно.</div>;
   }
 
-  const add = (id) => {
-    const found = options.find(p => p.id === id);
-    if (!found || chosenIds.has(id)) return;
-    onChange([...chosen, found]);
+  const add = (name) => {
+    if (!name || chosen.includes(name)) return;
+    onChange([...chosen, name]);
   };
 
   return (
     <div className="vcy-professions">
-      {chosen.map(p => (
-        <span className="vcy-tag" key={p.id}>
-          {p.name}
-          <button type="button" aria-label={`Убрать ${p.name}`} onClick={() => onChange(chosen.filter(x => x.id !== p.id))}>×</button>
+      {chosen.map(name => (
+        <span className="vcy-tag" key={name}>
+          {name}
+          <button type="button" aria-label={`Убрать ${name}`} onClick={() => onChange(chosen.filter(x => x !== name))}>×</button>
         </span>
       ))}
       <select value="" onChange={e => { add(e.target.value); e.target.value = ''; }}>
         <option value="">{chosen.length ? 'Добавить ещё' : 'Выберите специальность'}</option>
-        {options.filter(p => !chosenIds.has(p.id)).map(p => (
-          <option key={p.id} value={p.id}>{p.name}</option>
+        {options.filter(o => !chosen.includes(o.name)).map(o => (
+          <option key={o.name} value={o.name}>{o.name} — {o.services} услуг</option>
         ))}
       </select>
     </div>

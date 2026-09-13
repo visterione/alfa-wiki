@@ -1,13 +1,13 @@
 /**
- * Выбор услуг кандидатом (ver. 8.20).
+ * Выбор услуг кандидатом (ver. 8.21).
  *
- * Список приходит из «Реновации» по его специальностям и филиалу: getServices
- * принимает profession_id и clinic_id, поэтому и набор, и цены получаются ровно
- * те, что действуют в этом филиале.
+ * Список берётся из нашей таблицы прайса по специальности, выбранной в анкете,
+ * и по филиалу вакансии: верхний уровень дерева категорий «Реновации» и есть
+ * специальность, поэтому раздел находится точно, а не «обычно».
  *
- * Позиций бывает под две сотни, поэтому отметка идёт разделами целиком: без
- * этого человек бросает список на середине. Длительность можно переопределить —
- * она уедет в doctor_service_durations, откуда её берёт онлайн-запись.
+ * Позиций в разделе бывает несколько десятков, поэтому отметка идёт подразделами
+ * целиком: без этого человек бросает список на середине. Длительность можно
+ * поправить — она уйдёт тому, кто вносит услуги в МИС руками.
  *
  * Сохранение по кнопке, а не на каждую галочку: человек отмечает разделы
  * пачками, и десятки мелких запросов на одном экране — это гарантированные
@@ -18,7 +18,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { vacancyPublic as api } from '../../services/api';
-import './Vacancy.css';
+import Shell from './Shell';
 
 export default function VacancyServices() {
   const { token } = useParams();
@@ -31,6 +31,7 @@ export default function VacancyServices() {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [vacancy, setVacancy] = useState(null);
+  const [branch, setBranch] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -41,6 +42,7 @@ export default function VacancyServices() {
         setCustom(data.custom || []);
         setSubmitted(Boolean(data.submitted));
         setVacancy(data.vacancy || null);
+        setBranch(data.branch || null);
       })
       .catch(err => { if (alive) setError(err.response?.data?.message || 'Не удалось загрузить список услуг'); })
       .finally(() => { if (alive) setLoading(false); });
@@ -127,7 +129,7 @@ export default function VacancyServices() {
 
   if (submitted) {
     return (
-      <Shell vacancy={vacancy}>
+      <Shell branch={branch}>
         <h1>Список отправлен</h1>
         <p className="vcy-lead">
           Спасибо. Отмеченные услуги ушли тому, кто вносит их в систему. Если
@@ -138,12 +140,13 @@ export default function VacancyServices() {
   }
 
   return (
-    <Shell vacancy={vacancy}>
+    <Shell branch={branch}>
+      <div className="vcy-vacancy-name">{vacancy?.title}</div>
       <h1>Услуги, которые вы будете оказывать</h1>
       <p className="vcy-lead">
-        Список подтянут по вашей специальности и филиалу. Отмечайте разделами
-        целиком, а если по какой-то услуге вам нужно больше или меньше времени —
-        поправьте длительность.
+        Список подтянут по вашей специальности и филиалу. Отмечать можно
+        разделами целиком, а если по какой-то услуге вам нужно больше или меньше
+        времени — поправьте длительность.
       </p>
 
       {groups.map(group => {
@@ -260,16 +263,5 @@ export default function VacancyServices() {
         <button type="button" className="vcy-btn" disabled={busy} onClick={submit}>Отправить список</button>
       </div>
     </Shell>
-  );
-}
-
-function Shell({ vacancy, children }) {
-  return (
-    <div className="vcy">
-      <div className="vcy-card">
-        {vacancy && <div className="vcy-branch">{vacancy.title}</div>}
-        {children}
-      </div>
-    </div>
   );
 }

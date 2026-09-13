@@ -122,6 +122,35 @@ const requirePermission = (resource, action) => {
   };
 };
 
+/**
+ * Уровень доступа к вкладке модуля «Маркетинг» (ver. 8.22).
+ *
+ * Отдельно от requireAdminAccess, потому что тот проверяет истинность ключа, а
+ * здесь ключ — объект с тремя уровнями, и он истинен всегда. Полный админ
+ * получает edit, не заглядывая в настройку.
+ */
+const marketingLevel = (user, tab) => {
+  if (user?.isAdmin) return 'edit';
+  const level = (user?.adminAccess?.marketing || {})[tab];
+  return level === 'read' || level === 'edit' ? level : 'block';
+};
+
+/**
+ * Требует уровень доступа к вкладке маркетинга: 'read' пропускает и читателя, и
+ * редактора, 'edit' — только редактора.
+ */
+const requireMarketing = (tab, level = 'read') => {
+  return (req, res, next) => {
+    const own = marketingLevel(req.user, tab);
+    if (own === 'edit' || (level === 'read' && own === 'read')) return next();
+    return res.status(403).json({
+      error: own === 'block'
+        ? 'Нет доступа к разделу «Маркетинг»'
+        : 'Раздел доступен только для просмотра'
+    });
+  };
+};
+
 // Check page access by role
 const checkPageAccess = async (req, res, next) => {
   try {
@@ -260,6 +289,8 @@ module.exports = {
   requireAdmin,
   requireAdminAccess,
   requirePermission,
+  requireMarketing,
+  marketingLevel,
   checkPageAccess,
   checkCourseAccess,
   optionalAuth

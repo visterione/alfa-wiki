@@ -10,6 +10,10 @@
  * свой шаг, крон проверил срок), и три копии логики разошлись бы на первой же
  * правке.
  *
+ * Сверок с «Реновацией» здесь больше нет: в 8.20 шаги с умением подтверждались
+ * чтением из МИС, в 8.21 это убрано по решению заказчика. Закрытие шага —
+ * отметка исполнителя, и только.
+ *
  * Главное отличие от первого поколения. Там порядок шагов был зашит, и после
  * закрытия задачи открывались те, у кого `after` совпадал с её ключом. Здесь
  * процесс произвольный и зависимость — список: шаг ждёт всех перечисленных.
@@ -19,17 +23,13 @@
  * предшественники, и переживает добавление шага в живой процесс.
  */
 
-const {
-  VacApplication, VacTemplate, VacTask, VacEvent, VacServiceChoice,
-  MedCenter, DoctorServiceDuration
-} = require('../../models');
+const { VacVacancy, VacTask, VacEvent, MedCenter } = require('../../models');
 
 const processSchema = require('./processSchema');
 const assignments = require('./assignments');
 const sla = require('../workingHours');
 const mailer = require('./mailer');
 const chatLinks = require('./chatLinks');
-const misStaff = require('../misStaff');
 const notificationService = require('../notificationService');
 
 // ── Журнал ─────────────────────────────────────────────────────────────────
@@ -89,13 +89,13 @@ function signalChanged(userIds, payload = {}) {
 // ── Процесс заявки ─────────────────────────────────────────────────────────
 
 /**
- * Процесс берётся живой из шаблона, а не из снимка: новый шаг обязан появиться
+ * Процесс берётся живой из вакансии, а не из снимка: новый шаг обязан появиться
  * и у тех заявок, что уже в работе. Анкета, наоборот, у заявки своя — это то,
  * под чем человек подписался.
  */
 async function processOf(app) {
-  const template = app.template || await VacTemplate.findByPk(app.templateId);
-  return { template, process: template?.process || { steps: [] } };
+  const vacancy = app.vacancy?.process ? app.vacancy : await VacVacancy.findByPk(app.vacancyId);
+  return { vacancy, process: vacancy?.process || { steps: [] } };
 }
 
 function decisionStep(process) {
@@ -115,7 +115,7 @@ async function openTask(app, step) {
   // Шаг, который закрывает сам кандидат, исполнителей внутри клиники не имеет:
   // ему уходит письмо, а не задача кому-то из сотрудников.
   const assignees = spec?.assignee
-    ? await assignments.resolveAssignees(app.templateId, step.key, app.medCenterId)
+    ? await assignments.resolveAssignees(app.vacancyId, step.key, app.medCenterId)
     : [];
 
   const dueAt = await sla.dueAfterWorkingHours(step.slaHours || 8);
@@ -149,8 +149,8 @@ async function openTask(app, step) {
 
   // Выбор услуг закрывает кандидат по своей ссылке — значит, его надо позвать.
   if (step.kind === 'services_pick') {
-    const { template } = await processOf(app);
-    const sent = await mailer.sendServicesInvite(template, app);
+    const { vacancy } = await processOf(app);
+    const sent = await mailer.sendServicesInvite(vacancy, app);
     await log(app.id, 'services_invited', { mail: sent.success, reason: sent.reason || null });
   }
 
@@ -244,7 +244,7 @@ async function sendToRevision(app, user, note, fields = []) {
   // исправленное, — onSubmitted откроет её заново. Иначе у главврача висела бы
   // задача на анкету, которой у него сейчас нет, и её срок тикал бы всё то
   // время, пока кандидат дописывает ответы.
-  const { template, process } = await processOf(app);
+  const { vacancy, process } = await processOf(app);
   const step = decisionStep(process);
   if (step) {
     await VacTask.destroy({
@@ -252,13 +252,13 @@ async function sendToRevision(app, user, note, fields = []) {
     });
   }
 
-  const sent = await mailer.sendRevision(template, app, note, fields);
+  const sent = await mailer.sendRevision(vacancy, app, note, fields);
   await log(app.id, 'revision', { note, fields, mail: sent.success }, user.id);
   return app;
 }
 
 async function reject(app, user, reason) {
-  const { template } = await processOf(app);
+  const { vacancy } = await processOf(app);
   await app.update({
     status: 'rejected',
     decidedBy: user.id,
@@ -266,7 +266,7 @@ async function reject(app, user, reason) {
     decisionNote: reason || null
   });
   await VacTask.destroy({ where: { applicationId: app.id, completedAt: null } });
-  await mailer.sendRejected(template, app, reason);
+  await mailer.sendRejected(vacancy, app);
   await log(app.id, 'rejected', { reason }, user.id);
   return app;
 }
@@ -307,104 +307,23 @@ async function onServicesPicked(app) {
  *
  * @returns {Promise<{ ok: boolean, reason?: string, missing?: Array, candidates?: Array }>}
  */
-async function completeTask(app, task, user, { note, misUserId } = {}) {
+async function completeTask(app, task, user, { note } = {}) {
   const { process } = await processOf(app);
   const step = processSchema.getStep(process, task.stepKey);
   if (!step) return { ok: false, reason: 'Такого шага в процессе больше нет' };
 
-  const spec = processSchema.STEP_KINDS[step.kind];
-  let verified = false;
-
-  if (spec?.ability && step.kind !== 'services_pick') {
-    const check = await verifyStep(app, step, misUserId);
-
-    // Шаг с blocking:false закрывается и при расхождении: решение о том, какие
-    // услуги клиника берёт, принимает она, а не сверка. Расхождение при этом не
-    // теряется — оно уходит в журнал, чтобы потом не гадать, почему в МИС не всё.
-    if (!check.ok && step.blocking !== false) return check;
-
-    verified = check.ok;
-
-    if (check.ok && step.kind === 'mis_account') {
-      await app.update({ misUserId: String(check.misUserId) });
-      await log(app.id, 'mis_account_created', { misUserId: check.misUserId }, user.id);
-    }
-    if (!check.ok) {
-      await log(app.id, 'closed_unverified', {
-        stepKey: step.key,
-        reason: check.reason,
-        missing: (check.missing || []).map(item => item.title)
-      }, user.id);
-    }
-  }
-
   await task.update({
     completedAt: new Date(),
     completedBy: user.id,
-    verifiedByMis: verified,
     note: note || null
   });
 
-  await log(app.id, 'task_completed', { stepKey: step.key, verified }, user.id);
+  await log(app.id, 'task_completed', { stepKey: step.key }, user.id);
   signalChanged(task.assigneeIds, { reason: 'task_completed', applicationId: app.id, stepKey: step.key });
-
-  // Услуги внесены — их фактические длительности становятся настройкой врача.
-  if (step.kind === 'mis_services') await applyServiceDurations(app);
 
   await openReady(app, process);
   await tryLaunch(app);
   return { ok: true };
-}
-
-/** Проверка шага в МИС. Вынесена отдельно — ей же пользуется кнопка «проверить». */
-async function verifyStep(app, step, misUserIdOverride) {
-  if (step.kind === 'mis_account') {
-    // Если человек выбрал сотрудника руками из нескольких совпадений — верим
-    // ему: МИС мы всё равно спрашивали, неоднозначность решает человек.
-    if (misUserIdOverride) return { ok: true, misUserId: String(misUserIdOverride) };
-    return misStaff.findDoctor(app);
-  }
-  if (step.kind === 'mis_schedule') return misStaff.verifySchedule(app);
-  if (step.kind === 'mis_services') {
-    const choices = await VacServiceChoice.findAll({ where: { applicationId: app.id } });
-    return misStaff.verifyServices(app, choices);
-  }
-  return { ok: true };
-}
-
-/**
- * Длительности, которые кандидат переопределил на странице услуг, переносятся в
- * doctor_service_durations — таблицу, из которой их берёт онлайн-запись. Своей
- * копии не заводим: два места с длительностью приёма разойдутся в первый же
- * месяц.
- */
-async function applyServiceDurations(app) {
-  if (!app.misUserId) return;
-  const clinicIds = await misStaff.clinicIdsFor(app.medCenterId);
-  const clinicId = clinicIds[0];
-  if (!clinicId) return;
-
-  const choices = await VacServiceChoice.findAll({
-    where: { applicationId: app.id, isCustom: false }
-  });
-
-  let applied = 0;
-  for (const choice of choices) {
-    const minutes = Number(choice.doctorDuration);
-    if (!choice.serviceId || !minutes || minutes === Number(choice.misDuration)) continue;
-    try {
-      await DoctorServiceDuration.upsert({
-        clinicId: String(clinicId),
-        doctorId: String(app.misUserId),
-        serviceId: String(choice.serviceId),
-        durationMinutes: minutes
-      });
-      applied += 1;
-    } catch (error) {
-      console.error('[vacancies] Длительность услуги не сохранилась:', error.message);
-    }
-  }
-  if (applied) await log(app.id, 'durations_applied', { applied });
 }
 
 // ── Запуск ─────────────────────────────────────────────────────────────────
@@ -417,7 +336,7 @@ async function applyServiceDurations(app) {
 async function tryLaunch(app) {
   if (app.status === 'launched') return false;
 
-  const { template, process } = await processOf(app);
+  const { vacancy, process } = await processOf(app);
   const needed = processSchema.checklistSteps(process);
   if (!needed.length) return false;
 
@@ -442,7 +361,7 @@ async function tryLaunch(app) {
     console.error('[vacancies] Список чатов не собрался:', error.message);
   }
 
-  const welcome = await mailer.sendWelcome(template, app, mc?.name, chats);
+  const welcome = await mailer.sendWelcome(vacancy, app, mc?.name, chats);
   await log(app.id, 'launched', {
     mail: welcome.success, chats: chats.length, reason: welcome.reason || null
   });
@@ -470,6 +389,5 @@ module.exports = {
   cancel,
   onServicesPicked,
   completeTask,
-  verifyStep,
   tryLaunch
 };

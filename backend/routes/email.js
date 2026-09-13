@@ -2,7 +2,7 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { EmailTemplate, EmailLog, EmailFavoriteRecipient, EmailFavoriteTemplate, User, Role } = require('../models');
-const { authenticate, requireAdminAccess } = require('../middleware/auth');
+const { authenticate, requireMarketing } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
 const { Op } = require('sequelize');
 const multer = require('multer');
@@ -10,7 +10,10 @@ const XLSX = require('xlsx-js-style');
 const { parsePagination } = require('../utils/pagination');
 
 const router = express.Router();
-const requireAnnouncements = requireAdminAccess('announcements');
+// Права переехали в модуль «Маркетинг» (ver. 8.22) и разделились на чтение и
+// правку: историю рассылок полезно видеть шире круга тех, кто их запускает.
+const requireAnnouncements = requireMarketing('announcements', 'read');
+const requireAnnouncementsEdit = requireMarketing('announcements', 'edit');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // In-memory store для активных задач рассылки
@@ -47,7 +50,7 @@ router.get('/templates', authenticate, requireAnnouncements, async (req, res) =>
 });
 
 // POST /api/email/templates - Создать шаблон
-router.post('/templates', authenticate, requireAnnouncements, [
+router.post('/templates', authenticate, requireAnnouncementsEdit, [
   body('name').trim().notEmpty().withMessage('Название обязательно'),
   body('subject').trim().notEmpty().withMessage('Тема обязательна'),
   body('htmlContent').notEmpty().withMessage('Содержимое обязательно')
@@ -75,7 +78,7 @@ router.post('/templates', authenticate, requireAnnouncements, [
 });
 
 // PUT /api/email/templates/:id - Обновить шаблон
-router.put('/templates/:id', authenticate, requireAnnouncements, async (req, res) => {
+router.put('/templates/:id', authenticate, requireAnnouncementsEdit, async (req, res) => {
   try {
     const template = await EmailTemplate.findByPk(req.params.id);
 
@@ -97,7 +100,7 @@ router.put('/templates/:id', authenticate, requireAnnouncements, async (req, res
 });
 
 // DELETE /api/email/templates/:id - Удалить шаблон
-router.delete('/templates/:id', authenticate, requireAnnouncements, async (req, res) => {
+router.delete('/templates/:id', authenticate, requireAnnouncementsEdit, async (req, res) => {
   try {
     const template = await EmailTemplate.findByPk(req.params.id);
 
@@ -120,7 +123,7 @@ router.delete('/templates/:id', authenticate, requireAnnouncements, async (req, 
 // === EMAIL SENDING ===
 
 // POST /api/email/send - Запустить рассылку (возвращает jobId сразу, отправка идёт в фоне)
-router.post('/send', authenticate, requireAnnouncements, [
+router.post('/send', authenticate, requireAnnouncementsEdit, [
   body('subject').trim().notEmpty().withMessage('Тема обязательна'),
   body('htmlContent').notEmpty().withMessage('Содержимое обязательно'),
   body('recipients').isArray({ min: 1 }).withMessage('Укажите получателей')
@@ -262,7 +265,7 @@ router.get('/history/:id', authenticate, requireAnnouncements, async (req, res) 
   }
 });
 
-router.post('/history/:id/cancel', authenticate, requireAnnouncements, async (req, res) => {
+router.post('/history/:id/cancel', authenticate, requireAnnouncementsEdit, async (req, res) => {
   try {
     const [changed] = await EmailLog.update(
       { status: 'canceled' },
@@ -358,7 +361,7 @@ router.get('/favorites/recipients', authenticate, requireAnnouncements, async (r
 });
 
 // POST /api/email/favorites/recipients - Добавить избранного получателя
-router.post('/favorites/recipients', authenticate, requireAnnouncements, [
+router.post('/favorites/recipients', authenticate, requireAnnouncementsEdit, [
   body('email').isEmail().withMessage('Некорректный email'),
   body('displayName').optional().trim()
 ], async (req, res) => {
@@ -387,7 +390,7 @@ router.post('/favorites/recipients', authenticate, requireAnnouncements, [
 });
 
 // DELETE /api/email/favorites/recipients/:id - Удалить избранного получателя
-router.delete('/favorites/recipients/:id', authenticate, requireAnnouncements, async (req, res) => {
+router.delete('/favorites/recipients/:id', authenticate, requireAnnouncementsEdit, async (req, res) => {
   try {
     const favorite = await EmailFavoriteRecipient.findOne({
       where: { id: req.params.id, userId: req.user.id }
@@ -420,7 +423,7 @@ router.get('/favorites/templates', authenticate, requireAnnouncements, async (re
 });
 
 // POST /api/email/favorites/templates/:templateId - Переключить избранный шаблон
-router.post('/favorites/templates/:templateId', authenticate, requireAnnouncements, async (req, res) => {
+router.post('/favorites/templates/:templateId', authenticate, requireAnnouncementsEdit, async (req, res) => {
   try {
     const { templateId } = req.params;
 
@@ -444,7 +447,7 @@ router.post('/favorites/templates/:templateId', authenticate, requireAnnouncemen
 // === EXCEL IMPORT ===
 
 // POST /api/email/recipients/parse-excel - Извлечь email-адреса из Excel-файла
-router.post('/recipients/parse-excel', authenticate, requireAnnouncements, upload.single('file'), (req, res) => {
+router.post('/recipients/parse-excel', authenticate, requireAnnouncementsEdit, upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Файл не передан' });

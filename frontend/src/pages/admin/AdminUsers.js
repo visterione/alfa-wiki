@@ -246,7 +246,7 @@ export default function AdminUsers() {
       parser: false,
       medCenters: false,
       onboarding: false,
-      announcements: false
+      marketing: { promotions: 'block', ads: 'block', announcements: 'block' }
     },
     salaryPerm: { ...SALARY_PERM_DEFAULT },
     statisticsTabs: {
@@ -535,10 +535,19 @@ export default function AdminUsers() {
         canAccessStatistics: user.canAccessStatistics || false,
         canAccessTopSalary: user.canAccessTopSalary || false,
         canManagePromotions: user.canManagePromotions || false,
-        adminAccess: user.adminAccess || {
-          pages: false, sidebar: false, users: false, roles: false, media: false,
-          backup: false, settings: false, courses: false, journal: false, reviews: false,
-          parser: false, medCenters: false, onboarding: false, announcements: false
+        // Уровни маркетинга подставляются отдельно: у людей, заведённых до
+        // 8.22, ключа marketing в adminAccess может не быть вовсе, и без
+        // подстановки переключатели пришли бы пустыми.
+        adminAccess: {
+          ...(user.adminAccess || {
+            pages: false, sidebar: false, users: false, roles: false, media: false,
+            backup: false, settings: false, courses: false, journal: false, reviews: false,
+            parser: false, medCenters: false, onboarding: false
+          }),
+          marketing: {
+            promotions: 'block', ads: 'block', announcements: 'block',
+            ...((user.adminAccess || {}).marketing || {})
+          }
         },
         salaryPerm,
         statisticsTabs: user.statisticsTabs ? {
@@ -583,7 +592,8 @@ export default function AdminUsers() {
         adminAccess: {
           pages: false, sidebar: false, users: false, roles: false, media: false,
           backup: false, settings: false, courses: false, journal: false, reviews: false,
-          parser: false, medCenters: false, announcements: false
+          parser: false, medCenters: false,
+          marketing: { promotions: 'block', ads: 'block', announcements: 'block' }
         },
         salaryPerm: { ...SALARY_PERM_DEFAULT },
         warehousePerm: { ...WAREHOUSE_PERM_DEFAULT },
@@ -1403,7 +1413,6 @@ export default function AdminUsers() {
                         { key: 'courses',     label: 'Курсы',           checked: form.isAdmin || !!form.adminAccess.courses,    onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, courses: v}}); } },
                         { key: 'doctorCards', label: 'Карточки врачей', checked: form.isAdmin || !!form.canEditDoctorCards,     onChange: v => { if (!form.isAdmin) setForm({...form, canEditDoctorCards: v}); } },
                         { key: 'analyses',    label: 'Анализы',         checked: form.isAdmin || !!form.canEditAnalyses,        onChange: v => { if (!form.isAdmin) setForm({...form, canEditAnalyses: v}); } },
-                        { key: 'promotions',  label: 'Акции',           checked: form.isAdmin || !!form.canManagePromotions,    onChange: v => { if (!form.isAdmin) setForm({...form, canManagePromotions: v}); } },
                         { key: 'releaseNotes', label: 'Нововведения',   checked: form.isAdmin || !!form.adminAccess.releaseNotes, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, releaseNotes: v}}); } },
                         { key: 'medCenters',  label: 'Медцентры',       checked: form.isAdmin || !!form.adminAccess.medCenters, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, medCenters: v}}); } },
                         // Онбординг врача: флаг открывает раздел, но заявки человек
@@ -1414,17 +1423,56 @@ export default function AdminUsers() {
                         // заведён (OmniLineOperator). Состав и есть право
                         // отвечать — здесь только видимость самого раздела.
                         { key: 'openLine',    label: 'Открытая линия',  checked: form.isAdmin || !!form.adminAccess.openLine,   onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, openLine: v}}); } },
-                        { key: 'announcements', label: 'Анонсы', checked: form.isAdmin || !!form.adminAccess.announcements, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, announcements: v}}); } },
                       ],
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         setForm({...form,
                           canEditServices: newVal, canEditDoctorCards: newVal,
-                          canEditAnalyses: newVal, canManagePromotions: newVal,
-                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal, openLine: newVal, announcements: newVal}
+                          canEditAnalyses: newVal,
+                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal, openLine: newVal}
                         });
                       },
                     },
+                    // Маркетинг (ver. 8.22). Три вкладки бывших разрозненных
+                    // разделов, и у каждой свой уровень: акции смотрят
+                    // регистраторы, чтобы отвечать пациенту по телефону, а
+                    // заводит их один ответственный маркетолог. Заведённую
+                    // акцию нельзя ни изменить, ни удалить — в API МИС нет
+                    // таких методов, — поэтому цена случайной правки выше
+                    // обычной, и «смотреть» отделено от «заводить».
+                    (() => {
+                      const mk = form.adminAccess.marketing || {};
+                      const mkTab = key => ({
+                        permVal: form.isAdmin ? 'edit' : (mk[key] === 'read' || mk[key] === 'edit' ? mk[key] : 'block'),
+                        onPermChange: v => {
+                          if (form.isAdmin) return;
+                          setForm(f => ({
+                            ...f,
+                            adminAccess: { ...f.adminAccess, marketing: { ...(f.adminAccess.marketing || {}), [key]: v } },
+                          }));
+                        },
+                      });
+                      return {
+                        id: 'marketing',
+                        label: 'Маркетинг',
+                        items: [
+                          { key: 'mkPromotions',    label: 'Акции',   ...mkTab('promotions') },
+                          { key: 'mkAds',           label: 'Рекламы', ...mkTab('ads') },
+                          { key: 'mkAnnouncements', label: 'Анонсы',  ...mkTab('announcements') },
+                        ],
+                        onToggleAll: newVal => {
+                          if (form.isAdmin) return;
+                          const level = newVal ? 'edit' : 'block';
+                          setForm(f => ({
+                            ...f,
+                            adminAccess: {
+                              ...f.adminAccess,
+                              marketing: { promotions: level, ads: level, announcements: level },
+                            },
+                          }));
+                        },
+                      };
+                    })(),
                     (() => {
                       const st = form.statisticsTabs || {};
                       const sp = form.salaryPerm || SALARY_PERM_DEFAULT;
@@ -1603,15 +1651,19 @@ export default function AdminUsers() {
                     const isExpanded = expandedGroups[group.id];
                     const isLastGroup = gIdx === arr.length - 1;
                     const lastCls = isLastGroup ? ' perm-tree-item--last' : '';
-                    const groupOn = group.isParentToggle
-                      ? group.parentChecked
-                      : group.items.every(i => i.checked);
+                    // Группа считается включённой, когда включены все её пункты.
+                    // У трёхпозиционных пунктов (маркетинг, зарплата, склад)
+                    // «включён» значит «не block»: иначе группа с правом на
+                    // чтение выглядела бы выключенной.
+                    const allItemsOn = group.items.every(i =>
+                      i.permVal !== undefined ? i.permVal !== 'block' : i.checked);
+                    const groupOn = group.isParentToggle ? group.parentChecked : allItemsOn;
                     const onGroupToggle = () => group.isParentToggle
                       ? group.onParentToggle(!group.parentChecked)
-                      : group.onToggleAll(!group.items.every(i => i.checked));
+                      : group.onToggleAll(!allItemsOn);
                     const groupTitle = group.isParentToggle
                       ? (group.parentChecked ? 'Отключить доступ' : 'Включить доступ')
-                      : (group.items.every(i => i.checked) ? 'Снять все' : 'Включить все');
+                      : (allItemsOn ? 'Снять все' : 'Включить все');
 
                     return (
                       <React.Fragment key={group.id}>

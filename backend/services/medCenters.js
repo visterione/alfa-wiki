@@ -32,7 +32,11 @@ const ATTRS = [
   'misClinicIds', 'botOrgKey', 'importAliases', 'color', 'logoUrl', 'logoSquareUrl',
   'address', 'city', 'lat', 'lng', 'phones', 'email', 'site',
   'workingHours', 'workingHoursNote', 'chiefDoctorUserId', 'chiefDoctorName',
-  'isVirtual', 'isActive', 'sortOrder'
+  // servesPatients отличает филиал от учётной единицы вроде «Направителей».
+  // Виртуальность ловит не всё: подразделение может быть невиртуальным и при
+  // этом не принимать пациентов, а маркетинг предлагает заводить акции именно
+  // филиалам.
+  'isVirtual', 'isActive', 'sortOrder', 'servesPatients'
 ];
 
 async function loadFromDb() {

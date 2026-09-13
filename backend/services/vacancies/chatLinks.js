@@ -8,9 +8,9 @@
  * своё: где эти ссылки лежат и кому уходят.
  *
  * Отличие от первого поколения — привязка. Там чат принадлежал филиалу, здесь
- * паре «шаблон + филиал»: медсестру на Ленина зовут не туда, куда врача там же,
- * и не туда, куда медсестру в соседнем медцентре. Пустой филиал означает «этот
- * шаблон во всех филиалах» — так заводится общий чат сети для должности.
+ * вакансии: медсестру зовут не туда, куда врача в том же медцентре. Филиал у
+ * вакансии и так один, поэтому пустое medCenterId означает здесь ровно одно —
+ * «чат общий на сеть», и он уходит всем, кого наняли по этой вакансии.
  */
 
 const { Op } = require('sequelize');
@@ -34,7 +34,7 @@ const { AVATAR_URL_PREFIX } = preview;
 async function forApplication(app) {
   const rows = await VacChatLink.findAll({
     where: {
-      templateId: app.templateId,
+      vacancyId: app.vacancyId,
       isActive: true,
       [Op.or]: [{ medCenterId: app.medCenterId || null }, { medCenterId: null }]
     },
@@ -61,7 +61,7 @@ function toMailItem(link) {
 function toJson(link) {
   return {
     id: link.id,
-    templateId: link.templateId,
+    vacancyId: link.vacancyId,
     medCenterId: link.medCenterId,
     url: link.url,
     title: link.title,

@@ -156,7 +156,8 @@
     "migrate:8.18:check": "node scripts/runSqlMigration.js 8.18 --check",
     "migrate:8.20": "node scripts/runSqlMigration.js 8.20",
     "migrate:8.20:check": "node scripts/runSqlMigration.js 8.20 --check",
-    "seed:vacancy-doctor": "node scripts/seedVacancyDoctorTemplate.js"
+    "migrate:8.21": "node scripts/runSqlMigration.js 8.21",
+    "migrate:8.21:check": "node scripts/runSqlMigration.js 8.21 --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

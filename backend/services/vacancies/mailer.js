@@ -6,7 +6,7 @@
  * Кандидат — не сотрудник портала: аккаунта у него нет, поэтому все касания
  * идут почтой по персональной ссылке.
  *
- * Отличие от первого поколения: тексты живут в шаблоне, а вёрстка остаётся
+ * Отличие от первого поколения: тексты живут в вакансии, а вёрстка остаётся
  * здесь. Вёрстка выстрадана под почтовые клиенты — таблицы, инлайновые стили,
  * отсутствие флексбокса, — и отдавать её в редактор значило бы чинить письма
  * после каждой правки. А текст для технички и для врача обязан отличаться, и
@@ -108,10 +108,10 @@ const LETTERS = {
   }
 };
 
-/** Текст письма с учётом правок в шаблоне. */
-function letter(template, key) {
+/** Текст письма с учётом правок в вакансии. */
+function letter(vacancy, key) {
   const base = LETTERS[key];
-  const own = template?.emails?.[key] || {};
+  const own = vacancy?.emails?.[key] || {};
   return {
     subject: String(own.subject || base.subject).slice(0, 200),
     title: String(own.title || base.title).slice(0, 200),
@@ -173,8 +173,8 @@ function escapeHtml(value) {
 // ── Письма ─────────────────────────────────────────────────────────────────
 
 /** Код подтверждения адреса — первый шаг, до самой анкеты. */
-async function sendVerificationCode(template, email, code) {
-  const text = letter(template, 'code');
+async function sendVerificationCode(vacancy, email, code) {
+  const text = letter(vacancy, 'code');
   return send(email, text.subject, layout(text.title, `
     ${paragraphs(text.body)}
     <p style="font-size:34px;font-weight:700;letter-spacing:6px;margin:24px 0;">${code}</p>
@@ -183,8 +183,8 @@ async function sendVerificationCode(template, email, code) {
 }
 
 /** Черновик заведён — персональная ссылка, чтобы вернуться и дозаполнить. */
-async function sendDraftLink(template, app, vacancyTitle) {
-  const text = letter(template, 'draft');
+async function sendDraftLink(vacancy, app, vacancyTitle) {
+  const text = letter(vacancy, 'draft');
   return send(app.email, text.subject, layout(text.title, `
     ${vacancyTitle ? `<p style="color:#86868B;">Вакансия: ${escapeHtml(vacancyTitle)}</p>` : ''}
     ${paragraphs(text.body)}
@@ -194,8 +194,8 @@ async function sendDraftLink(template, app, vacancyTitle) {
 }
 
 /** Анкета ушла на рассмотрение. */
-async function sendSubmitted(template, app, vacancyTitle) {
-  const text = letter(template, 'submitted');
+async function sendSubmitted(vacancy, app, vacancyTitle) {
+  const text = letter(vacancy, 'submitted');
   return send(app.email, text.subject, layout(text.title, `
     ${vacancyTitle ? `<p style="color:#86868B;">Вакансия: ${escapeHtml(vacancyTitle)}</p>` : ''}
     ${paragraphs(text.body)}
@@ -210,8 +210,8 @@ async function sendSubmitted(template, app, vacancyTitle) {
  * Список полей — подписи, а не ключи: «experienceSpecialty» человеку ничего не
  * говорит, и он пойдёт искать это поле глазами по всей анкете.
  */
-async function sendRevision(template, app, note, fields = []) {
-  const text = letter(template, 'revision');
+async function sendRevision(vacancy, app, note, fields = []) {
+  const text = letter(vacancy, 'revision');
   const list = fields.length
     ? `<ul style="margin:16px 0;padding-left:20px;">${fields.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
     : '';
@@ -232,14 +232,14 @@ async function sendRevision(template, app, note, fields = []) {
  * отправлять его человеку как объяснение — не то же самое, что записать для
  * коллеги. Захотят сказать больше — скажут голосом.
  */
-async function sendRejected(template, app) {
-  const text = letter(template, 'rejected');
+async function sendRejected(vacancy, app) {
+  const text = letter(vacancy, 'rejected');
   return send(app.email, text.subject, layout(text.title, paragraphs(text.body)));
 }
 
 /** Анкета согласована — приглашение отметить услуги по прайсу. */
-async function sendServicesInvite(template, app) {
-  const text = letter(template, 'services');
+async function sendServicesInvite(vacancy, app) {
+  const text = letter(vacancy, 'services');
   return send(app.email, text.subject, layout(text.title, `
     ${paragraphs(text.body)}
     ${button(`${applicationUrl(app.accessToken)}/services`, 'Открыть список услуг')}
@@ -259,8 +259,8 @@ async function sendServicesInvite(template, app) {
  * единственным сообщением о том, что процесс завершён, и гасить его целиком
  * нельзя (решение заказчика).
  */
-async function sendWelcome(template, app, medCenterName, chats = []) {
-  const text = letter(template, 'welcome');
+async function sendWelcome(vacancy, app, medCenterName, chats = []) {
+  const text = letter(vacancy, 'welcome');
   const lead = chats.length
     ? `${paragraphs(text.body)}
        <p style="margin:0 0 14px;">Остался один шаг — вступите в рабочие чаты:</p>
@@ -313,8 +313,90 @@ function chatCard(chat) {
   </table>`;
 }
 
+/**
+ * Готовое письмо без отправки — для превью в редакторе вакансии.
+ *
+ * Собирается тем же кодом, что и настоящее: превью, нарисованное отдельно,
+ * разошлось бы с письмом на первой же правке вёрстки, и человек правил бы
+ * текст, глядя не на то, что уедет кандидату.
+ *
+ * Данные подставляются вымышленные и явно вымышленные — «Иванова Мария
+ * Петровна», а не чьё-то настоящее имя из базы: превью открывают, чтобы
+ * посмотреть на вёрстку и текст, а не на конкретного человека.
+ */
+function preview(vacancy, key) {
+  const app = {
+    email: 'kandidat@example.com',
+    accessToken: 'obrazec-ssylki-kandidata',
+    fullName: 'Иванова Мария Петровна'
+  };
+  const chats = [
+    { title: 'Чат филиала', subtitle: 'Общие вопросы и объявления', url: '#', avatarUrl: null },
+    { title: 'Смены и подмены', subtitle: 'График, отгулы, замены', url: '#', avatarUrl: null }
+  ];
+
+  const text = letter(vacancy, key);
+
+  switch (key) {
+    case 'code':
+      return { ...text, html: layout(text.title, `
+        ${paragraphs(text.body)}
+        <p style="font-size:34px;font-weight:700;letter-spacing:6px;margin:24px 0;">483920</p>
+        <p style="color:#86868B;font-size:13px;">Код действует 15 минут. Если вы не откликались на вакансию — просто не отвечайте на письмо.</p>
+      `) };
+
+    case 'draft':
+      return { ...text, html: layout(text.title, `
+        <p style="color:#86868B;">Вакансия: ${escapeHtml(vacancy?.title || 'Название вакансии')}</p>
+        ${paragraphs(text.body)}
+        ${button(applicationUrl(app.accessToken), 'Продолжить заполнение')}
+        <p style="color:#86868B;font-size:13px;">Ссылку никому не передавайте: по ней открывается ваша анкета.</p>
+      `) };
+
+    case 'submitted':
+      return { ...text, html: layout(text.title, `
+        <p style="color:#86868B;">Вакансия: ${escapeHtml(vacancy?.title || 'Название вакансии')}</p>
+        ${paragraphs(text.body)}
+        <p style="color:#86868B;font-size:13px;">Ваша копия анкеты остаётся доступной по прежней ссылке:
+          <span style="word-break:break-all;">${applicationUrl(app.accessToken)}</span></p>
+      `) };
+
+    case 'revision':
+      return { ...text, html: layout(text.title, `
+        ${paragraphs(text.body)}
+        <p style="background:#f5f5f7;border-radius:10px;padding:16px;">Уточните, пожалуйста, дату выхода и приложите скан диплома.</p>
+        <ul style="margin:16px 0;padding-left:20px;"><li>Дата выхода на работу</li><li>Сканы диплома</li></ul>
+        ${button(applicationUrl(app.accessToken), 'Открыть анкету')}
+        <p style="color:#86868B;font-size:13px;">Заполненное сохранено — поправить нужно только отмеченное.</p>
+      `) };
+
+    case 'rejected':
+      return { ...text, html: layout(text.title, paragraphs(text.body)) };
+
+    case 'services':
+      return { ...text, html: layout(text.title, `
+        ${paragraphs(text.body)}
+        ${button(`${applicationUrl(app.accessToken)}/services`, 'Открыть список услуг')}
+      `) };
+
+    case 'welcome':
+      return { ...text, html: layout(text.title, `
+        ${paragraphs(text.body)}
+        <p style="margin:0 0 14px;">Остался один шаг — вступите в рабочие чаты:</p>
+        ${chats.map(chatCard).join('')}
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e5ea;color:#86868B;font-size:12.5px;line-height:1.55;">
+          Филиал — МЦ Альфа.
+        </div>
+      `) };
+
+    default:
+      return { ...text, html: layout(text.title, paragraphs(text.body)) };
+  }
+}
+
 module.exports = {
   LETTERS,
+  preview,
   letter,
   send,
   layout,

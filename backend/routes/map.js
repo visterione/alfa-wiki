@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { MapMarker, User, SearchIndex, Page, PageHistory } = require('../models');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate, requirePermission, requireMarketing } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -95,7 +95,7 @@ const removeFromIndex = async (markerId) => {
 };
 
 // === Загрузка файлов ===
-router.post('/upload', authenticate, upload.array('files', 10), (req, res) => {
+router.post('/upload', authenticate, requireMarketing('ads', 'edit'), upload.array('files', 10), (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
@@ -159,7 +159,7 @@ router.get('/stream/:filename', (req, res) => {
 });
 
 // === Получить все маркеры ===
-router.get('/markers', authenticate, async (req, res) => {
+router.get('/markers', authenticate, requireMarketing('ads', 'read'), async (req, res) => {
   try {
     const { category, color } = req.query;
     const where = {};
@@ -181,7 +181,7 @@ router.get('/markers', authenticate, async (req, res) => {
 });
 
 // === Получить один маркер ===
-router.get('/markers/:id', authenticate, async (req, res) => {
+router.get('/markers/:id', authenticate, requireMarketing('ads', 'read'), async (req, res) => {
   try {
     const marker = await MapMarker.findByPk(req.params.id, {
       include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }]
@@ -199,7 +199,7 @@ router.get('/markers/:id', authenticate, async (req, res) => {
 });
 
 // === Создать маркер ===
-router.post('/markers', authenticate, requirePermission('pages', 'write'), [
+router.post('/markers', authenticate, requireMarketing('ads', 'edit'), [
   body('lat').isFloat().withMessage('Latitude is required'),
   body('lng').isFloat().withMessage('Longitude is required'),
   body('title').notEmpty().withMessage('Title is required')
@@ -254,7 +254,7 @@ router.post('/markers', authenticate, requirePermission('pages', 'write'), [
 });
 
 // === Обновить маркер ===
-router.put('/markers/:id', authenticate, requirePermission('pages', 'write'), async (req, res) => {
+router.put('/markers/:id', authenticate, requireMarketing('ads', 'edit'), async (req, res) => {
   try {
     const marker = await MapMarker.findByPk(req.params.id);
     if (!marker) {
@@ -331,7 +331,7 @@ router.put('/markers/:id', authenticate, requirePermission('pages', 'write'), as
 });
 
 // === Удалить маркер ===
-router.delete('/markers/:id', authenticate, requirePermission('pages', 'delete'), async (req, res) => {
+router.delete('/markers/:id', authenticate, requireMarketing('ads', 'edit'), async (req, res) => {
   try {
     const marker = await MapMarker.findByPk(req.params.id);
     if (!marker) {
@@ -370,7 +370,7 @@ router.delete('/markers/:id', authenticate, requirePermission('pages', 'delete')
 });
 
 // === Получить категории ===
-router.get('/categories', authenticate, async (req, res) => {
+router.get('/categories', authenticate, requireMarketing('ads', 'read'), async (req, res) => {
   try {
     const categories = await MapMarker.findAll({
       attributes: ['category', 'color'],

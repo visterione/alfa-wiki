@@ -1,5 +1,5 @@
 /**
- * Вакансии (ver. 8.20) — оболочка раздела.
+ * Вакансии (ver. 8.20, переработано в 8.21) — оболочка раздела.
  *
  * Второе поколение онбординга. Устроен как онбординг и «Задачи»: слева разделы,
  * справа полотно, один маршрут, экран переключается параметром ?screen= — чтобы
@@ -7,8 +7,8 @@
  *
  * Экранов две группы, и это не косметика. Сверху ежедневная работа — задачи и
  * заявки: её видит и тот, кто просто назначен исполнителем шага. Ниже
- * настройка — шаблоны, вакансии, ссылки: она только для админа, и у остальных
- * этих пунктов нет вовсе, а не «есть, но с замком».
+ * настройка — вакансии и таблички филиалов: она только для админа, и у
+ * остальных этих пунктов нет вовсе, а не «есть, но с замком».
  *
  * Старый раздел онбординга остаётся рядом и работает: заявки идут через него,
  * пока здесь не появится всё то же самое. Его кнопка в сайдбаре помечена
@@ -18,11 +18,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FileStack, Briefcase, QrCode, Inbox, FileText, Archive, Plus } from 'lucide-react';
+import { Briefcase, QrCode, Inbox, FileText, Archive, Plus } from 'lucide-react';
 
 import { vacancies as api } from '../../services/api';
-import TemplateEditor from './TemplateEditor';
-import OpeningsScreen from './OpeningsScreen';
+import VacancyEditor from './VacancyEditor';
 import ApplicationCard from './ApplicationCard';
 import './Vacancies.css';
 
@@ -31,9 +30,8 @@ const SCREENS = [
   { key: 'apps', label: 'Заявки', icon: FileText },
   { key: 'archive', label: 'Архив', icon: Archive },
   { group: 'Настройка' },
-  { key: 'templates', label: 'Шаблоны', icon: FileStack, adminOnly: true },
   { key: 'list', label: 'Вакансии', icon: Briefcase, adminOnly: true },
-  { key: 'qr', label: 'Ссылки и QR', icon: QrCode, adminOnly: true },
+  { key: 'qr', label: 'Таблички филиалов', icon: QrCode, adminOnly: true },
 ];
 
 export default function Vacancies() {
@@ -44,7 +42,6 @@ export default function Vacancies() {
   const [tasks, setTasks] = useState([]);
   const [apps, setApps] = useState([]);
   const [archive, setArchive] = useState([]);
-  const [templates, setTemplates] = useState([]);
   const [list, setList] = useState([]);
   const [medCenters, setMedCenters] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -54,9 +51,9 @@ export default function Vacancies() {
   const navRef = useRef(null);
   const [navIndicator, setNavIndicator] = useState({ top: 0, height: 36, ready: false });
 
-  // Открытые шаблон и заявка живут в адресе: ссылку можно кинуть коллеге, а
+  // Открытые вакансия и заявка живут в адресе: ссылку можно кинуть коллеге, а
   // уведомление о задаче ведёт сразу в нужную заявку, а не в список.
-  const openTemplateId = params.get('template');
+  const openVacancyId = params.get('vacancy');
   const openAppId = params.get('app');
 
   const setParam = (key, value) => {
@@ -84,10 +81,7 @@ export default function Vacancies() {
       // Настройка грузится только тому, кому она доступна: остальным эти
       // запросы вернули бы 403 и насорили в консоли.
       if (admin) {
-        const [t, v, mc, m] = await Promise.all([
-          api.templates(), api.list(), api.medCenters(), api.meta()
-        ]);
-        setTemplates(t.data || []);
+        const [v, mc, m] = await Promise.all([api.openings(), api.medCenters(), api.meta()]);
         setList(v.data || []);
         setMedCenters(mc.data || []);
         setMeta(m.data || null);
@@ -111,15 +105,32 @@ export default function Vacancies() {
     return () => { clearTimeout(timer); window.removeEventListener('vacancies-changed', refresh); };
   }, [load]);
 
-  const createTemplate = async () => {
-    const title = window.prompt('Название должности — «Медсестра», «Техничка»');
+  /**
+   * Новая вакансия. Спрашиваем только название и филиал: остальное — анкета,
+   * процесс, письма — правится в самом редакторе, и вываливать это в диалог
+   * создания значит заставить человека решать всё до того, как он увидел экран.
+   */
+  const createVacancy = async () => {
+    const title = window.prompt('Название вакансии — «Врач-терапевт», «Медицинская сестра»');
     if (!title?.trim()) return;
+
+    const usable = medCenters.filter(mc => mc.code);
+    if (!usable.length) {
+      toast.error('Ни у одного филиала не заполнен латинский код — без него ссылку не построить');
+      return;
+    }
+
+    const names = usable.map((mc, i) => `${i + 1}. ${mc.name}`).join('\n');
+    const answer = window.prompt(`В каком филиале?\n\n${names}\n\nВведите номер`, '1');
+    const branch = usable[Number(answer) - 1];
+    if (!branch) return;
+
     try {
-      const { data } = await api.createTemplate({ title: title.trim() });
+      const { data } = await api.createOpening({ title: title.trim(), medCenterId: branch.id });
       await load();
-      setParam('template', data.id);
+      setParam('vacancy', data.id);
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Не удалось создать шаблон');
+      toast.error(error.response?.data?.error || 'Не удалось создать вакансию');
     }
   };
 
@@ -143,10 +154,7 @@ export default function Vacancies() {
 
   const go = (key) => setParams(key === 'tasks' ? {} : { screen: key }, { replace: true });
 
-  const counts = {
-    tasks: tasks.length, apps: apps.length, archive: 0,
-    templates: templates.length, list: list.length, qr: 0
-  };
+  const counts = { tasks: tasks.length, apps: apps.length, archive: 0, list: list.length, qr: 0 };
 
   return (
     <div className="vac">
@@ -178,8 +186,8 @@ export default function Vacancies() {
         <div className="vac-main">
           <div className="vac-top">
             <div className="vac-title">{SCREENS.find(s => s.key === screen)?.label}</div>
-            {screen === 'templates' && !openTemplateId && isAdmin && (
-              <button className="vac-btn" onClick={createTemplate}><Plus size={15} />Новый шаблон</button>
+            {screen === 'list' && !openVacancyId && isAdmin && (
+              <button className="vac-btn" onClick={createVacancy}><Plus size={15} />Новая вакансия</button>
             )}
           </div>
 
@@ -204,21 +212,17 @@ export default function Vacancies() {
                 : <div className="vac-empty">Архив пуст.</div>
             )}
 
-            {!loading && screen === 'templates' && isAdmin && openTemplateId && meta && (
-              <TemplateEditor
-                templateId={openTemplateId}
+            {!loading && screen === 'list' && isAdmin && openVacancyId && meta && (
+              <VacancyEditor
+                vacancyId={openVacancyId}
                 meta={meta}
-                onBack={() => setParam('template', null)}
+                onBack={() => setParam('vacancy', null)}
                 onChanged={load}
               />
             )}
 
-            {!loading && screen === 'templates' && isAdmin && !openTemplateId && (
-              <TemplatesScreen templates={templates} onOpen={id => setParam('template', id)} onCreate={createTemplate} />
-            )}
-
-            {!loading && screen === 'list' && isAdmin && (
-              <OpeningsScreen list={list} templates={templates} medCenters={medCenters} onChanged={load} />
+            {!loading && screen === 'list' && isAdmin && !openVacancyId && (
+              <VacancyList list={list} onOpen={id => setParam('vacancy', id)} onCreate={createVacancy} />
             )}
 
             {!loading && screen === 'qr' && isAdmin && <QrScreen medCenters={medCenters} list={list} />}
@@ -299,7 +303,7 @@ function AppTable({ apps, onOpen }) {
               <div className="vac-name">{app.fullName || 'без имени'}</div>
               <div className="vac-sub">{app.phone || app.email}</div>
             </td>
-            <td className="vac-sub">{app.vacancy?.title || app.template?.title}<br />{app.medCenter?.name}</td>
+            <td className="vac-sub">{app.vacancy?.title}<br />{app.medCenter?.name}</td>
             <td className="vac-sub">
               {app.status === 'submitted' && 'на согласовании'}
               {app.status === 'revision' && 'у кандидата на доработке'}
@@ -322,18 +326,21 @@ function AppTable({ apps, onOpen }) {
 }
 
 /**
- * Шаблоны — анкета плюс процесс под одну должность.
+ * Список вакансий.
  *
- * Размеры («14 блоков, 10 шагов») показываются, потому что по ним и узнают
- * шаблон в списке: названия «Врач» и «Медсестра» сами по себе ничего не говорят
- * о том, доделан он или пуст.
+ * Размеры анкеты и процесса («14 блоков, 10 шагов») стоят рядом с названием
+ * потому, что по ним и узнают вакансию в списке: «Врач-терапевт» сам по себе
+ * ничего не говорит о том, доделана она или пуста.
  */
-function TemplatesScreen({ templates, onOpen, onCreate }) {
-  if (!templates.length) {
+const STATUS_LABEL = { draft: 'Черновик', open: 'Набор открыт', closed: 'Набор закрыт' };
+const STATUS_TONE = { draft: 'muted', open: 'ok', closed: 'warn' };
+
+function VacancyList({ list, onOpen, onCreate }) {
+  if (!list.length) {
     return (
       <div className="vac-empty">
-        Шаблонов ещё нет.<br />
-        <button className="vac-btn is-ghost" onClick={onCreate}>Собрать первый</button>
+        Вакансий ещё нет.<br />
+        <button className="vac-btn is-ghost" onClick={onCreate}>Завести первую</button>
       </div>
     );
   }
@@ -341,22 +348,22 @@ function TemplatesScreen({ templates, onOpen, onCreate }) {
   return (
     <table className="vac-table">
       <thead>
-        <tr><th>Должность</th><th>Анкета</th><th>Процесс</th><th>Вакансий</th><th>Состояние</th></tr>
+        <tr><th>Вакансия</th><th>Филиал</th><th>Анкета</th><th>Откликов</th><th>Состояние</th></tr>
       </thead>
       <tbody>
-        {templates.map(t => (
-          <tr key={t.id} className="is-clickable" onClick={() => onOpen(t.id)}>
+        {list.map(v => (
+          <tr key={v.id} className="is-clickable" onClick={() => onOpen(v.id)}>
             <td>
-              <div className="vac-name">{t.title}</div>
-              {t.description && <div className="vac-sub">{t.description}</div>}
+              <div className="vac-name">{v.title}</div>
+              {v.description && <div className="vac-sub">{v.description}</div>}
             </td>
-            <td className="vac-sub">{t.blockCount} блоков</td>
-            <td className="vac-sub">{t.stepCount} шагов</td>
-            <td className="vac-sub">{t.vacancyCount || '—'}</td>
+            <td className="vac-sub">{v.medCenter?.name || '—'}</td>
+            <td className="vac-sub">{v.blockCount} блоков · {v.stepCount} шагов</td>
+            <td className="vac-sub">{v.applicationCount || '—'}</td>
             <td>
-              {t.isPublished
-                ? <span className="vac-badge vac-badge-ok">Опубликован</span>
-                : <span className="vac-badge vac-badge-muted">Черновик</span>}
+              <span className={`vac-badge vac-badge-${STATUS_TONE[v.status]}`}>
+                {STATUS_LABEL[v.status]}
+              </span>
             </td>
           </tr>
         ))}
@@ -381,7 +388,7 @@ function QrScreen({ medCenters, list }) {
 
   const openByMc = new Map();
   for (const v of list) {
-    if (!v.isOpen || !v.medCenter) continue;
+    if (v.status !== 'open' || !v.medCenter) continue;
     openByMc.set(v.medCenter.id, (openByMc.get(v.medCenter.id) || 0) + 1);
   }
 
