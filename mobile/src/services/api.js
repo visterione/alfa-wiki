@@ -200,6 +200,11 @@ export const chat = {
   sendMessage: (chatId, content, attachments = [], replyToId = null, mentions = []) =>
     api.post(`/chat/${chatId}/messages`, {content, attachments, replyToId, mentions}),
   markAsRead: chatId => api.post(`/chat/${chatId}/read`),
+  // Журнал прочтений чата (ver. 8.26). since — дата самого старого
+  // загруженного сообщения: более ранние отметки ничего из показанного
+  // не накрывают
+  getReadMarks: (chatId, since) =>
+    api.get(`/chat/${chatId}/read-marks`, {params: since ? {since} : {}}),
   startPrivate: userId => api.post('/chat/private', {userId}),
   createGroup: (name, memberIds) =>
     api.post('/chat/group', {name, memberIds}),
