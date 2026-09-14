@@ -55,18 +55,41 @@ function StatusBadge({ status }) {
 
 // ══ Список ════════════════════════════════════════════════════════════════
 
-function BroadcastList({ items, selectedId, onSelect, onCreate, templateMode }) {
+function BroadcastList({ items, selectedId, onSelect, onCreate, templateMode, onMode }) {
   return (
     <aside className="brc-list">
+      {/* Переключатель набора — заголовок колонки, а не третий ряд вкладок над
+          страницей: он меняет только то, что лежит в этом списке, и подпись
+          кнопки под ним. Раньше он стоял отдельной полосой поверх обеих колонок
+          и выглядел равным по весу вкладкам модуля, хотя таковым не является. */}
+      <nav className="ola-tabs brc-scope">
+        <button
+          type="button"
+          className={`ola-tab ${templateMode ? '' : 'active'}`}
+          onClick={() => onMode('history')}
+        >
+          <Megaphone size={14} /> Рассылки
+        </button>
+        <button
+          type="button"
+          className={`ola-tab ${templateMode ? 'active' : ''}`}
+          onClick={() => onMode('templates')}
+        >
+          <Bookmark size={14} /> Шаблоны
+        </button>
+      </nav>
+
       <button className="ola-btn primary brc-new" onClick={onCreate}>
         <Plus size={14} /> {templateMode ? 'Новый шаблон' : 'Новая рассылка'}
       </button>
 
-      {!items.length && (
+      {!items && <div className="ola-loading brc-loading">Загрузка…</div>}
+
+      {items && !items.length && (
         <div className="ola-empty"><Megaphone size={28} /><span>{templateMode ? 'Шаблонов пока нет' : 'Рассылок пока нет'}</span></div>
       )}
 
-      {items.map(item => (
+      {items?.map(item => (
         <button
           key={item.id}
           className={`brc-item ${item.id === selectedId ? 'active' : ''}`}
@@ -627,19 +650,24 @@ export default function BroadcastsTab() {
     }
   };
 
-  if (!items) return <div className="ola-loading">Загрузка…</div>;
-
-  const selected = items.find(b => b.id === selectedId) || null;
+  const selected = items?.find(b => b.id === selectedId) || null;
 
   return (
-    <>
-      <div className="brc-view-tabs">
-        <button className={mode === 'history' ? 'active' : ''} onClick={() => { setMode('history'); setItems(null); }}>История и черновики</button>
-        <button className={mode === 'templates' ? 'active' : ''} onClick={() => { setMode('templates'); setItems(null); }}>Шаблоны</button>
-      </div>
-      <div className="brc-columns">
-        <BroadcastList items={items} selectedId={selectedId} onSelect={setSelectedId} onCreate={create} templateMode={mode === 'templates'} />
-        {selected
+    <div className="brc-columns">
+      <BroadcastList
+        items={items}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        onCreate={create}
+        templateMode={mode === 'templates'}
+        onMode={next => { if (next !== mode) { setMode(next); setItems(null); } }}
+      />
+      {/* На время запроса вкладка больше не сменяется строкой «Загрузка…»
+          целиком: переключатель наборов теперь живёт в колонке списка, и вместе
+          с ней исчезал бы тот самый элемент, по которому только что щёлкнули. */}
+      {!items
+        ? <div className="ola-empty brc-blank"><Megaphone size={32} /><span>Загрузка…</span></div>
+        : selected
           ? <Editor
               key={selected.id}
               broadcast={selected}
@@ -657,7 +685,6 @@ export default function BroadcastsTab() {
               }}
             />
           : <div className="ola-empty brc-blank"><Megaphone size={32} /><span>Выберите {mode === 'templates' ? 'шаблон' : 'рассылку'} слева</span></div>}
-      </div>
-    </>
+    </div>
   );
 }

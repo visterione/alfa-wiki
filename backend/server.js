@@ -14,6 +14,7 @@ const { sequelize } = require('./models');
 const { buildDatabaseRuntimeConfig, getPoolStats } = require('./utils/databaseRuntimeConfig');
 const { envFlag } = require('./utils/env');
 const { socketIoAdapter } = require('./services/socketIoAdapter');
+const openLineEvents = require('./services/openLineEvents');
 const { initBot } = require('./bot/telegramBot');
 const { initDoctorReindexJob } = require('./jobs/doctorServicesReindex');
 const notificationService = require('./services/notificationService');
@@ -622,6 +623,11 @@ async function startServer() {
     // Initialize notification service with Socket.IO
     notificationService.init(io);
 
+    // Сигналы открытой линии от процесса забора обновлений (ver. 8.27).
+    // Входящее от пациента приходит не сюда, а в messengerPoller, и попасть
+    // оператору на экран может только через этот мост.
+    openLineEvents.listen(io);
+
     if (RUN_BACKGROUND_JOBS) {
       // Боты и cron-задачи должны работать только на одном экземпляре.
       initBot();
@@ -675,6 +681,11 @@ async function gracefulShutdown(signal) {
     await presence.shutdown();
   } catch (e) {
     console.error('[shutdown] presence error:', e.message);
+  }
+  try {
+    await openLineEvents.stopListening();
+  } catch (e) {
+    console.error('[shutdown] open-line listener error:', e.message);
   }
   server.close(async () => {
     try {

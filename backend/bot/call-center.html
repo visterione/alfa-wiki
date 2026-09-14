@@ -31,82 +31,13 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
   color: var(--cc-text);
   font-size: 14px;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 12px;
+  margin: 0;
+  padding: 0;
   line-height: 1.45;
 }
 #cc-app button, #cc-app input, #cc-app textarea, #cc-app select { font-family: inherit; font-size: inherit; color: inherit; }
 
-/* ─── ПАНЕЛЬ СВЕРХУ ─── */
-/* Панель липкая: оператор ищет во время разговора, и прокрутка вниз не должна
-   уводить поле поиска с экрана — иначе к нему возвращаются колесом мыши. */
-.cc-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  /* Полупрозрачный белый, а не сплошной цвет фона: на вики страница лежит на
-     белом листе, и серая плашка поверх него читалась бы как чужая полоса. */
-  background: rgba(255,255,255,0.92);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  flex-wrap: wrap;
-}
-
-.cc-search {
-  position: relative;
-  flex: 1 1 320px;
-  min-width: 220px;
-}
-.cc-search-icon {
-  position: absolute;
-  left: 13px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 17px;
-  height: 17px;
-  color: var(--cc-text-muted);
-  pointer-events: none;
-}
-.cc-search input {
-  width: 100%;
-  height: 42px;
-  padding: 0 38px 0 40px;
-  border: 1px solid var(--cc-border);
-  border-radius: 10px;
-  background: var(--cc-card-bg);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.cc-search input:focus {
-  border-color: var(--cc-primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
-}
-.cc-search-clear {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--cc-text-muted);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  display: none;
-}
-.cc-search-clear:hover { background: #f1f5f9; color: var(--cc-text); }
-.cc-search.filled .cc-search-clear { display: block; }
-
-.cc-toolbar-actions { display: flex; align-items: center; gap: 8px; }
-
+/* ─── КНОПКИ ─── */
 .cc-btn {
   display: inline-flex;
   align-items: center;
@@ -139,49 +70,77 @@
 .cc-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ─── ВКЛАДКИ ─── */
+/* Ряд липкий: переключение раздела нужно и в середине длинного списка, иначе
+   к вкладкам возвращаются прокруткой вверх посреди разговора. */
+.cc-tabs-row {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding-top: 10px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--cc-border);
+  /* Полупрозрачный белый, а не сплошной цвет фона: на вики страница лежит на
+     белом листе, и серая плашка поверх него читалась бы как чужая полоса. */
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
 .cc-tabs {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 4px;
   flex-wrap: wrap;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--cc-border);
-  margin-bottom: 18px;
+  flex: 1;
+  min-width: 0;
 }
+/* Ярлычок папки: скруглён только сверху и садится на линию ряда своим нижним
+   краем. Цвет у каждой вкладки свой — тон приходит из data-атрибута (--h),
+   чтобы разделы различались боковым зрением, без поиска глазами подписи. */
 .cc-tab {
+  --h: 215;
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
-  padding: 0 13px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--cc-text-secondary);
+  height: 36px;
+  padding: 0 16px;
+  margin-bottom: -1px;
+  border: 1px solid hsl(var(--h), 45%, 88%);
+  border-bottom-color: transparent;
+  border-radius: 10px 10px 0 0;
+  background: hsl(var(--h), 60%, 96%);
+  color: hsl(var(--h), 30%, 42%);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transform: translateY(2px);
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
-.cc-tab:hover { background: #f1f5f9; color: var(--cc-text); }
+/* Корешок ярлычка — цветная полоска по верхнему краю. */
+.cc-tab::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: -1px;
+  height: 3px;
+  border-radius: 10px 10px 0 0;
+  background: hsl(var(--h), 55%, 74%);
+}
+.cc-tab:hover { background: hsl(var(--h), 65%, 93%); transform: translateY(0); }
 .cc-tab.active {
-  background: var(--cc-primary-soft);
-  border-color: #bfdbfe;
-  color: var(--cc-primary);
+  background: #fff;
+  border-color: hsl(var(--h), 50%, 80%);
+  /* Нижняя граница цвета листа перекрывает линию ряда — папка «раскрыта». */
+  border-bottom-color: #fff;
+  color: hsl(var(--h), 55%, 34%);
   font-weight: 600;
+  transform: translateY(0);
+  z-index: 1;
 }
-.cc-tab-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  background: rgba(0,0,0,0.07);
-  font-size: 11px;
-  font-weight: 700;
-}
-.cc-tab.active .cc-tab-count { background: rgba(37,99,235,0.14); }
+.cc-tab.active::before { background: hsl(var(--h), 70%, 50%); }
 .cc-tab-edit {
   display: none;
   width: 22px;
@@ -201,35 +160,56 @@
 
 .cc-tabs-add { display: none; }
 .cc-app-editing .cc-tabs-add { display: inline-flex; }
+.cc-tabs-add {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--cc-border-strong);
+  color: var(--cc-text-secondary);
+}
+.cc-tabs-add::before { display: none; }
+.cc-tabs-add:hover { background: #f8fafc; color: var(--cc-text); }
+
+/* Кнопка редактирования живёт в правом краю ряда вкладок — она нужна раз в
+   месяц, и отдельная панель ради неё занимала бы высоту на каждом экране. */
+.cc-tabs-edit {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 7px;
+  border: 1px solid var(--cc-border);
+  border-radius: 9px;
+  background: var(--cc-card-bg);
+  color: var(--cc-text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cc-tabs-edit svg { width: 16px; height: 16px; display: block; }
+.cc-tabs-edit:hover { background: #f8fafc; border-color: var(--cc-border-strong); color: var(--cc-text); }
+.cc-app-editing .cc-tabs-edit {
+  background: var(--cc-primary);
+  border-color: var(--cc-primary);
+  color: #fff;
+}
 
 /* ─── СЕТКА КАРТОЧЕК ─── */
-.cc-group-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--cc-text-muted);
-  margin: 4px 0 12px;
-}
-.cc-group-title:not(:first-child) { margin-top: 26px; }
-.cc-group-title::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--cc-border);
-}
-
+/* grid-auto-rows: 1fr равняет все ряды по самому высокому — карточки выходят
+   одной высоты независимо от числа полей, и сетка не выглядит рваной.
+   auto-fit, а не auto-fill: незанятые колонки схлопываются, и две-три карточки
+   расходятся на всю ширину вместо того, чтобы жаться к левому краю. */
 .cc-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-auto-rows: 1fr;
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .cc-card {
+  display: flex;
+  flex-direction: column;
   background: var(--cc-card-bg);
   border: 1px solid var(--cc-border);
   border-radius: var(--cc-radius);
@@ -278,7 +258,7 @@
 .cc-icon-btn svg { width: 15px; height: 15px; display: block; }
 
 /* ─── СТРОКИ ЗНАЧЕНИЙ ─── */
-.cc-items { border-top: 1px solid var(--cc-border); }
+.cc-items { flex: 1; border-top: 1px solid var(--cc-border); }
 .cc-item {
   display: flex;
   align-items: flex-start;
@@ -330,20 +310,19 @@
 .cc-copy {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  width: 30px;
   height: 30px;
-  padding: 0 10px;
+  padding: 0;
   border: 1px solid var(--cc-border);
   border-radius: 8px;
   background: var(--cc-card-bg);
   color: var(--cc-text-secondary);
-  font-size: 12px;
-  font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .cc-copy:hover { background: var(--cc-primary-soft); border-color: #bfdbfe; color: var(--cc-primary); }
-.cc-copy svg { width: 14px; height: 14px; }
+.cc-copy svg { width: 14px; height: 14px; display: block; }
 .cc-copy.done {
   background: #f0fdf4;
   border-color: #bbf7d0;
@@ -365,8 +344,6 @@
 .cc-open:hover { background: var(--cc-primary-soft); border-color: #bfdbfe; color: var(--cc-primary); }
 .cc-open svg { width: 14px; height: 14px; display: block; }
 
-mark.cc-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 0 1px; }
-
 /* ─── ПУСТЫЕ СОСТОЯНИЯ ─── */
 .cc-empty {
   padding: 54px 20px;
@@ -377,8 +354,11 @@ mark.cc-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 
 .cc-empty-title { font-size: 15px; font-weight: 600; color: var(--cc-text); margin-bottom: 5px; }
 .cc-empty-hint { font-size: 13px; }
 
+/* Кнопка не тянется на всю высоту ряда, как карточки: это действие, а не
+   запись, и пустая рамка во весь экран читалась бы как сломанная вёрстка. */
 .cc-add-card {
   display: none;
+  align-self: start;
   width: 100%;
   min-height: 92px;
   border: 1.5px dashed var(--cc-border-strong);
@@ -505,18 +485,6 @@ mark.cc-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 
 .cc-field-row textarea { min-height: 68px; resize: vertical; line-height: 1.5; }
 .cc-field-row-tools { display: flex; justify-content: flex-end; gap: 2px; margin-top: 6px; }
 
-.cc-export-area {
-  width: 100%;
-  min-height: 220px;
-  padding: 11px;
-  border: 1px solid var(--cc-border);
-  border-radius: 9px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  resize: vertical;
-}
-
 /* ─── ТОСТ ─── */
 .cc-toast {
   position: fixed;
@@ -539,12 +507,8 @@ mark.cc-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 
 .cc-toast.error { background: var(--cc-danger); }
 
 @media (max-width: 768px) {
-  #cc-app { padding: 0 10px; }
   .cc-grid { grid-template-columns: 1fr; }
-  .cc-toolbar { gap: 8px; }
-  .cc-search { flex: 1 1 100%; }
-  .cc-toolbar-actions { width: 100%; }
-  .cc-toolbar-actions .cc-btn { flex: 1; justify-content: center; }
+  .cc-tab { height: 34px; padding: 0 12px; }
   .cc-item { flex-wrap: wrap; }
   .cc-item-actions { width: 100%; justify-content: flex-end; }
   .cc-field-row-top { flex-wrap: wrap; }
@@ -555,25 +519,12 @@ mark.cc-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 
 <body>
 
 <div id="cc-app">
-  <div class="cc-toolbar">
-    <div class="cc-search" id="cc-search-wrap">
-      <svg class="cc-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <input type="text" id="cc-search" placeholder="Поиск по всем вкладкам — название, текст, адрес" autocomplete="off">
-      <button class="cc-search-clear" data-act="clear-search" title="Очистить">&times;</button>
-    </div>
-    <div class="cc-toolbar-actions">
-      <button class="cc-btn" id="cc-edit-toggle" data-act="toggle-edit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-        <span id="cc-edit-toggle-text">Редактировать</span>
-      </button>
-      <button class="cc-btn" id="cc-export-btn" data-act="export" title="Выгрузить данные для сохранения в файл" style="display:none">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
-        Выгрузить
-      </button>
-    </div>
+  <div class="cc-tabs-row">
+    <div class="cc-tabs" id="cc-tabs"></div>
+    <button class="cc-tabs-edit" id="cc-edit-toggle" data-act="toggle-edit" title="Редактировать">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    </button>
   </div>
-
-  <div class="cc-tabs" id="cc-tabs"></div>
   <div id="cc-content"></div>
 </div>
 
@@ -662,29 +613,6 @@ mark.cc-hit { background: #fef08a; color: inherit; border-radius: 3px; padding: 
   </div>
 </div>
 
-<!-- Выгрузка -->
-<div class="cc-overlay" id="cc-export-overlay" data-act="overlay-close">
-  <div class="cc-modal">
-    <div class="cc-modal-head">
-      <div class="cc-modal-title">Выгрузка данных</div>
-      <button class="cc-icon-btn" data-act="close-export" title="Закрыть">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    </div>
-    <div class="cc-modal-body">
-      <div class="cc-field-hint" style="margin:0 0 10px">
-        Правки сейчас хранятся только в этом браузере. Чтобы их увидели остальные,
-        скопируйте блок ниже и замените им содержимое <b>var SEED</b> в начале скрипта страницы.
-      </div>
-      <textarea class="cc-export-area" id="cc-export-area" readonly></textarea>
-    </div>
-    <div class="cc-modal-foot">
-      <button class="cc-btn" data-act="close-export">Закрыть</button>
-      <button class="cc-btn primary" data-act="copy-export">Скопировать</button>
-    </div>
-  </div>
-</div>
-
 <div class="cc-toast" id="cc-toast"></div>
 
 <script>
@@ -701,9 +629,8 @@ if (window.__ccQuickTeardown) { try { window.__ccQuickTeardown(); } catch (e) {}
 // ДАННЫЕ
 //
 // Пока у страницы нет своего API, набор лежит здесь, а правки из интерфейса
-// складываются в localStorage этого браузера. Кнопка «Выгрузить» отдаёт готовый
-// блок, которым заменяют SEED — так правка становится общей для всех.
-// Когда появится /api/quick-snippets, меняется только объект Store ниже;
+// складываются в localStorage этого браузера — то есть видны только тому, кто их
+// внёс. Когда появится /api/quick-snippets, меняется только объект Store ниже;
 // остальной код про способ хранения ничего не знает.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -831,15 +758,17 @@ var ICONS = {
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
-  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>'
 };
 
 // ─── СОСТОЯНИЕ ───
+// Тон ярлычка берётся по кругу из этого набора: оттенки разведены так, чтобы
+// соседние вкладки не сливались, и одинаковы от загрузки к загрузке.
+var TAB_HUES = [215, 268, 158, 28, 340, 192, 95, 315];
+
 var state = {
   data: Store.read(),
   activeTabId: null,
-  query: '',
   editing: false,
   expanded: {},       // какие длинные значения развёрнуты: ключ «id карточки:номер поля»
   draftSnippet: null, // карточка в модалке
@@ -850,8 +779,6 @@ var state = {
 var root = document.getElementById('cc-app');
 var tabsEl = document.getElementById('cc-tabs');
 var contentEl = document.getElementById('cc-content');
-var searchInput = document.getElementById('cc-search');
-var searchWrap = document.getElementById('cc-search-wrap');
 
 // ─── ВСПОМОГАТЕЛЬНОЕ ───
 function uid(prefix) {
@@ -862,21 +789,6 @@ function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-
-// Подсветка идёт по уже экранированной строке, поэтому и запрос экранируем:
-// иначе поиск по «&» или «<» промахивается мимо разметки.
-function highlight(text, query) {
-  var safe = escapeHtml(text);
-  if (!query) return safe;
-  var q = escapeHtml(query);
-  try {
-    return safe.replace(new RegExp('(' + escapeRe(q) + ')', 'gi'), '<mark class="cc-hit">$1</mark>');
-  } catch (e) {
-    return safe;
-  }
 }
 
 function sortedTabs() {
@@ -899,22 +811,12 @@ function snippetById(id) {
   return null;
 }
 
-function matches(snippet, q) {
-  if (!q) return true;
-  var hay = [snippet.title || '', snippet.note || ''];
-  (snippet.items || []).forEach(function(it) { hay.push(it.label || '', it.value || ''); });
-  return hay.join('\n').toLowerCase().indexOf(q.toLowerCase()) !== -1;
-}
-
 function persist() { Store.write(state.data); }
 
 // ─── РЕНДЕР ───
 function render() {
   root.classList.toggle('cc-app-editing', state.editing);
-  searchWrap.classList.toggle('filled', !!state.query);
-  document.getElementById('cc-export-btn').style.display = state.editing ? '' : 'none';
-  document.getElementById('cc-edit-toggle').classList.toggle('active', state.editing);
-  document.getElementById('cc-edit-toggle-text').textContent = state.editing ? 'Готово' : 'Редактировать';
+  document.getElementById('cc-edit-toggle').title = state.editing ? 'Готово' : 'Редактировать';
   renderTabs();
   renderContent();
 }
@@ -924,12 +826,10 @@ function renderTabs() {
   if (!state.activeTabId || !tabById(state.activeTabId)) {
     state.activeTabId = tabs.length ? tabs[0].id : null;
   }
-  var html = tabs.map(function(t) {
-    var count = snippetsOfTab(t.id).length;
-    var active = t.id === state.activeTabId && !state.query;
-    return '<button class="cc-tab' + (active ? ' active' : '') + '" data-act="select-tab" data-id="' + t.id + '">' +
+  var html = tabs.map(function(t, i) {
+    var active = t.id === state.activeTabId;
+    return '<button class="cc-tab' + (active ? ' active' : '') + '" style="--h:' + TAB_HUES[i % TAB_HUES.length] + '" data-act="select-tab" data-id="' + t.id + '">' +
              '<span>' + escapeHtml(t.title) + '</span>' +
-             '<span class="cc-tab-count">' + count + '</span>' +
              '<span class="cc-tab-edit" data-act="edit-tab" data-id="' + t.id + '" title="Изменить вкладку">' + ICONS.edit + '</span>' +
            '</button>';
   }).join('');
@@ -938,24 +838,6 @@ function renderTabs() {
 }
 
 function renderContent() {
-  // Поиск идёт по всем вкладкам сразу: во время разговора оператор помнит слово,
-  // а не раздел, в который запись положил редактор.
-  if (state.query) {
-    var groups = sortedTabs().map(function(t) {
-      return { tab: t, list: snippetsOfTab(t.id).filter(function(s) { return matches(s, state.query); }) };
-    }).filter(function(g) { return g.list.length; });
-
-    if (!groups.length) {
-      contentEl.innerHTML = emptyHtml('Ничего не нашлось', 'Проверьте слово или очистите поиск — возможно, такой записи ещё нет.');
-      return;
-    }
-    contentEl.innerHTML = groups.map(function(g) {
-      return '<div class="cc-group-title">' + escapeHtml(g.tab.title) + '</div>' +
-             '<div class="cc-grid">' + g.list.map(function(s) { return cardHtml(s, state.query); }).join('') + '</div>';
-    }).join('');
-    return;
-  }
-
   if (!state.activeTabId) {
     contentEl.innerHTML = emptyHtml('Вкладок пока нет', 'Нажмите «Редактировать», затем «Вкладка» — и заведите первый раздел.');
     return;
@@ -967,7 +849,7 @@ function renderContent() {
     return;
   }
   contentEl.innerHTML = '<div class="cc-grid">' +
-    list.map(function(s) { return cardHtml(s, ''); }).join('') +
+    list.map(function(s) { return cardHtml(s); }).join('') +
     '<button class="cc-add-card" data-act="add-snippet">' + ICONS.plus + 'Добавить запись</button>' +
   '</div>';
 }
@@ -978,12 +860,12 @@ function emptyHtml(title, hint) {
     '<div class="cc-empty-hint">' + escapeHtml(hint) + '</div></div>';
 }
 
-function cardHtml(s, query) {
-  var items = (s.items || []).map(function(it, idx) { return itemHtml(s, it, idx, query); }).join('');
+function cardHtml(s) {
+  var items = (s.items || []).map(function(it, idx) { return itemHtml(s, it, idx); }).join('');
   return '<div class="cc-card" data-card="' + s.id + '">' +
     '<div class="cc-card-head">' +
-      '<div class="cc-card-title">' + highlight(s.title || 'Без названия', query) +
-        (s.note ? '<div class="cc-card-note">' + highlight(s.note, query) + '</div>' : '') +
+      '<div class="cc-card-title">' + escapeHtml(s.title || 'Без названия') +
+        (s.note ? '<div class="cc-card-note">' + escapeHtml(s.note) + '</div>' : '') +
       '</div>' +
       '<div class="cc-card-tools">' +
         '<button class="cc-icon-btn" data-act="move-snippet" data-id="' + s.id + '" data-dir="-1" title="Выше">' + ICONS.up + '</button>' +
@@ -996,7 +878,7 @@ function cardHtml(s, query) {
   '</div>';
 }
 
-function itemHtml(s, it, idx, query) {
+function itemHtml(s, it, idx) {
   var kind = it.kind || 'text';
   var value = it.value || '';
   var isLong = value.length > 180 || value.split('\n').length > 4;
@@ -1005,7 +887,7 @@ function itemHtml(s, it, idx, query) {
   var mono = kind !== 'text';
 
   var valueHtml = '<div class="cc-item-value' + (mono ? ' mono' : '') + (isLong && !open ? ' clamped' : '') + '">' +
-    highlight(value, query) + '</div>';
+    escapeHtml(value) + '</div>';
   var moreBtn = isLong
     ? '<button class="cc-item-more" data-act="toggle-more" data-key="' + escapeHtml(key) + '">' + (open ? 'Свернуть' : 'Показать полностью') + '</button>'
     : '';
@@ -1021,11 +903,11 @@ function itemHtml(s, it, idx, query) {
 
   return '<div class="cc-item">' +
     '<div class="cc-item-body">' +
-      (it.label ? '<span class="cc-item-label">' + highlight(it.label, query) + '</span>' : '') +
+      (it.label ? '<span class="cc-item-label">' + escapeHtml(it.label) + '</span>' : '') +
       valueHtml + moreBtn +
     '</div>' +
     '<div class="cc-item-actions">' +
-      '<button class="cc-copy" data-act="copy" data-card="' + s.id + '" data-idx="' + idx + '">' + ICONS.copy + '<span>Копировать</span></button>' +
+      '<button class="cc-copy" data-act="copy" data-card="' + s.id + '" data-idx="' + idx + '" title="Копировать">' + ICONS.copy + '</button>' +
       open_btn +
     '</div>' +
   '</div>';
@@ -1065,13 +947,13 @@ function handleCopy(btn) {
   copyText(it.value || '').then(function() {
     // Отклик на самой кнопке, а не тостом: оператор смотрит на кнопку, по которой
     // щёлкнул, и всплывающая плашка внизу экрана проходит мимо внимания.
-    var label = btn.querySelector('span');
-    var prev = label ? label.textContent : '';
     btn.classList.add('done');
-    btn.innerHTML = ICONS.check + '<span>Скопировано</span>';
+    btn.title = 'Скопировано';
+    btn.innerHTML = ICONS.check;
     setTimeout(function() {
       btn.classList.remove('done');
-      btn.innerHTML = ICONS.copy + '<span>' + (prev || 'Копировать') + '</span>';
+      btn.title = 'Копировать';
+      btn.innerHTML = ICONS.copy;
     }, 1400);
   }).catch(function(e) {
     showToast(e.message || 'Не удалось скопировать', 'error');
@@ -1237,13 +1119,6 @@ function closeConfirm() {
   state.confirmAction = null;
 }
 
-// ─── ВЫГРУЗКА ───
-function openExport() {
-  var payload = { tabs: sortedTabs(), snippets: state.data.snippets.slice() };
-  document.getElementById('cc-export-area').value = 'var SEED = ' + JSON.stringify(payload, null, 2) + ';';
-  document.getElementById('cc-export-overlay').classList.add('open');
-}
-
 // ─── ТОСТ ───
 var toastTimer;
 function showToast(msg, type) {
@@ -1270,13 +1145,10 @@ function onClick(e) {
   }
 
   switch (act) {
-    case 'clear-search':
-      searchInput.value = ''; state.query = ''; render(); searchInput.focus(); break;
     case 'toggle-edit':
       state.editing = !state.editing; render(); break;
     case 'select-tab':
       state.activeTabId = el.getAttribute('data-id');
-      if (state.query) { searchInput.value = ''; state.query = ''; }
       render();
       break;
     case 'add-tab': openTabModal(null); break;
@@ -1346,13 +1218,6 @@ function onClick(e) {
       break;
     }
     case 'copy': handleCopy(el); break;
-    case 'export': openExport(); break;
-    case 'close-export': document.getElementById('cc-export-overlay').classList.remove('open'); break;
-    case 'copy-export':
-      copyText(document.getElementById('cc-export-area').value)
-        .then(function() { showToast('Блок скопирован — вставьте его вместо var SEED'); })
-        .catch(function(err) { showToast(err.message || 'Не удалось скопировать', 'error'); });
-      break;
     case 'confirm-yes':
       if (state.confirmAction) { var fn = state.confirmAction; state.confirmAction = null; fn(); }
       closeConfirm();
@@ -1361,28 +1226,11 @@ function onClick(e) {
   }
 }
 
-var searchTimer;
-function onSearchInput() {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(function() {
-    state.query = searchInput.value.trim();
-    render();
-  }, 120);
-}
-
 function onKeydown(e) {
   if (e.key === 'Escape') {
     document.querySelectorAll('.cc-overlay.open').forEach(function(o) { o.classList.remove('open'); });
     state.confirmAction = null;
     return;
-  }
-  // «/» ставит курсор в поиск — привычка из мессенджеров, и оператору это
-  // экономит движение мышью на каждом звонке.
-  if (e.key === '/' && document.activeElement !== searchInput) {
-    var tag = (document.activeElement && document.activeElement.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    e.preventDefault();
-    searchInput.focus();
   }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.getElementById('cc-snippet-overlay').classList.contains('open')) {
     saveSnippet();
@@ -1390,14 +1238,12 @@ function onKeydown(e) {
 }
 
 document.addEventListener('click', onClick);
-searchInput.addEventListener('input', onSearchInput);
 document.addEventListener('keydown', onKeydown);
 
 window.__ccQuickTeardown = function() {
   document.removeEventListener('click', onClick);
   document.removeEventListener('keydown', onKeydown);
   clearTimeout(toastTimer);
-  clearTimeout(searchTimer);
 };
 
 render();

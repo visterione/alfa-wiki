@@ -34,9 +34,10 @@
 const { Op } = require('sequelize');
 const {
   OmniLine, OmniLineOperator, OmniConversation, OmniSession, OmniShift, OmniMessage,
-  BotSubscriber, MessengerBot, MedCenter, User, sequelize
+  OmniTopic, BotSubscriber, MessengerBot, MedCenter, User, sequelize
 } = require('../models');
 const { getChannel } = require('./messengers');
+const events = require('./openLineEvents');
 const patients = require('./openLinePatient');
 const files = require('./openLineFiles');
 
@@ -53,6 +54,29 @@ class OpenLineError extends Error {
     this.name = 'OpenLineError';
     this.code = code; // not_operator | not_found | not_yours | already_taken
   }
+}
+
+/**
+ * Сообщить операторам, что с обращением что-то произошло (ver. 8.27).
+ *
+ * Два события на весь модуль: «пришло от пациента» и «изменилось». Больше не
+ * нужно — интерфейс на любое из них делает одно и то же, перечитывает список, а
+ * звук отличает по тому, чьё это обращение. Дробить события по действиям
+ * означало бы заводить на клиенте разбор, который ничего не меняет.
+ *
+ * @param {Object|null} io  сокет-сервер; пусто, когда мы в процессе забора
+ *   обновлений — тогда сигнал уйдёт через базу (см. openLineEvents)
+ * @param {string[]} [also]  кого оповестить сверх состава смены
+ */
+async function announce(io, conversation, event, extra = {}, also = []) {
+  const userIds = await events.recipients(conversation, also);
+  await events.publish(io, userIds, event, {
+    conversationId: conversation.id,
+    lineId: conversation.lineId,
+    status: conversation.status,
+    assigneeUserId: conversation.assigneeUserId || null,
+    ...extra
+  });
 }
 
 // ── Смена ─────────────────────────────────────────────────────────────────
@@ -95,10 +119,10 @@ async function startDay(userId) {
  * иначе обращение уедет домой вместе с ним и пациент останется без ответа.
  * Само обращение при этом не закрывается — оно продолжается, просто уже ничьё.
  */
-async function endDay(userId) {
+async function endDay(userId, io = null) {
   const now = new Date();
 
-  return sequelize.transaction(async (tx) => {
+  const returned = await sequelize.transaction(async (tx) => {
     await OmniLineOperator.update(
       { onShift: false, shiftStartedAt: null },
       { where: { userId }, transaction: tx }
@@ -110,7 +134,7 @@ async function endDay(userId) {
 
     const open = await OmniConversation.findAll({
       where: { assigneeUserId: userId, status: 'assigned' },
-      attributes: ['id'],
+      attributes: ['id', 'lineId'],
       transaction: tx
     });
 
@@ -128,8 +152,20 @@ async function endDay(userId) {
       );
     }
 
-    return { onShift: false, returnedToQueue: open.length };
+    return open.map(c => c.get({ plain: true }));
   });
+
+  // Сигнал — после фиксации, а не внутри неё: оператор, увидевший обращение в
+  // очереди раньше, чем оно там оказалось, откроет пустоту.
+  //
+  // Оповещается и сам уходящий: эти чаты сейчас у него на экране, и он должен
+  // увидеть, что они больше не его.
+  for (const row of returned) {
+    await announce(io, { id: row.id, lineId: row.lineId, status: 'queued', assigneeUserId: null },
+      'openline:changed', {}, [userId]);
+  }
+
+  return { onShift: false, returnedToQueue: returned.length };
 }
 
 async function shiftState(userId) {
@@ -242,6 +278,10 @@ async function acceptIncoming({ bot, subscriber, text, attachments = [], externa
   // Карточка МИС — уже после того, как сообщение легло: поход в МИС не должен
   // задерживать доставку вопроса оператору и тем более терять его при отказе.
   await patients.refresh(subscriber);
+
+  // Сигнал операторам (ver. 8.27). io здесь нет и быть не может: мы в процессе
+  // забора обновлений, он уйдёт через базу.
+  await announce(null, result.conversation, 'openline:incoming', { isNew: result.isNew });
 
   return { ...result, line };
 }
@@ -377,12 +417,39 @@ async function listConversations(userId, { scope = 'queue', limit = 50, offset =
     // которое некому показать.
     closed: lines.senior.length
       ? await OmniConversation.count({ where: scopeWhere(userId, 'closed', lines) })
-      : 0
+      : 0,
+    // Сколько взятых обращений ждут ответа (ver. 8.27). Число отдельное от
+    // counts.mine, а не вместо него: на вкладке «Мои» стоит, сколько у человека
+    // всего, и подменять это непрочитанным значило бы менять смысл числа на
+    // ходу. Интерфейсу оно нужно для точки на вкладке — чтобы реплика пациента
+    // не прошла мимо того, кто стоит в «Очереди».
+    mineUnread: await countUnreadMine(userId)
   };
 
   // Строка списка показывает последнюю реплику — как в мессенджере. Одним
   // запросом на всю страницу, а не по запросу на строку.
-  return { items: await withPreviews(rows), counts, canSeeArchive: lines.senior.length > 0 };
+  return { items: await withPreviews(rows, userId), counts, canSeeArchive: lines.senior.length > 0 };
+}
+
+/**
+ * Сколько взятых обращений ждут ответа: в них есть входящее позже отметки
+ * прочтения.
+ *
+ * Считаются обращения, а не сообщения: на вкладке нужен ответ на «есть ли
+ * что-то новое», а десять реплик одного пациента — это один разговор, к
+ * которому надо вернуться, а не десять дел.
+ */
+async function countUnreadMine(userId) {
+  const [row] = await sequelize.query(`
+    SELECT COUNT(*)::int AS n
+    FROM omni_conversations c
+    WHERE c."assigneeUserId" = :userId
+      AND c.status = 'assigned'
+      AND c."lastIncomingAt" IS NOT NULL
+      AND (c."operatorReadAt" IS NULL OR c."lastIncomingAt" > c."operatorReadAt")
+  `, { replacements: { userId }, type: sequelize.QueryTypes.SELECT });
+
+  return row ? row.n : 0;
 }
 
 /**
@@ -390,7 +457,7 @@ async function listConversations(userId, { scope = 'queue', limit = 50, offset =
  * SQL: коррелированный подзапрос на полсотни строк Sequelize собирает в полсотни
  * запросов.
  */
-async function withPreviews(rows) {
+async function withPreviews(rows, userId) {
   if (!rows.length) return [];
 
   const ids = rows.map(r => r.id);
@@ -407,6 +474,24 @@ async function withPreviews(rows) {
 
   const byId = new Map(last.map(m => [m.conversationId, m]));
 
+  // Непрочитанное считается только по своим обращениям (ver. 8.27). В очереди
+  // непрочитано всё по определению — она и так помечена как новое; в архиве
+  // читать нечего. А чужой взятый чат подсвечивать чужим непрочитанным просто
+  // неверно: это не вам не ответили.
+  const mine = rows.filter(r => r.assigneeUserId && String(r.assigneeUserId) === String(userId)).map(r => r.id);
+  const unread = mine.length
+    ? await sequelize.query(`
+      SELECT m."conversationId", COUNT(*)::int AS unread
+      FROM omni_messages m
+      JOIN omni_conversations c ON c.id = m."conversationId"
+      WHERE m."conversationId" IN (:mine)
+        AND m.direction = 'in'
+        AND (c."operatorReadAt" IS NULL OR m."createdAt" > c."operatorReadAt")
+      GROUP BY m."conversationId"
+    `, { replacements: { mine }, type: sequelize.QueryTypes.SELECT })
+    : [];
+  const unreadById = new Map(unread.map(r => [r.conversationId, r.unread]));
+
   return rows.map(row => {
     const plain = row.get({ plain: true });
     const m = byId.get(row.id);
@@ -417,6 +502,7 @@ async function withPreviews(rows) {
         createdAt: m.createdAt
       }
       : null;
+    plain.unread = unreadById.get(row.id) || 0;
     return plain;
   });
 }
@@ -468,11 +554,14 @@ async function currentSession(conversationId, transaction) {
  * Взять в работу. Пока обращение ничьё, оно видно всем на смене; после — отвечает
  * один человек, иначе на один вопрос прилетит три ответа.
  */
-async function assign(userId, conversationId) {
+async function assign(userId, conversationId, io = null) {
   const conversation = await loadForOperator(userId, conversationId);
 
   const [changed] = await OmniConversation.update(
-    { status: 'assigned', assigneeUserId: userId, assignedAt: new Date() },
+    // Взял — значит прочитал: обращение открывают, читают и только потом
+    // забирают. Без этой отметки взятый чат тут же загорелся бы непрочитанным
+    // (ver. 8.27).
+    { status: 'assigned', assigneeUserId: userId, assignedAt: new Date(), operatorReadAt: new Date() },
     { where: { id: conversationId, status: 'queued' } }
   );
 
@@ -486,7 +575,81 @@ async function assign(userId, conversationId) {
     if (session) await session.update({ assigneeUserId: userId, assignedAt: new Date() });
   }
 
-  return loadForOperator(userId, conversationId);
+  const fresh = await loadForOperator(userId, conversationId);
+  // Соседям по смене обращение должно пропасть из очереди сразу, а не через
+  // такт опроса: пока оно там висит, его пробуют взять второй раз.
+  if (changed) await announce(io, fresh, 'openline:changed');
+  return fresh;
+}
+
+// ── Темы обращений (ver. 8.29) ────────────────────────────────────────────
+
+/**
+ * Тема по идентификатору — только из действующих.
+ *
+ * Выключенную поставить нельзя, хотя ссылки на неё в прошлых обращениях
+ * остаются: справочник правят ради того, чтобы новое перестало попадать в
+ * отмершую строку отчёта, а не ради переписывания истории.
+ */
+/**
+ * Нужно ли требовать тему у этого закрытия.
+ *
+ * Отдельной функцией, потому что правило здесь неочевидное и ошибиться в нём
+ * дорого: тема обязательна — но ровно до тех пор, пока есть из чего выбирать.
+ * Справочник, выключенный до последней строки, иначе запер бы линию: закрыть
+ * нельзя, а обращения идут.
+ *
+ * @param {boolean} hasSession  есть ли открытое обращение. У переписки без него
+ *   закрывать нечего: тема относится к обращению, а не к чату.
+ * @param {boolean} hasTopic  тема выбрана и действует
+ * @param {number} activeTopics  сколько тем сейчас в справочнике
+ */
+function topicRequired({ hasSession, hasTopic, activeTopics }) {
+  return Boolean(hasSession) && !hasTopic && activeTopics > 0;
+}
+
+async function resolveTopic(topicId) {
+  if (!topicId) return null;
+  return OmniTopic.findOne({ where: { id: topicId, isActive: true } });
+}
+
+async function listTopics({ includeHidden = false } = {}) {
+  return OmniTopic.findAll({
+    where: includeHidden ? {} : { isActive: true },
+    order: [['sortOrder', 'ASC'], ['name', 'ASC']]
+  });
+}
+
+async function createTopic(userId, { name, sortOrder }) {
+  const title = String(name || '').trim();
+  if (!title) throw new OpenLineError('not_found', 'Название темы пустое');
+
+  // Порядок по умолчанию — в конец с запасом, кратно десяти: так между двумя
+  // соседними темами можно вставить третью, не переписывая весь справочник.
+  const last = await OmniTopic.max('sortOrder');
+  return OmniTopic.create({
+    name: title.slice(0, 80),
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : (Number(last) || 0) + 10,
+    createdBy: userId,
+    updatedBy: userId
+  });
+}
+
+async function updateTopic(userId, id, { name, sortOrder, isActive }) {
+  const topic = await OmniTopic.findByPk(id);
+  if (!topic) throw new OpenLineError('not_found', 'Тема не найдена');
+
+  const patch = { updatedBy: userId };
+  if (name !== undefined) {
+    const title = String(name).trim();
+    if (!title) throw new OpenLineError('not_found', 'Название темы пустое');
+    patch.name = title.slice(0, 80);
+  }
+  if (sortOrder !== undefined && Number.isFinite(Number(sortOrder))) patch.sortOrder = Number(sortOrder);
+  if (isActive !== undefined) patch.isActive = Boolean(isActive);
+
+  await topic.update(patch);
+  return topic;
 }
 
 /**
@@ -513,12 +676,24 @@ async function askRating(conversation, session) {
   }
 }
 
-async function close(userId, conversationId) {
+async function close(userId, conversationId, io = null, topicId = null) {
   const conversation = await loadForOperator(userId, conversationId);
   if (conversation.status === 'closed') return conversation;
 
   const now = new Date();
   const session = await currentSession(conversationId);
+
+  // Тема обязательна, но ровно до тех пор, пока есть из чего выбирать
+  // (ver. 8.29). Проверка «а заведена ли хоть одна» здесь не перестраховка: без
+  // неё выключенный до последней темы справочник запер бы линию — закрыть
+  // нельзя, а обращения идут.
+  const topic = await resolveTopic(topicId);
+  const required = topicRequired({
+    hasSession: Boolean(session),
+    hasTopic: Boolean(topic),
+    activeTopics: await OmniTopic.count({ where: { isActive: true } })
+  });
+  if (required) throw new OpenLineError('topic_required', 'Выберите тему обращения');
 
   await conversation.update({
     status: 'closed',
@@ -531,11 +706,13 @@ async function close(userId, conversationId) {
     await session.update({
       closedAt: now,
       closedBy: userId,
-      assigneeUserId: session.assigneeUserId || userId
+      assigneeUserId: session.assigneeUserId || userId,
+      topicId: topic ? topic.id : null
     });
     await askRating(conversation, session);
   }
 
+  await announce(io, conversation, 'openline:changed');
   return conversation;
 }
 
@@ -579,7 +756,9 @@ async function prepareReply(userId, conversationId) {
 
   // Ответ без взятия в работу — это и есть взятие: иначе чат остаётся ничьим.
   if (!conversation.assigneeUserId) {
-    await conversation.update({ status: 'assigned', assigneeUserId: userId, assignedAt: new Date() });
+    await conversation.update({
+      status: 'assigned', assigneeUserId: userId, assignedAt: new Date(), operatorReadAt: new Date()
+    });
     if (session && !session.assigneeUserId) await session.update({ assigneeUserId: userId, assignedAt: new Date() });
   }
 
@@ -595,7 +774,7 @@ async function prepareReply(userId, conversationId) {
  * ушедшим и с пометкой: оператор должен узнать об этом от нас, а не по молчанию
  * пациента.
  */
-async function recordOutgoing({ conversation, session, userId, text, attachments, sent, deliveryError }) {
+async function recordOutgoing({ conversation, session, userId, text, attachments, sent, deliveryError, io }) {
   const message = await OmniMessage.create({
     conversationId: conversation.id,
     sessionId: session ? session.id : null,
@@ -614,6 +793,10 @@ async function recordOutgoing({ conversation, session, userId, text, attachments
   }
 
   await conversation.update({ lastMessageAt: new Date() });
+
+  // Ответ оператора тоже событие для соседей: обращение, взятое ответом без
+  // кнопки «Взять», должно пропасть из чужой очереди.
+  await announce(io, conversation, 'openline:changed');
   return { message, deliveryError };
 }
 
@@ -626,7 +809,7 @@ async function deliveryFailure(err, subscriber) {
   return err.message;
 }
 
-async function reply(userId, conversationId, text) {
+async function reply(userId, conversationId, text, io = null) {
   const { conversation, session, subscriber, bot, channel } = await prepareReply(userId, conversationId);
 
   let sent = null;
@@ -637,7 +820,7 @@ async function reply(userId, conversationId, text) {
     deliveryError = await deliveryFailure(err, subscriber);
   }
 
-  return recordOutgoing({ conversation, session, userId, text, sent, deliveryError });
+  return recordOutgoing({ conversation, session, userId, text, sent, deliveryError, io });
 }
 
 /**
@@ -656,7 +839,7 @@ async function reply(userId, conversationId, text) {
  * @param {Object} file  { buffer, originalName, mimetype, size }
  * @param {string} [caption]  подпись; у мессенджеров она часть того же сообщения
  */
-async function replyWithFile(userId, conversationId, file, caption = '') {
+async function replyWithFile(userId, conversationId, file, caption = '', io = null) {
   const { conversation, session, subscriber, bot, channel } = await prepareReply(userId, conversationId);
 
   const attachment = await files.saveOutgoing(file, conversation.id);
@@ -674,7 +857,7 @@ async function replyWithFile(userId, conversationId, file, caption = '') {
   }
 
   return recordOutgoing({
-    conversation, session, userId, text: caption, attachments: [attachment], sent, deliveryError
+    conversation, session, userId, text: caption, attachments: [attachment], sent, deliveryError, io
   });
 }
 
@@ -724,7 +907,7 @@ async function transferTargets(userId, conversationId) {
  * при разборе жалобы через месяц — кто и когда его передал; в списке обращений
  * такое не восстанавливается.
  */
-async function transfer(userId, conversationId, targetUserId) {
+async function transfer(userId, conversationId, targetUserId, io = null) {
   const conversation = await loadForOperator(userId, conversationId);
 
   if (conversation.status === 'closed') {
@@ -757,7 +940,10 @@ async function transfer(userId, conversationId, targetUserId) {
   await conversation.update({
     status: 'assigned',
     assigneeUserId: targetUserId,
-    assignedAt: new Date()
+    assignedAt: new Date(),
+    // Отметку прочтения сбрасываем: принявший чат ещё ничего в нём не читал, и
+    // приехать «уже прочитанным» переданное обращение не должно (ver. 8.27).
+    operatorReadAt: null
   });
   if (session) await session.update({ assigneeUserId: targetUserId, assignedAt: new Date() });
 
@@ -774,10 +960,44 @@ async function transfer(userId, conversationId, targetUserId) {
     text: `${name(from)} передал обращение: ${name(to)}`
   });
 
+  // Передавший в состав смены может и не попасть — например отдаёт чат в конце
+  // дня, — поэтому он в получателях отдельно: у него этот чат открыт.
+  await announce(io, conversation, 'openline:changed', {}, [userId]);
+
   return loadForOperator(userId, conversationId);
 }
 
+/**
+ * Отметить переписку прочитанной (ver. 8.27).
+ *
+ * Отдельным вызовом, а не побочным действием загрузки переписки: чат остаётся
+ * открытым всю смену, и при работе на сигналах он перечитывается сам, в том
+ * числе в свёрнутой вкладке. Читать за человека то, на что он не смотрел, —
+ * значит гасить единственный признак, ради которого всё и заводилось.
+ *
+ * Чужое обращение отметить нельзя: условие выборки ограничено исполнителем, и
+ * попытка молча ничего не делает. Ошибки тут не нужно — это не действие
+ * оператора, а служебный вызов интерфейса.
+ */
+async function markRead(userId, conversationId) {
+  const [changed] = await OmniConversation.update(
+    { operatorReadAt: new Date() },
+    { where: { id: conversationId, assigneeUserId: userId } }
+  );
+  return { ok: changed > 0 };
+}
+
 // ── Продуктивность ────────────────────────────────────────────────────────
+
+// Часовой пояс, в котором считается нагрузка по часам. Тот же, что у остальных
+// расписаний портала: сравнивать тепловую карту с графиком смен иначе нельзя.
+const STATS_TZ = 'Europe/Moscow';
+
+// Через сколько обращение считается взятым быстро (ver. 8.30). Пять минут — это
+// не норматив, а граница, за которой пациент в мессенджере начинает считать,
+// что его не увидели. Величина одна на отчёт и вынесена сюда, чтобы менять её в
+// одном месте, а не в запросе и в подписи к колонке порознь.
+const QUICK_TAKE_SEC = 5 * 60;
 
 /**
  * Показатели работы колл-центра за период.
@@ -855,6 +1075,54 @@ async function stats(lineIds, { from, to }) {
       AND s."openedAt" >= :from AND s."openedAt" < :to
   `, { replacements, type: sequelize.QueryTypes.SELECT });
 
+  // Когда приходит поток (ver. 8.30). Вопрос, на который показатели до сих пор
+  // не отвечали: сколько людей ставить и на какие часы. Смены ставили по
+  // ощущению, а ощущение у того, кто работает днём, и у того, кто работает
+  // вечером, разное.
+  //
+  // Часовой пояс задан явно. В базе время хранится со смещением, и без
+  // приведения тепловая карта показала бы московский вечер как день, а ночной
+  // провал — сдвинутым на три часа: цифры верные, выводы из них — нет.
+  const load = await sequelize.query(`
+    SELECT EXTRACT(ISODOW FROM s."openedAt" AT TIME ZONE :tz)::int AS dow,
+           EXTRACT(HOUR  FROM s."openedAt" AT TIME ZONE :tz)::int AS hour,
+           COUNT(*)::int AS sessions,
+           (COUNT(*) FILTER (
+             WHERE s."assignedAt" IS NOT NULL
+               AND s."assignedAt" - s."openedAt" <= (:quickSec * INTERVAL '1 second')
+           ))::int AS quick
+    FROM omni_sessions s
+    WHERE s."lineId" IN (:lineIds)
+      AND s."openedAt" >= :from AND s."openedAt" < :to
+    GROUP BY 1, 2
+  `, {
+    replacements: { ...replacements, tz: STATS_TZ, quickSec: QUICK_TAKE_SEC },
+    type: sequelize.QueryTypes.SELECT
+  });
+
+  // О чём были обращения (ver. 8.29). Отдельным разрезом, а не колонкой в
+  // таблице сотрудников: тема — свойство разговора, а не человека, и вопрос к
+  // ней другой — что чаще всего спрашивают, а не кто быстрее отвечает.
+  //
+  // LEFT JOIN и COALESCE ради строки «без темы»: обращения, закрытые до
+  // появления справочника, из отчёта пропадать не должны — иначе сумма по темам
+  // не сойдётся с числом обращений, и доверие к отчёту кончится на этом.
+  const topics = await sequelize.query(`
+    SELECT COALESCE(t.name, 'Без темы') AS name,
+           t.id AS "topicId",
+           COUNT(*)::int AS sessions,
+           AVG(s.rating)::float AS "avgRating",
+           (AVG(EXTRACT(EPOCH FROM (s."closedAt" - s."assignedAt")))
+             FILTER (WHERE s."closedAt" IS NOT NULL AND s."assignedAt" IS NOT NULL))::float AS "handleSec"
+    FROM omni_sessions s
+    LEFT JOIN omni_topics t ON t.id = s."topicId"
+    WHERE s."lineId" IN (:lineIds)
+      AND s."closedAt" IS NOT NULL
+      AND s."openedAt" >= :from AND s."openedAt" < :to
+    GROUP BY t.id, t.name
+    ORDER BY COUNT(*) DESC
+  `, { replacements, type: sequelize.QueryTypes.SELECT });
+
   const ids = [...new Set([...personal, ...offered, ...worked].map(r => r.userId))];
   const users = ids.length
     ? await User.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'username', 'displayName', 'avatar'] })
@@ -889,7 +1157,26 @@ async function stats(lineIds, { from, to }) {
   // человек уходит вниз, но не исчезает: по числу разобранных его тоже смотрят.
   operators.sort((a, b) => (b.avgRating || 0) - (a.avgRating || 0) || b.handled - a.handled);
 
-  return { operators, totals, from, to };
+  return {
+    operators,
+    totals,
+    load: {
+      quickSec: QUICK_TAKE_SEC,
+      // Отдаём как есть, разреженно: часов в неделе 168, а обращений за месяц
+      // бывает меньше. Достраивать пустые клетки — дело интерфейса, он всё
+      // равно рисует сетку целиком.
+      cells: load.map(r => ({ dow: r.dow, hour: r.hour, sessions: r.sessions, quick: r.quick }))
+    },
+    topics: topics.map(t => ({
+      topicId: t.topicId,
+      name: t.name,
+      sessions: t.sessions,
+      avgRating: t.avgRating != null ? Number(t.avgRating) : null,
+      handleSec: t.handleSec != null ? Number(t.handleSec) : null
+    })),
+    from,
+    to
+  };
 }
 
 module.exports = {
@@ -906,6 +1193,11 @@ module.exports = {
   getConversation,
   assign,
   close,
+  markRead,
+  listTopics,
+  createTopic,
+  updateTopic,
+  topicRequired,
   rate,
   reply,
   replyWithFile,

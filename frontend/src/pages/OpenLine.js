@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  Inbox, MessageCircle, Archive, Send, Check, Search, ArrowLeft,
+  Inbox, MessageCircle, Archive, Send, Search, ArrowLeft,
   AlertTriangle, Paperclip, Headphones, Star, CornerDownRight, UserCheck
 } from 'lucide-react';
 import { openLine as openLineApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import ChannelAvatar from '../components/openline/ChannelAvatar';
 import TransferMenu from '../components/openline/TransferMenu';
+import CloseMenu from '../components/openline/CloseMenu';
 import QuickReplyPicker from '../components/openline/QuickReplyPicker';
 import toast from 'react-hot-toast';
 // Оформление берём у мессенджера целиком, а не повторяем своим набором классов:
@@ -48,12 +49,74 @@ import './OpenLine.css';
  * обращений — дороже, чем она стоит.
  */
 
-const POLL_MS = 5000;
+// Опрос остался подстраховкой (ver. 8.27): всё, что должно попадать оператору
+// на экран сразу, приезжает сигналом через сокет. Раз в полминуты — на случай
+// оборванного соединения и на первые секунды после переподключения, когда
+// сигнал уже уехал, а нас ещё не было.
+const POLL_MS = 30000;
 
 // Через сколько тактов опроса переписка перечитывается без явного повода.
-// Тридцать секунд: обычно её обновляет сам список, увидев изменение, а это —
-// подстраховка для случая, когда открытого чата в списке нет.
-const THREAD_REFRESH_TICKS = 6;
+// Минута: обычно её обновляет сам список, увидев изменение, а это — подстраховка
+// для случая, когда открытого чата в списке нет.
+const THREAD_REFRESH_TICKS = 2;
+
+/**
+ * Черновики ответов (ver. 8.28).
+ *
+ * Оператор ведёт несколько разговоров сразу и переключается между ними на
+ * полуслове: уточнить что-то в соседнем чате и вернуться — обычный ход работы.
+ * До этого набранное при переключении просто пропадало, и человек либо
+ * дописывал наспех, лишь бы не потерять, либо набирал заново.
+ *
+ * Хранится у оператора в браузере, а не на сервере: это его личная заготовка,
+ * ещё никому не сказанная. Отправлять её на сервер значило бы показывать
+ * недописанное тому, кто откроет тот же чат с другого места.
+ */
+const DRAFTS_KEY = 'ol-drafts';
+
+// Через сколько черновик считается брошенным. Неделя: чат, к которому не
+// вернулись за неделю, не ждёт ответа — ждёт уборки.
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Хранилище может не ответить — приватное окно, очищенные данные сайта,
+ * запрет в настройках. Черновик не та ценность, ради которой стоит уронить
+ * рабочее окно, поэтому все обращения к нему молчаливые.
+ */
+function readDrafts() {
+  try {
+    return JSON.parse(localStorage.getItem(DRAFTS_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function loadDraft(conversationId) {
+  const row = readDrafts()[conversationId];
+  return row && typeof row.text === 'string' ? row.text : '';
+}
+
+function saveDraft(conversationId, text) {
+  if (!conversationId) return;
+
+  const now = Date.now();
+  const map = readDrafts();
+
+  // Протухшее выметаем здесь же: отдельного повода зайти в хранилище не
+  // появится, а копиться черновики брошенных разговоров будут бесконечно.
+  Object.keys(map).forEach(key => {
+    if (now - (map[key] && map[key].at ? map[key].at : 0) > DRAFT_TTL_MS) delete map[key];
+  });
+
+  if (text.trim()) map[conversationId] = { text, at: now };
+  else delete map[conversationId];
+
+  try {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(map));
+  } catch {
+    // Место кончилось или запись запрещена — работать это не мешает.
+  }
+}
 
 const SCOPES = [
   { key: 'queue',  label: 'Очередь', icon: Inbox },
@@ -188,7 +251,7 @@ export default function OpenLine() {
   // Сколько лежит в каждом списке. Приезжают вместе со списком, а не отдельным
   // запросом: числа нужны на всех вкладках сразу, иначе «Очередь» молчит ровно
   // тогда, когда в ней что-то появилось.
-  const [counts, setCounts] = useState({ queue: 0, mine: 0, closed: 0 });
+  const [counts, setCounts] = useState({ queue: 0, mine: 0, closed: 0, mineUnread: 0 });
   const [activeId, setActiveId] = useState(null);
   const [thread, setThread] = useState(null);        // { conversation, messages, sessions }
   const [draft, setDraft] = useState('');
@@ -230,6 +293,12 @@ export default function OpenLine() {
       // Молча: состояние смены перезапросится следующим тиком.
     }
   }, []);
+
+  // Старший хотя бы на одной линии правит справочник тем (ver. 8.29) — тот же
+  // человек, которому открыт архив. Признак берётся из состава линий, а не из
+  // canSeeArchive: у них сегодня один источник, но смысл разный, и связывать
+  // право на справочник с правом на чужую переписку неверно.
+  const canEditTopics = Boolean(state?.lines?.some(l => l.isSenior));
 
   /**
    * Подпись переписки: по ней видно, изменилось ли в ней что-нибудь.
@@ -292,6 +361,14 @@ export default function OpenLine() {
 
   useEffect(() => { loadThread(activeId); }, [activeId, loadThread]);
 
+  // Черновик едет вместе с перепиской (ver. 8.28). Высоту поля возвращаем после
+  // отрисовки нового значения: до этого scrollHeight у него ещё прежний.
+  useEffect(() => {
+    setDraft(loadDraft(activeId));
+    const timer = setTimeout(fitField, 0);
+    return () => clearTimeout(timer);
+  }, [activeId, fitField]);
+
   // Право на архив могли снять, пока человек в нём стоял, — возвращаем его в
   // очередь, а не оставляем на вкладке, которой больше нет.
   useEffect(() => {
@@ -330,6 +407,61 @@ export default function OpenLine() {
     };
   }, [loadList, loadThread]);
 
+  /**
+   * Сигнал с сервера: на линии что-то произошло (ver. 8.27).
+   *
+   * Читается из окна, а не из сокета напрямую: разбор события живёт в
+   * SocketContext, там же решается, звенеть ли, — а странице нужно только
+   * перечитать список. В свёрнутой вкладке тоже перечитываем: сигнал редкий, и
+   * вернувшийся оператор должен увидеть готовую очередь, а не пустую.
+   *
+   * Открытую переписку трогает loadList — он сравнит подписи и сходит за ней,
+   * если в ней изменилось.
+   */
+  useEffect(() => {
+    const onSignal = () => loadList();
+    window.addEventListener('openline-changed', onSignal);
+    return () => window.removeEventListener('openline-changed', onSignal);
+  }, [loadList]);
+
+  /**
+   * Отметка «дочитал» (ver. 8.27).
+   *
+   * Ставится, когда переписка открыта и вкладка на переднем плане. Не при
+   * загрузке переписки: она перечитывается сама, в том числе пока вкладка
+   * свёрнута, и отметка тогда означала бы «портал был запущен», а не «человек
+   * это видел» — то есть гасила бы ровно тот признак, ради которого заведена.
+   */
+  useEffect(() => {
+    const c = thread?.conversation;
+    if (!activeId || !c || c.id !== activeId) return undefined;
+
+    // Отмечаем только своё и только когда есть что отмечать. В очереди
+    // непрочитано всё по определению, в архиве читать нечего, а лишний вызов
+    // на каждое перечитывание переписки — это лишний запрос списка следом.
+    const isMineNow = String(c.assigneeUserId || '') === String(user?.id || '');
+    const hasNew = c.lastIncomingAt
+      && (!c.operatorReadAt || new Date(c.lastIncomingAt) > new Date(c.operatorReadAt));
+    if (!isMineNow || !hasNew) return undefined;
+
+    // Список перечитываем целиком, а не гасим признак на месте: непрочитанное
+    // стоит и в строке, и точкой на вкладке, и сходиться этим двум числам
+    // обязательно. Считает их сервер — пусть он и отвечает.
+    const mark = () => {
+      if (document.hidden) return;
+      openLineApi.markRead(activeId)
+        .then(loadList)
+        .catch(() => { /* не отметилось — загорится снова, беды нет */ });
+    };
+
+    mark();
+    document.addEventListener('visibilitychange', mark);
+    return () => document.removeEventListener('visibilitychange', mark);
+    // loadList в зависимостях намеренно нет: он пересоздаётся при каждой смене
+    // поиска и вкладки, и отметка уходила бы на сервер по поводу, к прочтению
+    // отношения не имеющему.
+  }, [activeId, thread, user?.id]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [thread?.messages?.length, activeId]);
@@ -349,15 +481,20 @@ export default function OpenLine() {
     }
   };
 
-  const closeConversation = async (id) => {
-    try {
-      await openLineApi.close(id);
-      toast.success('Обращение закрыто — пациенту отправлена просьба оценить работу');
-      loadList();
-      loadThread(id);
-    } catch {
-      toast.error('Не удалось закрыть обращение');
-    }
+  /**
+   * Обращение закрыто — прибираем за ним.
+   *
+   * Сам запрос ушёл из CloseMenu (ver. 8.29): закрытие теперь несёт тему, и
+   * выбирают её там же. Здесь остаётся только то, что происходит после.
+   */
+  const closeConversation = (id) => {
+    // Недописанное в закрытом обращении отправлять уже некуда, и всплыть оно
+    // должно не через неделю у следующего оператора, а нигде.
+    saveDraft(id, '');
+    if (id === activeId) setDraft('');
+    toast.success('Обращение закрыто — пациенту отправлена просьба оценить работу');
+    loadList();
+    loadThread(id);
   };
 
   /**
@@ -371,7 +508,11 @@ export default function OpenLine() {
    * посреди фразы вспомнить про заготовку.
    */
   const insertQuick = (text) => {
-    setDraft(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n${text}` : text));
+    // Считаем от текущего значения, а не из обновлятеля состояния: запоминание
+    // черновика — побочное действие, а обновлятель React вправе позвать дважды.
+    const next = draft.trim() ? `${draft.replace(/\s+$/, '')}\n${text}` : text;
+    setDraft(next);
+    saveDraft(activeId, next);
     // Высоту и фокус возвращаем после того, как React дорисует новое значение:
     // до этого scrollHeight у поля ещё прежний.
     setTimeout(() => { fieldRef.current?.focus(); fitField(); }, 0);
@@ -395,6 +536,7 @@ export default function OpenLine() {
       // нажатием «Отправить» тот же текст уйдёт вторым сообщением.
       if (draft.trim()) {
         setDraft('');
+        saveDraft(activeId, '');
         if (fieldRef.current) fieldRef.current.style.height = 'auto';
       }
       if (data.deliveryError) toast.error(data.deliveryError);
@@ -417,6 +559,7 @@ export default function OpenLine() {
     try {
       const { data } = await openLineApi.send(activeId, text);
       setDraft('');
+      saveDraft(activeId, '');
       // Высоту сбрасываем руками: она выставлена стилем, и очистка значения сама
       // её не вернёт — поле осталось бы растянутым на пять пустых строк.
       if (fieldRef.current) fieldRef.current.style.height = 'auto';
@@ -540,6 +683,12 @@ export default function OpenLine() {
                       моменту уже не задают: смысл его в том, чтобы позвать
                       туда, куда оператор сейчас не смотрит. */}
                   {counts[key] > 0 && <span className="ol-scope-count">{counts[key]}</span>}
+                  {/* Точка, а не второе число (ver. 8.27): на вкладке «Мои»
+                      уже стоит, сколько у человека всего, и подменять это
+                      непрочитанным значило бы менять смысл числа на ходу.
+                      Точка отвечает на другой вопрос — «есть ли новое», — и
+                      нужна тому, кто сейчас стоит в «Очереди». */}
+                  {key === 'mine' && counts.mineUnread > 0 && <span className="ol-scope-dot" />}
                 </button>
               ))}
             </nav>
@@ -560,7 +709,7 @@ export default function OpenLine() {
               {!loading && conversations.map(c => (
                 <div
                   key={c.id}
-                  className={`chat-item ${activeId === c.id ? 'active' : ''} ${c.status === 'queued' ? 'has-unread' : ''}`}
+                  className={`chat-item ${activeId === c.id ? 'active' : ''} ${c.status === 'queued' || c.unread > 0 ? 'has-unread' : ''}`}
                   onClick={() => setActiveId(c.id)}
                 >
                   <div className="chat-item-avatar-wrap">
@@ -578,6 +727,12 @@ export default function OpenLine() {
                     <div className="chat-item-time">{timeLabel(c.lastMessageAt)}</div>
                     <div className="chat-item-right-meta">
                       {c.status === 'queued' && <span className="ol-tag new">новое</span>}
+                      {/* Сколько реплик пациента ждут ответа (ver. 8.27). Значок
+                          из мессенджера — в списке взятых обращений он означает
+                          ровно то же самое. */}
+                      {c.unread > 0 && (
+                        <div className="chat-item-unread">{c.unread > 99 ? '99+' : c.unread}</div>
+                      )}
                       {c.status === 'assigned' && c.assignee && !isMineAssignee(c, user) && (
                         <span className="ol-tag">{userName(c.assignee)}</span>
                       )}
@@ -649,9 +804,11 @@ export default function OpenLine() {
                       />
                     )}
                     {conversation.status === 'assigned' && isMine && (
-                      <button className="btn ol-head-btn" onClick={() => closeConversation(conversation.id)}>
-                        <Check size={15} /> Закрыть
-                      </button>
+                      <CloseMenu
+                        conversationId={conversation.id}
+                        canEditTopics={canEditTopics}
+                        onDone={() => closeConversation(conversation.id)}
+                      />
                     )}
                   </div>
                 </div>
@@ -762,7 +919,15 @@ export default function OpenLine() {
                       ref={fieldRef}
                       className="ol-field"
                       value={draft}
-                      onChange={e => { setDraft(e.target.value); fitField(); }}
+                      onChange={e => {
+                        setDraft(e.target.value);
+                        // Пишем прямо здесь, а не отдельным эффектом на
+                        // изменение draft: обработчик знает, какой переписке
+                        // принадлежит текст, а эффект сработал бы уже после
+                        // смены activeId и положил бы набранное в чужой чат.
+                        saveDraft(activeId, e.target.value);
+                        fitField();
+                      }}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e); }
                       }}

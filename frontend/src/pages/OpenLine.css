@@ -183,6 +183,18 @@
   font-weight: 700;
 }
 
+/* Непрочитанное на вкладке «Мои» (ver. 8.27). Точка, а не число: рядом уже
+   стоит счётчик взятых обращений, и два числа подряд на одной вкладке читаются
+   как одно с опечаткой. Цвет предупреждающий, а не фирменный, — счётчик рядом
+   уже фирменный, и одинаковыми они слились бы в одну плашку. */
+.ol-scope-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
 /* ── Метки в строке списка ─────────────────────────────────────────────── */
 
 .ol-tag {
@@ -280,7 +292,7 @@
 
 /* ── Передача обращения и быстрые ответы ───────────────────────────────── */
 
-.ol-transfer, .ol-quick { position: relative; flex-shrink: 0; }
+.ol-transfer, .ol-quick, .ol-close { position: relative; flex-shrink: 0; }
 
 /* Всплывающая панель у обеих кнопок одна и та же. Над кнопкой, а не под ней:
    у быстрых ответов кнопка стоит в нижней строке окна, и список под ней ушёл
@@ -300,14 +312,58 @@
   box-shadow: 0 8px 30px rgba(20, 29, 45, .16);
 }
 
-/* У кнопки «Передать» панель раскрывается вниз и вправо: кнопка живёт в шапке,
-   и места под ней сколько угодно. */
-.ol-transfer-pop {
+/* У кнопок «Передать» и «Закрыть» панель раскрывается вниз и вправо: они живут
+   в шапке, и места под ними сколько угодно. */
+.ol-transfer-pop, .ol-close-pop {
   top: calc(100% + 8px);
   bottom: auto;
   left: auto;
   right: 0;
 }
+
+/* ── Тема при закрытии (ver. 8.29) ─────────────────────────────────────── */
+
+.ol-pop-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border-light);
+}
+
+/* Правка справочника — не то же самое, что выбор темы, и выглядеть одинаково
+   они не должны: оператор закрывает обращение десятки раз за смену и попадать
+   в настройки вместо работы не должен ни разу. */
+.ol-pop-row-muted {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ol-close-edit {
+  padding: 2px;
+}
+
+.ol-close-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.ol-close-edit-row:hover { background: var(--bg-hover); }
+
+/* Выключенная тема остаётся видимой старшему — иначе вернуть её обратно
+   неоткуда, — но читается как выключенная. */
+.ol-close-edit-row.off { color: var(--text-tertiary); text-decoration: line-through; }
+
+.ol-close-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 4px;
+}
+
+.ol-close-add .input { flex: 1; min-width: 0; }
 
 .ol-pop-title {
   display: flex;
@@ -593,7 +649,7 @@
   /* Панель в 320 px на узком экране вылезает за край — прижимаем к обеим
      сторонам окна, а не к кнопке. */
   .ol-pop { width: calc(100vw - 24px); max-width: 320px; }
-  .ol-transfer-pop { right: 0; left: auto; }
+  .ol-transfer-pop, .ol-close-pop { right: 0; left: auto; }
   .ol-field { font-size: 16px; }  /* иначе iOS зумит поле и обратно не отъезжает */
   .ol-head-actions { gap: 6px; }
   .ol-page .ol-head-btn { padding: 8px 12px; }

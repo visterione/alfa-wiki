@@ -21,6 +21,7 @@ const { Op } = require('sequelize');
 const { NotifAppointment, NotifOutbox, Setting, sequelize } = require('../../models');
 const templates = require('./templates');
 const doctorBlocklist = require('./doctorBlocklist');
+const settings = require('./settings');
 
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
@@ -255,7 +256,13 @@ async function runOnce(now = new Date()) {
       }
 
       if (!found) continue;
-      events += await enqueue(found, snap);
+
+      // Событие, которое филиал ждёт вебхуком от МИС, забором не берём
+      // (ver. 8.25). Иначе оно завелось бы дважды: раз здесь по сравнению
+      // снимков и раз в приёмнике /api/mis-events. Ключ идемпотентности такое
+      // задвоение не ловит — у этих двух путей нет общего ключа.
+      const sources = await settings.eventSourcesFor(medCenterId);
+      events += await enqueue(found, snap, (name) => (sources[name] || 'poll') === 'poll');
     } catch (err) {
       console.error(`[detector] визит ${row && row.id}:`, err.message);
     }
@@ -270,8 +277,8 @@ async function runOnce(now = new Date()) {
  * идемпотентности молча отсекает повторы, и это нормальный ход событий, а не
  * ошибка.
  */
-async function enqueue(found, snap) {
-  const prepared = await templates.build(found.event, snap, found);
+async function enqueue(found, snap, allow = () => true) {
+  const prepared = await templates.build(found.event, snap, found, { allow });
   let added = 0;
 
   for (const item of prepared) {

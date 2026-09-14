@@ -84,7 +84,9 @@ router.get('/state', authenticate, async (req, res) => {
 router.post('/shift', authenticate, async (req, res) => {
   try {
     const on = req.body && req.body.on !== false;
-    const result = on ? await openLine.startDay(req.user.id) : await openLine.endDay(req.user.id);
+    const result = on
+      ? await openLine.startDay(req.user.id)
+      : await openLine.endDay(req.user.id, req.app.get('io'));
     res.json({ ...result, ...(await openLine.shiftState(req.user.id)) });
   } catch (err) {
     fail(res, err, 'POST /shift');
@@ -144,9 +146,20 @@ router.get('/conversations/:id', authenticate, async (req, res) => {
   }
 });
 
+// Оператор досмотрел переписку до конца (ver. 8.27). Зовётся интерфейсом, когда
+// чат открыт и вкладка на переднем плане, — иначе отметка означала бы «портал
+// был запущен», а не «человек это видел».
+router.post('/conversations/:id/read', authenticate, async (req, res) => {
+  try {
+    res.json(await openLine.markRead(req.user.id, req.params.id));
+  } catch (err) {
+    fail(res, err, 'POST /read');
+  }
+});
+
 router.post('/conversations/:id/assign', authenticate, async (req, res) => {
   try {
-    res.json(await openLine.assign(req.user.id, req.params.id));
+    res.json(await openLine.assign(req.user.id, req.params.id, req.app.get('io')));
   } catch (err) {
     fail(res, err, 'POST /assign');
   }
@@ -154,7 +167,8 @@ router.post('/conversations/:id/assign', authenticate, async (req, res) => {
 
 router.post('/conversations/:id/close', authenticate, async (req, res) => {
   try {
-    res.json(await openLine.close(req.user.id, req.params.id));
+    const topicId = req.body && req.body.topicId ? String(req.body.topicId) : null;
+    res.json(await openLine.close(req.user.id, req.params.id, req.app.get('io'), topicId));
   } catch (err) {
     fail(res, err, 'POST /close');
   }
@@ -165,7 +179,7 @@ router.post('/conversations/:id/messages', authenticate, async (req, res) => {
     const text = (req.body && req.body.text || '').trim();
     if (!text) return res.status(400).json({ error: 'Пустое сообщение' });
 
-    const result = await openLine.reply(req.user.id, req.params.id, text);
+    const result = await openLine.reply(req.user.id, req.params.id, text, req.app.get('io'));
     // Недоставленное сообщение — не ошибка запроса: оно сохранено в переписке с
     // пометкой, и оператор должен это увидеть, а не получить пустой отказ.
     res.json(result);
@@ -187,7 +201,7 @@ router.post('/conversations/:id/files', authenticate, uploadFile, async (req, re
       buffer: req.file.buffer,
       originalName,
       mimetype: req.file.mimetype
-    }, String(req.body.caption || '').trim());
+    }, String(req.body.caption || '').trim(), req.app.get('io'));
 
     res.json(result);
   } catch (err) {
@@ -208,7 +222,7 @@ router.post('/conversations/:id/transfer', authenticate, async (req, res) => {
   try {
     const userId = req.body && req.body.userId;
     if (!userId) return res.status(400).json({ error: 'Не выбран сотрудник' });
-    res.json(await openLine.transfer(req.user.id, req.params.id, userId));
+    res.json(await openLine.transfer(req.user.id, req.params.id, userId, req.app.get('io')));
   } catch (err) {
     fail(res, err, 'POST /transfer');
   }
@@ -311,6 +325,60 @@ router.delete('/quick-replies/:id', authenticate, requireOperator, async (req, r
 });
 
 // ── Настройка линий (администратор) ───────────────────────────────────────
+
+// ── Темы обращений (ver. 8.29) ────────────────────────────────────────────
+//
+// Читают все, кто работает на линии: тему ставит оператор при закрытии, значит
+// список нужен ему. Правит старший — тот же, кому открыт архив.
+//
+// Почему не как быстрые ответы, которые правит кто угодно из состава: там цена
+// неудачной правки — одна неудачная формулировка, здесь — рассыпавшийся отчёт
+// за квартал. Десять человек, заводящих «Запись», «запись на приём» и «ЗАПИСЬ»,
+// получат три строки вместо одной, и сравнить месяцы будет уже нечем.
+
+async function requireSenior(req, res, next) {
+  try {
+    if (req.user.isAdmin) return next();
+    const lines = await openLine.linesOfUser(req.user.id);
+    if (!lines.some(r => r.isSenior)) {
+      return res.status(403).json({
+        error: 'Справочник тем правит старший оператор линии',
+        code: 'not_operator'
+      });
+    }
+    next();
+  } catch (err) {
+    fail(res, err, 'проверка старшинства');
+  }
+}
+
+router.get('/topics', authenticate, requireOperator, async (req, res) => {
+  try {
+    // Выключенные отдаём только тому, кто их правит: оператору при закрытии
+    // обращения они не нужны, а выбрать их всё равно нельзя.
+    const includeHidden = req.query.all === '1'
+      && (req.user.isAdmin || (await openLine.linesOfUser(req.user.id)).some(r => r.isSenior));
+    res.json(await openLine.listTopics({ includeHidden }));
+  } catch (err) {
+    fail(res, err, 'GET /topics');
+  }
+});
+
+router.post('/topics', authenticate, requireSenior, async (req, res) => {
+  try {
+    res.json(await openLine.createTopic(req.user.id, req.body || {}));
+  } catch (err) {
+    fail(res, err, 'POST /topics');
+  }
+});
+
+router.put('/topics/:id', authenticate, requireSenior, async (req, res) => {
+  try {
+    res.json(await openLine.updateTopic(req.user.id, req.params.id, req.body || {}));
+  } catch (err) {
+    fail(res, err, 'PUT /topics/:id');
+  }
+});
 
 router.get('/lines', authenticate, requireAdmin, async (req, res) => {
   try {

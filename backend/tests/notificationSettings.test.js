@@ -70,3 +70,51 @@ test('время разбирается терпимо к мусору', () => {
   assert.equal(minutesOf(''), 0);
   assert.equal(minutesOf(null), 0);
 });
+
+// ── Счёт филиала и источник события (ver. 8.25) ───────────────────────────
+//
+// Проверяется разбор строки настроек филиала, а не поход за ней в базу: сама
+// выборка тривиальна, а вот два решения заказчика из кода не выводятся —
+// «счёт у каждого медцентра свой» и «путь выбирается на каждое событие».
+
+const { resolveImobis, resolveEventSources } = require('../services/notifications/settings');
+
+test('счёт у Имобиса берётся у филиала и ни от кого не наследуется', () => {
+  // До 8.25 пустое поле филиала означало «взять общий счёт сети», и SMS уходила
+  // с лицевого счёта другого юрлица. Обнаруживалось это счётом в конце месяца.
+  const empty = resolveImobis(null);
+  assert.equal(empty.token, '');
+  assert.equal(empty.sender, '');
+
+  const own = resolveImobis({ imobis: { token: 'own-token', sender: 'ALFA-KIDS' } });
+  assert.equal(own.token, 'own-token');
+  assert.equal(own.sender, 'ALFA-KIDS');
+  // Незаполненное у филиала остаётся пустым, а не подтягивается ниоткуда.
+  assert.equal(own.vkGroup, null);
+  assert.equal(own.sandbox, false);
+});
+
+test('лабораторные события по умолчанию ждут вебхука, остальные — забора', () => {
+  // Поллер под готовность анализов написать нельзя: getPatientLabResults
+  // требует patient_key, выдаваемый только по логину пациента.
+  const sources = resolveEventSources(null);
+  assert.equal(sources.created, 'poll');
+  assert.equal(sources.reminder, 'poll');
+  assert.equal(sources.lab_full, 'webhook');
+  assert.equal(sources.lab_partial, 'webhook');
+});
+
+test('филиал переопределяет путь по одному событию, не трогая остальные', () => {
+  const sources = resolveEventSources({ eventSources: { created: 'webhook' } });
+  assert.equal(sources.created, 'webhook');
+  assert.equal(sources.moved, 'poll', 'соседнее событие остаётся при своём умолчании');
+  assert.equal(sources.lab_full, 'webhook');
+});
+
+test('мусор в настройке источника не превращается в молчание', () => {
+  // Неизвестное значение означало бы событие, которое не берётся ни забором, ни
+  // вебхуком, — то есть тишину без следа в журнале.
+  const sources = resolveEventSources({ eventSources: { created: 'magic', review: 'webhook' } });
+  assert.equal(sources.created, 'poll');
+  assert.equal(sources.review, 'webhook');
+});

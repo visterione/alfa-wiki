@@ -14,9 +14,6 @@
  * посмотреть, сколько ушло у вчерашней, пока сегодняшняя ещё в черновике, — и
  * ради этого список должен быть виден всегда, а не открываться из редактора.
  */
-.brc-view-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 14px; border: 1px solid var(--ola-line); border-radius: 12px; background: var(--ola-glass); }
-.brc-view-tabs button { border: 0; border-radius: 9px; padding: 8px 13px; color: var(--text-secondary); background: transparent; cursor: pointer; font: inherit; font-size: 13px; }
-.brc-view-tabs button.active { color: var(--text-primary); background: var(--ola-glass-strong); box-shadow: 0 2px 8px color-mix(in srgb, var(--shadow-color) 12%, transparent); }
 .brc-send-planner { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
 .brc-send-mode { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--ola-line); border-radius: 11px; background: var(--ola-glass); }
 .brc-send-mode button { min-height: 30px; padding: 5px 10px; border: 0; border-radius: 8px; color: var(--text-secondary); background: transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
@@ -32,7 +29,14 @@
 .brc-columns {
   display: flex;
   gap: 22px;
-  align-items: flex-start;
+  align-items: stretch;
+  /* Обе колонки дотягиваются до низа окна. Без этого заглушка «Выберите
+     рассылку слева» была коротким пунктирным прямоугольником в верхней трети
+     экрана, а под ним до самого низа шло пустое серое поле — вкладка выглядела
+     недогруженной. Вычитаем то, что стоит над колонками: поля .content-wrapper
+     (24 сверху и снизу), рабочую строку модуля (50 + 16) и ряд «Боты / Почта»
+     (46 + 18). Ровно тот же приём, что у склада и «Задач». */
+  min-height: calc(100vh - var(--header-height) - 178px);
 }
 
 .brc-list {
@@ -42,7 +46,37 @@
   gap: 8px;
 }
 
+/* ── Переключатель набора ─────────────────────────────────────────────────
+ *
+ * «Рассылки / Шаблоны» — заголовок колонки списка. Свой набор пилюль третьим
+ * рядом над страницей выглядел равным по весу вкладкам модуля («Акции»,
+ * «Анонсы») и ряду «Боты / Почта», хотя меняет только состав одного списка.
+ * Вид взят у .ola-tabs целиком, а не повторён похожими значениями: на соседних
+ * вкладках второй набор одинаковых на вид элементов уже однажды разбирали.
+ */
+.brc-scope {
+  display: flex;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.brc-scope .ola-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 12.5px;
+}
+
 .brc-new { justify-content: center; }
+
+.brc-loading {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  padding: 20px 0;
+}
 
 .brc-editor {
   flex: 1 1 auto;
@@ -52,7 +86,15 @@
   gap: 16px;
 }
 
-.brc-blank { flex: 1 1 auto; }
+/* Заглушки занимают всю свободную высоту колонки, а не свои 130 px по
+   содержимому: пустое место под пунктирной рамкой читалось как обрыв страницы.
+   Содержимое при этом уходит на середину — прижатая к верхнему краю иконка в
+   рамке высотой в экран выглядела бы забытой. */
+.brc-blank,
+.brc-list > .ola-empty {
+  flex: 1 1 auto;
+  justify-content: center;
+}
 
 /* ── Строка списка ────────────────────────────────────────────────────────*/
 
@@ -197,8 +239,12 @@
  * колонка списка съедает редактор.
  */
 @media (max-width: 1100px) {
-  .brc-columns { flex-direction: column; }
+  /* Колонки встали друг под друга, и растягивать их до низа окна больше нечем:
+     высота, поделённая между списком и редактором, растащила бы обоих. */
+  .brc-columns { flex-direction: column; min-height: 0; }
   .brc-list { flex: 1 1 auto; width: 100%; flex-direction: row; flex-wrap: wrap; }
+  .brc-scope { flex: 1 1 100%; }
   .brc-item { flex: 1 1 220px; }
   .brc-editor { width: 100%; }
+  .brc-blank, .brc-list > .ola-empty { flex: 1 1 100%; }
 }

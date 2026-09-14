@@ -417,6 +417,41 @@ export function SocketProvider({ children }) {
       if (data.level === 'critical') playNotificationSound();
     });
 
+    /**
+     * Открытая линия: обращение изменилось (ver. 8.27).
+     *
+     * Раньше страница узнавала об этом только опросом раз в пять секунд, а в
+     * свёрнутой вкладке не узнавала вовсе — и оператор, у которого портал лежит
+     * в соседней вкладке всю смену, возвращался к очереди, накопившейся без
+     * него. Сигнал доходит и в фон.
+     *
+     * Сама страница слушает окно, а не сокет: подписываться на сокет из двух
+     * мест значило бы два раза разбирать одно и то же событие.
+     */
+    const onOpenLine = (ring) => (data) => {
+      window.dispatchEvent(new CustomEvent('openline-changed', { detail: data }));
+
+      // Звук — только когда это касается лично тебя: новое ничьё обращение в
+      // очереди либо реплика в твоём чате. Звенеть на каждое движение в чатах
+      // всей смены значит добиться, чтобы звук выключили в первый же день.
+      const mine = !data?.assigneeUserId || String(data.assigneeUserId) === String(user.id);
+      if (!ring || !mine) return;
+
+      playNotificationSound();
+      if (!window.location.pathname.startsWith('/open-line')) {
+        toast(
+          (t) => React.createElement('span', {
+            style: { cursor: 'pointer' },
+            onClick: () => { window.location.assign('/open-line'); toast.dismiss(t.id); },
+          }, data?.assigneeUserId ? 'Открытая линия: ответ пациента' : 'Открытая линия: новое обращение'),
+          { icon: '💬', duration: 8000 },
+        );
+      }
+    };
+
+    socket.on('openline:incoming', onOpenLine(true));
+    socket.on('openline:changed', onOpenLine(false));
+
     socket.on('new_message', (data) => {
       console.log('New message received:', data);
 

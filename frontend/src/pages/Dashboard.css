@@ -686,6 +686,28 @@
   color: #ffffff;
 }
 
+/* Галочка стала кнопкой (ver. 8.26): по ней открывается список прочитавших.
+   Кнопкой, а не значком с подсказкой — на телефоне подсказки по наведению нет,
+   а время просмотра нужно и там. Размер и цвет при этом не меняются: в ленте
+   это по-прежнему галочка, а не элемент управления. */
+.message-status--clickable {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  position: relative;
+}
+
+/* Палец на телефоне шире галочки. Область нажатия расширяется невидимым слоем
+   поверх, а не отступами: .message-meta — флекс с gap, и любые собственные
+   поля кнопки сдвинули бы время рядом. */
+.message-status--clickable::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
 .message-system {
   text-align: center;
   padding: 8px 16px;
@@ -2596,7 +2618,8 @@
     font-size: 11px;
   }
 
-  .reaction-details-modal {
+  .reaction-details-modal,
+  .read-receipts-modal {
     max-width: calc(100% - 32px);
     max-height: calc(100vh - 32px);
   }
@@ -3801,4 +3824,157 @@
   .chat-sidebar-actions .btn-icon-chat { transition-duration: 1ms; }
   .chat-sidebar-actions .btn-icon-chat:hover { transform: none; }
   .chat-item { transition-duration: 1ms; }
+}
+
+
+/* ── Кто прочитал сообщение (ver. 8.26) ────────────────────────────────── */
+
+.read-receipts-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+}
+
+.read-receipts-modal {
+  background: var(--n-0);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  margin: 16px;
+  animation: reactionModalAppear 0.2s ease-out;
+}
+
+.read-receipts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--n-200);
+}
+
+.read-receipts-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--n-800);
+}
+
+.read-receipts-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--n-100);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--n-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.read-receipts-close:hover {
+  background: var(--n-200);
+}
+
+.read-receipts-content {
+  padding: 16px 24px 24px;
+}
+
+.read-receipts-group + .read-receipts-group {
+  margin-top: 20px;
+}
+
+.read-receipts-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--n-200);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--n-600);
+}
+
+.read-receipts-group-title .count {
+  margin-left: auto;
+  font-weight: 500;
+  color: var(--n-500);
+}
+
+.read-receipt-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.read-receipt-item:hover {
+  background: var(--n-50);
+}
+
+/* Ещё не открывшие — бледнее: список отвечает на вопрос «кто прочитал»,
+   и они в нём справочно */
+.read-receipt-item--pending {
+  opacity: 0.6;
+}
+
+.read-receipt-avatar,
+.read-receipt-avatar-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid var(--n-200);
+}
+
+.read-receipt-avatar {
+  object-fit: cover;
+}
+
+.read-receipt-avatar-placeholder {
+  background: var(--n-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--n-500);
+}
+
+.read-receipt-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--n-800);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.read-receipt-time {
+  margin-left: auto;
+  padding-left: 8px;
+  flex-shrink: 0;
+  font-size: 12.5px;
+  color: var(--n-500);
+  white-space: nowrap;
+}
+
+.read-receipts-empty {
+  text-align: center;
+  padding: 32px 20px;
+  color: var(--n-500);
+}
+
+.read-receipts-empty p {
+  margin: 0;
+  font-size: 14px;
 }

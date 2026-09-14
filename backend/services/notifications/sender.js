@@ -189,14 +189,14 @@ function textFor(item, channel) {
  * отправителя всё равно не уйдут, а молчаливая ступень в маршруте хуже, чем её
  * отсутствие.
  */
-function imobisRoute(names, config, organization, texts) {
-  // config уже слит с настройкой филиала (settings.imobisFor), поэтому своё имя
-  // отправителя у филиала перекрывает общее просто тем, что лежит выше. Словари
-  // senders/vkGroups по организациям остались от 7.95 и служат запасным
-  // источником: в 8.05 их содержимое переехало в филиалы, но у сети, которая
-  // ещё не переехала, они должны продолжать работать.
-  const sender = config.sender || (config.senders && config.senders[organization]);
-  const group = config.vkGroup || (config.vkGroups && config.vkGroups[organization]);
+function imobisRoute(names, config, texts) {
+  // config — настройка конкретного филиала и больше ничья (ver. 8.25). Словари
+  // senders/vkGroups по организациям, жившие здесь с 7.95, раскопированы по
+  // филиалам миграцией 8.25 и запасным источником больше не служат: счёт у
+  // каждого медцентра свой, и «взять чужое имя, раз своего нет» — ровно то
+  // поведение, из-за которого нельзя было ответить, с какого счёта ушла SMS.
+  const sender = config.sender;
+  const group = config.vkGroup;
 
   const route = [];
   for (const name of names) {
@@ -339,7 +339,17 @@ async function deliver(item, clinicId = null, medCenterId = null) {
       }
       try {
         const config = await settings.imobisFor(medCenterId);
-        const route = imobisRoute(group.names.filter(n => audible.includes(`imobis:${n}`)), config, organization, texts);
+
+        // Чужим счётом не пользуемся даже когда он под рукой (ver. 8.25). Раньше
+        // пустой токен филиала означал «взять общий», и SMS уходила с лицевого
+        // счёта другого юрлица — обнаруживалось это счётом в конце месяца, а не
+        // в журнале.
+        if (!String(config.token || '').trim()) {
+          lastError = 'у филиала не задан свой токен Имобиса';
+          continue;
+        }
+
+        const route = imobisRoute(group.names.filter(n => audible.includes(`imobis:${n}`)), config, texts);
         if (!route.length) {
           lastError = 'у ступеней Имобиса нет имени отправителя или группы ВК';
           continue;
@@ -350,7 +360,6 @@ async function deliver(item, clinicId = null, medCenterId = null) {
           customId: String(item.id),
           reportUrl: reportUrl(),
           sandbox: !!config.sandbox,
-          // Токен из настроек; пусто — возьмётся IMOBIS_TOKEN из окружения.
           token: config.token
         });
         // Статус пока «принято»: доставку подтвердит отчёт, который Имобис
@@ -427,8 +436,11 @@ async function deliver(item, clinicId = null, medCenterId = null) {
  * существует, и допускать его здесь нельзя.
  *
  * @param {string} step  'auto' | 'bot' | имя ступени каскада ('imobis:sms', 'sms+webchat', …)
+ * @param {string} medCenterId филиал, чьим счётом проверяем. С 8.25 обязателен
+ *   для ступеней Имобиса: общего счёта сети нет, и «проверить SMS вообще» —
+ *   вопрос, на который больше нет ответа. Проверяют счёт конкретного филиала.
  */
-async function sendTest(item, { step = 'auto' } = {}) {
+async function sendTest(item, { step = 'auto', medCenterId = null } = {}) {
   // Предохранитель пилота проверку намеренно не касается, а отказ от оповещений
   // — касается: проверяют канал обычно на живом номере, и подпись пациента не
   // перестаёт действовать оттого, что сообщение отправили из админки.
@@ -490,12 +502,20 @@ async function sendTest(item, { step = 'auto' } = {}) {
   for (const group of settings.groupSteps(wanted)) {
     if (group.provider === 'imobis') {
       try {
-        const config = await settings.imobis();
+        const config = await settings.imobisFor(medCenterId);
         const organization = await organizationFor(null);
-        const route = imobisRoute(group.names, config, organization, { long: item.text, sms: short });
+
+        if (!String(config.token || '').trim()) {
+          lastError = medCenterId
+            ? 'у филиала не задан свой токен Имобиса — впишите его в карточке филиала'
+            : 'не выбран филиал: с 8.25 счёт у Имобиса свой у каждого, и проверять нечего';
+          continue;
+        }
+
+        const route = imobisRoute(group.names, config, { long: item.text, sms: short });
 
         if (!route.length) {
-          lastError = 'у ступеней Имобиса нет имени отправителя или группы ВК — заполните их в настройках';
+          lastError = 'у ступеней Имобиса нет имени отправителя или группы ВК — заполните их в карточке филиала';
           continue;
         }
 
@@ -504,7 +524,6 @@ async function sendTest(item, { step = 'auto' } = {}) {
           customId: String(item.id),
           reportUrl: reportUrl(),
           sandbox: !!config.sandbox,
-          // Токен из настроек; пусто — возьмётся IMOBIS_TOKEN из окружения.
           token: config.token
         });
 

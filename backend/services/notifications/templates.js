@@ -190,16 +190,24 @@ function templatesForEvent(all, event, medCenterId) {
 /**
  * Готовит тексты к отправке по событию.
  *
+ * @param {Function} allow фильтр по источнику события (ver. 8.25). Детектор
+ *   пропускает через него только то, что филиал забирает сам, приёмник МИС —
+ *   только то, что ждёт вебхуком. Спрашивается не одно событие, а каждое:
+ *   запись попутно ставит напоминания, и у напоминания источник может быть свой.
+ *   По умолчанию разрешено всё — так зовут build() проверка и старый отправщик.
+ *   Спрашивается именно каждое, а не событие целиком: филиал вправе получать
+ *   запись вебхуком, а напоминания по ней по-прежнему ставить у себя.
+ *
  * @returns {Promise<Array<{text, withConfirm, plannedAt?, dedupKey?}>>}
  *   Обычно одна строка. У записи их может быть несколько: само уведомление и
  *   напоминания, у каждого свой момент отправки.
  */
-async function build(event, snap, found = {}) {
+async function build(event, snap, found = {}, { allow = () => true } = {}) {
   const info = await clinicInfo(snap);
   const values = valuesFor(snap, { ...info, previousAt: found.previousAt });
 
   const all = await NotifTemplate.findAll({ where: { isActive: true } });
-  const forEvent = (name) => templatesForEvent(all, name, info.medCenterId);
+  const forEvent = (name) => (allow(name) ? templatesForEvent(all, name, info.medCenterId) : []);
 
   const out = [];
 

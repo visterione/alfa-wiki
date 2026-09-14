@@ -29,6 +29,41 @@ import './OpenLineStats.css';
  * восьмидесяти — разные утверждения.
  */
 
+// Дни недели в порядке ISO: у Postgres ISODOW понедельник — первый. Совпадение
+// не случайное, но и не бесплатное: DOW в той же базе считает воскресенье нулём,
+// и перепутать их — значит нарисовать карту со сдвигом на день.
+const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+
+/**
+ * Разреженный ответ сервера — в сетку 7 × 24 (ver. 8.30).
+ *
+ * Сервер отдаёт только непустые клетки: часов в неделе 168, а обращений за
+ * месяц бывает меньше, и гонять по сети полторы сотни нулей незачем. Сетку
+ * достраиваем здесь — рисовать её всё равно целиком, дырка в таблице читается
+ * как поломка, а не как «в это время не пишут».
+ */
+function buildLoad(raw) {
+  const cells = raw?.cells || [];
+  if (!cells.length) return null;
+
+  const grid = WEEKDAYS.map(() => HOURS.map(() => 0));
+  const byHour = HOURS.map(() => ({ sessions: 0, quick: 0 }));
+  let peak = 0;
+
+  cells.forEach(({ dow, hour, sessions, quick }) => {
+    const row = dow - 1;
+    if (row < 0 || row > 6 || hour < 0 || hour > 23) return;
+    grid[row][hour] = sessions;
+    byHour[hour].sessions += sessions;
+    byHour[hour].quick += quick;
+    if (sessions > peak) peak = sessions;
+  });
+
+  return { grid, byHour, peak, quickSec: raw?.quickSec || 0 };
+}
+
 const PERIODS = [
   { key: 7, label: '7 дней' },
   { key: 30, label: '30 дней' },
@@ -113,6 +148,17 @@ export default function OpenLineStats() {
   // превратила бы всю колонку в одинаковые огрызки.
   const bestShare = operators.reduce((max, o) => Math.max(max, o.share || 0), 0);
 
+  // Темы приходят уже отсортированными по убыванию. Долю считаем от всех
+  // закрытых за период, а полосу рисуем относительно самой частой темы — по той
+  // же причине, что и у доли потока: при десяти темах ни одна не наберёт и
+  // трети, и шкала от ста превратила бы столбец в одинаковые огрызки.
+  const topics = data?.topics || [];
+  const topicTotal = topics.reduce((sum, t) => sum + t.sessions, 0);
+  const topTopic = topics.reduce((max, t) => Math.max(max, t.sessions), 0);
+
+  // Имя не load: так уже названа загрузка данных этой страницы.
+  const heat = buildLoad(data?.load);
+
   return (
     <div className="ols-root">
       <div className="ols-head">
@@ -159,6 +205,115 @@ export default function OpenLineStats() {
 
       {!loading && operators.length === 0 && (
         <div className="ols-empty">За период никто не разбирал обращений</div>
+      )}
+
+      {/* Когда обращаются (ver. 8.30). Отвечает на вопрос, которого в показателях
+          не было вовсе: сколько людей ставить и на какие часы. До этого смены
+          ставили по ощущению, а оно у работающего днём и у работающего вечером
+          разное.
+
+          Полоса под картой — про другое: сколько из пришедшего в этот час
+          успевали взять. Две карты рядом отвечают на «когда поток» и «хватает
+          ли в этот момент людей», и вторая без первой ничего не значит. */}
+      {heat && (
+        <>
+          <div className="ols-section">
+            Когда обращаются
+            <em className="ols-section-note">
+              часы московские, цвет — сколько обращений пришло
+            </em>
+          </div>
+          <div className="ols-table-wrap">
+            <div className="ols-heat">
+              <div className="ols-heat-row ols-heat-head">
+                <span className="ols-heat-label" />
+                {HOURS.map(h => (
+                  // Подписываем каждый третий час: 24 подписи в строку не влезают
+                  // ни на каком экране, а без них сетка нечитаема.
+                  <span key={h} className="ols-heat-hour">{h % 3 === 0 ? h : ''}</span>
+                ))}
+              </div>
+
+              {heat.grid.map((row, day) => (
+                <div className="ols-heat-row" key={WEEKDAYS[day]}>
+                  <span className="ols-heat-label">{WEEKDAYS[day]}</span>
+                  {row.map((n, h) => (
+                    <span
+                      key={h}
+                      className="ols-heat-cell"
+                      style={{ '--i': heat.peak > 0 ? n / heat.peak : 0 }}
+                      title={`${WEEKDAYS[day]}, ${String(h).padStart(2, '0')}:00 — ${n} обращений`}
+                    />
+                  ))}
+                </div>
+              ))}
+
+              <div className="ols-heat-row ols-heat-quick">
+                <span className="ols-heat-label" title={`Взято за ${Math.round(heat.quickSec / 60)} мин`}>
+                  успели
+                </span>
+                {heat.byHour.map((h, hour) => {
+                  const share = h.sessions > 0 ? h.quick / h.sessions : null;
+                  return (
+                    <span
+                      key={hour}
+                      className={`ols-heat-cell ols-heat-cell-quick ${share == null ? 'empty' : ''}`}
+                      style={{ '--i': share == null ? 0 : share }}
+                      title={share == null
+                        ? `${String(hour).padStart(2, '0')}:00 — обращений не было`
+                        : `${String(hour).padStart(2, '0')}:00 — взято за ${Math.round(heat.quickSec / 60)} мин: ${Math.round(share * 100)}% из ${h.sessions}`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* О чём были обращения (ver. 8.29). Отдельной таблицей под сотрудниками,
+          а не колонкой среди них: тема — свойство разговора, и вопрос к ней
+          другой. Сотрудники отвечают на «кто как работает», темы — на «что
+          вообще происходит», и второе читают реже, поэтому оно ниже. */}
+      {topics.length > 0 && (
+        <>
+          <div className="ols-section">О чём обращались</div>
+          <div className="ols-table-wrap">
+            <table className="ols-table">
+              <thead>
+                <tr>
+                  <th>Тема</th>
+                  <th>Обращений</th>
+                  <th>Доля</th>
+                  <th>Оценка</th>
+                  <th>Разговор</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topics.map(t => (
+                  <tr key={t.topicId || 'none'} className={t.topicId ? '' : 'ols-row-muted'}>
+                    <td>{t.name}</td>
+                    <td><strong>{t.sessions}</strong></td>
+                    <td>
+                      <div className="ols-share">
+                        <div className="ols-bar">
+                          <span style={{ width: topTopic > 0 ? `${(t.sessions / topTopic) * 100}%` : 0 }} />
+                        </div>
+                        <span className="ols-share-value">
+                          {topicTotal > 0 ? `${Math.round((t.sessions / topicTotal) * 100)}%` : '—'}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      {t.avgRating != null ? t.avgRating.toFixed(2).replace('.', ',') : '—'}
+                    </td>
+                    <td>{duration(t.handleSec)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {operators.length > 0 && (

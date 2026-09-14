@@ -112,6 +112,7 @@
 .content-wrapper:has(.wh-app),
 .content-wrapper:has(.tsk),
 .content-wrapper:has(.onb),
+.content-wrapper:has(.vac),
 .content-wrapper:has(.rb-app),
 .content-wrapper:has(.reviews-boards-page),
 .content-wrapper:has(.review-board-page),

@@ -7,7 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { authenticate } = require('../middleware/auth');
-const { sequelize, Chat, ChatMember, Message, MessageReaction, ChatFile, MessageDeletion, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
+const { sequelize, Chat, ChatMember, ChatReadMark, Message, MessageReaction, ChatFile, MessageDeletion, User, Role, MedCenter, UserDevice, BotToken } = require('../models');
 const notificationService = require('../services/notificationService');
 const invites = require('../services/chatInvites');
 const { parseAvatarCrop } = require('../services/avatarCrop');
@@ -740,6 +740,76 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get messages error:', error);
     res.status(500).json({ error: 'Failed to load messages' });
+  }
+});
+
+// Журнал прочтений чата (ver. 8.26).
+//
+// Отдаётся один раз на открытие чата, а не на каждое сообщение: время
+// просмотра сообщения — это самая ранняя отметка участника, которая не раньше
+// момента отправки, и посчитать её клиент может сам. Запрос на сообщение
+// означал бы пятьдесят запросов на экран.
+//
+// since — дата самого старого загруженного сообщения. Отметки старше него не
+// накрывают ничего из показанного, и возить их незачем.
+router.get('/:chatId/read-marks', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id },
+      attributes: ['id']
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    // Боты в списке не нужны: они ничего не читают и в группе с ботом
+    // «прочитали все» не наступило бы никогда
+    const members = await ChatMember.findAll({
+      where: { chatId, userId: { [Op.ne]: req.user.id } },
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['id', 'username', 'displayName', 'avatar', 'isBot']
+      }]
+    });
+    const readers = members.filter(m => m.user && !m.user.isBot);
+
+    const where = { chatId, userId: { [Op.in]: readers.map(m => m.userId) } };
+    const since = req.query.since ? new Date(req.query.since) : null;
+    if (since && !Number.isNaN(since.getTime())) {
+      where.readAt = { [Op.gte]: since };
+    }
+
+    // Порядок DESC с ограничением, а не ASC: если отметок окажется больше
+    // предела, обрезать надо самые старые — свежие как раз и нужны
+    const marks = await ChatReadMark.findAll({
+      where,
+      attributes: ['userId', 'readAt'],
+      order: [['readAt', 'DESC']],
+      limit: 2000
+    });
+
+    const byUser = new Map(readers.map(m => [String(m.userId), []]));
+    marks.forEach(mark => {
+      const list = byUser.get(String(mark.userId));
+      if (list) list.push(new Date(mark.readAt).toISOString());
+    });
+
+    res.json({
+      members: readers.map(m => ({
+        userId: m.userId,
+        displayName: m.user.displayName || m.user.username,
+        avatar: m.user.avatar || null,
+        // По возрастанию: клиент ищет первую отметку не раньше сообщения
+        marks: (byUser.get(String(m.userId)) || []).sort()
+      }))
+    });
+  } catch (error) {
+    console.error('Get read marks error:', error);
+    res.status(500).json({ error: 'Failed to load read marks' });
   }
 });
 
@@ -1635,8 +1705,25 @@ router.post('/:chatId/read', authenticate, async (req, res) => {
     }
 
     const lastReadAt = new Date();
+    // Были ли непрочитанные, решаем ДО обнуления счётчика — от этого зависит,
+    // попадёт ли отметка в журнал прочтений
+    const hadUnread = (membership.unreadCount || 0) > 0;
     // Счётчик обнуляем вместе с меткой: с ver. 7.30 он хранится, а не считается
     await membership.update({ lastReadAt, unreadCount: 0 });
+
+    // Журнал прочтений (ver. 8.26): по нему клиент показывает, во сколько
+    // собеседник увидел конкретное сообщение.
+    //
+    // Пишем только когда счётчик был не нулевым. Чат открывают десятки раз в
+    // день, и почти всегда там нет ничего нового — такая отметка не накрыла бы
+    // ни одного чужого сообщения и только раздувала бы таблицу. Ненулевой
+    // счётчик как раз и означает «с прошлой отметки пришли чужие сообщения».
+    if (hadUnread) {
+      await ChatReadMark.bulkCreate(
+        [{ chatId, userId: req.user.id, readAt: lastReadAt }],
+        { ignoreDuplicates: true }
+      );
+    }
 
     // Notify message senders that their messages have been read
     const io = req.app.get('io');
@@ -1648,7 +1735,14 @@ router.post('/:chatId/read', authenticate, async (req, res) => {
       emitToMembers(io, otherMembers, 'messages_read', {
         chatId,
         readBy: req.user.id,
-        lastReadAt: lastReadAt.toISOString()
+        lastReadAt: lastReadAt.toISOString(),
+        // Кто именно прочитал — чтобы в группе список «кто прочитал» пополнялся
+        // на лету, а не ждал перезагрузки чата
+        reader: {
+          id: req.user.id,
+          displayName: req.user.displayName || req.user.username,
+          avatar: req.user.avatar || null
+        }
       });
     }
 

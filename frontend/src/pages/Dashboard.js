@@ -20,6 +20,8 @@ import ChatNotification from '../components/ChatNotification';
 import MessageReactions from '../components/chat/MessageReactions';
 import ReactionMenu from '../components/chat/ReactionMenu';
 import ReactionDetailsModal from '../components/chat/ReactionDetailsModal';
+import ReadReceiptsModal from '../components/chat/ReadReceiptsModal';
+import { readersOf, appendMark, formatSeenAt } from '../utils/readReceipts';
 import VoiceMessage from '../components/chat/VoiceMessage';
 import UserBadge from '../components/chat/UserBadge';
 import PollMessage from '../components/chat/PollMessage';
@@ -59,6 +61,12 @@ export default function Dashboard() {
   const [activeChat, setActiveChat] = useState(null);
   // Время последнего прочтения собеседника (для статуса сообщений)
   const [otherLastReadAt, setOtherLastReadAt] = useState(null);
+  // Журнал прочтений открытого чата (ver. 8.26): по участнику — список отметок,
+  // из которых выводится время просмотра каждого сообщения
+  const [readMarks, setReadMarks] = useState([]);
+  // Открытое окно «кто прочитал» — держим сообщение, список берём из readMarks,
+  // чтобы окно пополнялось на лету, когда собеседник открывает чат
+  const [readReceiptsFor, setReadReceiptsFor] = useState(null);
   const [newMessage, setNewMessage] = useState('');
   const [chatCommands, setChatCommands] = useState([]);
   const [commandSelection, setCommandSelection] = useState(0);
@@ -718,6 +726,9 @@ export default function Dashboard() {
     const handleMessagesRead = (data) => {
       if (data.chatId === activeChatRef.current?.id && data.readBy !== user?.id) {
         setOtherLastReadAt(data.lastReadAt);
+        // Отметка дописывается на месте, а не перезапросом журнала: в живом
+        // разговоре событие приходит на каждое прочитанное сообщение
+        setReadMarks(prev => appendMark(prev, data.reader || { id: data.readBy }, data.lastReadAt));
       }
     };
     socket.on('messages_read', handleMessagesRead);
@@ -775,6 +786,25 @@ export default function Dashboard() {
       setOtherLastReadAt(other?.lastReadAt || null);
     }
   }, [activeChat?.id, user?.id]);
+
+  // Журнал прочтений открытого чата (ver. 8.26).
+  //
+  // since — дата самого старого загруженного сообщения: отметки старше него
+  // ничего из показанного не накрывают. Эффект сам перезапрашивает журнал,
+  // когда подгружается страница более старых сообщений (messages[0] уезжает
+  // назад), и молчит, когда приходят новые — там меняется хвост, а не начало.
+  const oldestLoadedAt = messages[0]?.createdAt || null;
+  useEffect(() => {
+    if (!activeChat?.id || !oldestLoadedAt) {
+      setReadMarks([]);
+      return undefined;
+    }
+    let cancelled = false;
+    chat.getReadMarks(activeChat.id, oldestLoadedAt)
+      .then(({ data }) => { if (!cancelled) setReadMarks(data.members || []); })
+      .catch(() => { if (!cancelled) setReadMarks([]); });
+    return () => { cancelled = true; };
+  }, [activeChat?.id, oldestLoadedAt]);
 
   // Polling fallback (reduced frequency since we have Socket.IO)
   useEffect(() => {
@@ -1942,13 +1972,24 @@ export default function Dashboard() {
     return `был(а) ${format(d, 'd MMM в HH:mm', { locale: ru })}`;
   };
 
-  // Статус сообщения для own-сообщений в приватных чатах
+  // Статус сообщения для own-сообщений. С ver. 8.26 работает и в группах:
+  // две галочки там означают «прочитали все», а кто и во сколько — в окне
+  // «кто прочитал» (см. readReceiptsFor).
   const getMsgStatus = (msg) => {
     // Сообщение ещё в пути или не ушло вовсе — это важнее всех остальных
     // состояний: до ver. 7.34 его просто не было видно, пока сервер не ответит
     if (msg.failed) return 'failed';
     if (msg.pending) return 'pending';
-    if (activeChat?.type !== 'private') return 'sent';
+    const readers = readersOf(readMarks, msg);
+    if (activeChat?.type !== 'private') {
+      // В группе «доставлено» смысла не имеет: участников много, и чей-то
+      // онлайн ничего не говорит об остальных
+      if (readMarks.length > 0 && readers.length === readMarks.length) return 'read';
+      return 'sent';
+    }
+    if (readers.length > 0) return 'read';
+    // Запасной источник: журнал мог не догрузиться, а отметка последнего
+    // прочтения приезжает вместе со списком чатов и по сокету
     if (otherLastReadAt && new Date(msg.createdAt) <= new Date(otherLastReadAt)) return 'read';
     const otherId = activeChat?.otherUser?.id;
     const st = userStatuses[otherId];
@@ -1956,6 +1997,23 @@ export default function Dashboard() {
     const lastSeenTs = st?.lastSeen || activeChat?.otherUser?.lastSeen;
     if (otherOnline || (lastSeenTs && new Date(msg.createdAt) < new Date(lastSeenTs))) return 'delivered';
     return 'sent';
+  };
+
+  // Подпись у галочки. В личной переписке — когда собеседник увидел сообщение,
+  // в группе — сколько человек его открыло; полный список по нажатию.
+  const getMsgStatusHint = (msg, status) => {
+    if (status === 'pending') return 'Отправляется';
+    if (activeChat?.type !== 'private') {
+      // Пустой журнал — это либо группа из одного человека, либо не доехавший
+      // запрос; ни в том, ни в другом случае «прочитали 0 из 0» писать не о чем
+      if (!readMarks.length) return 'Кто прочитал';
+      return `Прочитали ${readersOf(readMarks, msg).length} из ${readMarks.length}`;
+    }
+    const at = readersOf(readMarks, msg)[0]?.at;
+    if (at) return `Просмотрено ${formatSeenAt(at)}`;
+    if (status === 'read') return 'Просмотрено';
+    if (status === 'delivered') return 'Доставлено';
+    return 'Отправлено';
   };
 
   const chatMedia = [...messages].reverse().flatMap(msg => (msg.attachments || []).map((att, idx) => ({
@@ -2455,12 +2513,17 @@ export default function Dashboard() {
                                   }
                                   const stClass = st === 'read' ? ' message-status--read' : st === 'delivered' ? ' message-status--delivered' : '';
                                   return (
-                                    <span className={`message-status${stClass}`}>
+                                    <button
+                                      type="button"
+                                      className={`message-status message-status--clickable${stClass}`}
+                                      title={getMsgStatusHint(msg, st)}
+                                      onClick={(e) => { e.stopPropagation(); setReadReceiptsFor(msg); }}
+                                    >
                                       {st === 'read'
                                         ? <CheckCheck size={14} />
                                         : <Check size={14} />
                                       }
-                                    </span>
+                                    </button>
                                   );
                                 })()}
                               </div>
@@ -2983,6 +3046,14 @@ export default function Dashboard() {
             <Send size={16} />
             Переслать
           </button>
+          {/* Кто прочитал — только у своих сообщений: чужие читает их автор,
+              и отчитываться перед ним о собственном прочтении незачем */}
+          {contextMenu.isOwnMessage && contextMenu.message?.type !== 'system' && (
+            <button onClick={() => { setReadReceiptsFor(contextMenu.message); closeContextMenu(); }}>
+              <CheckCheck size={16} />
+              Кто прочитал
+            </button>
+          )}
           {/* Редактирование — только своё; удаление — своё либо любое, если админ */}
           {contextMenu.canDelete && (
             <>
@@ -3356,6 +3427,15 @@ export default function Dashboard() {
           y={reactionMenu.y}
           onSelect={(emoji) => handleAddReaction(reactionMenu.messageId, emoji)}
           onClose={() => setReactionMenu(null)}
+        />
+      )}
+
+      {/* Кто прочитал сообщение (ver. 8.26) */}
+      {readReceiptsFor && (
+        <ReadReceiptsModal
+          message={readReceiptsFor}
+          members={readMarks}
+          onClose={() => setReadReceiptsFor(null)}
         />
       )}
 

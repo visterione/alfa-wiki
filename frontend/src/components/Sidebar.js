@@ -22,7 +22,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
-  Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo, Megaphone
+  Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi, vacancies as vacanciesApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -710,12 +710,17 @@ function QuickAccessButtons({ onClose }) {
         {!canAccessOpenLine && <Lock size={10} className="quick-access-lock" />}
       </button>
 
+      {/* Мишень, а не мегафон (ver. 8.31). Мегафоном в этом же модуле помечена
+          вкладка «Анонсы», и раздел в панели назывался именем одной из трёх
+          своих вкладок — акции и карта площадок в такое название не входят.
+          Мишень читается как «целевая аудитория» и покрывает все три. */}
       <button
         className={`quick-access-btn marketing ${isOnMarketing ? 'active' : ''} ${!canAccessMarketing ? 'locked' : ''}`}
+        data-icon-motion={canAccessMarketing ? 'target' : undefined}
         onClick={() => canAccessMarketing ? handleClick('/marketing') : toast.error('Нет доступа к разделу «Маркетинг»')}
         title={canAccessMarketing ? 'Маркетинг' : 'Маркетинг (нет доступа)'}
       >
-        <Megaphone size={20} />
+        <Target size={20} />
         {!canAccessMarketing && <Lock size={10} className="quick-access-lock" />}
       </button>
 

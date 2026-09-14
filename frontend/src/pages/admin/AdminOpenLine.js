@@ -3,7 +3,8 @@ import {
   Headphones, FileText, Radio, ScrollText, Plus, Users, Bot, Save, Power, X,
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
-  Star, FlaskConical, Building2, ChevronDown, ShieldCheck, MonitorSmartphone
+  Star, FlaskConical, Building2, ChevronDown, ChevronLeft, ChevronRight,
+  ShieldCheck, MonitorSmartphone, Copy, RotateCcw
 } from 'lucide-react';
 import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
@@ -72,6 +73,28 @@ const EVENT_VIEW = {
 
 const eventTitle = (event) => (EVENT_VIEW[event]?.title) || event;
 
+/**
+ * Каким путём событие доходит до нас (ver. 8.25).
+ *
+ * Почти всё берётся забором: детектор раз в минуту спрашивает МИС, что
+ * изменилось, и считает событие сравнением со снимком. Так надёжнее — забор не
+ * зависит от того, дошёл ли до нас чужой запрос, и переживает перезапуск.
+ *
+ * Готовность лабораторных исследований забором не берётся совсем: спросить о ней
+ * публичное API нечем. Поэтому МИС зовёт наш адрес сама, и под эти два события
+ * режим вебхука и делался.
+ */
+const SOURCE_VIEW = {
+  poll: {
+    label: 'забором',
+    hint: 'Детектор портала раз в минуту спрашивает МИС, что изменилось'
+  },
+  webhook: {
+    label: 'вебхуком',
+    hint: 'МИС зовёт наш адрес сама — настройка «уведомления о событиях» в Renovatio'
+  }
+};
+
 const STATUS_VIEW = {
   sent:    { label: 'доставлено',    icon: Check,         cls: 'ok'    },
   pending: { label: 'ждёт отправки', icon: Clock,         cls: 'wait'  },
@@ -86,6 +109,17 @@ function stepChannel(name) {
   if (name === 'imobis:sms' || name === 'sms+webchat') return 'sms';
   if (name === 'notify+vk') return 'notify';
   return null;
+}
+
+// «1 отправка», «2 отправки», «5 отправок». Цифра без слова в подписи под
+// фильтрами читается как номер, а не как количество.
+function plural(n, one, few, many) {
+  const mod100 = Math.abs(n) % 100;
+  const mod10 = mod100 % 10;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
 }
 
 function beforeLabel(minutes) {
@@ -144,10 +178,9 @@ function Check1({ checked, onChange, children }) {
 
 // ══ Вкладка «Линии» ═══════════════════════════════════════════════════════
 
-function LinesTab() {
+function LinesTab({ creating, setCreating }) {
   const [data, setData] = useState(null);
   const [staff, setStaff] = useState([]);
-  const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({ name: '', medCenterId: '' });
   const [replies, setReplies] = useState({});
 
@@ -200,12 +233,6 @@ function LinesTab() {
 
   return (
     <>
-      <div className="ola-actions end">
-        <button className="ola-btn primary" onClick={() => setCreating(v => !v)}>
-          <Plus size={15} /> Новая линия
-        </button>
-      </div>
-
       {creating && (
         <section className="ola-card">
           <header>
@@ -413,7 +440,51 @@ function TimingField({ label, minutes, onChange }) {
  * Ступени раскрываются по одной. Их три-четыре, и четыре поля разом растянули
  * бы карточку на экран — ровно то, от чего уходили в 8.03.
  */
-function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
+/**
+ * Откуда приходит событие. Значение общее на пару «филиал × событие», а не на
+ * карточку: напоминаний у филиала может быть несколько, и у всех них источник
+ * один — сама запись, по которой они ставятся.
+ */
+function EventSource({ event, source, webhook, onChange }) {
+  const view = SOURCE_VIEW[source] || SOURCE_VIEW.poll;
+  const url = webhook ? `${webhook.url}/${event}` : '';
+
+  return (
+    <div className="ola-event-source">
+      <label>Как приходит</label>
+      <select
+        className="ola-select narrow"
+        value={source}
+        title={view.hint}
+        onChange={e => onChange(e.target.value)}
+      >
+        <option value="poll">забором</option>
+        <option value="webhook">вебхуком</option>
+      </select>
+
+      {source === 'webhook' && (
+        <div className="ola-event-hook">
+          {/* Адрес нужен целиком: без него запись в Renovatio не завести, а
+              собрать его в голове нельзя — секрет part пути. */}
+          <code title={url}>{url}</code>
+          <button
+            className="ola-icon-btn"
+            title="Скопировать адрес для настройки в МИС"
+            onClick={() => {
+              navigator.clipboard?.writeText(url);
+              toast.success('Адрес скопирован — заведите его в МИС на это событие');
+            }}
+          ><Copy size={13} /></button>
+          {webhook && !webhook.ready && (
+            <span className="ola-badge warn">не задан MIS_EVENTS_SECRET — приёмник закрыт</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TemplateCard({ template, steps, placeholders, source, webhook, onSource, onSave, onToggle }) {
   const [draft, setDraft] = useState(null);
   const [openStep, setOpenStep] = useState(null);
 
@@ -495,6 +566,13 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
           <Check1 checked={template.withConfirm} onChange={v => onToggle(template, 'withConfirm', v)}>
             Добавлять кнопку «Подтверждаю»
           </Check1>
+
+          <EventSource
+            event={template.event}
+            source={source}
+            webhook={webhook}
+            onChange={value => onSource(template.event, value)}
+          />
         </div>
 
         {/* Время — только у событий, которые его имеют. У записи и отмены
@@ -637,7 +715,20 @@ function TemplateCard({ template, steps, placeholders, onSave, onToggle }) {
   );
 }
 
-function BlockedDoctorsPanel({ medCenterId }) {
+/**
+ * Блокировка отправки по врачу.
+ *
+ * Врачи спрашиваются у МИС по клинике выбранного филиала, а не общим списком по
+ * сети (ver. 8.31). Общий список — это полтысячи фамилий, из которых к филиалу
+ * относится десяток, и найти среди них нужного врача можно было только зная,
+ * как он записан. Клиник у филиала бывает несколько (у Сукко исторически две),
+ * поэтому спрашиваем по каждой и склеиваем по id.
+ *
+ * Филиал без клиники в МИС — случай не настроенного справочника. Спрашиваем
+ * тогда всю сеть: пустой список означал бы «заблокировать некого», а это
+ * неправда, и настройку просто не удалось бы сделать.
+ */
+function BlockedDoctorsPanel({ medCenterId, clinicIds }) {
   const [available, setAvailable] = useState([]);
   const [saved, setSaved] = useState([]);
   const [draft, setDraft] = useState([]);
@@ -645,40 +736,56 @@ function BlockedDoctorsPanel({ medCenterId }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Массив в зависимостях эффекта менялся бы ссылкой на каждую отрисовку
+  // страницы, и список врачей перезапрашивался бы на каждый набранный символ.
+  const clinicKey = (clinicIds || []).join(',');
+
   useEffect(() => {
     let active = true;
-    Promise.allSettled([
-      notifApi.blockedDoctors(medCenterId),
-      misApi.getDoctors({ show_all: true, roles: ['doctor'] })
-    ]).then(([blockedResult, doctorsResult]) => {
-      if (!active) return;
+    const clinics = clinicKey ? clinicKey.split(',') : [];
+    const doctorRequests = clinics.length
+      ? clinics.map(id => misApi.getDoctors({ clinic_id: id, show_all: true, roles: ['doctor'] }))
+      : [misApi.getDoctors({ show_all: true, roles: ['doctor'] })];
 
-      if (blockedResult.status === 'fulfilled') {
-        const rows = blockedResult.value.data?.doctors || [];
-        setSaved(rows);
-        setDraft(rows);
-      } else {
-        toast.error('Не удалось загрузить блокировку врачей');
-      }
+    Promise.allSettled([notifApi.blockedDoctors(medCenterId), ...doctorRequests])
+      .then(([blockedResult, ...doctorResults]) => {
+        if (!active) return;
 
-      if (doctorsResult.status === 'fulfilled') {
-        const raw = doctorsResult.value.data?.data || [];
-        const rows = raw.map(doctor => ({
-          id: String(doctor.id),
-          name: doctor.name || [doctor.last_name, doctor.first_name, doctor.middle_name].filter(Boolean).join(' '),
-          specialty: (doctor.professions || [])
-            .map(item => typeof item === 'object' ? (item.title || item.name || '') : String(item || ''))
-            .filter(Boolean).join(', ')
-        })).filter(doctor => doctor.id && doctor.name)
-          .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-        setAvailable(rows);
-      } else {
-        toast.error('Не удалось загрузить врачей из МИС');
-      }
-      setLoading(false);
-    });
+        if (blockedResult.status === 'fulfilled') {
+          const rows = blockedResult.value.data?.doctors || [];
+          setSaved(rows);
+          setDraft(rows);
+        } else {
+          toast.error('Не удалось загрузить блокировку врачей');
+        }
+
+        const byId = new Map();
+        for (const result of doctorResults) {
+          if (result.status !== 'fulfilled') continue;
+          for (const doctor of (result.value.data?.data || [])) {
+            const id = String(doctor.id || '');
+            const name = doctor.name
+              || [doctor.last_name, doctor.first_name, doctor.middle_name].filter(Boolean).join(' ');
+            if (!id || !name || byId.has(id)) continue;
+            byId.set(id, {
+              id,
+              name,
+              specialty: (doctor.professions || [])
+                .map(item => typeof item === 'object' ? (item.title || item.name || '') : String(item || ''))
+                .filter(Boolean).join(', ')
+            });
+          }
+        }
+
+        if (doctorResults.every(result => result.status !== 'fulfilled')) {
+          toast.error('Не удалось загрузить врачей из МИС');
+        }
+
+        setAvailable([...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru')));
+        setLoading(false);
+      });
     return () => { active = false; };
-  }, [medCenterId]);
+  }, [medCenterId, clinicKey]);
 
   const selectedIds = useMemo(() => new Set(draft.map(doctor => String(doctor.id))), [draft]);
   const suggestions = useMemo(() => {
@@ -725,7 +832,7 @@ function BlockedDoctorsPanel({ medCenterId }) {
             className="ola-input"
             value={query}
             disabled={loading}
-            placeholder={loading ? 'Загрузка врачей…' : 'Найти врача в МИС'}
+            placeholder={loading ? 'Загрузка врачей…' : `Найти врача филиала (${available.length})`}
             onChange={event => setQuery(event.target.value)}
           />
           {suggestions.length > 0 && (
@@ -761,9 +868,7 @@ function BlockedDoctorsPanel({ medCenterId }) {
   );
 }
 
-function TemplatesTab({ data, steps, reload }) {
-  const [selectedMedCenterId, setSelectedMedCenterId] = useState('');
-
+function TemplatesTab({ data, steps, reload, selected }) {
   const save = async (t, patch) => {
     try {
       await notifApi.updateTemplate(t.id, patch);
@@ -783,29 +888,34 @@ function TemplatesTab({ data, steps, reload }) {
     }
   };
 
+  // Источник лежит у филиала, а не у шаблона: напоминаний у филиала бывает
+  // несколько, и «это событие мы забираем сами» — утверждение о событии, а не о
+  // каждом его тексте. Отправляем карту целиком: сервер хранит только известные
+  // ключи, и частичный объект стёр бы остальные.
+  const setSource = async (medCenterId, sources, event, value) => {
+    try {
+      await notifApi.saveBranch(medCenterId, { eventSources: { ...sources, [event]: value } });
+      toast.success(value === 'webhook'
+        ? 'Событие ждём вебхуком — заведите адрес в МИС'
+        : 'Событие забираем сами');
+      reload();
+    } catch {
+      toast.error('Не удалось изменить источник');
+    }
+  };
+
   if (!data) return <div className="ola-loading">Загрузка…</div>;
 
   const medCenters = data.medCenters || [];
-  const selected = medCenters.some(mc => mc.id === selectedMedCenterId)
-    ? selectedMedCenterId
-    : (medCenters[0]?.id || '');
   const visibleTemplates = (data.templates || []).filter(t => t.medCenterId === selected);
+  const sources = (data.eventSources || {})[selected] || {};
+  const clinicIds = medCenters.find(mc => mc.id === selected)?.misClinicIds || [];
 
   return (
     <>
-      <div className="ola-template-scope">
-        <label htmlFor="ola-template-medcenter"><Building2 size={16} /> Филиал</label>
-        <select
-          id="ola-template-medcenter"
-          className="ola-select"
-          value={selected}
-          onChange={e => setSelectedMedCenterId(e.target.value)}
-        >
-          {medCenters.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
-        </select>
-      </div>
-
-      {selected && <BlockedDoctorsPanel key={selected} medCenterId={selected} />}
+      {selected && (
+        <BlockedDoctorsPanel key={selected} medCenterId={selected} clinicIds={clinicIds} />
+      )}
 
       {medCenters.length === 0 && (
         <div className="ola-empty"><Building2 size={34} /><h3>Нет действующих филиалов</h3></div>
@@ -823,6 +933,9 @@ function TemplatesTab({ data, steps, reload }) {
               template={t}
               steps={steps}
               placeholders={data.placeholders || []}
+              source={sources[t.event] || 'poll'}
+              webhook={data.misWebhook}
+              onSource={(event, value) => setSource(selected, sources, event, value)}
               onSave={save}
               onToggle={toggle}
             />
@@ -964,7 +1077,11 @@ function BranchBots({ medCenterId, bots, onChanged }) {
               <option value="polling">забор</option>
             </select>
 
-            <Switch checked={bot.isActive} onChange={v => update(bot, { isActive: v })}>работает</Switch>
+            <Switch
+              checked={bot.isActive}
+              onChange={v => update(bot, { isActive: v })}
+              label={bot.isActive ? 'Выключить бота' : 'Включить бота'}
+            />
 
             <button className="ola-icon-btn danger" title="Убрать бота" onClick={() => remove(bot)}>
               <X size={14} />
@@ -1026,26 +1143,53 @@ function BranchBots({ medCenterId, bots, onChanged }) {
 }
 
 /**
- * Филиал целиком: его боты, его счёт у провайдера, его имя отправителя.
+ * Филиал целиком: его боты и его учётная запись у Имобиса.
  *
- * Общая настройка Имобиса осталась основанием, а не исчезла: сеть чаще всего
- * живёт на одном счету, и заставлять вписывать один токен девять раз значило бы
- * менять одну беду на другую. Поэтому поля показывают, что унаследовано, а
- * заполняются только там, где счёт действительно отдельный.
+ * Общей настройки сети больше нет (ver. 8.25). Учётная запись у Имобиса заведена
+ * на каждый медцентр отдельно, трафик по ним распределён намеренно, и наследование
+ * от «счёта сети» отвечало неправду на единственный важный вопрос — с какого
+ * счёта ушла эта SMS. Филиал без токена SMS не отправляет и виден
+ * предупреждением; молчаливая отправка с чужого счёта хуже неотправки, за неё
+ * платит другое юрлицо.
  */
 function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
   const [sender, setSender] = useState(branch.imobis.sender || '');
+  const [vkGroup, setVkGroup] = useState(branch.imobis.vkGroup ?? '');
   const [token, setToken] = useState('');
+  const [account, setAccount] = useState(null);
+  const [checking, setChecking] = useState(false);
 
   const senderDirty = sender !== (branch.imobis.sender || '');
-  const dirty = senderDirty || !!token.trim();
+  const groupDirty = String(vkGroup) !== String(branch.imobis.vkGroup ?? '');
+  const dirty = senderDirty || groupDirty || !!token.trim();
 
   const save = async () => {
     const patch = { imobis: {} };
     if (senderDirty) patch.imobis.sender = sender;
+    if (groupDirty) patch.imobis.vkGroup = vkGroup;
+    // Токен отправляем только когда его вписали заново: поле секрета пустое
+    // всегда, и пустая строка на каждом сохранении уносила бы доступ вместе с
+    // правкой имени отправителя.
     if (token.trim()) patch.imobis.token = token.trim();
     await onSave(branch.medCenterId, patch);
     setToken('');
+    setAccount(null);
+  };
+
+  // Баланс и имена отправителя спрашиваем по кнопке, а не при открытии карточки:
+  // это два запроса к Имобису на каждый филиал, и девять открытых карточек
+  // означали бы восемнадцать походов наружу ради цифры, которую смотрят изредка.
+  const check = async () => {
+    setChecking(true);
+    try {
+      const { data } = await notifApi.checkImobis(branch.medCenterId);
+      setAccount(data);
+      if (data.error) toast.error(data.error);
+    } catch {
+      toast.error('Не удалось спросить Имобис');
+    } finally {
+      setChecking(false);
+    }
   };
 
   const working = branch.bots.filter(b => b.isActive).length;
@@ -1065,9 +1209,21 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
         )}
         {branch.bots.length === 0 && <span className="ola-badge warn">без ботов</span>}
 
-        <Switch checked={branch.isEnabled} onChange={v => onSave(branch.medCenterId, { isEnabled: v })}>
-          подключён
-        </Switch>
+        {/* Свёрнутая карточка должна отвечать «уйдут ли отсюда SMS» без
+            разворачивания: филиал без токена молчит по всему каскаду ниже
+            ботов, и узнать об этом из журнала можно только постфактум. */}
+        {!branch.imobis.tokenSet && <span className="ola-badge warn">без счёта Имобиса</span>}
+        {branch.imobis.sandbox && <span className="ola-badge warn">песочница</span>}
+
+        {/* Подписи у тумблера нет намеренно (ver. 8.31): слово рядом с ним читается
+            как название, а не как состояние, и «подключён» у выключенного филиала
+            сбивало с толку — включать его или он уже включён. Положение тумблера
+            отвечает на это само, а для чтения с экрана есть label. */}
+        <Switch
+          checked={branch.isEnabled}
+          onChange={v => onSave(branch.medCenterId, { isEnabled: v })}
+          label={branch.isEnabled ? 'Отключить филиал от рассылки' : 'Подключить филиал к рассылке'}
+        />
 
         <button
           className={`ola-icon-btn ${open ? 'open' : ''}`}
@@ -1085,33 +1241,74 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
             <div className="ola-row">
               <div className="ola-field">
                 <label>
-                  Имя отправителя
-                  {branch.imobis.senderInherited && <span className="ola-badge">общее: {branch.imobis.senderInherited}</span>}
-                </label>
-                <input
-                  className="ola-input"
-                  placeholder={branch.imobis.senderInherited ? 'пусто — как в общих' : 'проходит модерацию у операторов'}
-                  value={sender}
-                  onChange={e => setSender(e.target.value)}
-                />
-              </div>
-              <div className="ola-field">
-                <label>
                   Токен
-                  {branch.imobis.tokenSet && <span className="ola-badge">свой</span>}
-                  {branch.imobis.tokenInherited && <span className="ola-badge">общий</span>}
+                  {branch.imobis.tokenSet
+                    ? <span className="ola-badge">{branch.imobis.tokenTail}</span>
+                    : <span className="ola-badge warn">не задан</span>}
                 </label>
                 <input
                   className="ola-input" type="password" autoComplete="off"
-                  placeholder={branch.imobis.tokenSet ? 'задан — впишите новый, чтобы заменить' : 'пусто — общий счёт сети'}
+                  placeholder={branch.imobis.tokenSet
+                    ? 'задан — впишите новый, чтобы заменить'
+                    : 'из личного кабинета app.imobis.ru'}
                   value={token}
                   onChange={e => setToken(e.target.value)}
                 />
               </div>
-              <button className="ola-btn primary" disabled={!dirty} onClick={save}>
-                Сохранить
-              </button>
+              <div className="ola-field">
+                <label>Имя отправителя</label>
+                <input
+                  className="ola-input"
+                  placeholder="проходит модерацию у операторов"
+                  value={sender}
+                  onChange={e => setSender(e.target.value)}
+                />
+              </div>
+              <div className="ola-field narrow">
+                <label>Группа ВК</label>
+                <input
+                  className="ola-input" inputMode="numeric" placeholder="номер"
+                  value={vkGroup}
+                  onChange={e => setVkGroup(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+              <div className="ola-field narrow">
+                <Switch
+                  checked={!!branch.imobis.sandbox}
+                  onChange={v => onSave(branch.medCenterId, { imobis: { sandbox: v } })}
+                >песочница</Switch>
+              </div>
             </div>
+
+            <div className="ola-row">
+              <button className="ola-btn primary" disabled={!dirty} onClick={save}>
+                <Save size={14} /> Сохранить
+              </button>
+              <button className="ola-btn" onClick={check} disabled={checking || !branch.imobis.tokenSet}>
+                {checking ? 'Спрашиваю…' : 'Проверить счёт'}
+              </button>
+
+              {account && !account.error && (
+                <span className="ola-bot-state ok">
+                  {account.balance != null
+                    ? `${account.balance.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${account.currency || '₽'}`
+                    : 'баланс не отдан'}
+                  {account.senders?.length ? ` · имена: ${account.senders.join(', ')}` : ''}
+                </span>
+              )}
+              {account && account.error && (
+                <span className="ola-bot-state bad">{account.error}</span>
+              )}
+            </div>
+
+            {/* Имя, вписанное с опечаткой, ничем себя не выдаёт: SMS просто не
+                уходит. Поэтому сверяем его со списком аккаунта, как только
+                список получен. */}
+            {account && account.senderKnown === false && (
+              <div className="ola-bot-state bad">
+                имени «{branch.imobis.sender}» нет в аккаунте — SMS с ним не уйдут
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1122,11 +1319,9 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
 function DeliveryTab({ templates, safety, onSafetyChange }) {
   const [settings, setSettings] = useState(null);
   const [saved, setSaved] = useState(null);
-  const [balance, setBalance] = useState(null);
   const [branches, setBranches] = useState(null);
   const [orphans, setOrphans] = useState([]);
   const [openBranch, setOpenBranch] = useState(null);
-  const [imobisToken, setImobisToken] = useState('');
   const [test, setTest] = useState({ phone: '', step: 'auto', templateId: '', busy: false });
 
   const loadBranches = useCallback(() => {
@@ -1139,39 +1334,26 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
     notifApi.settings()
       .then(({ data }) => {
         setSettings(data);
-        setSaved(JSON.stringify({ quietHours: data.quietHours, imobis: data.imobis }));
+        setSaved(JSON.stringify({ quietHours: data.quietHours }));
       })
       .catch(() => toast.error('Не удалось загрузить настройки рассылки'));
-    notifApi.balance().then(({ data }) => setBalance(data)).catch(() => setBalance({ balance: null }));
     loadBranches();
   }, [loadBranches]);
 
   const dirty = useMemo(() => {
     if (!settings || !saved) return false;
-    return !!imobisToken.trim() ||
-      JSON.stringify({ quietHours: settings.quietHours, imobis: settings.imobis }) !== saved;
-  }, [settings, saved, imobisToken]);
+    return JSON.stringify({ quietHours: settings.quietHours }) !== saved;
+  }, [settings, saved]);
 
   const setQuiet = (field, value) =>
     setSettings(s => ({ ...s, quietHours: { ...s.quietHours, [field]: value } }));
 
-  const setImobis = (field, value) =>
-    setSettings(s => ({ ...s, imobis: { ...s.imobis, [field]: value } }));
-
   const saveSettings = async () => {
     try {
-      const body = { quietHours: settings.quietHours, imobis: { ...settings.imobis } };
-      // Токен отправляем только если его вписали заново: пустое поле означает
-      // «оставить как есть», а не «стереть доступ».
-      if (imobisToken.trim()) body.imobis.token = imobisToken.trim();
-      else delete body.imobis.token;
-
-      const { data } = await notifApi.saveSettings(body);
+      const { data } = await notifApi.saveSettings({ quietHours: settings.quietHours });
       const next = { ...settings, ...data };
       setSettings(next);
-      setSaved(JSON.stringify({ quietHours: next.quietHours, imobis: next.imobis }));
-      setImobisToken('');
-      notifApi.settings().then(({ data }) => setSettings(s => ({ ...s, credentials: data.credentials })));
+      setSaved(JSON.stringify({ quietHours: next.quietHours }));
       loadBranches();
       toast.success('Настройки сохранены');
     } catch (err) {
@@ -1221,8 +1403,6 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
   };
 
   if (!settings) return <div className="ola-loading">Загрузка…</div>;
-
-  const creds = settings.credentials || {};
 
   return (
     <>
@@ -1290,55 +1470,13 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
 
       <section className="ola-card">
         <header>
-          <span className="ola-card-icon amber"><Wallet size={17} /></span>
-          <h3>Счёт у Имобиса по умолчанию</h3>
-          {balance && balance.balance != null && (
-            <span className="ola-badge accent">
-              {balance.balance.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽
-            </span>
-          )}
-          {settings.imobis?.sandbox && <span className="ola-badge warn">песочница</span>}
-          {!creds.imobisTokenSet && <span className="ola-badge warn">токен не задан</span>}
-          {creds.imobisTokenFromEnv && <span className="ola-badge">из .env</span>}
-        </header>
-        <div className="ola-card-body">
-          <div className="ola-row">
-            <div className="ola-field">
-              <label>Токен</label>
-              <input
-                className="ola-input" type="password" autoComplete="off"
-                placeholder={creds.imobisTokenSet ? 'задан — впишите новый, чтобы заменить' : 'из личного кабинета app.imobis.ru'}
-                value={imobisToken}
-                onChange={e => setImobisToken(e.target.value)}
-              />
-            </div>
-            <div className="ola-field">
-              <label>Имя отправителя</label>
-              <input
-                className="ola-input" placeholder="Например, ALFA"
-                value={settings.imobis?.sender || ''}
-                onChange={e => setImobis('sender', e.target.value)}
-              />
-            </div>
-            <div className="ola-field narrow">
-              <Switch checked={settings.imobis?.sandbox} onChange={v => setImobis('sandbox', v)}>
-                песочница
-              </Switch>
-            </div>
-          </div>
-          {balance && balance.error && (
-            <div className="ola-bot-state bad">Баланс не получен: {balance.error}</div>
-          )}
-        </div>
-      </section>
-
-      <section className="ola-card">
-        <header>
           <span className="ola-card-icon violet"><Moon size={17} /></span>
           <h3>Тихие часы</h3>
-          <Switch checked={settings.quietHours.enabled} onChange={v => setQuiet('enabled', v)}>
-            включены
-          </Switch>
+          <Switch
+            checked={settings.quietHours.enabled}
+            onChange={v => setQuiet('enabled', v)}
+            label={settings.quietHours.enabled ? 'Выключить тихие часы' : 'Включить тихие часы'}
+          />
         </header>
         <div className="ola-card-body">
           <div className="ola-row">
@@ -1412,6 +1550,16 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
               <Send size={14} /> {test.busy ? 'Отправляю…' : 'Отправить'}
             </button>
           </div>
+
+          {/* Счёт у Имобиса свой у каждого филиала (ver. 8.25), а филиал берётся
+              из выбранного текста — другого указания на него в этой форме нет.
+              Без текста проверка SMS ответила бы отказом, и причина была бы
+              неочевидной. */}
+          {!test.templateId && test.step.startsWith('imobis:') && (
+            <div className="ola-bot-state bad">
+              Выберите текст: по нему определяется филиал, с чьего счёта уйдёт SMS
+            </div>
+          )}
         </div>
       </section>
 
@@ -1429,25 +1577,88 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
 
 // ══ Вкладка «Журнал» ══════════════════════════════════════════════════════
 
+/**
+ * Журнал отправок (ver. 8.31).
+ *
+ * Хранится в базе он весь и всегда — строка заводится в pending и остаётся с
+ * исходом навсегда. До 8.31 наружу отдавались последние 50 строк, и по сети с
+ * тысячей отправок в сутки это означало «журнал за последний час»: вчерашний
+ * день открыть было нечем. Отсюда страницы.
+ *
+ * Фильтров стало шесть, и они разного рода:
+ *
+ *   • плитки состояния — это одновременно сводка за сутки и фильтр по нашему
+ *     исходу. Цифры на них считаются за сутки всегда, а не по выбранному
+ *     периоду: это состояние рассылки, и меняться от того, что в поиске набрали
+ *     номер, оно не должно — иначе «ноль недоставленных» значит «ничего не
+ *     нашлось», а не «всё хорошо»;
+ *   • отчёт провайдера — отдельно от нашего исхода. «Мы отправили» и «человек
+ *     получил» разные вопросы: принятая Имобисом SMS лежит у нас как sent, а
+ *     через минуту приходит отчёт rejected, и разбирают в журнале как раз такие
+ *     строки;
+ *   • период — по времени заведения, а не отправки: у пропущенных и ждущих
+ *     строк отправки не было вовсе, и по её дате они бы не нашлись.
+ *
+ * Фильтр сбрасывает страницу на первую: иначе после сужения выборки экран
+ * оставался пустым на седьмой странице того, чего больше нет.
+ */
+
+const DELIVERY_FILTER_VIEW = [
+  { key: 'delivered', label: 'дошло до человека' },
+  { key: 'failed', label: 'провайдер отказал' },
+  { key: 'none', label: 'отчёта нет' }
+];
+
+const CHANNEL_FILTER_VIEW = [
+  { key: 'telegram', label: 'Telegram' },
+  { key: 'max', label: 'MAX' },
+  { key: 'sms', label: 'SMS' },
+  { key: 'vk', label: 'ВКонтакте' },
+  { key: 'viber', label: 'Viber' }
+];
+
+const PAGE_SIZE = 50;
+const EMPTY_FILTERS = { status: '', event: '', channel: '', delivery: '', phone: '', from: '', to: '' };
+
 function LogTab() {
   const [log, setLog] = useState(null);
-  const [status, setStatus] = useState('');
-  const [phone, setPhone] = useState('');
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const setFilter = (patch) => {
+    setFilters(f => ({ ...f, ...patch }));
+    setPage(0);
+  };
+
+  const { status, event, channel, delivery, phone, from, to } = filters;
 
   useEffect(() => {
-    // Поиск по номеру ждёт паузы в наборе: журнал за сутки — тысячи строк, и
-    // запрос на каждую цифру гонял бы их впустую.
+    // Поиск по номеру ждёт паузы в наборе: журнал за всё время — сотни тысяч
+    // строк, и запрос на каждую цифру гонял бы их впустую.
+    setLoading(true);
     const timer = setTimeout(() => {
-      const params = {};
+      const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       if (status) params.status = status;
+      if (event) params.event = event;
+      if (channel) params.channel = channel;
+      if (delivery) params.delivery = delivery;
       if (phone.replace(/\D/g, '')) params.phone = phone.replace(/\D/g, '');
+      if (from) params.from = from;
+      if (to) params.to = to;
+
       notifApi.outbox(params)
         .then(({ data }) => setLog(data))
-        .catch(() => toast.error('Не удалось загрузить журнал'));
+        .catch(() => toast.error('Не удалось загрузить журнал'))
+        .finally(() => setLoading(false));
     }, phone ? 350 : 0);
 
     return () => clearTimeout(timer);
-  }, [status, phone]);
+  }, [status, event, channel, delivery, phone, from, to, page]);
+
+  const total = log?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const filtered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
 
   return (
     <>
@@ -1456,7 +1667,7 @@ function LogTab() {
           <button
             key={key}
             className={`ola-stat ${view.cls} ${status === key ? 'active' : ''}`}
-            onClick={() => setStatus(status === key ? '' : key)}
+            onClick={() => setFilter({ status: status === key ? '' : key })}
           >
             <span className="value">{log ? (log.counts[key] ?? 0) : '—'}</span>
             <span className="label">{view.label}</span>
@@ -1465,15 +1676,78 @@ function LogTab() {
 
         <div className="ola-log-search">
           <Search size={16} />
-          <input placeholder="Поиск по номеру" value={phone} onChange={e => setPhone(e.target.value)} />
+          <input
+            placeholder="Поиск по номеру"
+            value={phone}
+            onChange={e => setFilter({ phone: e.target.value })}
+          />
         </div>
       </div>
+
+      <div className="ola-log-filters">
+        <label className="ola-log-filter">
+          <span>Событие</span>
+          <select className="ola-select" value={event} onChange={e => setFilter({ event: e.target.value })}>
+            <option value="">любое</option>
+            {Object.keys(EVENT_VIEW).map(key => (
+              <option key={key} value={key}>{EVENT_VIEW[key].title}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="ola-log-filter">
+          <span>Канал</span>
+          <select className="ola-select" value={channel} onChange={e => setFilter({ channel: e.target.value })}>
+            <option value="">любой</option>
+            {CHANNEL_FILTER_VIEW.map(item => (
+              <option key={item.key} value={item.key}>{item.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="ola-log-filter">
+          <span>Отчёт провайдера</span>
+          <select className="ola-select" value={delivery} onChange={e => setFilter({ delivery: e.target.value })}>
+            <option value="">любой</option>
+            {DELIVERY_FILTER_VIEW.map(item => (
+              <option key={item.key} value={item.key}>{item.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="ola-log-filter">
+          <span>С даты</span>
+          <input className="ola-input" type="date" value={from} onChange={e => setFilter({ from: e.target.value })} />
+        </label>
+
+        <label className="ola-log-filter">
+          <span>По дату</span>
+          <input className="ola-input" type="date" value={to} onChange={e => setFilter({ to: e.target.value })} />
+        </label>
+
+        {filtered && (
+          <button className="ola-btn ola-log-reset" onClick={() => { setFilters(EMPTY_FILTERS); setPage(0); }}>
+            <RotateCcw size={14} /> Сбросить
+          </button>
+        )}
+      </div>
+
+      {log && (
+        <div className="ola-log-count">
+          {loading
+            ? 'Ищем…'
+            : (total === 0
+              ? 'Ничего не нашлось'
+              : `${total.toLocaleString('ru-RU')} ${plural(total, 'отправка', 'отправки', 'отправок')}`
+                + (pages > 1 ? ` · страница ${page + 1} из ${pages}` : ''))}
+        </div>
+      )}
 
       {log && log.rows.length === 0 && (
         <div className="ola-empty">
           <Inbox size={34} />
           <h3>Отправок не нашлось</h3>
-          <p>{status || phone ? 'Снимите фильтр или очистите поиск.' : 'Детектор ещё не находил событий.'}</p>
+          <p>{filtered ? 'Снимите фильтры или расширьте период.' : 'Детектор ещё не находил событий.'}</p>
         </div>
       )}
 
@@ -1491,6 +1765,12 @@ function LogTab() {
               {row.channel && <span className="ola-badge">{row.channel}</span>}
               {row.postponedFrom && <span className="ola-badge warn">отложено</span>}
               <span className={`ola-row-status ${view.cls}`}><Icon size={13} /> {view.label}</span>
+              {/* Отчёт провайдера рядом с нашим исходом, а не вместо него: «мы
+                  отправили» и «дошло» — разные утверждения, и подменять одно
+                  другим значит терять как раз спорные строки. */}
+              {row.deliveryStatus && (
+                <span className="ola-badge" title="Отчёт провайдера о доставке">{row.deliveryStatus}</span>
+              )}
               <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
             </div>
             <div className="ola-row-text">{row.text}</div>
@@ -1498,6 +1778,20 @@ function LogTab() {
           </article>
         );
       })}
+
+      {pages > 1 && (
+        <div className="ola-log-pager">
+          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(0)}>Начало</button>
+          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+            <ChevronLeft size={15} /> Назад
+          </button>
+          <span className="ola-log-pager-state">{page + 1} из {pages}</span>
+          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)}>
+            Вперёд <ChevronRight size={15} />
+          </button>
+          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>Конец</button>
+        </div>
+      )}
     </>
   );
 }
@@ -1591,7 +1885,8 @@ function SafetyPanel({ safety, onChange }) {
                 checked={p.allowed}
                 disabled={safety.locked || busy}
                 onChange={v => toggle(p, v)}
-              >{p.allowed ? 'включено' : 'выключено'}</Switch>
+                label={p.allowed ? `Выключить отправку через ${p.title}` : `Включить отправку через ${p.title}`}
+              />
             </div>
           ))}
         </div>
@@ -1657,6 +1952,14 @@ export default function AdminOpenLine() {
   const [templates, setTemplates] = useState(null);
   const [steps, setSteps] = useState([]);
   const [failed, setFailed] = useState(0);
+  // Заведение линии и выбор филиала у текстов живут здесь, а не во вкладках
+  // (ver. 8.31). Оба органа управления переехали в строку вкладок: заголовок
+  // страницы убран, и эта строка осталась единственной шапкой — держать в ней
+  // пусто, пока под ней стоит кнопка «Новая линия», было бы расточительством
+  // целой строки экрана. Состояние пришлось поднять сюда же: рисует их шапка, а
+  // распоряжается ими вкладка.
+  const [creatingLine, setCreatingLine] = useState(false);
+  const [branchId, setBranchId] = useState('');
 
   // Шаблоны нужны двум вкладкам сразу: «Тексты» их правят, «Рассылка» выбирает
   // из них текст для проверочной отправки. Держим на странице, а не в каждой.
@@ -1689,28 +1992,51 @@ export default function AdminOpenLine() {
 
   const safety = templates?.safety;
 
+  // Филиал у вкладки «Тексты»: выбранный, если он ещё есть в справочнике, иначе
+  // первый. Справочник приезжает вместе с шаблонами, поэтому и считается здесь.
+  const medCenters = templates?.medCenters || [];
+  const branch = medCenters.some(mc => mc.id === branchId) ? branchId : (medCenters[0]?.id || '');
+
   return (
     <div className="admin-page">
       <div className="ola-shell">
-        <div className="ola-head">
-          <h1>Открытая линия и оповещения</h1>
-        </div>
+        <div className="ola-bar">
+          <nav className="ola-tabs">
+            {TABS.map(t => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.key}
+                  className={`ola-tab ${tab === t.key ? 'active' : ''}`}
+                  onClick={() => setTab(t.key)}
+                >
+                  <Icon size={15} /> {t.label}
+                  {t.key === 'log' && failed > 0 && <span className="ola-tab-count">{failed}</span>}
+                </button>
+              );
+            })}
+          </nav>
 
-        <nav className="ola-tabs">
-          {TABS.map(t => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.key}
-                className={`ola-tab ${tab === t.key ? 'active' : ''}`}
-                onClick={() => setTab(t.key)}
+          {tab === 'lines' && (
+            <button className="ola-btn primary ola-bar-side" onClick={() => setCreatingLine(v => !v)}>
+              <Plus size={15} /> Новая линия
+            </button>
+          )}
+
+          {tab === 'texts' && medCenters.length > 0 && (
+            <div className="ola-bar-side ola-template-scope">
+              <label htmlFor="ola-template-medcenter"><Building2 size={16} /> Филиал</label>
+              <select
+                id="ola-template-medcenter"
+                className="ola-select"
+                value={branch}
+                onChange={e => setBranchId(e.target.value)}
               >
-                <Icon size={15} /> {t.label}
-                {t.key === 'log' && failed > 0 && <span className="ola-tab-count">{failed}</span>}
-              </button>
-            );
-          })}
-        </nav>
+                {medCenters.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
 
         {/* Единственный текст, оставленный в интерфейсе. Это не пояснение, а
             состояние системы: пока предохранитель стоит, часть отправок
@@ -1721,8 +2047,10 @@ export default function AdminOpenLine() {
             стоял внутри ветки Fromni, а прямая отправка через Имобис проходила
             мимо него. Теперь перечисляем провайдеров поимённо — утверждение
             «наружу ничего не уходит» должно быть проверяемым. */}
-        {tab === 'lines' && <LinesTab />}
-        {tab === 'texts' && <TemplatesTab data={templates} steps={steps} reload={loadTemplates} />}
+        {tab === 'lines' && <LinesTab creating={creatingLine} setCreating={setCreatingLine} />}
+        {tab === 'texts' && (
+          <TemplatesTab data={templates} steps={steps} reload={loadTemplates} selected={branch} />
+        )}
         {tab === 'delivery' && <DeliveryTab templates={templates} safety={safety} onSafetyChange={loadTemplates} />}
         {tab === 'log' && <LogTab />}
         {tab === 'widget' && <WidgetTab />}

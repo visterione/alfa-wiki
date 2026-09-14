@@ -42,7 +42,15 @@ export default function ShiftWidget({ open, onNavigate }) {
     // Меню дольше пары минут никто не держит, но если держит — счётчики должны
     // обновиться, а не застыть на снимке момента открытия.
     const timer = setInterval(load, 30000);
-    return () => clearInterval(timer);
+
+    // И сразу, если в очереди что-то произошло, пока меню раскрыто (ver. 8.27).
+    // Опрос здесь редкий нарочно, а сигнал ничего не стоит.
+    window.addEventListener('openline-changed', load);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('openline-changed', load);
+    };
   }, [open, load]);
 
   useEffect(() => {

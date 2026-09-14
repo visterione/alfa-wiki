@@ -1,19 +1,20 @@
 /* Модуль «Маркетинг» (ver. 8.22).
  *
  * Файл дополняет общий набор .ola-* из AdminOpenLine.css, а не заводит второй:
- * вкладки, карточки, поля, кнопки и значки берутся оттуда как есть. Здесь
- * только то, чего в наборе нет, — полки акций, карта площадок и модальные окна.
+ * поля, кнопки и значки берутся оттуда как есть. Здесь только то, чего в наборе
+ * нет, — рабочая строка модуля, полки акций, карта площадок и модальные окна.
  *
- * Цвета — из рамп и семантических имён. Единственное вбитое значение во всём
- * файле — цвет метки и полки, но он и не оформление: у полки это фирменный
- * цвет медцентра из справочника, у метки — её категория, и приходят оба
- * данными, а не стилем.
+ * Цвета — из рамп и семантических имён. Единственное значение, приходящее
+ * данными, а не стилем, — цвет медцентра из справочника (--mk-tone) и цвет
+ * категории у метки на карте.
  */
 
+/* Фон рабочей области остаётся общим серым. Раньше модуль красил страницу в
+ * --bg-primary, и белое полотно обрывалось по нижнему краю содержимого: под
+ * последней полкой шла резкая граница с серым фоном приложения. */
+.admin-page:has(.mk-shell) { background: transparent; }
+
 .mk-shell { min-height: 100%; }
-.mk-head { align-items: center; margin-bottom: 16px; }
-.mk-head h1 { margin: 0; }
-.mk-head p { margin: 3px 0 0; }
 
 .mk-spin { animation: mk-rotate 0.9s linear infinite; flex-shrink: 0; }
 @keyframes mk-rotate { to { transform: rotate(360deg); } }
@@ -26,92 +27,268 @@
   padding: 44px 0; color: var(--text-secondary); font-size: 13.5px;
 }
 
-/* ── Вкладка «Акции» ─────────────────────────────────────────────────────── */
+/* ── Рабочая строка модуля ───────────────────────────────────────────────
+ *
+ * Одна строка вместо шапки с иконкой и двух строк подписи: переключатель
+ * вкладок слева, инструменты вкладки справа. Инструменты приезжают порталом из
+ * самой вкладки (toolsSlot.js), поэтому строка ничего не знает об их составе и
+ * просто раскладывает то, что пришло.
+ */
 
-.mk-toolbar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
-  margin-bottom: 18px;
+.mk-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 
-.mk-search { flex: 1 1 260px; min-width: 0; }
+.mk-tabs { margin-bottom: 0; flex-shrink: 0; }
+
+.mk-bar-tools {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1 1 420px; min-width: 0;
+  justify-content: flex-end;
+}
+
+.mk-search { flex: 1 1 220px; max-width: 340px; min-width: 0; }
 .mk-search input { min-width: 0; }
 
-.mk-filters { display: flex; flex-wrap: wrap; gap: 8px; }
-.mk-filters .ola-check { cursor: pointer; }
-.mk-filters .ola-check b {
-  font-size: 11.5px; font-weight: 700; color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
+/* Отбор по сроку — один компактный список. Развёрнутый набор делений съедал
+ * половину рабочей строки ради выбора, который делают раз за сессию. */
+.mk-filter {
+  flex: 0 0 auto;
+  width: auto; min-width: 172px;
+  height: 38px; padding: 0 32px 0 12px;
+  border-radius: 10px;
+  font-size: 13px; font-weight: 600;
 }
-.mk-filters .ola-check.on b { color: var(--accent-700); }
 
-.mk-toolbar-actions { display: flex; gap: 8px; margin-left: auto; }
+/* ── Полка медцентра ─────────────────────────────────────────────────────
+ *
+ * Полка — это филиал, и опознаётся он логотипом, а не подписью: маркетолог
+ * знает свои клиники в лицо. Фирменный цвет живёт тонкой полосой под
+ * заголовком — заливать им крышку карточки нельзя, цветные крышки вычищены по
+ * всему порталу в 7.73.
+ */
 
-/* Полка медцентра. Точка слева — фирменный цвет филиала из справочника: она
- * заменила цветную крышку карточки, вычищенную по всему порталу в 7.73. */
-.mk-shelf { margin-bottom: 16px; }
-.mk-shelf > header { gap: 10px; }
-.mk-shelf-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.mk-shelf-body { display: grid; gap: 12px; }
+.mk-shelf { margin-bottom: 22px; }
+
+.mk-shelf > header {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 14px; margin-bottom: 14px;
+  border-radius: 12px;
+  /* Фирменный цвет уходит в прозрачность слева направо: сплошная полоса под
+   * заголовком делила экран жёсткой чертой, а заливка целиком вернула бы
+   * цветные крышки карточек, вычищенные в 7.73. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--mk-tone, var(--accent-500)) 20%, transparent),
+    transparent 72%
+  );
+}
+
+.mk-shelf-logo {
+  width: 30px; height: 30px; flex-shrink: 0;
+  border-radius: 9px; object-fit: contain;
+  background: var(--bg-primary); border: 1px solid var(--ola-line);
+}
+.mk-shelf-logo.letter {
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--mk-tone, var(--accent-500)) 16%, var(--bg-primary));
+  border-color: color-mix(in srgb, var(--mk-tone, var(--accent-500)) 40%, transparent);
+  color: var(--mk-tone, var(--accent-600));
+  font-size: 14px; font-weight: 750;
+}
+
+.mk-shelf > header h3 {
+  margin: 0; flex: 1; min-width: 0;
+  font-size: 15px; font-weight: 700; color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+/* Две карточки в ряд: акция занимает от силы полэкрана по ширине, а филиалов
+ * восемь — в одну колонку полки уходили на три экрана прокрутки. */
+/* Карточки ряда одной высоты: у одной акции есть дни и время, у другой нет, и
+ * разнобой нижних краёв читался как неаккуратность, а не как разный состав. */
+.mk-shelf-body {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  align-items: stretch;
+}
+
+/* ── Карточка акции ──────────────────────────────────────────────────────── */
 
 .mk-promo {
-  border: 1px solid var(--ola-line);
-  border-left: 3px solid var(--mk-promo-tone, var(--n-400));
-  border-radius: 12px;
-  padding: 13px 15px;
+  display: flex; align-items: stretch; gap: 13px;
+  /* Общая нижняя планка, а не только выравнивание внутри ряда: у акции без
+     дней и времени карточка иначе оказывалась заметно ниже соседних полок. */
+  min-height: 104px;
+  border: 1px solid var(--ola-line); border-radius: 14px;
+  padding: 14px 16px;
   background: var(--ola-glass-strong);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.mk-promo:hover {
+  border-color: color-mix(in srgb, var(--mk-tone, var(--accent-400)) 55%, var(--ola-line));
+  box-shadow: 0 6px 18px rgba(var(--overlay-ink), 0.07);
+}
+.mk-promo:focus-visible {
+  outline: 2px solid var(--mk-tone, var(--accent-500)); outline-offset: 2px;
 }
 
 /* Завершённая акция остаётся читаемой, но уходит на второй план: её смотрят,
  * чтобы не заводить дубль, а не чтобы работать с ней. */
-.mk-promo.expired { opacity: 0.62; }
+.mk-promo.expired { opacity: 0.6; }
 
-.mk-promo-top { display: flex; align-items: flex-start; gap: 12px; }
-.mk-promo-top h4 {
-  margin: 0; flex: 1; min-width: 0;
-  font-size: 14px; font-weight: 650; line-height: 1.35; color: var(--text-primary);
+/* Содержимое карточки: название сверху, срок прижат к нижнему краю. */
+.mk-promo-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* Знак без плашки: подложка делала из него кнопку, которой он не является, а
+ * цвет филиала связывает карточку с полкой, на которой она лежит. Колонка во
+ * всю высоту — левый край карточки, а не значок при заголовке. */
+.mk-promo-mark {
+  flex-shrink: 0; align-self: stretch;
+  width: 34px;
+  /* Отрицательные поля гасят padding карточки: знак идёт от верхней границы до
+     нижней, а не по контентной области, иначе «во всю высоту» он не выглядит. */
+  margin: -14px 0;
+  display: grid; place-items: center;
+  color: var(--mk-tone, var(--accent-600));
 }
 
-.mk-promo-discount {
+.mk-promo-headings { flex: 1; min-width: 0; }
+.mk-promo-headings h4 {
+  margin: 0; font-size: 14.5px; font-weight: 650; line-height: 1.3;
+  color: var(--text-primary); word-break: break-word;
+}
+
+/* Возраст — уточнение к названию, поэтому идёт сразу за ним и тише его. */
+.mk-promo-age {
+  margin-left: 5px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* Ссылка на страницу акции — значком у названия. Отдельной строкой внизу она
+ * занимала место наравне с содержанием акции, хотя нажимают её редко. */
+.mk-promo-link {
+  display: inline-flex; vertical-align: middle;
+  margin-left: 6px; color: var(--text-tertiary);
+  transition: color 0.15s;
+}
+.mk-promo-link:hover { color: var(--mk-tone, var(--accent-600)); }
+
+/* Срок — акцентным текстом, а не значком: это первое, что проверяют у акции,
+ * и бейдж рядом с названием читался как ещё одна метка среди прочих. Цвет тот
+ * же, что у знака и значения, — филиала, которому акция принадлежит. */
+.mk-promo-period {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: auto; padding-top: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--mk-tone, var(--accent-600));
+  font-variant-numeric: tabular-nums;
+}
+.mk-promo-period svg { flex-shrink: 0; opacity: 0.8; }
+
+.mk-promo-right {
   flex-shrink: 0;
-  padding: 3px 10px; border-radius: 9px;
-  background: var(--accent-100); color: var(--accent-700);
-  font-size: 13px; font-weight: 700; white-space: nowrap;
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 5px;
+}
+
+/* Знаки пола рисуются всегда: серые — ограничения нет, цветной — кому акция
+ * положена. Пустое место вместо них читалось бы как «данные не загрузились». */
+.mk-promo-gender { display: inline-flex; gap: 5px; color: var(--n-400); }
+.mk-promo-gender svg { display: block; opacity: 0.55; }
+.mk-promo-gender svg.on { opacity: 1; color: var(--mk-tone, var(--accent-600)); }
+
+.mk-promo-value {
+  flex-shrink: 0;
+  font-size: 18px; font-weight: 750; color: var(--mk-tone, var(--accent-600));
+  letter-spacing: -0.02em; white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-.mk-promo-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-
-.mk-promo-more {
-  margin-top: 9px; padding: 0;
-  border: none; background: none; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12.5px; font-weight: 600; color: var(--accent-600);
+.mk-promo-cond {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  margin: 8px 0 0;
+  font-size: 12px; color: var(--text-secondary);
 }
-.mk-promo-more svg { transition: transform 0.18s; }
-.mk-promo-more.open svg { transform: rotate(180deg); }
+.mk-promo-cond > span { display: inline-flex; align-items: center; gap: 4px; }
 
-.mk-promo-details {
-  margin-top: 11px; padding-top: 11px;
-  border-top: 1px solid var(--ola-line);
-  display: grid; gap: 9px;
-  font-size: 13px; color: var(--text-primary);
+/* Неделя семью клетками: закрашенная — день акции, пустая — нет. Цвет тот же,
+ * что у знака и срока, поэтому карточка читается одним цветовым ключом. */
+.mk-week { display: inline-flex; gap: 3px; flex-shrink: 0; }
+.mk-week i {
+  width: 19px; height: 19px; border-radius: 5px;
+  display: grid; place-items: center;
+  background: var(--bg-tertiary); color: var(--text-tertiary);
+  font-style: normal; font-size: 9px; font-weight: 700; letter-spacing: -0.02em;
 }
-.mk-promo-details p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
-.mk-promo-cond { color: var(--text-secondary); }
-.mk-promo-details a { color: var(--accent-600); font-size: 12.5px; }
+.mk-week i.on {
+  background: color-mix(in srgb, var(--mk-tone, var(--accent-500)) 16%, transparent);
+  color: var(--mk-tone, var(--accent-700));
+}
 
-.mk-promo-services ul {
-  margin: 0; padding-left: 18px;
-  max-height: 210px; overflow-y: auto;
-  font-size: 12.5px; color: var(--text-secondary);
-}
-.mk-promo-services li { margin-bottom: 2px; }
+/* ── Окно акции ─────────────────────────────────────────────────────────
+ *
+ * Состав, описание и цены переехали сюда с карточки: в полке на восемь
+ * филиалов перечень услуг у каждой карточки превращал список в простыню.
+ */
 
-.mk-footnote {
-  display: flex; align-items: flex-start; gap: 7px;
-  margin: 18px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+.mk-promo-modal { max-width: 860px; }
+
+.mk-promo-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1px; background: var(--ola-line);
+  border: 1px solid var(--ola-line); border-radius: 12px; overflow: hidden;
 }
-.mk-footnote svg { flex-shrink: 0; margin-top: 2px; color: var(--amber-600); }
+.mk-promo-facts > div { padding: 10px 13px; background: var(--bg-primary); }
+.mk-promo-facts dt { font-size: 11.5px; color: var(--text-secondary); margin-bottom: 3px; }
+.mk-promo-facts dd {
+  margin: 0; font-size: 13.5px; font-weight: 650; color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-promo-text {
+  margin: 14px 0 0; font-size: 13px; line-height: 1.6;
+  color: var(--text-primary); white-space: pre-wrap;
+}
+
+.mk-services { margin-top: 18px; }
+.mk-services-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 9px;
+  font-size: 13px; font-weight: 650; color: var(--text-primary);
+}
+.mk-services-head span {
+  padding: 1px 8px; border-radius: 9px;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+.mk-services-scroll {
+  max-height: 46vh; overflow: auto;
+  border: 1px solid var(--ola-line); border-radius: 12px;
+}
+
+.mk-services-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mk-services-table th {
+  position: sticky; top: 0; z-index: 1;
+  padding: 9px 12px; text-align: left;
+  background: var(--bg-secondary); color: var(--text-secondary);
+  font-size: 11.5px; font-weight: 650; white-space: nowrap;
+  border-bottom: 1px solid var(--ola-line);
+}
+.mk-services-table td {
+  padding: 8px 12px; color: var(--text-primary);
+  border-bottom: 1px solid color-mix(in srgb, var(--ola-line) 60%, transparent);
+}
+.mk-services-table tr:last-child td { border-bottom: none; }
+.mk-services-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mk-services-table .code {
+  color: var(--text-secondary); white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+}
+/* Цена со скидкой — то, ради чего таблицу открывают. */
+.mk-services-table .final { font-weight: 700; color: var(--mk-tone, var(--accent-600)); }
 
 /* ── Модальное окно ──────────────────────────────────────────────────────── */
 
@@ -124,7 +301,7 @@
 }
 
 .mk-modal {
-  width: 100%; max-width: 560px; max-height: 90vh;
+  width: 100%; max-width: 760px; max-height: 90vh;
   display: flex; flex-direction: column;
   border: 1px solid var(--border); border-radius: 18px;
   background: var(--bg-primary);
@@ -216,7 +393,15 @@
   box-shadow: 0 8px 26px rgba(var(--overlay-ink), 0.08);
 }
 
-.mk-map { height: min(72vh, 640px); width: 100%; z-index: 1; }
+/* Карта тянется до нижнего края окна. Прежние 72vh оставляли под ней полосу
+ * пустого места, а после отказа от шапки модуля она стала только шире. Высота
+ * считается, а не берётся флексом: Leaflet измеряет контейнер при инициализации
+ * и на растянутом флексом блоке рисует холст не во всю высоту. */
+.mk-map {
+  height: calc(100vh - var(--header-height) - 112px);
+  min-height: 420px;
+  width: 100%; z-index: 1;
+}
 .mk-map-wrap .leaflet-control-attribution { display: none; }
 
 .mk-map-loading {
@@ -341,9 +526,15 @@
 /* ── Узкий экран ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  .mk-toolbar-actions { margin-left: 0; width: 100%; }
-  .mk-toolbar-actions .ola-btn.primary { flex: 1; justify-content: center; }
-  .mk-map { height: 62vh; }
+  .mk-bar { gap: 9px; }
+  .mk-tabs { width: 100%; overflow-x: auto; }
+  .mk-bar-tools { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-start; }
+  .mk-search { flex: 1 1 100%; max-width: none; }
+  .mk-filter { flex: 1 1 100%; overflow-x: auto; }
+  .mk-filter button { flex: 1; justify-content: center; }
+  .mk-shelf-body { grid-template-columns: 1fr; }
+  .mk-promo-cond { margin-left: 0; }
+  .mk-map { height: calc(100vh - var(--header-height) - 168px); min-height: 360px; }
   .mk-legend { bottom: 12px; left: 12px; max-width: 178px; padding: 9px 11px; }
   .mk-legend-item span { font-size: 11.5px; }
   .mk-panel { width: 100%; }

@@ -1,32 +1,41 @@
 /**
  * Модуль «Маркетинг» (ver. 8.22).
  *
- * Три вкладки — акции, рекламные площадки и анонсы — собраны в один раздел.
- * До 8.22 они лежали в трёх разных местах: акции и карта — самостоятельными
- * HTML-страницами в backend/bot/, вставленными в вики, а анонсы — отдельной
- * кнопкой в полосе быстрого доступа. Маркетолог ходил между ними через поиск
- * по вики, потому что в сайдбаре было видно только третью из них.
+ * Три вкладки — акции, карта рекламных площадок и анонсы — собраны в один
+ * раздел. До 8.22 они лежали в трёх разных местах: акции и карта —
+ * самостоятельными HTML-страницами в backend/bot/, вставленными в вики, а
+ * анонсы — отдельной кнопкой в полосе быстрого доступа. Маркетолог ходил между
+ * ними через поиск по вики, потому что в сайдбаре было видно только третью.
  *
  * Вкладка выбирается адресом (/marketing/promotions), а не состоянием: на
  * рабочую вкладку нужна ссылка, которую можно переслать в чат, и возврат
  * «назад» должен возвращать на предыдущую вкладку, а не из модуля целиком.
+ *
+ * Собственной шапки у модуля нет. Заголовок «Маркетинг» с иконкой и подписью
+ * съедал верхнюю четверть экрана, ничего не сообщая: человек и так знает, куда
+ * зашёл, — он только что нажал пункт меню. Вместо неё одна рабочая строка, где
+ * слева переключатель вкладок, а справа инструменты текущей вкладки. Инструменты
+ * приходят из самой вкладки через портал (см. toolsSlot.js): иначе поиск
+ * акций пришлось бы держать в состоянии модуля, который про акции ничего не
+ * знает, а карта и анонсы получали бы чужое поле ввода.
  */
 
-import React, { useMemo } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
 import { Map as MapIcon, Megaphone, Tag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PromotionsTab from './PromotionsTab';
 import AdsTab from './AdsTab';
 import AnnouncementsTab from './AnnouncementsTab';
+import { ToolsSlotContext } from './toolsSlot';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import '../admin/AdminOpenLine.css';
 import '../Announcements.css';
 import './Marketing.css';
 
 const TABS = [
-  { key: 'promotions',    path: 'promotions',    label: 'Акции',   icon: Tag },
-  { key: 'ads',           path: 'ads',           label: 'Рекламы', icon: MapIcon },
-  { key: 'announcements', path: 'announcements', label: 'Анонсы',  icon: Megaphone }
+  { key: 'promotions',    path: 'promotions',    label: 'Акции',  icon: Tag },
+  { key: 'ads',           path: 'ads',           label: 'Карта',  icon: MapIcon },
+  { key: 'announcements', path: 'announcements', label: 'Анонсы', icon: Megaphone }
 ];
 
 /**
@@ -54,6 +63,9 @@ export default function Marketing() {
   const { tab } = useParams();
   const navigate = useNavigate();
   const levels = useMarketingLevels();
+  // Узел слота лежит в состоянии, а не в ref: ref не вызывает повторную
+  // отрисовку, и портал вкладки остался бы пустым до следующего обновления.
+  const [toolsSlot, setToolsSlot] = useState(null);
 
   const visible = TABS.filter(t => levels[t.key] !== 'block');
 
@@ -68,35 +80,32 @@ export default function Marketing() {
 
   return (
     <div className="admin-page">
-      <div className="ola-shell mk-shell">
-        <div className="ola-head mk-head">
-          <span className="ann-title-icon"><Megaphone size={22} /></span>
-          <div>
-            <h1>Маркетинг</h1>
-            <p>Акции в МИС, карта рекламных площадок и рассылки</p>
-          </div>
+      <div className={`ola-shell mk-shell mk-shell-${active.key}`}>
+        <div className="mk-bar">
+          {/* Вкладку, которой у человека нет, не показываем вовсе — замок здесь
+              был бы обещанием, что доступ когда-то появится, а у регистратора
+              он и не должен появиться. */}
+          {visible.length > 1 && (
+            <nav className="ola-tabs mk-tabs">
+              {visible.map(t => (
+                <button
+                  key={t.key}
+                  className={`ola-tab ${t.path === tab ? 'active' : ''}`}
+                  onClick={() => navigate(`/marketing/${t.path}`)}
+                >
+                  <t.icon size={15} /> {t.label}
+                </button>
+              ))}
+            </nav>
+          )}
+          <div className="mk-bar-tools" ref={setToolsSlot} />
         </div>
 
-        {/* Один орган управления модулем. Вкладку, которой у человека нет,
-            не показываем вовсе — замок здесь был бы обещанием, что доступ
-            когда-то появится, а у регистратора он и не должен появиться. */}
-        {visible.length > 1 && (
-          <nav className="ola-tabs">
-            {visible.map(t => (
-              <button
-                key={t.key}
-                className={`ola-tab ${t.path === tab ? 'active' : ''}`}
-                onClick={() => navigate(`/marketing/${t.path}`)}
-              >
-                <t.icon size={15} /> {t.label}
-              </button>
-            ))}
-          </nav>
-        )}
-
-        {active.key === 'promotions' && <PromotionsTab level={levels.promotions} />}
-        {active.key === 'ads' && <AdsTab level={levels.ads} />}
-        {active.key === 'announcements' && <AnnouncementsTab level={levels.announcements} />}
+        <ToolsSlotContext.Provider value={toolsSlot}>
+          {active.key === 'promotions' && <PromotionsTab level={levels.promotions} />}
+          {active.key === 'ads' && <AdsTab level={levels.ads} />}
+          {active.key === 'announcements' && <AnnouncementsTab level={levels.announcements} />}
+        </ToolsSlotContext.Provider>
       </div>
     </div>
   );

@@ -452,6 +452,36 @@ const ChatMember = sequelize.define('ChatMember', {
   indexes: [{ unique: true, fields: ['chatId', 'userId'] }]
 });
 
+// === CHAT READ MARK MODEL ===
+// Журнал прочтений чата (ver. 8.26).
+//
+// В chat_members лежит только последняя отметка lastReadAt, и по ней видно
+// «прочитано», но не видно «когда»: у сообщения недельной давности она
+// показала бы сегодняшнее утро. Время просмотра конкретного сообщения — это
+// первое продвижение курсора, накрывшее это сообщение, а значит нужна история
+// курсора, а не его текущее значение.
+//
+// Хранится именно журнал курсора, а не отметка на каждую пару
+// (сообщение, участник): курсор двигается один раз на всю пачку прочитанного,
+// поэтому в группе из десяти человек одна строка заменяет десятки.
+//
+// readAt — одновременно и момент прочтения, и граница курсора: маршрут чтения
+// ставит lastReadAt = now(), то есть «я вижу всё, что было до этой секунды».
+// Разделять две колонки было бы враньём о точности.
+//
+// Строка пишется только когда счётчик непрочитанных был не нулевым: если с
+// прошлой отметки чужих сообщений не приходило, новая отметка не накрыла бы
+// ничего нового и journal бы рос от каждого открытия чата.
+const ChatReadMark = sequelize.define('ChatReadMark', {
+  chatId: { type: DataTypes.UUID, allowNull: false, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false, primaryKey: true },
+  readAt: { type: DataTypes.DATE, allowNull: false, primaryKey: true }
+}, {
+  tableName: 'chat_read_marks',
+  timestamps: false,
+  indexes: [{ fields: ['chatId', 'readAt'] }]
+});
+
 // === MESSAGE MODEL ===
 const Message = sequelize.define('Message', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -2437,6 +2467,9 @@ Chat.hasMany(ChatMember, { foreignKey: 'chatId', as: 'members' });
 Chat.hasMany(Message, { foreignKey: 'chatId', as: 'messages' });
 ChatMember.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
 ChatMember.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+Chat.hasMany(ChatReadMark, { foreignKey: 'chatId', as: 'readMarks' });
+ChatReadMark.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
+ChatReadMark.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 Message.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
 Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 Message.belongsTo(Message, { foreignKey: 'replyToId', as: 'replyTo' });
@@ -3373,7 +3406,15 @@ const OmniConversation = sequelize.define('OmniConversation', {
   closedAt: { type: DataTypes.DATE, allowNull: true },
   closedBy: { type: DataTypes.UUID, allowNull: true },
   lastMessageAt: { type: DataTypes.DATE, allowNull: true },
-  lastIncomingAt: { type: DataTypes.DATE, allowNull: true }
+  lastIncomingAt: { type: DataTypes.DATE, allowNull: true },
+  // Докуда исполнитель дочитал переписку (ver. 8.27). Непрочитанное — это
+  // входящие позже этой отметки.
+  //
+  // Одна отметка на переписку, а не журнал по каждому читателю, как в
+  // мессенджере: у обращения ровно один исполнитель, и вопрос «кто и когда
+  // это видел» здесь не возникает — возникает «есть ли у меня новое».
+  // Передача чата отметку сбрасывает: принявший ещё ничего не читал.
+  operatorReadAt: { type: DataTypes.DATE, allowNull: true }
 }, {
   tableName: 'omni_conversations',
   timestamps: true,
@@ -3414,7 +3455,11 @@ const OmniSession = sequelize.define('OmniSession', {
   offlineNoticeAt: { type: DataTypes.DATE, allowNull: true },
   ratingAskedAt: { type: DataTypes.DATE, allowNull: true },
   rating: { type: DataTypes.INTEGER, allowNull: true },   // 1..5, ставит пациент кнопкой в боте
-  ratedAt: { type: DataTypes.DATE, allowNull: true }
+  ratedAt: { type: DataTypes.DATE, allowNull: true },
+  // О чём было обращение (ver. 8.29). Ставит оператор при закрытии. Пусто у
+  // всего, что закрыто до появления справочника, и у обращений, закрытых в
+  // момент, когда ни одной темы ещё не заведено.
+  topicId: { type: DataTypes.UUID, allowNull: true }
 }, {
   tableName: 'omni_sessions',
   timestamps: true,
@@ -3497,6 +3542,39 @@ const OmniQuickReply = sequelize.define('OmniQuickReply', {
 
 OmniQuickReply.belongsTo(User, { foreignKey: 'updatedBy', as: 'editor' });
 
+/**
+ * Тема обращения (ver. 8.29).
+ *
+ * Показатели линии до этого отвечали на вопросы «как быстро» и «сколько», но не
+ * на «о чём». А руководителю нужен именно он: поток вопросов про подготовку к
+ * анализам — это повод переписать памятку на сайте, а не повод нанять ещё
+ * оператора. Без темы такой поток неотличим от любого другого.
+ *
+ * Справочник общий на сеть, как и быстрые ответы: отчёт имеет смысл, только
+ * если филиалы называют одно и то же одинаково. Правит его старший оператор —
+ * тот же, кому открыт архив; рядовому составу это не отдано намеренно, здесь
+ * цена ошибки не «неудачная формулировка», а рассыпавшийся отчёт за квартал.
+ */
+const OmniTopic = sequelize.define('OmniTopic', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: { type: DataTypes.STRING(80), allowNull: false },
+  // Порядок задаёт старший: частое должно быть сверху, а по алфавиту оно
+  // оказывается где придётся — и оператор, закрывающий обращение, каждый раз
+  // ищет глазами.
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  // Тему не удаляют, а выключают: на неё уже ссылаются закрытые обращения, и
+  // удаление стёрло бы кусок отчёта за прошлые месяцы.
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+  updatedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'omni_topics',
+  timestamps: true,
+  indexes: [{ fields: ['isActive', 'sortOrder'] }]
+});
+
+OmniTopic.belongsTo(User, { foreignKey: 'updatedBy', as: 'editor' });
+
 OmniLine.hasMany(OmniLineOperator, { foreignKey: 'lineId', as: 'operators' });
 OmniLineOperator.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 OmniLineOperator.belongsTo(User, { foreignKey: 'userId', as: 'user' });
@@ -3514,6 +3592,7 @@ OmniSession.belongsTo(OmniConversation, { foreignKey: 'conversationId', as: 'con
 OmniSession.belongsTo(User, { foreignKey: 'assigneeUserId', as: 'assignee' });
 OmniSession.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 OmniMessage.belongsTo(OmniSession, { foreignKey: 'sessionId', as: 'session' });
+OmniSession.belongsTo(OmniTopic, { foreignKey: 'topicId', as: 'topic' });
 
 OmniShift.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 OmniShift.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
@@ -3703,7 +3782,18 @@ const NotifBranchSettings = sequelize.define('NotifBranchSettings', {
   medCenterId: { type: DataTypes.UUID, allowNull: false },
   cascade: { type: DataTypes.JSONB, allowNull: true },
   quietHours: { type: DataTypes.JSONB, allowNull: true },
+  // Счёт филиала у Имобиса: { token, sender, vkGroup, sandbox }. С 8.25 это не
+  // отличие от общей настройки, а единственное место, где он живёт: учётная
+  // запись у Имобиса заведена на каждый медцентр, трафик по ним распределён, и
+  // общего счёта сети попросту нет. Филиал без токена SMS не отправляет.
   imobis: { type: DataTypes.JSONB, allowNull: true },
+  // Каким путём приходит каждое событие: { created: 'poll', lab_full:
+  // 'webhook' } (ver. 8.25). Забором берётся всё, что можно спросить у
+  // getAppointments; готовность лабораторных исследований спросить нечем —
+  // getPatientLabResults требует patient_key, выдаваемый только по логину
+  // пациента, — и её МИС присылает сама. Отсутствующий ключ означает умолчание
+  // события, см. services/notifications/settings.js.
+  eventSources: { type: DataTypes.JSONB, allowNull: true },
   // Выключенный филиал не получает оповещений вовсе. Нужно на время переезда:
   // клиники подключают по одной, и пока филиал не подключён, уведомления по
   // нему должна слать МИС, а не оба сразу.
@@ -3766,7 +3856,11 @@ const MisEvent = sequelize.define('MisEvent', {
   method: { type: DataTypes.STRING(10), allowNull: true },
   query: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
   remoteAddr: { type: DataTypes.STRING(64), allowNull: true },
-  processed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }
+  processed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Почему принятое событие не попало в очередь (ver. 8.25). Без этой строки
+  // «МИС прислала, а человек не получил» выясняется только сравнением mis_events
+  // с notif_outbox — то есть запросом в базу, а не взглядом в журнал.
+  skipReason: { type: DataTypes.TEXT, allowNull: true }
 }, {
   tableName: 'mis_events',
   timestamps: true,
@@ -4807,6 +4901,7 @@ module.exports = {
   Setting,
   Chat,
   ChatMember,
+  ChatReadMark,
   Message,
   MessageReaction,
   ChatFile,
@@ -4825,6 +4920,7 @@ module.exports = {
   OmniShift,
   OmniMessage,
   OmniQuickReply,
+  OmniTopic,
   SiteWidget,
   NotifAppointment,
   NotifTemplate,

@@ -21,6 +21,12 @@ CREATE INDEX IF NOT EXISTS email_logs_schedule_idx
 
 -- Не выдаём новое опасное право автоматически даже тем, у кого есть настройки
 -- открытой линии: владелец доступа должен назначить его явно.
+--
+-- Условие про marketing добавлено позже, когда 8.13 пришлось докатывать на
+-- машину, где 8.22 уже применялась: там этот ключ давно заменён на
+-- adminAccess.marketing.announcements, и строка возвращала всем мёртвый флаг,
+-- который никто не читает.
 UPDATE users
 SET "adminAccess" = COALESCE("adminAccess", '{}'::jsonb) || '{"announcements": false}'::jsonb
-WHERE NOT (COALESCE("adminAccess", '{}'::jsonb) ? 'announcements');
+WHERE NOT (COALESCE("adminAccess", '{}'::jsonb) ? 'announcements')
+  AND NOT (COALESCE("adminAccess", '{}'::jsonb) ? 'marketing');

@@ -79,7 +79,17 @@ async function promoClinics() {
     .filter(mc => mc.servesPatients)
     .map(mc => {
       const misId = (mc.misClinicIds || []).find(id => /^\d+$/.test(String(id)));
-      return misId ? { id: mc.id, name: mc.name, color: mc.color, clinicId: String(misId) } : null;
+      return misId
+        ? {
+            id: mc.id,
+            name: mc.name,
+            color: mc.color,
+            // Логотип нужен вкладке акций: полки филиалов строятся по этому же
+            // справочнику, включая те, где своих акций нет, а есть сетевые.
+            logo: mc.logoSquareUrl || mc.logoUrl || null,
+            clinicId: String(misId)
+          }
+        : null;
     })
     .filter(Boolean)
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
@@ -104,6 +114,9 @@ async function shapePromo(raw) {
     clinicId: raw.clinic_id === null || raw.clinic_id === undefined ? null : String(raw.clinic_id),
     medCenterName: mc ? mc.name : null,
     medCenterColor: mc ? mc.color : null,
+    // Квадратный логотип, если он заведён: на полке филиала он опознаётся
+    // быстрее названия. Обычный логотип — запасной вариант, он широкий.
+    medCenterLogo: mc ? (mc.logoSquareUrl || mc.logoUrl || null) : null,
     discount: raw.discount === null || raw.discount === '' ? null : Number(raw.discount),
     absDiscount: raw.abs_discount === null || raw.abs_discount === '' ? null : Number(raw.abs_discount),
     dateFrom,

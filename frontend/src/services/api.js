@@ -293,6 +293,10 @@ export const chat = {
     return api.post(`/chat/${chatId}/messages`, body);
   },
   markAsRead: (chatId) => api.post(`/chat/${chatId}/read`),
+  // Журнал прочтений чата (ver. 8.26). since — дата самого старого
+  // загруженного сообщения: более ранние отметки ничего из показанного
+  // не накрывают
+  getReadMarks: (chatId, since) => api.get(`/chat/${chatId}/read-marks`, { params: since ? { since } : {} }),
   
   startPrivate: (userId) => api.post('/chat/private', { userId }),
   
@@ -1385,8 +1389,13 @@ export const openLine = {
 
   conversations: (scope = 'queue', q = '') => api.get('/open-line/conversations', { params: { scope, q } }),
   conversation: (id) => api.get(`/open-line/conversations/${id}`),
+  // Дочитал до конца (ver. 8.27). Зовётся только когда чат открыт и вкладка
+  // на переднем плане — см. OpenLine.js.
+  markRead: (id) => api.post(`/open-line/conversations/${id}/read`),
   assign: (id) => api.post(`/open-line/conversations/${id}/assign`),
-  close: (id) => api.post(`/open-line/conversations/${id}/close`),
+  // Закрытие несёт тему обращения (ver. 8.29): без неё показатели отвечают на
+  // «как быстро», но не на «о чём».
+  close: (id, topicId = null) => api.post(`/open-line/conversations/${id}/close`, { topicId }),
   send: (id, text) => api.post(`/open-line/conversations/${id}/messages`, { text }),
 
   // Файл от оператора (ver. 8.09). Заголовок обязателен, хотя границу multipart
@@ -1402,6 +1411,11 @@ export const openLine = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
+
+  // Справочник тем: читают все, кто на линии, правит старший оператор.
+  topics: (all = false) => api.get('/open-line/topics', { params: all ? { all: 1 } : {} }),
+  createTopic: (data) => api.post('/open-line/topics', data),
+  updateTopic: (id, data) => api.put(`/open-line/topics/${id}`, data),
 
   transferTargets: (id) => api.get(`/open-line/conversations/${id}/transfer-targets`),
   transfer: (id, userId) => api.post(`/open-line/conversations/${id}/transfer`, { userId }),
@@ -1506,5 +1520,7 @@ export const notifications = {
 
   // Остаток на счету у Имобиса — единственная цифра о деньгах, которую их API
   // отдаёт: отчёта о расходах и прайса по каналам в нём нет.
-  balance: (organization) => api.get('/notifications/balance', { params: { organization } })
+  // Счёт у Имобиса спрашивается у филиала: с 8.25 общего счёта сети нет, у
+  // каждого медцентра своя учётная запись и свой API-ключ.
+  checkImobis: (medCenterId) => api.get(`/notifications/branches/${medCenterId}/imobis`)
 };

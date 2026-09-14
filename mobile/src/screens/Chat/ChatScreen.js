@@ -63,6 +63,7 @@ import {
   PinOff,
   Clock,
   AlertCircle,
+  Eye,
 } from 'lucide-react-native';
 import {chat as chatApi} from '../../services/api';
 import SocketService from '../../services/socket';
@@ -81,6 +82,8 @@ import MediaViewer from '../../components/MediaViewer';
 import FadeInImage from '../../components/FadeInImage';
 import {saveAttachment} from '../../services/downloads';
 import {stripFormatting, toggleMarkup} from '../../utils/richText';
+import {readersOf, appendMark, formatSeenAt} from '../../utils/readReceipts';
+import BottomSheet from '../../components/BottomSheet';
 import {useAuth} from '../../store/authStore';
 import avatarUrl from '../../utils/avatarUrl';
 import CONFIG from '../../config';
@@ -429,27 +432,36 @@ function ReplyQuote({reply, isOwn, onPress}) {
  * Статус своего сообщения для галочек. Логика повторяет веб (Dashboard.js,
  * getMsgStatus), чтобы один и тот же чат не выглядел по-разному на телефоне
  * и в браузере:
- *   read      — собеседник открыл чат позже, чем пришло сообщение (две галочки)
- *   delivered — он в сети либо был в сети после отправки (одна яркая)
+ *   read      — сообщение прочитано (две галочки)
+ *   delivered — собеседник в сети либо был в сети после отправки (одна яркая)
  *   sent      — ушло на сервер, но адресат ещё не появлялся (одна бледная)
  *
- * В группах статуса нет: «прочитано» там пришлось бы считать по каждому
- * участнику, и веб этого тоже не делает.
+ * С ver. 8.26 галочки есть и в группах: там «прочитано» означает «открыли все
+ * участники», а кто и во сколько — в шторке «кто прочитал». «Доставлено» в
+ * группе не показывается: участников много, и чей-то онлайн ничего не говорит
+ * об остальных.
  */
-function getMessageStatus({message, chatType, otherLastReadAt, otherIsOnline, otherLastSeen}) {
+function getMessageStatus({message, chatType, readMarks, otherLastReadAt, otherIsOnline, otherLastSeen}) {
   // Сообщение в пути или не ушло — это важнее галочек и показывается всегда,
   // в том числе в группе, где обычных статусов доставки нет (ver. 7.34)
   if (message.failed) return 'failed';
   if (message.pending) return 'pending';
-  if (chatType !== 'private') return null;
+  const readers = readersOf(readMarks, message);
+  if (chatType !== 'private') {
+    if (readMarks?.length > 0 && readers.length === readMarks.length) return 'read';
+    return 'sent';
+  }
   const created = new Date(message.createdAt);
+  if (readers.length > 0) return 'read';
+  // Запасной источник: журнал прочтений мог не догрузиться, а отметка
+  // последнего прочтения приезжает вместе со списком чатов и по сокету
   if (otherLastReadAt && created <= new Date(otherLastReadAt)) return 'read';
   if (otherIsOnline) return 'delivered';
   if (otherLastSeen && created < new Date(otherLastSeen)) return 'delivered';
   return 'sent';
 }
 
-function MessageStatus({status}) {
+function MessageStatus({status, onPress}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
 
@@ -463,7 +475,67 @@ function MessageStatus({status}) {
   const Icon = status === 'read' ? CheckCheck : Check;
   // Бледная галочка = ещё не доставлено; яркая = доставлено или прочитано
   const color = status === 'sent' ? 'rgba(255,255,255,0.45)' : '#FFFFFF';
-  return <Icon size={14} color={color} style={styles.msgStatus} />;
+  // По галочке открывается «кто прочитал» (ver. 8.26). Сама галочка мельче
+  // пальца, поэтому область нажатия расширена hitSlop'ом, а не отступами:
+  // подпись со временем стоит вплотную к ней и не должна разъехаться
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={!onPress}
+      hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+      <Icon size={14} color={color} style={styles.msgStatus} />
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * Список прочитавших сообщение с временем просмотра у каждого и хвостом из
+ * тех, кто ещё не открывал чат. Тот же состав, что в вебе
+ * (components/chat/ReadReceiptsModal.js).
+ */
+function ReadReceiptsList({message, members, styles}) {
+  const readers = readersOf(members, message);
+  const readIds = new Set(readers.map(r => String(r.userId)));
+  const pending = (members || []).filter(m => !readIds.has(String(m.userId)));
+
+  if (!members?.length) {
+    return <Text style={styles.receiptEmpty}>В чате больше никого нет</Text>;
+  }
+
+  // ScrollView с потолком по высоте, а не простой View: в группе на тридцать
+  // человек список упёрся бы в край шторки и хвост стал бы недоступен
+  return (
+    <ScrollView style={styles.receiptScroll} contentContainerStyle={styles.receiptList}>
+      {readers.length > 0 ? (
+        <>
+          <Text style={styles.receiptGroupTitle}>
+            Прочитали{members.length > 1 ? ` — ${readers.length} из ${members.length}` : ''}
+          </Text>
+          {readers.map(reader => (
+            <View key={reader.userId} style={styles.receiptRow}>
+              <Avatar uri={reader.avatar} size={34} />
+              <Text style={styles.receiptName} numberOfLines={1}>{reader.displayName}</Text>
+              <Text style={styles.receiptTime}>{formatSeenAt(reader.at)}</Text>
+            </View>
+          ))}
+        </>
+      ) : (
+        <Text style={styles.receiptEmpty}>Сообщение ещё никто не открыл</Text>
+      )}
+
+      {pending.length > 0 && (
+        <>
+          <Text style={styles.receiptGroupTitle}>Ещё не открыли — {pending.length}</Text>
+          {pending.map(member => (
+            <View key={member.userId} style={[styles.receiptRow, styles.receiptRowPending]}>
+              <Avatar uri={member.avatar} size={34} />
+              <Text style={styles.receiptName} numberOfLines={1}>{member.displayName}</Text>
+            </View>
+          ))}
+        </>
+      )}
+    </ScrollView>
+  );
 }
 
 // ── Кнопки действий под сообщением бота ────────────────────────────────────
@@ -507,7 +579,7 @@ function pluralMessages(n) {
 }
 
 // ── Message bubble ─────────────────────────────────────────────────────────
-function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, isSelected, onSelectToggle, onLongPress, onReactionTap, onMediaPress, onActionPress, onPollVote, onRetry, onReplyPress, runningAction, status, chatTitle, chatId}) {
+function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, isSelected, onSelectToggle, onLongPress, onReactionTap, onMediaPress, onActionPress, onPollVote, onRetry, onReplyPress, onStatusPress, runningAction, status, chatTitle, chatId}) {
   const c = useTheme();
   const styles = useThemedStyles(makeStyles);
   // Масштаб шрифта — настройка для тех, кому мелкий текст неудобен
@@ -685,7 +757,7 @@ function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, 
                 <Text style={[styles.timeText, isOwn && styles.timeTextOwn]}>
                   {formatTime(message.createdAt)}
                 </Text>
-                {isOwn && !isDeleted && <MessageStatus status={status} />}
+                {isOwn && !isDeleted && <MessageStatus status={status} onPress={onStatusPress} />}
               </View>
             </View>
           ) : (
@@ -696,7 +768,7 @@ function MessageBubble({message, isOwn, chatType, isHighlighted, selectionMode, 
               <Text style={[styles.timeText, isOwn && styles.timeTextOwn]}>
                 {formatTime(message.createdAt)}
               </Text>
-              {isOwn && !isDeleted && <MessageStatus status={status} />}
+              {isOwn && !isDeleted && <MessageStatus status={status} onPress={onStatusPress} />}
             </View>
           )}
         </View>
@@ -841,6 +913,18 @@ export default function ChatScreen({route, navigation}) {
   // двух значений складывается статус галочек у своих сообщений
   const [otherLastReadAt, setOtherLastReadAt] = useState(route.params.otherMemberLastReadAt ?? null);
   const [otherLastSeen, setOtherLastSeen] = useState(route.params.otherUserLastSeen ?? null);
+
+  // Журнал прочтений (ver. 8.26): по участнику — список отметок, из которых
+  // выводится время просмотра каждого сообщения
+  const [readMarks, setReadMarks] = useState([]);
+  // Открытая шторка «кто прочитал». Держим сообщение, а список берём из
+  // readMarks — так шторка пополняется на лету, пока её смотрят
+  const [readReceiptsFor, setReadReceiptsFor] = useState(null);
+  // Шторка живёт ещё пару кадров после закрытия, пока доигрывает уезд. Без
+  // этой памяти содержимое успевало смениться на «ещё никто не открыл» прямо
+  // на глазах у закрывающего
+  const lastReadReceiptsFor = useRef(null);
+  if (readReceiptsFor) lastReadReceiptsFor.current = readReceiptsFor;
 
   useEffect(() => {
     if (meta.chatName && (meta.chatType !== 'group' || meta.groupMembers?.length > 0)) return;
@@ -989,6 +1073,26 @@ export default function ChatScreen({route, navigation}) {
     return () => { cancelled = true; };
   }, [chatId, chatType]);
 
+  // Журнал прочтений открытого чата (ver. 8.26).
+  //
+  // since — дата самого старого загруженного сообщения: отметки старше него
+  // ничего из показанного не накрывают. Лента идёт от новых к старым, поэтому
+  // самое старое — последний элемент. Эффект сам перезапрашивает журнал, когда
+  // подгружается страница более старых сообщений, и молчит на новых: там
+  // меняется начало списка, а не хвост.
+  const oldestLoadedAt = messages[messages.length - 1]?.createdAt || null;
+  useEffect(() => {
+    if (!oldestLoadedAt) {
+      setReadMarks([]);
+      return undefined;
+    }
+    let cancelled = false;
+    chatApi.getReadMarks(chatId, oldestLoadedAt)
+      .then(res => { if (!cancelled) setReadMarks(res.data?.members || []); })
+      .catch(() => { if (!cancelled) setReadMarks([]); });
+    return () => { cancelled = true; };
+  }, [chatId, oldestLoadedAt]);
+
   // Update header whenever online/typing/searchMode state changes
   useEffect(() => {
     navigation.setOptions({
@@ -1046,6 +1150,9 @@ export default function ChatScreen({route, navigation}) {
     SocketService.on('chat:messages_read', 'messages_read', data => {
       if (String(data.chatId) === String(chatId) && String(data.readBy) !== String(user?.id)) {
         setOtherLastReadAt(data.lastReadAt);
+        // Отметка дописывается на месте, а не перезапросом журнала: в живом
+        // разговоре событие приходит на каждое прочитанное сообщение
+        setReadMarks(prev => appendMark(prev, data.reader || {id: data.readBy}, data.lastReadAt));
       }
     });
     SocketService.on('chat:user_typing', 'user_typing', data => {
@@ -1866,6 +1973,7 @@ export default function ChatScreen({route, navigation}) {
         onPollVote={selectionMode ? noop : votePoll}
         onRetry={retrySend}
         onReplyPress={selectionMode ? noop : jumpToMessage}
+        onStatusPress={selectionMode ? noop : () => setReadReceiptsFor(item)}
         runningAction={runningAction}
         chatTitle={chatName}
         chatId={chatId}
@@ -1874,6 +1982,7 @@ export default function ChatScreen({route, navigation}) {
             ? getMessageStatus({
                 message: item,
                 chatType,
+                readMarks,
                 otherLastReadAt,
                 otherIsOnline: isOnline,
                 otherLastSeen,
@@ -2385,6 +2494,22 @@ export default function ChatScreen({route, navigation}) {
               <Text style={styles.contextItemText}>Переслать</Text>
             </TouchableOpacity>
 
+            {/* Кто прочитал — только у своих сообщений: чужие читает их автор,
+                и отчитываться перед ним о собственном прочтении незачем */}
+            {String(contextMenu?.message?.senderId) === String(user?.id)
+              && contextMenu?.message?.type !== 'system' && (
+              <TouchableOpacity
+                style={styles.contextItem}
+                onPress={() => {
+                  const message = contextMenu?.message;
+                  setContextMenu(null);
+                  setReadReceiptsFor(message);
+                }}>
+                <Eye size={18} color={c.textPrimary} style={styles.contextItemIcon} />
+                <Text style={styles.contextItemText}>Кто прочитал</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Править можно только своё. Удалять — ещё и чужое, если ты
                 суперадминистратор: мусор и сообщения ботов убирать больше некому */}
             {String(contextMenu?.message?.senderId) === String(user?.id) && contextMenu?.message?.type !== 'poll' && (
@@ -2408,6 +2533,20 @@ export default function ChatScreen({route, navigation}) {
           </View>
         </Pressable>
       </Modal>
+
+      {/* ── Кто прочитал сообщение (ver. 8.26) ── */}
+      {/* Шторка, а не подпись под сообщением: в личной переписке время нужно
+          изредка, а в группе список не поместился бы в ленту */}
+      <BottomSheet
+        visible={!!readReceiptsFor}
+        title="Кто прочитал"
+        onClose={() => setReadReceiptsFor(null)}>
+        <ReadReceiptsList
+          message={readReceiptsFor || lastReadReceiptsFor.current}
+          members={readMarks}
+          styles={styles}
+        />
+      </BottomSheet>
 
       {/* ── Forward modal ── */}
       <Modal transparent visible={showForwardModal} animationType="slide" onRequestClose={() => setShowForwardModal(false)}>
@@ -2853,6 +2992,24 @@ const makeStyles = c => StyleSheet.create({
   contextItemIcon: {marginRight: 14},
   contextItemText: {fontSize: 16, fontFamily: font.regular, color: c.textPrimary},
   contextItemDanger: {color: c.error},
+
+  // Кто прочитал сообщение (ver. 8.26)
+  receiptScroll: {maxHeight: 420},
+  receiptList: {paddingHorizontal: 4, paddingBottom: 8},
+  receiptGroupTitle: {
+    fontSize: 13, fontFamily: font.semiBold, color: c.textSecondary,
+    marginTop: 14, marginBottom: 6,
+  },
+  receiptRow: {flexDirection: 'row', alignItems: 'center', paddingVertical: 7, gap: 10},
+  // Ещё не открывшие — бледнее: шторка отвечает на вопрос «кто прочитал»,
+  // и они в ней справочно
+  receiptRowPending: {opacity: 0.55},
+  receiptName: {flex: 1, fontSize: 15, fontFamily: font.medium, color: c.textPrimary},
+  receiptTime: {fontSize: 13, fontFamily: font.regular, color: c.textSecondary},
+  receiptEmpty: {
+    fontSize: 14, fontFamily: font.regular, color: c.textSecondary,
+    textAlign: 'center', paddingVertical: 24,
+  },
 
   // Forward modal
   forwardModal: {
