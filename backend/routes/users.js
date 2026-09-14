@@ -603,4 +603,153 @@ router.get('/medcenters/list', authenticate, requireAdminAccess('users'), async 
   }
 });
 
+/**
+ * Массовая правка прав (ver. 8.31).
+ *
+ * ── Зачем ────────────────────────────────────────────────────────────────────
+ *
+ * Появление нового раздела означало обход карточек: открыть сорок человек по
+ * одному и щёлкнуть в каждом один и тот же тумблер. Делается это раз в месяц, на
+ * сороковой карточке внимание кончается, и кто-то остаётся без доступа — а
+ * выясняется это его жалобой через неделю.
+ *
+ * ── Почему правка, а не набор прав ───────────────────────────────────────────
+ *
+ * Соблазн сделать «шаблон прав регистратора» и раскатать его на всех
+ * регистраторов велик, и это была бы другая функция — она стирает всё, что
+ * настраивали людям поимённо за два года. Здесь приезжает разреженный патч:
+ * в теле запроса лежат ТОЛЬКО тронутые ключи, и всё, чего в нём нет, остаётся
+ * как было. Ни один раздел не читается «целиком» и не пишется «целиком»: у
+ * каждого своя ветка ниже, и каждая сливает, а не заменяет.
+ *
+ * Именно поэтому тело описано ключами, а не объектами-состояниями: пустой
+ * объект и отсутствующий ключ должны значить одно и то же — «не трогать», и
+ * отличить «сними все галки» от «не приходило» в объекте-состоянии было бы
+ * нельзя.
+ *
+ * ── Чего здесь нет ───────────────────────────────────────────────────────────
+ *
+ * isAdmin. Полный доступ к порталу вместе с правом раздавать права не выдаётся
+ * выборкой: одна опечатка в отборе — и его получает смена регистраторов. Ставится
+ * он по-прежнему поимённо.
+ *
+ * Суперадмины среди получателей: им и так открыто всё, запись что-то изменила бы
+ * только на случай будущего снятия флага — то есть действовала бы отложенно и
+ * незаметно. Такие строки пропускаются с причиной в ответе.
+ */
+
+const bulkPerms = require('../services/permissions/bulk');
+
+router.post('/bulk-permissions', authenticate, requireAdminAccess('users'), async (req, res) => {
+  try {
+    const userIds = Array.isArray(req.body?.userIds) ? req.body.userIds.filter(Boolean) : [];
+    const patch = req.body?.patch && typeof req.body.patch === 'object' ? req.body.patch : {};
+
+    if (!userIds.length) return res.status(400).json({ error: 'Не выбран ни один сотрудник' });
+    if (userIds.length > 500) return res.status(400).json({ error: 'Слишком много сотрудников за раз' });
+
+    const salary = bulkPerms.touchesSalary(patch);
+    const warehouse = bulkPerms.touchesWarehouse(patch);
+    // Права зарплаты и склада поимённо правит только полный администратор
+    // (см. referral-bonuses/permissions и warehouse/permissions). Массовая правка
+    // не должна становиться обходным путём вокруг этой границы.
+    if ((salary || warehouse) && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Права зарплаты и склада меняет только администратор портала' });
+    }
+
+    const targets = await User.findAll({
+      where: { id: userIds, deletedAt: null },
+      attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] },
+    });
+
+    const applied = [];
+    const skipped = [];
+
+    for (const user of targets) {
+      // Суперадмину и так открыто всё: запись что-то изменила бы только на случай
+      // будущего снятия флага — то есть подействовала бы отложенно и незаметно.
+      if (user.isAdmin) {
+        skipped.push({ id: user.id, name: user.displayName || user.username, why: 'суперадминистратор' });
+        continue;
+      }
+
+      const changes = bulkPerms.mergeUserChanges(user, patch);
+      if (Object.keys(changes).length) await user.update(changes);
+
+      if (salary) await applySalaryPatch(user.id, patch);
+      if (warehouse) await applyWarehousePatch(user.id, patch);
+
+      applied.push({ id: user.id, name: user.displayName || user.username });
+    }
+
+    res.json({ applied, skipped, total: applied.length });
+  } catch (error) {
+    console.error('Bulk permissions error:', error);
+    res.status(500).json({ error: 'Не удалось применить права' });
+  }
+});
+
+/**
+ * Зарплата: строка RbUserPermission.
+ *
+ * Новая заводится закрытой — со всеми вкладками в block. Умолчание
+ * PUT /referral-bonuses/permissions/:userId здесь не годится: там несказанное
+ * поле означает edit, потому что туда всегда приезжает форма целиком. Сюда
+ * приезжают две вкладки из двенадцати, и то же умолчание открыло бы человеку
+ * остальные десять.
+ */
+async function applySalaryPatch(userId, patch) {
+  const { RbUserPermission } = require('../models');
+
+  const [row] = await RbUserPermission.findOrCreate({
+    where: { userId },
+    defaults: {
+      userId,
+      tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block',
+      tab2: 'block', tab3: 'block', tab4: 'block',
+      tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block',
+      tabSummary: 'block', tabKpi: 'block', clinics: [], defaultClinic: 'auto',
+    },
+  });
+
+  const known = new Set(Object.keys(RbUserPermission.rawAttributes));
+  const changes = bulkPerms.mergeSalaryChanges(row, patch, known);
+  if (Object.keys(changes).length) await row.update(changes);
+}
+
+/**
+ * Склад: строка WhUserPermission с картой прав в JSONB.
+ *
+ * Слитая карта прогоняется через нормализацию модуля — ту же, что и поимённое
+ * сохранение. Неизвестный ключ она отбрасывает, неизвестный уровень превращает
+ * в block: это ровно та ручка, через которую удобно выдать себе лишнее, и
+ * доверять телу запроса здесь нельзя.
+ */
+async function applyWarehousePatch(userId, patch) {
+  const { WhUserPermission } = require('../models');
+  const whPerms = require('../services/warehouse/permissions');
+
+  const [row] = await WhUserPermission.findOrCreate({
+    where: { userId },
+    defaults: { userId, perms: {}, medCenterIds: [] },
+  });
+
+  const changes = {};
+
+  const perms = bulkPerms.mergeWarehousePerms(row, patch);
+  if (perms) changes.perms = whPerms.normalize(perms);
+
+  const centers = bulkPerms.mergeWarehouseCenters(row, patch);
+  if (centers) {
+    // Несуществующий id молча сузил бы область видимости до нуля, и человек
+    // остался бы без данных без объяснений.
+    const known = await MedCenter.findAll({
+      where: { id: centers, isActive: true }, attributes: ['id'],
+    });
+    changes.medCenterIds = known.map(m => m.id);
+  }
+
+  if (Object.keys(changes).length) await row.update(changes);
+}
+
 module.exports = router;

@@ -85,6 +85,9 @@ export const users = {
   trash: () => api.get('/users/trash'),
   restore: (id) => api.post(`/users/${id}/restore`),
   getMedCenters: () => api.get('/users/medcenters/list'),
+  // Массовая правка прав (ver. 8.31). Тело разреженное: в patch лежат только
+  // тронутые ключи, всё остальное у выбранных людей остаётся как было.
+  bulkPermissions: (data) => api.post('/users/bulk-permissions', data),
   misSearch: (q) => api.get('/users/mis-search', { params: { q } }),
   misAvatar: (avatarUrl) => api.post('/users/mis-avatar', { avatarUrl }),
   uploadAvatar: (file) => {

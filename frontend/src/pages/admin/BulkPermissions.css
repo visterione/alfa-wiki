@@ -1,0 +1,410 @@
+/* Массовая правка прав (ver. 8.31).
+ *
+ * Две колонки в одном окне, а не два шага мастера: «кому» и «что» уточняют друг
+ * друга. Выбрав роль, видишь людей и понимаешь, что отбор широковат; отметив
+ * право, вспоминаешь, что филиал нужен ещё один. Мастер заставлял бы ходить
+ * вперёд-назад между шагами.
+ *
+ * Цвета берутся из рамп и семантических имён, вбитых значений здесь нет.
+ */
+
+.bulk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(var(--overlay-ink), 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.bulk-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 1180px);
+  max-height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg-primary);
+  box-shadow: 0 24px 70px rgba(var(--overlay-ink), 0.28);
+  overflow: hidden;
+}
+
+.bulk-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.bulk-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.bulk-head-note {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.bulk-close {
+  margin-left: auto;
+  padding: 5px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bulk-close:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+.bulk-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.bulk-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 18px 22px;
+  overflow-y: auto;
+}
+
+.bulk-col + .bulk-col { border-left: 1px solid var(--border-light); }
+
+.bulk-col h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.bulk-field { margin-bottom: 12px; }
+
+.bulk-field > label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.bulk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.bulk-chip {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.bulk-chip:hover { border-color: var(--accent-400); }
+
+.bulk-chip.on {
+  border-color: var(--accent-500);
+  background: var(--accent-500);
+  color: var(--n-0);
+}
+
+.bulk-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+
+.bulk-search svg { color: var(--text-tertiary); flex-shrink: 0; }
+
+.bulk-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.bulk-search input:focus { outline: none; }
+
+.bulk-people-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.bulk-people-head strong { color: var(--text-primary); }
+
+.bulk-link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-600);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.bulk-people {
+  flex: 1;
+  min-height: 120px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  overflow-y: auto;
+}
+
+.bulk-person {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+}
+
+.bulk-person:last-child { border-bottom: 0; }
+.bulk-person.off { opacity: 0.45; }
+
+.bulk-person-name { font-size: 13px; color: var(--text-primary); }
+
+.bulk-person-meta {
+  margin-left: auto;
+  overflow: hidden;
+  max-width: 55%;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Дерево правок ─────────────────────────────────────────────────────── */
+
+.bulk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.bulk-legend span { display: inline-flex; align-items: center; gap: 4px; }
+
+.bulk-tree { flex: 1; min-height: 0; }
+
+.bulk-group { margin-bottom: 4px; }
+
+.bulk-group-head,
+.bulk-sub-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bulk-sub-head { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+
+.bulk-group-head:hover,
+.bulk-sub-head:hover { background: var(--bg-secondary); }
+
+.bulk-group-head .chev,
+.bulk-sub-head .chev { transition: transform 0.15s; flex-shrink: 0; }
+.bulk-group-head.open .chev,
+.bulk-sub-head.open .chev { transform: rotate(180deg); }
+
+/* Сколько правок внутри свёрнутой ветки. Без счётчика отмеченное в закрытой
+   группе обнаруживается только на шаге подтверждения. */
+.bulk-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent-500);
+  color: var(--n-0);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.bulk-group-body { padding: 2px 0 6px 16px; }
+.bulk-sub { margin: 2px 0; }
+
+.bulk-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 9px;
+  border-radius: 8px;
+}
+
+.bulk-row:hover { background: var(--bg-secondary); }
+
+.bulk-row-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.bulk-control {
+  display: flex;
+  gap: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.bulk-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.bulk-opt:hover { border-color: var(--n-400); color: var(--text-secondary); }
+.bulk-opt.on { color: var(--n-0); }
+
+/* Прочерк в положении «не трогать» не красится: это отсутствие действия, и
+   выглядеть третьим действием он не должен. */
+.bulk-opt.skip.on {
+  background: var(--bg-secondary);
+  border-color: var(--n-400);
+  color: var(--text-primary);
+}
+
+/* ── Подвал и подтверждение ────────────────────────────────────────────── */
+
+.bulk-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+}
+
+.bulk-foot-state { margin-right: auto; font-size: 12.5px; color: var(--text-secondary); }
+
+.bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bulk-btn:hover:not(:disabled) { border-color: var(--n-400); }
+.bulk-btn:disabled { opacity: 0.5; cursor: default; }
+
+.bulk-btn.primary {
+  border-color: var(--accent-500);
+  background: var(--accent-500);
+  color: var(--n-0);
+}
+
+.bulk-confirm {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(var(--overlay-ink), 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.bulk-confirm-card {
+  width: min(100%, 520px);
+  max-height: 100%;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-primary);
+  box-shadow: 0 20px 50px rgba(var(--overlay-ink), 0.3);
+  overflow-y: auto;
+}
+
+.bulk-confirm-card h3 { margin: 0 0 12px; font-size: 15.5px; color: var(--text-primary); }
+
+.bulk-confirm-card ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.bulk-confirm-note {
+  margin: 0 0 16px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--amber-50, var(--bg-secondary));
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.bulk-confirm-actions { display: flex; justify-content: flex-end; gap: 9px; }
+
+@media (max-width: 980px) {
+  .bulk-body { grid-template-columns: 1fr; }
+  .bulk-col + .bulk-col { border-left: 0; border-top: 1px solid var(--border-light); }
+}

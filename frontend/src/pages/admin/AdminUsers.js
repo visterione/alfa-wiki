@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown, Trash2, RotateCcw, Lock, Eye, PenLine } from 'lucide-react';
+import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, ShieldCheck, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown, Trash2, RotateCcw, Lock, Eye, PenLine } from 'lucide-react';
 import { users, roles, BASE_URL, referralBonusAccess, warehouseAccessApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import DatePickerInput from '../../components/DatePickerInput';
 import ChatBadgeField from '../../components/ChatBadgeField';
+import BulkPermissions from './BulkPermissions';
+import {
+  ADMIN_SECTIONS, MODULE_ITEMS, MARKETING_TABS,
+  SALARY_NODES, STATISTICS_NODES, nodeKeys,
+} from './permissionCatalogue';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
@@ -112,22 +117,6 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
 }
 
 
-// Список зарплатных клиник остаётся локальным: модуль «Зарплата» на справочник
-// медцентров (ver. 6.67) пока не переведён — решено не трогать его без отдельного
-// захода, слишком велика цена ошибки в расчётах.
-const SALARY_CLINICS = [
-  { id: '2',  name: 'Альфа',       color: '#de64a1' },
-  { id: '3',  name: 'Кидс',        color: '#ed9121' },
-  { id: '1',  name: 'Проф',        color: '#9999ff' },
-  { id: '6',  name: 'Линия',       color: '#e2d1bb' },
-  { id: '4',  name: '3К',          color: '#800080' },
-  { id: '7',  name: 'Смайл',       color: '#999999' },
-  { id: '8',  name: 'Направители', color: '#00bfff' },
-  { id: '11', name: 'Сукко',       color: '#2d7055' },
-  { id: '12', name: 'Нео',         color: '#008cb4' },
-  { id: 'ip', name: 'ИП Микаелян', color: '#e05252' },
-];
-
 /**
  * Права складского модуля приходят каталогом с сервера
  * (services/warehouse/permissions.js): перечень разделов, шестнадцать отчётов и
@@ -202,6 +191,7 @@ export default function AdminUsers() {
   const [misDropdown, setMisDropdown] = useState({ open: false, results: [], searching: false });
   const [avatarHover, setAvatarHover] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [trashList, setTrashList] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState({ root: true, admin: true, modules: true, salary: true, statistics: true, salary_clinics: false, salary_workTime: false, salary_archive: false, statistics_kpi: false, statistics_directories: false, statistics_services: false });
   const avatarInputRef = useRef(null);
@@ -246,7 +236,7 @@ export default function AdminUsers() {
       parser: false,
       medCenters: false,
       onboarding: false,
-      marketing: { promotions: 'block', ads: 'block', announcements: 'block' }
+      marketing: Object.fromEntries(MARKETING_TABS.map(t => [t.key, 'block']))
     },
     salaryPerm: { ...SALARY_PERM_DEFAULT },
     statisticsTabs: {
@@ -545,7 +535,7 @@ export default function AdminUsers() {
             parser: false, medCenters: false, onboarding: false
           }),
           marketing: {
-            promotions: 'block', ads: 'block', announcements: 'block',
+            ...Object.fromEntries(MARKETING_TABS.map(t => [t.key, 'block'])),
             ...((user.adminAccess || {}).marketing || {})
           }
         },
@@ -593,7 +583,7 @@ export default function AdminUsers() {
           pages: false, sidebar: false, users: false, roles: false, media: false,
           backup: false, settings: false, courses: false, journal: false, reviews: false,
           parser: false, medCenters: false,
-          marketing: { promotions: 'block', ads: 'block', announcements: 'block' }
+          marketing: Object.fromEntries(MARKETING_TABS.map(t => [t.key, 'block']))
         },
         salaryPerm: { ...SALARY_PERM_DEFAULT },
         warehousePerm: { ...WAREHOUSE_PERM_DEFAULT },
@@ -769,6 +759,19 @@ export default function AdminUsers() {
             <Trash2 size={16} />
             Корзина{trashList.length > 0 && showTrash ? ` (${trashList.length})` : ''}
           </button>
+          {/* Массовая правка прав (ver. 8.31). Рядом с «Добавить», а не внутри
+              карточки: она про многих людей сразу, а карточка — про одного. */}
+          {!showTrash && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => setBulkOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              title="Изменить одно право сразу многим — по роли или медцентру"
+            >
+              <ShieldCheck size={16} />
+              Права списком
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => openModal()}>
             Добавить
           </button>
@@ -904,6 +907,17 @@ export default function AdminUsers() {
             </table>
           )}
         </div>
+      )}
+
+      {bulkOpen && (
+        <BulkPermissions
+          userList={userList}
+          roleList={roleList}
+          medCenterList={medCenterList}
+          whCatalogue={whCatalogue}
+          onClose={() => setBulkOpen(false)}
+          onApplied={load}
+        />
       )}
 
       {showTrash && (
@@ -1377,22 +1391,10 @@ export default function AdminUsers() {
                     {
                       id: 'admin',
                       label: 'Административный доступ',
-                      items: [
-                        { key: 'pages',    label: 'Проводник' },
-                        { key: 'roles',    label: 'Роли и права' },
-                        { key: 'settings', label: 'Настройки' },
-                        { key: 'sidebar',  label: 'Меню навигации' },
-                        { key: 'media',    label: 'Медиафайлы' },
-                        { key: 'users',    label: 'Пользователи' },
-                        { key: 'backup',   label: 'Резервные копии' },
-                        { key: 'journal',  label: 'Журнал' },
-                        { key: 'parser',   label: 'Парсер цен' },
-                        // Состав линий, тексты уведомлений всей сети и токены
-                        // провайдера. Отдельно от самой открытой линии ниже:
-                        // рабочее окно колл-центра открыто десяткам операторов,
-                        // а это — совсем другой круг людей.
-                        { key: 'openLineAdmin', label: 'Открытая линия: настройки' },
-                      ].map(({ key, label }) => ({
+                      // Перечень разделов лежит в permissionCatalogue.js: тот же
+                      // список читает массовая правка прав, и набранный здесь
+                      // второй раз он бы с ней разошёлся.
+                      items: ADMIN_SECTIONS.map(({ key, label }) => ({
                         key, label,
                         checked: form.isAdmin || (form.adminAccess[key] ?? false),
                         onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, [key]: v}}); },
@@ -1400,36 +1402,38 @@ export default function AdminUsers() {
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         const a = {...form.adminAccess};
-                        ['pages','roles','settings','sidebar','media','users','backup','journal','parser','openLineAdmin'].forEach(k => { a[k] = newVal; });
+                        ADMIN_SECTIONS.forEach(({ key }) => { a[key] = newVal; });
                         setForm({...form, adminAccess: a});
                       },
                     },
                     {
                       id: 'modules',
                       label: 'Модули',
-                      items: [
-                        { key: 'reviews',     label: 'Отзывы',         checked: form.isAdmin || !!form.adminAccess.reviews,   onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, reviews: v}}); } },
-                        { key: 'services',    label: 'Услуги',          checked: form.isAdmin || !!form.canEditServices,        onChange: v => { if (!form.isAdmin) setForm({...form, canEditServices: v}); } },
-                        { key: 'courses',     label: 'Курсы',           checked: form.isAdmin || !!form.adminAccess.courses,    onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, courses: v}}); } },
-                        { key: 'doctorCards', label: 'Карточки врачей', checked: form.isAdmin || !!form.canEditDoctorCards,     onChange: v => { if (!form.isAdmin) setForm({...form, canEditDoctorCards: v}); } },
-                        { key: 'analyses',    label: 'Анализы',         checked: form.isAdmin || !!form.canEditAnalyses,        onChange: v => { if (!form.isAdmin) setForm({...form, canEditAnalyses: v}); } },
-                        { key: 'releaseNotes', label: 'Нововведения',   checked: form.isAdmin || !!form.adminAccess.releaseNotes, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, releaseNotes: v}}); } },
-                        { key: 'medCenters',  label: 'Медцентры',       checked: form.isAdmin || !!form.adminAccess.medCenters, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, medCenters: v}}); } },
-                        // Онбординг врача: флаг открывает раздел, но заявки человек
-                        // увидит только там, где назначен исполнителем шага.
-                        { key: 'onboarding',  label: 'Онбординг врача', checked: form.isAdmin || !!form.adminAccess.onboarding, onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, onboarding: v}}); } },
-                        // Открытая линия: флаг открывает раздел, но обращения
-                        // человек увидит только тех линий, в состав которых
-                        // заведён (OmniLineOperator). Состав и есть право
-                        // отвечать — здесь только видимость самого раздела.
-                        { key: 'openLine',    label: 'Открытая линия',  checked: form.isAdmin || !!form.adminAccess.openLine,   onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, openLine: v}}); } },
-                      ],
+                      // Половина модулей лежит в adminAccess, половина — своими
+                      // колонками пользователя; где именно, сказано в каталоге
+                      // (permissionCatalogue.js), а не угадывается по имени.
+                      items: MODULE_ITEMS.map(item => ({
+                        key: item.id,
+                        label: item.label,
+                        checked: form.isAdmin || (item.target === 'flag'
+                          ? !!form[item.key]
+                          : !!form.adminAccess[item.key]),
+                        onChange: v => {
+                          if (form.isAdmin) return;
+                          setForm(f => item.target === 'flag'
+                            ? { ...f, [item.key]: v }
+                            : { ...f, adminAccess: { ...f.adminAccess, [item.key]: v } });
+                        },
+                      })),
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
-                        setForm({...form,
-                          canEditServices: newVal, canEditDoctorCards: newVal,
-                          canEditAnalyses: newVal,
-                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal, releaseNotes: newVal, medCenters: newVal, onboarding: newVal, openLine: newVal}
+                        setForm(f => {
+                          const next = { ...f, adminAccess: { ...f.adminAccess } };
+                          for (const item of MODULE_ITEMS) {
+                            if (item.target === 'flag') next[item.key] = newVal;
+                            else next.adminAccess[item.key] = newVal;
+                          }
+                          return next;
                         });
                       },
                     },
@@ -1455,11 +1459,14 @@ export default function AdminUsers() {
                       return {
                         id: 'marketing',
                         label: 'Маркетинг',
-                        items: [
-                          { key: 'mkPromotions',    label: 'Акции',   ...mkTab('promotions') },
-                          { key: 'mkAds',           label: 'Рекламы', ...mkTab('ads') },
-                          { key: 'mkAnnouncements', label: 'Анонсы',  ...mkTab('announcements') },
-                        ],
+                        // Названия те же, что на вкладках модуля: право ищут по
+                        // тому слову, которое человек видит в «Маркетинге». У
+                        // анонсов подпись длиннее самой вкладки намеренно — за
+                        // ней и почтовые рассылки, и рассылки через ботов
+                        // подписчикам, и цена ошибки здесь наибольшая.
+                        items: MARKETING_TABS.map(tab => ({
+                          key: tab.id, label: tab.label, ...mkTab(tab.key),
+                        })),
                         onToggleAll: newVal => {
                           if (form.isAdmin) return;
                           const level = newVal ? 'edit' : 'block';
@@ -1467,7 +1474,7 @@ export default function AdminUsers() {
                             ...f,
                             adminAccess: {
                               ...f.adminAccess,
-                              marketing: { promotions: level, ads: level, announcements: level },
+                              marketing: Object.fromEntries(MARKETING_TABS.map(t => [t.key, level])),
                             },
                           }));
                         },
@@ -1506,6 +1513,32 @@ export default function AdminUsers() {
                         permVal: form.isAdmin ? 'edit' : (sp[k] || 'block'),
                         onPermChange: v => { if (!form.isAdmin) setForm(f => ({...f, salaryPerm: {...(f.salaryPerm||{}), [k]: v}})); },
                       });
+                      const salaryLeaf = (leaf) => {
+                        if (leaf.target === 'salary') {
+                          return { key: leaf.id, label: leaf.label, ...spTab(leaf.key) };
+                        }
+                        if (leaf.target === 'salaryClinic') {
+                          return {
+                            key: leaf.id, label: leaf.label, clinicColor: leaf.color,
+                            checked: form.isAdmin || (sp.clinics || []).includes(leaf.key),
+                            onChange: v => {
+                              if (form.isAdmin) return;
+                              setForm(f => {
+                                const cls = (f.salaryPerm || {}).clinics || [];
+                                const next = v ? [...cls, leaf.key] : cls.filter(id => id !== leaf.key);
+                                return { ...f, salaryPerm: { ...(f.salaryPerm || {}), clinics: next } };
+                              });
+                            },
+                          };
+                        }
+                        // АУП — секретная клиника. Флаг НЕ зависит от isAdmin:
+                        // админ без него данные АУП не видит (в этом весь смысл).
+                        return {
+                          key: leaf.id, label: leaf.label, clinicColor: leaf.color,
+                          checked: !!form[leaf.key],
+                          onChange: v => setForm(f => ({ ...f, [leaf.key]: v })),
+                        };
+                      };
                       return [
                         {
                           id: 'salary',
@@ -1513,46 +1546,17 @@ export default function AdminUsers() {
                           isParentToggle: true,
                           parentChecked: form.isAdmin || !!form.canAccessSalary,
                           onParentToggle: v => { if (!form.isAdmin) setForm({...form, canAccessSalary: v}); },
-                          items: [
-                            { isSubGroup: true, key: 'clinics', expandKey: 'salary_clinics', label: 'Медцентры',
-                              items: SALARY_CLINICS.map(c => ({
-                                key: `clinic_${c.id}`,
-                                label: c.name,
-                                clinicColor: c.color,
-                                checked: form.isAdmin || (sp.clinics || []).includes(c.id),
-                                onChange: v => {
-                                  if (form.isAdmin) return;
-                                  const cls = sp.clinics || [];
-                                  const next = v ? [...cls, c.id] : cls.filter(id => id !== c.id);
-                                  setForm(f => ({...f, salaryPerm: {...(f.salaryPerm||{}), clinics: next}}));
-                                },
-                              })),
-                            },
-                            { key: 'tab1',  label: 'Сотрудники',   ...spTab('tab1') },
-                            { isSubGroup: true, key: 'workTime', expandKey: 'salary_workTime', label: 'Учёт времени',
-                              items: [
-                                { key: 'tabWorkTime',  label: 'Учёт рабочего времени', ...spTab('tabWorkTime') },
-                                { key: 'tabHourNorms', label: 'Норма часов',            ...spTab('tabHourNorms') },
-                                { key: 'tabSchedule',  label: 'Расписание',             ...spTab('tabSchedule') },
-                              ],
-                            },
-                            { key: 'tab2', label: 'Услуги',      ...spTab('tab2') },
-                            { key: 'tab3', label: 'Направления', ...spTab('tab3') },
-                            { key: 'tab4', label: 'Отчёт',       ...spTab('tab4') },
-                            { isSubGroup: true, key: 'archive', expandKey: 'salary_archive', label: 'Архив',
-                              items: [
-                                { key: 'tabArchiveHistory', label: 'Архив',      ...spTab('tabArchiveHistory') },
-                                { key: 'tabArchiveKassa',   label: 'Касса',      ...spTab('tabArchiveKassa') },
-                                { key: 'tabArchiveTabel',   label: 'Табели',     ...spTab('tabArchiveTabel') },
-                              ],
-                            },
-                            { key: 'tabSummary', label: 'Сводка', ...spTab('tabSummary') },
-                            // АУП — секретная клиника. Флаг НЕ зависит от isAdmin:
-                            // админ без него данные АУП не видит (в этом весь смысл).
-                            { key: 'aupAccess', label: 'АУП — секретная клиника', clinicColor: '#111111',
-                              checked: !!form.canAccessTopSalary,
-                              onChange: v => setForm(f => ({...f, canAccessTopSalary: v})) },
-                          ],
+                          // Состав ветки — из каталога (permissionCatalogue.js).
+                          // Лист бывает трёх видов: вкладка с уровнем, клиника в
+                          // области видимости и флаг АУП; куда пишется каждый,
+                          // сказано в каталоге полем target.
+                          items: SALARY_NODES.map(node => node.isSubGroup
+                            ? {
+                              isSubGroup: true, key: node.id,
+                              expandKey: node.expandKey, label: node.label,
+                              items: node.items.map(salaryLeaf),
+                            }
+                            : salaryLeaf(node)),
                         },
                         // Складской учёт. Родительский тумблер — доступ к разделу
                         // (adminAccess.warehouse), внутри — что именно открыто.
@@ -1609,41 +1613,26 @@ export default function AdminUsers() {
                           isParentToggle: true,
                           parentChecked: form.isAdmin || !!form.canAccessStatistics,
                           onParentToggle: v => { if (!form.isAdmin) setForm({...form, canAccessStatistics: v}); },
-                          items: [
-                            { isSubGroup: true, key: 'kpi', expandKey: 'statistics_kpi', label: 'Аналитика',
-                              items: [
-                                { key: 'kpiGeneral',     label: 'Общая',          ...stTab('kpiGeneral') },
-                                { key: 'kpiPatients',    label: 'Пациенты',       ...stTab('kpiPatients') },
-                                { key: 'kpiMargin',      label: 'Маржинальность', ...stTab('kpiMargin') },
-                                { key: 'kpiEfficiency',  label: 'Эффективность',  ...stTab('kpiEfficiency') },
-                                { key: 'kpiRooms',       label: 'Кабинеты',       ...stTab('kpiRooms') },
-                                { key: 'kpiReputation',  label: 'Репутация',      ...stTab('kpiReputation') },
-                                { key: 'kpiUtilities',   label: 'Коммунальные',   ...stTab('kpiUtilities') },
-                                { key: 'kpiConsumables', label: 'Расходники',     ...stTab('kpiConsumables') },
-                                { key: 'kpiServiceCost', label: 'Себестоимость',  ...stTab('kpiServiceCost') },
-                              ],
-                              onToggleAll: nv => { if (!form.isAdmin) setForm({...form, statisticsTabs: {...st, kpiGeneral: nv, kpiPatients: nv, kpiMargin: nv, kpiEfficiency: nv, kpiRooms: nv, kpiReputation: nv, kpiUtilities: nv, kpiConsumables: nv, kpiServiceCost: nv}}); },
+                          // Подгруппы и их вкладки — из каталога: «включить все»
+                          // раньше перечисляло ключи ещё раз, и добавленная
+                          // вкладка в этот перечень не попадала.
+                          items: STATISTICS_NODES.map(sub => ({
+                            isSubGroup: true,
+                            key: sub.id,
+                            expandKey: sub.expandKey,
+                            label: sub.label,
+                            items: sub.items.map(leaf => ({
+                              key: leaf.key, label: leaf.label, ...stTab(leaf.key),
+                            })),
+                            onToggleAll: nv => {
+                              if (form.isAdmin) return;
+                              setForm(f => {
+                                const tabs = { ...(f.statisticsTabs || {}) };
+                                for (const key of nodeKeys(sub.items)) tabs[key] = nv;
+                                return { ...f, statisticsTabs: tabs };
+                              });
                             },
-                            { isSubGroup: true, key: 'directories', expandKey: 'statistics_directories', label: 'Справочники',
-                              items: [
-                                { key: 'dirClinics',     label: 'Филиалы',      ...stTab('dirClinics') },
-                                { key: 'dirCabinets',    label: 'Кабинеты',     ...stTab('dirCabinets') },
-                                { key: 'dirDoctors',     label: 'Врачи',        ...stTab('dirDoctors') },
-                                { key: 'dirEquipment',   label: 'Оборудование', ...stTab('dirEquipment') },
-                                { key: 'dirUtilities',   label: 'Коммунальные', ...stTab('dirUtilities') },
-                                { key: 'dirConsumables', label: 'Расходники',   ...stTab('dirConsumables') },
-                                { key: 'dirMarketing',   label: 'Маркетинг',    ...stTab('dirMarketing') },
-                              ],
-                              onToggleAll: nv => { if (!form.isAdmin) setForm({...form, statisticsTabs: {...st, dirClinics: nv, dirCabinets: nv, dirDoctors: nv, dirEquipment: nv, dirUtilities: nv, dirConsumables: nv, dirMarketing: nv}}); },
-                            },
-                            { isSubGroup: true, key: 'services', expandKey: 'statistics_services', label: 'Услуги',
-                              items: [
-                                { key: 'svcServices',        label: 'Услуги',             ...stTab('svcServices') },
-                                { key: 'svcPartnerServices', label: 'Услуги партнёров',   ...stTab('svcPartnerServices') },
-                              ],
-                              onToggleAll: nv => { if (!form.isAdmin) setForm({...form, statisticsTabs: {...st, svcServices: nv, svcPartnerServices: nv}}); },
-                            },
-                          ],
+                          })),
                         },
                       ];
                     })()
@@ -1742,11 +1731,29 @@ export default function AdminUsers() {
                                     </div>
                                   );
                                 })
-                              : group.items.map(({ key, label, checked, onChange }) => (
-                                  <div key={key} className="perm-tree-item" onClick={() => onChange(!checked)}>
-                                    <span className="perm-tree-item-label">{label}</span>
-                                    <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                                  </div>
+                              /* Группа без родительского тумблера — «Админка»,
+                                 «Модули», «Маркетинг». Пункты у них бывают двух
+                                 видов, и до 8.31 эта ветка знала только один:
+                                 обычный да/нет. Трёхпозиционные пункты маркетинга
+                                 попадали в тот же тумблер, у которого нет ни
+                                 checked, ни onChange, — он всегда выглядел
+                                 выключенным, а нажатие на него не делало ничего.
+                                 Задать уровень можно было только тумблером всей
+                                 группы, то есть «все три вкладки на правку» или
+                                 «ни одной»: акции, карта и рассылки открывались
+                                 и закрывались вместе. */
+                              : group.items.map(item => (
+                                  item.permVal !== undefined ? (
+                                    <div key={item.key} className="perm-tree-item">
+                                      <span className="perm-tree-item-label">{item.label}</span>
+                                      <PermControl value={item.permVal} onChange={item.onPermChange} disabled={form.isAdmin} />
+                                    </div>
+                                  ) : (
+                                    <div key={item.key} className="perm-tree-item" onClick={() => item.onChange(!item.checked)}>
+                                      <span className="perm-tree-item-label">{item.label}</span>
+                                      <span className={`admin-toggle-track${item.checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                                    </div>
+                                  )
                                 ))
                             }
                           </div>

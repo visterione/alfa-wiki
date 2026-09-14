@@ -55,7 +55,7 @@ function StatusBadge({ status }) {
 
 // ══ Список ════════════════════════════════════════════════════════════════
 
-function BroadcastList({ items, selectedId, onSelect, onCreate, templateMode, onMode }) {
+function BroadcastList({ items, selectedId, onSelect, onCreate, templateMode, onMode, canEdit }) {
   return (
     <aside className="brc-list">
       {/* Переключатель набора — заголовок колонки, а не третий ряд вкладок над
@@ -79,9 +79,11 @@ function BroadcastList({ items, selectedId, onSelect, onCreate, templateMode, on
         </button>
       </nav>
 
-      <button className="ola-btn primary brc-new" onClick={onCreate}>
-        <Plus size={14} /> {templateMode ? 'Новый шаблон' : 'Новая рассылка'}
-      </button>
+      {canEdit && (
+        <button className="ola-btn primary brc-new" onClick={onCreate}>
+          <Plus size={14} /> {templateMode ? 'Новый шаблон' : 'Новая рассылка'}
+        </button>
+      )}
 
       {!items && <div className="ola-loading brc-loading">Загрузка…</div>}
 
@@ -148,7 +150,7 @@ function DeliveryIssues({ issues = [] }) {
 
 // ══ Редактор ══════════════════════════════════════════════════════════════
 
-function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
+function Editor({ broadcast, sources, onSaved, onDeleted, onCopied, canEdit }) {
   const [draft, setDraft] = useState(broadcast);
   const [audience, setAudience] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -188,7 +190,13 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
     setTested(false);
   }, [broadcast.id]);
 
-  const editable = draft.status === 'draft';
+  // Правится черновик — и только тем, у кого на анонсы уровень «редактирование»
+  // (ver. 8.31). Раньше этой вкладке уровень не передавался вовсе: регистратор с
+  // правом смотреть анонсы видел кнопку «Разослать» и полный редактор рядом с
+  // ней. Сервер такую отправку отбивал 403, но узнать об этом можно было только
+  // нажав кнопку — а нажимают её по написанному на ней, и написано на ней было
+  // «Разослать сейчас — 4128».
+  const editable = canEdit && draft.status === 'draft';
   const isTemplate = Boolean(draft.isTemplate);
   const centerIds = useMemo(() => draft.medCenterIds || [], [draft.medCenterIds]);
 
@@ -483,7 +491,7 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
         </div>
       </div>
 
-      {isTemplate && (
+      {isTemplate && canEdit && (
         <div className="ola-card">
           <div className="ola-card-body">
             <button className="ola-btn primary" disabled={!ready || busy} onClick={() => copy(false)}>
@@ -540,13 +548,16 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
           {draft.counts?.total > 0 && <Progress counts={draft.counts} />}
           <DeliveryIssues issues={draft.issues} />
 
-          {draft.status === 'sending' && (
+          {/* Остановить, продолжить, снять с планирования, повторить — это
+              распоряжения о том, что уйдёт людям, а не чтение. Читателю их не
+              показываем; ход рассылки и причины недоставки выше он видит. */}
+          {canEdit && draft.status === 'sending' && (
             <button className="ola-btn danger" disabled={busy} onClick={pause}>
               <Pause size={14} /> Остановить
             </button>
           )}
 
-          {draft.status === 'paused' && (
+          {canEdit && draft.status === 'paused' && (
             <button className="ola-btn primary" disabled={busy} onClick={start}>
               <Play size={14} /> Продолжить
             </button>
@@ -555,11 +566,11 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
           {draft.status === 'scheduled' && (
             <div className="brc-scheduled">
               <span><CalendarClock size={16} /> Отправка {formatMoscowDateTime(draft.scheduledAt)} МСК</span>
-              <button className="ola-btn danger" disabled={busy} onClick={unschedule}>Отменить</button>
+              {canEdit && <button className="ola-btn danger" disabled={busy} onClick={unschedule}>Отменить</button>}
             </div>
           )}
 
-          {['done', 'failed'].includes(draft.status) && (
+          {canEdit && ['done', 'failed'].includes(draft.status) && (
             <div className="ola-row">
               <button className="ola-btn primary" disabled={busy} onClick={() => copy(false)}><Copy size={14} /> Повторить</button>
               <button className="ola-btn" disabled={busy} onClick={() => copy(true)}><Bookmark size={14} /> Сохранить как шаблон</button>
@@ -608,7 +619,8 @@ function Editor({ broadcast, sources, onSaved, onDeleted, onCopied }) {
 
 // ══ Вкладка ═══════════════════════════════════════════════════════════════
 
-export default function BroadcastsTab() {
+export default function BroadcastsTab({ level = 'read' }) {
+  const canEdit = level === 'edit';
   const [items, setItems] = useState(null);
   const [sources, setSources] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -661,6 +673,7 @@ export default function BroadcastsTab() {
         onCreate={create}
         templateMode={mode === 'templates'}
         onMode={next => { if (next !== mode) { setMode(next); setItems(null); } }}
+        canEdit={canEdit}
       />
       {/* На время запроса вкладка больше не сменяется строкой «Загрузка…»
           целиком: переключатель наборов теперь живёт в колонке списка, и вместе
@@ -672,6 +685,7 @@ export default function BroadcastsTab() {
               key={selected.id}
               broadcast={selected}
               sources={sources}
+              canEdit={canEdit}
               onSaved={(id) => load(id)}
               onDeleted={() => load()}
               onCopied={(id, asTemplate) => {

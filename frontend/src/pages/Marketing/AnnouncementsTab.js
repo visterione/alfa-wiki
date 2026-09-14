@@ -113,7 +113,9 @@ export default function AnnouncementsTab({ level }) {
           <Mail size={15} /> Почта
         </button>
       </nav>
-      {channel === 'bots' ? <BroadcastsTab /> : <EmailAnnouncements canEdit={level === 'edit'} />}
+      {channel === 'bots'
+        ? <BroadcastsTab level={level} />
+        : <EmailAnnouncements canEdit={level === 'edit'} />}
     </div>
   );
 }
