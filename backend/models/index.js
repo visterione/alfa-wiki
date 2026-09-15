@@ -3769,6 +3769,11 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   // Отзыв по каждому визиту или один раз за день, после последнего.
   frequency: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'each' },
   withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Кнопка «Отменить запись» рядом с подтверждением (ver. 8.33). Отдельным
+  // признаком, а не третьим значением withConfirm: отмена без подтверждения
+  // тоже осмысленна, а главное — старое поле продолжает означать ровно то, что
+  // означало, и отправщик со старой логикой от новой галки не изменится.
+  withCancel: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, { tableName: 'notif_templates', timestamps: true });
 
@@ -3821,6 +3826,10 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   // текст, который был обещан на момент записи.
   channelTexts: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
   withConfirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Снимок настройки шаблона на момент заведения события — по той же причине,
+  // что и тексты выше: между заведением и отправкой проходят часы, и галку за
+  // это время могут снять. Кнопка должна соответствовать обещанному тексту.
+  withCancel: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   // Видно, что сообщение не потерялось, а ждёт конца тихих часов.
   postponedFrom: { type: DataTypes.DATE, allowNull: true, field: 'postponed_from' },
   plannedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'planned_at' },

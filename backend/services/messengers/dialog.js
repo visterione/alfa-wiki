@@ -332,10 +332,14 @@ async function handleText(channel, bot, update) {
 }
 
 
+// Как канал называется по-человечески: строка уходит в комментарий к отмене в
+// МИС, и «telegram» в карточке визита читалось бы как служебная запись.
+const PLATFORM_TITLES = { telegram: 'Telegram-бота', max: 'MAX-бота' };
+
 /**
- * Нажатие кнопки под сообщением бота. Их три: «Подтверждаю» под записью и
- * напоминанием, оценка работы после закрытия обращения и отказ от рассылок под
- * рекламным анонсом.
+ * Нажатие кнопки под сообщением бота. Их четыре: «Подтверждаю» и «Отменить
+ * запись» под записью и напоминанием, оценка работы после закрытия обращения и
+ * отказ от рассылок под рекламным анонсом.
  */
 async function handleButton(channel, bot, update) {
   const [action, value, extra] = String(update.data || '').split(':');
@@ -370,21 +374,99 @@ async function handleButton(channel, bot, update) {
     return null;
   }
 
-  if (action !== 'confirm' || !value) {
+  if ((action !== 'confirm' && action !== 'cancel') || !value) {
     return channel.answerCallback(bot, update.callbackId);
   }
 
+  return action === 'confirm'
+    ? confirmVisit(channel, bot, update, value)
+    : cancelVisit(channel, bot, update, value);
+}
+
+/**
+ * Снимает кнопки у напоминания после того, как по нему нажали (ver. 8.33).
+ *
+ * Действие однократное по смыслу: подтвердить дважды нельзя, а отменить дважды
+ * — тем более. Кнопка, оставшаяся висеть, обещает обратное и рано или поздно
+ * будет нажата по визиту, которого уже нет.
+ *
+ * Молча переживаем неудачу: к этому моменту в МИС уже записано, и оставить
+ * человека без ответа из-за неубранной клавиатуры было бы хуже.
+ */
+async function dropButtons(channel, bot, update) {
   try {
-    const ok = await misClient.confirmAppointment(value);
-    console.log(`[dialog] подтверждение визита ${value}: ${ok ? 'принято МИС' : 'МИС отказала'}`);
+    await channel.removeButtons(bot, update.chatId, update.externalMessageId, update.messageText);
+  } catch (err) {
+    console.warn('[dialog] снятие кнопок:', err.message);
+  }
+}
+
+async function confirmVisit(channel, bot, update, apptId) {
+  try {
+    const ok = await misClient.confirmAppointment(apptId);
+    console.log(`[dialog] подтверждение визита ${apptId}: ${ok ? 'принято МИС' : 'МИС отказала'}`);
     // Ответ на кнопку живёт секунды — сначала гасим часики, потом пишем в чат.
     await channel.answerCallback(bot, update.callbackId, ok ? 'Спасибо, визит подтверждён' : 'Не получилось, попробуйте позже');
+    if (ok) await dropButtons(channel, bot, update);
     await channel.sendText(bot, update.chatId, ok
       ? 'Спасибо! Визит подтверждён, ждём вас.'
       : 'Не удалось отметить подтверждение. Мы всё равно вас ждём — при необходимости позвоните нам.');
   } catch (err) {
-    console.error(`[dialog] подтверждение визита ${value}:`, err.message);
+    console.error(`[dialog] подтверждение визита ${apptId}:`, err.message);
     await channel.answerCallback(bot, update.callbackId, 'Не получилось, попробуйте позже');
+  }
+}
+
+/**
+ * Отмена визита пациентом (ver. 8.33).
+ *
+ * Переспроса «вы уверены» здесь намеренно нет — так решил заказчик. Поэтому
+ * защита ровно одна: спрашиваем у МИС, что с визитом сейчас. Напоминание
+ * приходит за сутки, кнопка под ним живёт вечно, и «Отменить», нажатая после
+ * приёма, отменяла бы состоявшийся визит.
+ *
+ * Если статус узнать не удалось — отменяем всё равно. Проверка здесь помощник,
+ * а не пропуск: человек нажал кнопку осознанно, и молчание в ответ на явное
+ * действие хуже, чем редкая отмена задним числом.
+ */
+async function cancelVisit(channel, bot, update, apptId) {
+  try {
+    let current = null;
+    try {
+      current = await misClient.checkAppointmentStatus(apptId);
+    } catch (err) {
+      console.warn(`[dialog] статус визита ${apptId} узнать не удалось:`, err.message);
+    }
+
+    if (current && current.status && current.status !== 'upcoming') {
+      const why = current.status === 'completed'
+        ? 'Этот визит уже состоялся, отменять нечего.'
+        : 'Эта запись уже отменена.';
+      console.log(`[dialog] отмена визита ${apptId} не нужна: статус ${current.status}`);
+      await channel.answerCallback(bot, update.callbackId, 'Запись уже неактуальна');
+      await dropButtons(channel, bot, update);
+      await channel.sendText(bot, update.chatId,
+        `${why}\n\nЕсли нужна новая запись — напишите сюда, поможем подобрать время.`);
+      return;
+    }
+
+    // Комментарий уходит в карточку визита: администратор видит сам факт отмены
+    // и не видит, чьих она рук. Без этой строки отмена пациентом неотличима от
+    // отмены, сделанной кем-то из своих.
+    const comment = `Отменено пациентом кнопкой из ${PLATFORM_TITLES[bot.platform] || bot.platform}`;
+    const ok = await misClient.cancelAppointment(apptId, comment);
+    console.log(`[dialog] отмена визита ${apptId}: ${ok ? 'принята МИС' : 'МИС отказала'}`);
+
+    await channel.answerCallback(bot, update.callbackId, ok ? 'Запись отменена' : 'Не получилось, попробуйте позже');
+    if (ok) await dropButtons(channel, bot, update);
+    await channel.sendText(bot, update.chatId, ok
+      ? 'Запись отменена. Если захотите записаться на другое время — напишите сюда, подберём.'
+      : 'Не удалось отменить запись. Пожалуйста, позвоните нам — администратор отменит её вручную.');
+  } catch (err) {
+    console.error(`[dialog] отмена визита ${apptId}:`, err.message);
+    await channel.answerCallback(bot, update.callbackId, 'Не получилось, попробуйте позже');
+    await channel.sendText(bot, update.chatId,
+      'Не удалось отменить запись. Пожалуйста, позвоните нам — администратор отменит её вручную.');
   }
 }
 

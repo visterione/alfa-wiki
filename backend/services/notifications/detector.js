@@ -305,6 +305,7 @@ async function enqueue(found, snap, allow = () => true) {
         smsText: item.smsText || null,
         channelTexts: item.channelTexts || {},
         withConfirm: item.withConfirm,
+        withCancel: item.withCancel,
         plannedAt: item.plannedAt || new Date()
       });
       added++;

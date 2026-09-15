@@ -244,6 +244,35 @@ async function answerCallback(bot, callbackId, text) {
   }
 }
 
+/**
+ * Убирает кнопки у уже отправленного сообщения (ver. 8.33).
+ *
+ * Нужно после того, как человек нажал «Подтверждаю» или «Отменить запись»:
+ * inline-кнопка под сообщением живёт вечно, а напоминание приходит за сутки до
+ * приёма. Без снятия человек может пролистать переписку через неделю и нажать
+ * отмену по визиту, который давно состоялся.
+ *
+ * Правим только клавиатуру, а не текст: editMessageText потребовал бы отправить
+ * текст заново, а Telegram отдаёт его в обновлении без разметки — сообщение с
+ * HTML внутри после такой правки развалилось бы.
+ */
+async function removeButtons(bot, chatId, messageId) {
+  if (!chatId || !messageId) return false;
+  try {
+    await call(bot.token, 'editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: Number(messageId),
+      reply_markup: { inline_keyboard: [] }
+    });
+    return true;
+  } catch (err) {
+    // Сообщение могли удалить, а Telegram запрещает правку старше двух суток.
+    // Само действие к этому моменту уже выполнено — падать здесь нечего.
+    console.warn('[telegram] снятие кнопок:', err.message);
+    return false;
+  }
+}
+
 // ── Разбор входящего ──────────────────────────────────────────────────────
 
 /**
@@ -326,6 +355,10 @@ function parseUpdate(update) {
       chatId: String(q.message.chat.id),
       externalUserId: String(q.from.id),
       externalMessageId: q.message ? String(q.message.message_id) : null,
+      // Текст сообщения с кнопкой нужен MAX, чтобы их снять; у Telegram правка
+      // клавиатуры текста не требует. Отдаём одинаково, чтобы вызывающий код не
+      // знал, какому каналу что нужно.
+      messageText: q.message ? (q.message.text || '') : '',
       from: {
         username: q.from.username || null,
         firstName: q.from.first_name || null,
@@ -423,6 +456,7 @@ module.exports = {
   sendPhoto,
   sendDocument,
   answerCallback,
+  removeButtons,
   parseUpdate,
   previewSize,
   getMe,

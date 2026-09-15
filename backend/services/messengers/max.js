@@ -232,6 +232,33 @@ async function answerCallback(bot, callbackId, text) {
   }
 }
 
+/**
+ * Убирает кнопки у уже отправленного сообщения (ver. 8.33). Зачем это нужно —
+ * см. такую же функцию в telegram.js.
+ *
+ * В MAX правка устроена иначе: отдельного метода для клавиатуры нет, правится
+ * сообщение целиком, и текст приходится отправлять заново. Поэтому он и берётся
+ * из самого обновления — своей копии отправленного текста у нас нет, а собрать
+ * его заново из шаблона нельзя: подстановки к этому времени уже другие.
+ *
+ * Пустой текст означал бы стирание сообщения, поэтому без него не трогаем
+ * ничего: кнопка, оставшаяся на месте, лучше, чем напоминание, превращённое в
+ * пустую строку.
+ */
+async function removeButtons(bot, chatId, messageId, text) {
+  if (!messageId || !text) return false;
+  try {
+    await call(bot.token, 'PUT', '/messages', {
+      params: { message_id: String(messageId) },
+      body: { text, attachments: [] }
+    });
+    return true;
+  } catch (err) {
+    console.warn('[max] снятие кнопок:', err.message);
+    return false;
+  }
+}
+
 // ── Разбор входящего ──────────────────────────────────────────────────────
 
 /**
@@ -318,13 +345,18 @@ function parseUpdate(update) {
 
   if (type === 'message_callback' && update.callback) {
     const userId = String((update.callback.user && update.callback.user.user_id) || '');
+    // Сообщение с кнопкой приезжает вместе с нажатием — из него берём mid и
+    // текст, чтобы потом снять кнопки (ver. 8.33). До этого поле оставляли
+    // пустым: идентификатор был не нужен, пока сообщения не правили.
+    const body = (update.message && update.message.body) || {};
     return {
       type: 'button',
       callbackId: update.callback.callback_id,
       data: update.callback.payload,
       chatId: userId,
       externalUserId: userId,
-      externalMessageId: null,
+      externalMessageId: body.mid ? String(body.mid) : null,
+      messageText: body.text || '',
       from: senderOf(update.callback.user)
     };
   }
@@ -413,6 +445,7 @@ module.exports = {
   sendPhoto,
   sendDocument,
   answerCallback,
+  removeButtons,
   parseUpdate,
   getMe,
   getUpdates,

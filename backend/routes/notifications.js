@@ -260,7 +260,7 @@ router.get('/templates', authenticate, requireAdmin, async (req, res) => {
 
 router.post('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { event, text, smsText, channelTexts, medCenterId, beforeMinutes, withConfirm } = req.body || {};
+    const { event, text, smsText, channelTexts, medCenterId, beforeMinutes, withConfirm, withCancel } = req.body || {};
     if (!EVENTS.includes(event)) return res.status(400).json({ error: 'Неизвестное событие' });
     if (!medCenterId) return res.status(400).json({ error: 'Нужно выбрать филиал' });
 
@@ -285,7 +285,8 @@ router.post('/templates', authenticate, requireAdmin, async (req, res) => {
       channelTexts: cleanChannelTexts,
       medCenterId,
       beforeMinutes: event === 'reminder' ? (Number(beforeMinutes) || 1440) : null,
-      withConfirm: !!withConfirm
+      withConfirm: !!withConfirm,
+      withCancel: !!withConfirm && !!withCancel
     });
     res.status(201).json(row);
   } catch (err) {
@@ -303,7 +304,7 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
     }
 
     const { text, smsText, channelTexts, cascade, beforeMinutes, afterMinutes,
-            frequency, withConfirm, isActive } = req.body || {};
+            frequency, withConfirm, withCancel, isActive } = req.body || {};
 
     // Тексты каналов (ver. 8.03). Пустые ключи выбрасываем, а не храним пустыми
     // строками: «нет своего текста» и «текст из одного пробела» — разные вещи,
@@ -316,6 +317,8 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
         if (value) nextChannelTexts[channel] = value;
       }
     }
+
+    const nextConfirm = withConfirm !== undefined ? !!withConfirm : row.withConfirm;
 
     await row.update({
       text: text !== undefined ? String(text).trim() : row.text,
@@ -333,7 +336,11 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
         ? (['each', 'daily'].includes(frequency) ? frequency : row.frequency) : row.frequency,
       beforeMinutes: row.event === 'reminder' && beforeMinutes !== undefined
         ? (Number(beforeMinutes) || null) : row.beforeMinutes,
-      withConfirm: withConfirm !== undefined ? !!withConfirm : row.withConfirm,
+      withConfirm: nextConfirm,
+      // Отмена без подтверждения не бывает: под напоминанием осталась бы одна
+      // кнопка отказа. Сторожим это здесь, а не только галкой в интерфейсе, —
+      // шаблон правится и запросом, а последствие тут отправляется людям.
+      withCancel: nextConfirm && (withCancel !== undefined ? !!withCancel : row.withCancel),
       isActive: isActive !== undefined ? !!isActive : row.isActive
     });
     res.json(row);

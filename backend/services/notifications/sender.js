@@ -304,9 +304,13 @@ async function deliver(item, clinicId = null, medCenterId = null) {
 
       try {
         const channel = getChannel(platform);
-        const options = item.withConfirm && item.apptId
-          ? { buttons: [[{ text: '✅ Подтверждаю', data: `confirm:${item.apptId}` }]] }
-          : {};
+        // Отмена — отдельным рядом, а не рядом с подтверждением (ver. 8.33).
+        // Переспрашивать «вы уверены» заказчик не захотел, поэтому промах
+        // пальцем по соседней кнопке отменяет визит сразу, без второго шага.
+        const buttons = [];
+        if (item.withConfirm && item.apptId) buttons.push([{ text: '✅ Подтверждаю', data: `confirm:${item.apptId}` }]);
+        if (item.withCancel && item.apptId) buttons.push([{ text: '✖️ Отменить запись', data: `cancel:${item.apptId}` }]);
+        const options = buttons.length ? { buttons } : {};
         await channel.sendText(found.bot, found.subscriber.externalUserId, body, options);
         return item.update({ status: 'sent', channel: platform, sentAt: new Date(), error: null });
       } catch (err) {

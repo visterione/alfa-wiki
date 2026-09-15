@@ -198,7 +198,7 @@ function templatesForEvent(all, event, medCenterId) {
  *   Спрашивается именно каждое, а не событие целиком: филиал вправе получать
  *   запись вебхуком, а напоминания по ней по-прежнему ставить у себя.
  *
- * @returns {Promise<Array<{text, withConfirm, plannedAt?, dedupKey?}>>}
+ * @returns {Promise<Array<{text, withConfirm, withCancel, plannedAt?, dedupKey?}>>}
  *   Обычно одна строка. У записи их может быть несколько: само уведомление и
  *   напоминания, у каждого свой момент отправки.
  */
@@ -229,6 +229,7 @@ async function build(event, snap, found = {}, { allow = () => true } = {}) {
       // Свой каскад события; пусто — идти общим (ver. 8.03).
       cascade: Array.isArray(template.cascade) && template.cascade.length ? template.cascade : null,
       withConfirm: template.withConfirm,
+      withCancel: template.withCancel,
       template
     });
   }
@@ -278,6 +279,7 @@ async function build(event, snap, found = {}, { allow = () => true } = {}) {
         smsText: template.smsText ? render(template.smsText, values) : null,
         channelTexts,
         withConfirm: template.withConfirm,
+      withCancel: template.withCancel,
         plannedAt,
         dedupKey: `${snap.apptId}:reminder:${template.beforeMinutes}:${snap.timeStart.toISOString()}`
       });

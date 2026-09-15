@@ -122,6 +122,22 @@ async function createPatient(p) {
 }
 
 /**
+ * Чем мы представляемся МИС. Одно значение на все методы записи: различать
+ * источники по филиалам и каналам заказчик решил не заводить, пока не проверено,
+ * не перезаписывает ли source исходную атрибуцию визита.
+ */
+const confirmSource = () => process.env.MIS_CONFIRM_SOURCE || 'Альфа-Вики';
+
+/**
+ * МИС на успешную запись отвечает true, но в зависимости от метода — то булевым,
+ * то строкой, то единицей, то всё это внутри { data }.
+ */
+function acceptedByMis(res) {
+  const value = res && typeof res === 'object' && 'data' in res ? res.data : res;
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+/**
  * Добавляет категорию пациенту. МИС возвращает true при успехе.
  */
 async function addPatientCategory(patientId, categoryId) {
@@ -129,8 +145,7 @@ async function addPatientCategory(patientId, categoryId) {
     patient_id: patientId,
     category_id: categoryId
   });
-  const value = res && typeof res === 'object' && 'data' in res ? res.data : res;
-  return value === true || value === 'true' || value === 1 || value === '1';
+  return acceptedByMis(res);
 }
 
 /**
@@ -145,10 +160,58 @@ async function confirmAppointment(appointmentId, confirmStatus = 1) {
   const res = await misRequest('confirmAppointment', {
     appointment_id: appointmentId,
     confirm_status: confirmStatus,
-    source: process.env.MIS_CONFIRM_SOURCE || 'Альфа-Вики'
+    source: confirmSource()
   });
-  const value = res && typeof res === 'object' && 'data' in res ? res.data : res;
-  return value === true || value === 'true' || value === 1 || value === '1';
+  return acceptedByMis(res);
+}
+
+/**
+ * Отмена визита пациентом (ver. 8.33). Второй — и последний — метод, которым мы
+ * пишем в МИС по уведомлениям.
+ *
+ * Комментарий не обязателен по документации, но обязателен по смыслу: в карточке
+ * администратор видит сам факт отмены и не видит, чьих он рук. Без пояснения
+ * отмена, сделанная пациентом из бота, выглядит как отмена, сделанная кем-то из
+ * своих, и разбираться в этом приходится звонком.
+ *
+ * is_handled намеренно не передаём. Отменённый визит должен остаться
+ * необработанным и попасть колл-центру на перезвон: переспрашивать «вы уверены»
+ * мы не стали сознательно, и звонок — единственное, что возвращает приём,
+ * отменённый по ошибке.
+ */
+async function cancelAppointment(appointmentId, comment = null) {
+  const params = {
+    appointment_id: appointmentId,
+    source: confirmSource()
+  };
+  if (comment) params.comment = comment;
+
+  const res = await misRequest('cancelAppointment', params);
+  return acceptedByMis(res);
+}
+
+/**
+ * Статус визита: upcoming (предстоящий), completed (завершён), refused (отменён).
+ *
+ * Спрашивается перед отменой по кнопке (ver. 8.33). Кнопка под сообщением живёт
+ * вечно, а напоминание приходит за сутки до приёма — нажать «Отменить» можно и
+ * назавтра после визита, пролистав переписку. Один запрос здесь дешевле, чем
+ * потом объяснять, почему состоявшийся приём числится отменённым.
+ *
+ * Метод принимает несколько идентификаторов через запятую, и на один отвечает
+ * то массивом, то объектом — разбираем оба вида. Угадывать форму ответа по
+ * одному удачному запросу мы в этом API уже пробовали.
+ */
+async function checkAppointmentStatus(appointmentId) {
+  const res = await misRequest('checkAppointmentStatus', { appointment_id: appointmentId });
+  const data = res && typeof res === 'object' && 'data' in res ? res.data : res;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return null;
+
+  return {
+    status: row.status || null,
+    isMoved: row.is_moved === true || row.is_moved === 'true'
+  };
 }
 
 module.exports = {
@@ -160,6 +223,8 @@ module.exports = {
   createPatient,
   addPatientCategory,
   confirmAppointment,
+  cancelAppointment,
+  checkAppointmentStatus,
   MIS_API_KEY,
   MIS_BASE_URL
 };

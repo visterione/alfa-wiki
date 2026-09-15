@@ -556,16 +556,29 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
 
         <Switch
           checked={template.isActive}
-          onChange={v => onToggle(template, 'isActive', v)}
+          onChange={v => onToggle(template, { isActive: v })}
           label={template.isActive ? 'Выключить событие' : 'Включить событие'}
         />
       </header>
 
       <div className="ola-card-body">
         <div className="ola-event-options">
-          <Check1 checked={template.withConfirm} onChange={v => onToggle(template, 'withConfirm', v)}>
+          {/* Снятое подтверждение снимает и отмену: иначе под напоминанием
+              осталась бы одна кнопка отказа — предложение отменить визит без
+              возможности его подтвердить. */}
+          <Check1
+            checked={template.withConfirm}
+            onChange={v => onToggle(template, v ? { withConfirm: true } : { withConfirm: false, withCancel: false })}
+          >
             Добавлять кнопку «Подтверждаю»
           </Check1>
+
+          {/* Отмена показывается только вместе с подтверждением (ver. 8.33). */}
+          {template.withConfirm && (
+            <Check1 checked={template.withCancel} onChange={v => onToggle(template, { withCancel: v })}>
+              И кнопку «Отменить запись»
+            </Check1>
+          )}
 
           <EventSource
             event={template.event}
@@ -879,9 +892,9 @@ function TemplatesTab({ data, steps, reload, selected }) {
     }
   };
 
-  const toggle = async (t, field, value) => {
+  const toggle = async (t, patch) => {
     try {
-      await notifApi.updateTemplate(t.id, { [field]: value });
+      await notifApi.updateTemplate(t.id, patch);
       reload();
     } catch {
       toast.error('Не удалось изменить');

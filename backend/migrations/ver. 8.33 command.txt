@@ -1,0 +1,2 @@
+cd backend && npm run migrate:8.33:check   # посмотреть, чего ещё нет
+cd backend && npm run migrate:8.33         # применить
