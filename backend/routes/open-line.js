@@ -9,8 +9,9 @@
 
 const express = require('express');
 const multer = require('multer');
+const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { OmniLine, OmniLineOperator, MessengerBot, MedCenter, User, OmniQuickReply } = require('../models');
+const { sequelize, OmniLine, OmniLineOperator, OmniConversation, OmniShift, MessengerBot, MedCenter, User, OmniQuickReply } = require('../models');
 const openLine = require('../services/openLine');
 const fileAccess = require('../services/fileAccess');
 const openLineFiles = require('../services/openLineFiles');
@@ -397,7 +398,27 @@ router.get('/lines', authenticate, requireAdmin, async (req, res) => {
     const bots = await MessengerBot.findAll({ attributes: ['id', 'platform', 'username', 'organization', 'lineId'] });
     // Справочник медцентров — для выбора при создании линии.
     const medCenters = await MedCenter.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] });
-    res.json({ lines, bots, medCenters });
+
+    // Кто из состава вообще видит раздел (ver. 8.33). Состав линии даёт право
+    // отвечать, но не открывает сам модуль: это отдельный флаг, и человек,
+    // заведённый в линию без него, обращений не увидит и о своей роли не
+    // узнает. Молча такое расхождение жить не должно — отдаём признак, чтобы
+    // администратор видел его прямо в составе.
+    const eligible = await User.findAll({
+      attributes: ['id'],
+      where: { [Op.or]: [{ isAdmin: true }, sequelize.literal(`"adminAccess"->>'openLine' = 'true'`)] }
+    });
+    const canOpen = new Set(eligible.map(u => u.id));
+
+    res.json({
+      lines: lines.map(line => {
+        const plain = line.toJSON();
+        plain.operators = (plain.operators || []).map(o => ({ ...o, hasAccess: canOpen.has(o.userId) }));
+        return plain;
+      }),
+      bots,
+      medCenters
+    });
   } catch (err) {
     fail(res, err, 'GET /lines');
   }
@@ -430,6 +451,49 @@ router.put('/lines/:id', authenticate, requireAdmin, async (req, res) => {
     res.json(line);
   } catch (err) {
     fail(res, err, 'PUT /lines/:id');
+  }
+});
+
+/**
+ * Удаление линии (ver. 8.33). До этого линию можно было только выключить, и
+ * выключенные проверочные линии копились в списке навсегда.
+ *
+ * Линию с обращениями не удаляем. За обращением стоит переписка с пациентом,
+ * файлы и закрытые сессии, по которым считается нагрузка и KPI, — всё это
+ * привязано к линии обязательным полем, осиротить его нельзя, а удалять вместе с
+ * линией значит стирать историю разговоров молча, по нажатию одной кнопки.
+ * Выключение для таких линий и остаётся правильным ответом.
+ *
+ * Что уходит вместе с линией: состав и отработанные смены — они без линии
+ * бессмысленны. Боты не удаляются, а отвязываются: бот живёт своей жизнью,
+ * у него свой токен и свои подписчики, и он переставляется на другую линию.
+ */
+router.delete('/lines/:id', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const line = await OmniLine.findByPk(req.params.id);
+    if (!line) return res.status(404).json({ error: 'Линия не найдена' });
+
+    const conversations = await OmniConversation.count({ where: { lineId: line.id } });
+    if (conversations) {
+      // Число отдельно от слова: склонять «обращение» ради одного сообщения —
+      // заводить в проекте помощник, которого больше негде применить.
+      return res.status(409).json({
+        error: `Линия не пуста: обращений — ${conversations}. Вместе с ней удалилась бы ` +
+          'переписка с пациентами. Такую линию можно выключить, но не удалить.'
+      });
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      await MessengerBot.update({ lineId: null }, { where: { lineId: line.id }, transaction });
+      await OmniLineOperator.destroy({ where: { lineId: line.id }, transaction });
+      await OmniShift.destroy({ where: { lineId: line.id }, transaction });
+      await line.destroy({ transaction });
+    });
+
+    console.log(`[open-line] линия «${line.name}» удалена пользователем ${req.user.username}`);
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err, 'DELETE /lines/:id');
   }
 });
 

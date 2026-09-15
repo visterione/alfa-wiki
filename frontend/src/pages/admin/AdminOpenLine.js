@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Headphones, FileText, Radio, ScrollText, Plus, Users, Bot, Save, Power, X,
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
   Star, FlaskConical, Building2, ChevronDown, ChevronLeft, ChevronRight,
-  ShieldCheck, MonitorSmartphone, Copy, RotateCcw
+  ShieldCheck, MonitorSmartphone, Copy, RotateCcw, Trash2, UserPlus
 } from 'lucide-react';
 import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
@@ -176,6 +176,131 @@ function Check1({ checked, onChange, children }) {
   );
 }
 
+/**
+ * Подбор сотрудника в состав линии (ver. 8.33).
+ *
+ * Был выпадающий список на сто с лишним человек — весь штат сети, отсортированный
+ * по имени, по одному добавлению за открытие. Состав колл-центра заводится
+ * десятком людей подряд, и каждого приходилось искать в списке глазами.
+ *
+ * Здесь список сужен дважды. Сначала на сервере: показываем только тех, у кого
+ * есть доступ к разделу, — состав линии даёт право отвечать, но не открывает сам
+ * модуль, и заводить в линию человека, который её не увидит, незачем. Потом
+ * клавиатурой: строка отбирает по имени и логину, стрелки водят по найденному,
+ * Enter добавляет. После добавления окно не закрывается — следующего набирают
+ * сразу, не открывая список заново.
+ */
+function StaffPicker({ candidates, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const boxRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  const found = useMemo(() => {
+    // Отбор по всем словам сразу: «ива пет» находит Петрова Ивана, в каком бы
+    // порядке ни были введены части имени.
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return candidates;
+    return candidates.filter(u => {
+      const haystack = `${u.displayName || ''} ${u.username || ''}`.toLowerCase();
+      return words.every(w => haystack.includes(w));
+    });
+  }, [candidates, query]);
+
+  useEffect(() => { setActive(0); }, [query, candidates.length]);
+
+  useEffect(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
+
+  // Стрелка уводит выделение вниз по списку, а список прокручивается не сам:
+  // после седьмого имени подсвеченная строка оказалась бы за нижним краем, и
+  // клавиатурный выбор шёл бы вслепую.
+  useEffect(() => {
+    const row = listRef.current && listRef.current.children[active];
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+
+  // Закрытие по клику мимо и по Escape. Список живёт внутри карточки линии, и
+  // оставлять его открытым при уходе мышью значило бы держать на экране
+  // выпадающий блок поверх соседней линии.
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  const pick = (user) => {
+    if (!user) return;
+    onPick(user.id);
+    // Строку чистим, окно оставляем открытым: людей заводят подряд.
+    setQuery('');
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, found.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(found[active]); }
+  };
+
+  if (!open) {
+    return (
+      <button className="ola-add" onClick={() => setOpen(true)}>
+        <UserPlus size={13} /> добавить сотрудника
+      </button>
+    );
+  }
+
+  return (
+    <div className="ola-picker ola-search" ref={boxRef}>
+      <Search size={16} />
+      <input
+        ref={inputRef}
+        className="ola-input"
+        placeholder={`Имя или логин (${candidates.length})`}
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onKeyDown={onKeyDown}
+      />
+      <button className="ola-picker-close" type="button" title="Закрыть" onClick={() => setOpen(false)}>
+        <X size={13} />
+      </button>
+
+      <div className="ola-suggestions" ref={listRef}>
+        {found.map((u, i) => (
+          <button
+            key={u.id}
+            type="button"
+            className={i === active ? 'active' : ''}
+            onMouseEnter={() => setActive(i)}
+            onClick={() => pick(u)}
+          >
+            <strong>{u.displayName || u.username}</strong>
+            {u.displayName && u.username && <span>@{u.username}</span>}
+          </button>
+        ))}
+
+        {!found.length && (
+          <div className="ola-suggestions-empty">
+            {candidates.length
+              ? 'Никого не нашли'
+              : 'Ни у кого больше нет доступа к разделу — он выдаётся в «Пользователях»'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ══ Вкладка «Линии» ═══════════════════════════════════════════════════════
 
 function LinesTab({ creating, setCreating }) {
@@ -200,7 +325,11 @@ function LinesTab({ creating, setCreating }) {
     // Список сотрудников нужен только для добавления в состав: грузим один раз
     // и не обновляем, состав правят редко. listBasic доступен любому сотруднику
     // и отдаёт ровно то, что здесь нужно, — имя и идентификатор.
-    usersApi.listBasic()
+    //
+    // Отбор по доступу к разделу (ver. 8.33): состав линии даёт право отвечать,
+    // но сам модуль открывает отдельный флаг. Предлагать весь штат сети — сто с
+    // лишним человек — значит предлагать завести в линию того, кто её не увидит.
+    usersApi.listBasic({ access: 'openLine' })
       .then(({ data }) => setStaff((data.users || data || []).filter(u => u.isActive !== false)))
       .catch(() => {});
   }, []);
@@ -222,6 +351,22 @@ function LinesTab({ creating, setCreating }) {
   };
 
   const update = guard((line, patch) => lineApi.updateLine(line.id, patch), 'Не удалось сохранить');
+
+  /**
+   * Удаление линии (ver. 8.33). Линию с обращениями сервер не отдаёт удалять —
+   * за ней переписка с пациентами; его отказ и показываем, потому что причина в
+   * нём названа точнее, чем можно было бы угадать здесь.
+   */
+  const removeLine = async (line) => {
+    if (!window.confirm(`Удалить линию «${line.name}»? Состав и отработанные смены удалятся вместе с ней, боты отвяжутся.`)) return;
+    try {
+      await lineApi.deleteLine(line.id);
+      toast.success('Линия удалена');
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Не удалось удалить линию');
+    }
+  };
   const addOperator = guard((line, userId) => lineApi.addOperator(line.id, userId), 'Не удалось добавить сотрудника');
   const removeOperator = guard((line, userId) => lineApi.removeOperator(line.id, userId), 'Не удалось убрать сотрудника');
   const setSenior = guard((line, o) => lineApi.setSenior(line.id, o.userId, !o.isSenior), 'Не удалось изменить');
@@ -290,6 +435,9 @@ function LinesTab({ creating, setCreating }) {
               <button className="ola-btn" onClick={() => update(line, { isActive: !line.isActive })}>
                 <Power size={14} /> {line.isActive ? 'Выключить' : 'Включить'}
               </button>
+              <button className="ola-btn danger" title="Удалить линию" onClick={() => removeLine(line)}>
+                <Trash2 size={14} />
+              </button>
             </header>
 
             <div className="ola-card-body">
@@ -325,8 +473,14 @@ function LinesTab({ creating, setCreating }) {
                     и есть то место, где про людей на ней всё и решается. */}
                 <div className="ola-chips">
                   {(line.operators || []).map(o => (
-                    <span key={o.userId} className={`ola-chip ${o.onShift ? 'on-shift' : ''} ${o.isSenior ? 'senior' : ''}`}>
+                    <span key={o.userId} className={`ola-chip ${o.onShift ? 'on-shift' : ''} ${o.isSenior ? 'senior' : ''} ${o.hasAccess === false ? 'no-access' : ''}`}>
                       {o.onShift && <span className="dot" title="На смене" />}
+                      {/* Заведён в линию, но раздел ему не открыт (ver. 8.33):
+                          обращений он не увидит и не узнает, что его сюда
+                          завели. Молча это жить не должно. */}
+                      {o.hasAccess === false && (
+                        <AlertTriangle size={12} className="ola-chip-warn" title="Нет доступа к разделу — линию он не увидит" />
+                      )}
                       {o.user ? (o.user.displayName || o.user.username) : o.userId}
                       <button
                         className={`ola-senior ${o.isSenior ? 'on' : ''}`}
@@ -338,12 +492,10 @@ function LinesTab({ creating, setCreating }) {
                       <button title="Убрать из состава" onClick={() => removeOperator(line, o.userId)}><X size={12} /></button>
                     </span>
                   ))}
-                  <select className="ola-add" value="" onChange={e => e.target.value && addOperator(line, e.target.value)}>
-                    <option value="">+ добавить сотрудника…</option>
-                    {staff.filter(u => !inLine.has(u.id)).map(u => (
-                      <option key={u.id} value={u.id}>{u.displayName || u.username}</option>
-                    ))}
-                  </select>
+                  <StaffPicker
+                    candidates={staff.filter(u => !inLine.has(u.id))}
+                    onPick={userId => addOperator(line, userId)}
+                  />
                 </div>
               </div>
 
@@ -839,7 +991,7 @@ function BlockedDoctorsPanel({ medCenterId, clinicIds }) {
         {draft.length > 0 && <span className="ola-badge">{draft.length}</span>}
       </header>
       <div className="ola-card-body">
-        <div className="ola-doctor-search">
+        <div className="ola-search">
           <Search size={16} />
           <input
             className="ola-input"
@@ -849,7 +1001,7 @@ function BlockedDoctorsPanel({ medCenterId, clinicIds }) {
             onChange={event => setQuery(event.target.value)}
           />
           {suggestions.length > 0 && (
-            <div className="ola-doctor-suggestions">
+            <div className="ola-suggestions">
               {suggestions.map(doctor => (
                 <button key={doctor.id} type="button" onClick={() => add(doctor)}>
                   <strong>{doctor.name}</strong>

@@ -507,7 +507,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   {(isAdmin || user?.adminAccess?.openLineAdmin) && (
                     <Link to="/admin/open-line" className="header-dropdown-item" data-icon-motion="settings" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Radio size={17} /></span>
-                      Открытая линия: настройки
+                      Открытая линия
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.parser) && (

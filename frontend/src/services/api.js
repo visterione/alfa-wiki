@@ -1441,6 +1441,7 @@ export const openLine = {
 
   createLine: (data) => api.post('/open-line/lines', data),
   updateLine: (id, data) => api.put(`/open-line/lines/${id}`, data),
+  deleteLine: (id) => api.delete(`/open-line/lines/${id}`),
   addOperator: (lineId, userId) => api.post(`/open-line/lines/${lineId}/operators`, { userId }),
   removeOperator: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/operators/${userId}`),
   // Старший оператор линии: единственное отличие — ему виден архив обращений.

@@ -557,6 +557,11 @@
   cursor: pointer;
 }
 
+/* Кнопкой этот класс стал в 8.33 (подбор сотрудника разворачивается по нажатию),
+   а селектом остаётся у привязки бота — значок внутри выравниваем только у кнопки,
+   чтобы не трогать select. */
+button.ola-add { display: inline-flex; align-items: center; gap: 6px; }
+
 .ola-add:hover { border-color: var(--accent-400); color: var(--accent-600); }
 .ola-add:focus { outline: none; border-color: var(--accent-500); border-style: solid; }
 
@@ -992,6 +997,9 @@
 .ola-card > header .ola-badge:first-of-type { margin-left: 2px; }
 .ola-card > header > .ola-switch:first-of-type { margin-left: auto; }
 .ola-card > header > .ola-btn { margin-left: auto; }
+/* Вторая кнопка в шапке (удаление линии, ver. 8.33) прижимается к первой, а не
+   отлетает от неё ещё одним «auto». */
+.ola-card > header > .ola-btn + .ola-btn { margin-left: 6px; }
 .ola-card > header > .ola-switch + .ola-switch { margin-left: 4px; }
 
 /* ── Переключатель текстов по каналам ─────────────────────────────────────
@@ -1221,11 +1229,15 @@
    которым узкая колонка выходит боком (ver. 8.31). */
 .ola-doctor-blocklist { margin-bottom: 18px; }
 
-.ola-doctor-search {
+/* Поиск с подсказками. Двое потребителей (ver. 8.33): стоп-лист врачей и подбор
+   сотрудника в состав линии, — поэтому классы общие, а не «докторские». Заводить
+   второй такой же набор под сотрудников значило бы развести два одинаковых
+   списка, которые разойдутся при первой же правке. */
+.ola-search {
   position: relative;
 }
 
-.ola-doctor-search > svg {
+.ola-search > svg {
   position: absolute;
   z-index: 2;
   top: 13px;
@@ -1234,9 +1246,9 @@
   pointer-events: none;
 }
 
-.ola-doctor-search > .ola-input { padding-left: 39px; }
+.ola-search > .ola-input { padding-left: 39px; }
 
-.ola-doctor-suggestions {
+.ola-suggestions {
   position: absolute;
   z-index: 20;
   top: calc(100% + 6px);
@@ -1251,7 +1263,7 @@
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
-.ola-doctor-suggestions button {
+.ola-suggestions button {
   display: flex;
   align-items: baseline;
   gap: 9px;
@@ -1265,9 +1277,9 @@
   cursor: pointer;
 }
 
-.ola-doctor-suggestions button:hover { background: var(--accent-50); }
-.ola-doctor-suggestions strong { font-size: 13px; font-weight: 650; }
-.ola-doctor-suggestions span {
+.ola-suggestions button:hover { background: var(--accent-50); }
+.ola-suggestions strong { font-size: 13px; font-weight: 650; }
+.ola-suggestions span {
   min-width: 0;
   overflow: hidden;
   color: var(--text-secondary);
@@ -1275,6 +1287,58 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Клавиатурный выбор: стрелки водят по списку, и подсвеченная строка должна
+   выглядеть так же, как строка под мышью, — иначе получится два разных языка
+   выделения в одном списке. */
+.ola-suggestions button.active { background: var(--accent-50); }
+
+/* Пустой результат — состояние, а не подсказка: без него непонятно, то ли все
+   уже в составе, то ли доступ к разделу не выдан никому. */
+.ola-suggestions .ola-suggestions-empty {
+  padding: 9px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Подбор сотрудника разворачивается на месте кнопки «добавить» и занимает
+   строку целиком: список имён под узким полем читался бы в две колонки. */
+.ola-picker { position: relative; flex: 1 1 100%; min-width: 220px; }
+
+/* Список разворачивается в потоке, а не поверх содержимого, — в отличие от
+   подсказок у стоп-листа врачей. У карточки линии overflow: hidden, и всплывающий
+   список обрезало бы её нижней границей: в стоп-листе под полем поиска полкарточки
+   свободного места, а состав линии стоит посередине. Карточка раздвигается — и
+   схлопывается обратно, когда подбор закрывают. */
+.ola-picker .ola-suggestions {
+  position: static;
+  max-height: 264px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+
+.ola-picker .ola-input { padding-right: 34px; }
+
+.ola-picker-close {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  right: 8px;
+  display: inline-flex;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.ola-picker-close:hover { background: var(--n-100); color: var(--text-primary); }
+
+/* Заведён в линию, но раздела не видит: обращения ему не придут. Рамка, а не
+   подпись, — в строке состава и так тесно, объяснение висит подсказкой. */
+.ola-chip.no-access { border-color: var(--amber-300); }
+.ola-chip .ola-chip-warn { color: var(--amber-500); flex-shrink: 0; }
 
 .ola-blocked-doctors { margin-top: 12px; }
 
@@ -1763,5 +1827,5 @@
   .ola-template-scope { width: 100%; box-sizing: border-box; }
   .ola-template-scope .ola-select { flex: 1; min-width: 0; }
   .ola-placeholder-groups { grid-template-columns: 1fr; }
-  .ola-doctor-suggestions button { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .ola-suggestions button { align-items: flex-start; flex-direction: column; gap: 2px; }
 }

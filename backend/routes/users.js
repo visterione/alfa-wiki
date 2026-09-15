@@ -55,10 +55,18 @@ router.get('/list', authenticate, async (req, res) => {
   try {
     const where = { isActive: true };
 
-    if (req.query.access === 'reviews') {
+    // Отбор по доступу к модулю: список для назначения ответственных не должен
+    // предлагать тех, кто этот раздел даже не видит (ver. 8.33 — раньше так
+    // умели только отзывы). Ключ сверяется со списком известных, а не
+    // подставляется в запрос как есть: он приходит из адресной строки, а ниже
+    // сырой SQL.
+    const ACCESS_KEYS = ['reviews', 'openLine'];
+    const access = String(req.query.access || '');
+
+    if (ACCESS_KEYS.includes(access)) {
       where[Op.or] = [
         { isAdmin: true },
-        Sequelize.literal(`"adminAccess"->>'reviews' = 'true'`)
+        Sequelize.literal(`"adminAccess"->>'${access}' = 'true'`)
       ];
     }
 
