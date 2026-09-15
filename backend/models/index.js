@@ -4879,6 +4879,45 @@ const {
 
 associateVacancies({ User, MedCenter });
 
+// === КОЛЛ-ЦЕНТР: БЫСТРЫЕ ДАННЫЕ (ver. 8.32) ===
+// Набор для страницы backend/bot/call-center.html: подготовки к исследованиям,
+// почты, ссылки, заготовки ответов. До этой версии он лежал в localStorage
+// браузера — то есть заполнивший его видел свои карточки, а вся остальная смена
+// демо-примеры. Набор общий по смыслу задачи: оператор диктует пациенту то же,
+// что и его сосед, и расхождение здесь — это разные ответы на один вопрос.
+//
+// Две таблицы, а не одно поле JSONB: набор редактируют из интерфейса целиком,
+// но смотреть на него в базе приходится построчно, когда спрашивают «кто убрал
+// подготовку к колоноскопии».
+//
+// Идентификаторы строковые и приходят от страницы ('tab-prep', 'sn-uzi-abd'):
+// они уже разошлись по браузерам операторов, и менять их на UUID значило бы
+// расклеить перенос старых наборов.
+const CallCenterTab = sequelize.define('CallCenterTab', {
+  id: { type: DataTypes.STRING(64), primaryKey: true },
+  title: { type: DataTypes.STRING(200), allowNull: false },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  updatedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'call_center_tabs',
+  timestamps: true
+});
+
+const CallCenterSnippet = sequelize.define('CallCenterSnippet', {
+  id: { type: DataTypes.STRING(64), primaryKey: true },
+  tabId: { type: DataTypes.STRING(64), allowNull: false },
+  title: { type: DataTypes.STRING(300), allowNull: false },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  // Поля карточки как есть: [{ label, kind, value }]. Разбирать их на строки
+  // незачем — они целиком приходят и целиком уходят, а искать по ним не нужно.
+  items: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  updatedBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'call_center_snippets',
+  timestamps: true,
+  indexes: [{ fields: ['tabId'] }]
+});
+
 MessengerBot.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 NotifBranchSettings.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 NotifTemplate.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
@@ -4886,6 +4925,9 @@ NotifTemplate.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' 
 module.exports = {
   sequelize,
   Sequelize,
+  // Колл-центр: быстрые данные
+  CallCenterTab,
+  CallCenterSnippet,
   ...warehouseModels,
   ...onboardingModels,
   ...vacancyModels,

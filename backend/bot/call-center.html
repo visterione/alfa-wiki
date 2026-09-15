@@ -232,12 +232,6 @@
   line-height: 1.3;
   word-break: break-word;
 }
-.cc-card-note {
-  margin-top: 4px;
-  font-size: 12.5px;
-  color: var(--cc-text-secondary);
-  word-break: break-word;
-}
 .cc-card-tools { display: none; gap: 2px; flex-shrink: 0; }
 .cc-app-editing .cc-card-tools { display: flex; }
 .cc-icon-btn {
@@ -284,10 +278,21 @@
 .cc-item-value.mono {
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 13px;
-  color: var(--cc-primary);
 }
+/* Синим осталось только то, что действительно открывается по нажатию. Почта и
+   телефон — наши собственные, звонить и писать по ним мы не будем, их только
+   диктуют и копируют; синий цвет обещал бы действие, которого нет. */
+.cc-item-value.link {
+  display: block;
+  color: var(--cc-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+.cc-item-value.link:hover { text-decoration: underline; }
 /* Текст заготовки бывает на десять строк. Полностью он нужен редко — при
-   копировании уходит всё равно целиком, — поэтому свёрнут до четырёх строк. */
+   копировании уходит всё равно целиком, — поэтому свёрнут до четырёх строк.
+   Четыре — это нижняя граница: fitClampedValues() после отрисовки добавляет
+   строки по остатку высоты карточки. */
 .cc-item-value.clamped {
   display: -webkit-box;
   -webkit-line-clamp: 4;
@@ -328,22 +333,6 @@
   border-color: #bbf7d0;
   color: var(--cc-success);
 }
-.cc-open {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--cc-border);
-  border-radius: 8px;
-  background: var(--cc-card-bg);
-  color: var(--cc-text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.cc-open:hover { background: var(--cc-primary-soft); border-color: #bfdbfe; color: var(--cc-primary); }
-.cc-open svg { width: 14px; height: 14px; display: block; }
-
 /* ─── ПУСТЫЕ СОСТОЯНИЯ ─── */
 .cc-empty {
   padding: 54px 20px;
@@ -463,7 +452,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 20px 0 10px;
+  margin: 24px 0 16px;
   padding-top: 16px;
   border-top: 1px solid var(--cc-border);
 }
@@ -472,8 +461,8 @@
   border: 1px solid var(--cc-border);
   border-radius: 10px;
   padding: 12px;
-  margin-bottom: 10px;
-  background: #fbfcfd;
+  margin-bottom: 16px;
+  background: #f8fafc;
 }
 .cc-field-row-top {
   display: flex;
@@ -546,12 +535,6 @@
         <label for="cc-f-tab">Вкладка</label>
         <select id="cc-f-tab"></select>
       </div>
-      <div class="cc-field">
-        <label for="cc-f-note">Примечание</label>
-        <input type="text" id="cc-f-note" placeholder="Короткая подсказка — когда это нужно">
-        <div class="cc-field-hint">Видно под названием мелким шрифтом. Необязательно.</div>
-      </div>
-
       <div class="cc-fields-head">
         <div class="cc-fields-head-title">Что копируем</div>
         <button class="cc-btn" data-act="add-field">
@@ -628,10 +611,13 @@ if (window.__ccQuickTeardown) { try { window.__ccQuickTeardown(); } catch (e) {}
 // ─────────────────────────────────────────────────────────────────────────────
 // ДАННЫЕ
 //
-// Пока у страницы нет своего API, набор лежит здесь, а правки из интерфейса
-// складываются в localStorage этого браузера — то есть видны только тому, кто их
-// внёс. Когда появится /api/quick-snippets, меняется только объект Store ниже;
-// остальной код про способ хранения ничего не знает.
+// Набор лежит в базе и общий для всех (ver. 8.32). До этого он складывался в
+// localStorage браузера, и это оказалось ловушкой: человек заполнял карточки,
+// считал работу сделанной, а смена продолжала видеть примеры ниже и звонила
+// спросить, почему у неё ничего не появилось.
+//
+// SEED остался, но теперь у него одна роль — что показать, когда на сервере
+// пусто и набор ещё никто не заводил.
 // ─────────────────────────────────────────────────────────────────────────────
 
 var SEED = {
@@ -645,7 +631,6 @@ var SEED = {
     {
       id: 'sn-uzi-abd', tabId: 'tab-prep', sortOrder: 1,
       title: 'УЗИ органов брюшной полости',
-      note: 'Пример записи — замените на настоящий текст',
       items: [
         { label: 'Текст подготовки', kind: 'text', value: 'Исследование проводится строго натощак: последний приём пищи за 6–8 часов до визита.\nЗа 2–3 дня исключите продукты, вызывающие газообразование: чёрный хлеб, молоко, сырые овощи и фрукты, газированные напитки.\nЗа час до исследования не пить и не курить.\nПри себе иметь пелёнку или полотенце.' },
         { label: 'Ссылка на подготовку', kind: 'url', value: 'https://example.com/preparation/uzi-abdomen' }
@@ -654,7 +639,6 @@ var SEED = {
     {
       id: 'sn-colono', tabId: 'tab-prep', sortOrder: 2,
       title: 'Колоноскопия',
-      note: 'Пример записи — замените на настоящий текст',
       items: [
         { label: 'Текст подготовки', kind: 'text', value: 'За 3 дня до исследования — бесшлаковая диета.\nНакануне последний приём пищи не позже 13:00, далее только прозрачные жидкости.\nПрепарат для очищения кишечника принимается по схеме, выданной врачом.\nВ день исследования не есть и не пить.' },
         { label: 'Ссылка на подготовку', kind: 'url', value: 'https://example.com/preparation/colonoscopy' }
@@ -663,7 +647,6 @@ var SEED = {
     {
       id: 'sn-blood', tabId: 'tab-prep', sortOrder: 3,
       title: 'Общий анализ крови',
-      note: 'Пример записи',
       items: [
         { label: 'Текст подготовки', kind: 'text', value: 'Кровь сдаётся натощак, с 8:00 до 11:00. Допускается пить воду без газа.\nЗа сутки исключить алкоголь и физические нагрузки.\nЕсли принимаете лекарства — сообщите об этом лаборанту.' }
       ]
@@ -671,7 +654,6 @@ var SEED = {
     {
       id: 'sn-mail-reg', tabId: 'tab-mail', sortOrder: 1,
       title: 'Общая почта сети',
-      note: 'Пример записи — замените на настоящий адрес',
       items: [
         { label: 'Адрес', kind: 'email', value: 'info@example.com' }
       ]
@@ -679,7 +661,6 @@ var SEED = {
     {
       id: 'sn-mail-hr', tabId: 'tab-mail', sortOrder: 2,
       title: 'Отдел кадров',
-      note: 'Пример записи — замените на настоящий адрес',
       items: [
         { label: 'Адрес', kind: 'email', value: 'hr@example.com' },
         { label: 'Что писать в теме', kind: 'text', value: 'Вакансия — ФИО кандидата — должность' }
@@ -688,7 +669,6 @@ var SEED = {
     {
       id: 'sn-site', tabId: 'tab-links', sortOrder: 1,
       title: 'Сайт сети',
-      note: 'Пример записи',
       items: [
         { label: 'Адрес сайта', kind: 'url', value: 'https://example.com' },
         { label: 'Онлайн-запись', kind: 'url', value: 'https://example.com/online' }
@@ -697,7 +677,6 @@ var SEED = {
     {
       id: 'sn-reply-results', tabId: 'tab-replies', sortOrder: 1,
       title: 'Когда будут готовы анализы',
-      note: 'Пример заготовки',
       items: [
         { label: 'Текст ответа', kind: 'text', value: 'Результаты будут готовы в течение указанного срока и придут на вашу электронную почту. Если письмо не пришло — проверьте, пожалуйста, папку «Спам», и перезвоните нам, мы отправим повторно.' }
       ]
@@ -705,7 +684,6 @@ var SEED = {
     {
       id: 'sn-reply-vacation', tabId: 'tab-replies', sortOrder: 2,
       title: 'Врач в отпуске',
-      note: 'Пример заготовки',
       items: [
         { label: 'Текст ответа', kind: 'text', value: 'К сожалению, этот специалист сейчас в отпуске и вернётся к приёму позже. Я могу записать вас к другому врачу этого же профиля или поставить напоминание перезвонить вам, как только откроется расписание.' }
       ]
@@ -713,30 +691,103 @@ var SEED = {
   ]
 };
 
-var STORAGE_KEY = 'cc-quick-data-v1';
+// На :9000 работает dev-сервер craco, а бэкенд слушает 9001; на бою всё за
+// одним nginx, и origin страницы уже правильный.
+var API_URL = (window.location.port === '9000'
+  ? window.location.protocol + '//' + window.location.hostname + ':9001'
+  : window.location.origin) + '/api/call-center';
 
-var Store = {
+// Ключ набора до ver. 8.32. Он ещё лежит в браузерах тех, кто успел завести
+// карточки, и один раз переезжает на сервер — см. loadSet() ниже.
+var LEGACY_KEY = 'cc-quick-data-v1';
+var BACKUP_KEY = 'cc-quick-data-v1-backup';
+// Последний виденный серверный набор. Нужен не для правок, а для того, чтобы
+// страница что-то показывала, когда сервер недоступен: колл-центр не может
+// ждать починки бэкенда посреди разговора с пациентом.
+var CACHE_KEY = 'cc-quick-cache-v1';
+
+function getToken() {
+  try { return localStorage.getItem('token') || sessionStorage.getItem('token') || ''; } catch (e) { return ''; }
+}
+
+function api(method, body) {
+  var headers = { 'Authorization': 'Bearer ' + getToken() };
+  if (body) headers['Content-Type'] = 'application/json';
+  return fetch(API_URL, {
+    method: method,
+    headers: headers,
+    body: body ? JSON.stringify(body) : undefined
+  }).then(function(res) {
+    return res.json().catch(function() { return {}; }).then(function(data) {
+      if (res.ok) return data;
+      var err = new Error(data.error || ('сервер ответил ' + res.status));
+      err.status = res.status;
+      err.payload = data;
+      throw err;
+    });
+  });
+}
+
+var Cache = {
   read: function() {
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(CACHE_KEY);
       if (raw) {
         var parsed = JSON.parse(raw);
-        if (parsed && parsed.tabs && parsed.snippets) return parsed;
+        if (parsed && Array.isArray(parsed.tabs) && Array.isArray(parsed.snippets)) return parsed;
       }
     } catch (e) {}
-    return JSON.parse(JSON.stringify(SEED));
+    return null;
   },
   write: function(data) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+};
+
+function readLegacy() {
+  try {
+    var raw = localStorage.getItem(LEGACY_KEY) || localStorage.getItem(BACKUP_KEY);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.tabs) && Array.isArray(parsed.snippets) &&
+        (parsed.tabs.length || parsed.snippets.length)) return parsed;
+  } catch (e) {}
+  return null;
+}
+
+// Перенесённый набор не стираем, а откладываем под другим ключом: это
+// единственная копия работы, которую человек делал вручную, и если с переносом
+// что-то пойдёт не так, достать её будет неоткуда.
+function retireLegacy() {
+  try {
+    var raw = localStorage.getItem(LEGACY_KEY);
+    if (raw) { localStorage.setItem(BACKUP_KEY, raw); localStorage.removeItem(LEGACY_KEY); }
+  } catch (e) {}
+}
+
+// Соответствие «полный адрес → короткий». Лежит отдельным словарём, а не полем
+// внутри записи, и это главное решение всей затеи: короткая ссылка тогда не
+// может отстать от изменённой длинной. Поменяли адрес подготовки — ключа для
+// него в словаре нет, он сократится заново, а прежняя пара просто перестанет
+// использоваться. Хранить её вечно не жалко: clck.ru для одного и того же
+// адреса всегда отдаёт один и тот же код, устареть тут нечему.
+var SHORT_KEY = 'cc-quick-shortlinks-v1';
+
+var ShortStore = {
+  read: function() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      return true;
-    } catch (e) {
-      showToast('Не удалось сохранить правку в этом браузере', 'error');
-      return false;
-    }
+      var raw = localStorage.getItem(SHORT_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) {}
+    return {};
   },
-  reset: function() {
-    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  // Молча, в отличие от сохранения набора: сокращение — удобство, а не условие
+  // работы, и жаловаться тостом на него посреди разговора с пациентом незачем.
+  write: function(map) {
+    try { localStorage.setItem(SHORT_KEY, JSON.stringify(map)); } catch (e) {}
   }
 };
 
@@ -750,9 +801,6 @@ var KINDS = [
 var ICONS = {
   copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-  external: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>',
-  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
-  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.7a2 2 0 0 1-.4 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.5 2.7.6a2 2 0 0 1 1.7 2Z"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>',
@@ -766,8 +814,18 @@ var ICONS = {
 // соседние вкладки не сливались, и одинаковы от загрузки к загрузке.
 var TAB_HUES = [215, 268, 158, 28, 340, 192, 95, 315];
 
+// Сколько строк текста видно до подгонки по высоте. Столько же стоит в правиле
+// .cc-item-value.clamped — значение должно совпадать, иначе подгонка отсчитает
+// добавку не от той базы.
+var CLAMP_LINES = 4;
+
 var state = {
-  data: Store.read(),
+  data: { tabs: [], snippets: [] },
+  // Номер правки, с которым читали набор. Уходит обратно при сохранении: если
+  // за это время набор изменил кто-то ещё, сервер не даст затереть его работу.
+  revision: 0,
+  loading: true,
+  shortLinks: ShortStore.read(),
   activeTabId: null,
   editing: false,
   expanded: {},       // какие длинные значения развёрнуты: ключ «id карточки:номер поля»
@@ -811,7 +869,79 @@ function snippetById(id) {
   return null;
 }
 
-function persist() { Store.write(state.data); }
+// Набор общий, поэтому «сохранить» — это отправить его целиком. Страница
+// маленькая и правит его целиком же; дробить на «создать/изменить/удалить
+// карточку» значило бы переписать её всю ради действия, которое делают раз в
+// месяц.
+function persist() {
+  Cache.write(state.data);
+  return api('PUT', {
+    tabs: state.data.tabs,
+    snippets: state.data.snippets,
+    revision: state.revision,
+    // Пустой набор сервер по умолчанию не принимает — это защита от обрезанного
+    // запроса. Здесь пусто может быть только потому, что всё удалили руками.
+    allowEmpty: !state.data.tabs.length && !state.data.snippets.length
+  }).then(function(res) {
+    state.revision = res.revision;
+    return true;
+  }).catch(function(err) {
+    if (err.status === 409 && err.payload) {
+      // Чужая правка приехала раньше нашей. Показываем свежий набор, а не
+      // спрашиваем, чью версию оставить: выбирать вслепую всё равно нечем.
+      state.data = { tabs: err.payload.tabs || [], snippets: err.payload.snippets || [] };
+      state.revision = err.payload.revision || 0;
+      Cache.write(state.data);
+      render();
+      showToast('Набор успел изменить кто-то ещё — показан свежий. Внесите правку заново.', 'error');
+      return false;
+    }
+    showToast('Не сохранилось: ' + (err.message || 'сервер недоступен'), 'error');
+    return false;
+  });
+}
+
+function loadSet() {
+  state.loading = true;
+  render();
+  return api('GET').then(function(payload) {
+    state.revision = payload.revision || 0;
+    state.loading = false;
+
+    var tabs = payload.tabs || [], snippets = payload.snippets || [];
+    if (tabs.length || snippets.length) {
+      state.data = { tabs: tabs, snippets: snippets };
+      Cache.write(state.data);
+      render();
+      return;
+    }
+
+    // На сервере пусто. Если в этом браузере остался набор от прежнего
+    // хранения — значит, за клавиатурой тот, кто его заводил, и переносим.
+    var legacy = readLegacy();
+    if (legacy) {
+      state.data = legacy;
+      render();
+      return persist().then(function(ok) {
+        if (!ok) return;
+        retireLegacy();
+        console.log('[call-center] локальный набор перенесён на сервер');
+        showToast('Ваш набор перенесён — теперь его видят все');
+      });
+    }
+
+    state.data = JSON.parse(JSON.stringify(SEED));
+    render();
+  }).catch(function(err) {
+    state.loading = false;
+    var cached = Cache.read();
+    state.data = cached || JSON.parse(JSON.stringify(SEED));
+    render();
+    showToast(cached
+      ? 'Сервер не ответил — показан набор с прошлого захода, правки не сохранятся'
+      : 'Сервер не ответил — показаны примеры, правки не сохранятся', 'error');
+  });
+}
 
 // ─── РЕНДЕР ───
 function render() {
@@ -819,6 +949,7 @@ function render() {
   document.getElementById('cc-edit-toggle').title = state.editing ? 'Готово' : 'Редактировать';
   renderTabs();
   renderContent();
+  ensureShortLinks();
 }
 
 function renderTabs() {
@@ -838,6 +969,10 @@ function renderTabs() {
 }
 
 function renderContent() {
+  if (state.loading) {
+    contentEl.innerHTML = emptyHtml('Загружаем набор', 'Секунду — он приезжает с сервера.');
+    return;
+  }
   if (!state.activeTabId) {
     contentEl.innerHTML = emptyHtml('Вкладок пока нет', 'Нажмите «Редактировать», затем «Вкладка» — и заведите первый раздел.');
     return;
@@ -852,6 +987,55 @@ function renderContent() {
     list.map(function(s) { return cardHtml(s); }).join('') +
     '<button class="cc-add-card" data-act="add-snippet">' + ICONS.plus + 'Добавить запись</button>' +
   '</div>';
+  fitClampedValues();
+}
+
+// Карточки в ряду одной высоты, а полей у них разное число: где текст и ссылка,
+// а где только текст. Из-за этого карточка с одним полем получала пустую нижнюю
+// половину, и в ней же стояло «Показать полностью» — текст прятали при том, что
+// место под него было. «Четыре строки» — правило на глаз, оно ничего не знает о
+// том, сколько места осталось в конкретной карточке.
+//
+// Поэтому после отрисовки замеряем остаток и добавляем ровно столько строк,
+// сколько в него влезает. Выше своего ряда карточка так не станет — мы лишь
+// заполняем то, что уже отдано ей под растяжку, — а кнопка остаётся только там,
+// где текст и правда не поместился.
+function fitClampedValues() {
+  var cards = contentEl.querySelectorAll('.cc-card');
+
+  // Сначала сбрасываем всё до исходного вида — и обязательно во всех карточках
+  // сразу, а не по одной: высота карточки задаётся самой высокой в ряду, и
+  // замерять её, пока соседи ещё растянуты прошлой подгонкой, бессмысленно.
+  cards.forEach(function(card) {
+    card.querySelectorAll('.cc-item-value.clamped').forEach(function(v) { v.style.webkitLineClamp = ''; });
+    card.querySelectorAll('.cc-item-more').forEach(function(b) { b.hidden = false; });
+  });
+
+  cards.forEach(function(card) {
+    var items = card.querySelectorAll('.cc-item');
+    if (!items.length) return;
+
+    var clamped = card.querySelectorAll('.cc-item-value.clamped');
+    if (clamped.length) {
+      var last = items[items.length - 1];
+      var spare = card.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
+      var line = parseFloat(getComputedStyle(clamped[0]).lineHeight) || 20;
+      var extra = Math.floor(spare / line / clamped.length);
+      if (extra > 0) {
+        clamped.forEach(function(v) { v.style.webkitLineClamp = String(CLAMP_LINES + extra); });
+      }
+    }
+
+    // Кнопку показываем по факту обрезки, а не по длине текста. Двести символов
+    // на широкой карточке умещаются целиком, и предлагать «показать полностью»
+    // там не за чем — ровно на это и жаловались.
+    card.querySelectorAll('.cc-item-body').forEach(function(body) {
+      var more = body.querySelector('.cc-item-more');
+      var value = body.querySelector('.cc-item-value');
+      if (!more || !value || !value.classList.contains('clamped')) return;
+      more.hidden = value.scrollHeight <= value.clientHeight + 2;
+    });
+  });
 }
 
 function emptyHtml(title, hint) {
@@ -864,9 +1048,7 @@ function cardHtml(s) {
   var items = (s.items || []).map(function(it, idx) { return itemHtml(s, it, idx); }).join('');
   return '<div class="cc-card" data-card="' + s.id + '">' +
     '<div class="cc-card-head">' +
-      '<div class="cc-card-title">' + escapeHtml(s.title || 'Без названия') +
-        (s.note ? '<div class="cc-card-note">' + escapeHtml(s.note) + '</div>' : '') +
-      '</div>' +
+      '<div class="cc-card-title">' + escapeHtml(s.title || 'Без названия') + '</div>' +
       '<div class="cc-card-tools">' +
         '<button class="cc-icon-btn" data-act="move-snippet" data-id="' + s.id + '" data-dir="-1" title="Выше">' + ICONS.up + '</button>' +
         '<button class="cc-icon-btn" data-act="move-snippet" data-id="' + s.id + '" data-dir="1" title="Ниже">' + ICONS.down + '</button>' +
@@ -886,20 +1068,18 @@ function itemHtml(s, it, idx) {
   var open = !!state.expanded[key];
   var mono = kind !== 'text';
 
-  var valueHtml = '<div class="cc-item-value' + (mono ? ' mono' : '') + (isLong && !open ? ' clamped' : '') + '">' +
-    escapeHtml(value) + '</div>';
+  // Ссылка открывается нажатием на сам адрес, а не отдельной кнопкой рядом:
+  // кнопка занимала место в каждой строке ради действия, которое и так читается
+  // из синего текста. Открывается всегда полный адрес — короткий живёт только в
+  // буфере обмена, и проверять по нему, та ли это запись, невозможно.
+  var valueClass = 'cc-item-value' + (mono ? ' mono' : '') + (kind === 'url' ? ' link' : '') +
+    (isLong && !open ? ' clamped' : '');
+  var valueHtml = kind === 'url'
+    ? '<a class="' + valueClass + '" href="' + escapeHtml(value) + '" target="_blank" rel="noopener noreferrer" title="Открыть в новой вкладке">' + escapeHtml(value) + '</a>'
+    : '<div class="' + valueClass + '">' + escapeHtml(value) + '</div>';
   var moreBtn = isLong
     ? '<button class="cc-item-more" data-act="toggle-more" data-key="' + escapeHtml(key) + '">' + (open ? 'Свернуть' : 'Показать полностью') + '</button>'
     : '';
-
-  var open_btn = '';
-  if (kind === 'url') {
-    open_btn = '<a class="cc-open" href="' + escapeHtml(value) + '" target="_blank" rel="noopener noreferrer" title="Открыть в новой вкладке">' + ICONS.external + '</a>';
-  } else if (kind === 'email') {
-    open_btn = '<a class="cc-open" href="mailto:' + escapeHtml(value) + '" title="Написать письмо">' + ICONS.mail + '</a>';
-  } else if (kind === 'phone') {
-    open_btn = '<a class="cc-open" href="tel:' + escapeHtml(value.replace(/[^+\d]/g, '')) + '" title="Позвонить">' + ICONS.phone + '</a>';
-  }
 
   return '<div class="cc-item">' +
     '<div class="cc-item-body">' +
@@ -908,9 +1088,122 @@ function itemHtml(s, it, idx) {
     '</div>' +
     '<div class="cc-item-actions">' +
       '<button class="cc-copy" data-act="copy" data-card="' + s.id + '" data-idx="' + idx + '" title="Копировать">' + ICONS.copy + '</button>' +
-      open_btn +
     '</div>' +
   '</div>';
+}
+
+// ─── СОКРАЩЕНИЕ ССЫЛОК ───
+//
+// Ссылки на подготовки уходят пациентам обычными СМС, а там одна кириллическая
+// буква переводит всё сообщение в UCS-2: сегмент становится 70 символов вместо
+// 160. Адрес подготовки на полсотни символов перекидывает такое сообщение во
+// второй сегмент, то есть удваивает цену отправки.
+//
+// Поэтому на экране остаётся полная ссылка — по ней видно, куда она ведёт, — а в
+// буфер по кнопке копирования уходит короткая. Сокращаем через clck.ru: ключа он
+// не просит, отвечает простым текстом и отдаёт Access-Control-Allow-Origin, так
+// что обошлось без своего редиректа, таблицы и маршрута на бэкенде.
+//
+// Сокращаем не в момент копирования, а заранее, фоном: оператор жмёт кнопку
+// посреди разговора, и ждать там сеть нельзя. Не успели или не ответили — в
+// буфер уйдёт полная ссылка, и работа не встанет.
+
+// Короткая ссылка clck.ru — 21 символ. Всё, что немногим длиннее, сокращать
+// незачем: выигрыш в пару символов не стоит ни запроса, ни того, что переход
+// пойдёт через промежуточный редирект Яндекса.
+var SHORTEN_MIN_LENGTH = 30;
+var SHORTEN_TIMEOUT = 5000;
+
+var shortQueue = [];
+var shortWorking = false;
+// Что не удалось сократить. Помечаем, чтобы не долбиться в Яндекс на каждой
+// перерисовке; при следующей загрузке страницы попытка повторится.
+var shortFailed = {};
+var shortInflight = [];
+// Снимается в teardown. Страница выполняется заново при каждом возврате на неё,
+// и запрос, отправленный прошлым заходом, не должен дописывать в localStorage
+// поверх нового состояния.
+var alive = true;
+
+function canShorten(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  if (url.length < SHORTEN_MIN_LENGTH) return false;
+  if (/^https?:\/\/clck\.ru\//i.test(url)) return false;
+  return true;
+}
+
+function shortOf(url) {
+  return state.shortLinks[(url || '').trim()] || null;
+}
+
+function requestShort(url) {
+  var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  if (ctrl) shortInflight.push(ctrl);
+  var timer = setTimeout(function() {
+    if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+  }, SHORTEN_TIMEOUT);
+
+  function done() {
+    clearTimeout(timer);
+    var i = ctrl ? shortInflight.indexOf(ctrl) : -1;
+    if (i >= 0) shortInflight.splice(i, 1);
+  }
+
+  return fetch('https://clck.ru/--?url=' + encodeURIComponent(url), ctrl ? { signal: ctrl.signal } : undefined)
+    .then(function(res) {
+      if (!res.ok) throw new Error('clck.ru ответил ' + res.status);
+      return res.text();
+    })
+    .then(function(text) {
+      var short = String(text || '').trim();
+      // Ответ обязан быть одной ссылкой. Вместо неё может прийти капча, пустая
+      // строка или страница с ошибкой — принять такое нельзя: в буфер уйдёт
+      // мусор, и оператор отправит пациенту нерабочую СМС, ничего не заметив.
+      if (!/^https:\/\/clck\.ru\/\S+$/.test(short)) throw new Error('неожиданный ответ clck.ru');
+      done();
+      return short;
+    }, function(err) {
+      done();
+      throw err;
+    });
+}
+
+function pumpShortQueue() {
+  if (shortWorking || !alive || !shortQueue.length) return;
+  shortWorking = true;
+  var url = shortQueue.shift();
+
+  requestShort(url).then(function(short) {
+    if (!alive) return;
+    state.shortLinks[url] = short;
+    ShortStore.write(state.shortLinks);
+  }, function() {
+    shortFailed[url] = true;
+  }).then(function() {
+    shortWorking = false;
+    // Перерисовывать нечего: на экране ничего не поменялось, короткая ссылка
+    // видна только в буфере обмена.
+    if (!alive) return;
+    // Пауза между запросами: при первом заходе их уходит столько, сколько
+    // заведено ссылок, и очередью это выглядит приличнее, чем залпом.
+    if (shortQueue.length) setTimeout(pumpShortQueue, 150);
+  });
+}
+
+// Проходим по всем записям, а не только по новым: так одним и тем же кодом
+// закрываются и свежесохранённая ссылка, и те, что были заведены до появления
+// сокращения, и те, на которых в прошлый раз не было сети.
+function ensureShortLinks() {
+  if (!alive || typeof fetch !== 'function') return;
+  state.data.snippets.forEach(function(s) {
+    (s.items || []).forEach(function(it) {
+      if ((it.kind || 'text') !== 'url') return;
+      var url = (it.value || '').trim();
+      if (!canShorten(url) || state.shortLinks[url] || shortFailed[url]) return;
+      if (shortQueue.indexOf(url) < 0) shortQueue.push(url);
+    });
+  });
+  pumpShortQueue();
 }
 
 // ─── КОПИРОВАНИЕ ───
@@ -944,7 +1237,12 @@ function handleCopy(btn) {
   var it = (s.items || [])[Number(btn.getAttribute('data-idx'))];
   if (!it) return;
 
-  copyText(it.value || '').then(function() {
+  // Ссылка уходит в буфер короткой, если её успели сократить. На экране при этом
+  // остаётся полная: по clck.ru/xxxxx не понять, ту ли запись копируешь.
+  var text = it.value || '';
+  if ((it.kind || 'text') === 'url') text = shortOf(text) || text;
+
+  copyText(text).then(function() {
     // Отклик на самой кнопке, а не тостом: оператор смотрит на кнопку, по которой
     // щёлкнул, и всплывающая плашка внизу экрана проходит мимо внимания.
     btn.classList.add('done');
@@ -965,11 +1263,10 @@ function openSnippetModal(id) {
   var existing = id ? snippetById(id) : null;
   state.draftSnippet = existing
     ? JSON.parse(JSON.stringify(existing))
-    : { id: null, tabId: state.activeTabId, title: '', note: '', items: [{ label: '', kind: 'text', value: '' }] };
+    : { id: null, tabId: state.activeTabId, title: '', items: [{ label: '', kind: 'text', value: '' }] };
 
   document.getElementById('cc-snippet-modal-title').textContent = existing ? 'Изменить запись' : 'Новая запись';
   document.getElementById('cc-f-title').value = state.draftSnippet.title || '';
-  document.getElementById('cc-f-note').value = state.draftSnippet.note || '';
 
   var sel = document.getElementById('cc-f-tab');
   sel.innerHTML = sortedTabs().map(function(t) {
@@ -1023,7 +1320,6 @@ function saveSnippet() {
   collectFieldRows();
   var draft = state.draftSnippet;
   draft.title = document.getElementById('cc-f-title').value.trim();
-  draft.note = document.getElementById('cc-f-note').value.trim();
   draft.tabId = document.getElementById('cc-f-tab').value;
 
   if (!draft.title) { showToast('Укажите название записи', 'error'); return; }
@@ -1034,7 +1330,6 @@ function saveSnippet() {
   if (draft.id) {
     var existing = snippetById(draft.id);
     existing.title = draft.title;
-    existing.note = draft.note;
     existing.tabId = draft.tabId;
     existing.items = draft.items;
   } else {
@@ -1237,16 +1532,60 @@ function onKeydown(e) {
   }
 }
 
+// Число колонок в сетке зависит от ширины, а с ним меняется и высота ряда —
+// добавленные строки после этого отсчитаны от несуществующего остатка.
+var fitTimer;
+function onResize() {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(function() { if (alive) fitClampedValues(); }, 120);
+}
+
 document.addEventListener('click', onClick);
 document.addEventListener('keydown', onKeydown);
+window.addEventListener('resize', onResize);
 
-window.__ccQuickTeardown = function() {
-  document.removeEventListener('click', onClick);
-  document.removeEventListener('keydown', onKeydown);
-  clearTimeout(toastTimer);
+// Inter приезжает с Google Fonts и подменяет системный шрифт уже после первой
+// отрисовки. Высота строки при этом меняется, а с ней и то, сколько их влезает.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function() { if (alive) fitClampedValues(); });
+}
+
+// Запасной путь переноса для ver. 8.32. Штатно набор уезжает сам — при первом
+// открытии страницы, когда на сервере ещё пусто. Но если первым её откроет
+// другой человек, у которого в браузере тоже что-то было заведено, уедет его
+// набор, и нужный придётся залить руками из консоли: __ccPushLocal().
+// После того как все наборы переехали, эта функция не нужна.
+window.__ccPushLocal = function() {
+  var legacy = readLegacy();
+  if (!legacy) {
+    console.warn('[call-center] в этом браузере нет набора от прежнего хранения');
+    return;
+  }
+  var counts = legacy.tabs.length + ' вкладок, ' + legacy.snippets.length + ' записей';
+  if (!window.confirm('Заменить общий набор на локальный из этого браузера (' + counts + ')?\n\nТо, что сейчас видят все, будет заменено.')) return;
+  state.data = legacy;
+  render();
+  persist().then(function(ok) {
+    if (!ok) return;
+    retireLegacy();
+    console.log('[call-center] локальный набор залит на сервер');
+    showToast('Набор залит — теперь его видят все');
+  });
 };
 
-render();
+window.__ccQuickTeardown = function() {
+  alive = false;
+  try { delete window.__ccPushLocal; } catch (e) { window.__ccPushLocal = undefined; }
+  shortInflight.forEach(function(c) { try { c.abort(); } catch (e) {} });
+  shortInflight = [];
+  document.removeEventListener('click', onClick);
+  document.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('resize', onResize);
+  clearTimeout(toastTimer);
+  clearTimeout(fitTimer);
+};
+
+loadSet();
 
 })();
 </script>
