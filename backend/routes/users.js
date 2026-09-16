@@ -60,7 +60,7 @@ router.get('/list', authenticate, async (req, res) => {
     // умели только отзывы). Ключ сверяется со списком известных, а не
     // подставляется в запрос как есть: он приходит из адресной строки, а ниже
     // сырой SQL.
-    const ACCESS_KEYS = ['reviews', 'openLine'];
+    const ACCESS_KEYS = ['reviews', 'openLine', 'vacancies'];
     const access = String(req.query.access || '');
 
     if (ACCESS_KEYS.includes(access)) {

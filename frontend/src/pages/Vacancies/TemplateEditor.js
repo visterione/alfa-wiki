@@ -17,14 +17,16 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle, Copy } from 'lucide-react';
 
 import { vacancies as api } from '../../services/api';
 import FormBuilder, { fromStored, toStored } from './FormBuilder';
 import ProcessBuilder from './ProcessBuilder';
 import EmailsEditor from './EmailsEditor';
+import MainTab from './MainTab';
 
 const TABS = [
+  { key: 'main', label: 'Основное' },
   { key: 'form', label: 'Анкета' },
   { key: 'process', label: 'Процесс' },
   { key: 'mail', label: 'Письма' }
@@ -36,7 +38,7 @@ const NOTHING_LOCKED = new Set();
 
 export default function TemplateEditor({ templateId, meta, onBack, onChanged }) {
   const [template, setTemplate] = useState(null);
-  const [tab, setTab] = useState('form');
+  const [tab, setTab] = useState('main');
 
   const [draft, setDraft] = useState(null);
   const [steps, setSteps] = useState([]);
@@ -81,11 +83,11 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
     [template]
   );
 
-  const formDirty = Boolean(template && draft) && (
-    title !== template.title
-    || description !== (template.description || '')
-    || JSON.stringify(toStored(draft)) !== savedForm
+  const mainDirty = Boolean(template) && (
+    title !== template.title || description !== (template.description || '')
   );
+  const schemaDirty = Boolean(template && draft) && JSON.stringify(toStored(draft)) !== savedForm;
+  const formDirty = mainDirty || schemaDirty;
   const processDirty = Boolean(template) && JSON.stringify(steps) !== savedProcess;
   const dirty = formDirty || processDirty;
 
@@ -150,46 +152,47 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
 
   return (
     <>
-      <div className="vac-editor-bar">
-        <button className="vac-btn is-ghost" onClick={onBack}><ArrowLeft size={14} />К списку</button>
+      <header className="vac-head">
+        <div className="vac-head-top">
+          <button className="vac-btn is-ghost" onClick={onBack}><ArrowLeft size={14} />К списку</button>
 
-        <div className="vac-editor-titles">
-          <input
-            className="vac-input is-title"
-            value={title}
-            placeholder="Название шаблона — «Врач», «Медицинская сестра»"
-            onChange={e => setTitle(e.target.value)}
-          />
-          <input
-            className="vac-input"
-            value={description}
-            placeholder="Для кого шаблон — видно только здесь, кандидату не показывается"
-            onChange={e => setDescription(e.target.value)}
-          />
-        </div>
+          <span className="vac-crumb">
+            <Copy size={14} />
+            Заготовка должности
+          </span>
 
-        <div className="vac-editor-acts">
           {dirty && <span className="vac-badge vac-badge-warn">Не сохранено</span>}
 
-          <button className="vac-btn" disabled={busy || !dirty} onClick={save}>
-            <Save size={14} />Сохранить
-          </button>
-          <button className="vac-btn is-ghost" disabled={busy || !dirty} onClick={load} title="Вернуть как было">
-            <Undo2 size={14} />Отменить
-          </button>
-          <i className="vac-sep" />
+          <div className="vac-editor-acts">
+            <button className="vac-btn" disabled={busy || !dirty} onClick={save}>
+              <Save size={14} />Сохранить
+            </button>
+            <button className="vac-btn is-ghost" disabled={busy || !dirty} onClick={load} title="Вернуть как было">
+              <Undo2 size={14} />Отменить
+            </button>
 
-          <button className="vac-icon is-danger" disabled={busy} onClick={remove} title="Удалить шаблон">
-            <Trash2 size={15} />
-          </button>
+            <i className="vac-sep" />
+
+            <button className="vac-icon is-danger" disabled={busy} onClick={remove} title="Удалить шаблон">
+              <Trash2 size={15} />
+            </button>
+          </div>
         </div>
-      </div>
+
+        <input
+          className="vac-head-title"
+          value={title}
+          placeholder="Название шаблона — «Врач», «Медицинская сестра»"
+          onChange={e => setTitle(e.target.value)}
+        />
+      </header>
 
       <div className="vac-tabs">
         {TABS.map(item => (
           <button key={item.key} className={tab === item.key ? 'is-on' : ''} onClick={() => setTab(item.key)}>
             {item.label}
-            {item.key === 'form' && formDirty && <i className="vac-dot" />}
+            {item.key === 'main' && mainDirty && <i className="vac-dot" />}
+            {item.key === 'form' && schemaDirty && <i className="vac-dot" />}
             {item.key === 'process' && processDirty && <i className="vac-dot" />}
           </button>
         ))}
@@ -200,6 +203,17 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
           <AlertTriangle size={15} />
           <div>{errors.map((text, i) => <div key={i}>{text}</div>)}</div>
         </div>
+      )}
+
+      {tab === 'main' && (
+        <MainTab
+          withSalary={false}
+          description={description}
+          onDescription={setDescription}
+          descriptionLabel="Для кого этот шаблон"
+          descriptionPlaceholder="«Терапевты и узкие специалисты», «Средний медперсонал» — чтобы через полгода было понятно, чем шаблоны отличаются"
+          descriptionHint="Видно только здесь, в списке шаблонов. Кандидату описание приходит из самой вакансии."
+        />
       )}
 
       {tab === 'form' && (

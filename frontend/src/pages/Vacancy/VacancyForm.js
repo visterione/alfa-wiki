@@ -161,7 +161,10 @@ export default function VacancyForm() {
 
   return (
     <Shell branch={state.branch}>
-      <div className="vcy-vacancy-name">{state.vacancy?.title}</div>
+      <div className="vcy-vacancy-name">
+        {state.vacancy?.title}
+        {state.vacancy?.salary && <em className="vcy-salary">{state.vacancy.salary}</em>}
+      </div>
 
       <div className="vcy-progress">
         {steps.map((s, index) => (

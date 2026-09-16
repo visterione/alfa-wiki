@@ -239,6 +239,14 @@
 
 .vac-name { font-weight: 550; }
 .vac-sub  { color: var(--text-secondary); font-size: 12.5px; }
+/* Многострочное описание в таблице показывается первой строкой: развернуть его
+   в ячейке негде, а понять, о чём вакансия, по ней можно. */
+.vac-sub.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 /* Ссылка, на которую вешается QR. Моноширинная, потому что её сверяют глазами
    с тем, что напечатано на табличке. */
@@ -425,20 +433,104 @@ textarea.vac-input { padding: 9px 11px; line-height: 1.55; resize: vertical; }
 
 /* ── Шапка редактора ───────────────────────────────────────────────────── */
 
-.vac-editor-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  flex-wrap: wrap;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-light);
-}
-.vac-editor-titles {
-  flex: 1 1 280px;
+/* Три строки вместо одной кучи (ver. 8.34). До этого «К списку», два поля,
+   бейдж состояния и пять кнопок стояли в одном ряду с переносом, а филиал —
+   единственное, чего в вакансии не поменять, — оказывался в самом низу мелким
+   шрифтом под описанием.
+ 
+   Теперь верхняя строка отвечает на «где я и что с этой вакансией», а ниже
+   лежит то, что правят: название и описание. И правятся они не в коробках —
+   поле ввода вокруг заголовка страницы выглядит формой регистрации, а не
+   заголовком. Рамка появляется при наведении и фокусе, то есть ровно тогда,
+   когда человек собрался туда писать. */
+.vac-head {
   display: flex;
   flex-direction: column;
+  gap: 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.vac-head-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.vac-head-top .vac-editor-acts { margin-left: auto; }
+
+/* Филиал — не поле, а контекст: где эта вакансия открыта. Поэтому он стоит
+   рядом с «К списку», выглядит как хлебная крошка и не редактируется. */
+.vac-crumb {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
   min-width: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.vac-crumb svg { flex: none; color: var(--text-tertiary); }
+
+.vac-head-title,
+.vac-head-lead {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--vac-r-s);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.vac-head-title {
+  padding: 3px 8px;
+  margin-left: -8px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -.4px;
+}
+/* Описание — textarea, растущая по содержимому (ver. 8.35): условия пишут
+   абзацами, и в одну строку они не ложатся. Прокрутку выключаем — высоту ставит
+   AutoTextarea, а полоса внутри растущего поля появлялась бы на миг при каждом
+   пересчёте. */
+.vac-head-lead {
+  display: block;
+  padding: 4px 8px;
+  margin-left: -8px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.55;
+  resize: none;
+  overflow: hidden;
+}
+
+/* ── Зарплата ──────────────────────────────────────────────────────────── */
+
+.vac-salary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text-tertiary);
+}
+.vac-salary-row svg { flex: none; }
+.vac-input.is-amount { flex: none; width: 116px; text-align: right; font-variant-numeric: tabular-nums; }
+.vac-head-title:hover,
+.vac-head-lead:hover { background: var(--bg-secondary); }
+.vac-head-title:focus,
+.vac-head-lead:focus {
+  outline: none;
+  background: var(--bg-primary);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.vac-head-title::placeholder,
+.vac-head-lead::placeholder { color: var(--text-tertiary); font-weight: 400; }
+
+@media (max-width: 900px) {
+  /* Кнопки уезжают под строку контекста: прижимать их вправо там, где ширины
+     нет, значит рвать ряд посередине. */
+  .vac-head-top .vac-editor-acts { margin-left: 0; width: 100%; }
 }
 .vac-editor-acts {
   display: flex;
@@ -656,19 +748,23 @@ textarea.vac-input { padding: 9px 11px; line-height: 1.55; resize: vertical; }
 .vac-stepcard header small { color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
 
 .vac-assignees { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.vac-assignees .vac-input { max-width: 320px; width: 100%; }
+.vac-assignees .vac-input { max-width: 360px; width: 100%; }
 
 .vac-assignee {
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
-  max-width: 320px;
+  max-width: 360px;
   padding: 5px 6px 5px 5px;
   border-radius: var(--vac-r-m);
   background: var(--bg-secondary);
 }
 .vac-assignee-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+/* Обе строки в одну: с бейджем «нет доступа» рядом должность иначе переносится
+   и строка исполнителя становится вдвое выше соседних. */
+.vac-assignee-who b,
+.vac-assignee-who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vac-assignee-who b { font-size: 13px; font-weight: 500; }
 .vac-assignee-who small { color: var(--text-tertiary); font-size: 11.5px; }
 
@@ -1065,3 +1161,173 @@ textarea.vac-input { padding: 9px 11px; line-height: 1.55; resize: vertical; }
 .vac-card.is-narrow .vac-card-body { display: flex; flex-direction: column; gap: 12px; }
 .vac-card.is-narrow .vac-lab { flex: 1 1 auto; }
 .vac-card.is-narrow .vac-editor-acts { margin-top: 4px; }
+
+/* ── Выбор сотрудника с поиском (ver. 8.34) ────────────────────────────── */
+
+.vac-picker { position: relative; width: 100%; max-width: 360px; }
+
+.vac-picker-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--vac-h);
+  padding: 0 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--vac-r-s);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+/* Пунктир намеренно: это не заполненное поле, а место, куда ещё предстоит
+   кого-то поставить, — и пустой шаг должен быть виден на полотне сразу. */
+.vac-picker-field span { flex: 1; text-align: left; }
+.vac-picker-field svg { flex: none; color: var(--text-tertiary); }
+.vac-picker-field:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  color: var(--text-primary);
+}
+.vac-picker-field:disabled { opacity: .5; cursor: not-allowed; }
+.vac-picker.is-open .vac-picker-field { border-style: solid; border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+
+.vac-picker-drop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  border-radius: var(--vac-r-m);
+  background: var(--bg-primary);
+  box-shadow: 0 14px 34px rgba(20, 29, 45, .14);
+}
+
+.vac-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+}
+.vac-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+}
+
+.vac-picker-list { max-height: 264px; overflow-y: auto; padding: 4px; }
+.vac-picker-list button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--vac-r-s);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vac-picker-list button b { font-size: 13px; font-weight: 500; }
+.vac-picker-list button small { color: var(--text-tertiary); font-size: 11.5px; }
+/* Подсветка одна на мышь и на клавиатуру: две разные (:hover и «курсор»)
+   спорили бы друг с другом — под курсором мыши подсвечено одно, а Enter выбрал
+   бы другое. */
+.vac-picker-list button.is-cursor { background: var(--primary-light); }
+
+.vac-picker-empty {
+  padding: 12px 10px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* ── Вкладка «Основное» (ver. 8.36) ────────────────────────────────────── */
+
+.vac-main-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Ограничение по читаемой длине строки: условия вакансии — это текст, и
+     набирать его в поле шириной во всё полотно неудобно так же, как читать. */
+  max-width: 760px;
+}
+
+/* Поле под сплошной текст: в отличие от однострочных полей раздела, оно живёт
+   рамкой и растёт по содержимому. */
+.vac-input.is-prose {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+}
+
+/* ── Шаг анкеты со своими блоками (ver. 8.36) ──────────────────────────── */
+
+/* Один вложенный список вместо двух плоских: шаг, внутри его блоки, внутри
+   поля. Слева у группы полоса — она и показывает, докуда шаг простирается,
+   когда блоков в нём несколько. */
+.vac-stepgroup {
+  margin-bottom: 14px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-light);
+}
+.vac-stepgroup:last-of-type { margin-bottom: 10px; }
+
+.vac-stepgroup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.vac-stepgroup-head .vac-input.is-title {
+  flex: 1 1 auto;
+  border-color: transparent;
+  background: transparent;
+  font-size: 15px;
+}
+.vac-stepgroup-head .vac-input.is-title:hover { background: var(--bg-secondary); }
+.vac-stepgroup-head .vac-input.is-title:focus {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: var(--bg-primary);
+}
+
+/* Номер шага — то, в каком порядке кандидат увидит эти блоки. */
+.vac-stepgroup-no {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.vac-stepgroup-body { display: flex; flex-direction: column; gap: 6px; }
+.vac-stepgroup-body > .vac-btn { align-self: flex-start; }
+
+/* Кнопка, добавляющая шаг, шире остальных: она заканчивает список, а не стоит
+   в его строке. */
+.vac-btn.is-wide { width: 100%; justify-content: center; border-style: dashed; }
+
+@media (max-width: 900px) {
+  .vac-stepgroup-head { flex-wrap: wrap; }
+  .vac-stepgroup-head .vac-input.is-title { flex: 1 1 100%; }
+}

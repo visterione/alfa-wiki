@@ -405,16 +405,20 @@ function VacancyList({ list, onOpen, onCreate }) {
   return (
     <table className="vac-table">
       <thead>
-        <tr><th>Вакансия</th><th>Филиал</th><th>Анкета</th><th>Откликов</th><th>Состояние</th></tr>
+        <tr><th>Вакансия</th><th>Филиал</th><th>Зарплата</th><th>Анкета</th><th>Откликов</th><th>Состояние</th></tr>
       </thead>
       <tbody>
         {list.map(v => (
           <tr key={v.id} className="is-clickable" onClick={() => onOpen(v.id)}>
             <td>
               <div className="vac-name">{v.title}</div>
-              {v.description && <div className="vac-sub">{v.description}</div>}
+              {/* Описание теперь многострочное, и в таблице от него нужна первая
+                  строка: развернуть его целиком негде, а понять, о чём вакансия,
+                  по ней можно. */}
+              {v.description && <div className="vac-sub is-clamped">{v.description}</div>}
             </td>
             <td className="vac-sub">{v.medCenter?.name || '—'}</td>
+            <td className="vac-sub">{v.salaryLabel || '—'}</td>
             <td className="vac-sub">{v.blockCount} блоков · {v.stepCount} шагов</td>
             <td className="vac-sub">{v.applicationCount || '—'}</td>
             <td>

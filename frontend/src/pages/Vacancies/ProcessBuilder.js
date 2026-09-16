@@ -11,6 +11,17 @@
  * зависимости, и четыре шага после создания учётки идут одновременно. Порядок
  * здесь нужен только для чтения, поэтому в свёрнутой карточке написано, чего
  * шаг ждёт, — иначе понять последовательность можно было бы только раскрыв все.
+ *
+ * ── Исполнители здесь же (ver. 8.36) ────────────────────────────────────────
+ *
+ * Раньше они жили соседней вкладкой, и список шагов был на обеих: собрал
+ * процесс, ушёл на «Исполнителей», сверил названия, раздал людей. Теперь
+ * назначение лежит в карточке своего шага — на вопрос «кто это делает»
+ * отвечают сразу после «что это за шаг».
+ *
+ * Разница в способе сохранения при этом никуда не делась и её не спрятать:
+ * процесс уходит по кнопке, назначения — сразу. Пока шаг не сохранён, его ключа
+ * в базе нет, назначать не на что, и карточка честно просит сохранить процесс.
  */
 
 import React, { useState } from 'react';
@@ -19,8 +30,9 @@ import {
 } from 'lucide-react';
 
 import { keyFromLabel } from './FormBuilder';
+import { StepAssigneesFor, EscalationCard, NobodyEligible } from './Assignees';
 
-export default function ProcessBuilder({ steps, meta, lockedKeys, onChange }) {
+export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onChange }) {
   const [open, setOpen] = useState(() => new Set());
 
   const toggle = (key) => setOpen(prev => {
@@ -119,6 +131,8 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, onChange }) {
         </div>
       )}
 
+      {assignees?.nobodyEligible && <NobodyEligible />}
+
       {!steps.length && <div className="vac-empty">В процессе нет ни одного шага.</div>}
 
       {steps.map((step, index) => (
@@ -127,6 +141,7 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, onChange }) {
           step={step}
           steps={steps}
           meta={meta}
+          assignees={assignees}
           locked={lockedKeys.has(step.key)}
           isOpen={open.has(step.key)}
           onToggle={() => toggle(step.key)}
@@ -138,12 +153,16 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, onChange }) {
           canMoveDown={index < steps.length - 1}
         />
       ))}
+
+      {/* Служебная точка: кому писать о просрочке. Шагом она не является, и
+          стоит под списком, а не среди шагов. */}
+      {assignees && <EscalationCard assignees={assignees} />}
     </div>
   );
 }
 
 function StepCard({
-  step, steps, meta, locked, isOpen, onToggle, onChange,
+  step, steps, meta, assignees, locked, isOpen, onToggle, onChange,
   onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown
 }) {
   const kindSpec = meta.stepKinds.find(k => k.key === step.kind);
@@ -305,6 +324,25 @@ function StepCard({
               />
             </label>
           </div>
+
+          {/* Кто выполняет — здесь же, а не на соседней вкладке. У шага, который
+              закрывает сам кандидат, исполнителя нет по определению. */}
+          {assignees && kindSpec?.assignee !== false && step.scope !== 'candidate' && !step.archived && (
+            <>
+              <div className="vac-sect" style={{ marginTop: 6 }}>
+                <span>{step.scope === 'branch' ? 'Исполнители в этом филиале' : 'Исполнители на всю сеть'}</span>
+              </div>
+
+              {assignees.knownKeys.has(step.key) ? (
+                <StepAssigneesFor assignees={assignees} stepKey={step.key} scope={step.scope} />
+              ) : (
+                <div className="vac-hint">
+                  Шаг ещё не сохранён — назначить исполнителя можно будет сразу
+                  после «Сохранить».
+                </div>
+              )}
+            </>
+          )}
 
           {step.kind !== 'decision' && (
             <>

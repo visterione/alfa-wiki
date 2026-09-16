@@ -7,9 +7,22 @@
  * им негде.
  *
  * Одно отличие от хранимого вида — шаг. В базе шаг держит список своих блоков
- * (`steps[].blocks`), а здесь блок помнит, в каком он шаге. Перекладывать блок
- * выпадающим списком в самом блоке человеку понятнее, чем таскать ключи между
- * двумя списками, а обратное преобразование — четыре строки в toStored().
+ * (`steps[].blocks`), а здесь блок помнит, в каком он шаге: так порядок блоков
+ * внутри шага — это просто их порядок в общем списке, а обратное преобразование
+ * занимает четыре строки в toStored().
+ *
+ * ── Один список вместо двух (ver. 8.36) ─────────────────────────────────────
+ *
+ * Сначала шаги и блоки правились порознь: сверху список шагов, ниже — плоский
+ * список всех блоков, и у каждого выпадающий список «в каком я шаге». Собрать
+ * по такому экрану картину анкеты было нельзя: чтобы понять, что человек увидит
+ * на втором шаге, приходилось прочитать все блоки и сверить их выпадающие
+ * списки. Теперь список один и вложенный — шаг, внутри его блоки, внутри поля,
+ * — и он устроен так же, как то, что увидит кандидат.
+ *
+ * Выпадающий список «в каком шаге» у блока при этом остался: перетаскивание
+ * между шагами здесь стоило бы дороже, чем экономит, а перенести блок нужно
+ * редко.
  *
  * Ключи полей человек может не придумывать: они переводятся из подписи
  * («Дата рождения» → `dataRozhdeniya`). Придумывать латинские имена для
@@ -26,7 +39,7 @@
 
 import React, { useState } from 'react';
 import {
-  ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, GripVertical, Repeat, Paperclip
+  ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, Repeat, Paperclip
 } from 'lucide-react';
 
 import { vacancies as api } from '../../services/api';
@@ -120,98 +133,83 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
 
   const patch = (changes) => onChange({ ...draft, ...changes });
 
+  // Блоки шага вместе с их местами в общем списке: порядок внутри шага — это
+  // порядок в draft.blocks, и чтобы двигать блок стрелками, нужны оба индекса.
+  const blocksOf = (stepKey) => draft.blocks
+    .map((block, index) => ({ block, index }))
+    .filter(item => item.block.stepKey === stepKey);
+
   const setBlock = (index, block) => {
     const blocks = draft.blocks.slice();
     blocks[index] = block;
     patch({ blocks });
   };
 
-  const moveBlock = (index, delta) => {
-    const target = index + delta;
-    if (target < 0 || target >= draft.blocks.length) return;
+  const removeBlock = (index) => {
+    patch({ blocks: draft.blocks.filter((_, i) => i !== index) });
+  };
+
+  /** Перестановка блока внутри своего шага: меняется местами с соседом по шагу. */
+  const moveBlock = (stepKey, position, delta) => {
+    const group = blocksOf(stepKey);
+    const target = position + delta;
+    if (target < 0 || target >= group.length) return;
+
     const blocks = draft.blocks.slice();
-    [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
+    const here = group[position].index;
+    const there = group[target].index;
+    [blocks[here], blocks[there]] = [blocks[there], blocks[here]];
     patch({ blocks });
   };
 
-  const addBlock = () => {
+  /**
+   * Новый блок встаёт сразу за последним блоком своего шага, а не в конец
+   * общего списка: иначе добавленный в первый шаг блок оказался бы в хранимом
+   * порядке после всех остальных, и кандидат увидел бы его последним.
+   */
+  const addBlock = (stepKey) => {
     const key = keyFromLabel('Новый блок', takenKeys(draft.blocks));
     const block = {
       key,
       title: 'Новый блок',
       fields: [{ key: keyFromLabel('Новое поле', takenKeys(draft.blocks)), label: 'Новое поле', type: 'text' }],
-      stepKey: draft.steps[0]?.key || ''
+      stepKey
     };
-    patch({ blocks: [...draft.blocks, block] });
+
+    const group = blocksOf(stepKey);
+    const at = group.length ? group[group.length - 1].index + 1 : draft.blocks.length;
+    const blocks = draft.blocks.slice();
+    blocks.splice(at, 0, block);
+
+    patch({ blocks });
     setOpen(prev => new Set(prev).add(key));
   };
 
-  const removeBlock = (index) => {
-    patch({ blocks: draft.blocks.filter((_, i) => i !== index) });
-  };
-
-  return (
-    <div className="vac-builder">
-      <StepsEditor draft={draft} onChange={patch} />
-
-      <div className="vac-sect">
-        <span>Блоки анкеты</span>
-        <button className="vac-btn is-ghost" onClick={addBlock}><Plus size={14} />Добавить блок</button>
-      </div>
-
-      {!draft.blocks.length && (
-        <div className="vac-empty">В анкете нет ни одного блока.</div>
-      )}
-
-      {draft.blocks.map((block, index) => (
-        <BlockCard
-          key={block.key || index}
-          block={block}
-          blocks={draft.blocks}
-          steps={draft.steps}
-          meta={meta}
-          attachments={attachments}
-          onAttach={onAttach}
-          isOpen={open.has(block.key)}
-          onToggle={() => toggle(block.key)}
-          onChange={(next) => setBlock(index, next)}
-          onMoveUp={() => moveBlock(index, -1)}
-          onMoveDown={() => moveBlock(index, 1)}
-          onRemove={() => removeBlock(index)}
-          canMoveUp={index > 0}
-          canMoveDown={index < draft.blocks.length - 1}
-        />
-      ))}
-    </div>
-  );
-}
-
-/**
- * Шаги мастера.
- *
- * Шаг без блоков анкету не сломает — сервер о нём скажет при сохранении, — но
- * пустой шаг здесь виден сразу: рядом с названием стоит, сколько блоков в него
- * попало.
- */
-function StepsEditor({ draft, onChange }) {
-  const countIn = (key) => draft.blocks.filter(b => b.stepKey === key).length;
+  // ── Шаги ────────────────────────────────────────────────────────────────
 
   const setStep = (index, step) => {
     const steps = draft.steps.slice();
     const before = steps[index].key;
     steps[index] = step;
-    // Ключ шага живёт только внутри шаблона, никаких заявок он не держит,
+    // Ключ шага живёт только внутри анкеты, никаких заявок он не держит,
     // поэтому переименование безопасно — но блоки надо перецепить.
     const blocks = before === step.key
       ? draft.blocks
       : draft.blocks.map(b => (b.stepKey === before ? { ...b, stepKey: step.key } : b));
-    onChange({ steps, blocks });
+    patch({ steps, blocks });
   };
 
   const addStep = () => {
-    const taken = new Set(draft.steps.map(s => s.key));
-    const key = keyFromLabel('Новый шаг', taken);
-    onChange({ steps: [...draft.steps, { key, title: 'Новый шаг' }] });
+    const key = keyFromLabel('Новый шаг', new Set(draft.steps.map(s => s.key)));
+    patch({ steps: [...draft.steps, { key, title: 'Новый шаг' }] });
+  };
+
+  const moveStep = (index, delta) => {
+    const target = index + delta;
+    if (target < 0 || target >= draft.steps.length) return;
+    const steps = draft.steps.slice();
+    [steps[index], steps[target]] = [steps[target], steps[index]];
+    patch({ steps });
   };
 
   const removeStep = (index) => {
@@ -221,61 +219,88 @@ function StepsEditor({ draft, onChange }) {
     // оставшийся. Иначе человек, убрав шаг, молча терял бы пять блоков анкеты.
     const fallback = steps[0]?.key || '';
     const blocks = draft.blocks.map(b => (b.stepKey === step.key ? { ...b, stepKey: fallback } : b));
-    onChange({ steps, blocks });
-  };
-
-  const moveStep = (index, delta) => {
-    const target = index + delta;
-    if (target < 0 || target >= draft.steps.length) return;
-    const steps = draft.steps.slice();
-    [steps[index], steps[target]] = [steps[target], steps[index]];
-    onChange({ steps });
+    patch({ steps, blocks });
   };
 
   return (
-    <>
-      <div className="vac-sect">
-        <span>Шаги анкеты</span>
-        <button className="vac-btn is-ghost" onClick={addStep}><Plus size={14} />Добавить шаг</button>
-      </div>
+    <div className="vac-builder">
+      {draft.steps.map((step, stepIndex) => {
+        const group = blocksOf(step.key);
 
-      <div className="vac-steps">
-        {draft.steps.map((step, index) => (
-          <div className="vac-step" key={step.key || index}>
-            <GripVertical size={14} className="vac-step-grip" />
-            <input
-              className="vac-input"
-              value={step.title}
-              placeholder="Название шага"
-              onChange={e => setStep(index, { ...step, title: e.target.value })}
-            />
-            <input
-              className="vac-input is-key"
-              value={step.key}
-              placeholder="ключ"
-              onChange={e => setStep(index, { ...step, key: e.target.value.trim() })}
-            />
-            <span className={`vac-badge ${countIn(step.key) ? 'vac-badge-muted' : 'vac-badge-warn'}`}>
-              {countIn(step.key)} бл.
-            </span>
-            <button className="vac-icon" title="Выше" disabled={index === 0} onClick={() => moveStep(index, -1)}>
-              <ChevronUp size={14} />
-            </button>
-            <button className="vac-icon" title="Ниже" disabled={index === draft.steps.length - 1} onClick={() => moveStep(index, 1)}>
-              <ChevronDown size={14} />
-            </button>
-            <button
-              className="vac-icon is-danger"
-              title={draft.steps.length > 1 ? 'Удалить шаг' : 'Последний шаг удалить нельзя'}
-              disabled={draft.steps.length < 2}
-              onClick={() => removeStep(index)}
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-      </div>
-    </>
+        return (
+          <section className="vac-stepgroup" key={step.key || stepIndex}>
+            <div className="vac-stepgroup-head">
+              <span className="vac-stepgroup-no">{stepIndex + 1}</span>
+
+              <input
+                className="vac-input is-title"
+                value={step.title}
+                placeholder="Название шага — «О себе», «Документы»"
+                onChange={e => setStep(stepIndex, { ...step, title: e.target.value })}
+              />
+              <input
+                className="vac-input is-key"
+                value={step.key}
+                placeholder="ключ"
+                onChange={e => setStep(stepIndex, { ...step, key: e.target.value.trim() })}
+              />
+
+              {!group.length && <span className="vac-badge vac-badge-warn">пустой шаг</span>}
+
+              <button className="vac-icon" title="Выше" disabled={stepIndex === 0} onClick={() => moveStep(stepIndex, -1)}>
+                <ChevronUp size={14} />
+              </button>
+              <button
+                className="vac-icon"
+                title="Ниже"
+                disabled={stepIndex === draft.steps.length - 1}
+                onClick={() => moveStep(stepIndex, 1)}
+              >
+                <ChevronDown size={14} />
+              </button>
+              <button
+                className="vac-icon is-danger"
+                title={draft.steps.length > 1 ? 'Удалить шаг — блоки перейдут в первый' : 'Последний шаг удалить нельзя'}
+                disabled={draft.steps.length < 2}
+                onClick={() => removeStep(stepIndex)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+
+            <div className="vac-stepgroup-body">
+              {group.map(({ block, index }, position) => (
+                <BlockCard
+                  key={block.key || index}
+                  block={block}
+                  blocks={draft.blocks}
+                  steps={draft.steps}
+                  meta={meta}
+                  attachments={attachments}
+                  onAttach={onAttach}
+                  isOpen={open.has(block.key)}
+                  onToggle={() => toggle(block.key)}
+                  onChange={next => setBlock(index, next)}
+                  onMoveUp={() => moveBlock(step.key, position, -1)}
+                  onMoveDown={() => moveBlock(step.key, position, 1)}
+                  onRemove={() => removeBlock(index)}
+                  canMoveUp={position > 0}
+                  canMoveDown={position < group.length - 1}
+                />
+              ))}
+
+              <button className="vac-btn is-ghost" onClick={() => addBlock(step.key)}>
+                <Plus size={14} />Блок в этот шаг
+              </button>
+            </div>
+          </section>
+        );
+      })}
+
+      <button className="vac-btn is-ghost is-wide" onClick={addStep}>
+        <Plus size={14} />Добавить шаг анкеты
+      </button>
+    </div>
   );
 }
 
@@ -335,7 +360,7 @@ function BlockCard({
           className="vac-input is-narrow"
           value={block.stepKey}
           onChange={e => onChange({ ...block, stepKey: e.target.value })}
-          title="В каком шаге анкеты показывается блок"
+          title="Перенести блок в другой шаг"
         >
           {steps.map(s => <option key={s.key} value={s.key}>{s.title || s.key}</option>)}
         </select>

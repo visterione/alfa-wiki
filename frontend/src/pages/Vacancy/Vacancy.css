@@ -591,3 +591,30 @@
 .vcy-samples a::before { content: '↓'; font-size: 15px; line-height: 1; opacity: .7; }
 
 .vcy-samples a:hover { background: rgba(255, 255, 255, .85); }
+
+/* ── Зарплата и многострочные условия (ver. 8.35) ──────────────────────── */
+
+/* В списке вакансий зарплата стоит между названием и условиями: это первое,
+   что ищут глазами, и до описания она попадается раньше. Курсивом её не делаем
+   — em здесь взят как «выделенное», а не как наклонное. */
+.vcy-salary {
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--clinic-ink);
+}
+.vcy-salary.is-big {
+  margin: -8px 0 16px;
+  font-size: 19px;
+  letter-spacing: -.02em;
+}
+
+/* В шапке анкеты — приписка рядом с названием вакансии, а не отдельная строка:
+   человек уже согласился на условия, это просто напоминание. */
+.vcy-vacancy-name .vcy-salary { margin-left: 8px; font-size: 12.5px; font-weight: 550; text-transform: none; letter-spacing: 0; }
+
+/* Условия пишут абзацами, и переносы должны доживать до кандидата. pre-line, а
+   не pre: одиночные переносы внутри абзаца сохраняются, а лишние пробелы из
+   копипасты — нет. */
+.vcy-lead.is-text { white-space: pre-line; }
+.vcy-vacancy span { white-space: pre-line; }

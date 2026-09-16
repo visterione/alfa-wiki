@@ -176,6 +176,9 @@ export default function VacancyStart({ direct = false }) {
             >
               <span className="vcy-vacancy-text">
                 <b>{v.title}</b>
+                {/* Зарплата — первое, что ищут глазами в списке, поэтому стоит
+                    до описания и отдельной строкой, а не в его конце. */}
+                {v.salary && <em className="vcy-salary">{v.salary}</em>}
                 {v.description && <span>{v.description}</span>}
               </span>
               <i aria-hidden="true">›</i>
@@ -193,7 +196,8 @@ export default function VacancyStart({ direct = false }) {
           <button type="button" className="vcy-back" onClick={() => setStage('list')}>← К списку вакансий</button>
         )}
         <h1>{chosen.title}</h1>
-        {chosen.description && <p className="vcy-lead">{chosen.description}</p>}
+        {chosen.salary && <p className="vcy-salary is-big">{chosen.salary}</p>}
+        {chosen.description && <p className="vcy-lead is-text">{chosen.description}</p>}
 
         <form onSubmit={requestCode} className="vcy-form">
           <label className="vcy-field">

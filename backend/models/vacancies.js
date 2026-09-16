@@ -91,7 +91,33 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     medCenterId: { type: DataTypes.UUID, allowNull: false },
 
     title:       { type: DataTypes.STRING(200), allowNull: false, comment: 'Что видит кандидат в списке' },
+    // Многострочное с ver. 8.35: переносы сохраняются и показываются кандидату.
+    // Однострочным поле было ошибкой — условия, график и требования в одну
+    // строку не ложатся, их разбивают на абзацы.
     description: { type: DataTypes.TEXT, comment: 'Условия, график, требования — показывается перед анкетой' },
+
+    // ── Зарплата (ver. 8.35) ────────────────────────────────────────────────
+    //
+    // Вид и суммы порознь, а не одной строкой, которую набрал админ. Строкой
+    // было бы проще ровно один раз — при вводе; дальше получаются «100 тыс»,
+    // «100000р» и «от 100 до 120» в пределах одной сети. Вид фиксирует, о чём
+    // речь, а как это написать словами, решает services/vacancies/salary.js —
+    // поэтому во всех вакансиях и на всех экранах зарплата выглядит одинаково.
+    //
+    // Валюты и периода («в месяц», «за смену») нет намеренно: платим в рублях,
+    // а период у врача, медсестры и администратора разный — если он важен, его
+    // пишут в условиях рядом.
+    //
+    // У шаблона этих полей нет: шаблон — заготовка должности на всю сеть, а
+    // платят в филиалах по-разному.
+    salaryKind: {
+      type: DataTypes.STRING(12),
+      allowNull: false,
+      defaultValue: 'none',
+      comment: 'none, exact, range, negotiable'
+    },
+    salaryFrom: { type: DataTypes.INTEGER, comment: 'Точная сумма либо нижняя граница вилки' },
+    salaryTo:   { type: DataTypes.INTEGER, comment: 'Верхняя граница вилки' },
 
     form:    { type: DataTypes.JSONB, allowNull: false, defaultValue: { blocks: [], steps: [] } },
     process: { type: DataTypes.JSONB, allowNull: false, defaultValue: { steps: [] } },

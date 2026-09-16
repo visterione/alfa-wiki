@@ -21,7 +21,7 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 
 const router = express.Router();
 
@@ -34,6 +34,8 @@ const formSchema = require('../services/vacancies/formSchema');
 const processSchema = require('../services/vacancies/processSchema');
 const priceCatalogue = require('../services/vacancies/priceCatalogue');
 const chatLinks = require('../services/vacancies/chatLinks');
+const access = require('../services/vacancies/access');
+const salary = require('../services/vacancies/salary');
 const attachments = require('../services/vacancies/attachments');
 const mailer = require('../services/vacancies/mailer');
 const links = require('../services/vacancies/links');
@@ -170,6 +172,8 @@ router.get('/meta', (req, res) => {
     // Наши файлы у поля анкеты (ver. 8.34): сколько их можно повесить и что
     // вообще принимается. Редактор пишет об этом человеку до выбора файла, а не
     // после отказа.
+    // Виды зарплаты — тот же реестр, по которому её проверяет сервер.
+    salaryKinds: Object.entries(salary.KINDS).map(([key, spec]) => ({ key, label: spec.label })),
     attachments: {
       max: formSchema.MAX_ATTACHMENTS,
       maxSizeMb: attachments.MAX_FILE_MB,
@@ -235,6 +239,7 @@ router.get('/openings', async (req, res) => {
       title: v.title,
       description: v.description,
       status: v.status,
+      salaryLabel: salary.label(v),
       publicCode: v.publicCode,
       blockCount: Array.isArray(v.form?.blocks) ? v.form.blocks.length : 0,
       stepCount: Array.isArray(v.process?.steps) ? v.process.steps.length : 0,
@@ -338,6 +343,11 @@ router.get('/openings/:id', loadVacancy, async (req, res) => {
       title: vacancy.title,
       description: vacancy.description,
       status: vacancy.status,
+      // Редактор правит сырые поля; собранную строку он не показывает, поэтому
+      // и не получает её — в списке вакансий и в публичном контуре она своя.
+      salaryKind: vacancy.salaryKind,
+      salaryFrom: vacancy.salaryFrom,
+      salaryTo: vacancy.salaryTo,
       publicCode: vacancy.publicCode,
       medCenter: vacancy.medCenter,
       form: vacancy.form || { blocks: [], steps: [] },
@@ -382,6 +392,12 @@ router.put('/openings/:id', loadVacancy, async (req, res) => {
       patch.description = String(req.body.description).trim() || null;
     }
     if (req.body?.sortOrder !== undefined) patch.sortOrder = Number(req.body.sortOrder) || 0;
+
+    if (req.body?.salaryKind !== undefined) {
+      const { errors, salary: parsed } = salary.parse(req.body);
+      if (errors.length) return res.status(400).json({ error: errors[0], errors });
+      Object.assign(patch, parsed);
+    }
 
     if (req.body?.form !== undefined) {
       const { errors, form } = formSchema.validateForm(req.body.form);
@@ -916,10 +932,17 @@ router.delete('/templates/:id/attachments/:attachmentId', loadTemplate, async (r
 // ── Исполнители ────────────────────────────────────────────────────────────
 
 /**
- * Ролей под процесс не заводим — исполнитель всегда конкретный человек. В
- * списке для выбора все работающие сотрудники, а не только те, у кого есть
- * раздел: назначение исполнителем и право собирать вакансии — разные вещи,
- * кадровик и маркетолог шаги выполняют, а конструктор им не нужен.
+ * Ролей под процесс не заводим — исполнитель всегда конкретный человек.
+ *
+ * В списке для выбора только те, у кого есть доступ к разделу
+ * (adminAccess.vacancies либо админ). До 8.34 здесь были все работающие
+ * сотрудники портала: список на несколько сотен человек, из которого можно было
+ * назначить того, кто раздел не откроет вовсе, — его задача молча протухла бы
+ * по сроку.
+ *
+ * Уже назначенные показываются даже без флага и помечены отдельно: убрать их из
+ * списка значило бы показать пустую строку вместо живого исполнителя и нечем
+ * было бы объяснить, почему задача стоит.
  */
 router.get('/openings/:id/assignments', loadVacancy, async (req, res) => {
   try {
@@ -935,8 +958,26 @@ router.get('/openings/:id/assignments', loadVacancy, async (req, res) => {
         where: REAL_BRANCHES, attributes: ['id', 'name'],
         order: [['sortOrder', 'ASC'], ['name', 'ASC']]
       }),
-      User.findAll({ where: { isActive: true }, attributes: USER_FIELDS, order: [['displayName', 'ASC']] })
+      User.findAll({
+        where: { isActive: true, ...access.moduleAccessWhere(Sequelize) },
+        attributes: USER_FIELDS,
+        order: [['displayName', 'ASC']]
+      })
     ]);
+
+    // Назначенные, но потерявшие доступ. Причин две — флаг забрали или человек
+    // выбыл, — и выглядят они одинаково: задача уходит в никуда. Помечаем,
+    // чтобы админ увидел это в списке, а не по зависшей заявке.
+    const eligible = new Set(users.map(u => u.id));
+    // Одного человека назначают на несколько шагов, поэтому список приходится
+    // схлопывать по id: иначе он попал бы в выдачу столько раз, сколько у него
+    // назначений.
+    const assigned = [...new Map(
+      rows
+        .map(r => r.user)
+        .filter(u => u && !eligible.has(u.id))
+        .map(u => [u.id, u])
+    ).values()];
 
     res.json({
       // Филиал у вакансии один, поэтому филиальные шаги настраиваются сразу на
@@ -955,9 +996,17 @@ router.get('/openings/:id/assignments', loadVacancy, async (req, res) => {
         }
       ],
       medCenters: centers,
-      users,
+      // Сначала те, кого можно назначить, следом — уже назначенные без доступа.
+      users: [
+        ...users.map(u => ({ ...u.get({ plain: true }), hasAccess: true })),
+        ...assigned.map(u => ({ ...u.get({ plain: true }), hasAccess: false }))
+      ],
       assignments: rows.map(r => ({
-        id: r.id, stepKey: r.stepKey, medCenterId: r.medCenterId, userId: r.userId, user: r.user
+        id: r.id,
+        stepKey: r.stepKey,
+        medCenterId: r.medCenterId,
+        userId: r.userId,
+        user: r.user ? { ...r.user.get({ plain: true }), hasAccess: eligible.has(r.user.id) } : null
       }))
     });
   } catch (error) {
@@ -1021,8 +1070,33 @@ router.put('/openings/:id/assignments/:stepKey', loadVacancy, async (req, res) =
       if (!branch) return res.status(400).json({ error: 'Неизвестный филиал' });
     }
     if (userIds.length) {
-      const alive = await User.count({ where: { id: { [Op.in]: userIds }, isActive: true } });
-      if (alive !== userIds.length) return res.status(400).json({ error: 'Среди выбранных есть неработающие сотрудники' });
+      // Проверяем здесь, а не только в интерфейсе: назначение приходит обычным
+      // PUT, а назначенный без доступа — это задача, которую некому открыть.
+      // Уже назначенных это не задевает: их список приходит тем же запросом и
+      // сохраняется как есть, пока их не тронули.
+      const before = await VacAssignment.findAll({
+        where: { vacancyId: vacancy.id, stepKey, medCenterId },
+        attributes: ['userId']
+      });
+      const kept = new Set(before.map(r => r.userId));
+
+      const rows = await User.findAll({
+        where: { id: { [Op.in]: userIds } },
+        attributes: ['id', 'displayName', 'username', 'isActive', 'isAdmin', 'adminAccess']
+      });
+      if (rows.length !== userIds.length) return res.status(400).json({ error: 'Кого-то из выбранных больше нет' });
+
+      const dead = rows.find(u => !u.isActive);
+      if (dead) {
+        return res.status(400).json({ error: `${dead.displayName || dead.username} больше не работает` });
+      }
+
+      const barred = rows.find(u => !kept.has(u.id) && !access.hasModuleAccess(u));
+      if (barred) {
+        return res.status(400).json({
+          error: `У ${barred.displayName || barred.username} нет доступа к разделу «Вакансии» — выдайте его в «Пользователях»`
+        });
+      }
     }
 
     await VacAssignment.destroy({ where: { vacancyId: vacancy.id, stepKey, medCenterId } });

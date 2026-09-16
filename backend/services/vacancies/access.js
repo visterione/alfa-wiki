@@ -13,23 +13,52 @@
  * будет негде.
  *
  * Поэтому:
- *   настройка (шаблоны, вакансии, ссылки)  — только isAdmin;
- *   заявки и задачи                        — админ плюс тот, кто назначен
- *                                            исполнителем хоть на один шаг.
+ *   настройка (вакансии, шаблоны, QR)      — только isAdmin;
+ *   заявки и задачи                        — админ, обладатель флага
+ *                                            adminAccess.vacancies и тот, кто
+ *                                            уже назначен исполнителем.
  *
- * Отдельного флага в adminAccess не заводим: право «быть исполнителем» уже
- * выражено назначением, и второе место настройки того же самого неизбежно
- * разошлось бы с первым. Ровно так считает права складской модуль
- * (services/warehouse/access.js), и там это себя оправдало.
+ * ── Откуда взялся флаг (ver. 8.34) ─────────────────────────────────────────
+ *
+ * До 8.34 флага не было: считалось, что право «быть исполнителем» уже выражено
+ * самим назначением, и второе место настройки того же самого разошлось бы с
+ * первым. На практике вышло иначе. Выбирать исполнителя приходилось из всех
+ * сотрудников портала — а это сотни людей, большинству из которых раздел не
+ * виден, — и назначить можно было того, кто свою задачу никогда не откроет:
+ * уведомление придёт, открыть будет негде, задача протухнет по сроку.
+ *
+ * Теперь список для назначения — это обладатели флага, ровно как в первом
+ * поколении (services/onboarding/access.js). Назначение при этом права не
+ * потеряло: уже назначенные до выката продолжают видеть свои задачи, иначе
+ * выкат молча закрыл бы раздел живым исполнителям.
  */
 
 const { Op } = require('sequelize');
 
 const assignments = require('./assignments');
 
-/** Собирать шаблоны, заводить вакансии, печатать QR. */
+/** Собирать вакансии и шаблоны, печатать QR. */
 function canConfigure(user) {
   return Boolean(user?.isAdmin);
+}
+
+/**
+ * Может ли человек работать в разделе: видеть заявки и получать задачи.
+ * Это же условие отбирает список тех, кого можно назначить исполнителем.
+ */
+function hasModuleAccess(user) {
+  if (!user) return false;
+  return Boolean(user.isAdmin || user.adminAccess?.vacancies);
+}
+
+/** Условие того же правила на языке базы — для выборки списка исполнителей. */
+function moduleAccessWhere(Sequelize) {
+  return {
+    [Op.or]: [
+      { isAdmin: true },
+      Sequelize.literal(`"adminAccess"->>'vacancies' = 'true'`)
+    ]
+  };
 }
 
 /**
@@ -41,7 +70,10 @@ function canConfigure(user) {
 async function resolve(user) {
   const isAdmin = canConfigure(user);
   const scopes = await assignments.stepsOfUser(user.id);
-  return { allowed: isAdmin || scopes.length > 0, isAdmin, scopes };
+  // Назначение оставлено третьим основанием намеренно: людей назначали до того,
+  // как появился флаг, и выкат не должен закрывать раздел тем, у кого прямо
+  // сейчас висят незакрытые задачи.
+  return { allowed: hasModuleAccess(user) || scopes.length > 0, isAdmin, scopes };
 }
 
 /**
@@ -76,4 +108,4 @@ function applicationScope(acl) {
   return ids.length ? { vacancyId: { [Op.in]: ids } } : { id: null };
 }
 
-module.exports = { canConfigure, resolve, canSeeApplication, applicationScope };
+module.exports = { canConfigure, hasModuleAccess, moduleAccessWhere, resolve, canSeeApplication, applicationScope };

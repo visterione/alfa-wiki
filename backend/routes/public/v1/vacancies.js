@@ -44,6 +44,7 @@ const formSchema = require('../../../services/vacancies/formSchema');
 const mailer = require('../../../services/vacancies/mailer');
 const files = require('../../../services/vacancies/files');
 const attachments = require('../../../services/vacancies/attachments');
+const salary = require('../../../services/vacancies/salary');
 const engine = require('../../../services/vacancies/engine');
 const priceCatalogue = require('../../../services/vacancies/priceCatalogue');
 
@@ -121,8 +122,15 @@ router.get('/b/:code', async (req, res) => {
     res.json({
       ok: true,
       branch: brandOf(branch),
+      // Зарплата уходит готовой строкой, а не тремя полями: публичной странице
+      // нечего решать про виды и разряды, а выглядеть она обязана так же, как в
+      // настройке и на странице отклика.
       vacancies: rows.map(v => ({
-        id: v.id, code: v.publicCode, title: v.title, description: v.description
+        id: v.id,
+        code: v.publicCode,
+        title: v.title,
+        description: v.description,
+        salary: salary.label(v)
       }))
     });
   } catch (error) {
@@ -168,7 +176,8 @@ router.get('/j/:code', async (req, res) => {
         id: vacancy.id,
         code: vacancy.publicCode,
         title: vacancy.title,
-        description: vacancy.description
+        description: vacancy.description,
+        salary: salary.label(vacancy)
       }
     });
   } catch (error) {
@@ -381,7 +390,9 @@ router.get('/a/:token', loadApplication, async (req, res) => {
       specialities,
       revisionFields: app.revisionFields || [],
       decisionNote: app.status === 'revision' ? app.decisionNote : null,
-      vacancy: app.vacancy ? { title: app.vacancy.title, description: app.vacancy.description } : null,
+      vacancy: app.vacancy
+        ? { title: app.vacancy.title, description: app.vacancy.description, salary: salary.label(app.vacancy) }
+        : null,
       branch: brandOf(app.medCenter)
     });
   } catch (error) {
@@ -426,8 +437,13 @@ const receiveFile = files.uploader().single('file');
 
 router.post('/a/:token/files', loadApplication, (req, res, next) => {
   receiveFile(req, res, (error) => {
-    if (error) return fail(res, 400, 'upload_failed', error.message);
-    next();
+    if (!error) return next();
+    // Про размер multer сообщает по-английски («File too large»), а читает это
+    // кандидат с телефона.
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? `Файл больше ${files.MAX_FILE_MB} МБ. Сфотографируйте страницу заново или уменьшите размер`
+      : error.message;
+    fail(res, 400, 'upload_failed', message);
   });
 }, async (req, res) => {
   try {

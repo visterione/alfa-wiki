@@ -19,19 +19,27 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle, Play, Pause, Archive, Copy } from 'lucide-react';
+import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle, Play, Pause, Archive, Copy, Building2 } from 'lucide-react';
 
 import { vacancies as api } from '../../services/api';
 import FormBuilder, { fromStored, toStored } from './FormBuilder';
 import ProcessBuilder from './ProcessBuilder';
-import AssignmentsEditor from './AssignmentsEditor';
+import MainTab from './MainTab';
 import EmailsEditor from './EmailsEditor';
 import ShareTab from './ShareTab';
+import { fromVacancy as salaryFromVacancy, toPayload as salaryPayload } from './SalaryField';
+import { useAssignees } from './Assignees';
 
+// Вкладки идут в порядке сборки вакансии: что предлагаем → что спрашиваем →
+// что происходит дальше → чем разговариваем → куда звать.
+//
+// «Исполнители» отдельной вкладкой были до ver. 8.36: список шагов был и там, и
+// в процессе, и человек ходил между ними, сверяя названия. Теперь назначение
+// лежит в карточке своего шага.
 const TABS = [
+  { key: 'main', label: 'Основное' },
   { key: 'form', label: 'Анкета' },
   { key: 'process', label: 'Процесс' },
-  { key: 'people', label: 'Исполнители' },
   { key: 'mail', label: 'Письма' },
   { key: 'share', label: 'Ссылка и QR' }
 ];
@@ -41,12 +49,13 @@ const STATUS_TONE = { draft: 'muted', open: 'ok', closed: 'warn' };
 
 export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
   const [vacancy, setVacancy] = useState(null);
-  const [tab, setTab] = useState('form');
+  const [tab, setTab] = useState('main');
 
   const [draft, setDraft] = useState(null);
   const [steps, setSteps] = useState([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [salary, setSalary] = useState({ kind: 'none', from: '', to: '' });
 
   const [errors, setErrors] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -57,6 +66,11 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
   // вакансию нельзя — это стёрло бы несохранённую правку анкеты.
   const [attachments, setAttachments] = useState([]);
 
+  // Назначения живут рядом с процессом, но загружаются здесь: их читает
+  // конструктор процесса, и ходить за списком сотрудников из каждой карточки
+  // шага незачем.
+  const assignees = useAssignees(vacancyId);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -66,6 +80,7 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
       setSteps((data.process?.steps || []).map(s => ({ ...s, after: s.after || [] })));
       setTitle(data.title);
       setDescription(data.description || '');
+      setSalary(salaryFromVacancy(data));
       setAttachments(data.attachments || []);
       setErrors([]);
     } catch (error) {
@@ -90,11 +105,15 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
     [vacancy]
   );
 
-  const formDirty = Boolean(vacancy && draft) && (
+  // Правки «Основного» и анкеты уходят одним PUT — это одна запись в базе, — но
+  // точку о несохранённом надо поставить на ту вкладку, где правка лежит.
+  const mainDirty = Boolean(vacancy) && (
     title !== vacancy.title
     || description !== (vacancy.description || '')
-    || JSON.stringify(toStored(draft)) !== savedForm
+    || JSON.stringify(salary) !== JSON.stringify(salaryFromVacancy(vacancy))
   );
+  const schemaDirty = Boolean(vacancy && draft) && JSON.stringify(toStored(draft)) !== savedForm;
+  const formDirty = mainDirty || schemaDirty;
   const processDirty = Boolean(vacancy) && JSON.stringify(steps) !== savedProcess;
   const dirty = formDirty || processDirty;
 
@@ -117,8 +136,18 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
     setBusy(true);
     setErrors([]);
     try {
-      if (formDirty) await api.saveOpening(vacancyId, { title, description, form: toStored(draft) });
-      if (processDirty) await api.saveProcess(vacancyId, { process: { steps } });
+      if (formDirty) {
+        await api.saveOpening(vacancyId, {
+          title, description, ...salaryPayload(salary), form: toStored(draft)
+        });
+      }
+      if (processDirty) {
+        await api.saveProcess(vacancyId, { process: { steps } });
+        // Назначения знают только сохранённые шаги: у нового шага ключа в базе
+        // до этого момента не было, и без этой строки карточка продолжала бы
+        // просить сохранить уже сохранённое.
+        await assignees?.reload();
+      }
       toast.success('Сохранено');
       await load();
       onChanged?.();
@@ -205,9 +234,9 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
 
   const goTab = (next) => {
     // Правки вкладки живут в памяти до «Сохранить», и уход на соседнюю их не
-    // теряет — но «Исполнители» и «Ссылка» читают сохранённый процесс, поэтому
-    // об этом предупреждаем.
-    if ((next === 'people' || next === 'share') && processDirty
+    // теряет — но «Ссылка и QR» показывает сохранённое состояние вакансии,
+    // поэтому об этом предупреждаем.
+    if (next === 'share' && processDirty
       && !window.confirm('Процесс не сохранён. Эта вкладка показывает сохранённый — перейти всё равно?')) return;
     setTab(next);
   };
@@ -218,94 +247,98 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
 
   return (
     <>
-      <div className="vac-editor-bar">
-        <button className="vac-btn is-ghost" onClick={onBack}><ArrowLeft size={14} />К списку</button>
+      <header className="vac-head">
+        {/* Верхняя строка отвечает на «где я и что с этой вакансией», нижние
+            две — это то, что правят. До ver. 8.34 всё лежало вперемешку в одном
+            ряду, и филиал — единственное, чего в вакансии не поменять, — стоял
+            в самом низу мелким шрифтом. */}
+        <div className="vac-head-top">
+          <button className="vac-btn is-ghost" onClick={onBack}><ArrowLeft size={14} />К списку</button>
 
-        <div className="vac-editor-titles">
-          <input
-            className="vac-input is-title"
-            value={title}
-            placeholder="Название вакансии — «Врач-терапевт»"
-            onChange={e => setTitle(e.target.value)}
-          />
-          <input
-            className="vac-input"
-            value={description}
-            placeholder="Условия, график, требования — это кандидат видит перед анкетой"
-            onChange={e => setDescription(e.target.value)}
-          />
-          <div className="vac-sub">{vacancy.medCenter?.name}</div>
-        </div>
+          <span className="vac-crumb">
+            <Building2 size={14} />
+            {vacancy.medCenter?.name || 'филиал не указан'}
+          </span>
 
-        <div className="vac-editor-acts">
-          {dirty && <span className="vac-badge vac-badge-warn">Не сохранено</span>}
-          {!dirty && (
-            <span className={`vac-badge vac-badge-${STATUS_TONE[vacancy.status]}`}>
-              {STATUS_LABEL[vacancy.status]}
-            </span>
-          )}
+          {dirty
+            ? <span className="vac-badge vac-badge-warn">Не сохранено</span>
+            : (
+              <span className={`vac-badge vac-badge-${STATUS_TONE[vacancy.status]}`}>
+                {STATUS_LABEL[vacancy.status]}
+              </span>
+            )}
 
-          <button className="vac-btn" disabled={busy || !dirty} onClick={save}>
-            <Save size={14} />Сохранить
-          </button>
-          <button className="vac-btn is-ghost" disabled={busy || !dirty} onClick={load} title="Вернуть как было">
-            <Undo2 size={14} />Отменить
-          </button>
+          <div className="vac-editor-acts">
+            <button className="vac-btn" disabled={busy || !dirty} onClick={save}>
+              <Save size={14} />Сохранить
+            </button>
+            <button className="vac-btn is-ghost" disabled={busy || !dirty} onClick={load} title="Вернуть как было">
+              <Undo2 size={14} />Отменить
+            </button>
 
-          <i className="vac-sep" />
+            <i className="vac-sep" />
 
-          {vacancy.status !== 'open' && (
+            {vacancy.status !== 'open' && (
+              <button
+                className="vac-btn is-ghost"
+                disabled={busy || dirty}
+                onClick={() => setStatus('open')}
+                title={dirty ? 'Сначала сохраните правки' : 'Вакансия появится по ссылке и начнёт принимать отклики'}
+              >
+                <Play size={14} />Открыть набор
+              </button>
+            )}
+            {vacancy.status === 'open' && (
+              <button className="vac-btn is-ghost" disabled={busy} onClick={() => setStatus('closed')}>
+                <Pause size={14} />Закрыть набор
+              </button>
+            )}
+            {vacancy.status === 'closed' && (
+              <button className="vac-btn is-ghost" disabled={busy} onClick={() => setStatus('draft')}>
+                <Archive size={14} />В черновик
+              </button>
+            )}
+
+            <i className="vac-sep" />
+
             <button
               className="vac-btn is-ghost"
-              disabled={busy || dirty}
-              onClick={() => setStatus('open')}
-              title={dirty ? 'Сначала сохраните правки' : 'Вакансия появится по ссылке и начнёт принимать отклики'}
-            >
-              <Play size={14} />Открыть набор
-            </button>
-          )}
-          {vacancy.status === 'open' && (
-            <button className="vac-btn is-ghost" disabled={busy} onClick={() => setStatus('closed')}>
-              <Pause size={14} />Закрыть набор
-            </button>
-          )}
-          {vacancy.status === 'closed' && (
-            <button className="vac-btn is-ghost" disabled={busy} onClick={() => setStatus('draft')}>
-              <Archive size={14} />В черновик
-            </button>
-          )}
-
-          <i className="vac-sep" />
-
-          <button
-            className="vac-btn is-ghost"
-            disabled={busy}
-            onClick={saveAsTemplate}
-            title="Завести шаблон с этой анкетой, процессом и письмами"
-          >
-            <Copy size={14} />В шаблон
-          </button>
-
-          {/* Удаление — редкое и необратимое, поэтому без подписи: подписанная
-              кнопка того же веса, что «Сохранить», стоит рядом с ней весь день. */}
-          {!vacancy.applicationCount && (
-            <button
-              className="vac-icon is-danger"
               disabled={busy}
-              onClick={remove}
-              title="Удалить вакансию"
+              onClick={saveAsTemplate}
+              title="Завести шаблон с этой анкетой, процессом и письмами"
             >
-              <Trash2 size={15} />
+              <Copy size={14} />В шаблон
             </button>
-          )}
+
+            {/* Удаление — редкое и необратимое, поэтому без подписи: подписанная
+                кнопка того же веса, что «Сохранить», стоит рядом с ней весь день. */}
+            {!vacancy.applicationCount && (
+              <button
+                className="vac-icon is-danger"
+                disabled={busy}
+                onClick={remove}
+                title="Удалить вакансию"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+
+        <input
+          className="vac-head-title"
+          value={title}
+          placeholder="Название вакансии — «Врач-терапевт»"
+          onChange={e => setTitle(e.target.value)}
+        />
+      </header>
 
       <div className="vac-tabs">
         {TABS.map(item => (
           <button key={item.key} className={tab === item.key ? 'is-on' : ''} onClick={() => goTab(item.key)}>
             {item.label}
-            {item.key === 'form' && formDirty && <i className="vac-dot" />}
+            {item.key === 'main' && mainDirty && <i className="vac-dot" />}
+            {item.key === 'form' && schemaDirty && <i className="vac-dot" />}
             {item.key === 'process' && processDirty && <i className="vac-dot" />}
           </button>
         ))}
@@ -331,6 +364,16 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
         </div>
       )}
 
+      {tab === 'main' && (
+        <MainTab
+          meta={meta}
+          description={description}
+          onDescription={setDescription}
+          salary={salary}
+          onSalary={setSalary}
+        />
+      )}
+
       {tab === 'form' && (
         <FormBuilder
           draft={draft}
@@ -342,10 +385,14 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
       )}
 
       {tab === 'process' && (
-        <ProcessBuilder steps={steps} meta={meta} lockedKeys={lockedKeys} onChange={setSteps} />
+        <ProcessBuilder
+          steps={steps}
+          meta={meta}
+          lockedKeys={lockedKeys}
+          assignees={assignees}
+          onChange={setSteps}
+        />
       )}
-
-      {tab === 'people' && <AssignmentsEditor vacancyId={vacancyId} />}
 
       {tab === 'mail' && (
         <EmailsEditor
