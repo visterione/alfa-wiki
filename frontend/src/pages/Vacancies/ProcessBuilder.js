@@ -29,8 +29,25 @@ import {
   ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, Archive, ArchiveRestore, Lock
 } from 'lucide-react';
 
-import { keyFromLabel } from './FormBuilder';
+import { keyFromLabel, uid } from './FormBuilder';
 import { StepAssigneesFor, EscalationCard, NobodyEligible } from './Assignees';
+
+/**
+ * Процесс в редактируемый вид и обратно.
+ *
+ * `_uid` — то же, что в конструкторе анкеты: ключ шага человек правит руками, и
+ * пока React отличал карточки по нему, ввод одного символа означал новую
+ * карточку — фокус терялся, а раскрытая карточка схлопывалась вместе с полем,
+ * в котором стоял курсор. Идентификатор живёт только в редакторе и снимается
+ * перед сохранением.
+ */
+export function fromStoredSteps(steps) {
+  return (steps || []).map(step => ({ ...step, after: step.after || [], _uid: uid() }));
+}
+
+export function toStoredSteps(steps) {
+  return (steps || []).map(({ _uid, ...step }) => step);
+}
 
 export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onChange }) {
   const [open, setOpen] = useState(() => new Set());
@@ -73,6 +90,7 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
     const decision = steps.find(s => s.kind === 'decision');
     const step = {
       key,
+      _uid: uid(),
       title: 'Новый шаг',
       kind: 'manual',
       scope: 'branch',
@@ -81,7 +99,7 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
       checklist: 'Шаг закрыт'
     };
     onChange([...steps, step]);
-    setOpen(prev => new Set(prev).add(key));
+    setOpen(prev => new Set(prev).add(step._uid));
   };
 
   const addDecision = () => {
@@ -89,6 +107,7 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
     const key = keyFromLabel('Решение', taken);
     const step = {
       key,
+      _uid: uid(),
       title: 'Согласование анкеты',
       hint: 'Единственная точка, где процесс может встать целиком.',
       kind: 'decision',
@@ -98,7 +117,7 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
       checklist: 'Анкета согласована'
     };
     onChange([step, ...steps]);
-    setOpen(prev => new Set(prev).add(key));
+    setOpen(prev => new Set(prev).add(step._uid));
   };
 
   const remove = (index) => {
@@ -137,14 +156,14 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
 
       {steps.map((step, index) => (
         <StepCard
-          key={step.key || index}
+          key={step._uid || index}
           step={step}
           steps={steps}
           meta={meta}
           assignees={assignees}
           locked={lockedKeys.has(step.key)}
-          isOpen={open.has(step.key)}
-          onToggle={() => toggle(step.key)}
+          isOpen={open.has(step._uid)}
+          onToggle={() => toggle(step._uid)}
           onChange={next => setStep(index, next)}
           onMoveUp={() => move(index, -1)}
           onMoveDown={() => move(index, 1)}

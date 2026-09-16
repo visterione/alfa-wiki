@@ -23,7 +23,7 @@ import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle, Play, Pause, Archive, Co
 
 import { vacancies as api } from '../../services/api';
 import FormBuilder, { fromStored, toStored } from './FormBuilder';
-import ProcessBuilder from './ProcessBuilder';
+import ProcessBuilder, { fromStoredSteps, toStoredSteps } from './ProcessBuilder';
 import MainTab from './MainTab';
 import EmailsEditor from './EmailsEditor';
 import ShareTab from './ShareTab';
@@ -76,8 +76,10 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
     try {
       const { data } = await api.opening(vacancyId);
       setVacancy(data);
-      setDraft(fromStored(data.form));
-      setSteps((data.process?.steps || []).map(s => ({ ...s, after: s.after || [] })));
+      // Черновик пересобираем поверх прежнего: так уцелеют идентификаторы
+      // строк, а вместе с ними — то, какие блоки были раскрыты.
+      setDraft(prev => fromStored(data.form, prev));
+      setSteps(fromStoredSteps(data.process?.steps));
       setTitle(data.title);
       setDescription(data.description || '');
       setSalary(salaryFromVacancy(data));
@@ -100,8 +102,10 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
     () => (vacancy ? JSON.stringify(toStored(fromStored(vacancy.form))) : ''),
     [vacancy]
   );
+  // Сравниваем в хранимом виде: в черновике у шага есть служебный _uid, и по
+  // нему процесс расходился бы с сохранённым всегда.
   const savedProcess = useMemo(
-    () => (vacancy ? JSON.stringify((vacancy.process?.steps || []).map(s => ({ ...s, after: s.after || [] }))) : ''),
+    () => (vacancy ? JSON.stringify(toStoredSteps(fromStoredSteps(vacancy.process?.steps))) : ''),
     [vacancy]
   );
 
@@ -114,7 +118,7 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
   );
   const schemaDirty = Boolean(vacancy && draft) && JSON.stringify(toStored(draft)) !== savedForm;
   const formDirty = mainDirty || schemaDirty;
-  const processDirty = Boolean(vacancy) && JSON.stringify(steps) !== savedProcess;
+  const processDirty = Boolean(vacancy) && JSON.stringify(toStoredSteps(steps)) !== savedProcess;
   const dirty = formDirty || processDirty;
 
   // Уйти со страницы с несохранённой анкетой на тридцать полей — это потерять
@@ -142,7 +146,7 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
         });
       }
       if (processDirty) {
-        await api.saveProcess(vacancyId, { process: { steps } });
+        await api.saveProcess(vacancyId, { process: { steps: toStoredSteps(steps) } });
         // Назначения знают только сохранённые шаги: у нового шага ключа в базе
         // до этого момента не было, и без этой строки карточка продолжала бы
         // просить сохранить уже сохранённое.

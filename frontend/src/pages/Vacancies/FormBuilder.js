@@ -81,6 +81,25 @@ export function keyFromLabel(label, taken = new Set()) {
   return key;
 }
 
+// ── Чем строка редактора остаётся собой ────────────────────────────────────
+//
+// React отличает элементы списка по key, а ключи шагов, блоков и полей человек
+// здесь правит руками — и у поля ключ ещё и переводится из подписи на каждое
+// нажатие клавиши. Пока key брался из них, ввод одной буквы означал новый key,
+// React выбрасывал старый узел и ставил на его место новый, и фокус пропадал
+// после первого же символа: набрать название поля было нельзя в принципе.
+//
+// Поэтому у каждой строки есть свой идентификатор, живущий только в редакторе:
+// он раздаётся при загрузке и при создании, никуда не сохраняется (toStored его
+// снимает) и не меняется, что бы человек ни печатал. По нему же запоминается,
+// какие блоки раскрыты, — иначе правка ключа схлопывала бы карточку, внутри
+// которой в этот момент стоит курсор.
+let seq = 0;
+export function uid() {
+  seq += 1;
+  return `u${seq}`;
+}
+
 /** Все ключи анкеты в одном пространстве имён — простые поля и повторяемые блоки. */
 function takenKeys(blocks) {
   const out = new Set();
@@ -93,26 +112,51 @@ function takenKeys(blocks) {
 
 // ── Преобразование в хранимый вид и обратно ────────────────────────────────
 
-export function fromStored(form) {
-  const steps = (form?.steps || []).map(s => ({ key: s.key, title: s.title }));
+/**
+ * Анкета из базы в вид, который правит редактор.
+ *
+ * `previous` — черновик, который был на экране до перечитывания. Идентификаторы
+ * строк, чьи ключи не поменялись, переносятся из него: по ним запоминается, что
+ * раскрыто, и без этого каждое «Сохранить» схлопывало бы все открытые блоки —
+ * сохраняют-то посреди работы, а не в конце.
+ */
+export function fromStored(form, previous) {
+  const known = new Map();
+  for (const step of previous?.steps || []) known.set(`s:${step.key}`, step._uid);
+  for (const block of previous?.blocks || []) {
+    known.set(`b:${block.key}`, block._uid);
+    for (const field of block.fields || []) known.set(`f:${block.key}.${field.key}`, field._uid);
+  }
+  const keep = (id) => known.get(id) || uid();
+
+  const steps = (form?.steps || []).map(s => ({ key: s.key, title: s.title, _uid: keep(`s:${s.key}`) }));
   const stepByBlock = new Map();
   for (const step of form?.steps || []) {
     for (const blockKey of step.blocks || []) stepByBlock.set(blockKey, step.key);
   }
   const blocks = (form?.blocks || []).map(block => ({
     ...block,
-    fields: (block.fields || []).map(f => ({ ...f })),
+    _uid: keep(`b:${block.key}`),
+    fields: (block.fields || []).map(f => ({ ...f, _uid: keep(`f:${block.key}.${f.key}`) })),
     stepKey: stepByBlock.get(block.key) || steps[0]?.key || ''
   }));
   return { blocks, steps, consentVersion: form?.consentVersion || '' };
 }
 
+/**
+ * Обратно в хранимый вид. Заодно снимает служебные поля редактора — `stepKey`
+ * у блока и `_uid` у всех троих: в базе им делать нечего, а при сравнении
+ * «изменилось ли» они дали бы правку на ровном месте.
+ */
 export function toStored(draft) {
   return {
-    blocks: draft.blocks.map(({ stepKey, ...block }) => block),
+    blocks: draft.blocks.map(({ stepKey, _uid, fields, ...block }) => ({
+      ...block,
+      fields: (fields || []).map(({ _uid: fieldUid, ...field }) => field)
+    })),
     // Порядок блоков внутри шага — это порядок в общем списке: он и есть
     // порядок, в котором человек их увидит.
-    steps: draft.steps.map(step => ({
+    steps: draft.steps.map(({ _uid, ...step }) => ({
       ...step,
       blocks: draft.blocks.filter(b => b.stepKey === step.key).map(b => b.key)
     })),
@@ -171,8 +215,14 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
     const key = keyFromLabel('Новый блок', takenKeys(draft.blocks));
     const block = {
       key,
+      _uid: uid(),
       title: 'Новый блок',
-      fields: [{ key: keyFromLabel('Новое поле', takenKeys(draft.blocks)), label: 'Новое поле', type: 'text' }],
+      fields: [{
+        key: keyFromLabel('Новое поле', takenKeys(draft.blocks)),
+        _uid: uid(),
+        label: 'Новое поле',
+        type: 'text'
+      }],
       stepKey
     };
 
@@ -201,7 +251,7 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
 
   const addStep = () => {
     const key = keyFromLabel('Новый шаг', new Set(draft.steps.map(s => s.key)));
-    patch({ steps: [...draft.steps, { key, title: 'Новый шаг' }] });
+    patch({ steps: [...draft.steps, { key, _uid: uid(), title: 'Новый шаг' }] });
   };
 
   const moveStep = (index, delta) => {
@@ -228,7 +278,7 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
         const group = blocksOf(step.key);
 
         return (
-          <section className="vac-stepgroup" key={step.key || stepIndex}>
+          <section className="vac-stepgroup" key={step._uid || stepIndex}>
             <div className="vac-stepgroup-head">
               <span className="vac-stepgroup-no">{stepIndex + 1}</span>
 
@@ -271,15 +321,15 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
             <div className="vac-stepgroup-body">
               {group.map(({ block, index }, position) => (
                 <BlockCard
-                  key={block.key || index}
+                  key={block._uid || index}
                   block={block}
                   blocks={draft.blocks}
                   steps={draft.steps}
                   meta={meta}
                   attachments={attachments}
                   onAttach={onAttach}
-                  isOpen={open.has(block.key)}
-                  onToggle={() => toggle(block.key)}
+                  isOpen={open.has(block._uid)}
+                  onToggle={() => toggle(block._uid)}
                   onChange={next => setBlock(index, next)}
                   onMoveUp={() => moveBlock(step.key, position, -1)}
                   onMoveDown={() => moveBlock(step.key, position, 1)}
@@ -319,7 +369,7 @@ function BlockCard({
       ? new Set(block.fields.map(f => f.key))
       : takenKeys(blocks);
     const key = keyFromLabel('Новое поле', taken);
-    onChange({ ...block, fields: [...block.fields, { key, label: 'Новое поле', type: 'text' }] });
+    onChange({ ...block, fields: [...block.fields, { key, _uid: uid(), label: 'Новое поле', type: 'text' }] });
   };
 
   const moveField = (index, delta) => {
@@ -403,7 +453,7 @@ function BlockCard({
           <div className="vac-fields">
             {block.fields.map((field, index) => (
               <FieldRow
-                key={field.key || index}
+                key={field._uid || index}
                 field={field}
                 block={block}
                 blocks={blocks}

@@ -21,7 +21,7 @@ import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle, Copy } from 'lucide-reac
 
 import { vacancies as api } from '../../services/api';
 import FormBuilder, { fromStored, toStored } from './FormBuilder';
-import ProcessBuilder from './ProcessBuilder';
+import ProcessBuilder, { fromStoredSteps, toStoredSteps } from './ProcessBuilder';
 import EmailsEditor from './EmailsEditor';
 import MainTab from './MainTab';
 
@@ -55,8 +55,10 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
     try {
       const { data } = await api.template(templateId);
       setTemplate(data);
-      setDraft(fromStored(data.form));
-      setSteps((data.process?.steps || []).map(s => ({ ...s, after: s.after || [] })));
+      // Черновик пересобираем поверх прежнего: так уцелеют идентификаторы
+      // строк, а вместе с ними — то, какие блоки были раскрыты.
+      setDraft(prev => fromStored(data.form, prev));
+      setSteps(fromStoredSteps(data.process?.steps));
       setTitle(data.title);
       setDescription(data.description || '');
       setAttachments(data.attachments || []);
@@ -78,8 +80,10 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
     () => (template ? JSON.stringify(toStored(fromStored(template.form))) : ''),
     [template]
   );
+  // Сравниваем в хранимом виде: в черновике у шага есть служебный _uid, и по
+  // нему процесс расходился бы с сохранённым всегда.
   const savedProcess = useMemo(
-    () => (template ? JSON.stringify((template.process?.steps || []).map(s => ({ ...s, after: s.after || [] }))) : ''),
+    () => (template ? JSON.stringify(toStoredSteps(fromStoredSteps(template.process?.steps))) : ''),
     [template]
   );
 
@@ -88,7 +92,7 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
   );
   const schemaDirty = Boolean(template && draft) && JSON.stringify(toStored(draft)) !== savedForm;
   const formDirty = mainDirty || schemaDirty;
-  const processDirty = Boolean(template) && JSON.stringify(steps) !== savedProcess;
+  const processDirty = Boolean(template) && JSON.stringify(toStoredSteps(steps)) !== savedProcess;
   const dirty = formDirty || processDirty;
 
   useEffect(() => {
@@ -109,7 +113,7 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
     setErrors([]);
     try {
       if (formDirty) await api.saveTemplate(templateId, { title, description, form: toStored(draft) });
-      if (processDirty) await api.saveTemplateProcess(templateId, { process: { steps } });
+      if (processDirty) await api.saveTemplateProcess(templateId, { process: { steps: toStoredSteps(steps) } });
       toast.success('Сохранено');
       await load();
       onChanged?.();
