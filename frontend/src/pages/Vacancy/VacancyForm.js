@@ -55,7 +55,9 @@ export default function VacancyForm() {
         setValues(data.values || {});
         setFiles(data.files || []);
         setAttachments(data.attachments || []);
-        setDone(data.status === 'submitted' || data.status === 'in_progress' || data.status === 'launched');
+        // «Готово» — это когда заполнять нечего. Во время второго этапа заявка
+        // уже в работе, но анкета снова открыта, и статус тут не ответ.
+        setDone(!data.stage && data.status !== 'draft' && data.status !== 'revision');
       })
       .catch(err => { if (alive) setLoadError(err.response?.data?.message || 'Заявка не найдена'); });
     return () => { alive = false; clearTimeout(saveTimer.current); };
@@ -107,12 +109,14 @@ export default function VacancyForm() {
   if (!state) return <Shell><div className="vcy-note">Загружаем…</div></Shell>;
 
   if (done) {
+    const wasExtra = state.stage === 'after';
     return (
       <Shell branch={state.branch}>
-        <h1>Анкета отправлена</h1>
+        <h1>{wasExtra ? 'Документы отправлены' : 'Анкета отправлена'}</h1>
         <p className="vcy-lead">
-          Спасибо. Мы получили вашу анкету и передали её на рассмотрение —
-          о решении напишем на вашу почту.
+          {wasExtra
+            ? 'Спасибо. Документы у нас — дальше с вами свяжутся по оформлению.'
+            : 'Спасибо. Мы получили вашу анкету и передали её на рассмотрение — о решении напишем на вашу почту.'}
         </p>
         <p className="vcy-note">Эта ссылка остаётся вашей: по ней анкету можно перечитать.</p>
       </Shell>
@@ -137,7 +141,10 @@ export default function VacancyForm() {
     setSending(true);
     clearTimeout(saveTimer.current);
     try {
-      await api.submit(token, { values });
+      // Вторая часть закрывает шаг процесса, а не меняет статус заявки, —
+      // поэтому у неё свой маршрут.
+      if (state.stage === 'after') await api.submitExtra(token, { values });
+      else await api.submit(token, { values });
       setDone(true);
       window.scrollTo({ top: 0 });
     } catch (err) {
@@ -178,6 +185,13 @@ export default function VacancyForm() {
           </button>
         ))}
       </div>
+
+      {state.stage === 'after' && (
+        <div className="vcy-revision is-good">
+          <b>Вашу анкету согласовали</b>
+          <p>Осталось дозаполнить вторую часть — она короче первой.</p>
+        </div>
+      )}
 
       {state.status === 'revision' && (
         <div className="vcy-revision">
@@ -258,7 +272,7 @@ export default function VacancyForm() {
 
         {last ? (
           <button type="button" className="vcy-btn" disabled={sending} onClick={submit}>
-            {sending ? 'Отправляем…' : 'Отправить анкету'}
+            {sending ? 'Отправляем…' : state.stage === 'after' ? 'Отправить документы' : 'Отправить анкету'}
           </button>
         ) : (
           <button
