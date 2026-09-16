@@ -557,3 +557,37 @@
   text-transform: uppercase;
   color: var(--clinic-ink);
 }
+
+/* ── Наш образец под полем (ver. 8.34) ─────────────────────────────────── */
+
+/* Бланк заявления, памятка, форма согласия — то, что человек скачивает, чтобы
+   заполнить и приложить сюда же. Стоит под полем и выглядит кнопкой со
+   стрелкой: простой ссылкой в тексте анкеты его половина не заметит. */
+.vcy-samples {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: -8px 0 16px;
+}
+
+.vcy-samples a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .62);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clinic) 26%, transparent);
+  color: var(--clinic-ink);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* Стрелка нарисована знаком, а не иконкой: у публичных страниц нет своего
+   набора иконок, а тянуть сюда lucide ради одной галочки незачем. */
+.vcy-samples a::before { content: '↓'; font-size: 15px; line-height: 1; opacity: .7; }
+
+.vcy-samples a:hover { background: rgba(255, 255, 255, .85); }

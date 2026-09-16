@@ -1,5 +1,5 @@
 /**
- * Модели раздела «Вакансии» (ver. 8.20, переработаны в 8.21).
+ * Модели раздела «Вакансии» (ver. 8.20, переработаны в 8.21, дополнены в 8.34).
  *
  * Второе поколение онбординга. Старый модуль (models/onboarding.js, таблицы
  * onb_*) остаётся рядом рабочим и будет удалён целиком, когда сюда переедут
@@ -10,8 +10,13 @@
  * а вакансия была его публикацией в филиале. Слой не оправдался — чтобы завести
  * одну вакансию, приходилось ходить по двум страницам и помнить, что где лежит.
  * В 8.21 шаблоны убраны: анкета, процесс, письма, исполнители и чаты лежат
- * прямо в вакансии. Повторяющуюся анкету теперь собирают заново — это решение
- * заказчика, взвешенное против «бегания по страничкам».
+ * прямо в вакансии.
+ *
+ * Собирать повторяющуюся анкету заново оказалось дороже, чем думали: набор
+ * данных у всех врачей один, полей три десятка, и каждый раз половина
+ * забывалась. В 8.34 шаблон вернулся — но уже не как то, чем вакансия является,
+ * а как то, с чего она начинается: VacTemplate отдаёт копию и связи с вакансией
+ * не держит.
  *
  * Файл экспортирует фабрику по образцу склада и онбординга: index.js передаёт
  * свой экземпляр sequelize, второго подключения к базе не появляется.
@@ -457,8 +462,86 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     ]
   });
 
+  // ── Шаблон должности ──────────────────────────────────────────────────────
+  //
+  // Заготовка, с которой начинается вакансия: анкета, процесс и тексты писем
+  // под «Врача», «Медсестру», «Администратора».
+  //
+  // В ver. 8.20 сущность с таким именем уже была и означала другое: анкета жила
+  // в шаблоне, а вакансия была его публикацией в филиале. Слой убрали в 8.21 —
+  // чтобы завести одну должность, приходилось ходить по двум страницам.
+  //
+  // Здесь шаблон вернулся в другой роли, и разница принципиальная: вакансия
+  // получает КОПИЮ содержимого и дальше живёт сама по себе. Ссылки на шаблон у
+  // неё нет вовсе, поэтому правка шаблона не трогает открытые наборы, а
+  // допилить анкету под конкретную вакансию можно как угодно — ровно то, чего
+  // просил заказчик: «предзаполнилось, а дальше добавим своё».
+  //
+  // Филиала, исполнителей и чатов у шаблона нет намеренно. Исполнитель шага —
+  // конкретный человек в конкретном медцентре, и шаблон, тянущий за собой
+  // кадровика из чужого филиала, стоил бы больше правок, чем экономил.
+  const VacTemplate = sequelize.define('VacTemplate', {
+    id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    title:       { type: DataTypes.STRING(200), allowNull: false },
+    description: { type: DataTypes.TEXT, comment: 'Для кого шаблон — видит только тот, кто заводит вакансию' },
+
+    form:    { type: DataTypes.JSONB, allowNull: false, defaultValue: { blocks: [], steps: [] } },
+    process: { type: DataTypes.JSONB, allowNull: false, defaultValue: { steps: [] } },
+    emails:  { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+
+    sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    createdBy: { type: DataTypes.UUID }
+  }, {
+    ...ts,
+    tableName: 'vac_templates',
+    indexes: [{ fields: ['sortOrder', 'title'] }]
+  });
+
+  // ── Наш файл в анкете ─────────────────────────────────────────────────────
+  //
+  // Обратное направление к vac_files: не кандидат присылает нам скан, а мы
+  // отдаём ему образец. Заявление о приёме человек заполняет по нашему бланку,
+  // и бланк должен лежать у того самого поля, куда потом ляжет заполненный
+  // документ, — иначе его высылают письмом отдельно и половина кандидатов
+  // присылает заявление, написанное как придётся.
+  //
+  // Владелец — вакансия либо шаблон, ровно один из двух (проверка в миграции).
+  // Полиморфной пары ownerType + ownerId нет: два внешних ключа дают настоящий
+  // каскад, а «удалить вакансию и оставить её файлы на диске» — не то состояние,
+  // за которым кто-то будет следить руками.
+  //
+  // Поле анкеты ссылается на файл списком идентификаторов (fields[].attachments)
+  // прямо в JSONB. Внешнего ключа оттуда нет и быть не может: отправленная
+  // заявка носит снимок анкеты, и снимок по определению неизменен.
+  const VacAttachment = sequelize.define('VacAttachment', {
+    id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    vacancyId:  { type: DataTypes.UUID },
+    templateId: { type: DataTypes.UUID },
+
+    title: { type: DataTypes.STRING(200), allowNull: false, comment: 'Что это за документ: «Заявление о приёме, образец»' },
+
+    // Имя на диске генерируем сами, присланное храним отдельно: кандидат должен
+    // получить «Заявление.docx», а не шестнадцатеричную строку.
+    filename:     { type: DataTypes.STRING(255), allowNull: false, unique: true },
+    originalName: { type: DataTypes.STRING(255) },
+    mimeType:     { type: DataTypes.STRING(100) },
+    size:         { type: DataTypes.INTEGER },
+
+    uploadedBy: { type: DataTypes.UUID }
+  }, {
+    ...ts,
+    tableName: 'vac_attachments',
+    indexes: [
+      { fields: ['vacancyId'] },
+      { fields: ['templateId'] },
+      { fields: ['filename'] }
+    ]
+  });
+
   const models = {
     VacVacancy,
+    VacTemplate,
+    VacAttachment,
     VacApplication,
     VacAssignment,
     VacTask,
@@ -501,6 +584,15 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     VacChatLink.belongsTo(MedCenter,  { foreignKey: 'medCenterId', as: 'medCenter' });
 
     VacEmailCode.belongsTo(VacVacancy, { foreignKey: 'vacancyId', as: 'vacancy' });
+
+    // Файлы уезжают вместе с владельцем: и вакансия, и шаблон удаляются целиком,
+    // а файл без владельца показать негде.
+    VacVacancy.hasMany(VacAttachment,  { foreignKey: 'vacancyId', as: 'attachments', onDelete: 'CASCADE' });
+    VacTemplate.hasMany(VacAttachment, { foreignKey: 'templateId', as: 'attachments', onDelete: 'CASCADE' });
+    VacAttachment.belongsTo(VacVacancy,  { foreignKey: 'vacancyId', as: 'vacancy' });
+    VacAttachment.belongsTo(VacTemplate, { foreignKey: 'templateId', as: 'template' });
+
+    VacTemplate.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
   }
 
   return { models, associateVacancies };

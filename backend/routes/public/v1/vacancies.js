@@ -12,6 +12,7 @@
  *   POST /api/public/v1/vacancies/a/:token/files   — файл к полю анкеты
  *   DELETE .../a/:token/files/:id                  — убрать файл
  *   POST /api/public/v1/vacancies/a/:token/submit  — отправка
+ *   GET  /api/public/v1/vacancies/attachments/:id  — наш образец к полю анкеты
  *
  * Без авторизации и без API-ключа: анкету заполняет человек, у которого нет и
  * не будет аккаунта в портале. Право предъявляется токеном заявки — он же
@@ -36,12 +37,13 @@ const { Op } = require('sequelize');
 const router = express.Router();
 
 const {
-  VacVacancy, VacApplication, VacEmailCode, VacFile, VacEvent,
+  VacVacancy, VacApplication, VacEmailCode, VacFile, VacEvent, VacAttachment,
   VacTask, VacServiceChoice, MedCenter
 } = require('../../../models');
 const formSchema = require('../../../services/vacancies/formSchema');
 const mailer = require('../../../services/vacancies/mailer');
 const files = require('../../../services/vacancies/files');
+const attachments = require('../../../services/vacancies/attachments');
 const engine = require('../../../services/vacancies/engine');
 const priceCatalogue = require('../../../services/vacancies/priceCatalogue');
 
@@ -356,6 +358,18 @@ router.get('/a/:token', loadApplication, async (req, res) => {
       attributes: ['id', 'fieldKey', 'filename', 'originalName', 'mimeType', 'size']
     });
 
+    // Наши образцы, на которые ссылаются поля снимка (ver. 8.34). Ищем по
+    // идентификаторам из снимка, а не по вакансии: анкету могли с тех пор
+    // поправить, а человек отвечает на ту, которую открыл. Файл, которого уже
+    // нет, просто не попадает в ответ — ссылка на пустое место хуже молчания.
+    const wanted = [...attachments.collectIds(form)];
+    const attachmentRows = wanted.length
+      ? await VacAttachment.findAll({
+        where: { id: wanted },
+        attributes: ['id', 'title', 'originalName', 'mimeType', 'size']
+      })
+      : [];
+
     res.json({
       ok: true,
       status: app.status,
@@ -363,6 +377,7 @@ router.get('/a/:token', loadApplication, async (req, res) => {
       form,
       values: app.form || {},
       files: fileRows,
+      attachments: attachmentRows,
       specialities,
       revisionFields: app.revisionFields || [],
       decisionNote: app.status === 'revision' ? app.decisionNote : null,
@@ -486,6 +501,41 @@ router.delete('/a/:token/files/:id', loadApplication, async (req, res) => {
  * Задача решения ставится отсюда же: это единственный шаг, который открывается
  * не закрытием предыдущего, а действием кандидата.
  */
+/**
+ * Наш образец: бланк заявления, памятка, форма согласия (ver. 8.34).
+ *
+ * Без токена заявки и без авторизации, по одному идентификатору файла. Так
+ * сделано намеренно: это наш собственный пустой бланк, который мы и так раздаём
+ * каждому, кто открыл анкету, — персональных данных в нём нет. Привязка к
+ * токену заявки при этом стоила бы дорого: тот же файл открывает и админ в
+ * конструкторе, где никакой заявки ещё нет, и ссылка в письме превратилась бы в
+ * личную. Идентификатор — UUID, подобрать его нельзя.
+ *
+ * Файл уходит под настоящим именем: «Заявление о приёме.docx», а не
+ * шестнадцатеричная строка, которой он называется на диске.
+ */
+router.get('/attachments/:id', async (req, res) => {
+  try {
+    const row = await VacAttachment.findByPk(req.params.id);
+    if (!row) return fail(res, 404, 'not_found', 'Файл не найден');
+
+    // Отдаём вложением всегда, даже картинку: наш origin ничего не должен
+    // отрисовывать сам, а бланк и открывают той программой, которой заполняют.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+
+    res.download(attachments.pathOf(row.filename), row.originalName || row.title, (error) => {
+      if (!error || res.headersSent) return;
+      // Строка есть, файла нет — обычно след ручной уборки uploads.
+      console.warn('[vacancies/public] образец не найден на диске:', row.filename);
+      fail(res, 404, 'not_found', 'Файл не найден');
+    });
+  } catch (error) {
+    console.error('[vacancies/public] attachment:', error);
+    fail(res, 500, 'server_error', 'Не удалось отдать файл');
+  }
+});
+
 router.post('/a/:token/submit', loadApplication, async (req, res) => {
   try {
     const app = req.application;

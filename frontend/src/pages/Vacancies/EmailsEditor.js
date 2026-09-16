@@ -15,13 +15,16 @@
  * свою правку и вернуться к исходному тексту можно, не вспоминая его.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Save, RotateCcw, Mail } from 'lucide-react';
 
-import { vacancies as api } from '../../services/api';
-
-export default function EmailsEditor({ vacancyId, meta, emails, onSaved }) {
+/**
+ * Куда сохранять и чем собирать превью, решает тот, кто редактор открыл: у
+ * вакансии и у шаблона это разные маршруты, а редактор один и тот же — письма в
+ * них устроены одинаково.
+ */
+export default function EmailsEditor({ meta, emails, onSave, onPreview, onSaved }) {
   const letters = meta.letters || [];
   const [active, setActive] = useState(letters[0]?.key || '');
   const [own, setOwn] = useState(() => JSON.parse(JSON.stringify(emails || {})));
@@ -31,15 +34,21 @@ export default function EmailsEditor({ vacancyId, meta, emails, onSaved }) {
   const letter = letters.find(l => l.key === active);
   const mine = own[active] || {};
 
+  // Оба обработчика приходят стрелками и меняют тождество на каждом рендере
+  // родителя. Держим их в ссылке: иначе useCallback ниже пересобирался бы
+  // каждый раз, а висящий на нём useEffect бесконечно перезапрашивал превью.
+  const handlers = useRef({ onSave, onPreview });
+  handlers.current = { onSave, onPreview };
+
   const loadPreview = useCallback(async () => {
     if (!active) return;
     try {
-      const { data } = await api.emailPreview(vacancyId, active);
+      const { data } = await handlers.current.onPreview(active);
       setPreview(data);
     } catch {
       setPreview(null);
     }
-  }, [vacancyId, active]);
+  }, [active]);
 
   useEffect(() => { loadPreview(); }, [loadPreview]);
 
@@ -59,7 +68,7 @@ export default function EmailsEditor({ vacancyId, meta, emails, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      await api.saveEmails(vacancyId, { emails: own });
+      await handlers.current.onSave(own);
       toast.success('Тексты сохранены');
       await onSaved?.();
       await loadPreview();
@@ -126,8 +135,8 @@ export default function EmailsEditor({ vacancyId, meta, emails, onSaved }) {
         </label>
 
         <div className="vac-hint">
-          Пустая строка между абзацами делает новый абзац. Ссылка, кнопка, код и
-          подписи мелким шрифтом подставляются сами — их редактировать не нужно.
+          Пустая строка — новый абзац. Ссылка, кнопка и подписи мелким шрифтом
+          подставляются сами.
         </div>
 
         <div className="vac-editor-acts">

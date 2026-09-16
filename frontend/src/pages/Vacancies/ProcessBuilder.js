@@ -309,10 +309,6 @@ function StepCard({
           {step.kind !== 'decision' && (
             <>
               <div className="vac-sect" style={{ marginTop: 6 }}><span>Появляется после</span></div>
-              <div className="vac-hint">
-                Шаг ждёт все отмеченные сразу. Отмечено несколько — задача
-                появится, когда закроется последний из них.
-              </div>
               <div className="vac-chips">
                 {others.map(other => (
                   <button

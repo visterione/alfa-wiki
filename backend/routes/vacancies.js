@@ -1,12 +1,18 @@
 'use strict';
 
 /**
- * Настройка раздела «Вакансии» (ver. 8.20, переработано в 8.21).
+ * Настройка раздела «Вакансии» (ver. 8.20, переработано в 8.21 и 8.34).
  *
- * Единица здесь одна — вакансия. В 8.20 между ней и анкетой стоял шаблон, и
- * чтобы завести одну должность, приходилось ходить по двум страницам. Теперь
- * анкета, процесс, письма, исполнители и чаты лежат в самой вакансии и правятся
- * на одном экране.
+ * Рабочая единица одна — вакансия: анкета, процесс, письма, исполнители и чаты
+ * лежат в ней самой и правятся на одном экране. В 8.20 между вакансией и
+ * анкетой стоял шаблон, и чтобы завести одну должность, приходилось ходить по
+ * двум страницам; этот слой убран в 8.21.
+ *
+ * В 8.34 шаблон вернулся, но не слоем, а заготовкой: вакансия берёт из него
+ * КОПИЮ анкеты, процесса, писем и приложенных файлов и дальше живёт сама по
+ * себе, ссылки на шаблон не храня. Отсюда и вся разница в коде — у шаблона нет
+ * ни состояния набора, ни филиала, ни исполнителей, а его правка ничего не
+ * меняет в уже заведённых вакансиях.
  *
  * Право — полный админ. Ежедневная работа с заявками и задачами живёт в
  * routes/vacancyWork.js и доступна ещё и назначенным исполнителям: задача без
@@ -20,7 +26,7 @@ const { Op } = require('sequelize');
 const router = express.Router();
 
 const {
-  VacVacancy, VacApplication, VacAssignment, VacTask, VacChatLink,
+  VacVacancy, VacTemplate, VacAttachment, VacApplication, VacAssignment, VacTask, VacChatLink,
   MedCenter, User
 } = require('../models');
 const { authenticate } = require('../middleware/auth');
@@ -28,6 +34,7 @@ const formSchema = require('../services/vacancies/formSchema');
 const processSchema = require('../services/vacancies/processSchema');
 const priceCatalogue = require('../services/vacancies/priceCatalogue');
 const chatLinks = require('../services/vacancies/chatLinks');
+const attachments = require('../services/vacancies/attachments');
 const mailer = require('../services/vacancies/mailer');
 const links = require('../services/vacancies/links');
 
@@ -70,6 +77,64 @@ async function stepKeysInUse(vacancyId) {
   return new Set(rows.map(r => r.stepKey));
 }
 
+/**
+ * С чего начинается пустая вакансия или пустой шаблон.
+ *
+ * Не с чистого листа: пустой экран не подсказывает, с чего начать, а поле с
+ * ролью «ФИО» и шаг решения обязаны быть в любом случае — без них набор всё
+ * равно не открыть. Заодно заготовка сразу проходит проверку, и человек видит
+ * рабочий пример структуры, а не список требований.
+ */
+function starterForm() {
+  return {
+    blocks: [{
+      key: 'main',
+      title: 'Основное',
+      fields: [{ key: 'fullName', label: 'ФИО', type: 'text', role: 'fullName', required: true, max: 255 }]
+    }],
+    steps: [{ key: 'about', title: 'О себе', blocks: ['main'] }]
+  };
+}
+
+function starterProcess() {
+  return {
+    steps: [{
+      key: 'decision',
+      title: 'Решение по анкете',
+      hint: 'Единственная точка, где процесс может встать целиком.',
+      kind: 'decision',
+      scope: 'branch',
+      after: [],
+      slaHours: 24,
+      checklist: 'Анкета согласована'
+    }]
+  };
+}
+
+/**
+ * Тексты писем к сохранению.
+ *
+ * Пустое значение — не «письмо без текста», а «берём умолчание»: так человек
+ * может стереть свою правку и вернуться к исходному тексту, не вспоминая его.
+ * Поэтому совпавшее с умолчанием в базу не пишется вовсе.
+ */
+function cleanEmails(incoming) {
+  const source = incoming && typeof incoming === 'object' ? incoming : {};
+  const clean = {};
+
+  for (const key of Object.keys(mailer.LETTERS)) {
+    const own = source[key];
+    if (!own || typeof own !== 'object') continue;
+    const part = {};
+    for (const field of ['subject', 'title', 'body']) {
+      const value = String(own[field] ?? '').trim().slice(0, field === 'body' ? 4000 : 200);
+      if (value && value !== mailer.LETTERS[key][field]) part[field] = value;
+    }
+    if (Object.keys(part).length) clean[key] = part;
+  }
+  return clean;
+}
+
 // ── Справочники ────────────────────────────────────────────────────────────
 
 /**
@@ -101,7 +166,15 @@ router.get('/meta', (req, res) => {
     scopes: Object.entries(processSchema.SCOPES).map(([key, spec]) => ({ key, label: spec.label })),
     letters: Object.entries(mailer.LETTERS).map(([key, spec]) => ({
       key, name: spec.name, subject: spec.subject, title: spec.title, body: spec.body
-    }))
+    })),
+    // Наши файлы у поля анкеты (ver. 8.34): сколько их можно повесить и что
+    // вообще принимается. Редактор пишет об этом человеку до выбора файла, а не
+    // после отказа.
+    attachments: {
+      max: formSchema.MAX_ATTACHMENTS,
+      maxSizeMb: attachments.MAX_FILE_MB,
+      hint: attachments.ACCEPT_HINT
+    }
   });
 });
 
@@ -176,13 +249,15 @@ router.get('/openings', async (req, res) => {
 });
 
 /**
- * Новая вакансия.
+ * Новая вакансия — с шаблона либо с заготовки.
  *
- * Создаётся не пустой: один блок, поле с ролью «ФИО», один шаг анкеты и шаг
- * решения в процессе. Пустой экран не подсказывает, с чего начать, а поле с
- * этой ролью и шаг решения любая вакансия обязана иметь — без них её всё равно
- * не открыть. Заодно такая заготовка сразу проходит проверку, и человек видит
- * рабочий пример структуры, а не список требований.
+ * Шаблон необязателен и ничем себя дальше не проявляет: вакансия получает
+ * КОПИЮ его анкеты, процесса, писем и приложенных файлов, а ссылки на шаблон не
+ * хранит. Поэтому правка шаблона не трогает уже заведённые наборы, а править
+ * анкету под конкретную вакансию можно как угодно — это и просил заказчик:
+ * «предзаполнилось, а дальше добавим специфическое».
+ *
+ * Без шаблона вакансия создаётся не пустой, а с заготовкой (см. starterForm).
  */
 router.post('/openings', async (req, res) => {
   try {
@@ -197,35 +272,37 @@ router.post('/openings', async (req, res) => {
       });
     }
 
+    let template = null;
+    if (req.body?.templateId) {
+      template = await VacTemplate.findByPk(req.body.templateId);
+      if (!template) return res.status(400).json({ error: 'Шаблон не найден' });
+    }
+
     const vacancy = await VacVacancy.create({
       medCenterId: branch.id,
       title,
-      description: String(req.body?.description || '').trim() || null,
+      description: String(req.body?.description || '').trim() || template?.description || null,
       publicCode: await freshCode(),
       status: 'draft',
-      form: {
-        blocks: [{
-          key: 'main',
-          title: 'Основное',
-          fields: [{ key: 'fullName', label: 'ФИО', type: 'text', role: 'fullName', required: true, max: 255 }]
-        }],
-        steps: [{ key: 'about', title: 'О себе', blocks: ['main'] }]
-      },
-      process: {
-        steps: [{
-          key: 'decision',
-          title: 'Решение по анкете',
-          hint: 'Единственная точка, где процесс может встать целиком.',
-          kind: 'decision',
-          scope: 'branch',
-          after: [],
-          slaHours: 24,
-          checklist: 'Анкета согласована'
-        }]
-      },
-      emails: {},
+      form: template ? template.form : starterForm(),
+      process: template ? template.process : starterProcess(),
+      emails: template ? template.emails : {},
       createdBy: req.user.id
     });
+
+    // Файлы копируются после создания: пока вакансии нет, копии некуда
+    // привязать. Анкета после этого переписывается — в ней лежат ссылки на
+    // файлы шаблона, и оставить их значит показать кандидату документ, который
+    // уедет вместе с удалённым шаблоном.
+    if (template) {
+      const form = await attachments.copyInto(
+        vacancy.form,
+        { templateId: template.id },
+        { vacancyId: vacancy.id },
+        req.user.id
+      );
+      if (form !== vacancy.form) await vacancy.update({ form });
+    }
 
     res.status(201).json({ id: vacancy.id });
   } catch (error) {
@@ -266,6 +343,7 @@ router.get('/openings/:id', loadVacancy, async (req, res) => {
       form: vacancy.form || { blocks: [], steps: [] },
       process: vacancy.process || { steps: [] },
       emails: vacancy.emails || {},
+      attachments: await attachments.listFor({ vacancyId: vacancy.id }),
       applicationCount,
       lockedStepKeys,
       publicUrl: links.vacancyUrl(vacancy.publicCode),
@@ -321,10 +399,22 @@ router.put('/openings/:id', loadVacancy, async (req, res) => {
         });
       }
 
-      patch.form = form;
+      // Ссылки на чужие файлы редактор прислать не должен, но сама анкета
+      // приходит обычным PUT, и проверить это больше негде.
+      patch.form = await attachments.keepOwn({ vacancyId: req.vacancy.id }, form);
     }
 
     await req.vacancy.update(patch);
+
+    // Файл прикладывается сразу, анкета сохраняется кнопкой — значит
+    // загруженный и тут же отцепленный бланк остаётся ничьим. Убираем такие,
+    // пока по вакансии никто не откликнулся: дальше на эти файлы уже могут
+    // ссылаться снимки анкет в заявках (см. attachments.pruneUnused).
+    if (patch.form) {
+      const responded = await VacApplication.count({ where: { vacancyId: req.vacancy.id } });
+      await attachments.pruneUnused({ vacancyId: req.vacancy.id }, patch.form, { keepAll: responded > 0 });
+    }
+
     res.json({ ok: true, updatedAt: req.vacancy.updatedAt });
   } catch (error) {
     console.error('[vacancies] save opening:', error);
@@ -378,30 +468,10 @@ router.put('/openings/:id/process', loadVacancy, async (req, res) => {
   }
 });
 
-/**
- * Тексты писем.
- *
- * Пустое значение — не «письмо без текста», а «берём умолчание»: так человек
- * может стереть свою правку и вернуться к исходному тексту, не вспоминая его.
- * Поэтому совпавшее с умолчанием в базу не пишется вовсе.
- */
+/** Тексты писем. Разбор общий с шаблонами — см. cleanEmails. */
 router.put('/openings/:id/emails', loadVacancy, async (req, res) => {
   try {
-    const incoming = req.body?.emails && typeof req.body.emails === 'object' ? req.body.emails : {};
-    const clean = {};
-
-    for (const key of Object.keys(mailer.LETTERS)) {
-      const own = incoming[key];
-      if (!own || typeof own !== 'object') continue;
-      const part = {};
-      for (const field of ['subject', 'title', 'body']) {
-        const value = String(own[field] ?? '').trim().slice(0, field === 'body' ? 4000 : 200);
-        if (value && value !== mailer.LETTERS[key][field]) part[field] = value;
-      }
-      if (Object.keys(part).length) clean[key] = part;
-    }
-
-    await req.vacancy.update({ emails: clean });
+    await req.vacancy.update({ emails: cleanEmails(req.body?.emails) });
     res.json({ ok: true });
   } catch (error) {
     console.error('[vacancies] save emails:', error);
@@ -504,11 +574,342 @@ router.delete('/openings/:id', loadVacancy, async (req, res) => {
     const applications = await VacApplication.count({ where: { vacancyId: req.vacancy.id } });
     if (applications) return res.status(400).json({ error: 'По вакансии есть отклики — её можно только закрыть' });
 
+    // Строки уедут каскадом, файлы на диске — нет: за ними некому следить.
+    for (const row of await VacAttachment.findAll({ where: { vacancyId: req.vacancy.id } })) {
+      attachments.removeFile(row.filename);
+    }
+
     await req.vacancy.destroy();
     res.json({ ok: true });
   } catch (error) {
     console.error('[vacancies] delete opening:', error);
     res.status(500).json({ error: 'Не удалось удалить вакансию' });
+  }
+});
+
+// ── Наши файлы в анкете ────────────────────────────────────────────────────
+//
+// Образец заявления, памятка, бланк согласия — то, что кандидат скачивает,
+// заполняет и присылает обратно. Файл принадлежит вакансии либо шаблону, а поле
+// анкеты держит ссылку на него в своей схеме.
+//
+// Загрузка идёт сразу, а не вместе с анкетой: анкета сохраняется кнопкой и
+// целиком, и класть в тот же запрос двоичные файлы значило бы пересылать их при
+// каждой правке подписи у соседнего поля.
+
+const receiveAttachment = attachments.uploader().single('file');
+
+/** Multer отвечает ошибкой, а не исключением: и слишком большой файл, и чужой тип — это 400. */
+function withAttachment(req, res, next) {
+  receiveAttachment(req, res, (error) => {
+    if (!error) return next();
+    // Про размер multer сообщает по-английски («File too large»), а читать это
+    // будет тот, кто прикладывает бланк.
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? `Файл больше ${attachments.MAX_FILE_MB} МБ`
+      : error.message;
+    res.status(400).json({ error: message });
+  });
+}
+
+async function addAttachment(req, res, owner) {
+  if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
+
+  // Подпись — то, что кандидат увидит ссылкой. Без неё берём имя файла: оно
+  // обычно осмысленное («Заявление о приёме.docx»), а пустая ссылка не годится.
+  const title = String(req.body?.title || '').trim().slice(0, 200) || req.file.originalname;
+
+  const row = await VacAttachment.create({
+    ...owner,
+    title,
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    size: req.file.size,
+    uploadedBy: req.user.id
+  });
+
+  res.status(201).json({
+    id: row.id, title: row.title, filename: row.filename,
+    originalName: row.originalName, mimeType: row.mimeType, size: row.size
+  });
+}
+
+/**
+ * Удаление бланка.
+ *
+ * Ссылку на него из анкеты не вычищаем: анкета правится в редакторе и
+ * сохраняется целиком, и переписать её здесь значило бы затереть несохранённую
+ * работу человека. Неразрешимая ссылка публичный контур не ломает — он
+ * показывает только те файлы, которые нашлись.
+ */
+async function dropAttachment(req, res, owner) {
+  const row = await VacAttachment.findOne({
+    where: { id: req.params.attachmentId, ...attachments.ownerWhere(owner) }
+  });
+  if (!row) return res.status(404).json({ error: 'Файл не найден' });
+
+  attachments.removeFile(row.filename);
+  await row.destroy();
+  res.json({ ok: true });
+}
+
+router.post('/openings/:id/attachments', loadVacancy, withAttachment, async (req, res) => {
+  try {
+    await addAttachment(req, res, { vacancyId: req.vacancy.id });
+  } catch (error) {
+    console.error('[vacancies] add attachment:', error);
+    attachments.removeFile(req.file?.filename);
+    res.status(500).json({ error: 'Не удалось приложить файл' });
+  }
+});
+
+router.delete('/openings/:id/attachments/:attachmentId', loadVacancy, async (req, res) => {
+  try {
+    await dropAttachment(req, res, { vacancyId: req.vacancy.id });
+  } catch (error) {
+    console.error('[vacancies] delete attachment:', error);
+    res.status(500).json({ error: 'Не удалось удалить файл' });
+  }
+});
+
+// ── Шаблоны ────────────────────────────────────────────────────────────────
+//
+// Заготовка должности: анкета, процесс и тексты писем под «Врача»,
+// «Медсестру», «Администратора». Вакансия берёт из шаблона копию и дальше живёт
+// сама по себе — см. POST /openings.
+//
+// Филиала, исполнителей и чатов у шаблона нет: исполнитель шага — конкретный
+// человек в конкретном медцентре, и тянуть его за собой в другой филиал значит
+// приносить больше правок, чем экономить.
+
+router.get('/templates', async (req, res) => {
+  try {
+    const rows = await VacTemplate.findAll({
+      include: [{ model: User, as: 'author', attributes: ['id', 'displayName'] }],
+      order: [['sortOrder', 'ASC'], ['title', 'ASC']]
+    });
+
+    res.json(rows.map(t => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      blockCount: Array.isArray(t.form?.blocks) ? t.form.blocks.length : 0,
+      fieldCount: formSchema.flatFields(t.form).length,
+      stepCount: Array.isArray(t.process?.steps) ? t.process.steps.length : 0,
+      author: t.author,
+      updatedAt: t.updatedAt
+    })));
+  } catch (error) {
+    console.error('[vacancies] templates:', error);
+    res.status(500).json({ error: 'Не удалось загрузить шаблоны' });
+  }
+});
+
+router.post('/templates', async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim().slice(0, 200);
+    if (!title) return res.status(400).json({ error: 'Нужно название шаблона' });
+
+    const template = await VacTemplate.create({
+      title,
+      description: String(req.body?.description || '').trim() || null,
+      form: starterForm(),
+      process: starterProcess(),
+      emails: {},
+      createdBy: req.user.id
+    });
+
+    res.status(201).json({ id: template.id });
+  } catch (error) {
+    console.error('[vacancies] create template:', error);
+    res.status(500).json({ error: 'Не удалось создать шаблон' });
+  }
+});
+
+/**
+ * Шаблон из готовой вакансии.
+ *
+ * Тот самый «огромный список», который заказчик не хочет заносить заново, уже
+ * собран в первой вакансии врача. Заставлять повторять его в шаблоне руками
+ * значит ровно та же работа с тем же риском забыть половину.
+ *
+ * Берётся анкета, процесс, письма и приложенные файлы. Исполнители, чаты и
+ * филиал не берутся — их в шаблоне нет.
+ */
+router.post('/templates/from-opening/:id', loadVacancy, async (req, res) => {
+  try {
+    const vacancy = req.vacancy;
+    const title = String(req.body?.title || '').trim().slice(0, 200) || vacancy.title;
+
+    const template = await VacTemplate.create({
+      title,
+      description: String(req.body?.description || '').trim() || null,
+      form: vacancy.form,
+      process: vacancy.process,
+      emails: vacancy.emails,
+      createdBy: req.user.id
+    });
+
+    const form = await attachments.copyInto(
+      template.form,
+      { vacancyId: vacancy.id },
+      { templateId: template.id },
+      req.user.id
+    );
+    if (form !== template.form) await template.update({ form });
+
+    res.status(201).json({ id: template.id, title: template.title });
+  } catch (error) {
+    console.error('[vacancies] template from opening:', error);
+    res.status(500).json({ error: 'Не удалось сохранить шаблон' });
+  }
+});
+
+async function loadTemplate(req, res, next) {
+  try {
+    const template = await VacTemplate.findByPk(req.params.id);
+    if (!template) return res.status(404).json({ error: 'Шаблон не найден' });
+    req.template = template;
+    next();
+  } catch (error) {
+    console.error('[vacancies] loadTemplate:', error);
+    res.status(500).json({ error: 'Не удалось открыть шаблон' });
+  }
+}
+
+router.get('/templates/:id', loadTemplate, async (req, res) => {
+  try {
+    const template = req.template;
+    res.json({
+      id: template.id,
+      title: template.title,
+      description: template.description,
+      form: template.form || { blocks: [], steps: [] },
+      process: template.process || { steps: [] },
+      emails: template.emails || {},
+      attachments: await attachments.listFor({ templateId: template.id }),
+      updatedAt: template.updatedAt
+    });
+  } catch (error) {
+    console.error('[vacancies] template:', error);
+    res.status(500).json({ error: 'Не удалось открыть шаблон' });
+  }
+});
+
+/**
+ * Название, описание и анкета шаблона.
+ *
+ * Проверки те же, что у вакансии, и по той же причине: держать в базе заведомо
+ * сломанную схему незачем — она уедет в вакансию копией и обрушит публичный
+ * контур уже там, где причину не найти.
+ *
+ * Чего здесь нет — запретов на переименование ключей: задач и назначений у
+ * шаблона не бывает, держать его ключи нечем.
+ */
+router.put('/templates/:id', loadTemplate, async (req, res) => {
+  try {
+    const patch = {};
+
+    if (req.body?.title !== undefined) {
+      const title = String(req.body.title).trim().slice(0, 200);
+      if (!title) return res.status(400).json({ error: 'Нужно название шаблона' });
+      patch.title = title;
+    }
+    if (req.body?.description !== undefined) {
+      patch.description = String(req.body.description).trim() || null;
+    }
+
+    if (req.body?.form !== undefined) {
+      const { errors, form } = formSchema.validateForm(req.body.form);
+      if (errors.length) return res.status(400).json({ error: errors[0], errors });
+
+      const broken = starvedSteps(req.template.process, form);
+      if (broken.length) {
+        return res.status(400).json({
+          error: `Шагу «${broken[0].title}» нужно поле с ролью «Специальность» — уберите сначала шаг`
+        });
+      }
+
+      patch.form = await attachments.keepOwn({ templateId: req.template.id }, form);
+    }
+
+    await req.template.update(patch);
+
+    if (patch.form) {
+      await attachments.pruneUnused({ templateId: req.template.id }, patch.form);
+    }
+
+    res.json({ ok: true, updatedAt: req.template.updatedAt });
+  } catch (error) {
+    console.error('[vacancies] save template:', error);
+    res.status(500).json({ error: 'Не удалось сохранить шаблон' });
+  }
+});
+
+router.put('/templates/:id/process', loadTemplate, async (req, res) => {
+  try {
+    const { errors, process: next } = processSchema.validateProcess(req.body?.process, req.template.form);
+    if (errors.length) return res.status(400).json({ error: errors[0], errors });
+
+    await req.template.update({ process: next });
+    res.json({ ok: true, updatedAt: req.template.updatedAt });
+  } catch (error) {
+    console.error('[vacancies] save template process:', error);
+    res.status(500).json({ error: 'Не удалось сохранить процесс' });
+  }
+});
+
+router.put('/templates/:id/emails', loadTemplate, async (req, res) => {
+  try {
+    await req.template.update({ emails: cleanEmails(req.body?.emails) });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[vacancies] save template emails:', error);
+    res.status(500).json({ error: 'Не удалось сохранить письма' });
+  }
+});
+
+/** Превью собирается тем же кодом, что и настоящее письмо: шаблону нужны только название и тексты. */
+router.get('/templates/:id/email-preview/:key', loadTemplate, (req, res) => {
+  const { key } = req.params;
+  if (!mailer.LETTERS[key]) return res.status(404).json({ error: 'Такого письма нет' });
+  res.json(mailer.preview(req.template, key));
+});
+
+/**
+ * Удаление шаблона. Ничего не спрашиваем у вакансий: связи с ними у шаблона
+ * нет — они получили копию и от него не зависят.
+ */
+router.delete('/templates/:id', loadTemplate, async (req, res) => {
+  try {
+    for (const row of await VacAttachment.findAll({ where: { templateId: req.template.id } })) {
+      attachments.removeFile(row.filename);
+    }
+    await req.template.destroy();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[vacancies] delete template:', error);
+    res.status(500).json({ error: 'Не удалось удалить шаблон' });
+  }
+});
+
+router.post('/templates/:id/attachments', loadTemplate, withAttachment, async (req, res) => {
+  try {
+    await addAttachment(req, res, { templateId: req.template.id });
+  } catch (error) {
+    console.error('[vacancies] add template attachment:', error);
+    attachments.removeFile(req.file?.filename);
+    res.status(500).json({ error: 'Не удалось приложить файл' });
+  }
+});
+
+router.delete('/templates/:id/attachments/:attachmentId', loadTemplate, async (req, res) => {
+  try {
+    await dropAttachment(req, res, { templateId: req.template.id });
+  } catch (error) {
+    console.error('[vacancies] delete template attachment:', error);
+    res.status(500).json({ error: 'Не удалось удалить файл' });
   }
 });
 

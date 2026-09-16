@@ -95,6 +95,11 @@ const LEGACY_NAMES = { professions: 'speciality' };
 const MAX_BLOCKS = 40;
 const MAX_FIELDS_PER_BLOCK = 40;
 
+// Сколько наших файлов можно повесить на одно поле. Больше пяти образцов у
+// одного вопроса — это уже не образцы, а папка с документами, и её место в
+// отдельном блоке анкеты.
+const MAX_ATTACHMENTS = 5;
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -222,6 +227,20 @@ function validateForm(raw) {
       if (spec.accept) {
         const accept = trimmed(fieldRaw.accept, 20);
         if (accept === 'image' || accept === 'doc') field.accept = accept;
+      }
+
+      // Наши файлы у поля — образцы, которые кандидат скачивает (ver. 8.34).
+      // Ставятся любому типу, а не только файловому: рядом с галочкой
+      // «ознакомлен» лежит то, с чем знакомятся, а рядом с полем «заполненное
+      // заявление» — бланк заявления.
+      //
+      // Проверяется здесь только вид ссылки. Чей это файл, знает база, и
+      // отсев чужих идёт в маршруте: схема анкеты о владельце не осведомлена.
+      if (Array.isArray(fieldRaw.attachments)) {
+        const ids = [...new Set(
+          fieldRaw.attachments.filter(v => typeof v === 'string').map(v => v.trim()).filter(Boolean)
+        )].slice(0, MAX_ATTACHMENTS);
+        if (ids.length) field.attachments = ids;
       }
 
       // Роль — единственная настройка, которую нельзя проверить в пределах
@@ -529,6 +548,7 @@ module.exports = {
   FIELD_TYPES,
   FIELD_ROLES,
   KEY_RE,
+  MAX_ATTACHMENTS,
   validateForm,
   validateAnswers,
   rolesFrom,

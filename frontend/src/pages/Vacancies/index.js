@@ -7,8 +7,8 @@
  *
  * Экранов две группы, и это не косметика. Сверху ежедневная работа — задачи и
  * заявки: её видит и тот, кто просто назначен исполнителем шага. Ниже
- * настройка — вакансии и таблички филиалов: она только для админа, и у
- * остальных этих пунктов нет вовсе, а не «есть, но с замком».
+ * настройка — вакансии, шаблоны и QR-коды: она только для админа, и у остальных
+ * этих пунктов нет вовсе, а не «есть, но с замком».
  *
  * Старый раздел онбординга остаётся рядом и работает: заявки идут через него,
  * пока здесь не появится всё то же самое. Его кнопка в сайдбаре помечена
@@ -18,10 +18,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Briefcase, QrCode, Inbox, FileText, Archive, Plus } from 'lucide-react';
+import { Briefcase, QrCode, Inbox, FileText, Archive, Plus, Copy, X } from 'lucide-react';
 
 import { vacancies as api } from '../../services/api';
 import VacancyEditor from './VacancyEditor';
+import TemplateEditor from './TemplateEditor';
 import ApplicationCard from './ApplicationCard';
 import './Vacancies.css';
 
@@ -31,7 +32,10 @@ const SCREENS = [
   { key: 'archive', label: 'Архив', icon: Archive },
   { group: 'Настройка' },
   { key: 'list', label: 'Вакансии', icon: Briefcase, adminOnly: true },
-  { key: 'qr', label: 'Таблички филиалов', icon: QrCode, adminOnly: true },
+  { key: 'templates', label: 'Шаблоны', icon: Copy, adminOnly: true },
+  // До ver. 8.34 пункт назывался «Таблички филиалов» — по тому, что из него
+  // печатали. Печатают по-прежнему таблички, но ищут в меню QR-код.
+  { key: 'qr', label: 'QR-коды', icon: QrCode, adminOnly: true },
 ];
 
 export default function Vacancies() {
@@ -43,6 +47,7 @@ export default function Vacancies() {
   const [apps, setApps] = useState([]);
   const [archive, setArchive] = useState([]);
   const [list, setList] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [medCenters, setMedCenters] = useState([]);
   const [meta, setMeta] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -54,7 +59,11 @@ export default function Vacancies() {
   // Открытые вакансия и заявка живут в адресе: ссылку можно кинуть коллеге, а
   // уведомление о задаче ведёт сразу в нужную заявку, а не в список.
   const openVacancyId = params.get('vacancy');
+  const openTemplateId = params.get('template');
   const openAppId = params.get('app');
+
+  // Диалог создания вакансии: название, филиал и — необязательно — шаблон.
+  const [creating, setCreating] = useState(false);
 
   const setParam = (key, value) => {
     const next = new URLSearchParams(params);
@@ -81,8 +90,11 @@ export default function Vacancies() {
       // Настройка грузится только тому, кому она доступна: остальным эти
       // запросы вернули бы 403 и насорили в консоли.
       if (admin) {
-        const [v, mc, m] = await Promise.all([api.openings(), api.medCenters(), api.meta()]);
+        const [v, t, mc, m] = await Promise.all([
+          api.openings(), api.templates(), api.medCenters(), api.meta()
+        ]);
         setList(v.data || []);
+        setTemplates(t.data || []);
         setMedCenters(mc.data || []);
         setMeta(m.data || null);
       }
@@ -106,31 +118,48 @@ export default function Vacancies() {
   }, [load]);
 
   /**
-   * Новая вакансия. Спрашиваем только название и филиал: остальное — анкета,
-   * процесс, письма — правится в самом редакторе, и вываливать это в диалог
-   * создания значит заставить человека решать всё до того, как он увидел экран.
+   * Новая вакансия.
+   *
+   * Спрашиваем три вещи: название, филиал и шаблон. Остальное — анкета, процесс,
+   * письма — правится в самом редакторе, и вываливать это в диалог создания
+   * значит заставить человека решать всё до того, как он увидел экран.
+   *
+   * До ver. 8.34 это была цепочка window.prompt с филиалами, пронумерованными
+   * в тексте. Третий вопрос в такую цепочку уже не влезал.
    */
-  const createVacancy = async () => {
-    const title = window.prompt('Название вакансии — «Врач-терапевт», «Медицинская сестра»');
-    if (!title?.trim()) return;
-
-    const usable = medCenters.filter(mc => mc.code);
-    if (!usable.length) {
+  const openCreate = () => {
+    if (!medCenters.some(mc => mc.code)) {
       toast.error('Ни у одного филиала не заполнен латинский код — без него ссылку не построить');
       return;
     }
+    setCreating(true);
+  };
 
-    const names = usable.map((mc, i) => `${i + 1}. ${mc.name}`).join('\n');
-    const answer = window.prompt(`В каком филиале?\n\n${names}\n\nВведите номер`, '1');
-    const branch = usable[Number(answer) - 1];
-    if (!branch) return;
-
+  const createVacancy = async (payload) => {
     try {
-      const { data } = await api.createOpening({ title: title.trim(), medCenterId: branch.id });
+      const { data } = await api.createOpening(payload);
+      setCreating(false);
       await load();
       setParam('vacancy', data.id);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Не удалось создать вакансию');
+    }
+  };
+
+  /**
+   * Новый шаблон. Здесь одного вопроса достаточно: филиала у шаблона нет, а
+   * заводить шаблон по шаблону незачем — для этого есть «Сохранить как шаблон»
+   * в готовой вакансии.
+   */
+  const createTemplate = async () => {
+    const title = window.prompt('Название шаблона — «Врач», «Медицинская сестра»');
+    if (!title?.trim()) return;
+    try {
+      const { data } = await api.createTemplate({ title: title.trim() });
+      await load();
+      setParam('template', data.id);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Не удалось создать шаблон');
     }
   };
 
@@ -154,7 +183,10 @@ export default function Vacancies() {
 
   const go = (key) => setParams(key === 'tasks' ? {} : { screen: key }, { replace: true });
 
-  const counts = { tasks: tasks.length, apps: apps.length, archive: 0, list: list.length, qr: 0 };
+  const counts = {
+    tasks: tasks.length, apps: apps.length, archive: 0,
+    list: list.length, templates: templates.length, qr: 0
+  };
 
   return (
     <div className="vac">
@@ -187,7 +219,10 @@ export default function Vacancies() {
           <div className="vac-top">
             <div className="vac-title">{SCREENS.find(s => s.key === screen)?.label}</div>
             {screen === 'list' && !openVacancyId && isAdmin && (
-              <button className="vac-btn" onClick={createVacancy}><Plus size={15} />Новая вакансия</button>
+              <button className="vac-btn" onClick={openCreate}><Plus size={15} />Новая вакансия</button>
+            )}
+            {screen === 'templates' && !openTemplateId && isAdmin && (
+              <button className="vac-btn" onClick={createTemplate}><Plus size={15} />Новый шаблон</button>
             )}
           </div>
 
@@ -222,13 +257,35 @@ export default function Vacancies() {
             )}
 
             {!loading && screen === 'list' && isAdmin && !openVacancyId && (
-              <VacancyList list={list} onOpen={id => setParam('vacancy', id)} onCreate={createVacancy} />
+              <VacancyList list={list} onOpen={id => setParam('vacancy', id)} onCreate={openCreate} />
+            )}
+
+            {!loading && screen === 'templates' && isAdmin && openTemplateId && meta && (
+              <TemplateEditor
+                templateId={openTemplateId}
+                meta={meta}
+                onBack={() => setParam('template', null)}
+                onChanged={load}
+              />
+            )}
+
+            {!loading && screen === 'templates' && isAdmin && !openTemplateId && (
+              <TemplateList list={templates} onOpen={id => setParam('template', id)} onCreate={createTemplate} />
             )}
 
             {!loading && screen === 'qr' && isAdmin && <QrScreen medCenters={medCenters} list={list} />}
           </div>
         </div>
       </div>
+
+      {creating && (
+        <NewVacancyDialog
+          medCenters={medCenters}
+          templates={templates}
+          onCancel={() => setCreating(false)}
+          onCreate={createVacancy}
+        />
+      )}
 
       {openAppId && (
         <ApplicationCard
@@ -369,6 +426,137 @@ function VacancyList({ list, onOpen, onCreate }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+/**
+ * Список шаблонов.
+ *
+ * Шаблон — заготовка должности: анкета, процесс и письма, с которых начинается
+ * вакансия. Рядом с названием стоят размеры анкеты: по ним шаблон и узнают,
+ * «Врач» сам по себе не говорит, собран он или пуст.
+ */
+function TemplateList({ list, onOpen, onCreate }) {
+  if (!list.length) {
+    return (
+      <div className="vac-empty">
+        Шаблонов ещё нет. Если анкета уже собрана в какой-то вакансии — откройте
+        её и нажмите «Сохранить как шаблон».<br />
+        <button className="vac-btn is-ghost" onClick={onCreate}>Завести первый</button>
+      </div>
+    );
+  }
+
+  return (
+    <table className="vac-table">
+      <thead>
+        <tr><th>Шаблон</th><th>Анкета</th><th>Процесс</th><th>Изменён</th></tr>
+      </thead>
+      <tbody>
+        {list.map(t => (
+          <tr key={t.id} className="is-clickable" onClick={() => onOpen(t.id)}>
+            <td>
+              <div className="vac-name">{t.title}</div>
+              {t.description && <div className="vac-sub">{t.description}</div>}
+            </td>
+            <td className="vac-sub">{t.blockCount} блоков · {t.fieldCount} полей</td>
+            <td className="vac-sub">{t.stepCount} шагов</td>
+            <td className="vac-sub">
+              {new Date(t.updatedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+              {t.author ? `, ${t.author.displayName}` : ''}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * Диалог создания вакансии.
+ *
+ * Шаблон здесь необязателен и ни к чему не привязывает: вакансия получает копию
+ * анкеты, процесса и писем и дальше живёт сама по себе. Поэтому «с нуля»
+ * остаётся первым пунктом списка — это не запасной путь, а равноправный.
+ */
+function NewVacancyDialog({ medCenters, templates, onCancel, onCreate }) {
+  // Филиал без латинского кода показывать незачем: из него не построить ни
+  // ссылку, ни QR, и выбор такого закончился бы отказом сервера.
+  const usable = medCenters.filter(mc => mc.code);
+
+  const [title, setTitle] = useState('');
+  const [medCenterId, setMedCenterId] = useState(usable[0]?.id || '');
+  const [templateId, setTemplateId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const chosen = templates.find(t => t.id === templateId);
+  const ready = Boolean(title.trim() && medCenterId);
+
+  const submit = async () => {
+    if (!ready || busy) return;
+    setBusy(true);
+    try {
+      await onCreate({
+        title: title.trim(),
+        medCenterId,
+        templateId: templateId || undefined
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="vac-overlay" onClick={onCancel}>
+      <div className="vac-card is-narrow" onClick={e => e.stopPropagation()}>
+        <div className="vac-card-head">
+          <div><h2>Новая вакансия</h2></div>
+          <button className="vac-icon" onClick={onCancel} title="Закрыть"><X size={18} /></button>
+        </div>
+
+        <div className="vac-card-body">
+          <label className="vac-lab is-wide">
+            Название
+            <input
+              className="vac-input"
+              autoFocus
+              value={title}
+              placeholder="«Врач-терапевт», «Медицинская сестра»"
+              onChange={e => setTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+            />
+          </label>
+
+          <label className="vac-lab is-wide">
+            Филиал
+            <select className="vac-input" value={medCenterId} onChange={e => setMedCenterId(e.target.value)}>
+              {usable.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
+            </select>
+          </label>
+
+          <label className="vac-lab is-wide">
+            Шаблон
+            <select className="vac-input" value={templateId} onChange={e => setTemplateId(e.target.value)}>
+              <option value="">— собрать с нуля —</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+            </select>
+          </label>
+
+          <div className="vac-hint">
+            {chosen
+              ? `Копией приедут анкета (${chosen.blockCount} бл., ${chosen.fieldCount} пол.), процесс и письма.`
+              : 'Заведётся заготовка: блок с ФИО и шаг решения.'}
+          </div>
+
+          <div className="vac-editor-acts">
+            <button className="vac-btn" disabled={!ready || busy} onClick={submit}>
+              {busy ? 'Заводим…' : 'Создать'}
+            </button>
+            <button className="vac-btn is-ghost" disabled={busy} onClick={onCancel}>Отмена</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

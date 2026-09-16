@@ -879,11 +879,181 @@ function CabEditItem({ cabName, existing, onUpdate, onDelete, saving }) {
   );
 }
 
+// ─── Бонусы по услугам вне списка МИС ────────────────────────────────────────
+// Таблица выше строится из услуг карточки врача в МИС. Но бонус можно завести и на
+// услугу, которой в карточке нет: баннер «Не настроен бонус» во вкладке «Отчёт»
+// сохраняет такие записи, когда услуга всплыла в зарплатной выгрузке. Раньше такая
+// запись после сохранения переставала быть видимой где-либо — ошибочный процент
+// нельзя было ни поправить, ни удалить иначе как запросом в базу. Поэтому показываем
+// их отдельным блоком: он же напоминает, что услуга у врача не заведена.
+function OrphanBonusRow({ bonus, clinics, misUserId, doctorName, onReload }) {
+  const hasPct = bonus.bonusPercent != null;
+  const initType = hasPct ? 'pct' : bonus.bonusRub != null ? 'rub' : 'pct';
+  const initVal = hasPct ? String(parseFloat(bonus.bonusPercent))
+    : bonus.bonusRub != null ? String(parseFloat(bonus.bonusRub)) : '';
+
+  const [type, setType] = useState(initType);
+  const [val, setVal]   = useState(initVal);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setType(initType); setVal(initVal); }, [initType, initVal]);
+
+  const clinicLabel = (() => {
+    if (!bonus.clinicId) return 'Общие';
+    const c = (clinics || []).find(x => String(x.id) === String(bonus.clinicId));
+    return c ? c.name : `Клиника ${bonus.clinicId}`;
+  })();
+
+  const dirty = type !== initType || String(val) !== String(initVal);
+
+  const handleSave = async () => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) { toast.error('Некорректное значение'); return; }
+    setSaving(true);
+    try {
+      await performedServiceBonuses.save({
+        misUserId,
+        doctorName,
+        clinicId: bonus.clinicId || '',
+        cabinetId: bonus.cabinetId || '',
+        serviceCode: bonus.serviceCode,
+        serviceName: bonus.serviceName || bonus.serviceCode,
+        bonusPercent: type === 'pct' ? num : null,
+        bonusRub:     type === 'rub' ? num : null,
+      });
+      toast.success('Бонус сохранён');
+      await onReload();
+    } catch {
+      toast.error('Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Удалить бонус по услуге «${bonus.serviceName || bonus.serviceCode}»?`)) return;
+    setSaving(true);
+    try {
+      await performedServiceBonuses.delete(bonus.id);
+      toast.success('Бонус удалён');
+      await onReload();
+    } catch {
+      toast.error('Ошибка удаления');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr style={{ borderBottom: '1px solid var(--rb-border)' }}>
+      <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', fontSize: 13 }}>{bonus.serviceCode}</td>
+      <td style={{ padding: '6px 10px' }}>
+        {bonus.serviceName || bonus.serviceCode}
+        <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>
+          {clinicLabel}{bonus.cabinetId ? ` · кабинет ${bonus.cabinetId}` : ''}
+        </div>
+      </td>
+      <td style={{ padding: '6px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div className="rb-exec-type-toggle" style={{ height: 28 }}>
+            <button className={`rb-exec-type-btn${type === 'pct' ? ' active' : ''}`} style={{ padding: '0 10px' }} onClick={() => setType('pct')}>%</button>
+            <button className={`rb-exec-type-btn${type === 'rub' ? ' active' : ''}`} style={{ padding: '0 10px' }} onClick={() => setType('rub')}>₽</button>
+          </div>
+          <input
+            type="number" min="0" step="any"
+            placeholder={type === 'pct' ? '%' : '₽'}
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && dirty) handleSave(); }}
+            style={{ width: 80, height: 28, padding: '0 6px', border: '1px solid var(--rb-border-dark)', borderRadius: 4, textAlign: 'right', fontSize: 12, boxSizing: 'border-box' }}
+          />
+          <button
+            className="rb-btn rb-btn-primary rb-btn-sm"
+            onClick={handleSave}
+            disabled={saving || !dirty || val === ''}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            {saving ? '...' : 'Сохранить'}
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={saving}
+            title="Удалить бонус"
+            style={{ background: 'none', border: 'none', cursor: saving ? 'default' : 'pointer', padding: 4, color: 'var(--red-600, #dc2626)', display: 'flex', alignItems: 'center' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function OrphanBonusSection({ orphans, clinics, misUserId, doctorName, onReload }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!orphans.length) return null;
+
+  return (
+    <div style={{ marginBottom: 12, background: 'var(--amber-50)', border: '1px solid var(--amber-500)', borderRadius: 8, overflow: 'hidden' }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}>
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--amber-800)' }}>
+          Бонусы по услугам вне списка МИС: {orphans.length} — начисляются, но услуги нет в карточке врача
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0, transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      {expanded && (
+        <div style={{ padding: '0 14px 12px', borderTop: '1px solid var(--amber-200)' }}>
+          <div style={{ fontSize: 11, color: 'var(--amber-800)', margin: '8px 0' }}>
+            Такие бонусы заводятся из вкладки «Отчёт», когда услуга есть в зарплатной выгрузке,
+            но не заведена врачу в МИС. Здесь их можно поправить или удалить. После правки
+            отчёт за период нужно пересчитать и сохранить заново — сохранённый отчёт это снимок.
+          </div>
+          <table className="rb-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'center' }}>Код</th>
+                <th style={{ textAlign: 'center' }}>Услуга</th>
+                <th style={{ textAlign: 'center', width: 280 }}>Бонус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orphans.map(b => (
+                <OrphanBonusRow
+                  key={b.id}
+                  bonus={b}
+                  clinics={clinics}
+                  misUserId={misUserId}
+                  doctorName={doctorName}
+                  onReload={onReload}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function StepPerformed({ selectedDoctor, clinics, readOnly, panelCollapsed, onTogglePanel }) {
   const [bonuses, setBonuses] = useState([]);
   const [services, setServices] = useState([]);
+  // Список услуг врача мог не загрузиться (МИС ответил ошибкой). Тогда «услуги вне списка»
+  // определять не по чему — все бонусы выглядели бы сиротскими, — и блок мы не показываем.
+  const [servicesOk, setServicesOk] = useState(true);
   const [globalCabinets, setGlobalCabinets] = useState([]);
   const [activeClinic, setActiveClinic] = useState('global');
   const [activeRole, setActiveRole] = useState('doctor');
@@ -917,6 +1087,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
     setActiveRole('doctor');
     setRowValues({});
     setPerfPage(1);
+    setServicesOk(true);
 
     Promise.all([
       performedServiceBonuses.getByDoctor(selectedDoctor.id),
@@ -949,17 +1120,21 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
             })));
           } else {
             setServices([]);
+            setServicesOk(false);
           }
         } else {
+          // У врача в МИС услуг нет вовсе — это валидный ответ, а не сбой.
           setServices([]);
         }
       } catch {
         setServices([]);
+        setServicesOk(false);
       }
     }).catch(() => {
       setBonuses([]);
       setGlobalCabinets([]);
       setServices([]);
+      setServicesOk(false);
     }).finally(() => setLoading(false));
   }, [selectedDoctor]);
 
@@ -1008,6 +1183,10 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
         doctorName: selectedDoctor.name,
         clinicId: dbClinicId,
         items,
+        // Бэкенд переписывает скоуп целиком, поэтому явно ограничиваем его теми кодами,
+        // которые вкладка показывает: бонусы по услугам вне списка МИС правятся отдельным
+        // блоком и не должны стираться сохранением таблицы.
+        managedCodes: services.map(svc => svc.code).filter(Boolean),
       });
       toast.success(`Сохранено ${items.length} бонусов`);
       await loadBonuses();
@@ -1041,6 +1220,18 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
     clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => handleSaveAllRef.current?.(), 1500);
   }, []);
+
+  // Бонусы, которым не нашлось строки в таблице: услуги нет в карточке врача в МИС.
+  // Показываем их все скопом, независимо от выбранной вкладки клиники, — иначе запись
+  // с «чужим» clinicId (клиника из зарплатной выгрузки, где врач не числится) снова
+  // оказалась бы невидимой.
+  const orphanBonuses = React.useMemo(() => {
+    if (!servicesOk) return [];
+    const known = new Set(services.map(svc => svc.code).filter(Boolean));
+    return bonuses
+      .filter(b => b.serviceCode && !known.has(b.serviceCode))
+      .sort((a, b) => (a.serviceName || '').localeCompare(b.serviceName || '', 'ru'));
+  }, [bonuses, services, servicesOk]);
 
   const filteredServices = services.filter(svc => {
     if (!searchTerm) return true;
@@ -1167,6 +1358,15 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
               </button>
             ))}
           </div>
+
+          {/* Бонусы по услугам вне списка МИС — правятся здесь, а больше негде */}
+          <OrphanBonusSection
+            orphans={orphanBonuses}
+            clinics={clinics}
+            misUserId={selectedDoctor.id}
+            doctorName={selectedDoctor.name}
+            onReload={loadBonuses}
+          />
 
           {/* Services table */}
           {services.length === 0 ? (

@@ -16,12 +16,20 @@
  * тридцати полей — работа, которая ничего не даёт: ключ виден только здесь.
  * Поправить его всё равно можно, и иногда нужно — по ключу поле узнают в
  * выгрузке.
+ *
+ * Наши файлы у поля (ver. 8.34) уезжают на сервер сразу, а не вместе с анкетой:
+ * анкета сохраняется кнопкой и целиком, и класть в тот же запрос двоичные файлы
+ * значило бы пересылать их при каждой правке подписи у соседнего поля. Поэтому
+ * «убрать» у прикреплённого файла отцепляет его от поля, а с диска его уберёт
+ * сохранение анкеты — там видно, что на файл больше никто не ссылается.
  */
 
 import React, { useState } from 'react';
 import {
-  ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, GripVertical, Repeat
+  ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, GripVertical, Repeat, Paperclip
 } from 'lucide-react';
+
+import { vacancies as api } from '../../services/api';
 
 // ── Ключи из подписей ──────────────────────────────────────────────────────
 
@@ -101,7 +109,7 @@ export function toStored(draft) {
 
 // ── Редактор ───────────────────────────────────────────────────────────────
 
-export default function FormBuilder({ draft, meta, onChange }) {
+export default function FormBuilder({ draft, meta, attachments = [], onAttach, onChange }) {
   const [open, setOpen] = useState(() => new Set());
 
   const toggle = (key) => setOpen(prev => {
@@ -162,6 +170,8 @@ export default function FormBuilder({ draft, meta, onChange }) {
           blocks={draft.blocks}
           steps={draft.steps}
           meta={meta}
+          attachments={attachments}
+          onAttach={onAttach}
           isOpen={open.has(block.key)}
           onToggle={() => toggle(block.key)}
           onChange={(next) => setBlock(index, next)}
@@ -229,12 +239,6 @@ function StepsEditor({ draft, onChange }) {
         <button className="vac-btn is-ghost" onClick={addStep}><Plus size={14} />Добавить шаг</button>
       </div>
 
-      <div className="vac-hint">
-        Анкету человек заполняет по шагам, а не одним полотном: на телефоне
-        полтора десятка блоков подряд прокручиваются минуту, и до конца доходят
-        не все. В каком шаге блок — выбирается в самом блоке.
-      </div>
-
       <div className="vac-steps">
         {draft.steps.map((step, index) => (
           <div className="vac-step" key={step.key || index}>
@@ -276,7 +280,7 @@ function StepsEditor({ draft, onChange }) {
 }
 
 function BlockCard({
-  block, blocks, steps, meta, isOpen, onToggle, onChange,
+  block, blocks, steps, meta, attachments, onAttach, isOpen, onToggle, onChange,
   onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown
 }) {
   const setField = (index, field) => {
@@ -371,14 +375,6 @@ function BlockCard({
             </label>
           </div>
 
-          {block.repeat && (
-            <div className="vac-hint">
-              У повторяемого блока человек добавляет записи сам, поэтому роли
-              полям здесь не ставятся: значений много, и «дата выхода» в третьей
-              строке — бессмыслица.
-            </div>
-          )}
-
           <div className="vac-fields">
             {block.fields.map((field, index) => (
               <FieldRow
@@ -387,6 +383,8 @@ function BlockCard({
                 block={block}
                 blocks={blocks}
                 meta={meta}
+                attachments={attachments}
+                onAttach={onAttach}
                 onChange={next => setField(index, next)}
                 onMoveUp={() => moveField(index, -1)}
                 onMoveDown={() => moveField(index, 1)}
@@ -405,9 +403,11 @@ function BlockCard({
 }
 
 function FieldRow({
-  field, block, blocks, meta, onChange, onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown
+  field, block, blocks, meta, attachments, onAttach,
+  onChange, onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown
 }) {
   const [more, setMore] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const spec = meta.fieldTypes.find(t => t.key === field.type);
 
   // Ключ переводится из подписи, пока человек его не трогал руками. Как только
@@ -427,6 +427,33 @@ function FieldRow({
   const roles = block.repeat
     ? []
     : meta.fieldRoles.filter(r => r.types.includes(field.type) || r.key === field.role);
+
+  // Наши образцы, прикреплённые к этому полю. Порядок — тот, в котором их
+  // прикладывали; ссылка, которой не нашлось файла, молча выпадает: файл могли
+  // удалить, и показывать «файл №a3f9…» кандидату незачем.
+  const chosen = (field.attachments || [])
+    .map(id => attachments.find(a => a.id === id))
+    .filter(Boolean);
+  const canAddMore = (field.attachments || []).length < (meta.attachments?.max || 5);
+
+  const attach = async (file) => {
+    if (!file || !onAttach) return;
+    setUploading(true);
+    try {
+      const row = await onAttach(file);
+      if (row) onChange({ ...field, attachments: [...(field.attachments || []), row.id] });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Отцепляем только от поля. Сам файл уберёт сохранение анкеты — на сервере
+  // видно, ссылается ли на него ещё кто-нибудь, а здесь лежит несохранённый
+  // черновик, и удалять по нему с диска нельзя.
+  const detach = (id) => {
+    const rest = (field.attachments || []).filter(x => x !== id);
+    onChange({ ...field, attachments: rest.length ? rest : undefined });
+  };
 
   return (
     <div className="vac-field">
@@ -479,6 +506,7 @@ function FieldRow({
               Роль
               <select
                 className="vac-input"
+                title={roles.find(r => r.key === field.role)?.hint || 'Чем поле является для движка'}
                 value={field.role || ''}
                 onChange={e => onChange({ ...field, role: e.target.value || undefined })}
               >
@@ -542,14 +570,47 @@ function FieldRow({
             />
           </label>
 
-          {field.role && (
-            <div className="vac-hint is-inline">
-              {meta.fieldRoles.find(r => r.key === field.role)?.hint
-                || 'Поле с ролью движок читает отдельно от остальной анкеты.'}
+          {/* Наш файл для кандидата: образец заявления, памятка, бланк
+              согласия. Стоит у поля, а не отдельным списком, потому что
+              заполненное по образцу человек прикладывает ровно сюда же. */}
+          <div className="vac-lab is-block">
+            Наши файлы для кандидата
+            <div className="vac-samples">
+              {chosen.map(item => (
+                <span className="vac-sample" key={item.id}>
+                  <Paperclip size={12} />
+                  <a href={api.attachmentUrl(item.id)} target="_blank" rel="noreferrer">{item.title}</a>
+                  <small>{fileSize(item.size)}</small>
+                  <button type="button" title="Убрать от поля" onClick={() => detach(item.id)}>×</button>
+                </span>
+              ))}
+
+              {canAddMore && (
+                <label
+                  className={`vac-btn is-ghost is-file ${uploading ? 'is-busy' : ''}`}
+                  title={`${meta.attachments?.hint || 'Файл для кандидата'}. До ${meta.attachments?.maxSizeMb || 20} МБ`}
+                >
+                  <input
+                    type="file"
+                    disabled={uploading}
+                    onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; attach(file); }}
+                  />
+                  <Paperclip size={13} />
+                  {uploading ? 'Загружаем…' : 'Прикрепить файл'}
+                </label>
+              )}
             </div>
-          )}
+          </div>
+
         </div>
       )}
     </div>
   );
+}
+
+/** Размер файла для строки рядом с названием. */
+function fileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
 }

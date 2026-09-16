@@ -11,11 +11,15 @@
  * проходит («поле только что добавлено, подписи ещё нет»). Автосохранение
  * превратило бы редактор в мигающий список ошибок. Исполнители и чаты, наоборот,
  * сохраняются сразу — там нечего проверять целиком.
+ *
+ * Наши файлы (ver. 8.34) ведут себя как исполнители, а не как анкета: уезжают
+ * при выборе. Поэтому и держатся отдельным состоянием — перечитать вакансию
+ * ради одного файла значило бы стереть несохранённую правку анкеты.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle, Play, Pause, Archive } from 'lucide-react';
+import { ArrowLeft, Save, Undo2, Trash2, AlertTriangle, Play, Pause, Archive, Copy } from 'lucide-react';
 
 import { vacancies as api } from '../../services/api';
 import FormBuilder, { fromStored, toStored } from './FormBuilder';
@@ -48,6 +52,11 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Наши файлы живут отдельно от черновика анкеты: они уезжают на сервер сразу
+  // при выборе, а анкета сохраняется кнопкой. Перечитывать из-за файла всю
+  // вакансию нельзя — это стёрло бы несохранённую правку анкеты.
+  const [attachments, setAttachments] = useState([]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -57,6 +66,7 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
       setSteps((data.process?.steps || []).map(s => ({ ...s, after: s.after || [] })));
       setTitle(data.title);
       setDescription(data.description || '');
+      setAttachments(data.attachments || []);
       setErrors([]);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Не удалось открыть вакансию');
@@ -134,6 +144,50 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
     }
   };
 
+  /**
+   * Приём нашего файла. Возвращает строку файла — конструктор по ней ставит
+   * ссылку полю; на отказе возвращает null, и поле остаётся как было.
+   */
+  const attachFile = async (file) => {
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const { data } = await api.addAttachment(vacancyId, body);
+      setAttachments(prev => [...prev, data]);
+      return data;
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Файл не загрузился');
+      return null;
+    }
+  };
+
+  /**
+   * Вакансия как шаблон.
+   *
+   * Уезжает сохранённое, а не то, что на экране: шаблон собирается на сервере
+   * из того, что лежит в базе. Поэтому с несохранёнными правками не даём — иначе
+   * человек получил бы шаблон без последнего часа работы и узнал бы об этом
+   * через месяц.
+   */
+  const saveAsTemplate = async () => {
+    if (dirty) {
+      toast.error('Сначала сохраните правки — в шаблон уедет сохранённая анкета');
+      return;
+    }
+    const name = window.prompt('Название шаблона', vacancy.title);
+    if (!name?.trim()) return;
+
+    setBusy(true);
+    try {
+      await api.templateFromOpening(vacancyId, { title: name.trim() });
+      toast.success('Шаблон сохранён — он в разделе «Шаблоны»');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Не удалось сохранить шаблон');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async () => {
     if (!window.confirm(`Удалить вакансию «${vacancy.title}»? Это нельзя отменить.`)) return;
     setBusy(true);
@@ -198,6 +252,8 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
             <Undo2 size={14} />Отменить
           </button>
 
+          <i className="vac-sep" />
+
           {vacancy.status !== 'open' && (
             <button
               className="vac-btn is-ghost"
@@ -219,9 +275,27 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
             </button>
           )}
 
+          <i className="vac-sep" />
+
+          <button
+            className="vac-btn is-ghost"
+            disabled={busy}
+            onClick={saveAsTemplate}
+            title="Завести шаблон с этой анкетой, процессом и письмами"
+          >
+            <Copy size={14} />В шаблон
+          </button>
+
+          {/* Удаление — редкое и необратимое, поэтому без подписи: подписанная
+              кнопка того же веса, что «Сохранить», стоит рядом с ней весь день. */}
           {!vacancy.applicationCount && (
-            <button className="vac-btn is-ghost is-danger" disabled={busy} onClick={remove}>
-              <Trash2 size={14} />Удалить
+            <button
+              className="vac-icon is-danger"
+              disabled={busy}
+              onClick={remove}
+              title="Удалить вакансию"
+            >
+              <Trash2 size={15} />
             </button>
           )}
         </div>
@@ -246,21 +320,26 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
 
       {vacancy.applicationCount > 0 && tab === 'form' && (
         <div className="vac-hint">
-          По вакансии уже подано заявок: {vacancy.applicationCount}. Правки анкеты
-          их не затронут — каждая заявка носит копию той анкеты, которую человек
-          заполнял.
+          Заявок подано: {vacancy.applicationCount}. Правки анкеты их не затронут.
         </div>
       )}
 
       {vacancy.applicationCount > 0 && tab === 'process' && (
         <div className="vac-hint">
-          Процесс живой: новый шаг появится и у тех заявок, что уже в работе.
-          Шаги, по которым задачи уже заведены, помечены — их ключ не
-          переименовать и сам шаг не удалить, только убрать в архив.
+          Процесс живой: новый шаг появится и у заявок в работе. Шаги с
+          заведёнными задачами помечены — их можно только убрать в архив.
         </div>
       )}
 
-      {tab === 'form' && <FormBuilder draft={draft} meta={meta} onChange={setDraft} />}
+      {tab === 'form' && (
+        <FormBuilder
+          draft={draft}
+          meta={meta}
+          attachments={attachments}
+          onAttach={attachFile}
+          onChange={setDraft}
+        />
+      )}
 
       {tab === 'process' && (
         <ProcessBuilder steps={steps} meta={meta} lockedKeys={lockedKeys} onChange={setSteps} />
@@ -268,7 +347,15 @@ export default function VacancyEditor({ vacancyId, meta, onBack, onChanged }) {
 
       {tab === 'people' && <AssignmentsEditor vacancyId={vacancyId} />}
 
-      {tab === 'mail' && <EmailsEditor vacancyId={vacancyId} meta={meta} emails={vacancy.emails} onSaved={load} />}
+      {tab === 'mail' && (
+        <EmailsEditor
+          meta={meta}
+          emails={vacancy.emails}
+          onSave={emails => api.saveEmails(vacancyId, { emails })}
+          onPreview={key => api.emailPreview(vacancyId, key)}
+          onSaved={load}
+        />
+      )}
 
       {tab === 'share' && <ShareTab vacancy={vacancy} />}
     </>

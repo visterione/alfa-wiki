@@ -11,12 +11,28 @@
  * Свой файл, а не общий с онбордингом, потому что старый модуль уедет целиком,
  * вместе со своими стилями. Общий файл пришлось бы в этот момент разбирать по
  * строчкам, выясняя, что из него ещё используется.
+ *
+ * Размеры и радиусы (ver. 8.34) заданы четырьмя переменными на весь раздел.
+ * До этого каждый узел носил своё значение — радиусы 8, 9, 10, 11, 12, 13, 14,
+ * кнопка высотой 30 px рядом с полем в 29 и иконкой в 26. По отдельности разница
+ * незаметна, а рядом в одной строке читается как «собрано наспех», и именно так
+ * это и выглядело. Новое значение теперь добавляется правкой одной переменной, а
+ * не ещё одной строкой в общий разнобой.
  */
 
 .vac {
   position: relative;
   isolation: isolate;
   padding: 18px 22px 32px;
+
+  /* Высота всего, что стоит в строке: кнопка, поле, выпадающий список, иконка.
+     Одна на раздел — иначе строка «подпись · тип · галочка · кнопки» едет. */
+  --vac-h: 32px;
+
+  --vac-r-s: 10px;   /* то, что внутри строки: кнопка, поле, иконка */
+  --vac-r-m: 14px;   /* карточки и врезки: блок, поле, шаг, подсказка */
+  --vac-r-l: 18px;   /* крупные панели внутри полотна: QR, превью письма */
+  --vac-pill: 999px; /* чипы */
 }
 
 .vac-shell {
@@ -85,7 +101,7 @@
   opacity: 0;
   transform: translate3d(0, var(--vac-nav-top), 0);
   border: 1px solid color-mix(in srgb, var(--primary) 20%, rgba(255,255,255,.5));
-  border-radius: 12px;
+  border-radius: var(--vac-r-m);
   background:
     linear-gradient(135deg,
       color-mix(in srgb, var(--primary-light) 74%, rgba(255,255,255,.5)),
@@ -100,6 +116,18 @@
 }
 .vac-nav.is-ready::before { opacity: 1; }
 
+/* Разделитель «Настройка» между ежедневной работой и конструктором. Своих
+   стилей у него не было вовсе, и он выпадал из меню обычным текстом. */
+.vac-nav-group {
+  padding: 16px 12px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.vac-nav-group:first-child { padding-top: 2px; }
+
 .vac-nav button { position: relative; z-index: 1; }
 
 .vac-nav button {
@@ -110,7 +138,7 @@
   gap: 7px;
   padding: 8px 12px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--vac-r-m);
   background: none;
   color: var(--text-secondary);
   font: inherit;
@@ -131,7 +159,7 @@
   padding: 0 5px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--vac-pill);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   font-size: 10px;
@@ -159,7 +187,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  /* Полотно редактора — это шапка, вкладки и длинный конструктор подряд.
+     Восьми пикселей между ними мало: разделы слипались в одну простыню. */
+  gap: 14px;
   padding: 22px 22px 38px;
 }
 .vac-content > * { flex: 0 0 auto; }
@@ -186,7 +216,7 @@
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 20px;
+  border-radius: var(--vac-pill);
   white-space: nowrap;
 }
 .vac-badge-muted { background: var(--bg-tertiary); color: var(--text-secondary); }
@@ -253,10 +283,12 @@
 .vac-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 7px 14px;
+  height: var(--vac-h);
+  padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: var(--vac-r-s);
   background: var(--primary);
   color: #fff;
   font: inherit;
@@ -283,10 +315,10 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: var(--vac-h);
+  height: var(--vac-h);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--vac-r-s);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -298,14 +330,19 @@
 
 .vac-input {
   min-width: 0;
-  padding: 6px 10px;
+  /* min-height, а не height: этот же класс носит <textarea> в письмах, и
+     фиксированная высота схлопнула бы его до одной строки. */
+  min-height: var(--vac-h);
+  padding: 6px 11px;
   border: 1px solid var(--border-light);
-  border-radius: 9px;
+  border-radius: var(--vac-r-s);
   background: var(--bg-primary);
   color: var(--text-primary);
   font: inherit;
   font-size: 13.5px;
 }
+select.vac-input { height: var(--vac-h); padding-right: 6px; }
+textarea.vac-input { padding: 9px 11px; line-height: 1.55; resize: vertical; }
 .vac-input:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--primary) 55%, transparent);
@@ -364,7 +401,7 @@
 
 .vac-hint {
   padding: 9px 13px;
-  border-radius: 11px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-secondary);
   color: var(--text-secondary);
   font-size: 12.5px;
@@ -377,7 +414,7 @@
   align-items: flex-start;
   gap: 9px;
   padding: 11px 14px;
-  border-radius: 12px;
+  border-radius: var(--vac-r-m);
   border: 1px solid rgba(255, 59, 48, .25);
   background: rgba(255, 59, 48, .07);
   color: var(--red-700);
@@ -410,6 +447,20 @@
   flex-wrap: wrap;
 }
 
+/* Разделитель между группами кнопок: сохранение, состояние набора, редкое и
+   опасное. Пять кнопок подряд одного веса читаются как список без порядка —
+   человек каждый раз перечитывает все пять, чтобы найти «Сохранить». */
+.vac-sep {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  /* Не --border-light: на белой шапке редактора его почти не видно, а смысл
+     разделителя ровно в том, чтобы его заметили. */
+  background: var(--border);
+  opacity: .7;
+}
+
 /* ── Шаги анкеты ───────────────────────────────────────────────────────── */
 
 .vac-steps { display: flex; flex-direction: column; gap: 6px; }
@@ -420,7 +471,7 @@
   gap: 8px;
   padding: 7px 10px;
   border: 1px solid var(--border-light);
-  border-radius: 12px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-primary);
 }
 .vac-step .vac-input:first-of-type { flex: 1 1 auto; }
@@ -432,7 +483,7 @@
 
 .vac-block {
   border: 1px solid var(--border-light);
-  border-radius: 14px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-primary);
   margin-bottom: 8px;
   overflow: hidden;
@@ -465,7 +516,7 @@
 
 .vac-field {
   border: 1px solid var(--border-light);
-  border-radius: 11px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-secondary);
 }
 .vac-field-main {
@@ -506,7 +557,7 @@
   display: flex;
   gap: 4px;
   padding: 4px;
-  border-radius: 13px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-secondary);
   align-self: flex-start;
 }
@@ -514,9 +565,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 16px;
+  height: calc(var(--vac-h) - 2px);
+  padding: 0 16px;
   border: 0;
-  border-radius: 10px;
+  border-radius: calc(var(--vac-r-m) - 4px);
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
@@ -563,7 +615,7 @@
 .vac-chip {
   padding: 5px 12px;
   border: 1px solid var(--border-light);
-  border-radius: 20px;
+  border-radius: var(--vac-pill);
   background: var(--bg-primary);
   color: var(--text-secondary);
   font: inherit;
@@ -594,7 +646,7 @@
 
 .vac-stepcard {
   border: 1px solid var(--border-light);
-  border-radius: 14px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-primary);
   padding: 12px 14px;
   margin-bottom: 8px;
@@ -613,7 +665,7 @@
   width: 100%;
   max-width: 320px;
   padding: 5px 6px 5px 5px;
-  border-radius: 11px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-secondary);
 }
 .vac-assignee-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
@@ -657,6 +709,114 @@
   .vac-assignee, .vac-assignees .vac-input { max-width: 100%; }
 }
 
+/* ── Письма ────────────────────────────────────────────────────────────────
+   Три колонки: слева список писем, посередине правка, справа готовое письмо.
+   Своих стилей у вкладки не было ни строчки — разметка складывалась в три
+   блока друг под другом, а превью, у которого iframe без размеров, браузер
+   рисовал прямоугольником 300×150 с рамкой. Выглядело это ровно так, как и
+   было устроено: никак.
+
+   Превью стоит рядом с полем, а не под ним, именно потому, что правят текст,
+   глядя на письмо; ради этого правая колонка и получает больше места, чем
+   левые две. */
+
+/* Раскладка идёт от ширины письма, а не от числа колонок. Карточка письма —
+   600 px, и меньше ей давать нельзя: она не «сожмётся», а поедет под
+   горизонтальную прокрутку внутри iframe, то есть покажет не то, что придёт
+   человеку. На обычном ноутбуке столько в третьей колонке не набирается,
+   поэтому по умолчанию колонок две, а письмо лежит во всю ширину под ними. */
+.vac-mail {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.vac-mail-preview { grid-column: 1 / -1; }
+
+/* Три колонки — только когда правой честно хватает на 600 px письма плюс поля. */
+@media (min-width: 1600px) {
+  .vac-mail { grid-template-columns: 190px minmax(360px, 1fr) minmax(620px, 1.15fr); }
+  .vac-mail-preview { grid-column: auto; }
+}
+
+.vac-mail-list { display: flex; flex-direction: column; gap: 2px; }
+.vac-mail-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--vac-h);
+  padding: 7px 11px;
+  border: 0;
+  border-radius: var(--vac-r-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.vac-mail-list button svg { flex: none; color: var(--text-tertiary); }
+.vac-mail-list button span { flex: 1; min-width: 0; }
+.vac-mail-list button:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.vac-mail-list button.is-on {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+.vac-mail-list button.is-on svg { color: var(--primary); }
+
+.vac-mail-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  /* Строка темы во всю ширину полотна — это поле в девятьсот пикселей под
+     шесть слов. Ограничиваем по читаемой длине строки, а не по колонке. */
+  max-width: 760px;
+  padding: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--vac-r-l);
+  background: var(--bg-primary);
+}
+.vac-mail-edit .vac-lab { flex: 0 0 auto; }
+
+.vac-mail-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--vac-r-l);
+  background: var(--bg-secondary);
+}
+.vac-mail-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Белая подложка намеренно: письмо и в почте приходит на светлом, и показывать
+   его на тёмном фоне портала значило бы показывать не то, что уедет человеку. */
+.vac-mail-frame {
+  width: 100%;
+  height: 620px;
+  border: 0;
+  border-radius: var(--vac-r-m);
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(20, 29, 45, .07);
+}
+
+@media (max-width: 760px) {
+  .vac-mail { grid-template-columns: minmax(0, 1fr); }
+  .vac-mail-list { flex-direction: row; overflow-x: auto; gap: 6px; }
+  .vac-mail-list button { width: auto; white-space: nowrap; }
+  .vac-mail-frame { height: 480px; }
+}
+
 /* ── QR филиала ────────────────────────────────────────────────────────── */
 
 .vac-qr {
@@ -667,13 +827,13 @@
   margin-top: 16px;
   padding: 18px;
   border: 1px solid var(--border-light);
-  border-radius: 16px;
+  border-radius: var(--vac-r-l);
   background: var(--bg-primary);
 }
 .vac-qr img {
   width: 208px;
   height: 208px;
-  border-radius: 12px;
+  border-radius: var(--vac-r-m);
   /* Белая подложка обязательна: в тёмной теме QR на прозрачном фоне
      перестаёт читаться сканером. */
   background: #fff;
@@ -748,7 +908,7 @@
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--border-light);
-  border-radius: 14px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-secondary);
 }
 .vac-decide-form textarea { width: 100%; box-sizing: border-box; resize: vertical; }
@@ -763,7 +923,7 @@
   gap: 10px;
   flex-wrap: wrap;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--vac-r-m);
   background: var(--bg-secondary);
 }
 .vac-step-row.is-done { background: transparent; }
@@ -808,7 +968,7 @@
 /* Поле, отмеченное при возврате на доработку. */
 .vac-answer.is-marked {
   background: rgba(255, 149, 0, .09);
-  border-radius: 8px;
+  border-radius: var(--vac-r-s);
   padding: 6px 10px;
   margin: 0 -10px;
 }
@@ -816,7 +976,7 @@
 .vac-answer-row {
   padding: 8px 12px;
   margin-bottom: 6px;
-  border-radius: 10px;
+  border-radius: var(--vac-r-s);
   background: var(--bg-secondary);
 }
 .vac-answer-row .vac-answer { border-top: 0; padding: 3px 0; }
@@ -847,3 +1007,61 @@
   .vac-journal-row { flex-wrap: wrap; gap: 4px 10px; }
   .vac-journal-row > span { flex: none !important; text-align: left !important; }
 }
+
+/* ── Наши файлы у поля анкеты (ver. 8.34) ──────────────────────────────── */
+
+/* Группа на всю ширину строки настроек: список файлов растёт вниз, и делить
+   строку с соседним полем ему нечем. */
+.vac-lab.is-block { flex: 1 1 100%; }
+
+.vac-samples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.vac-sample {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px 4px 7px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--vac-r-s);
+  background: var(--bg-secondary);
+  font-size: 12.5px;
+}
+.vac-sample svg { flex: none; color: var(--text-tertiary); }
+.vac-sample a {
+  color: var(--primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vac-sample small { color: var(--text-tertiary); font-size: 11.5px; }
+.vac-sample button {
+  flex: none;
+  border: 0;
+  padding: 0 2px;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.vac-sample button:hover { color: var(--error); }
+
+/* Выбор файла — это <label> с невидимым input: системную кнопку браузера не
+   привести к виду остальных, а вести себя она должна так же. */
+.vac-btn.is-file { position: relative; overflow: hidden; cursor: pointer; }
+.vac-btn.is-file input { display: none; }
+.vac-btn.is-file.is-busy { opacity: .6; pointer-events: none; }
+
+/* ── Диалог создания вакансии ──────────────────────────────────────────── */
+
+.vac-card.is-narrow { max-width: 440px; }
+.vac-card.is-narrow .vac-card-body { display: flex; flex-direction: column; gap: 12px; }
+.vac-card.is-narrow .vac-lab { flex: 1 1 auto; }
+.vac-card.is-narrow .vac-editor-acts { margin-top: 4px; }

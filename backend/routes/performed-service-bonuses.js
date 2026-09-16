@@ -1,4 +1,5 @@
 const express = require('express');
+const { Op } = require('sequelize');
 const { PerformedServiceBonus } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity } = require('../services/rbLogger');
@@ -38,14 +39,27 @@ router.post('/', authenticate, async (req, res) => {
       }
       const deduped = Array.from(seen.values());
 
-      const existing = await PerformedServiceBonus.findAll({ where: { misUserId, clinicId, cabinetId: '' } });
+      // Вкладка «Услуги» рисует только услуги из карточки врача в МИС, поэтому сносить весь
+      // скоуп нельзя: бонусы по услугам вне этого списка (их заводят из баннера в «Отчёте»)
+      // исчезали бы при любой правке вкладки, причём молча. Клиент присылает managedCodes —
+      // коды, которые вкладка реально показывает, — и мы трогаем только их. Без managedCodes
+      // (старый клиент) остаётся прежнее поведение: переписываем скоуп целиком.
+      const managedCodes = Array.isArray(req.body.managedCodes)
+        ? [...new Set(req.body.managedCodes.map(c => String(c).trim()).filter(Boolean))]
+        : null;
+      const scopeWhere = { misUserId, clinicId, cabinetId: '' };
+      const wipeWhere = managedCodes
+        ? { ...scopeWhere, serviceCode: { [Op.in]: [...new Set([...managedCodes, ...deduped.map(i => String(i.serviceCode).trim())])] } }
+        : scopeWhere;
+
+      const existing = await PerformedServiceBonus.findAll({ where: wipeWhere });
       const existingNameMap = Object.fromEntries(existing.map(b => [b.serviceCode, b.serviceName]));
       const oldMap = Object.fromEntries(existing.map(b => [b.serviceCode, {
         bonusPercent: b.bonusPercent != null ? parseFloat(b.bonusPercent) : null,
         bonusRub:     b.bonusRub     != null ? parseFloat(b.bonusRub)     : null,
       }]));
 
-      await PerformedServiceBonus.destroy({ where: { misUserId, clinicId, cabinetId: '' } });
+      await PerformedServiceBonus.destroy({ where: wipeWhere });
       const created = [];
       for (const item of deduped) {
         const svcCode = String(item.serviceCode).trim().substring(0, 100);

@@ -1256,6 +1256,37 @@ export const vacancies = {
   addChat:    (id, data)    => api.post(`/vacancies/openings/${id}/chats`, data),
   deleteChat: (id, chatId)  => api.delete(`/vacancies/openings/${id}/chats/${chatId}`),
 
+  // Шаблон должности (ver. 8.34): анкета, процесс и письма, с которых
+  // начинается вакансия. Вакансия получает копию и дальше живёт сама по себе,
+  // поэтому ссылок между ними в API нет — только templateId при создании.
+  templates:        ()         => api.get('/vacancies/templates'),
+  template:         (id)       => api.get(`/vacancies/templates/${id}`),
+  createTemplate:   (data)     => api.post('/vacancies/templates', data),
+  templateFromOpening: (vacancyId, data) => api.post(`/vacancies/templates/from-opening/${vacancyId}`, data),
+  saveTemplate:     (id, data) => api.put(`/vacancies/templates/${id}`, data),
+  saveTemplateProcess: (id, data) => api.put(`/vacancies/templates/${id}/process`, data),
+  saveTemplateEmails:  (id, data) => api.put(`/vacancies/templates/${id}/emails`, data),
+  templateEmailPreview:(id, key)  => api.get(`/vacancies/templates/${id}/email-preview/${key}`),
+  deleteTemplate:   (id)       => api.delete(`/vacancies/templates/${id}`),
+
+  // Наши файлы у поля анкеты — образец заявления и подобное. Заголовок нужен
+  // явно: у нашего экземпляра axios по умолчанию стоит application/json, а с
+  // ним FormData ушла бы пустым объектом вместо файла.
+  addAttachment: (id, formData) => api.post(`/vacancies/openings/${id}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  deleteAttachment: (id, attachmentId) => api.delete(`/vacancies/openings/${id}/attachments/${attachmentId}`),
+
+  addTemplateAttachment: (id, formData) => api.post(`/vacancies/templates/${id}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  deleteTemplateAttachment: (id, attachmentId) => api.delete(`/vacancies/templates/${id}/attachments/${attachmentId}`),
+
+  // Ссылка на образец, а не запрос: файл открывают в новой вкладке, и
+  // заголовок авторизации туда не подставить. Маршрут публичный намеренно —
+  // это наш пустой бланк, его же скачивает кандидат.
+  attachmentUrl: (attachmentId) => `${BASE_URL}/api/public/v1/vacancies/attachments/${attachmentId}`,
+
   // Ежедневная работа. Её видит не только админ, но и тот, кто назначен
   // исполнителем хоть на один шаг, — маршруты лежат в отдельном роутере.
   overview:     ()              => api.get('/vacancies/overview'),
@@ -1375,6 +1406,10 @@ export const vacancyPublic = {
   uploadFile:  (token, formData)  => vacancyApi.post(`/a/${token}/files`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+
+  // Наш образец у поля анкеты (ver. 8.34): заявление, памятку или бланк
+  // согласия человек скачивает по ссылке, а не получает ответом запроса.
+  attachmentUrl:  (id)          => `${BASE_URL}/api/public/v1/vacancies/attachments/${id}`,
 
   // Экран выбора услуг: шаг, который кандидат закрывает сам.
   services:       (token)       => vacancyApi.get(`/a/${token}/services`),
