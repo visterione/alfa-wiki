@@ -129,7 +129,12 @@ export function fromStored(form, previous) {
   }
   const keep = (id) => known.get(id) || uid();
 
-  const steps = (form?.steps || []).map(s => ({ key: s.key, title: s.title, _uid: keep(`s:${s.key}`) }));
+  const steps = (form?.steps || []).map(s => ({
+    key: s.key,
+    title: s.title,
+    stage: s.stage || 'initial',
+    _uid: keep(`s:${s.key}`)
+  }));
   const stepByBlock = new Map();
   for (const step of form?.steps || []) {
     for (const blockKey of step.blocks || []) stepByBlock.set(blockKey, step.key);
@@ -251,7 +256,7 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
 
   const addStep = () => {
     const key = keyFromLabel('Новый шаг', new Set(draft.steps.map(s => s.key)));
-    patch({ steps: [...draft.steps, { key, _uid: uid(), title: 'Новый шаг' }] });
+    patch({ steps: [...draft.steps, { key, _uid: uid(), title: 'Новый шаг', stage: 'initial' }] });
   };
 
   const moveStep = (index, delta) => {
@@ -294,6 +299,20 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
                 placeholder="ключ"
                 onChange={e => setStep(stepIndex, { ...step, key: e.target.value.trim() })}
               />
+
+              {/* Когда спрашиваем. Паспорт и трудовую у человека, которого ещё
+                  не решили брать, спрашивать незачем — эти шаги открываются
+                  после согласования, шагом процесса «Дозаполнение анкеты». */}
+              <select
+                className="vac-input is-narrow"
+                value={step.stage || 'initial'}
+                title="Когда кандидат заполняет этот шаг"
+                onChange={e => setStep(stepIndex, { ...step, stage: e.target.value })}
+              >
+                {(meta.stages || []).map(st => (
+                  <option key={st.key} value={st.key}>{st.label}</option>
+                ))}
+              </select>
 
               {!group.length && <span className="vac-badge vac-badge-warn">пустой шаг</span>}
 

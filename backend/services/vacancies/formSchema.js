@@ -92,6 +92,20 @@ const KEY_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/;
 // Имена, переехавшие в 8.21 вместе с отказом от МИС.
 const LEGACY_NAMES = { professions: 'speciality' };
 
+// ── Этапы анкеты (ver. 8.37) ───────────────────────────────────────────────
+//
+// Шаг анкеты спрашивают либо сразу, либо после того, как кандидату дали зелёный
+// свет. Паспорт, военный билет и трудовую у человека, которого ещё не решили
+// брать, спрашивать незачем — и он их, скорее всего, и не пришлёт.
+//
+// Это признак шага, а не блока: блоки и так разложены по шагам, а мастер
+// показывает именно шаги. Второй этап открывается шагом процесса
+// «Дозаполнение анкеты» — сам по себе признак ничего не делает.
+const STAGES = {
+  initial: { label: 'Сразу' },
+  after: { label: 'После согласования' }
+};
+
 const MAX_BLOCKS = 40;
 const MAX_FIELDS_PER_BLOCK = 40;
 
@@ -300,6 +314,8 @@ function validateForm(raw) {
     stepKeys.add(key);
     if (!title) errors.push(`Шаг анкеты «${key}»: не заполнено название`);
 
+    const stage = STAGES[trimmed(stepRaw.stage, 10)] ? trimmed(stepRaw.stage, 10) : 'initial';
+
     const list = Array.isArray(stepRaw.blocks) ? stepRaw.blocks : [];
     const own = [];
     for (const blockKey of list) {
@@ -313,10 +329,33 @@ function validateForm(raw) {
     }
     if (!own.length) errors.push(`Шаг анкеты «${title || key}»: в нём нет ни одного блока`);
 
-    steps.push({ key, title, blocks: own });
+    steps.push({ key, title, blocks: own, stage });
   }
 
   if (!steps.length) errors.push('У анкеты нет ни одного шага');
+  else if (!steps.some(s => s.stage === 'initial')) {
+    errors.push('Все шаги анкеты отложены на «после согласования» — тогда кандидату нечего заполнять и нечего отправлять');
+  }
+
+  // ФИО и специальность нужны движку до согласования: первым безымянная заявка
+  // подписывается в списках и письмах, по второй кандидату подтягивают прайс.
+  // Оба на втором этапе означали бы «узнаем, кого и на что согласовали, после
+  // того как согласуем».
+  const lateStages = new Set(steps.filter(s => s.stage !== 'initial').map(s => s.key));
+  const stepOfBlock = new Map();
+  for (const step of steps) for (const blockKey of step.blocks) stepOfBlock.set(blockKey, step.key);
+
+  for (const block of blocks) {
+    if (!lateStages.has(stepOfBlock.get(block.key))) continue;
+    for (const field of block.fields) {
+      if (field.role === 'fullName' || field.role === 'speciality') {
+        errors.push(
+          `Поле «${field.label}» с ролью «${FIELD_ROLES[field.role].label}» стоит в шаге после согласования — `
+          + 'его спрашивают до решения по анкете'
+        );
+      }
+    }
+  }
 
   for (const block of blocks) {
     if (!placed.has(block.key)) {
@@ -329,6 +368,29 @@ function validateForm(raw) {
   if (consentVersion) form.consentVersion = consentVersion;
 
   return { errors, form };
+}
+
+/**
+ * Анкета, суженная до одного этапа: шаги нужного этапа и только их блоки.
+ *
+ * Нужна в трёх местах сразу — показать кандидату то, что он заполняет сейчас,
+ * проверить присланное и не потребовать обязательного из другого этапа. Снимок
+ * в заявке при этом не трогается: он носит анкету целиком, и карточка заявки
+ * показывает её целиком же.
+ */
+function formOfStage(form, stage) {
+  const steps = (form?.steps || []).filter(s => (s.stage || 'initial') === stage);
+  const keys = new Set(steps.flatMap(s => s.blocks || []));
+  return {
+    ...form,
+    steps,
+    blocks: (form?.blocks || []).filter(b => keys.has(b.key))
+  };
+}
+
+/** Есть ли у анкеты второй этап: без него шагу «Дозаполнение» нечего показывать. */
+function hasStage(form, stage) {
+  return (form?.steps || []).some(s => (s.stage || 'initial') === stage);
 }
 
 /**
@@ -547,10 +609,13 @@ function fileFields(form) {
 module.exports = {
   FIELD_TYPES,
   FIELD_ROLES,
+  STAGES,
   KEY_RE,
   MAX_ATTACHMENTS,
   validateForm,
   validateAnswers,
+  formOfStage,
+  hasStage,
   rolesFrom,
   fileFields,
   flatFields,

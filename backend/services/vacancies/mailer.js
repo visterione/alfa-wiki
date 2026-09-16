@@ -94,6 +94,15 @@ const LETTERS = {
     title: 'Спасибо за отклик',
     body: 'К сожалению, сейчас мы не готовы продолжить. Спасибо, что откликнулись, — будем рады видеть вас среди кандидатов в будущем.'
   },
+  // Второй этап анкеты (ver. 8.37): документы для трудоустройства спрашивают
+  // после согласования, и письмо — единственный способ позвать за ними.
+  extra: {
+    name: 'Приглашение дозаполнить анкету',
+    subject: 'Анкета согласована — нужны документы',
+    title: 'Вас согласовали',
+    body: 'Ваша анкета согласована. Осталось дозаполнить вторую часть — документы для трудоустройства. Открывается по вашей прежней ссылке, отвечать на письмо не нужно.'
+  },
+
   services: {
     name: 'Приглашение выбрать услуги',
     subject: 'Выберите услуги, которые будете оказывать',
@@ -238,6 +247,15 @@ async function sendRejected(vacancy, app) {
 }
 
 /** Анкета согласована — приглашение отметить услуги по прайсу. */
+/** Приглашение дозаполнить анкету. Ссылка та же, что и у первой части. */
+async function sendExtraInvite(vacancy, app) {
+  const text = letter(vacancy, 'extra');
+  return send(app.email, text.subject, layout(text.title, `
+    ${paragraphs(text.body)}
+    ${button(applicationUrl(app.accessToken), 'Дозаполнить анкету')}
+  `));
+}
+
 async function sendServicesInvite(vacancy, app) {
   const text = letter(vacancy, 'services');
   return send(app.email, text.subject, layout(text.title, `
@@ -373,6 +391,12 @@ function preview(vacancy, key) {
     case 'rejected':
       return { ...text, html: layout(text.title, paragraphs(text.body)) };
 
+    case 'extra':
+      return { ...text, html: layout(text.title, `
+        ${paragraphs(text.body)}
+        ${button(applicationUrl(app.accessToken), 'Дозаполнить анкету')}
+      `) };
+
     case 'services':
       return { ...text, html: layout(text.title, `
         ${paragraphs(text.body)}
@@ -409,6 +433,7 @@ module.exports = {
   sendSubmitted,
   sendRevision,
   sendRejected,
+  sendExtraInvite,
   sendServicesInvite,
   sendWelcome
 };

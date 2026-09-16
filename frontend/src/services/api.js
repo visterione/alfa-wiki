@@ -1402,6 +1402,10 @@ export const vacancyPublic = {
   load:        (token)            => vacancyApi.get(`/a/${token}`),
   saveDraft:   (token, data)      => vacancyApi.put(`/a/${token}`, data),
   submit:      (token, data)      => vacancyApi.post(`/a/${token}/submit`, data),
+  // Вторая часть анкеты (ver. 8.37): документы для трудоустройства, которые
+  // спрашивают уже после согласования. Закрывает шаг процесса, а не меняет
+  // статус заявки, — отсюда отдельный маршрут.
+  submitExtra: (token, data)      => vacancyApi.post(`/a/${token}/extra`, data),
   deleteFile:  (token, fileId)    => vacancyApi.delete(`/a/${token}/files/${fileId}`),
   uploadFile:  (token, formData)  => vacancyApi.post(`/a/${token}/files`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

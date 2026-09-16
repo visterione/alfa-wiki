@@ -12,6 +12,7 @@
  *   POST /api/public/v1/vacancies/a/:token/files   — файл к полю анкеты
  *   DELETE .../a/:token/files/:id                  — убрать файл
  *   POST /api/public/v1/vacancies/a/:token/submit  — отправка
+ *   POST /api/public/v1/vacancies/a/:token/extra   — отправка второй части
  *   GET  /api/public/v1/vacancies/attachments/:id  — наш образец к полю анкеты
  *
  * Без авторизации и без API-ключа: анкету заполняет человек, у которого нет и
@@ -325,7 +326,13 @@ async function loadApplication(req, res, next) {
     const app = await VacApplication.findOne({
       where: { accessToken: token },
       include: [
-        { model: VacVacancy, as: 'vacancy', attributes: ['id', 'title', 'description'] },
+        {
+          model: VacVacancy,
+          as: 'vacancy',
+          // process — чтобы понять, открыт ли сейчас второй этап анкеты
+          // (stageOf); salary* — чтобы показать зарплату в шапке анкеты.
+          attributes: ['id', 'title', 'description', 'process', 'salaryKind', 'salaryFrom', 'salaryTo']
+        },
         { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName', 'color', 'logoUrl', 'city', 'address'] }
       ]
     });
@@ -344,6 +351,29 @@ function editable(app) {
 }
 
 /**
+ * Какой этап анкеты кандидат заполняет прямо сейчас (ver. 8.37).
+ *
+ * Статусами это не выражается, и заводить под второй этап ещё один статус
+ * неправильно: заявка в это время в работе, и для процесса ничего не менялось.
+ * Этап определяется тем, открыта ли у заявки задача по шагу «Дозаполнение
+ * анкеты» — то есть теми же данными, которыми движок считает всё остальное.
+ *
+ * @returns {Promise<'initial'|'after'|null>} null — заполнять сейчас нечего
+ */
+async function stageOf(app) {
+  if (editable(app)) return 'initial';
+
+  const step = (app.vacancy?.process?.steps || []).find(s => s.kind === 'form_extra' && !s.archived);
+  if (!step) return null;
+
+  const task = await VacTask.findOne({
+    where: { applicationId: app.id, stepKey: step.key, completedAt: null },
+    attributes: ['id']
+  });
+  return task ? 'after' : null;
+}
+
+/**
  * Анкета кандидата.
  *
  * Схема берётся из снимка заявки, а не из нынешнего шаблона: человек отвечает
@@ -353,7 +383,13 @@ function editable(app) {
 router.get('/a/:token', loadApplication, async (req, res) => {
   try {
     const app = req.application;
-    const form = app.formSnapshot?.blocks?.length ? app.formSnapshot : { blocks: [], steps: [] };
+    const whole = app.formSnapshot?.blocks?.length ? app.formSnapshot : { blocks: [], steps: [] };
+
+    // Показываем только тот этап, который заполняют сейчас. Снимок при этом не
+    // трогаем: он носит анкету целиком, и карточка заявки показывает её целиком
+    // же — сузили только то, что уходит кандидату.
+    const stage = await stageOf(app);
+    const form = stage ? formSchema.formOfStage(whole, stage) : whole;
 
     // Список специальностей нужен, только если такое поле в анкете есть: у
     // технички ходить в прайс незачем.
@@ -382,7 +418,10 @@ router.get('/a/:token', loadApplication, async (req, res) => {
     res.json({
       ok: true,
       status: app.status,
-      editable: editable(app),
+      // «Можно ли сейчас править» — это про этап, а не про статус: во время
+      // второго этапа заявка уже в работе, но вторая часть анкеты открыта.
+      editable: Boolean(stage),
+      stage,
       form,
       values: app.form || {},
       files: fileRows,
@@ -409,15 +448,22 @@ router.get('/a/:token', loadApplication, async (req, res) => {
 router.put('/a/:token', loadApplication, async (req, res) => {
   try {
     const app = req.application;
-    if (!editable(app)) return fail(res, 409, 'not_editable', 'Анкету уже отправили, менять её нельзя');
+    const stage = await stageOf(app);
+    if (!stage) return fail(res, 409, 'not_editable', 'Анкету уже отправили, менять её нельзя');
 
-    const form = app.formSnapshot;
+    // Проверяем по этапу, а сохраняем поверх сохранённого. На втором этапе
+    // кандидат прислал бы только свои блоки, и замена целиком стёрла бы первую
+    // часть анкеты — ту самую, по которой его и согласовали.
+    const whole = app.formSnapshot;
+    const form = formSchema.formOfStage(whole, stage);
     const { errors, values } = formSchema.validateAnswers(form, req.body?.values, { partial: true });
     if (errors.length) return fail(res, 400, 'invalid_values', errors[0].message);
 
-    const roles = formSchema.rolesFrom(form, values);
+    const merged = stage === 'initial' ? values : { ...(app.form || {}), ...values };
+
+    const roles = formSchema.rolesFrom(whole, merged);
     await app.update({
-      form: values,
+      form: merged,
       fullName: roles.fullName ?? null,
       phone: roles.phone ?? null,
       startDate: roles.startDate ?? null,
@@ -448,7 +494,9 @@ router.post('/a/:token/files', loadApplication, (req, res, next) => {
 }, async (req, res) => {
   try {
     const app = req.application;
-    if (!editable(app)) {
+    // Второй этап — это тоже «сейчас заполняют»: паспорт и трудовую кандидат
+    // прикладывает уже после согласования.
+    if (!await stageOf(app)) {
       files.removeFile(req.file?.filename);
       return fail(res, 409, 'not_editable', 'Анкету уже отправили, менять её нельзя');
     }
@@ -491,7 +539,7 @@ router.post('/a/:token/files', loadApplication, (req, res, next) => {
 router.delete('/a/:token/files/:id', loadApplication, async (req, res) => {
   try {
     const app = req.application;
-    if (!editable(app)) return fail(res, 409, 'not_editable', 'Анкету уже отправили, менять её нельзя');
+    if (!await stageOf(app)) return fail(res, 409, 'not_editable', 'Анкету уже отправили, менять её нельзя');
 
     const row = await VacFile.findOne({ where: { id: req.params.id, applicationId: app.id } });
     if (!row) return fail(res, 404, 'not_found', 'Файл не найден');
@@ -517,6 +565,52 @@ router.delete('/a/:token/files/:id', loadApplication, async (req, res) => {
  * Задача решения ставится отсюда же: это единственный шаг, который открывается
  * не закрытием предыдущего, а действием кандидата.
  */
+/**
+ * Отправка второй части анкеты (ver. 8.37).
+ *
+ * Отдельный маршрут, а не тот же submit: первая отправка меняет статус заявки и
+ * запускает процесс, а эта закрывает один его шаг. Общего у них только проверка
+ * ответов, и сводить их в один обработчик с флажком «какой этап» значило бы
+ * складывать два разных перехода в одну ветвистую функцию.
+ */
+router.post('/a/:token/extra', loadApplication, async (req, res) => {
+  try {
+    const app = req.application;
+
+    const stage = await stageOf(app);
+    if (stage !== 'after') return fail(res, 409, 'not_editable', 'Вторая часть анкеты сейчас не заполняется');
+
+    const form = formSchema.formOfStage(app.formSnapshot, 'after');
+    const { errors, values } = formSchema.validateAnswers(form, req.body?.values ?? app.form, { partial: false });
+    if (errors.length) {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_values',
+        message: errors[0].message,
+        fields: errors.map(e => e.field)
+      });
+    }
+
+    // Поверх сохранённого: первая часть анкеты остаётся как была.
+    const merged = { ...(app.form || {}), ...values };
+    const roles = formSchema.rolesFrom(app.formSnapshot, merged);
+
+    await app.update({
+      form: merged,
+      startDate: roles.startDate ?? app.startDate,
+      phone: roles.phone ?? app.phone
+    });
+
+    await log(app.id, 'extra_submitted', { ip: clientIp(req) });
+    await engine.onExtraSubmitted(app);
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[vacancies/public] extra:', error);
+    fail(res, 500, 'server_error', 'Не удалось отправить вторую часть анкеты');
+  }
+});
+
 /**
  * Наш образец: бланк заявления, памятка, форма согласия (ver. 8.34).
  *
@@ -557,7 +651,9 @@ router.post('/a/:token/submit', loadApplication, async (req, res) => {
     const app = req.application;
     if (!editable(app)) return fail(res, 409, 'not_editable', 'Анкета уже отправлена');
 
-    const form = app.formSnapshot;
+    // Только первый этап: обязательные поля второго спрашивают после
+    // согласования, и требовать их сейчас значит не дать отправить анкету.
+    const form = formSchema.formOfStage(app.formSnapshot, 'initial');
     const { errors, values } = formSchema.validateAnswers(form, req.body?.values ?? app.form, { partial: false });
     if (errors.length) {
       return res.status(400).json({

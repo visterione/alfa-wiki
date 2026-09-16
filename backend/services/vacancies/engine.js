@@ -147,11 +147,18 @@ async function openTask(app, step) {
 
   await log(app.id, 'task_opened', { stepKey: step.key, assignees });
 
-  // Выбор услуг закрывает кандидат по своей ссылке — значит, его надо позвать.
+  // Шаги, которые закрывает сам кандидат по своей ссылке, — значит, его надо
+  // позвать: писем два, потому что и экраны разные.
   if (step.kind === 'services_pick') {
     const { vacancy } = await processOf(app);
     const sent = await mailer.sendServicesInvite(vacancy, app);
     await log(app.id, 'services_invited', { mail: sent.success, reason: sent.reason || null });
+  }
+
+  if (step.kind === 'form_extra') {
+    const { vacancy } = await processOf(app);
+    const sent = await mailer.sendExtraInvite(vacancy, app);
+    await log(app.id, 'extra_invited', { mail: sent.success, reason: sent.reason || null });
   }
 
   return task;
@@ -283,19 +290,34 @@ async function cancel(app, user, reason) {
   return app;
 }
 
-/** Кандидат отметил услуги — его шаг закрыт, дальше считает openReady. */
-async function onServicesPicked(app) {
+/**
+ * Шаг, который кандидат закрыл сам: отметил услуги или дозаполнил анкету.
+ *
+ * Оба случая устроены одинаково — находим живой шаг нужного вида, закрываем его
+ * задачу и пересчитываем процесс. Разные они только для человека.
+ */
+async function onCandidateStep(app, kind, action) {
   const { process } = await processOf(app);
-  const step = (process.steps || []).find(s => s.kind === 'services_pick' && !s.archived);
+  const step = (process.steps || []).find(s => s.kind === kind && !s.archived);
   if (!step) return app;
 
   const task = await VacTask.findOne({ where: { applicationId: app.id, stepKey: step.key } });
   if (task && !task.completedAt) await task.update({ completedAt: new Date() });
 
-  await log(app.id, 'services_picked', {});
+  await log(app.id, action, {});
   await openReady(app, process);
   await tryLaunch(app);
   return app;
+}
+
+/** Кандидат отметил услуги — его шаг закрыт, дальше считает openReady. */
+function onServicesPicked(app) {
+  return onCandidateStep(app, 'services_pick', 'services_picked');
+}
+
+/** Кандидат отправил вторую часть анкеты. */
+function onExtraSubmitted(app) {
+  return onCandidateStep(app, 'form_extra', 'extra_submitted');
 }
 
 /**
@@ -388,6 +410,7 @@ module.exports = {
   reject,
   cancel,
   onServicesPicked,
+  onExtraSubmitted,
   completeTask,
   tryLaunch
 };

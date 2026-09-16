@@ -346,7 +346,7 @@ function StepCard({
 
           {/* Кто выполняет — здесь же, а не на соседней вкладке. У шага, который
               закрывает сам кандидат, исполнителя нет по определению. */}
-          {assignees && kindSpec?.assignee !== false && step.scope !== 'candidate' && !step.archived && (
+          {assignees && kindSpec?.assignee && step.scope !== 'candidate' && !step.archived && (
             <>
               <div className="vac-sect" style={{ marginTop: 6 }}>
                 <span>{step.scope === 'branch' ? 'Исполнители в этом филиале' : 'Исполнители на всю сеть'}</span>

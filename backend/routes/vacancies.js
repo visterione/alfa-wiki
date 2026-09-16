@@ -163,17 +163,20 @@ router.get('/meta', (req, res) => {
     stepKinds: Object.entries(processSchema.STEP_KINDS).map(([key, spec]) => ({
       key, label: spec.label, hint: spec.hint || null,
       unique: Boolean(spec.unique), assignee: Boolean(spec.assignee),
-      requiresRole: spec.requiresRole || [], forcedScope: spec.forcedScope || null
+      requiresRole: spec.requiresRole || [], requiresStage: spec.requiresStage || null,
+      forcedScope: spec.forcedScope || null
     })),
     scopes: Object.entries(processSchema.SCOPES).map(([key, spec]) => ({ key, label: spec.label })),
     letters: Object.entries(mailer.LETTERS).map(([key, spec]) => ({
       key, name: spec.name, subject: spec.subject, title: spec.title, body: spec.body
     })),
+    // Когда спрашиваем шаг анкеты: сразу или после согласования (ver. 8.37).
+    stages: Object.entries(formSchema.STAGES).map(([key, spec]) => ({ key, label: spec.label })),
+    // Виды зарплаты — тот же реестр, по которому её проверяет сервер.
+    salaryKinds: Object.entries(salary.KINDS).map(([key, spec]) => ({ key, label: spec.label })),
     // Наши файлы у поля анкеты (ver. 8.34): сколько их можно повесить и что
     // вообще принимается. Редактор пишет об этом человеку до выбора файла, а не
     // после отказа.
-    // Виды зарплаты — тот же реестр, по которому её проверяет сервер.
-    salaryKinds: Object.entries(salary.KINDS).map(([key, spec]) => ({ key, label: spec.label })),
     attachments: {
       max: formSchema.MAX_ATTACHMENTS,
       maxSizeMb: attachments.MAX_FILE_MB,
@@ -409,11 +412,7 @@ router.put('/openings/:id', loadVacancy, async (req, res) => {
       // час назад. Проверяем только требования шагов к анкете, а не процесс
       // целиком: у черновика он может быть законно недособран.
       const broken = starvedSteps(req.vacancy.process, form);
-      if (broken.length) {
-        return res.status(400).json({
-          error: `Шагу «${broken[0].title}» нужно поле с ролью «Специальность» — уберите сначала шаг`
-        });
-      }
+      if (broken.length) return res.status(400).json({ error: starvedMessage(broken[0]) });
 
       // Ссылки на чужие файлы редактор прислать не должен, но сама анкета
       // приходит обычным PUT, и проверить это больше негде.
@@ -438,11 +437,23 @@ router.put('/openings/:id', loadVacancy, async (req, res) => {
   }
 });
 
-/** Шаги, которым после правки анкеты перестало хватать нужного им поля. */
+/** Почему шагу перестало хватать анкеты — на языке того, кто её сейчас правит. */
+function starvedMessage(step) {
+  const spec = processSchema.STEP_KINDS[step.kind] || {};
+  return spec.requiresStage
+    ? `Шагу «${step.title}» нужен шаг анкеты, помеченный «после согласования» — уберите сначала шаг процесса`
+    : `Шагу «${step.title}» нужно поле с ролью «Специальность» — уберите сначала шаг`;
+}
+
+/** Шаги, которым после правки анкеты перестало хватать нужного им поля или этапа. */
 function starvedSteps(process, form) {
   return (process?.steps || []).filter(step => {
     if (step.archived) return false;
-    const needs = processSchema.STEP_KINDS[step.kind]?.requiresRole || [];
+    const spec = processSchema.STEP_KINDS[step.kind] || {};
+
+    if (spec.requiresStage && !formSchema.hasStage(form, spec.requiresStage)) return true;
+
+    const needs = spec.requiresRole || [];
     return needs.some(role => !(form.blocks || []).some(
       b => !b.repeat && (b.fields || []).some(f => f.role === role)
     ));
@@ -841,11 +852,7 @@ router.put('/templates/:id', loadTemplate, async (req, res) => {
       if (errors.length) return res.status(400).json({ error: errors[0], errors });
 
       const broken = starvedSteps(req.template.process, form);
-      if (broken.length) {
-        return res.status(400).json({
-          error: `Шагу «${broken[0].title}» нужно поле с ролью «Специальность» — уберите сначала шаг`
-        });
-      }
+      if (broken.length) return res.status(400).json({ error: starvedMessage(broken[0]) });
 
       patch.form = await attachments.keepOwn({ templateId: req.template.id }, form);
     }
