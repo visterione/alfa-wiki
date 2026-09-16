@@ -9,6 +9,10 @@
  * минута прокрутки — до конца доходили не все. Сохранение при этом идёт по
  * изменению, а не по кнопке «дальше», поэтому уйти можно с любого места и с
  * любого шага.
+ *
+ * Файлы ходят в обе стороны (ver. 8.34): кандидат прикладывает сканы, а мы
+ * кладём под поле свой образец — бланк заявления, который он заполняет и тут же
+ * присылает обратно.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,6 +30,9 @@ export default function VacancyForm() {
   const [state, setState] = useState(null);
   const [values, setValues] = useState({});
   const [files, setFiles] = useState([]);
+  // Наши образцы. Приходят разрешёнными: сервер отдаёт только те, что нашлись
+  // по ссылкам из снимка анкеты.
+  const [attachments, setAttachments] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [loadError, setLoadError] = useState('');
   const [saveState, setSaveState] = useState('');
@@ -47,6 +54,7 @@ export default function VacancyForm() {
         setState(data);
         setValues(data.values || {});
         setFiles(data.files || []);
+        setAttachments(data.attachments || []);
         setDone(data.status === 'submitted' || data.status === 'in_progress' || data.status === 'launched');
       })
       .catch(err => { if (alive) setLoadError(err.response?.data?.message || 'Заявка не найдена'); });
@@ -184,6 +192,7 @@ export default function VacancyForm() {
           block={block}
           values={values}
           files={files}
+          attachments={attachments}
           specialities={state.specialities || []}
           problems={problems}
           revisionFields={state.revisionFields || []}
@@ -265,7 +274,7 @@ export default function VacancyForm() {
 // ── Блок ───────────────────────────────────────────────────────────────────
 
 function Block({
-  block, values, files, specialities, problems, revisionFields,
+  block, values, files, attachments, specialities, problems, revisionFields,
   uploading, onChange, onUpload, onRemoveFile
 }) {
   if (block.repeat) {
@@ -294,6 +303,7 @@ function Block({
                 key={field.key}
                 field={field}
                 value={row[field.key]}
+                attachments={attachments}
                 specialities={specialities}
                 invalid={problems.some(p => p.startsWith(`${block.key}[${index}].${field.key}`))}
                 onChange={v => setRow(index, { ...row, [field.key]: v })}
@@ -319,6 +329,7 @@ function Block({
           key={field.key}
           field={field}
           value={values[field.key]}
+          attachments={attachments}
           specialities={specialities}
           files={files.filter(f => f.fieldKey === field.key)}
           uploading={uploading === field.key}
@@ -336,70 +347,93 @@ function Block({
 // ── Поле ───────────────────────────────────────────────────────────────────
 
 function Field({
-  field, value, specialities, files = [], uploading,
+  field, value, specialities, attachments = [], files = [], uploading,
   invalid, highlighted, onChange, onUpload, onRemoveFile
 }) {
   const cls = `vcy-field${invalid ? ' is-bad' : ''}${highlighted ? ' is-marked' : ''}`;
   const labelText = <span>{field.label}{field.required && <i className="vcy-req">*</i>}</span>;
 
+  // Наши образцы к этому полю. Ссылки стоят СНАРУЖИ <label>, а не внутри:
+  // у галочки клик по содержимому подписи её переключает, и человек, открывая
+  // бланк, заодно снимал бы своё согласие.
+  const samples = (field.attachments || [])
+    .map(id => attachments.find(a => a.id === id))
+    .filter(Boolean);
+
+  const samplesBlock = samples.length ? (
+    <div className="vcy-samples">
+      {samples.map(item => (
+        <a key={item.id} href={api.attachmentUrl(item.id)} target="_blank" rel="noreferrer">
+          {item.title}
+        </a>
+      ))}
+    </div>
+  ) : null;
+
   if (field.type === 'checkbox') {
     return (
-      <label className={`${cls} is-check`}>
-        <input type="checkbox" checked={value === true} onChange={e => onChange(e.target.checked || undefined)} />
-        {labelText}
-        {field.hint && <small>{field.hint}</small>}
-      </label>
+      <>
+        <label className={`${cls} is-check`}>
+          <input type="checkbox" checked={value === true} onChange={e => onChange(e.target.checked || undefined)} />
+          {labelText}
+          {field.hint && <small>{field.hint}</small>}
+        </label>
+        {samplesBlock}
+      </>
     );
   }
 
   return (
-    <label className={cls}>
-      {labelText}
+    <>
+      <label className={cls}>
+        {labelText}
 
-      {field.type === 'text' && (
-        <input type="text" maxLength={field.max || 500} value={value || ''} onChange={e => onChange(e.target.value)} />
-      )}
+        {field.type === 'text' && (
+          <input type="text" maxLength={field.max || 500} value={value || ''} onChange={e => onChange(e.target.value)} />
+        )}
 
-      {field.type === 'textarea' && (
-        <textarea rows={4} maxLength={field.max || 4000} value={value || ''} onChange={e => onChange(e.target.value)} />
-      )}
+        {field.type === 'textarea' && (
+          <textarea rows={4} maxLength={field.max || 4000} value={value || ''} onChange={e => onChange(e.target.value)} />
+        )}
 
-      {field.type === 'number' && (
-        <input
-          type="number"
-          inputMode="numeric"
-          min={field.min}
-          max={field.max}
-          value={value ?? ''}
-          onChange={e => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
-        />
-      )}
+        {field.type === 'number' && (
+          <input
+            type="number"
+            inputMode="numeric"
+            min={field.min}
+            max={field.max}
+            value={value ?? ''}
+            onChange={e => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+          />
+        )}
 
-      {field.type === 'date' && (
-        <input type="date" value={value || ''} onChange={e => onChange(e.target.value || undefined)} />
-      )}
+        {field.type === 'date' && (
+          <input type="date" value={value || ''} onChange={e => onChange(e.target.value || undefined)} />
+        )}
 
-      {field.type === 'phone' && <PhoneInput value={value} invalid={invalid} onChange={onChange} />}
+        {field.type === 'phone' && <PhoneInput value={value} invalid={invalid} onChange={onChange} />}
 
-      {field.type === 'weekdays' && <WeekdayPicker value={value} onChange={onChange} />}
+        {field.type === 'weekdays' && <WeekdayPicker value={value} onChange={onChange} />}
 
-      {field.type === 'timerange' && <TimeRange value={value} onChange={onChange} />}
+        {field.type === 'timerange' && <TimeRange value={value} onChange={onChange} />}
 
-      {field.type === 'speciality' && (
-        <SpecialityPicker value={value} options={specialities} onChange={onChange} />
-      )}
+        {field.type === 'speciality' && (
+          <SpecialityPicker value={value} options={specialities} onChange={onChange} />
+        )}
 
-      {(field.type === 'file' || field.type === 'files') && (
-        <FileField
-          field={field}
-          files={files}
-          busy={uploading}
-          onUpload={onUpload}
-          onRemove={onRemoveFile}
-        />
-      )}
+        {(field.type === 'file' || field.type === 'files') && (
+          <FileField
+            field={field}
+            files={files}
+            busy={uploading}
+            onUpload={onUpload}
+            onRemove={onRemoveFile}
+          />
+        )}
 
-      {field.hint && <small>{field.hint}</small>}
-    </label>
+        {field.hint && <small>{field.hint}</small>}
+      </label>
+      {samplesBlock}
+    </>
   );
 }
