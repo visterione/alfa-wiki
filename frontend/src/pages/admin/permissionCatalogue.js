@@ -73,6 +73,12 @@ export const MODULE_ITEMS = [
   { id: 'reviews',      key: 'reviews',            target: 'adminAccess', label: 'Отзывы' },
   { id: 'services',     key: 'canEditServices',    target: 'flag',        label: 'Услуги' },
   { id: 'courses',      key: 'courses',            target: 'adminAccess', label: 'Курсы' },
+  // Задачи (ver. 6.75, на смену канбану). Право было заведено в модели и
+  // проверяется маршрутами с самого начала, но в дерево его тогда не вывели —
+  // выдать доступ из интерфейса было нечем, только правкой adminAccess в базе.
+  // Флаг решает только видимость раздела: кто чью загрузку видит, определяют
+  // команды (TaskTeam).
+  { id: 'tasks',        key: 'tasks',              target: 'adminAccess', label: 'Задачи' },
   { id: 'doctorCards',  key: 'canEditDoctorCards', target: 'flag',        label: 'Карточки врачей' },
   { id: 'analyses',     key: 'canEditAnalyses',    target: 'flag',        label: 'Анализы' },
   { id: 'releaseNotes', key: 'releaseNotes',       target: 'adminAccess', label: 'Нововведения' },
