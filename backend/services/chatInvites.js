@@ -33,7 +33,7 @@ const crypto = require('crypto');
 const { Chat, ChatMember, Message } = require('../models');
 
 // Тот же способ, что у публичных карточек оборудования и анкеты врача
-// (services/warehouse/qr.js, services/onboarding/links.js): боевой домен по
+// (services/warehouse/qr.js, services/vacancies/links.js): боевой домен по
 // умолчанию, PUBLIC_BASE_URL — если портал живёт на другом. FRONTEND_URL сюда
 // не годится: в dev-конфиге там localhost:9000, и такая ссылка никуда не ведёт.
 const DEFAULT_BASE = 'https://wiki.medcentralfa.ru';

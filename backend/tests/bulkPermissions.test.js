@@ -28,9 +28,9 @@ const user = () => ({
 // ── Главное обещание ──────────────────────────────────────────────────────
 
 test('правка одного ключа не трогает остальные права', () => {
-  const changes = mergeUserChanges(user(), { adminAccess: { onboarding: true } });
+  const changes = mergeUserChanges(user(), { adminAccess: { vacancies: true } });
 
-  assert.equal(changes.adminAccess.onboarding, true);
+  assert.equal(changes.adminAccess.vacancies, true);
   assert.equal(changes.adminAccess.pages, true, 'настроенный ранее доступ остался');
   assert.equal(changes.adminAccess.journal, true);
   assert.equal(changes.adminAccess.reviews, false, 'выключенное осталось выключенным');
@@ -83,8 +83,8 @@ test('несуществующий уровень доступа отбрасы�
 });
 
 test('человек без настроенных прав получает ровно то, что дали', () => {
-  const changes = mergeUserChanges({}, { adminAccess: { onboarding: true } });
-  assert.deepEqual(changes.adminAccess, { onboarding: true });
+  const changes = mergeUserChanges({}, { adminAccess: { vacancies: true } });
+  assert.deepEqual(changes.adminAccess, { vacancies: true });
 });
 
 // ── Зарплата ──────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ test('область видимости склада правится добав
 // ── Признаки для проверки прав ────────────────────────────────────────────
 
 test('патч без зарплаты и склада не требует прав администратора портала', () => {
-  const patch = { adminAccess: { onboarding: true } };
+  const patch = { adminAccess: { vacancies: true } };
   assert.equal(touchesSalary(patch), false);
   assert.equal(touchesWarehouse(patch), false);
 

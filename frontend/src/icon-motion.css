@@ -205,7 +205,7 @@
   to   { stroke-dasharray: 10; stroke-dashoffset: 0; }
 }
 
-/* ── Онбординг: зажим планшета качается, строки анкеты проявляются ────────── */
+/* ── Вакансии: зажим планшета качается, строки анкеты проявляются ────────── */
 [data-icon-motion="clipboard"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(1) {
   animation: icon-clip 0.5s cubic-bezier(.22, 1, .36, 1);
 }

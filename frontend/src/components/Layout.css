@@ -633,15 +633,14 @@
 /* Ступень темнее прежней: белая иконка на #4ADE80 давала контраст около 1.7 и
    попросту не читалась */
 .quick-access-btn.statistics  { --qa-fill: #22C55E; --qa-fill-deep: #16A34A; }
-.quick-access-btn.onboarding  { --qa-fill: #06B6D4; --qa-fill-deep: #0891B2; }
 /* Розовый остаётся отдельным опознавательным цветом рабочего окна линии и не
    пересекается с цветами остальных модулей. */
 .quick-access-btn.open-line   { --qa-fill: #EC4899; --qa-fill-deep: #DB2777; }
 .quick-access-btn.marketing   { --qa-fill: #F59E0B; --qa-fill-deep: #D97706; }
-/* Второе поколение онбординга стоит рядом с первым, поэтому цвет намеренно не
-   голубой: две соседние кнопки одного оттенка читались бы как одна пара
-   «раздел и его настройки». */
-.quick-access-btn.vacancies   { --qa-fill: #0D9488; --qa-fill-deep: #0F766E; }
+/* Цвет и знак достались от онбординга, чьё место «Вакансии» заняли в ver. 8.39:
+   раздел для сотрудника не новый, а переехавший, и узнают его по цвету кнопки
+   раньше, чем прочитают подпись. */
+.quick-access-btn.vacancies   { --qa-fill: #06B6D4; --qa-fill-deep: #0891B2; }
 .quick-access-btn.placeholder { --qa-fill: #9CA3AF; --qa-fill-deep: #6B7280; }
 
 @media (prefers-reduced-motion: reduce) {

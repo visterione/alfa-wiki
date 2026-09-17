@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, onboarding as onboardingApi, vacancies as vacanciesApi } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, vacancies as vacanciesApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -372,7 +372,6 @@ function QuickAccessButtons({ onClose }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [assignedReviewsCount, setAssignedReviewsCount] = useState(0);
   const [tasksCount, setTasksCount] = useState(0);
-  const [onboardingCount, setOnboardingCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
   const canAccessSalary = isAdmin || user?.canAccessSalary === true;
   // Складской учёт закрыт тем же гранулярным флагом, что «Отзывы»: раздел
@@ -384,9 +383,6 @@ function QuickAccessButtons({ onClose }) {
   // отзывы. Кто чью загрузку видит внутри модуля — решают команды, а не этот
   // переключатель: он отвечает только за то, виден ли раздел вообще.
   const canAccessTasks = isAdmin || user?.adminAccess?.tasks === true;
-  // Онбординг врача (ver. 7.30) — тот же гранулярный флаг. Внутри модуля
-  // человек видит только заявки тех филиалов, где он назначен исполнителем.
-  const canAccessOnboarding = isAdmin || user?.adminAccess?.onboarding === true;
   // Рабочее окно линии теперь является обычным пользовательским разделом в
   // быстром доступе. Настройка линий остаётся отдельным правом в админке.
   const canAccessOpenLine = isAdmin || user?.adminAccess?.openLine === true;
@@ -485,30 +481,6 @@ function QuickAccessButtons({ onClose }) {
     };
   }, [canAccessTasks]);
 
-  /**
-   * Бейдж онбординга — незакрытые задачи самого человека. Процесс идёт неделями
-   * и напоминает о себе редко: без счётчика шаг обнаруживают по просрочке.
-   * По сокету обновляется сразу, интервал нужен только как страховка.
-   */
-  useEffect(() => {
-    if (!canAccessOnboarding) return undefined;
-    const load = async () => {
-      try {
-        const { data } = await onboardingApi.overview();
-        setOnboardingCount(data.myTasksCount || 0);
-      } catch {
-        // Молча: бейдж не тот повод, чтобы шуметь на каждой странице портала.
-      }
-    };
-    load();
-    const interval = setInterval(load, 120000);
-    window.addEventListener('onboarding-changed', load);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('onboarding-changed', load);
-    };
-  }, [canAccessOnboarding]);
-
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/explorer' || location.pathname.startsWith('/explorer/');
@@ -518,7 +490,6 @@ function QuickAccessButtons({ onClose }) {
   const isOnSalary = location.pathname.startsWith('/referral-bonuses');
   const isOnStatistics = location.pathname.startsWith('/statistics');
   const isOnTasks = location.pathname.startsWith('/tasks');
-  const isOnOnboarding = location.pathname.startsWith('/onboarding');
   const isOnVacancies = location.pathname.startsWith('/vacancies');
 
   /**
@@ -532,7 +503,7 @@ function QuickAccessButtons({ onClose }) {
    * FIXED_QUICK_BUTTONS — те, что показываются всегда, пусть и с замком: право
    * доступа меняет вид кнопки, но не её наличие.
    */
-  const FIXED_QUICK_BUTTONS = 12;
+  const FIXED_QUICK_BUTTONS = 11;
   const quickButtons = FIXED_QUICK_BUTTONS + (canAccessVacancies ? 1 : 0);
   const placeholderSlots = Array.from(
     { length: (5 - (quickButtons % 5)) % 5 },
@@ -666,32 +637,21 @@ function QuickAccessButtons({ onClose }) {
         )}
       </button>
 
-      <button
-        className={`quick-access-btn onboarding ${isOnOnboarding ? 'active' : ''} ${!canAccessOnboarding ? 'locked' : ''}`}
-        data-icon-motion={canAccessOnboarding ? 'clipboard' : undefined}
-        onClick={() => canAccessOnboarding ? handleClick('/onboarding') : toast.error('Нет доступа к разделу «Онбординг врача»')}
-        title={canAccessOnboarding ? 'Онбординг врача (старый)' : 'Онбординг врача (нет доступа)'}
-      >
-        <ClipboardList size={20} />
-        {!canAccessOnboarding && <Lock size={10} className="quick-access-lock" />}
-        {canAccessOnboarding && onboardingCount > 0 && (
-          <span className="quick-access-badge">
-            {onboardingCount > 99 ? '99+' : onboardingCount}
-          </span>
-        )}
-      </button>
+      {/* Вакансии заняли место онбординга, удалённого в ver. 8.39. Планшет с
+          анкетой и бирюзовый цвет достались от него намеренно: для сотрудника
+          это тот же самый раздел, который переехал, и искать его он будет
+          глазами по прежнему знаку, а не по названию.
 
-      {/* Вакансии живут рядом со старым онбордингом, а не вместо него: пока
-          заявки идут через первое поколение, обе кнопки нужны одновременно.
-          Когда старый модуль уедет, эта останется одна. */}
+          Кнопка есть не у всех: право считает бэкенд по назначениям, поэтому
+          она появляется после ответа overview, а не сразу. */}
       {canAccessVacancies && (
         <button
           className={`quick-access-btn vacancies ${isOnVacancies ? 'active' : ''}`}
-          data-icon-motion="briefcase"
+          data-icon-motion="clipboard"
           onClick={() => handleClick('/vacancies')}
           title="Вакансии"
         >
-          <Briefcase size={20} />
+          <ClipboardList size={20} />
           {vacanciesCount > 0 && (
             <span className="quick-access-badge">
               {vacanciesCount > 99 ? '99+' : vacanciesCount}

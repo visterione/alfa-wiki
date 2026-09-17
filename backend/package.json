@@ -71,14 +71,8 @@
     "migrate:7.48:check": "node scripts/migrateWarehouseFloorsMedCenter.js --check",
     "migrate:7.47": "node scripts/migrateWarehouseServicePlaces.js",
     "migrate:7.47:check": "node scripts/migrateWarehouseServicePlaces.js --check",
-    "migrate:7.30": "node scripts/migrateDoctorOnboarding.js",
-    "migrate:7.30:check": "node scripts/migrateDoctorOnboarding.js --check",
-    "migrate:7.56": "node scripts/migrateOnboardingNewSteps.js",
-    "migrate:7.56:check": "node scripts/migrateOnboardingNewSteps.js --check",
     "migrate:7.60": "node scripts/migrateAppearancePreferences.js",
     "migrate:7.60:check": "node scripts/migrateAppearancePreferences.js --check",
-    "migrate:7.64": "node scripts/migrateOnboardingChatLinks.js",
-    "migrate:7.64:check": "node scripts/migrateOnboardingChatLinks.js --check",
     "migrate:7.67": "node scripts/migrateMealRequirements.js",
     "migrate:7.67:check": "node scripts/migrateMealRequirements.js --check",
     "warehouse:nomenclature": "node scripts/seedWarehouseNomenclature.js",
@@ -175,7 +169,9 @@
     "migrate:8.35": "node scripts/runSqlMigration.js 8.35",
     "migrate:8.35:check": "node scripts/runSqlMigration.js 8.35 --check",
     "migrate:8.38": "node scripts/runSqlMigration.js 8.38",
-    "migrate:8.38:check": "node scripts/runSqlMigration.js 8.38 --check"
+    "migrate:8.38:check": "node scripts/runSqlMigration.js 8.38 --check",
+    "migrate:8.39": "node scripts/runSqlMigration.js 8.39",
+    "migrate:8.39:check": "node scripts/runSqlMigration.js 8.39 --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

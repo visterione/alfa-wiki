@@ -112,11 +112,7 @@ const User = sequelize.define('User', {
       // человек назначен ответственным, см. services/warehouse/access.js.
       // Этот флаг решает только одно: видит ли он раздел вообще.
       warehouse: false,
-      // Онбординг врача (ver. 7.30). Как и выше — только видимость раздела.
-      // Кто какой шаг выполняет, задают назначения (OnbAssignment), а не роль:
-      // отдельных ролей под этот процесс намеренно не заводили.
-      onboarding: false,
-      // Вакансии (ver. 8.34) — второе поколение онбординга. Флаг открывает
+      // Вакансии (ver. 8.34) — наём. Флаг открывает
       // раздел и, что важнее, вводит человека в список тех, кого вообще можно
       // назначить исполнителем шага.
       //
@@ -4877,20 +4873,9 @@ const {
 
 associateWarehouse({ User, MedCenter, StructuralDivision });
 
-// === ОНБОРДИНГ ВРАЧА (ver. 7.30) ===
-// Тем же способом, что склад: отдельный файл с фабрикой, ассоциации здесь —
-// им нужны уже определённые User и MedCenter.
-const {
-  models: onboardingModels,
-  associateOnboarding,
-} = require('./onboarding')(sequelize, DataTypes);
-
-associateOnboarding({ User, MedCenter });
-
 // === ВАКАНСИИ (ver. 8.20) ===
-// Второе поколение онбординга, живёт параллельно с первым и заменит его, когда
-// сюда переедут заявки. Отдельный файл по той же причине, что склад и
-// онбординг: десять моделей в index.js потерялись бы.
+// Наём: от отклика по QR до выхода на работу. Отдельный файл по той же причине,
+// что склад: десять моделей в index.js потерялись бы.
 const {
   models: vacancyModels,
   associateVacancies,
@@ -4948,7 +4933,6 @@ module.exports = {
   CallCenterTab,
   CallCenterSnippet,
   ...warehouseModels,
-  ...onboardingModels,
   ...vacancyModels,
   Role,
   User,

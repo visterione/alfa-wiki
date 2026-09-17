@@ -235,7 +235,6 @@ export default function AdminUsers() {
       reviews: false,
       parser: false,
       medCenters: false,
-      onboarding: false,
       marketing: Object.fromEntries(MARKETING_TABS.map(t => [t.key, 'block']))
     },
     salaryPerm: { ...SALARY_PERM_DEFAULT },
@@ -532,7 +531,7 @@ export default function AdminUsers() {
           ...(user.adminAccess || {
             pages: false, sidebar: false, users: false, roles: false, media: false,
             backup: false, settings: false, courses: false, journal: false, reviews: false,
-            parser: false, medCenters: false, onboarding: false
+            parser: false, medCenters: false
           }),
           marketing: {
             ...Object.fromEntries(MARKETING_TABS.map(t => [t.key, 'block'])),

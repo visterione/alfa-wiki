@@ -63,9 +63,6 @@ import ReviewsScreen from '../screens/Reviews/ReviewsScreen';
 import ReviewBoardScreen from '../screens/Reviews/ReviewBoardScreen';
 import ReviewsAssignedScreen from '../screens/Reviews/ReviewsAssignedScreen';
 import ReviewScreen from '../screens/Reviews/ReviewScreen';
-import OnboardingScreen from '../screens/Onboarding/OnboardingScreen';
-import OnboardingApplicationScreen from '../screens/Onboarding/ApplicationScreen';
-import OnboardingMaterialsScreen from '../screens/Onboarding/MaterialsScreen';
 import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
 import LessonScreen from '../screens/Courses/LessonScreen';
@@ -521,62 +518,6 @@ function ReviewsStack() {
   );
 }
 
-/**
- * Вкладка «Онбординг» (ver. 7.55). Сам модуль — ver. 7.30.
- *
- * В мобилке живёт то же, чем оправданы «Отзывы»: задача приходит push-ом, а
- * человек в этот момент не за столом. Главврач согласовывает анкету между
- * приёмами, старший регистратор закрывает «выдать бейдж» по дороге в кабинет,
- * а колл-центр отмечает свой шаг, не открывая портал.
- *
- * Настройка шагов (кто за что отвечает в каком филиале) и выгрузки PDF анкеты и
- * услуг остались в вебе: первое раскладывают один раз и вдумчиво, второе
- * печатают и по бумаге вносят позиции в «Реновацию».
- *
- * «Материалы» — QR и ссылка на анкету — стоят кнопкой в шапке, а не пунктом
- * списка: их достают на собеседовании, когда соискатель уже сидит напротив.
- */
-function OnboardingStack() {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerBackground: () => <HeaderBackground />,
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
-        headerTitleAlign: 'center',
-        headerBackTitleVisible: false,
-        headerBackButtonDisplayMode: 'minimal',
-        ...STACK_ANIMATION,
-      }}>
-      <Stack.Screen
-        name="OnboardingHome"
-        component={OnboardingScreen}
-        options={({navigation}) => ({
-          title: 'Онбординг',
-          headerRight: () => (
-            <HeaderIconButton
-              icon={QrCode}
-              label="Материалы"
-              onPress={() => navigation.navigate('OnboardingMaterials')}
-            />
-          ),
-        })}
-      />
-      {/* Заголовок карточки — имя врача, его ставит сам экран: из списка оно
-          приходит сразу, поэтому шапка подписана ещё до загрузки заявки */}
-      <Stack.Screen
-        name="OnboardingApplication"
-        component={OnboardingApplicationScreen}
-        options={({route}) => ({title: route.params?.title || 'Заявка'})}
-      />
-      <Stack.Screen
-        name="OnboardingMaterials"
-        component={OnboardingMaterialsScreen}
-        options={{title: 'Материалы'}}
-      />
-    </Stack.Navigator>
-  );
-}
 
 function CoursesStack() {
   return (
@@ -774,13 +715,6 @@ function MainTabs() {
         name="ReviewsTab"
         component={ReviewsStack}
         options={{title: 'Отзывы'}}
-      />
-      {/* Онбординг: раздел закрыт правом adminAccess.onboarding, и у кого его
-          нет — кнопки в колесе тоже нет (см. onboardingStore и AlfaTabBar) */}
-      <Tab.Screen
-        name="OnboardingTab"
-        component={OnboardingStack}
-        options={{title: 'Онбординг'}}
       />
       <Tab.Screen
         name="CoursesTab"

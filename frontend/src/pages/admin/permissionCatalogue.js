@@ -83,10 +83,7 @@ export const MODULE_ITEMS = [
   { id: 'analyses',     key: 'canEditAnalyses',    target: 'flag',        label: 'Анализы' },
   { id: 'releaseNotes', key: 'releaseNotes',       target: 'adminAccess', label: 'Нововведения' },
   { id: 'medCenters',   key: 'medCenters',         target: 'adminAccess', label: 'Медцентры' },
-  // Онбординг врача: флаг открывает раздел, но заявки человек увидит только там,
-  // где назначен исполнителем шага.
-  { id: 'onboarding',   key: 'onboarding',         target: 'adminAccess', label: 'Онбординг врача' },
-  // Вакансии (ver. 8.34) — второе поколение онбординга. Флаг делает две вещи:
+  // Вакансии (ver. 8.34) — наём. Флаг делает две вещи:
   // открывает раздел и вводит человека в список тех, кого можно назначить
   // исполнителем шага. Собирать сами вакансии по-прежнему может только админ.
   { id: 'vacancies',    key: 'vacancies',          target: 'adminAccess', label: 'Вакансии' },

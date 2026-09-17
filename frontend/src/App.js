@@ -17,7 +17,6 @@ const Profile = lazy(() => import('./pages/Profile'));
 const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Favorites = lazy(() => import('./pages/Favorites'));
 const ChatJoin = lazy(() => import('./pages/ChatJoin'));
-const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Vacancies = lazy(() => import('./pages/Vacancies'));
 const VacancyStart = lazy(() => import('./pages/Vacancy/VacancyStart'));
 const VacancyForm = lazy(() => import('./pages/Vacancy/VacancyForm'));
@@ -25,9 +24,6 @@ const VacancyServices = lazy(() => import('./pages/Vacancy/VacancyServices'));
 const OpenLine = lazy(() => import('./pages/OpenLine'));
 // Публичные страницы анкеты: их открывает врач, у которого нет и не будет
 // аккаунта в портале.
-const AnketaStart = lazy(() => import('./pages/Anketa/AnketaStart'));
-const AnketaForm = lazy(() => import('./pages/Anketa/AnketaForm'));
-const AnketaServices = lazy(() => import('./pages/Anketa/AnketaServices'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminBots = lazy(() => import('./pages/admin/AdminBots'));
 const AdminIntegrations = lazy(() => import('./pages/admin/AdminIntegrations'));
@@ -136,18 +132,11 @@ function AppRoutes() {
           на /warehouse?room=<id>, то есть внутрь портала, за авторизацию. */}
       <Route path="/p/a/:token" element={<PublicAssetCard kind="asset" />} />
 
-      {/* Анкета врача. Вне ProtectedRoute по замыслу: ссылка одна и постоянная,
-          её рассылают кандидатам и вешают в вакансию, а заполняют с телефона,
-          на котором портал не залогинен. Право на конкретную заявку
-          предъявляется её токеном, а не сессией. */}
-      <Route path="/anketa" element={<AnketaStart />} />
-      <Route path="/anketa/:token" element={<AnketaForm />} />
-      <Route path="/anketa/:token/services" element={<AnketaServices />} />
-
-      {/* Вакансии (ver. 8.20) — второе поколение того же публичного контура.
-          Вне ProtectedRoute по той же причине: заполняют с телефона, на котором
-          портал не залогинен. Отличие в точке входа — у каждого медцентра свой
-          адрес с его латинским кодом, и вакансии человек видит только этого
+      {/* Вакансии (ver. 8.20) — публичный контур найма. Вне ProtectedRoute по
+          замыслу: анкету заполняют с телефона, на котором портал не залогинен,
+          а право на конкретную заявку предъявляется её токеном, а не сессией.
+          Точка входа — у каждого медцентра свой адрес с его латинским кодом,
+          и вакансии человек видит только этого
           филиала. */}
       <Route path="/vacancy/a/:token" element={<VacancyForm />} />
       <Route path="/vacancy/a/:token/services" element={<VacancyServices />} />
@@ -191,17 +180,9 @@ function AppRoutes() {
           <ProtectedRoute requireAdminAccess="tasks"><Tasks /></ProtectedRoute>
         } />
 
-        {/* Онбординг врача (ver. 7.30). Флаг тот же гранулярный, что у склада и
-            «Задач»: он решает только видимость раздела. Кто какой шаг выполняет
-            и чьи заявки ему видны — считают назначения на бэкенде, отдельных
-            ролей под этот процесс намеренно не заводили. */}
-        <Route path="onboarding" element={
-          <ProtectedRoute requireAdminAccess="onboarding"><Onboarding /></ProtectedRoute>
-        } />
-
-        {/* Вакансии (ver. 8.20) — второе поколение онбординга, пока рядом со
-            старым разделом. Гранулярного флага у него нет: настройку видит
-            админ, а заявки и задачи — тот, кто назначен исполнителем шага.
+        {/* Вакансии (ver. 8.20) — наём целиком, от отклика до выхода на работу.
+            Гранулярного флага на маршруте нет: настройку видит админ, а заявки
+            и задачи — тот, кто назначен исполнителем шага.
             Проверку делает бэкенд (services/vacancies/access.js), потому что
             назначение и есть право, и вывести его из полей пользователя
             нельзя. */}

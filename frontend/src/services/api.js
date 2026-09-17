@@ -1222,11 +1222,11 @@ export const warehouseApi = {
   publicAsset:     (token)        => publicApi.get(`/a/${token}`),
 };
 
-// ── Онбординг врача (ver. 7.30) ───────────────────────────────────────────
+// ── Вакансии (ver. 8.20) ──────────────────────────────────────────────────
 
 /**
- * Вакансии (ver. 8.20) — второе поколение онбординга. Живёт параллельно с
- * onboarding выше и заменит его, когда сюда переедут заявки.
+ * Наём: вакансии, анкеты кандидатов, задачи исполнителей. Второе поколение
+ * онбординга — первое удалено целиком в ver. 8.39.
  */
 export const vacancies = {
   // Чем бывает поле, какие бывают шаги и письма. Реестр приходит с сервера —
@@ -1306,90 +1306,9 @@ export const vacancies = {
   returnTask:   (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/return`, data)
 };
 
-export const onboarding = {
-  overview:      ()                 => api.get('/onboarding/overview'),
-
-  // Материалы для рассылки: постоянная ссылка на анкету и QR к ней.
-  materials:     ()                 => api.get('/onboarding/materials'),
-  invite:        (data)             => api.post('/onboarding/materials/invite', data),
-
-  // Настройки: кто отвечает за шаг. Ролей под этот процесс не заводили —
-  // назначение всегда на конкретного человека.
-  settings:      ()                 => api.get('/onboarding/settings'),
-  saveStep:      (stepKey, data)    => api.put(`/onboarding/settings/${stepKey}`, data),
-  broken:        ()                 => api.get('/onboarding/settings/broken'),
-
-  // Рабочие чаты филиала: ссылки, которые уходят врачу письмом после запуска.
-  // Превью (название и аватарка) читается на бэкенде — из браузера страницу
-  // приглашения не прочитать, её отдают без CORS.
-  chats:         ()                 => api.get('/onboarding/settings/chats'),
-  chatPreview:   (data)             => api.post('/onboarding/settings/chats/preview', data),
-  addChat:       (data)             => api.post('/onboarding/settings/chats', data),
-  saveChat:      (id, data)         => api.put(`/onboarding/settings/chats/${id}`, data),
-  refreshChat:   (id, data)         => api.post(`/onboarding/settings/chats/${id}/refresh`, data),
-  // Аватарка файлом — для мессенджеров, которые превью не отдают (WhatsApp), и
-  // тех, у кого в og лежит логотип самого приложения (MAX, VK).
-  chatAvatar:    (id, formData)     => api.post(`/onboarding/settings/chats/${id}/avatar`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
-  deleteChat:    (id)               => api.delete(`/onboarding/settings/chats/${id}`),
-  testChatMail:  (data)             => api.post('/onboarding/settings/chats/test', data),
-
-  applications:  (params)           => api.get('/onboarding/applications', { params }),
-  application:   (id)               => api.get(`/onboarding/applications/${id}`),
-  approve:       (id)               => api.post(`/onboarding/applications/${id}/approve`),
-  revision:      (id, data)         => api.post(`/onboarding/applications/${id}/revision`, data),
-  reject:        (id, data)         => api.post(`/onboarding/applications/${id}/reject`, data),
-  cancel:        (id, data)         => api.post(`/onboarding/applications/${id}/cancel`, data),
-  changeMedCenter: (id, data)       => api.put(`/onboarding/applications/${id}/med-center`, data),
-  services:      (id)               => api.get(`/onboarding/applications/${id}/services`),
-  // Сотрудники филиала из МИС — для ручного выбора, когда сверка по ФИО не нашла врача.
-  misUsers:      (id, q)            => api.get(`/onboarding/applications/${id}/mis-users`, { params: { q } }),
-  export:        (id)               => api.get(`/onboarding/applications/${id}/export`),
-  // Анкета файлом. Забираем в память, а не ссылкой: обычный <a href> не унесёт
-  // заголовок авторизации, а класть токен в адрес ради скачивания незачем.
-  // PDF идёт как двоичные данные: без responseType axios разберёт его как текст
-  // и файл окажется битым.
-  cvPdf:         (id)               => api.get(`/onboarding/applications/${id}/cv.pdf`, { responseType: 'arraybuffer' }),
-  servicesPdf:   (id)               => api.get(`/onboarding/applications/${id}/services.pdf`, { responseType: 'arraybuffer' }),
-
-  myTasks:       ()                 => api.get('/onboarding/tasks/my'),
-  claimTask:     (taskId)           => api.post(`/onboarding/tasks/${taskId}/claim`),
-  verifyTask:    (taskId, data)     => api.post(`/onboarding/tasks/${taskId}/verify`, data),
-  completeTask:  (taskId, data)     => api.post(`/onboarding/tasks/${taskId}/complete`, data),
-};
-
-// Публичный контур анкеты. Отдельный клиент без Authorization: её заполняет
-// человек, у которого нет аккаунта в портале, и подставлять сюда чужой токен
-// (например, если в браузере залогинен сотрудник) нельзя.
-const anketaApi = axios.create({
-  baseURL: `${BASE_URL}/api/public/v1/onboarding`,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-export const anketa = {
-  meta:          ()                 => anketaApi.get('/meta'),
-  requestCode:   (data)             => anketaApi.post('/request-code', data),
-  verifyCode:    (data)             => anketaApi.post('/verify-code', data),
-
-  load:          (token)            => anketaApi.get(`/${token}`),
-  saveDraft:     (token, data)      => anketaApi.put(`/${token}`, data),
-  setConsents:   (token, data)      => anketaApi.post(`/${token}/consents`, data),
-  submit:        (token)            => anketaApi.post(`/${token}/submit`),
-  deleteFile:    (token, fileId)    => anketaApi.delete(`/${token}/files/${fileId}`),
-  uploadFile:    (token, formData)  => anketaApi.post(`/${token}/files`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
-
-  servicesList:  (token)            => anketaApi.get(`/${token}/services`),
-  saveServices:  (token, data)      => anketaApi.post(`/${token}/services`, data),
-  submitServices:(token)            => anketaApi.post(`/${token}/services/submit`),
-};
-
-// Публичный контур вакансий (ver. 8.20). Отдельный клиент без Authorization по
-// той же причине, что и у анкеты первого поколения: её заполняет человек без
-// аккаунта, и подставлять сюда токен залогиненного в том же браузере сотрудника
-// нельзя.
+// Публичный контур вакансий (ver. 8.20). Отдельный клиент без Authorization:
+// анкету заполняет человек без аккаунта в портале, и подставлять сюда токен
+// залогиненного в том же браузере сотрудника нельзя.
 const vacancyApi = axios.create({
   baseURL: `${BASE_URL}/api/public/v1/vacancies`,
   headers: { 'Content-Type': 'application/json' },

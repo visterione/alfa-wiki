@@ -127,7 +127,6 @@ export const MODULE_RIGHTS = [
   ['canEditAnalyses', 'Анализы', 'user'],
   ['releaseNotes', 'Нововведения', 'access'],
   ['medCenters', 'Медцентры', 'access'],
-  ['onboarding', 'Онбординг врача', 'access'],
 ];
 
 /**

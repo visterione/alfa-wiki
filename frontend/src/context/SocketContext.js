@@ -303,7 +303,7 @@ export function SocketProvider({ children }) {
       socket.emit('join', user.id);
       // Событие могло произойти, пока соединение восстанавливалось. Один
       // запрос после reconnect закрывает это окно без частого polling.
-      window.dispatchEvent(new Event('onboarding-changed'));
+      window.dispatchEvent(new Event('vacancies-changed'));
       handlePresenceVisibility();
     });
 
@@ -381,13 +381,8 @@ export function SocketProvider({ children }) {
       playNotificationSound();
     });
 
-    socket.on('onboarding:changed', (data) => {
-      window.dispatchEvent(new CustomEvent('onboarding-changed', { detail: data }));
-    });
-
-    // То же для второго поколения онбординга. Свой сигнал, а не общий: пока
-    // модули живут рядом, вкладка одного не должна перезагружаться из-за
-    // событий другого.
+    // Сигнал раздела «Вакансии»: состав задач изменился, список и бейдж в
+    // открытых вкладках обновляются молча, без опроса.
     socket.on('vacancies:changed', (data) => {
       window.dispatchEvent(new CustomEvent('vacancies-changed', { detail: data }));
     });

@@ -4,10 +4,10 @@
  * Сотрудники в «Реновации»: поиск, сверка расписания и услуг.
  *
  * Лежит в общих службах, а не внутри модуля: файл не знает ни одной модели
- * онбординга или вакансий — он принимает заявку как объект с полями fullName,
- * medCenterId, professions и misUserId и ходит в МИС. Оба поколения онбординга
- * пользуются им одинаково, и копировать четыреста строк разговора с чужим API
- * ради этого было бы худшим из решений.
+ * найма — он принимает заявку как объект с полями fullName, medCenterId,
+ * professions и misUserId и ходит в МИС. Вынесен из первого поколения
+ * онбординга (удалено в ver. 8.39), и это его и уберегло: копия четырёхсот
+ * строк разговора с чужим API уехала бы вместе с модулем.
  *
  * Публичное API МИС на запись сотрудников не умеет: в нём есть createPatient,
  * createAppointment, createInvoice, createPayment — и ни одного метода, который
@@ -138,7 +138,7 @@ async function professionNames() {
       };
     }
   } catch (error) {
-    console.warn('[onboarding/mis] Справочник специальностей недоступен:', error.message);
+    console.warn('[mis/staff] Справочник специальностей недоступен:', error.message);
   }
   return professionsCache.map;
 }
@@ -381,7 +381,7 @@ async function doctorExport(app) {
       duration: s.duration != null ? Number(s.duration) : null
     }));
   } catch (error) {
-    console.warn('[onboarding/mis] Услуги для выгрузки не получены:', error.message);
+    console.warn('[mis/staff] Услуги для выгрузки не получены:', error.message);
   }
 
   try {
@@ -396,7 +396,7 @@ async function doctorExport(app) {
     if (clinicIds.length) params.clinic_id = clinicIds[0];
     result.schedule = misData(await misRequest('getSchedulePeriods', params)) || [];
   } catch (error) {
-    console.warn('[onboarding/mis] Расписание для выгрузки не получено:', error.message);
+    console.warn('[mis/staff] Расписание для выгрузки не получено:', error.message);
   }
 
   return { ok: true, ...result };
