@@ -21,6 +21,7 @@
 const nodemailer = require('nodemailer');
 
 const { publicBase, applicationUrl } = require('./links');
+const formSchema = require('./formSchema');
 
 const FROM = process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>';
 
@@ -101,6 +102,15 @@ const LETTERS = {
     subject: 'Анкета согласована — нужны документы',
     title: 'Вас согласовали',
     body: 'Ваша анкета согласована. Осталось дозаполнить вторую часть — документы для трудоустройства. Открывается по вашей прежней ссылке, отвечать на письмо не нужно.'
+  },
+  // Возврат документов проверяющим (ver. 8.38). Отдельный текст, а не
+  // 'revision': там речь о самой анкете и о решении, которого ещё нет, — здесь
+  // кандидата уже взяли, и переделать нужно только присланные документы.
+  extraReturn: {
+    name: 'Возврат документов',
+    subject: 'Документы — нужно поправить',
+    title: 'Документы вернули на доработку',
+    body: 'Мы посмотрели присланные документы и просим кое-что поправить. Всё остальное сохранено — дозаполнять анкету заново не нужно.'
   },
 
   services: {
@@ -214,6 +224,19 @@ async function sendSubmitted(vacancy, app, vacancyTitle) {
 }
 
 /**
+ * Подписи отмеченных полей.
+ *
+ * Отмечают их в карточке заявки по ключам, а кандидату нужно название: искать
+ * в анкете поле «experienceSpecialty» он будет глазами по всей странице.
+ * Подписи берутся из снимка самой заявки — из той анкеты, которую человек
+ * заполнял, а не из нынешней.
+ */
+function fieldLabels(app, keys = []) {
+  const labels = formSchema.labelMap(app?.formSnapshot);
+  return keys.map(key => labels[key] || key);
+}
+
+/**
  * Возврат на доработку: замечания и ссылка на ту же заявку.
  *
  * Список полей — подписи, а не ключи: «experienceSpecialty» человеку ничего не
@@ -221,8 +244,9 @@ async function sendSubmitted(vacancy, app, vacancyTitle) {
  */
 async function sendRevision(vacancy, app, note, fields = []) {
   const text = letter(vacancy, 'revision');
-  const list = fields.length
-    ? `<ul style="margin:16px 0;padding-left:20px;">${fields.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
+  const marked = fieldLabels(app, fields);
+  const list = marked.length
+    ? `<ul style="margin:16px 0;padding-left:20px;">${marked.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
     : '';
   return send(app.email, text.subject, layout(text.title, `
     ${paragraphs(text.body)}
@@ -253,6 +277,27 @@ async function sendExtraInvite(vacancy, app) {
   return send(app.email, text.subject, layout(text.title, `
     ${paragraphs(text.body)}
     ${button(applicationUrl(app.accessToken), 'Дозаполнить анкету')}
+  `));
+}
+
+/**
+ * Возврат документов кандидату с шага проверки (ver. 8.38).
+ *
+ * Устроено как письмо о доработке анкеты: замечания, список отмеченных полей и
+ * ссылка. Поля — подписями, а не ключами: «passportScan» человеку ничего не
+ * говорит.
+ */
+async function sendExtraReturn(vacancy, app, note, fields = []) {
+  const text = letter(vacancy, 'extraReturn');
+  const marked = fieldLabels(app, fields);
+  const list = marked.length
+    ? `<ul style="margin:16px 0;padding-left:20px;">${marked.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
+    : '';
+  return send(app.email, text.subject, layout(text.title, `
+    ${paragraphs(text.body)}
+    ${note ? `<p style="background:#f5f5f7;border-radius:10px;padding:16px;">${escapeHtml(note)}</p>` : ''}
+    ${list}
+    ${button(applicationUrl(app.accessToken), 'Открыть анкету')}
   `));
 }
 
@@ -397,6 +442,14 @@ function preview(vacancy, key) {
         ${button(applicationUrl(app.accessToken), 'Дозаполнить анкету')}
       `) };
 
+    case 'extraReturn':
+      return { ...text, html: layout(text.title, `
+        ${paragraphs(text.body)}
+        <p style="background:#f5f5f7;border-radius:10px;padding:16px;">Скан паспорта не читается — пришлите, пожалуйста, разворот целиком.</p>
+        <ul style="margin:16px 0;padding-left:20px;"><li>Паспорт: страница с фотографией</li></ul>
+        ${button(applicationUrl(app.accessToken), 'Открыть анкету')}
+      `) };
+
     case 'services':
       return { ...text, html: layout(text.title, `
         ${paragraphs(text.body)}
@@ -434,6 +487,7 @@ module.exports = {
   sendRevision,
   sendRejected,
   sendExtraInvite,
+  sendExtraReturn,
   sendServicesInvite,
   sendWelcome
 };

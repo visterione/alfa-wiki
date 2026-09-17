@@ -311,7 +311,14 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     dueAt:       { type: DataTypes.DATE, comment: 'Срок в рабочих часах от появления задачи' },
     remindedAt:  { type: DataTypes.DATE },
     escalatedAt: { type: DataTypes.DATE },
-    note:        { type: DataTypes.TEXT, comment: 'Комментарий исполнителя при закрытии' }
+    note:        { type: DataTypes.TEXT, comment: 'Комментарий исполнителя при закрытии' },
+
+    // Возврат работы назад (ver. 8.38): { note, fields: [], by, at, count }.
+    // Лежит у той задачи, которую переоткрыли, а не у той, с которой вернули:
+    // читает это кандидат, открывая свою анкету, и ему нужны замечания к тому,
+    // что он сейчас переделывает. Счётчик — чтобы по второму кругу было видно,
+    // что это уже не первый возврат.
+    returned:    { type: DataTypes.JSONB }
   }, {
     ...ts,
     tableName: 'vac_tasks',

@@ -11,15 +11,21 @@
  *
  * Именованных стадий нет: при произвольном процессе они врут. Вместо стадии —
  * прогресс по чек-листу и список шагов с их состоянием.
+ *
+ * Схема над списком (ver. 8.38) — та же, что в конструкторе процесса, только
+ * узлы покрашены по состоянию задач. Вторую раскладку для заявки не заводим:
+ * две разошлись бы при первой же правке, а вопрос у обеих один — «где мы и что
+ * идёт параллельно».
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   X, Check, RotateCcw, Ban, Clock, AlertTriangle, CheckCircle2, Circle, Hand
 } from 'lucide-react';
 
-import { vacancies as api, BASE_URL } from '../../services/api';
+import { vacancies as api, chat, BASE_URL } from '../../services/api';
+import ProcessMap from './ProcessMap';
 
 const STATUS_LABELS = {
   draft: 'Заполняется',
@@ -43,6 +49,12 @@ const STATUS_TONE = {
 
 export default function ApplicationCard({ applicationId, onClose, onChanged }) {
   const [data, setData] = useState(null);
+
+  // Подписанный токен к ссылкам на сканы кандидата. Файлы отдаются за guard'ом,
+  // а заголовок Authorization в href не подставить — токен идёт в адресе, тем
+  // же способом, что у вложений чата. До ver. 8.38 его здесь не было вовсе, и
+  // диплом из карточки открывался ответом 401.
+  const [fileToken, setFileToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState('');
   const [note, setNote] = useState('');
@@ -59,6 +71,37 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
   }, [applicationId, onClose]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Токен берётся один раз на карточку: он живёт дольше, чем её держат
+  // открытой, а без него ссылки просто не откроются — молча, ответом 401.
+  useEffect(() => {
+    let alive = true;
+    chat.getFileToken()
+      .then(res => { if (alive) setFileToken(res.data?.token || ''); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  /**
+   * Подписи полей второго этапа анкеты — для формы возврата у шага проверки.
+   * Возвращают документы, а не анкету целиком, и предлагать юристу отметить
+   * «Дата рождения» из первой части незачем: её он и не смотрел.
+   */
+  const extraLabels = useMemo(() => {
+    const form = data?.form;
+    const late = new Set(
+      (form?.steps || [])
+        .filter(step => (step.stage || 'initial') !== 'initial')
+        .flatMap(step => step.blocks || [])
+    );
+    const out = {};
+    for (const block of form?.blocks || []) {
+      if (!late.has(block.key)) continue;
+      if (block.repeat) { out[block.key] = block.title; continue; }
+      for (const field of block.fields || []) out[field.key] = field.label;
+    }
+    return out;
+  }, [data]);
 
   // Закрытие по Escape — карточка открывается поверх списка, и мышь до крестика
   // на узком экране не всегда доходит.
@@ -211,15 +254,30 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
             <span className="vac-sub">{data.done} из {data.total}</span>
           </div>
 
+          {data.steps.filter(s => !s.archived).length > 1 && (
+            <ProcessMap steps={data.steps} live />
+          )}
+
           <div className="vac-steps-list">
             {data.steps.filter(s => !s.archived || s.task).map(step => (
-              <StepRow key={step.key} step={step} onChanged={async () => { await load(); onChanged?.(); }} />
+              <StepRow
+                key={step.key}
+                step={step}
+                extraLabels={extraLabels}
+                onChanged={async () => { await load(); onChanged?.(); }}
+              />
             ))}
           </div>
 
           {/* ── Анкета ─────────────────────────────────────────────────── */}
           <div className="vac-sect"><span>Анкета</span></div>
-          <Answers form={data.form} values={data.values} files={data.files} revisionFields={data.revisionFields} />
+          <Answers
+            form={data.form}
+            values={data.values}
+            files={data.files}
+            fileToken={fileToken}
+            revisionFields={data.revisionFields}
+          />
 
           {data.consents?.at && (
             <div className="vac-sub" style={{ marginTop: 10 }}>
@@ -247,11 +305,19 @@ export default function ApplicationCard({ applicationId, onClose, onChanged }) {
 }
 
 /** Шаг процесса с его задачей: взять, проверить, закрыть. */
-function StepRow({ step, onChanged }) {
+function StepRow({ step, onChanged, extraLabels = {} }) {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
   const [check, setCheck] = useState(null);
+
+  // Возврат работы кандидату (ver. 8.38) — вторая кнопка у шага проверки.
+  // Отдельное состояние, а не тот же `open`: закрытие и возврат — разные жесты
+  // с разными последствиями, и переключатель между ними в одной форме читался
+  // бы как «отметить и заодно вернуть».
+  const [back, setBack] = useState(false);
+  const [marked, setMarked] = useState([]);
+
   const task = step.task;
 
   const done = Boolean(task?.completedAt);
@@ -310,6 +376,14 @@ function StepRow({ step, onChanged }) {
         {!done && task && !task.overdue && task.dueAt && (
           <span className="vac-sub">до {new Date(task.dueAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
         )}
+        {task?.returned && (
+          <span
+            className="vac-badge vac-badge-warn"
+            title={task.returned.note || 'Работу возвращали кандидату'}
+          >
+            <RotateCcw size={11} /> возвращали{task.returned.count > 1 ? ` ×${task.returned.count}` : ''}
+          </span>
+        )}
         {!task && <span className="vac-sub">ждёт своей очереди</span>}
         {!done && task && !task.assigneeIds?.length && step.kind !== 'services_pick' && (
           <span className="vac-badge vac-badge-warn">некому</span>
@@ -323,9 +397,23 @@ function StepRow({ step, onChanged }) {
               <Hand size={14} />Взять
             </button>
           )}
-          {!open ? (
-            <button className="vac-btn" disabled={busy} onClick={() => setOpen(true)}>Закрыть шаг</button>
-          ) : (
+          {!open && !back && (
+            <>
+              <button className="vac-btn" disabled={busy} onClick={() => setOpen(true)}>Закрыть шаг</button>
+              {step.returnTo && (
+                <button
+                  className="vac-btn is-ghost"
+                  disabled={busy}
+                  title={`Кандидат заполнит заново: «${step.returnTitle}»`}
+                  onClick={() => setBack(true)}
+                >
+                  <RotateCcw size={14} />Вернуть
+                </button>
+              )}
+            </>
+          )}
+
+          {open && (
             <div className="vac-step-close">
               <input
                 className="vac-input"
@@ -343,6 +431,62 @@ function StepRow({ step, onChanged }) {
               <button className="vac-btn is-ghost" onClick={() => { setOpen(false); setCheck(null); }}>Отмена</button>
             </div>
           )}
+
+          {back && (
+            <div className="vac-decide-form">
+              <b>Что поправить</b>
+              <textarea
+                className="vac-input"
+                rows={3}
+                value={note}
+                placeholder="Напишите кандидату, что не так с документами"
+                onChange={e => setNote(e.target.value)}
+              />
+
+              {Boolean(Object.keys(extraLabels).length) && (
+                <>
+                  <div className="vac-sub">
+                    Отметьте поля — кандидату подсветятся только они, остальное
+                    останется заполненным.
+                  </div>
+                  <div className="vac-chips">
+                    {Object.entries(extraLabels).map(([key, label]) => (
+                      <button
+                        key={key}
+                        className={`vac-chip ${marked.includes(key) ? 'is-on' : ''}`}
+                        onClick={() => setMarked(prev => (
+                          prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+                        ))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="vac-sub">
+                Шаг «{step.returnTitle}» откроется кандидату заново, ему уйдёт
+                письмо. Эта задача вернётся к вам, когда он пришлёт исправленное.
+              </div>
+
+              <div className="vac-editor-acts">
+                <button
+                  className="vac-btn"
+                  disabled={busy || (!note.trim() && !marked.length)}
+                  onClick={() => run(
+                    () => api.returnTask(task.id, { note, fields: marked }),
+                    'Вернули кандидату'
+                  )}
+                >
+                  Вернуть кандидату
+                </button>
+                <button className="vac-btn is-ghost" onClick={() => { setBack(false); setNote(''); setMarked([]); }}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -356,7 +500,7 @@ function StepRow({ step, onChanged }) {
  * форму, которую человек открыл, и блок, убранный из шаблона позже, обязан
  * остаться в карточке.
  */
-function Answers({ form, values, files, revisionFields = [] }) {
+function Answers({ form, values, files, fileToken, revisionFields = [] }) {
   return (
     <div className="vac-answers">
       {(form?.blocks || []).map(block => {
@@ -372,7 +516,7 @@ function Answers({ form, values, files, revisionFields = [] }) {
                     row[f.key] === undefined ? null : (
                       <div className="vac-answer" key={f.key}>
                         <span>{f.label}</span>
-                        <b>{renderValue(f, row[f.key], files)}</b>
+                        <b>{renderValue(f, row[f.key], files, fileToken)}</b>
                       </div>
                     )
                   ))}
@@ -390,7 +534,7 @@ function Answers({ form, values, files, revisionFields = [] }) {
             {filled.map(f => (
               <div className={`vac-answer ${revisionFields.includes(f.key) ? 'is-marked' : ''}`} key={f.key}>
                 <span>{f.label}</span>
-                <b>{renderValue(f, values[f.key], files)}</b>
+                <b>{renderValue(f, values[f.key], files, fileToken)}</b>
               </div>
             ))}
           </section>
@@ -402,7 +546,7 @@ function Answers({ form, values, files, revisionFields = [] }) {
 
 const DAY_NAMES = { 1: 'пн', 2: 'вт', 3: 'ср', 4: 'чт', 5: 'пт', 6: 'сб', 7: 'вс' };
 
-function renderValue(field, value, files) {
+function renderValue(field, value, files, fileToken) {
   if (field.type === 'checkbox') return value ? 'да' : 'нет';
   if (field.type === 'weekdays') return (value || []).map(d => DAY_NAMES[d]).join(', ');
   if (field.type === 'timerange') return value?.from ? `${value.from}–${value.to}` : '';
@@ -418,7 +562,12 @@ function renderValue(field, value, files) {
         {own.map(f => (
           // Файл отдаётся за guard'ом, и сотруднику нужен подписанный токен в
           // адресе: заголовок Authorization в ссылку не подставить.
-          <a key={f.id} href={`${BASE_URL}/uploads/vacancies/${f.filename}`} target="_blank" rel="noreferrer">
+          <a
+            key={f.id}
+            href={`${BASE_URL}/uploads/vacancies/${f.filename}${fileToken ? `?t=${encodeURIComponent(fileToken)}` : ''}`}
+            target="_blank"
+            rel="noreferrer"
+          >
             {f.originalName || f.filename}
           </a>
         ))}
@@ -442,6 +591,10 @@ const EVENT_TEXT = {
   task_unassigned: 'Шаг открыт, но исполнитель не назначен',
   services_invited: 'Отправлено приглашение выбрать услуги',
   services_picked: 'Кандидат отметил услуги',
+  extra_invited: 'Отправлено приглашение дозаполнить анкету',
+  extra_submitted: 'Кандидат прислал документы',
+  returned: 'Работу вернули кандидату',
+  return_mailed: 'Отправлено письмо о возврате',
   launched: 'Все шаги закрыты',
   sla_reminded: 'Напоминание о просрочке',
   sla_escalated: 'Просрочка эскалирована',

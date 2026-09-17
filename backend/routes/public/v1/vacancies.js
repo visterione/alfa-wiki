@@ -362,15 +362,21 @@ function editable(app) {
  */
 async function stageOf(app) {
   if (editable(app)) return 'initial';
+  return (await extraTaskOf(app)) ? 'after' : null;
+}
 
+/**
+ * Открытая задача второго этапа — она же признак этапа и носитель замечаний,
+ * если документы вернули с проверки (ver. 8.38). Поэтому не просто «есть или
+ * нет»: кандидату нужно показать, что именно просили поправить.
+ */
+async function extraTaskOf(app) {
   const step = (app.vacancy?.process?.steps || []).find(s => s.kind === 'form_extra' && !s.archived);
   if (!step) return null;
-
-  const task = await VacTask.findOne({
+  return VacTask.findOne({
     where: { applicationId: app.id, stepKey: step.key, completedAt: null },
-    attributes: ['id']
+    attributes: ['id', 'returned']
   });
-  return task ? 'after' : null;
 }
 
 /**
@@ -407,6 +413,9 @@ router.get('/a/:token', loadApplication, async (req, res) => {
     // идентификаторам из снимка, а не по вакансии: анкету могли с тех пор
     // поправить, а человек отвечает на ту, которую открыл. Файл, которого уже
     // нет, просто не попадает в ответ — ссылка на пустое место хуже молчания.
+    // Возврат с проверки: замечания лежат у задачи второго этапа.
+    const returned = stage === 'after' ? (await extraTaskOf(app))?.returned || null : null;
+
     const wanted = [...attachments.collectIds(form)];
     const attachmentRows = wanted.length
       ? await VacAttachment.findAll({
@@ -427,8 +436,14 @@ router.get('/a/:token', loadApplication, async (req, res) => {
       files: fileRows,
       attachments: attachmentRows,
       specialities,
-      revisionFields: app.revisionFields || [],
-      decisionNote: app.status === 'revision' ? app.decisionNote : null,
+      // На втором этапе замечания свои: их пишет тот, кто проверял документы, и
+      // лежат они у его задачи. Решение главврача к этому моменту уже принято,
+      // и его комментарий кандидату больше не адресован.
+      // Признак «документы вернули с проверки»: без него страница поздравила бы
+      // с согласованием того, кого только что попросили переделать.
+      returned: Boolean(returned),
+      revisionFields: (returned ? returned.fields : app.revisionFields) || [],
+      decisionNote: returned ? returned.note : (app.status === 'revision' ? app.decisionNote : null),
       vacancy: app.vacancy
         ? { title: app.vacancy.title, description: app.vacancy.description, salary: salary.label(app.vacancy) }
         : null,

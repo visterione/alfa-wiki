@@ -110,6 +110,20 @@ function takenKeys(blocks) {
   return out;
 }
 
+/**
+ * Ключи блоков — пространство имён отдельное от полей: сервер требует, чтобы
+ * они не повторялись между собой, а с полем обычный блок пересечься не может
+ * (наружу, в ответы, его ключ не выходит).
+ *
+ * До ver. 8.38 ключ нового блока подбирался по takenKeys(), где обычных блоков
+ * нет вовсе, — и каждый следующий «Новый блок» получал тот же novyyBlok.
+ * Замечал это только сервер при сохранении, и переименовывать приходилось
+ * руками.
+ */
+function takenBlockKeys(blocks, except) {
+  return new Set(blocks.filter(b => b !== except).map(b => b.key));
+}
+
 // ── Преобразование в хранимый вид и обратно ────────────────────────────────
 
 /**
@@ -217,7 +231,7 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
    * порядке после всех остальных, и кандидат увидел бы его последним.
    */
   const addBlock = (stepKey) => {
-    const key = keyFromLabel('Новый блок', takenKeys(draft.blocks));
+    const key = keyFromLabel('Новый блок', takenBlockKeys(draft.blocks));
     const block = {
       key,
       _uid: uid(),
@@ -237,7 +251,9 @@ export default function FormBuilder({ draft, meta, attachments = [], onAttach, o
     blocks.splice(at, 0, block);
 
     patch({ blocks });
-    setOpen(prev => new Set(prev).add(key));
+    // Раскрытие помнится по _uid, а не по ключу: ключ у блока меняется вместе
+    // с названием, и добавленный блок оставался бы свёрнутым.
+    setOpen(prev => new Set(prev).add(block._uid));
   };
 
   // ── Шаги ────────────────────────────────────────────────────────────────
@@ -383,6 +399,18 @@ function BlockCard({
     onChange({ ...block, fields });
   };
 
+  /**
+   * Ключ блока идёт за названием, пока его не правили руками, — так же, как у
+   * поля. «Трогали или нет» при этом не запоминается флагом: признак — что
+   * нынешний ключ и есть перевод нынешнего названия. Флаг пришлось бы заводить
+   * заново после каждого перечитывания анкеты, а это условие верно всегда.
+   */
+  const setTitle = (title) => {
+    const taken = takenBlockKeys(blocks, block);
+    const follows = !block.key || block.key === keyFromLabel(block.title, taken);
+    onChange({ ...block, title, key: follows ? keyFromLabel(title, taken) : block.key });
+  };
+
   const addField = () => {
     const taken = block.repeat
       ? new Set(block.fields.map(f => f.key))
@@ -414,7 +442,7 @@ function BlockCard({
           className="vac-input is-title"
           value={block.title}
           placeholder="Название блока"
-          onChange={e => onChange({ ...block, title: e.target.value })}
+          onChange={e => setTitle(e.target.value)}
         />
 
         <span className="vac-sub">{block.fields.length} пол.</span>
@@ -442,14 +470,20 @@ function BlockCard({
       {isOpen && (
         <div className="vac-block-body">
           <div className="vac-row">
-            <label className="vac-lab">
-              Ключ блока
-              <input
-                className="vac-input is-key"
-                value={block.key}
-                onChange={e => onChange({ ...block, key: e.target.value.trim() })}
-              />
-            </label>
+            {/* Ключ показывается только у повторяемого блока: там под ним лежит
+                массив записей в ответах, и в выгрузке он виден. У обычного
+                блока ключ никуда не выходит — он лишь связывает блок с шагом
+                анкеты, — и спрашивать его у человека не за чем. */}
+            {block.repeat && (
+              <label className="vac-lab" title="Имя, под которым записи блока лежат в ответах анкеты">
+                Ключ блока
+                <input
+                  className="vac-input is-key"
+                  value={block.key}
+                  onChange={e => onChange({ ...block, key: e.target.value.trim() })}
+                />
+              </label>
+            )}
             <label className="vac-lab is-wide">
               Подсказка под заголовком
               <input

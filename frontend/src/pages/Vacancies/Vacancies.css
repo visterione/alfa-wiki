@@ -685,6 +685,151 @@ textarea.vac-input { padding: 9px 11px; line-height: 1.55; resize: vertical; }
   background: var(--amber-800, #92400e);
 }
 
+/* ── Схема процесса (ver. 8.38) ────────────────────────────────────────── */
+
+/* Колонка — волна: то, что становится доступно одновременно. Раскладка не
+   хранится и не двигается мышью: положение узла — следствие зависимостей, и
+   схема, которую раскладывают руками, расходится с процессом на второй правке.
+
+   Полотно прокручивается по горизонтали, поэтому стрелки лежат внутри него, а
+   не поверх страницы: иначе при прокрутке линии оставались бы на месте. */
+.vac-map { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+
+.vac-map-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+
+.vac-map-canvas {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 56px;                /* промежуток между колонками — место под стрелки */
+  width: max-content;
+  min-width: 100%;
+  /* Снизу оставлено место под линии возврата: они идут против течения схемы и
+     проходят под узлами, а не между колонками. */
+  padding: 2px 2px 26px;
+}
+
+.vac-map-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;     /* линии не должны перехватывать клик по узлу */
+}
+.vac-map-link {
+  fill: none;
+  stroke: color-mix(in srgb, var(--primary) 45%, transparent);
+  stroke-width: 1.6;
+}
+/* Связь через колонку идёт над чужими узлами — пунктиром, чтобы её не читали
+   как соседство. */
+.vac-map-link.is-far { stroke-dasharray: 5 4; opacity: .75; }
+
+/* Возврат — другим цветом и пунктиром: это не порядок работы, а откат. */
+.vac-map-link.is-back {
+  stroke: color-mix(in srgb, var(--amber-800) 55%, transparent);
+  stroke-dasharray: 3 4;
+}
+.vac-map-links marker path { fill: color-mix(in srgb, var(--primary) 55%, transparent); }
+.vac-map-links marker.is-back path { fill: color-mix(in srgb, var(--amber-800) 65%, transparent); }
+
+.vac-map-col { flex: none; width: 212px; display: flex; flex-direction: column; gap: 10px; }
+.vac-map-col-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 2px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.vac-map-par {
+  padding: 1px 7px;
+  border-radius: var(--vac-pill);
+  background: var(--primary-light);
+  color: var(--primary-hover);
+  font-size: 10.5px;
+}
+
+.vac-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 11px 9px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--vac-r-m);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.vac-node:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  box-shadow: 0 6px 16px rgba(20, 29, 45, .08);
+}
+
+.vac-node-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.vac-node-kind { text-transform: uppercase; letter-spacing: .04em; }
+.vac-node-sla { margin-left: auto; }
+.vac-node-ok { color: var(--green-600, #16a34a); }
+.vac-node-late { color: var(--error); }
+
+.vac-node-title { font-size: 13px; font-weight: 550; line-height: 1.28; }
+.vac-node-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.vac-node-who.is-warn { color: var(--amber-800); }
+
+.vac-node-flag {
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: var(--vac-pill);
+  background: rgba(255, 149, 0, .16);
+  color: var(--amber-800);
+  font-size: 10.5px;
+}
+
+/* Состояние шага у живой заявки — полосой слева, как в списке заявок. */
+.vac-node.is-done { box-shadow: inset 3px 0 0 var(--green-600, #16a34a); }
+.vac-node.is-open { box-shadow: inset 3px 0 0 var(--primary); }
+.vac-node.is-late { box-shadow: inset 3px 0 0 var(--error); }
+.vac-node.is-wait { opacity: .62; }
+.vac-node.is-orphan { border-color: rgba(255, 149, 0, .45); }
+
+.vac-node-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--amber-800);
+}
+
+.vac-map-legend { font-size: 12px; color: var(--text-tertiary); }
+
+/* Карточка шага, на которую перешли кликом по схеме: подсветка гаснет сама, её
+   задача — показать, куда уехала страница, а не отметить выбранное. */
+@keyframes vac-found {
+  from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 38%, transparent); }
+  to   { box-shadow: 0 0 0 3px transparent; }
+}
+.vac-block.is-found { animation: vac-found 1.6s ease-out; }
+
 /* ── Шаги процесса ─────────────────────────────────────────────────────── */
 
 /* Заархивированный шаг остаётся на экране, но приглушён: он больше не

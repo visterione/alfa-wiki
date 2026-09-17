@@ -22,15 +22,24 @@
  * Разница в способе сохранения при этом никуда не делась и её не спрятать:
  * процесс уходит по кнопке, назначения — сразу. Пока шаг не сохранён, его ключа
  * в базе нет, назначать не на что, и карточка честно просит сохранить процесс.
+ *
+ * ── Схема над списком (ver. 8.38) ───────────────────────────────────────────
+ *
+ * Список отвечает, какие шаги есть; схема — как они идут. Читать порядок по
+ * списку было нельзя: карточки стоят в том порядке, в каком их добавляли, а
+ * идут — как разложены зависимости, и «после: согласование анкеты» у четырёх
+ * карточек подряд означает, что все четверо начинаются разом. Теперь это видно
+ * сразу, а список остался тем, чем и был, — местом, где шаг правят.
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, Archive, ArchiveRestore, Lock
+  ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, Archive, ArchiveRestore, Lock, RotateCcw
 } from 'lucide-react';
 
 import { keyFromLabel, uid } from './FormBuilder';
 import { StepAssigneesFor, EscalationCard, NobodyEligible } from './Assignees';
+import ProcessMap from './ProcessMap';
 
 /**
  * Процесс в редактируемый вид и обратно.
@@ -52,22 +61,44 @@ export function toStoredSteps(steps) {
 export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onChange }) {
   const [open, setOpen] = useState(() => new Set());
 
+  // Карточки шагов по ключу — чтобы со схемы попасть в нужную. Держим ссылки,
+  // а не ищем по идентификатору в DOM: идентификатора у карточки нет, а
+  // придумывать его ради одного перехода незачем.
+  const cards = useRef(new Map());
+  const [found, setFound] = useState('');
+
   const toggle = (key) => setOpen(prev => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
 
+  /**
+   * Клик по узлу схемы: раскрываем карточку шага и уводим к ней страницу.
+   * Подсветка гаснет сама — она показывает, куда уехал экран, а не отмечает
+   * выбранное: выбранного состояния у шага нет.
+   */
+  const pick = (step) => {
+    setOpen(prev => new Set(prev).add(step._uid));
+    setFound(step.key);
+    requestAnimationFrame(() => {
+      cards.current.get(step.key)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    setTimeout(() => setFound(current => (current === step.key ? '' : current)), 1700);
+  };
+
   const setStep = (index, step) => {
     const next = steps.slice();
     const before = next[index].key;
     next[index] = step;
-    // Ключ поменялся — перецепляем всех, кто этот шаг ждал. Иначе правка
-    // названия шага молча рвала бы зависимости.
+    // Ключ поменялся — перецепляем всех, кто этот шаг ждал и кто на него
+    // возвращает. Иначе правка названия шага молча рвала бы зависимости.
     if (before !== step.key) {
       for (let i = 0; i < next.length; i += 1) {
-        if (!next[i].after?.includes(before)) continue;
-        next[i] = { ...next[i], after: next[i].after.map(k => (k === before ? step.key : k)) };
+        if (next[i].after?.includes(before)) {
+          next[i] = { ...next[i], after: next[i].after.map(k => (k === before ? step.key : k)) };
+        }
+        if (next[i].returnTo === before) next[i] = { ...next[i], returnTo: step.key };
       }
     }
     onChange(next);
@@ -124,7 +155,8 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
     const step = steps[index];
     const next = steps
       .filter((_, i) => i !== index)
-      .map(s => (s.after?.includes(step.key) ? { ...s, after: s.after.filter(k => k !== step.key) } : s));
+      .map(s => (s.after?.includes(step.key) ? { ...s, after: s.after.filter(k => k !== step.key) } : s))
+      .map(s => (s.returnTo === step.key ? { ...s, returnTo: undefined } : s));
     onChange(next);
   };
 
@@ -154,6 +186,11 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
 
       {!steps.length && <div className="vac-empty">В процессе нет ни одного шага.</div>}
 
+      {/* Схема рисуется от двух шагов: у одного «хронология» — это он сам. */}
+      {steps.filter(s => !s.archived).length > 1 && (
+        <ProcessMap steps={steps} assignees={assignees} onPick={pick} />
+      )}
+
       {steps.map((step, index) => (
         <StepCard
           key={step._uid || index}
@@ -170,6 +207,8 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
           onRemove={() => remove(index)}
           canMoveUp={index > 0}
           canMoveDown={index < steps.length - 1}
+          found={found === step.key}
+          hold={el => { if (el) cards.current.set(step.key, el); else cards.current.delete(step.key); }}
         />
       ))}
 
@@ -182,10 +221,25 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
 
 function StepCard({
   step, steps, meta, assignees, locked, isOpen, onToggle, onChange,
-  onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown
+  onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown, found, hold
 }) {
   const kindSpec = meta.stepKinds.find(k => k.key === step.kind);
   const others = steps.filter(s => s.key !== step.key && !s.archived);
+
+  // Вернуть работу можно только назад — на шаг, от которого этот зависит.
+  // Вперёд возвращать бессмысленно: переоткрытый шаг не приведёт задачу
+  // обратно, и проверяющий останется ни с чем. Тот же список проверяет сервер.
+  const backTargets = [];
+  const seen = new Set();
+  const collect = (key) => {
+    for (const parent of steps.find(s => s.key === key)?.after || []) {
+      if (seen.has(parent)) continue;
+      seen.add(parent);
+      const found = steps.find(s => s.key === parent && !s.archived);
+      if (found) { backTargets.push(found); collect(parent); }
+    }
+  };
+  collect(step.key);
   const afterTitles = (step.after || [])
     .map(key => steps.find(s => s.key === key)?.title || key);
 
@@ -208,7 +262,10 @@ function StepCard({
   };
 
   return (
-    <div className={`vac-block ${isOpen ? 'is-open' : ''} ${step.archived ? 'is-archived' : ''}`}>
+    <div
+      ref={hold}
+      className={`vac-block ${isOpen ? 'is-open' : ''} ${step.archived ? 'is-archived' : ''} ${found ? 'is-found' : ''}`}
+    >
       <div className="vac-block-head">
         <button className="vac-icon" onClick={onToggle} title={isOpen ? 'Свернуть' : 'Развернуть'}>
           {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -223,6 +280,14 @@ function StepCard({
 
         {step.kind !== 'manual' && (
           <span className="vac-badge vac-badge-info">{kindSpec?.label || step.kind}</span>
+        )}
+        {step.returnTo && !step.archived && (
+          <span
+            className="vac-badge vac-badge-info"
+            title={`Может вернуть работу на шаг «${steps.find(s => s.key === step.returnTo)?.title || step.returnTo}»`}
+          >
+            <RotateCcw size={11} /> возврат
+          </span>
         )}
         {step.archived && <span className="vac-badge vac-badge-muted">в архиве</span>}
         {locked && (
@@ -343,6 +408,35 @@ function StepCard({
               />
             </label>
           </div>
+
+          {/* Возврат назад (ver. 8.38): у отметки исполнителя может быть право
+              вернуть работу на один из шагов, от которых она зависит. Обычно
+              это «Дозаполнение анкеты»: юрист смотрит документы и просит
+              переделать. Отказать проверяющий не может — решение о найме
+              остаётся за шагом решения. */}
+          {step.kind === 'manual' && (
+            <div className="vac-row">
+              <label className="vac-lab is-wide">
+                Может вернуть работу на шаг
+                <select
+                  className="vac-input"
+                  value={step.returnTo || ''}
+                  onChange={e => onChange({ ...step, returnTo: e.target.value || undefined })}
+                >
+                  <option value="">— возврата нет —</option>
+                  {backTargets.map(t => (
+                    <option key={t.key} value={t.key}>{t.title || t.key}</option>
+                  ))}
+                </select>
+              </label>
+              {!backTargets.length && (
+                <div className="vac-hint">
+                  Возвращать некуда: шаг ничего не ждёт, а вернуть работу можно
+                  только назад по цепочке.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Кто выполняет — здесь же, а не на соседней вкладке. У шага, который
               закрывает сам кандидат, исполнителя нет по определению. */}

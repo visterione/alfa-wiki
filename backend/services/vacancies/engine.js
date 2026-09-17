@@ -321,6 +321,98 @@ function onExtraSubmitted(app) {
 }
 
 /**
+ * Возврат работы кандидату с шага проверки (ver. 8.38).
+ *
+ * Тот же жест, что у главврача на решении, но посреди процесса: юрист смотрит
+ * присланные документы и просит переделать. Разница в том, что заявка при этом
+ * никуда не откатывается целиком — статус остаётся прежним, назад отъезжает
+ * только та ветка, которая выросла из переоткрываемого шага.
+ *
+ * Что происходит:
+ *   1. задачи всех шагов, зависящих от целевого (включая задачу того, кто
+ *      возвращает), удаляются — их результат получен по документам, которых
+ *      больше нет, и держать их закрытыми значило бы врать чек-листу;
+ *   2. задача целевого шага переоткрывается с новым сроком, а замечания
+ *      ложатся в неё: их читает кандидат, открывая анкету;
+ *   3. кандидату уходит письмо, и он снова видит свой этап анкеты — `stageOf`
+ *      в публичном контуре считает этап по этой самой открытой задаче.
+ *
+ * Дальше всё идёт своим чередом: кандидат отправляет исправленное, задача
+ * закрывается, openReady() снова ставит задачу проверяющему.
+ */
+async function returnToStep(app, task, user, { note, fields = [] } = {}) {
+  const { vacancy, process } = await processOf(app);
+  const from = processSchema.getStep(process, task.stepKey);
+  const target = from?.returnTo ? processSchema.getStep(process, from.returnTo) : null;
+
+  if (!target || target.archived) {
+    return { ok: false, reason: 'Этому шагу некуда возвращать работу' };
+  }
+
+  const back = [...processSchema.descendantsOf(process.steps, target.key)];
+  if (back.length) {
+    await VacTask.destroy({ where: { applicationId: app.id, stepKey: back } });
+  }
+
+  const dueAt = await sla.dueAfterWorkingHours(target.slaHours || 8);
+  const targetTask = await VacTask.findOne({
+    where: { applicationId: app.id, stepKey: target.key }
+  });
+  const returned = {
+    note: note || null,
+    fields,
+    by: user.id,
+    at: new Date(),
+    count: (targetTask?.returned?.count || 0) + 1
+  };
+
+  if (targetTask) {
+    await targetTask.update({
+      completedAt: null,
+      completedBy: null,
+      claimedBy: null,
+      claimedAt: null,
+      remindedAt: null,
+      escalatedAt: null,
+      note: null,
+      dueAt,
+      returned
+    });
+  } else {
+    // Задачи целевого шага может не быть: шаг добавили в процесс уже после
+    // того, как заявка его прошла. Тогда она просто ставится заново — и зовёт
+    // кандидата своим обычным письмом, поэтому письма о возврате ниже не будет.
+    const fresh = await openTask(app, target);
+    await fresh.update({ returned });
+  }
+
+  // Запущенная заявка возвращается в работу: чек-лист больше не закрыт.
+  if (app.status === 'launched') await app.update({ status: 'in_progress', launchedAt: null });
+
+  await log(app.id, 'returned', {
+    stepKey: from.key, to: target.key, note: note || null, fields, count: returned.count
+  }, user.id);
+
+  // Кандидату — письмо: свою задачу он видит только по ссылке из почты.
+  const spec = processSchema.STEP_KINDS[target.kind];
+  if (spec?.forcedScope === 'candidate' && targetTask) {
+    const sent = target.kind === 'services_pick'
+      ? await mailer.sendServicesInvite(vacancy, app)
+      : await mailer.sendExtraReturn(vacancy, app, note, fields);
+    await log(app.id, 'return_mailed', { to: target.key, mail: sent.success, reason: sent.reason || null });
+  } else if (targetTask?.assigneeIds?.length) {
+    // Возврат сотруднику: задача у него уже появилась, остаётся сказать почему.
+    signalChanged(targetTask.assigneeIds, { reason: 'returned', applicationId: app.id, stepKey: target.key });
+    await notify(targetTask.assigneeIds,
+      `↩️ ${app.fullName || 'Заявка без имени'} — шаг «${target.title}» вернули${note ? `: ${note}` : ''}`,
+      { type: 'vacancy_returned', applicationId: app.id, stepKey: target.key });
+  }
+
+  signalChanged(task.assigneeIds, { reason: 'returned', applicationId: app.id, stepKey: task.stepKey });
+  return { ok: true };
+}
+
+/**
  * Закрытие задачи исполнителем.
  *
  * У шагов с умением отметка сначала проверяется чтением из «Реновации». Не
@@ -411,6 +503,7 @@ module.exports = {
   cancel,
   onServicesPicked,
   onExtraSubmitted,
+  returnToStep,
   completeTask,
   tryLaunch
 };

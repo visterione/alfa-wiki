@@ -1300,7 +1300,10 @@ export const vacancies = {
 
   myTasks:      ()              => api.get('/vacancies/tasks/my'),
   claimTask:    (taskId)        => api.post(`/vacancies/tasks/${taskId}/claim`),
-  completeTask: (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/complete`, data)
+  completeTask: (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/complete`, data),
+  // Вернуть работу назад с шага проверки: кандидат дозаполняет свою часть
+  // заново, задача проверяющего придёт снова.
+  returnTask:   (taskId, data)  => api.post(`/vacancies/tasks/${taskId}/return`, data)
 };
 
 export const onboarding = {

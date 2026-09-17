@@ -74,6 +74,24 @@ const STEP_KINDS = {
   }
 };
 
+// ── Возврат назад (ver. 8.38) ──────────────────────────────────────────────
+//
+// До 8.38 вернуть работу мог только шаг решения и только до старта процесса:
+// после согласования анкеты кандидат уже ничего не переделывал. Но документы на
+// трудоустройство он присылает как раз после согласования, и юристу, который их
+// проверяет, нужно то же самое, что главврачу, — «вот это поправьте».
+//
+// Сделано настройкой шага, а не ещё одним видом: возвращать умеет обычная
+// отметка исполнителя, у которой указано, на какой шаг откатывать (`returnTo`).
+// Отдельный вид «проверка документов» позволил бы ровно один такой шаг на
+// вакансию — а проверяющих бывает двое (юрист по паспорту, бухгалтер по
+// трудовой), и у каждого свой круг.
+//
+// Возвращать можно только на шаг, от которого этот зависит: иначе переоткрытый
+// шаг не приведёт работу обратно, и задача проверяющего просто исчезнет.
+// Отказать проверяющий не может — решение о найме остаётся за шагом решения
+// (решение заказчика от 17.09.2026).
+
 const SCOPES = {
   branch:    { label: 'Свой в каждом филиале' },
   network:   { label: 'Один на всю сеть' },
@@ -179,6 +197,17 @@ function validateProcess(raw, form) {
     if (checklist) step.checklist = checklist;
     else if (!archived) errors.push(`Шаг «${where}»: не заполнена строка чек-листа — по ней видно, что именно закрыто`);
 
+    // Куда шаг умеет вернуть работу. Проверяется ниже, когда известны все шаги:
+    // здесь ещё не с чем сверять.
+    const returnTo = trimmed(stepRaw.returnTo, 60);
+    if (returnTo) {
+      if (kind !== 'manual') {
+        errors.push(`Шаг «${where}»: возвращать работу назад умеет только отметка исполнителя`);
+      } else {
+        step.returnTo = returnTo;
+      }
+    }
+
     if (archived) step.archived = true;
 
     steps.push(step);
@@ -245,6 +274,18 @@ function validateProcess(raw, form) {
         errors.push(`Шаг «${step.title}» ждёт сам себя`);
       }
     }
+
+    // ── Куда возвращать ──────────────────────────────────────────────────
+    if (step.returnTo) {
+      const back = byKey.get(step.returnTo);
+      if (!back || back.archived) {
+        errors.push(`Шаг «${step.title}»: возвращать некуда — шага «${step.returnTo}» в процессе нет или он в архиве`);
+      } else if (!ancestorsOf(steps, step.key).has(step.returnTo)) {
+        // Возврат на шаг, от которого этот не зависит, оставил бы проверяющего
+        // ни с чем: переоткрытый шаг закроется, а его задача обратно не придёт.
+        errors.push(`Шаг «${step.title}» не зависит от «${back.title}» — вернуть работу туда нельзя, она не придёт обратно`);
+      }
+    }
   }
 
   // ── Кольца ──────────────────────────────────────────────────────────────
@@ -293,6 +334,47 @@ function findCycle(steps) {
   return null;
 }
 
+/**
+ * Все шаги, от которых шаг зависит, — прямо и через цепочку.
+ *
+ * Нужна и проверке («возвращать можно только назад»), и редактору, который по
+ * ней предлагает, куда шаг умеет вернуть работу.
+ */
+function ancestorsOf(steps, key) {
+  const byKey = new Map((steps || []).map(s => [s.key, s]));
+  const out = new Set();
+  const walk = (at) => {
+    for (const parent of byKey.get(at)?.after || []) {
+      if (out.has(parent) || !byKey.has(parent)) continue;
+      out.add(parent);
+      walk(parent);
+    }
+  };
+  walk(key);
+  return out;
+}
+
+/**
+ * Все шаги, которые зависят от указанного, — прямо и через цепочку.
+ *
+ * По ним откатывается работа при возврате: переоткрыть шаг и оставить закрытыми
+ * те, что из него выросли, значит получить заявку, у которой проверка пройдена
+ * по документам, которых больше нет.
+ */
+function descendantsOf(steps, key) {
+  const out = new Set();
+  const active = (steps || []).filter(s => !s.archived);
+  let grown = true;
+  while (grown) {
+    grown = false;
+    for (const step of active) {
+      if (out.has(step.key)) continue;
+      if ((step.after || []).some(k => k === key || out.has(k))) { out.add(step.key); grown = true; }
+    }
+  }
+  return out;
+}
+
 /** Шаги, которым нужен исполнитель из сотрудников, — для экрана назначений. */
 function assignableSteps(process) {
   return (process?.steps || [])
@@ -327,6 +409,8 @@ module.exports = {
   ESCALATION_KEY,
   validateProcess,
   findCycle,
+  ancestorsOf,
+  descendantsOf,
   assignableSteps,
   stepsAfter,
   getStep,

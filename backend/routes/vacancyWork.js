@@ -212,6 +212,12 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
         scope: step.scope,
         archived: Boolean(step.archived),
         after: step.after || [],
+        // Куда шаг умеет вернуть работу и как называется тот шаг: кнопка
+        // «Вернуть» должна говорить, куда именно она отправляет.
+        returnTo: step.returnTo || null,
+        returnTitle: step.returnTo
+          ? ((process.steps || []).find(s => s.key === step.returnTo)?.title || step.returnTo)
+          : null,
         task: task ? {
           id: task.id,
           assigneeIds: task.assigneeIds,
@@ -223,6 +229,7 @@ router.get('/applications/:id', loadApplication, async (req, res) => {
           verifiedByMis: task.verifiedByMis,
           dueAt: task.dueAt,
           note: task.note,
+          returned: task.returned || null,
           overdue,
           overdueHours: overdue ? await sla.overdueWorkingHours(task.dueAt, now) : 0
         } : null
@@ -420,6 +427,36 @@ router.post('/tasks/:taskId/claim', loadTask, async (req, res) => {
   } catch (error) {
     console.error('[vacancies/work] claim:', error);
     res.status(500).json({ error: 'Не удалось взять задачу' });
+  }
+});
+
+/**
+ * Вернуть работу назад (ver. 8.38).
+ *
+ * Доступно шагу, у которого в процессе указано, куда возвращать. Право то же,
+ * что у закрытия: возвращает тот, кто эту задачу и делает, — он и смотрел
+ * документы.
+ */
+router.post('/tasks/:taskId/return', loadTask, async (req, res) => {
+  try {
+    const task = req.task;
+    if (task.completedAt) return res.status(400).json({ error: 'Задача уже закрыта' });
+    if (task.claimedBy && task.claimedBy !== req.user.id && !req.acl.isAdmin) {
+      return res.status(409).json({ error: 'Задачу взял коллега' });
+    }
+
+    const note = String(req.body?.note || '').trim();
+    const fields = Array.isArray(req.body?.fields) ? req.body.fields.slice(0, 60) : [];
+    if (!note && !fields.length) {
+      return res.status(400).json({ error: 'Напишите, что поправить, или отметьте поля' });
+    }
+
+    const result = await engine.returnToStep(req.application, task, req.user, { note, fields });
+    if (!result.ok) return res.status(409).json(result);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[vacancies/work] return:', error);
+    res.status(500).json({ error: 'Не удалось вернуть работу' });
   }
 });
 
