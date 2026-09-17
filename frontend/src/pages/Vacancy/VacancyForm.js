@@ -186,10 +186,23 @@ export default function VacancyForm() {
         ))}
       </div>
 
-      {state.stage === 'after' && (
+      {state.stage === 'after' && !state.returned && (
         <div className="vcy-revision is-good">
           <b>Вашу анкету согласовали</b>
           <p>Осталось дозаполнить вторую часть — она короче первой.</p>
+        </div>
+      )}
+
+      {/* Документы уже присылали, и их вернули с проверки (ver. 8.38). Этап тот
+          же, но поздравлять с согласованием второй раз не за чем: человеку
+          нужно прочитать замечания. */}
+      {state.stage === 'after' && state.returned && (
+        <div className="vcy-revision">
+          <b>Документы вернули на доработку</b>
+          {state.decisionNote && <p>{state.decisionNote}</p>}
+          {Boolean(state.revisionFields?.length) && (
+            <p className="vcy-note">Поправить нужно только отмеченное — остальное сохранено.</p>
+          )}
         </div>
       )}
 
