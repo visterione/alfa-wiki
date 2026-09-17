@@ -24,7 +24,9 @@ export default function PageEditor() {
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  // Панель настроек открыта сразу: слаг, публикация и доступ нужны почти всегда,
+  // а прятать их за кнопкой означало, что про них просто забывали.
+  const [showSettings, setShowSettings] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [allRoles, setAllRoles] = useState([]);
@@ -48,7 +50,8 @@ export default function PageEditor() {
     contentType: typeFromUrl,
     description: '',
     keywords: '',
-    isPublished: false,
+    // Новая страница создаётся опубликованной; для старых флаг приходит из loadPage
+    isPublished: true,
     allowedRoles: [],
     customCss: '',
     customJs: '',

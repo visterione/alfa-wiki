@@ -317,7 +317,8 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       icon,
       folderId: folderId || null,
       sortOrder: (maxOrder || 0) + 1,
-      isPublished: isPublished || false,
+      // Флаг приходит с формы; если клиент его не прислал — публикуем (см. дефолт модели Page)
+      isPublished: isPublished !== undefined ? isPublished : true,
       allowedRoles: allowedRoles || [],
       customCss,
       customJs,

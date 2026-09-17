@@ -288,7 +288,9 @@ const Page = sequelize.define('Page', {
   icon: { type: DataTypes.STRING(50) },
   folderId: { type: DataTypes.UUID, allowNull: true },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
-  isPublished: { type: DataTypes.BOOLEAN, defaultValue: false },
+  // Новые страницы создаются сразу опубликованными: черновик нужен редко,
+  // а раньше автор сохранял страницу и не понимал, почему её никто не видит.
+  isPublished: { type: DataTypes.BOOLEAN, defaultValue: true },
   isFavorite: { type: DataTypes.BOOLEAN, defaultValue: false },
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
   customCss: { type: DataTypes.TEXT },
