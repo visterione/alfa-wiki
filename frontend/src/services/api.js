@@ -527,16 +527,26 @@ export const tasks = {
   createTeam: (data) => api.post('/tasks/teams', data),
   updateTeam: (id, data) => api.put(`/tasks/teams/${id}`, data),
   deleteTeam: (id) => api.delete(`/tasks/teams/${id}`),
+  // В ответе accessGranted: true, если человеку этим же действием открыли
+  // модуль «Задачи». Приглашений по ссылке больше нет — состав правится напрямую.
   addTeamMember: (id, data) => api.post(`/tasks/teams/${id}/members`, data),
   removeTeamMember: (id, userId) => api.delete(`/tasks/teams/${id}/members/${userId}`),
-  createTeamInvite: (id, data) => api.post(`/tasks/teams/${id}/invites`, data),
-  getTeamInvite: (token) => api.get(`/tasks/teams/invites/${token}`),
-  acceptTeamInvite: (token) => api.post(`/tasks/teams/invites/${token}/accept`),
   getTeamLoad: (id, start, end) =>
     api.get(`/tasks/teams/${id}/load`, { params: { start, end } }),
+  // Кто за что отвечает внутри команды: люди со своими активными частями и три
+  // сигнала. Только командные задачи — личные дела участников сюда не попадают.
+  getTeamOverview: (id) => api.get(`/tasks/teams/${id}/overview`),
+  // Показатели команды за период: сроки, оценки, авральность, скорость разбора
+  // и то же самое по людям. Считается по истории командных задач.
+  getTeamStats: (id, start, end) =>
+    api.get(`/tasks/teams/${id}/stats`, { params: { start, end } }),
 
   // === ЛЮДИ И НОРМЫ ===
   getPeople: (params) => api.get('/tasks/people', { params }),
+  // Кому можно поручить: только заведённые в модуле, то есть с рабочим
+  // расписанием. Всем остальным постановка задачи отвечает 409, и предлагать
+  // их в выборе исполнителя значит обещать то, чего не будет.
+  getAssignable: () => api.get('/tasks/people/assignable'),
   // Загрузка всех людей области видимости одной таблицей — вкладка
   // «Сотрудники» на экране загрузки, где команды не разделяют людей.
   getPeopleLoad: (start, end) =>
@@ -555,6 +565,9 @@ export const tasks = {
   // повторить с полем explanation. Обойти можно всегда, но не молча.
   createTask: (data) => api.post('/tasks', data),
   cancelTask: (id) => api.delete(`/tasks/${id}`),
+  // Отдельно от остального редактирования: это не правка реквизита, а смена
+  // того, кто видит задачу. teamId: null снимает привязку.
+  setTaskTeam: (id, teamId) => api.put(`/tasks/${id}/team`, { teamId }),
 
   // Мне на решение и те, кого жду я
   getInbox: () => api.get('/tasks/inbox'),

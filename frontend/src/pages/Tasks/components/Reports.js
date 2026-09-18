@@ -1,5 +1,5 @@
 /**
- * Отчёты по загрузке.
+ * Отчёты по загрузке — общие и по одной команде.
  *
  * Главная цифра здесь — «частей никем не обработано». Она отвечает на вопрос,
  * который обычная доска прячет: сколько работы числится поставленной, но на
@@ -19,7 +19,7 @@ import { userName, shortName, loadColor } from '../utils/labels';
 import { Avatar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 
-export default function Reports({ ctx }) {
+export default function Reports({ ctx, teamId = null }) {
   const { cursor, setCursor } = ctx;
   const [view, setView] = useState('week');
   const [data, setData] = useState(null);
@@ -30,12 +30,15 @@ export default function Reports({ ctx }) {
 
   const reload = useCallback(async () => {
     try {
-      const res = await api.getReports({ start, end });
+      // С teamId отчёт живёт вкладкой на странице команды и считает только её
+      // людей. Своей разбивки «по командам» там быть не должно — она бы
+      // состояла из одной строки, уже написанной в заголовке страницы.
+      const res = await api.getReports(teamId ? { start, end, teamId } : { start, end });
       setData(res.data);
     } catch {
       toast.error('Не удалось построить отчёт');
     }
-  }, [start, end]);
+  }, [start, end, teamId]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -73,7 +76,7 @@ export default function Reports({ ctx }) {
       <div className="tsk-stats">
         <div className="tsk-stat">
           <div className="tsk-stat-value">{data.unprocessed}</div>
-          <div className="tsk-stat-label">частей задач никем не обработано</div>
+          <div className="tsk-stat-label">подзадач никем не обработано</div>
         </div>
         <div className="tsk-stat">
           <div className="tsk-stat-value">{data.overloadedPersonDays}</div>
@@ -81,7 +84,7 @@ export default function Reports({ ctx }) {
         </div>
         <div className="tsk-stat">
           <div className="tsk-stat-value">{data.stuckParts}</div>
-          <div className="tsk-stat-label">частей требуют решения после трёх переносов</div>
+          <div className="tsk-stat-label">подзадач требуют решения после трёх переносов</div>
         </div>
         <div className="tsk-stat">
           <div className="tsk-stat-value">{data.multiPersonTasks}</div>
@@ -117,7 +120,7 @@ export default function Reports({ ctx }) {
       </div>
       </div>
 
-      {!!data.byTeam.length && (
+      {!teamId && !!data.byTeam.length && (
         <div className="tsk-report-block">
           <div className="tsk-sect">По командам</div>
           <div className="tsk-bars">

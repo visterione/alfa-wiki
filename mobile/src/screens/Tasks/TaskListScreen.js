@@ -50,8 +50,14 @@ export default function TaskListScreen({navigation}) {
     async ({silent} = {}) => {
       if (!silent) setLoading(true);
       try {
+        // scope=own — иначе руководителю команды сюда приезжают задачи его
+        // участников, хотя экран называется «Мои задачи». Веб-список ходит с
+        // тем же параметром: правило «моё это моё» должно быть одно на оба
+        // приложения, иначе телефон и браузер показывают разные списки.
         const {data} = await tasksApi.getTasks(
-          filter === 'all' ? {} : {status: filter},
+          filter === 'all'
+            ? {scope: 'own'}
+            : {scope: 'own', status: filter},
         );
         setList(data || []);
       } catch (e) {

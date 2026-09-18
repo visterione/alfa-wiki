@@ -50,7 +50,7 @@ function historyText(row) {
   switch (row.action) {
     case 'created':
       return p.parts > 1
-        ? `создал задачу из ${p.parts} частей на ${p.people} чел.`
+        ? `создал задачу из ${p.parts} подзадач на ${p.people} чел.`
         : 'создал задачу';
     case 'planned':
       return p.overload
@@ -69,7 +69,7 @@ function historyText(row) {
     case 'extended':
       return `продлил: ${hoursText(p.from)} → ${hoursText(p.to)}`;
     case 'split':
-      return `разбил часть: ${hoursText(p.head)} + ${hoursText(p.tail)}`;
+      return `разбил подзадачу: ${hoursText(p.head)} + ${hoursText(p.tail)}`;
     case 'forced':
       return `продавил проверку загрузки: «${p.explanation}»`;
     case 'status_changed':
@@ -270,7 +270,7 @@ export default function TaskCardScreen({route, navigation}) {
       )}
 
       {tab === 'main' && (<>
-      <Text style={styles.section}>Части — {parts.length}</Text>
+      <Text style={styles.section}>Подзадачи — {parts.length}</Text>
       {parts.map((part, partIndex) => {
         const mine = (part.assignees || []).find(a => a.userId === user?.id);
         const notPlanned = (part.assignees || []).filter(a => !a.plannedDate);
@@ -323,7 +323,7 @@ export default function TaskCardScreen({route, navigation}) {
               <View style={styles.stuck}>
                 <Text style={[styles.stuckTitle, {color: c.error}]}>Требует решения</Text>
                 <Text style={styles.stuckText}>
-                  Часть переносится третий раз подряд. Обычно это значит, что она
+                  Подзадача переносится третий раз подряд. Обычно это значит, что она
                   слишком крупная или на самом деле не нужна.
                 </Text>
                 <Pressable
@@ -332,10 +332,10 @@ export default function TaskCardScreen({route, navigation}) {
                   onPress={() =>
                     run(
                       () => tasksApi.splitPart(part.id, {}),
-                      'Разбито надвое — теперь части мельче и помещаются в день.',
+                      'Разбито надвое — теперь подзадачи мельче и помещаются в день.',
                     )
                   }>
-                  <Text style={styles.btnText}>Разбить на части</Text>
+                  <Text style={styles.btnText}>Разбить на подзадачи</Text>
                 </Pressable>
               </View>
             )}

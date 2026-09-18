@@ -8,17 +8,18 @@
  */
 
 import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import {
   CalendarClock, CheckCircle2, ClipboardCheck, Clock, Clock3, RotateCcw,
-  FileText, GitBranch, History,
+  FileText, GitBranch, History, Shield, Lock,
 } from 'lucide-react';
 import { tasks as api, BASE_URL } from '../../../services/api';
 import {
   STATUS_LABEL, STATUS_ICON, STATUS_COLOR, userName, shortName, partCode,
 } from '../utils/labels';
 import { hoursText, ddate, dfull, clockText } from '../utils/dates';
-import { Badge, Avatar, AvatarStack, Empty } from './Bits';
+import { Badge, Avatar, AvatarStack, Empty, useMaskClose } from './Bits';
 
 /**
  * Продление: не одна кнопка «+30 минут», а выбор.
@@ -39,7 +40,7 @@ function historyText(row) {
   switch (row.action) {
     case 'created':
       return p.parts > 1
-        ? `создал задачу из ${p.parts} частей на ${p.people} чел.`
+        ? `создал задачу из ${p.parts} подзадач на ${p.people} чел.`
         : 'создал задачу';
     case 'planned':
       return p.overload
@@ -55,15 +56,22 @@ function historyText(row) {
         ? `перенёс на ${ddate(p.to)} — третий перенос, задача требует решения`
         : `перенёс на ${ddate(p.to)}`;
     case 'extended': return `продлил: ${hoursText(p.from)} → ${hoursText(p.to)}`;
-    case 'split': return `разбил часть: ${hoursText(p.head)} + ${hoursText(p.tail)}`;
+    case 'split': return `разбил подзадачу: ${hoursText(p.head)} + ${hoursText(p.tail)}`;
     case 'forced': return `продавил проверку загрузки: «${p.explanation}»`;
     case 'status_changed': return `${STATUS_LABEL[p.from] || p.from} → ${STATUS_LABEL[p.to] || p.to}`;
+    case 'team_changed':
+      return p.to
+        ? `открыл задачу команде «${p.to}»`
+        : `убрал задачу из команды${p.from ? ` «${p.from}»` : ''} — снова видят только участники`;
     default: return row.action;
   }
 }
 
 function historyTone(row) {
   if (row.action === 'declined' || row.action === 'forced') return 'bad';
+  // Смена видимости — не хорошее и не плохое событие, но заметное: круг
+  // читающих задачу изменился, и в ленте это должно бросаться в глаза.
+  if (row.action === 'team_changed') return 'violet';
   if (row.action === 'moved' || row.action === 'extended' || row.action === 'proposed_date') return 'warn';
   if (row.action === 'planned' || row.action === 'accepted_date') return 'ok';
   if (row.action === 'status_changed') {
@@ -76,6 +84,7 @@ function historyTone(row) {
 }
 
 export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
+  const maskProps = useMaskClose(onClose);
   const [task, setTask] = useState(null);
   const [busy, setBusy] = useState(false);
   const [movingPart, setMovingPart] = useState(null);
@@ -85,6 +94,7 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
   const [finishingPart, setFinishingPart] = useState(null);
   const [extendingPart, setExtendingPart] = useState(null);
   const [tab, setTab] = useState('main');
+  const [teamOpen, setTeamOpen] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -114,6 +124,33 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
     }
   };
 
+  /**
+   * Смена команды подтверждается вопросом, и это не лишний клик.
+   *
+   * Привязка открывает описание и файлы десятку человек разом, снятие — так же
+   * молча их закрывает. Оба действия необратимы по сути: прочитанное обратно не
+   * забудешь. Поэтому здесь спрашивают, хотя в остальной карточке подтверждений
+   * почти нет.
+   */
+  const changeTeam = async (nextTeamId, nextName) => {
+    const question = nextTeamId
+      ? `Открыть задачу команде «${nextName}»? Её состав увидит название, описание и файлы.`
+      : 'Убрать задачу из команды? Её снова будут видеть только исполнители, автор и руководитель над исполнителем.';
+    if (!window.confirm(question)) return;
+    setBusy(true);
+    try {
+      await api.setTaskTeam(taskId, nextTeamId);
+      toast.success(nextTeamId ? `Задача открыта команде «${nextName}»` : 'Задача снова личная');
+      setTeamOpen(false);
+      await reload();
+      onChanged?.();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Не удалось изменить команду задачи');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const cancel = async () => {
     if (!window.confirm('Отменить задачу? Запланированное время вернётся людям в свободное.')) return;
     try {
@@ -126,11 +163,15 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
     }
   };
 
+  // Порталом в body: у .tsk свой контекст наложения, и внутри него затемнение
+  // обрывалось по краю рабочего полотна — шапка портала и боковая панель
+  // оставались поверх окна незатемнёнными.
   if (!task) {
-    return (
-      <div className="tsk-mask" onClick={onClose}>
+    return createPortal(
+      <div className="tsk-mask" {...maskProps}>
         <div className="tsk-modal"><div className="tsk-modal-body"><Empty compact>Загружаем…</Empty></div></div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
@@ -138,9 +179,18 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
     .flatMap(p => (p.assignees || []).map(a => a.user))
     .filter((u, i, arr) => u && arr.findIndex(x => x?.id === u.id) === i);
   const isAuthor = task.authorId === ctx.me?.id;
+  /**
+   * Менять круг читающих вправе автор и руководитель команды, в которой задача
+   * сейчас лежит. Второе — чтобы было кому убрать из команды то, что попало
+   * туда по ошибке: иначе это мог бы сделать только автор, а его может уже и не
+   * быть в компании. Это же правило проверяет сервер, здесь оно только прячет
+   * кнопку, которая всё равно получила бы 403.
+   */
+  const canChangeTeam = isAuthor || (task.team
+    && (ctx.access?.teams || []).some(team => team.id === task.team.id && team.isLead));
 
-  return (
-    <div className="tsk-mask tsk-task-card-mask" onClick={e => e.target === e.currentTarget && onClose()}>
+  return createPortal(
+    <div className="tsk-mask tsk-task-card-mask" {...maskProps}>
       <div className="tsk-modal tsk-task-card-modal">
         <div className="tsk-modal-head">
           <div className="tsk-modal-title">
@@ -174,7 +224,34 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                 <span style={{ color: 'var(--text-primary)' }}>{users.length}</span>
               </div>
             </div>
+            {/* Кому задача видна — такой же реквизит, как автор и исполнители, и
+                стоять должен рядом с ними. Прятать это в настройки нельзя: круг
+                читающих — первое, что человек должен узнать об открытой
+                карточке, особенно если он в ней что-то пишет. */}
+            <div>
+              Кому видна
+              <div style={{ color: 'var(--text-primary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
+                {task.team
+                  ? <><Shield size={14} strokeWidth={1.9} /> {task.team.name}</>
+                  : <><Lock size={14} strokeWidth={1.9} /> Личная</>}
+                {canChangeTeam && (
+                  <button type="button" className="tsk-link-btn" onClick={() => setTeamOpen(true)}>
+                    изменить
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
+
+          {teamOpen && (
+            <TeamBinding
+              task={task}
+              ctx={ctx}
+              busy={busy}
+              onClose={() => setTeamOpen(false)}
+              onPick={changeTeam}
+            />
+          )}
 
           {task.description && (
             <>
@@ -206,7 +283,7 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
             </>
           )}
 
-          <div className="tsk-sect">Части · {task.parts?.length || 0}</div>
+          <div className="tsk-sect">Подзадачи · {task.parts?.length || 0}</div>
           {/* Тот же порядок, что и в схеме: номер части — это её место в
               задаче, и в двух вкладках он обязан совпадать. */}
           {[...(task.parts || [])]
@@ -259,13 +336,13 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                   <div className="tsk-trade is-bad" style={{ marginTop: 12 }}>
                     <div className="tsk-trade-title">Требует решения</div>
                     <div className="tsk-trade-text">
-                      Часть переносится третий раз подряд. Обычно это значит, что
+                      Подзадача переносится третий раз подряд. Обычно это значит, что
                       она слишком крупная или на самом деле не нужна.
                     </div>
                     <div className="tsk-acts" style={{ marginTop: 10 }}>
                       <button className="tsk-btn" disabled={busy}
-                        onClick={() => act(() => api.splitPart(part.id, {}), 'Разбито надвое — теперь части мельче и помещаются в день')}>
-                        Разбить на части
+                        onClick={() => act(() => api.splitPart(part.id, {}), 'Разбито надвое — теперь подзадачи мельче и помещаются в день')}>
+                        Разбить на подзадачи
                       </button>
                       {isAuthor && (
                         <button className="tsk-btn is-danger" onClick={cancel}>Отменить задачу</button>
@@ -430,7 +507,8 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -536,6 +614,56 @@ function TaskScheme({ task }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Выбор команды для задачи — список вариантов прямо в карточке.
+ *
+ * Не модалка поверх модалки: карточка задачи уже лежит поверх страницы, третий
+ * слой пришлось бы закрывать в обратном порядке, и это единственное место
+ * модуля, где такое могло бы появиться. Список раскрывается на месте, там же,
+ * где стоит подпись «Кому видна».
+ */
+function TeamBinding({ task, ctx, busy, onClose, onPick }) {
+  const myTeams = (ctx.access?.teams || []).filter(team => team.isMember || team.isLead);
+  const currentId = task.team?.id || '';
+
+  return (
+    <div className="tsk-team-binding">
+      <div className="tsk-team-binding-head">
+        <span>Кому открыть задачу</span>
+        <button type="button" className="tsk-x" onClick={onClose}>×</button>
+      </div>
+      <button
+        type="button"
+        className={`tsk-team-binding-row ${currentId ? '' : 'is-on'}`}
+        disabled={busy || !currentId}
+        onClick={() => onPick(null, null)}
+      >
+        <Lock size={14} strokeWidth={1.9} />
+        <span>Личная задача</span>
+        <b>исполнители, автор и руководитель над ними</b>
+      </button>
+      {myTeams.map(team => (
+        <button
+          type="button"
+          key={team.id}
+          className={`tsk-team-binding-row ${team.id === currentId ? 'is-on' : ''}`}
+          disabled={busy || team.id === currentId}
+          onClick={() => onPick(team.id, team.name)}
+        >
+          <Shield size={14} strokeWidth={1.9} />
+          <span>{team.name}</span>
+          <b>весь состав команды</b>
+        </button>
+      ))}
+      {!myTeams.length && (
+        <div className="tsk-team-binding-empty">
+          Вы не состоите ни в одной команде, которой можно открыть задачу.
+        </div>
+      )}
     </div>
   );
 }

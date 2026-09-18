@@ -7,9 +7,9 @@
  * разных точках.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User } from 'lucide-react';
-import { userName, loadColor } from '../utils/labels';
+import { userName, loadColor, STATUS_LABEL, STATUS_ICON, STATUS_BADGE_COLOR } from '../utils/labels';
 import { hoursText } from '../utils/dates';
 import { BASE_URL } from '../../../services/api';
 
@@ -103,6 +103,35 @@ export function AvatarStack({ users = [], size = 22, max = 4 }) {
   );
 }
 
+/**
+ * Статус бейджем: цветная заливка, белый значок, название внутри.
+ *
+ * Голый значок был короче, но требовал знания: шесть фигурок без подписей
+ * читаются только тем, кто уже выучил, что пунктирный круг — это «никто не
+ * дошёл», а глаз — «на проверке». Название снимает это требование, а цвет и
+ * значок оставляют возможность не читать, когда состояние уже знакомо.
+ *
+ * Пилюля по содержимому, без распорки. Пока бейдж стоял в начале строки, под
+ * него приходилось резервировать твёрдую ширину — иначе названия задач ездили
+ * бы по горизонтали от статуса к статусу. В своём столбце ширину держит сама
+ * колонка, и подгонять больше нечего.
+ */
+export function StatusBadge({ status }) {
+  const Icon = STATUS_ICON[status];
+  const label = STATUS_LABEL[status];
+  if (!label) return null;
+  return (
+    <span
+      className="tsk-status-badge"
+      style={{ background: STATUS_BADGE_COLOR[status] }}
+      title={label}
+    >
+      {Icon && <Icon size={13} strokeWidth={2.2} />}
+      <span>{label}</span>
+    </span>
+  );
+}
+
 export function Badge({ tone = 'muted', children, title }) {
   return <span className={`tsk-badge tsk-badge-${tone}`} title={title}>{children}</span>;
 }
@@ -183,6 +212,35 @@ export function LoadBar({ hours, done, norm, onVacation, onDayOff, compact }) {
       <div className="tsk-bar-norm" style={{ left: `${normAt}%` }} />
     </div>
   );
+}
+
+/**
+ * Закрытие модалки нажатием по затемнению.
+ *
+ * Казалось бы, хватает `event.target === event.currentTarget`, и так это и было
+ * написано во всех модалках модуля. Но click браузер отправляет не туда, где
+ * отпустили кнопку, а общему предку точек нажатия и отпускания. Стоит начать
+ * выделение текста в поле формы и увести курсор за край окна — общим предком
+ * оказывается само затемнение, и модалка закрывается вместе со всем набранным.
+ * Жаловались именно на это: описание задачи набирают длинное, а выделять его
+ * мышью, не выезжая за границы, невозможно.
+ *
+ * Поэтому закрываем только когда и нажали, и отпустили на самом затемнении.
+ * Заодно отсекается обратный случай — потащили с фона внутрь окна.
+ */
+export function useMaskClose(onClose) {
+  const pressedMask = useRef(false);
+  const releasedMask = useRef(false);
+  return {
+    onMouseDown: event => { pressedMask.current = event.target === event.currentTarget; },
+    onMouseUp: event => { releasedMask.current = event.target === event.currentTarget; },
+    onClick: () => {
+      const outside = pressedMask.current && releasedMask.current;
+      pressedMask.current = false;
+      releasedMask.current = false;
+      if (outside) onClose();
+    },
+  };
 }
 
 export function Empty({ children, compact }) {

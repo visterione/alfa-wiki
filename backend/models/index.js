@@ -2674,6 +2674,18 @@ const Task = sequelize.define('Task', {
   title: { type: DataTypes.STRING(500), allowNull: false },
   description: { type: DataTypes.TEXT },
   projectId: { type: DataTypes.UUID },
+  // Команда, которой задача открыта целиком (ver. 8.42). Пусто — задача личная.
+  //
+  // Видимость названия даёт именно эта привязка, а не совместное участие в
+  // команде. Считать задачу командной по составу исполнителей заманчиво и
+  // неверно: она начинала бы и переставала быть командной от кадровых
+  // перестановок, а человек, заводя задачу, должен сам решать, объявляет он её
+  // общей или нет.
+  teamId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'Команда, которой открыта задача целиком. NULL — личная задача'
+  },
   authorId: { type: DataTypes.UUID, allowNull: false },
   attachments: {
     type: DataTypes.JSONB,
@@ -2689,6 +2701,7 @@ const Task = sequelize.define('Task', {
   indexes: [
     { fields: ['authorId'] },
     { fields: ['projectId'] },
+    { fields: ['teamId'] },
     { fields: ['isArchived'] }
   ]
 });
@@ -2846,6 +2859,9 @@ TaskTeamInvite.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
 Task.belongsTo(User, { foreignKey: 'authorId', as: 'author' });
 Task.belongsTo(TaskProject, { foreignKey: 'projectId', as: 'project' });
+// SET NULL, а не CASCADE: распустить команду — не то же самое, что отменить её
+// работу. Это обещано в подтверждении удаления команды прямым текстом.
+Task.belongsTo(TaskTeam, { foreignKey: 'teamId', as: 'team', onDelete: 'SET NULL' });
 Task.hasMany(TaskPart, { foreignKey: 'taskId', as: 'parts', onDelete: 'CASCADE' });
 Task.hasMany(TaskHistory, { foreignKey: 'taskId', as: 'history', onDelete: 'CASCADE' });
 

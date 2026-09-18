@@ -19,7 +19,7 @@ import React, { useState, useEffect, useCallback, useMemo, useLayoutEffect, useR
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  CalendarDays, Inbox, BarChart3, Users, Columns3,
+  CalendarDays, Inbox, BarChart3, Columns3,
   UserCog, Shield, ListTodo, PieChart, FolderKanban,
 } from 'lucide-react';
 
@@ -31,10 +31,10 @@ import { Spinner, Empty } from './components/Bits';
 import MyDay from './components/MyDay';
 import InboxScreen from './components/InboxScreen';
 import Chart from './components/Chart';
-import TeamsLoad from './components/TeamsLoad';
 import Board from './components/Board';
 import People from './components/People';
-import TeamsAdmin, { TeamModal } from './components/TeamsAdmin';
+import TeamPage from './components/TeamPage';
+import { TeamModal } from './components/TeamsAdmin';
 import ProjectsAdmin, { ProjectModal } from './components/ProjectsAdmin';
 import TaskList from './components/TaskList';
 import Reports from './components/Reports';
@@ -43,19 +43,53 @@ import TaskCard from './components/TaskCard';
 
 import './Tasks.css';
 
+/**
+ * Разделы сгруппированы по тому, чьё это, а не по тому, как выглядит.
+ *
+ * До ver. 8.42 группа «Команды» состояла из пяти экранов, из которых о команде
+ * рассказывал ровно ноль: «Загрузка» показывала часы, «Доска» — всё вперемешку,
+ * «Команды» — кнопки настройки. Теперь команда одна строка меню, и всё про неё
+ * лежит внутри неё же.
+ *
+ * Отдельного экрана «Загрузка» тоже не стало (ver. 8.45). Он задумывался как
+ * ответ на вопрос «кому вообще поручить» — про всю компанию, включая тех, кто
+ * не состоит ни в одной команде. На деле в модуль заводят через команду, людей
+ * вне команд в нём не оказалось, и экран показывал подмножество того, что и так
+ * лежит во вкладке «Загрузка» внутри команды: две одинаковые на вид таблицы с
+ * одним названием в одном меню. Понадобится снова — вернётся, маршрут
+ * /tasks/people/load на месте.
+ *
+ * «Моё» стоит выше «Команд» даже у руководителя: он тоже человек с
+ * перегруженным днём, и открывать утром ему нужно свой день, а не чужую
+ * загрузку. «Доска» переехала в «Моё» и там же и должна быть — это личные
+ * задачи, разложенные по состояниям, тот же набор, что и в «Задачах».
+ *
+ * «Люди» и «Проекты» — справочники, и стоят последними: в них заходят раз в
+ * месяц, чтобы что-то завести, а не чтобы посмотреть.
+ */
 const SCREENS = [
   { key: 'myday', label: 'Мой день', icon: CalendarDays, Component: MyDay },
   { key: 'inbox', label: 'Входящие', icon: Inbox, Component: InboxScreen },
   { key: 'chart', label: 'График', icon: BarChart3, Component: Chart },
-  { group: 'Команды' },
-  { key: 'load', label: 'Загрузка', icon: Users, Component: TeamsLoad },
-  { key: 'board', label: 'Доска', icon: Columns3, Component: Board },
-  { key: 'people', label: 'Люди', icon: UserCog, Component: People },
-  { key: 'teams', label: 'Команды', icon: Shield, Component: TeamsAdmin },
-  { key: 'projects', label: 'Проекты', icon: FolderKanban, Component: ProjectsAdmin, managerOnly: true },
   { group: 'Моё' },
   { key: 'tasks', label: 'Задачи', icon: ListTodo, Component: TaskList },
+  { key: 'board', label: 'Доска', icon: Columns3, Component: Board },
   { key: 'reports', label: 'Отчёты', icon: PieChart, Component: Reports },
+  { group: 'Команды' },
+  /**
+   * У пункта два имени, и они про разное.
+   *
+   * label — куда кнопка ведёт: «Все команды». Заголовок группы уже сказал слово
+   * «Команды», и повторять его пунктом значит сказать дважды одно.
+   *
+   * title — где человек находится: «Команды». Провалившись в «Маркетинг», он
+   * видел бы над ним шапку «Все команды», хотя открыта ровно одна; имя самой
+   * команды стоит строкой ниже и говорит за себя.
+   */
+  { key: 'teams', label: 'Все команды', title: 'Команды', icon: Shield, Component: TeamPage },
+  { group: 'Справочники' },
+  { key: 'people', label: 'Люди', icon: UserCog, Component: People },
+  { key: 'projects', label: 'Проекты', icon: FolderKanban, Component: ProjectsAdmin, managerOnly: true },
 ];
 
 export default function Tasks() {
@@ -82,8 +116,6 @@ export default function Tasks() {
   // получить пять слегка разошедшихся карточек.
   const [openTaskId, setOpenTaskId] = useState(null);
   const [formState, setFormState] = useState(null);
-  const [joinInvite, setJoinInvite] = useState(null);
-  const [joinBusy, setJoinBusy] = useState(false);
   /**
    * Слот для фильтров экрана в общей шапке.
    *
@@ -140,48 +172,6 @@ export default function Tasks() {
     const taskId = params.get('task');
     if (taskId) setOpenTaskId(taskId);
   }, [params]);
-
-  const joinToken = params.get('join');
-  const clearJoin = useCallback(() => {
-    setJoinInvite(null);
-    setParams(previous => {
-      if (!previous.has('join')) return previous;
-      const next = new URLSearchParams(previous);
-      next.delete('join');
-      return next;
-    }, { replace: true });
-  }, [setParams]);
-
-  useEffect(() => {
-    if (!joinToken) return;
-    let alive = true;
-    api.getTeamInvite(joinToken)
-      .then(({ data }) => {
-        if (!alive) return;
-        setJoinInvite({ ...data, token: joinToken });
-      })
-      .catch(error => {
-        if (!alive) return;
-        toast.error(error?.response?.data?.error || 'Не удалось открыть приглашение');
-        clearJoin();
-      });
-    return () => { alive = false; };
-  }, [joinToken, clearJoin]);
-
-  const acceptJoin = useCallback(async () => {
-    if (!joinInvite?.token) return;
-    setJoinBusy(true);
-    try {
-      const { data } = await api.acceptTeamInvite(joinInvite.token);
-      toast.success(`Вы присоединились к команде «${data.team.name}»`);
-      await loadAccess();
-      clearJoin();
-    } catch (error) {
-      toast.error(error?.response?.data?.error || 'Не удалось принять приглашение');
-    } finally {
-      setJoinBusy(false);
-    }
-  }, [joinInvite, loadAccess, clearJoin]);
 
   /**
    * Обработчики модалок мемоизированы, и это не микрооптимизация.
@@ -286,10 +276,13 @@ export default function Tasks() {
     ? null
     : ['inbox', 'people', 'reports'].includes(screen)
     ? null
-    // Команды заводят в «Командах». На «Загрузке» кнопка стояла над экраном,
-    // который отвечает на другой вопрос — кто перегружен, — и предлагала
-    // завести ещё одну команду вместо ответа.
-    : screen === 'teams' ? 'team' : screen === 'projects' ? 'project' : 'task';
+    // Команды заводят в списке команд — и только там. Провалившись внутрь
+    // команды, человек занят её работой, и кнопка «Создать команду» над
+    // страницей конкретной команды предлагала бы завести ещё одну вместо
+    // того, чтобы поставить задачу в эту. На «Загрузке» её нет по той же
+    // причине: экран отвечает на другой вопрос — кто перегружен.
+    : screen === 'teams' && !params.get('team') ? 'team'
+    : screen === 'projects' ? 'project' : 'task';
   return (
     <div className="tsk">
       <div className="tsk-shell">
@@ -322,7 +315,7 @@ export default function Tasks() {
 
         <main className="tsk-main">
           <div className="tsk-top">
-            <div className="tsk-title">{current.label}</div>
+            <div className="tsk-title">{current.title || current.label}</div>
             {/* Фильтры стоят справа, рядом с главной кнопкой: слева читают, где
                 находишься, справа — управляют тем, что видишь. */}
             <div className="tsk-top-right">
@@ -397,32 +390,6 @@ export default function Tasks() {
         />
       )}
 
-      {joinInvite && (
-        <div className="tsk-mask" onClick={e => e.target === e.currentTarget && clearJoin()}>
-          <div className="tsk-modal" style={{ width: 480 }}>
-            <div className="tsk-modal-head">
-              <div className="tsk-modal-title">Приглашение в команду</div>
-              <button className="tsk-x" onClick={clearJoin}>×</button>
-            </div>
-            <div className="tsk-modal-body">
-              <div className="tsk-join-name">{joinInvite.team.name}</div>
-              <div className="tsk-trade is-neutral">
-                <div className="tsk-trade-title">Ваша роль</div>
-                <div className="tsk-trade-text">
-                  {joinInvite.role === 'lead' ? 'Руководитель' : joinInvite.role === 'viewer' ? 'Наблюдатель' : 'Участник'}.
-                  {' '}Содержание личных дел других сотрудников останется скрытым.
-                </div>
-              </div>
-            </div>
-            <div className="tsk-modal-foot">
-              <button className="tsk-btn" onClick={clearJoin}>Отмена</button>
-              <button className="tsk-btn is-primary" disabled={joinBusy} onClick={acceptJoin}>
-                {joinBusy ? 'Вступаем…' : 'Вступить в команду'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

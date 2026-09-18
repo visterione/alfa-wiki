@@ -187,13 +187,13 @@ export default function InboxScreen({ ctx }) {
               не зависит — он ждёт, как и в списке выше. */}
           {!!data.blocked?.length && (
             <>
-              <div className="tsk-sect">Ждут предыдущую часть — {data.blocked.length}</div>
+              <div className="tsk-sect">Ждут предыдущую подзадачу — {data.blocked.length}</div>
               {data.blocked.map(part => (
                 <div className="tsk-list-row" key={part.id} onClick={() => ctx.openTask(part.taskId)}>
                   <div>
                     <div className="tsk-list-row-title">{part.title}</div>
                     <div className="tsk-list-row-sub">
-                      Появится во входящих, когда завершится предыдущая часть
+                      Появится во входящих, когда завершится предыдущая подзадача
                     </div>
                   </div>
                   <Badge tone="muted">{estimateText(part.estimateHours)}</Badge>

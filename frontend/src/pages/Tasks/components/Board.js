@@ -1,5 +1,5 @@
 /**
- * Доска.
+ * Доска — личная и командная.
  *
  * От канбана здесь остались только колонки. Разница в том, что первые две из
  * них честные: «Не обработано» — исполнитель ещё не решил, когда это делать, а
@@ -10,6 +10,15 @@
  * логика модуля.
  * Составная задача остаётся контейнером: по колонкам движутся её части,
  * потому что у каждой собственные исполнитель, срок и статус.
+ *
+ * Один компонент в двух режимах, и это не экономия на файлах. Без teamId это
+ * личная доска: ровно тот же набор задач, что в разделе «Моё» — я исполнитель
+ * или я автор, — просто разложенный по состояниям вместо таблицы. Два
+ * отображения одного набора обязаны отвечать одинаково, а значит и спрашивать
+ * должны одинаково: scope=own живёт в одном месте для обоих.
+ *
+ * С teamId это доска команды: все её задачи целиком, включая те, где смотрящий
+ * ни при чём. Именно ради этого задачу и привязывают к команде.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -22,34 +31,35 @@ import { clockText } from '../utils/dates';
 import { AvatarStack, Empty, Note } from './Bits';
 import CustomSelect from './CustomSelect';
 
-export default function Board({ ctx }) {
+export default function Board({ ctx, teamId: fixedTeamId = null }) {
   const [list, setList] = useState([]);
   const [teams, setTeams] = useState([]);
-  const [teamId, setTeamId] = useState('');
+  const [teamFilter, setTeamFilter] = useState('');
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState('');
   const [personId, setPersonId] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getTeams().then(r => setTeams(r.data.teams || [])).catch(() => {});
+    // Список команд нужен только личной доске — для фильтра «в какой команде».
+    // На доске команды он уже выбран, и запрашивать его незачем.
+    if (!fixedTeamId) api.getTeams().then(r => setTeams(r.data.teams || [])).catch(() => {});
     api.getProjects().then(r => setProjects(r.data || [])).catch(() => {});
-  }, []);
+  }, [fixedTeamId]);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.getTasks({
-        teamId: teamId || undefined,
-        projectId: projectId || undefined,
-      });
+      const { data } = await api.getTasks(fixedTeamId
+        ? { scope: 'team', teamId: fixedTeamId, projectId: projectId || undefined }
+        : { scope: 'own', teamId: teamFilter || undefined, projectId: projectId || undefined });
       setList(data || []);
     } catch {
       toast.error('Не удалось получить задачи');
     } finally {
       setLoading(false);
     }
-  }, [teamId, projectId]);
+  }, [fixedTeamId, teamFilter, projectId]);
 
   useEffect(() => { reload(); }, [reload, ctx.tasksRevision]);
 
@@ -97,12 +107,20 @@ export default function Board({ ctx }) {
    */
   const filters = (
     <>
-        <CustomSelect
-          label="Команда"
-          value={teamId}
-          onChange={setTeamId}
-          options={[{ value: '', label: 'Все команды' }, ...teams.map(team => ({ value: team.id, label: team.name }))]}
-        />
+        {/* Фильтр по команде — только на личной доске: «мои задачи в этой
+            команде». На доске самой команды он показывал бы выбор из одного
+            значения, которое уже сделано входом в неё. */}
+        {!fixedTeamId && (
+          <CustomSelect
+            label="Команда"
+            value={teamFilter}
+            onChange={setTeamFilter}
+            options={[
+              { value: '', label: 'Все команды' },
+              ...teams.map(team => ({ value: team.id, label: team.name })),
+            ]}
+          />
+        )}
         <CustomSelect
           label="Проект"
           value={projectId}
@@ -120,7 +138,12 @@ export default function Board({ ctx }) {
 
   return (
     <>
-      {ctx.headerSlot && createPortal(filters, ctx.headerSlot)}
+      {/* Фильтры доски команды рисуются на месте: шапка модуля занята названием
+          раздела и командой, и складывать туда ещё и фильтры вкладки значит
+          собрать в одной строке три разных уровня навигации. */}
+      {fixedTeamId
+        ? <div className="tsk-team-tab-filters">{filters}</div>
+        : ctx.headerSlot && createPortal(filters, ctx.headerSlot)}
 
       {loading ? <Empty compact>Загружаем…</Empty> : (
         <div className="tsk-board">
@@ -154,7 +177,7 @@ export default function Board({ ctx }) {
                         </span>
                       </div>
                       <div className="tsk-tcard-title">{isPart
-                        ? part.title === task.title ? `Часть ${partIndex + 1}` : part.title
+                        ? part.title === task.title ? `Подзадача ${partIndex + 1}` : part.title
                         : task.title}</div>
                       <div className="tsk-tcard-meta">
                         <AvatarStack users={(isPart ? part.assignees || [] : (task.parts || []).flatMap(p => p.assignees || []))
@@ -177,9 +200,15 @@ export default function Board({ ctx }) {
       <Note>
         <b>Не обработано</b> — исполнитель ещё не решил, когда это делать, и
         задача не занимает у него времени.<br />
-        <b>Анализируется</b> — часть переносится третий раз подряд и требует
+        <b>Анализируется</b> — подзадача переносится третий раз подряд и требует
         решения: разбить, передоговориться или отменить.<br />
-        Если задача разделена, каждая часть показана отдельной карточкой со своим статусом.
+        Если задача разделена, каждая подзадача показана отдельной карточкой со своим статусом.
+        {fixedTeamId
+          ? <> Здесь лежат задачи, открытые этой команде. Личные задачи её
+            участников сюда не попадают — ни свои, ни чужие.</>
+          : <> Здесь только ваше: задачи, где вы исполнитель, и задачи, которые
+            вы поставили. Это тот же набор, что в разделе «Мои задачи», разложенный
+            по состояниям. Работа команды — на странице команды.</>}
       </Note>
     </>
   );

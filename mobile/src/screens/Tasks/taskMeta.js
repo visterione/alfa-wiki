@@ -18,7 +18,7 @@ export const STATUS_LABEL = {
   new: 'не обработана',
   plan: 'в плане',
   work: 'в работе',
-  review: 'на проверке',
+  review: 'проверка',
   done: 'готово',
   stuck: 'анализируется',
 };
@@ -62,7 +62,7 @@ export const STATUS_COLOR = {
 export const MODE_LABEL = {
   single: 'Один исполнитель',
   shared: 'Одна на всех',
-  split: 'Разделена на части',
+  split: 'Разделена на подзадачи',
   mixed: 'Смешанная',
 };
 

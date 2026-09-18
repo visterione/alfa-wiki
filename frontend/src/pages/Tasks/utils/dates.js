@@ -122,6 +122,44 @@ export function dnum(key) {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(-2)}`;
 }
 
+/**
+ * Срок диапазоном: «17.08 – 21.08.26», «17 – 21.08.26», «21.08.26».
+ *
+ * Составная задача почти никогда не укладывается в один день, а в столбце
+ * стояла только последняя дата — крайний срок. По нему нельзя было понять ни
+ * когда за задачу берутся, ни насколько она растянута: «21.08» одинаково
+ * выглядело и у дела на один день, и у цепочки из четырёх частей на неделю.
+ *
+ * Повторяющийся хвост даты не печатается дважды. Год в столбце шириной в
+ * двенадцать процентов и так на пределе, а «17.08.26 – 21.08.26» — это одно и
+ * то же, сказанное подряд. Если совпадает и месяц, уходит и он.
+ *
+ * Одна дата возвращается как одна дата: диапазон из совпадающих концов
+ * сообщал бы о протяжённости, которой нет.
+ */
+export function dateRange(from, to) {
+  if (!from && !to) return '—';
+  if (!from || !to || String(from) === String(to)) return dnum(to || from);
+
+  const [a, b] = [String(from), String(to)].sort();
+  const start = fromKey(a);
+  const end = fromKey(b);
+  const pad = value => String(value).padStart(2, '0');
+
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const sameMonth = sameYear && start.getMonth() === end.getMonth();
+
+  const head = sameMonth
+    ? pad(start.getDate())
+    : sameYear
+      ? `${pad(start.getDate())}.${pad(start.getMonth() + 1)}`
+      : dnum(a);
+
+  // Тире с пробелами, а не дефис вплотную: «17.08–21.08.26» читается как одно
+  // длинное число, особенно когда цифры моноширинные.
+  return `${head} – ${dnum(b)}`;
+}
+
 export function monthTitle(key) {
   const d = fromKey(key);
   return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`;

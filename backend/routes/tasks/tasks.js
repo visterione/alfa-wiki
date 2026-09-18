@@ -17,7 +17,7 @@ const { Op } = require('sequelize');
 const { authenticate } = require('../../middleware/auth');
 const {
   Task, TaskPart, TaskPartAssignee, TaskPartDep, TaskHistory,
-  TaskProject, CalendarEvent, User, sequelize,
+  TaskProject, TaskTeam, CalendarEvent, User, sequelize,
 } = require('../../models');
 
 const context = require('../../services/tasks/context');
@@ -35,6 +35,9 @@ const USER_FIELDS = ['id', 'displayName', 'username', 'avatar'];
 /** Полная задача со всем, что нужно карточке. */
 const TASK_INCLUDE = () => [
   { model: TaskProject, as: 'project', required: false },
+  // Только id и название: остальное про команду спрашивают у маршрутов команд,
+  // а состав тащить в каждую карточку задачи незачем.
+  { model: TaskTeam, as: 'team', attributes: ['id', 'name'], required: false },
   { model: User, as: 'author', attributes: USER_FIELDS, required: false },
   {
     model: TaskPart,
@@ -69,6 +72,38 @@ async function depsOf(taskIds) {
   const ids = parts.map(p => p.id);
   if (!ids.length) return [];
   return TaskPartDep.findAll({ where: { partId: { [Op.in]: ids } }, raw: true });
+}
+
+/**
+ * Видна ли человеку задача. Одна функция на список, карточку и переход из
+ * календаря — разъехавшись, они дали бы работу, которой нет в списке, но
+ * которая открывается прямой ссылкой.
+ *
+ * Четыре основания, любого достаточно: автор, исполнитель, участник команды,
+ * которой задача привязана (ver. 8.42), руководитель над её исполнителем.
+ */
+function canSeeTask(task, parts, user, allTeams) {
+  if (task.authorId === user.id) return true;
+  if (task.teamId && teamsService.teamIdsForTasks(allTeams, user.id).includes(task.teamId)) {
+    return true;
+  }
+  const assigneeIds = (parts || []).flatMap(part => (part.assignees || []).map(a => a.userId));
+  if (assigneeIds.includes(user.id)) return true;
+  const scope = new Set(teamsService.taskScope(allTeams, user.id));
+  return assigneeIds.some(id => scope.has(id));
+}
+
+/**
+ * Может ли человек объявить задачу принадлежащей этой команде.
+ *
+ * Участник или руководитель — да, наблюдатель — нет, посторонний — нет.
+ * Администратора-исключения здесь нет по той же причине, что и в видимости:
+ * команды модуля скрытые, и администратор не знает об их существовании.
+ */
+async function canBindToTeam(teamId, userId) {
+  const all = await context.loadTeams();
+  const team = all.find(t => t.id === teamId);
+  return !!team && teamsService.memberIds(team).includes(userId);
 }
 
 /** Запись в историю. Отдельной функцией, чтобы её нельзя было забыть. */
@@ -191,44 +226,84 @@ router.get('/inbox', authenticate, async (req, res) => {
 // СПИСОК И КАРТОЧКА
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Кому из перечисленных людей что назначено — id задач, а не самих частей.
+ *
+ * Отдельным запросом, а не включением в основную выборку: задача видна, если в
+ * область попал хотя бы один исполнитель хотя бы одной части, и выразить это
+ * через JOIN значит либо получить дубли строк, либо потерять задачи без частей.
+ */
+async function taskIdsAssignedTo(userIds) {
+  if (!userIds.length) return [];
+  const rows = await TaskPartAssignee.findAll({
+    attributes: ['partId'],
+    where: { userId: { [Op.in]: userIds } },
+    include: [{ model: TaskPart, as: 'part', attributes: ['taskId'], required: true }],
+    raw: true,
+    nest: true,
+  });
+  return [...new Set(rows.map(r => r.part.taskId))];
+}
+
+/**
+ * Список задач. Кто что видит — решается здесь, и это три разных вопроса.
+ *
+ *   scope=own   — «мои задачи»: я исполнитель или я автор, и больше ничего.
+ *                 Этим ходят раздел «Моё» и личная доска. Раньше оба спрашивали
+ *                 маршрут без параметров и получали полную область видимости —
+ *                 руководителю команды в «Моё» приезжали задачи его участников.
+ *   scope=team  — «задачи команды»: всё, что к ней привязано. Этим ходит доска
+ *                 на странице команды. Право проверяется по составу: не
+ *                 участник — 403, включая администратора, потому что команды
+ *                 модуля скрытые и от администратора тоже.
+ *   без scope   — полная область видимости: своё, подчинённые по команде и
+ *                 задачи команд, в которых состоишь.
+ *
+ * Личная доска и «Моё» обязаны отвечать одинаково: это один набор задач в двух
+ * отображениях, и разойтись они не должны — поэтому правило одно, параметр
+ * один, и живёт он в одном месте.
+ */
 router.get('/', authenticate, async (req, res) => {
   try {
     const all = await context.loadTeams();
-    /**
-     * Область видимости названий, а не загрузки: свои задачи, задачи своих
-     * подчинённых по команде и (ниже, отдельным условием) поставленные самим.
-     * Часы коллег по-прежнему видны всей команде — но на экранах загрузки, где
-     * это цифра занятости, а не содержание чужой работы.
-     */
-    let scope = teamsService.taskScope(all, req.user.id);
+    const myTeamIds = teamsService.teamIdsForTasks(all, req.user.id);
+    const scope = String(req.query.scope || '');
+    const teamId = req.query.teamId || null;
 
-    // Фильтры доски сужают выборку, но не расширяют права: пересекаем с
-    // составом выбранной команды или филиала, а не заменяем область видимости.
-    if (req.query.teamId || req.query.medCenterId) {
-      const filtered = new Set(all
-        .filter(team => (!req.query.teamId || team.id === req.query.teamId)
-          && (!req.query.medCenterId || team.medCenterId === req.query.medCenterId))
-        .flatMap(team => teamsService.memberIds(team)));
-      scope = scope.filter(id => filtered.has(id));
+    let where;
+    if (scope === 'own') {
+      const mine = await taskIdsAssignedTo([req.user.id]);
+      where = { [Op.or]: [{ id: { [Op.in]: mine } }, { authorId: req.user.id }] };
+    } else if (scope === 'team') {
+      if (!teamId) return res.status(400).json({ error: 'Нужна команда' });
+      // 404, а не 403: скрытая команда не должна подтверждать своё
+      // существование кодом ответа — это ровно то, что она прячет.
+      if (!myTeamIds.includes(teamId)) {
+        return res.status(404).json({ error: 'Команда не найдена' });
+      }
+      where = { teamId };
+    } else {
+      /**
+       * Область видимости названий, а не загрузки: свои задачи, задачи своих
+       * подчинённых по команде, поставленные самим и задачи команд, в которых
+       * состоишь. Часы коллег по-прежнему видны всей команде — но на экранах
+       * загрузки, где это цифра занятости, а не содержание чужой работы.
+       */
+      const people = await taskIdsAssignedTo(teamsService.taskScope(all, req.user.id));
+      where = {
+        [Op.or]: [
+          { id: { [Op.in]: people } },
+          { authorId: req.user.id },
+          { teamId: { [Op.in]: myTeamIds } },
+        ],
+      };
     }
 
-    // Видны задачи, у которых хотя бы один исполнитель попал в область
-    // видимости, плюс собственные. Фильтровать по ярлыку на задаче нельзя:
-    // так её можно было бы спрятать от самого исполнителя.
-    const visibleParts = await TaskPartAssignee.findAll({
-      attributes: ['partId'],
-      where: { userId: { [Op.in]: scope } },
-      include: [{ model: TaskPart, as: 'part', attributes: ['taskId'], required: true }],
-      raw: true,
-      nest: true,
-    });
-    const taskIds = [...new Set(visibleParts.map(r => r.part.taskId))];
-
-    const where = {
-      [Op.or]: [{ id: { [Op.in]: taskIds } }, { authorId: req.user.id }],
-      isArchived: req.query.archived === 'true',
-    };
+    where.isArchived = req.query.archived === 'true';
     if (req.query.projectId) where.projectId = req.query.projectId;
+    // Фильтр по команде поверх своей области видимости: «мои задачи в этой
+    // команде». Права он не расширяет — выборка уже сужена выше.
+    if (teamId && scope !== 'team') where.teamId = teamId;
 
     const rows = await Task.findAll({
       where,
@@ -240,6 +315,9 @@ router.get('/', authenticate, async (req, res) => {
     let list = rows.map(t => shape(t, deps));
     if (req.query.status) list = list.filter(t => t.status === req.query.status);
     if (req.query.mine === 'true') list = list.filter(t => t.authorId === req.user.id);
+    // «Где я исполнитель» — не то же самое, что «мои задачи»: половина списка у
+    // руководителя это то, что он поставил другим, и делать её ему не нужно.
+    if (req.query.assigned === 'true') list = list.filter(t => t.people.includes(req.user.id));
     if (req.query.multi === 'true') list = list.filter(t => t.people.length > 1);
 
     res.json(list);
@@ -269,14 +347,9 @@ router.get('/:id', authenticate, async (req, res) => {
     // область видимости, что список задач, иначе скрытую работу можно открыть
     // прямой ссылкой, хотя в интерфейсе её нет.
     const allTeams = await context.loadTeams();
-    const scope = new Set(teamsService.taskScope(allTeams, req.user.id));
-    const assigneeIds = (task.parts || []).flatMap(part =>
-      (part.assignees || []).map(a => a.userId)
-    );
-    const canSee = task.authorId === req.user.id
-      || assigneeIds.includes(req.user.id)
-      || assigneeIds.some(id => scope.has(id));
-    if (!canSee) return res.status(404).json({ error: 'Задача не найдена' });
+    if (!canSeeTask(task, task.parts, req.user, allTeams)) {
+      return res.status(404).json({ error: 'Задача не найдена' });
+    }
 
     const deps = await depsOf([task.id]);
     res.json(shape(task, deps));
@@ -304,12 +377,23 @@ router.post('/', authenticate, async (req, res) => {
     if (!title) return res.status(400).json({ error: 'Нужно название задачи' });
 
     const incoming = Array.isArray(req.body.parts) ? req.body.parts : [];
-    if (!incoming.length) return res.status(400).json({ error: 'Нужна хотя бы одна часть' });
+    if (!incoming.length) return res.status(400).json({ error: 'Нужна хотя бы одна подзадача' });
+
+    /**
+     * Привязка к команде объявляет задачу общей: её увидит весь состав вместе с
+     * описанием и вложениями. Поэтому привязать можно только к своей команде и
+     * только тому, кто в ней работает, — наблюдатель смотрит чужую работу, а не
+     * пополняет её.
+     */
+    const teamId = req.body.teamId || null;
+    if (teamId && !(await canBindToTeam(teamId, req.user.id))) {
+      return res.status(403).json({ error: 'Можно привязать только к своей команде' });
+    }
     for (const part of incoming) {
       if (!Array.isArray(part.assignees) || !part.assignees.length) {
-        return res.status(400).json({ error: 'У каждой части должен быть исполнитель' });
+        return res.status(400).json({ error: 'У каждой подзадачи должен быть исполнитель' });
       }
-      if (!part.dueDate) return res.status(400).json({ error: 'У каждой части должен быть срок' });
+      if (!part.dueDate) return res.status(400).json({ error: 'У каждой подзадачи должен быть срок' });
     }
 
     // Цикл в связях «после» ловится до сохранения: иначе часть навсегда
@@ -378,6 +462,7 @@ router.post('/', authenticate, async (req, res) => {
         title,
         description: req.body.description || null,
         projectId,
+        teamId,
         authorId: req.user.id,
         attachments: req.body.attachments || [],
       }, { transaction });
@@ -481,6 +566,78 @@ router.post('/', authenticate, async (req, res) => {
 });
 
 /** Отмена задачи. Блоки времени снимаются каскадом — часы возвращаются людям. */
+/**
+ * Привязка задачи к команде и снятие привязки.
+ *
+ * Отдельным маршрутом, а не полем в общем редактировании: это не правка
+ * реквизита, а смена того, кто видит задачу. Привязали — её содержимое
+ * открылось всему составу; сняли — снова видят только автор, исполнители и
+ * руководитель над ними. Такое не должно уезжать вместе с исправлением опечатки
+ * в названии.
+ *
+ * Менять вправе автор и руководитель команды, в которой задача сейчас лежит.
+ * Второе — ради возможности убрать из команды то, что туда попало по ошибке:
+ * без этого отвязать чужую задачу не мог бы никто, кроме её автора.
+ */
+router.put('/:id/team', authenticate, async (req, res) => {
+  try {
+    const task = await Task.findByPk(req.params.id);
+    if (!task) return res.status(404).json({ error: 'Задача не найдена' });
+
+    const all = await context.loadTeams();
+    const currentTeam = task.teamId ? all.find(t => t.id === task.teamId) : null;
+    const mayChange = task.authorId === req.user.id
+      || (currentTeam && teamsService.isLead(currentTeam, req.user.id));
+    if (!mayChange) {
+      return res.status(403).json({ error: 'Менять команду задачи может автор или руководитель команды' });
+    }
+
+    const teamId = req.body.teamId || null;
+    if (teamId && !(await canBindToTeam(teamId, req.user.id))) {
+      return res.status(403).json({ error: 'Можно привязать только к своей команде' });
+    }
+    if (teamId === task.teamId) return res.json({ teamId });
+
+    const nextTeam = teamId ? all.find(t => t.id === teamId) : null;
+    await task.update({ teamId });
+    await log(task.id, null, req.user.id, 'team_changed', {
+      from: currentTeam?.name || null,
+      to: nextTeam?.name || null,
+    });
+
+    /**
+     * Исполнителям стоит сказать: задача, которую человек считал личной, стала
+     * видна ещё десятку коллег вместе с описанием и файлами. Узнавать об этом
+     * из чужого разговора — худший из возможных способов.
+     */
+    const parts = await TaskPart.findAll({
+      attributes: ['id'],
+      where: { taskId: task.id },
+      include: [{ model: TaskPartAssignee, as: 'assignees', attributes: ['userId'], required: false }],
+    });
+    const assignees = [...new Set(parts.flatMap(part => (part.assignees || []).map(a => a.userId)))]
+      .filter(id => id !== req.user.id);
+    await notifyUsers(assignees, nextTeam
+      ? {
+        title: '👥 Задача стала командной',
+        body: `${actorName(req.user)} открыл «${task.title}» команде «${nextTeam.name}»`,
+        taskId: task.id,
+        code: task.code,
+      }
+      : {
+        title: '🔒 Задача снова личная',
+        body: `${actorName(req.user)} убрал «${task.title}» из команды`,
+        taskId: task.id,
+        code: task.code,
+      });
+
+    res.json({ teamId });
+  } catch (error) {
+    console.error('Смена команды задачи:', error);
+    res.status(500).json({ error: 'Не удалось изменить команду задачи' });
+  }
+});
+
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const task = await Task.findByPk(req.params.id, { include: TASK_INCLUDE() });
@@ -534,7 +691,7 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
     if (!part) return res.status(404).json({ error: 'Часть не найдена' });
 
     const mine = assigneeOf(part, req.user.id);
-    if (!mine) return res.status(403).json({ error: 'Вы не исполнитель этой части' });
+    if (!mine) return res.status(403).json({ error: 'Вы не исполнитель этой подзадачи' });
 
     const date = String(req.body.date || part.dueDate);
     const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
@@ -628,7 +785,7 @@ router.post('/parts/:id/propose', authenticate, async (req, res) => {
     const part = await findPart(req.params.id);
     if (!part) return res.status(404).json({ error: 'Часть не найдена' });
     if (!assigneeOf(part, req.user.id)) {
-      return res.status(403).json({ error: 'Вы не исполнитель этой части' });
+      return res.status(403).json({ error: 'Вы не исполнитель этой подзадачи' });
     }
     const date = String(req.body.date || '');
     if (!date) return res.status(400).json({ error: 'Нужен предлагаемый срок' });
@@ -698,7 +855,7 @@ router.post('/parts/:id/decline', authenticate, async (req, res) => {
     const part = await findPart(req.params.id);
     if (!part) return res.status(404).json({ error: 'Часть не найдена' });
     const mine = assigneeOf(part, req.user.id);
-    if (!mine) return res.status(403).json({ error: 'Вы не исполнитель этой части' });
+    if (!mine) return res.status(403).json({ error: 'Вы не исполнитель этой подзадачи' });
 
     await sequelize.transaction(async transaction => {
       await log(part.taskId, part.id, req.user.id, 'declined', {
@@ -741,11 +898,11 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
     const part = await findPart(req.params.id);
     if (!part) return res.status(404).json({ error: 'Часть не найдена' });
     const mine = assigneeOf(part, req.user.id);
-    if (!mine) return res.status(403).json({ error: 'Вы не исполнитель этой части' });
+    if (!mine) return res.status(403).json({ error: 'Вы не исполнитель этой подзадачи' });
 
     if (!partsService.canMoveSilently(part)) {
       return res.status(409).json({
-        error: 'Часть переносится третий раз — нужно решение, а не перенос',
+        error: 'Подзадача переносится третий раз — нужно решение, а не перенос',
         options: ['split', 'propose', 'cancel'],
         moveCount: part.moveCount,
       });
@@ -809,7 +966,7 @@ router.post('/parts/:id/extend', authenticate, async (req, res) => {
     const part = await findPart(req.params.id);
     if (!part) return res.status(404).json({ error: 'Часть не найдена' });
     if (!assigneeOf(part, req.user.id)) {
-      return res.status(403).json({ error: 'Продлить может исполнитель этой части' });
+      return res.status(403).json({ error: 'Продлить может исполнитель этой подзадачи' });
     }
 
     const hours = Number(req.body.hours ?? 0.5);
@@ -910,7 +1067,7 @@ router.post('/parts/:id/split', authenticate, async (req, res) => {
     res.json({ split: true, head, tail, newPartId: created.id });
   } catch (error) {
     console.error('Разбиение части:', error);
-    res.status(500).json({ error: 'Не удалось разбить часть' });
+    res.status(500).json({ error: 'Не удалось разбить подзадачу' });
   }
 });
 
@@ -977,16 +1134,13 @@ router.get('/parts/:id/task', authenticate, async (req, res) => {
     if (!part) return res.status(404).json({ error: 'Часть не найдена' });
 
     const allTeams = await context.loadTeams();
-    const scope = new Set(teamsService.peopleInScope(
-      allTeams,
-      req.user.id,
-      req.user.isAdmin
-    ));
-    const assigneeIds = (part.assignees || []).map(a => a.userId);
-    const canSee = part.task.authorId === req.user.id
-      || assigneeIds.includes(req.user.id)
-      || assigneeIds.some(id => scope.has(id));
-    if (!canSee) return res.status(404).json({ error: 'Часть не найдена' });
+    // Через ту же функцию, что и карточка: раньше здесь стоял peopleInScope —
+    // область видимости ЧАСОВ, которая шире области видимости названий, и по
+    // ссылке из календаря открывалось то, чего в списке задач человеку не
+    // показывают.
+    if (!canSeeTask(part.task, [part], req.user, allTeams)) {
+      return res.status(404).json({ error: 'Часть не найдена' });
+    }
 
     res.json({ taskId: part.taskId, partId: part.id });
   } catch (error) {

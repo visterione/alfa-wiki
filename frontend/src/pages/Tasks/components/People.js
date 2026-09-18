@@ -1,10 +1,11 @@
 /** Люди и их недельные рабочие расписания. */
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
 import { weekStart, addDays, hoursText, clockText } from '../utils/dates';
 import { userName, shortName } from '../utils/labels';
-import { Avatar, Empty, Note } from './Bits';
+import { Avatar, Empty, Note, useMaskClose } from './Bits';
 
 const DAYS = [
   ['mon', 'Понедельник'], ['tue', 'Вторник'], ['wed', 'Среда'], ['thu', 'Четверг'],
@@ -119,7 +120,18 @@ export default function People({ ctx }) {
   </>;
 }
 
-function ScheduleModal({ person, onClose, onSaved }) {
+/**
+ * Настройка недельного расписания. Экспортируется, потому что её открывают из
+ * двух мест: раздела «Люди» и настройки состава команды.
+ *
+ * Второй вход появился вместе с прямым добавлением в команду (ver. 8.45):
+ * руководитель заводит человека и тут же видит, что расписания у него нет, —
+ * а без расписания ему нельзя поставить ни одной задачи. Отправлять его за этим
+ * в другой раздел значило бы прервать дело на середине; своего же редактора
+ * расписания там заводить нельзя, два разойдутся на первой правке.
+ */
+export function ScheduleModal({ person, onClose, onSaved }) {
+  const maskProps = useMaskClose(onClose);
   const [value, setValue] = useState(() => JSON.parse(JSON.stringify(person.workSchedule || initialSchedule())));
   const [saving, setSaving] = useState(false);
   const update = (key, patch) => setValue(current => ({ ...current, days: { ...current.days,
@@ -134,7 +146,7 @@ function ScheduleModal({ person, onClose, onSaved }) {
     } catch (error) { toast.error(error?.response?.data?.error || 'Не удалось сохранить расписание'); }
     finally { setSaving(false); }
   };
-  return <div className="tsk-mask" onClick={e => e.target === e.currentTarget && onClose()}>
+  return createPortal(<div className="tsk-mask" {...maskProps}>
     <div className="tsk-modal tsk-schedule-modal">
       <div className="tsk-modal-head"><div><div className="tsk-modal-title">Расписание · {shortName(person)}</div>
         <div className="tsk-person-sub">Рабочие дни и фактические границы смен</div></div><button className="tsk-x" onClick={onClose}>×</button></div>
@@ -149,5 +161,5 @@ function ScheduleModal({ person, onClose, onSaved }) {
       <div className="tsk-modal-foot"><button className="tsk-btn is-danger" disabled={saving || !person.workSchedule} onClick={() => save(null)}>Не участвовать</button>
         <div className="tsk-modal-btns"><button className="tsk-btn" onClick={onClose}>Отмена</button><button className="tsk-btn is-primary" disabled={saving} onClick={() => save(value)}>{saving ? 'Сохраняем…' : 'Сохранить'}</button></div></div>
     </div>
-  </div>;
+  </div>, document.body);
 }

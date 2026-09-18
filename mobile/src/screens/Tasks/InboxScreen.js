@@ -260,7 +260,7 @@ export default function InboxScreen({navigation, route}) {
 
       {!!data.blocked?.length && (
         <>
-          <Text style={styles.section}>Ждут предыдущую часть — {data.blocked.length}</Text>
+          <Text style={styles.section}>Ждут предыдущую подзадачу — {data.blocked.length}</Text>
           {data.blocked.map(part => (
             <Pressable
               key={part.id}
@@ -269,7 +269,7 @@ export default function InboxScreen({navigation, route}) {
               <View style={{flex: 1}}>
                 <Text style={styles.rowTitle}>{part.title}</Text>
                 <Text style={styles.rowSub}>
-                  Появится, когда завершится предыдущая часть
+                  Появится, когда завершится предыдущая подзадача
                 </Text>
               </View>
             </Pressable>

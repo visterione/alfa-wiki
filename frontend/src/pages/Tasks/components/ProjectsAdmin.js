@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Archive, RotateCcw } from 'lucide-react';
 import { tasks as api } from '../../../services/api';
-import { Empty } from './Bits';
+import { Empty, useMaskClose } from './Bits';
 
 /**
  * Палитра проектов: 26 цветов.
@@ -97,6 +97,7 @@ export default function ProjectsAdmin({ ctx }) {
 }
 
 export function ProjectModal({ project, onClose, onSaved }) {
+  const maskProps = useMaskClose(onClose);
   const [name, setName] = useState(project?.name || '');
   const [color, setColor] = useState(/^#[0-9a-f]{6}$/i.test(project?.color || '') ? project.color : PROJECT_COLORS[0]);
   const [key, setKey] = useState(project?.key || '');
@@ -139,7 +140,7 @@ export function ProjectModal({ project, onClose, onSaved }) {
     }
   };
 
-  return createPortal(<div className="tsk-mask tsk-project-mask" onClick={event => event.target === event.currentTarget && onClose()}>
+  return createPortal(<div className="tsk-mask tsk-project-mask" {...maskProps}>
     <div className="tsk-modal tsk-project-modal">
       <div className="tsk-modal-head">
         <div className="tsk-modal-title">{project ? 'Проект' : 'Новый проект'}</div>

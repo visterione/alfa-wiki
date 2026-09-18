@@ -76,6 +76,72 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 /**
+ * Можно ли смотреть часы этого человека (без содержания дел).
+ *
+ * Два основания. Первое прежнее — общая команда: там видна вся картина дня.
+ * Второе появилось вместе с выбором исполнителя по всему модулю (ver. 8.43):
+ * если человеку можно поручить работу, автор обязан видеть, помещается ли она в
+ * его день, — иначе проверка нормы, ради которой модуль и затевался,
+ * отключается ровно там, где она нужнее всего.
+ *
+ * Наружу при этом уходит только геометрия времени: занятые интервалы и цифры
+ * часов, без единого названия. Это то же обещание, что на экранах загрузки, и
+ * оно здесь не ослабляется.
+ */
+async function canSeeHours(req, targetId) {
+  if (targetId === req.user.id) return true;
+  const all = await context.loadTeams();
+  if (teams.peopleInScope(all, req.user.id, req.user.isAdmin).includes(targetId)) return true;
+  const target = await User.findByPk(targetId, { attributes: ['isActive', 'taskWorkSchedule'], raw: true });
+  return !!(target?.isActive && target.taskWorkSchedule);
+}
+
+/**
+ * Кому вообще можно поручить работу — список для выбора исполнителя.
+ *
+ * Раньше форма постановки задачи брала всех пользователей портала через
+ * users.listBasic. Это был не просто длинный список: человеку без рабочего
+ * расписания задачу поставить НЕЛЬЗЯ — создание отвечает 409 «у одного из
+ * исполнителей не настроено рабочее расписание». То есть из полутора сотен имён
+ * в выборе больше сотни приводили к ошибке, и узнать об этом можно было только
+ * заполнив форму до конца.
+ *
+ * Условие ровно одно: настроено рабочее расписание. Оно же — ответ на вопрос
+ * «заведён ли человек в модуле»: без расписания не считается загрузка, не
+ * работает проверка нормы и не принимается задача. Тех, кто когда-то был
+ * исполнителем, но расписание потерял, здесь нет намеренно — им новую работу
+ * тоже не поручить, и предлагать их значит возвращать ту же ошибку.
+ *
+ * Область видимости здесь НЕ сужается до команд, и это осознанно. Поручить
+ * работу человеку из соседнего отдела — обычное дело, так было и раньше, и
+ * запирать это в границы команд значило бы решать за заказчика задачу, которой
+ * он не ставил. Команды закрывают содержание чужой работы, а не возможность
+ * о чём-то попросить.
+ */
+router.get('/assignable', authenticate, async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: ['id', 'displayName', 'username', 'avatar', 'position', 'taskWorkSchedule'],
+      where: { isActive: true, taskWorkSchedule: { [Op.ne]: null } },
+      order: [['displayName', 'ASC']],
+      raw: true,
+    });
+
+    res.json(users.map(u => ({
+      id: u.id,
+      displayName: u.displayName,
+      username: u.username,
+      avatar: u.avatar,
+      position: u.position,
+      weeklyHours: schedule.weeklyHours(u.taskWorkSchedule),
+    })));
+  } catch (error) {
+    console.error('Список исполнителей:', error);
+    res.status(500).json({ error: 'Не удалось получить список исполнителей' });
+  }
+});
+
+/**
  * Загрузка людей одной таблицей — вкладка «Сотрудники» на экране загрузки.
  *
  * Появилась потому, что человек редко состоит в одной команде, а половина
@@ -178,9 +244,7 @@ router.get('/:id/load', authenticate, async (req, res) => {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Нужен период: start и end' });
 
-    const all = await context.loadTeams();
-    const scope = teams.peopleInScope(all, req.user.id, req.user.isAdmin);
-    if (!scope.includes(req.params.id)) {
+    if (!(await canSeeHours(req, req.params.id))) {
       return res.status(403).json({ error: 'Загрузка этого человека вам закрыта' });
     }
 
@@ -212,9 +276,7 @@ router.get('/:id/slots', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Нужна дата YYYY-MM-DD' });
     }
 
-    const all = await context.loadTeams();
-    const scope = teams.peopleInScope(all, req.user.id, req.user.isAdmin);
-    if (!scope.includes(req.params.id)) {
+    if (!(await canSeeHours(req, req.params.id))) {
       return res.status(403).json({ error: 'Расписание этого человека вам закрыто' });
     }
 
