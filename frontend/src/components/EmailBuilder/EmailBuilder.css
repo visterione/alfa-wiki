@@ -1,0 +1,954 @@
+/**
+ * Оформление конструктора писем (ver. 8.43).
+ *
+ * Цвета берутся из токенов портала, а не задаются числами: конструктор живёт в
+ * рабочей области вкладки «Рассылки» и обязан выглядеть её частью в обеих
+ * темах. Числами заданы только размеры холста — 600px ширины письма это не
+ * оформление, а факт из рендерера, и меняться вместе с темой он не должен.
+ */
+
+.eb {
+  /* position нужен полосам выделения и переноса оформления: они накрывают
+     конструктор, а не страницу целиком. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Кнопки конструктора живут в общей строке инструментов окна (туда их
+   отправляет портал), поэтому своей полосы у него больше нет. Оформление
+   кнопок осталось — им пользуется и панель свойств. */
+
+.eb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.eb-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.eb-btn-slim.warn { color: var(--warning); border-color: var(--warning); }
+
+/* ── Три колонки ────────────────────────────────────────────────────────── */
+
+.eb-body {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 300px;
+  min-height: 0;
+  flex: 1;
+}
+
+/* Режим «Рядом»: холст и настоящее письмо в одну строку. Панель свойств при
+   этом никуда не девается — правку и её последствия надо видеть сразу, иначе
+   режим превращается в переключение туда-обратно, от которого и уходили. */
+.eb-body.split {
+  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr) 280px;
+}
+
+.eb-palette,
+.eb-panel {
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--bg-primary);
+}
+
+.eb-palette { border-right: 1px solid var(--border-light); }
+.eb-panel { border-left: 1px solid var(--border-light); }
+
+.eb-palette h4,
+.eb-inspector h4 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.eb-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.eb-palette-item:hover { border-color: var(--primary); background: var(--primary-light); }
+.eb-palette-item span { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.eb-palette-item b { font-size: 12.5px; font-weight: 600; }
+
+/* ── Холст ──────────────────────────────────────────────────────────────── */
+
+/* Прокрутка в обе стороны: письмо на холсте держит свои настоящие 600px и не
+   ужимается под ширину колонки. Сжатое письмо врёт про переносы строк — текст,
+   который у получателя укладывается в две строки, на холсте занимал три, и
+   блоки выглядели выше, чем они есть. Если колонка уже 600px, письмо
+   прокручивается вбок или уменьшается масштабом. */
+.eb-canvas-wrap { overflow: auto; padding: 24px 16px 40px; }
+
+.eb-canvas {
+  min-height: 100%;
+  min-width: min-content;
+  padding: 20px 0;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Документ на холсте. Полосы секций тянутся во всю его ширину — так же, как
+   в окне почтового клиента, — а содержимое каждой секции держится в своих
+   600px. Масштаб задан через zoom, а не transform: transform ломает попадание
+   мышью по вложенным областям перетаскивания. */
+.eb-doc {
+  width: 100%;
+  /* Минимум по ширине задаётся разметкой из настроек письма: полосы секций
+     тянутся во всю ширину холста, а содержимое внутри них держит свои
+     пиксели. */
+}
+
+.eb-empty { min-height: 120px; }
+
+/* ── Блок на холсте ─────────────────────────────────────────────────────── */
+
+.eb-block {
+  position: relative;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  transition: outline-color 0.12s;
+  cursor: default;
+}
+
+.eb-block:hover { outline-color: var(--accent-300); }
+.eb-block.selected { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* Панель действий висит над блоком и не участвует в раскладке: появись она в
+   потоке, блок бы подпрыгивал при наведении, и попасть по нему стало бы
+   невозможно. */
+.eb-block-bar {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 8px;
+  background: var(--primary);
+  border-radius: 0 0 0 var(--radius-sm);
+}
+
+.eb-block:hover > .eb-block-bar,
+.eb-block.selected > .eb-block-bar { display: flex; }
+
+.eb-block-name { font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+.eb-block-actions { display: flex; align-items: center; gap: 1px; }
+
+.eb-block-actions button,
+.eb-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.eb-block-actions button:hover,
+.eb-grip:hover { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.eb-block-actions button.danger:hover { background: var(--danger); }
+.eb-grip { cursor: grab; }
+
+/* ── Содержимое блоков ──────────────────────────────────────────────────── */
+
+.eb-text .ProseMirror { outline: none; }
+.eb-text .ProseMirror p { margin: 0 0 12px; text-indent: var(--eb-indent, 0); }
+.eb-text .ProseMirror p:last-child { margin-bottom: 0; }
+.eb-text .ProseMirror h1 { margin: 0 0 12px; font-size: 28px; line-height: 1.25; }
+.eb-text .ProseMirror h2 { margin: 0 0 10px; font-size: 22px; line-height: 1.3; }
+.eb-text .ProseMirror h3 { margin: 0 0 8px; font-size: 18px; line-height: 1.35; }
+.eb-text .ProseMirror ul,
+.eb-text .ProseMirror ol { margin: 0 0 12px; padding-left: 22px; }
+.eb-text .ProseMirror a { color: var(--eb-link); text-decoration: underline; }
+.eb-text .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--text-disabled);
+}
+
+.eb-button { display: inline-block; font-weight: 700; line-height: 1.2; }
+
+/* Незаполненная картинка обозначается рамкой и значком, без надписи: что
+   именно делать, человек узнаёт из панели свойств, а не из холста. */
+.eb-image-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+}
+
+.eb-spacer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  color: var(--text-disabled);
+}
+
+.eb-columns { display: flex; }
+.eb-column { min-width: 0; }
+
+.eb-col-drop { min-height: 40px; border-radius: var(--radius-sm); }
+.eb-col-drop.over { background: var(--primary-light); }
+
+.eb-raw { position: relative; border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 10px; }
+.eb-raw-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+.eb-raw-body { pointer-events: none; }
+
+.eb-unknown { min-height: 24px; border: 1px dashed var(--danger); border-radius: var(--radius-sm); }
+
+/* ── Всплывающая панель текста ──────────────────────────────────────────── */
+
+.eb-bubble {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface-inverse);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.eb-bubble button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+}
+
+.eb-bubble button:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.eb-bubble button.active { background: var(--primary); color: #fff; }
+.eb-bubble-sep { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.2); margin: 0 2px; }
+
+/* ── Панель свойств ─────────────────────────────────────────────────────── */
+
+.eb-panel-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.eb-field { margin-bottom: 14px; }
+
+.eb-field-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.eb-hint { margin: 5px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--text-tertiary); }
+
+.eb-note {
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.eb-input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.eb-input:focus { outline: none; border-color: var(--primary); }
+.eb-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; resize: vertical; }
+
+.eb-color { display: flex; align-items: center; gap: 6px; }
+.eb-color input[type='color'] {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+
+.eb-number { display: flex; align-items: center; gap: 6px; }
+.eb-number span { font-size: 12px; color: var(--text-tertiary); }
+
+.eb-slider { display: flex; align-items: center; gap: 10px; }
+.eb-slider input { flex: 1; accent-color: var(--primary); }
+.eb-slider b { font-size: 12px; color: var(--text-secondary); min-width: 44px; text-align: right; }
+
+.eb-padding,
+.eb-widths { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.eb-padding label,
+.eb-widths label { display: flex; flex-direction: column; gap: 2px; }
+.eb-padding span,
+.eb-widths span { font-size: 10px; color: var(--text-tertiary); }
+
+.eb-segmented { display: inline-flex; gap: 2px; padding: 2px; background: var(--bg-tertiary); border-radius: var(--radius-sm); }
+
+.eb-segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 26px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.eb-segmented button.active { background: var(--bg-primary); color: var(--primary); box-shadow: var(--shadow-sm); }
+
+.eb-link-field { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); }
+
+.eb-image-field { display: flex; flex-direction: column; gap: 8px; }
+.eb-image-thumb { position: relative; border: 1px solid var(--border-light); border-radius: var(--radius-sm); overflow: hidden; }
+.eb-image-thumb img { display: block; width: 100%; }
+.eb-image-thumb .eb-icon-btn { position: absolute; top: 6px; right: 6px; }
+
+.eb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.eb-btn:hover { border-color: var(--primary); color: var(--primary); }
+.eb-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Предпросмотр ───────────────────────────────────────────────────────── */
+
+.eb-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px; overflow-y: auto; }
+
+.eb-warnings { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.eb-warnings li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--amber-50, var(--bg-secondary));
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+}
+
+.eb-warnings li svg { flex: none; margin-top: 1px; color: var(--warning); }
+
+.eb-preview-frame { position: relative; flex: 1; min-height: 420px; display: flex; justify-content: center; }
+.eb-preview-frame iframe { width: 100%; height: 100%; min-height: 420px; border: 0; border-radius: var(--radius-md); background: #fff; }
+.eb-preview-frame.mobile iframe { width: 390px; max-width: 100%; box-shadow: var(--shadow-lg); }
+
+.eb-preview-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  background: rgba(var(--overlay-paper), 0.7);
+  z-index: 2;
+}
+
+.eb-preview-meta { margin: 10px 0 0; font-size: 11px; text-align: center; color: var(--text-tertiary); }
+
+.eb-spin { animation: eb-spin 0.9s linear infinite; }
+@keyframes eb-spin { to { transform: rotate(360deg); } }
+
+/* Узкое окно: палитра и свойства уезжают под холст, чтобы лист остался
+   читаемым. Конструктор на телефоне не рассчитан и не должен быть — письмо
+   собирают за компьютером. */
+@media (max-width: 1100px) {
+  .eb-body { grid-template-columns: 1fr; }
+  .eb-palette, .eb-panel { border: 0; border-top: 1px solid var(--border-light); }
+}
+
+/* Пустой фирменный блок на холсте: он ещё ничего не показывает, но место уже
+   занимает — иначе по нему нельзя попасть мышью, чтобы заполнить. */
+.eb-empty-inline {
+  min-height: 42px;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
+/* Повторяющиеся поля (услуги, ссылки на соцсети) */
+.eb-list { display: flex; flex-direction: column; gap: 8px; }
+
+.eb-list-item {
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.eb-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.eb-list-head b { font-size: 11px; color: var(--text-tertiary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.eb-list-head span { display: flex; gap: 2px; }
+
+.eb-list-item .eb-field { margin-bottom: 8px; }
+.eb-list-item .eb-field:last-child { margin-bottom: 0; }
+.eb-list-item .eb-field-label { font-size: 11px; font-weight: 500; }
+
+.eb-utm { display: flex; flex-direction: column; gap: 6px; }
+.eb-utm label { display: flex; flex-direction: column; gap: 2px; }
+.eb-utm span { font-size: 10px; color: var(--text-tertiary); }
+
+.eb-btn-slim { padding: 6px 10px; font-size: 12px; }
+
+/* ── Поля оформления ──────────────────────────────────────────────────────── */
+
+.eb-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.eb-check input { margin: 2px 0 0; accent-color: var(--primary); flex: none; }
+
+.eb-gradient,
+.eb-cardfield {
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.eb-gradient .eb-field:last-child,
+.eb-cardfield .eb-field:last-child { margin-bottom: 8px; }
+
+/* Вложенный градиент внутри карточки не нуждается во второй рамке: две
+   вложенные плашки читаются как сбой вёрстки, а не как иерархия. */
+.eb-cardfield .eb-gradient { border: 0; padding: 0; background: none; }
+
+.eb-gradient-preview {
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+}
+
+/* ── Редактор градиента ───────────────────────────────────────────────────── */
+
+.eb-gradient-presets { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+
+.eb-gradient-presets button {
+  height: 26px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  padding: 0;
+}
+
+.eb-gradient-presets button:hover { border-color: var(--primary); }
+
+.eb-stops { display: flex; flex-direction: column; gap: 6px; margin-top: 5px; }
+
+.eb-stop {
+  display: grid;
+  grid-template-columns: 30px 1fr 22px;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.eb-stop input[type='color'] {
+  grid-row: span 2;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.eb-stop > label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.eb-stop > label input[type='range'] { flex: 1; min-width: 0; accent-color: var(--primary); }
+.eb-stop > label span { font-size: 10px; color: var(--text-tertiary); white-space: nowrap; }
+.eb-stop .eb-icon-btn { grid-row: span 2; }
+
+/* Клетчатая подложка под превью: без неё полупрозрачная точка градиента
+   неотличима от просто светлой, и настройка прозрачности выглядит неработающей. */
+.eb-gradient-preview {
+  position: relative;
+  height: 34px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #E5E5EA 25%, transparent 25%, transparent 75%, #E5E5EA 75%),
+    linear-gradient(45deg, #E5E5EA 25%, transparent 25%, transparent 75%, #E5E5EA 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+}
+
+.eb-gradient-preview > span { position: absolute; inset: 0; display: block; }
+
+/* ── Выбор эмодзи ─────────────────────────────────────────────────────────── */
+
+.eb-emoji { position: relative; display: flex; align-items: center; gap: 6px; }
+
+.eb-emoji-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.eb-emoji-btn:hover { border-color: var(--primary); }
+.eb-emoji-btn span { font-size: 20px; line-height: 1; }
+.eb-emoji-btn small { font-size: 11px; color: var(--text-tertiary); }
+
+.eb-emoji-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; }
+
+/* ── Группы полей в панели свойств ────────────────────────────────────────── */
+
+.eb-section { border-bottom: 1px solid var(--border-light); margin: 0 -14px; padding: 0 14px; }
+.eb-section:last-child { border-bottom: 0; }
+
+.eb-section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 11px 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-secondary);
+}
+
+.eb-section-head svg { transition: transform 0.15s; flex: none; }
+.eb-section.closed .eb-section-head svg { transform: rotate(-90deg); }
+
+.eb-section-head span {
+  flex: 1;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.eb-section-head small {
+  font-size: 10px;
+  color: var(--text-disabled);
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.eb-section-head:hover { color: var(--text-primary); }
+.eb-section-body { padding-bottom: 6px; }
+
+/* Бледная копия на месте блока, который сейчас тащат из палитры: без неё
+   список схлопывается и прицелиться некуда. */
+.eb-palette-item.ghost { opacity: 0.35; pointer-events: none; }
+.eb-palette-item.dragging { box-shadow: var(--shadow-lg); border-color: var(--primary); }
+
+/* ── Секции на холсте ─────────────────────────────────────────────────────── */
+
+/* Полоса секции — во всю ширину холста, как во всю ширину окна почты. Именно
+   ради неё документ и перешёл на секции. */
+.eb-band {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  transition: outline-color 0.12s;
+}
+
+.eb-band:hover { outline-color: var(--accent-200); }
+.eb-band.selected { outline: 2px solid var(--secondary); outline-offset: -2px; }
+
+/* Панель секции висит слева сверху, панель блока — справа. Так они не
+   перекрывают друг друга, когда блок стоит в самом верху секции. */
+.eb-band-bar {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  z-index: 4;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 8px;
+  background: var(--secondary);
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+
+.eb-band:hover > .eb-band-bar,
+.eb-band.selected > .eb-band-bar { display: flex; }
+
+.eb-band-bar .eb-block-name { color: #fff; }
+
+.eb-band-inner {
+  flex: none;
+  box-sizing: border-box;
+  min-height: 24px;
+}
+
+.eb-cols { display: flex; align-items: flex-start; }
+
+.eb-col {
+  min-width: 0;
+  box-sizing: border-box;
+  outline: 1px dashed transparent;
+  outline-offset: -1px;
+}
+
+.eb-col:hover { outline-color: var(--border); }
+.eb-col.selected { outline: 2px solid var(--info); outline-offset: -2px; }
+
+.eb-col-drop { min-height: 36px; }
+.eb-col-drop.over { background: var(--primary-light); }
+
+/* Пустая колонка обозначается местом и пунктиром, а не надписью: куда тащить
+   блок, видно по самой рамке. */
+.eb-col-empty {
+  min-height: 44px;
+  margin: 4px;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
+.eb-footer-note { margin-left: auto; margin-right: auto; }
+
+/* ── Палитра: структуры и блоки ───────────────────────────────────────────── */
+
+.eb-palette-tabs {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 12px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+/* Три вкладки в колонке шириной 200px: без сжатия и переноса «Мои» уезжала за
+   край. Подпись обрезается многоточием, а не растягивает кнопку. */
+.eb-palette-tabs button {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 5px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eb-palette-tabs button svg { flex: none; }
+
+.eb-palette-tabs button.active { background: var(--bg-primary); color: var(--primary); box-shadow: var(--shadow-sm); }
+
+.eb-structure {
+  display: block;
+  width: 100%;
+  padding: 9px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.eb-structure:hover { border-color: var(--primary); background: var(--primary-light); }
+.eb-structure.dragging { box-shadow: var(--shadow-lg); border-color: var(--primary); }
+.eb-structure.ghost { opacity: 0.35; pointer-events: none; }
+
+/* Схема колонок: пропорции видны с первого взгляда, читать подпись не нужно. */
+.eb-structure-preview { display: flex; gap: 3px; height: 26px; margin-bottom: 5px; }
+.eb-structure-preview i { background: var(--bg-tertiary); border-radius: 3px; }
+.eb-structure small { font-size: 11px; color: var(--text-tertiary); }
+
+/* ── Масштаб холста ───────────────────────────────────────────────────────── */
+
+.eb-zoom { display: flex; align-items: center; gap: 2px; }
+.eb-zoom b {
+  min-width: 42px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.eb-zoom b:hover { color: var(--primary); }
+
+/* Подобранный масштаб помечен: иначе непонятно, почему число не круглое. */
+.eb-zoom b.auto { color: var(--primary); }
+
+/* ── Предпросмотр рядом с холстом ─────────────────────────────────────────── */
+
+.eb-preview.split {
+  border-left: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  padding: 12px;
+}
+
+.eb-preview.split .eb-preview-frame { min-height: 0; }
+.eb-preview.split iframe { min-height: 0; height: 100%; }
+
+@media (max-width: 1400px) {
+  /* В узком окне режим «Рядом» отдаёт место письму: панель свойств прячется,
+     потому что в нём правят реже, чем смотрят. */
+  .eb-body.split { grid-template-columns: 210px minmax(0, 1fr) minmax(0, 1fr); }
+  .eb-body.split .eb-panel { display: none; }
+}
+
+/* ── Вставка секции между полосами ────────────────────────────────────────── */
+
+/* Полоска видна только при наведении: иначе между каждой парой секций висит
+   кнопка, и холст перестаёт быть похожим на письмо. */
+.eb-insert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 14px;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  position: relative;
+  z-index: 5;
+}
+
+.eb-insert::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+}
+
+.eb-insert:hover { color: #fff; }
+.eb-insert:hover::before { background: var(--primary); }
+
+/* Кружок под «плюсом» тоже появляется только при наведении: иначе между
+   секциями висит цепочка синих точек, и холст перестаёт быть похожим на
+   письмо — ровно от этого и уходили, пряча саму полоску. */
+.eb-insert svg {
+  position: relative;
+  background: transparent;
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.eb-insert:hover svg { background: var(--primary); }
+
+/* ── Перенос оформления ───────────────────────────────────────────────────── */
+
+.eb-clip-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--primary-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.eb-clip-bar span { flex: 1; min-width: 0; }
+.eb-clip-bar svg { flex: none; color: var(--primary); }
+
+/* Пока оформление «на кисти», клик по блоку применяет его, а не выделяет —
+   курсор об этом и говорит. */
+.eb-canvas-wrap.picking .eb-block { cursor: copy; }
+.eb-canvas-wrap.picking .eb-block:hover { outline-color: var(--primary); outline-width: 2px; }
+
+/* ── Сохранённые модули ───────────────────────────────────────────────────── */
+
+
+.eb-module {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.eb-module-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.eb-module-main:hover { border-color: var(--primary); background: var(--primary-light); }
+.eb-module-main b { font-size: 12.5px; color: var(--text-primary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eb-module-main small { font-size: 10px; color: var(--text-tertiary); }
+
+/* Вид модуля виден сразу: секция встанет отдельной полосой, блок — внутрь
+   выбранной колонки, и это разные вещи. */
+.eb-module-kind {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.eb-module-kind.section { color: var(--secondary); background: color-mix(in srgb, var(--secondary) 14%, transparent); }
+.eb-module-kind.block { color: var(--primary); background: var(--primary-light); }
+
+/* ── Выделение нескольких блоков ──────────────────────────────────────────── */
+
+/* Групповое выделение отличается от одиночного цветом и заливкой: одиночное
+   означает «правлю этот», групповое — «сейчас действие коснётся всех». */
+.eb-block.marked {
+  outline: 2px solid var(--info) !important;
+  outline-offset: -2px;
+  background-color: color-mix(in srgb, var(--info) 8%, transparent);
+}
+
+.eb-clip-bar.marked { background: color-mix(in srgb, var(--info) 12%, transparent); }
+.eb-clip-bar.marked svg { color: var(--info); }
+.eb-clip-bar .eb-btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.eb-clip-bar .eb-btn.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+
+/* Загрузка списка модулей — тремя точками вместо слова «Загружаем». */
+.eb-loading-dots {
+  height: 3px;
+  margin: 10px 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--border-light) 25%, var(--primary) 50%, var(--border-light) 75%);
+  background-size: 200% 100%;
+  animation: eb-loading 1.2s linear infinite;
+}
+
+@keyframes eb-loading { to { background-position: -200% 0; } }

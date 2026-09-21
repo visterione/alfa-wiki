@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, MessageSquare, Star, Settings, X, Archive, UserCheck
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import './ReviewBoardsList.css';
 
 const ReviewBoardsList = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { medCenters } = useMedCenters();
   const [boards, setBoards] = useState([]);
@@ -19,6 +20,11 @@ const ReviewBoardsList = () => {
   const [newBoard, setNewBoard] = useState({ name: '', description: '', medCenterId: '' });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [redirecting, setRedirecting] = useState(false);
+
+  // Кнопка «Назад» с доски приводит сюда с ?all — иначе единственную доску мы
+  // тут же открыли бы снова, и список (а с ним и архив) стал бы недостижим.
+  const showAllBoards = searchParams.has('all');
 
   useEffect(() => {
     loadBoards();
@@ -28,7 +34,24 @@ const ReviewBoardsList = () => {
     try {
       setLoading(true);
       const response = await reviews.getBoards();
-      setBoards(response.data);
+      const list = response.data;
+
+      /**
+       * Одна доска по доступу — открываем её сразу, минуя список.
+       *
+       * Сотруднику медцентра открывают ровно его доску, и выбирать ему не из
+       * чего: список из одной карточки — лишний клик на каждый заход в раздел.
+       *
+       * Владельца доски не уводим: список — единственное место, где есть
+       * «Создать доску», и завести вторую он иначе не сможет.
+       */
+      if (!showAllBoards && list.length === 1 && list[0].userRole !== 'owner') {
+        setRedirecting(true);
+        navigate(`/reviews/board/${list[0].id}`, { replace: true });
+        return;
+      }
+
+      setBoards(list);
     } catch (err) {
       console.error('Error loading boards:', err);
       toast.error('Ошибка при загрузке досок');
@@ -67,7 +90,7 @@ const ReviewBoardsList = () => {
     return '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r));
   };
 
-  if (loading) {
+  if (loading || redirecting) {
     return (
       <div className="reviews-boards-loading">
         <div className="loading-spinner" />

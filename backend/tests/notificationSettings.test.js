@@ -11,7 +11,7 @@ const at = (h, m = 0) => {
   return d;
 };
 
-const night = { enabled: true, from: '21:00', to: '09:00', channels: ['sms+webchat'] };
+const night = { enabled: true, from: '21:00', to: '09:00', channels: ['imobis:sms'] };
 
 // ── Попадание в тихие часы ────────────────────────────────────────────────
 
@@ -57,11 +57,11 @@ test('вечернее сообщение ждёт утра следующего
 // ── Какие каналы молчат ───────────────────────────────────────────────────
 
 test('молчат только перечисленные каналы', () => {
-  assert.equal(quietFor(night, 'sms+webchat'), true);
+  assert.equal(quietFor(night, 'imobis:sms'), true);
   // Бот по умолчанию не молчит: сообщение в мессенджере не будит так, как SMS.
   assert.equal(quietFor(night, 'bot'), false);
   assert.equal(quietFor(DEFAULT_QUIET, 'bot'), false);
-  assert.equal(quietFor(DEFAULT_QUIET, 'notify+vk'), true);
+  assert.equal(quietFor(DEFAULT_QUIET, 'imobis:vk'), true);
 });
 
 test('время разбирается терпимо к мусору', () => {

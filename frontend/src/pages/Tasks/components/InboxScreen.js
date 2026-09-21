@@ -13,14 +13,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { tasks as api } from '../../../services/api';
-import { dfull, dshort, hoursText, estimateText, addDays } from '../utils/dates';
+import { dfull, dshort, dnum, dateRange, hoursText, estimateText, addDays } from '../utils/dates';
 import { userName } from '../utils/labels';
 import { Empty, Badge, AvatarStack, Note } from './Bits';
+import LayoutEditor from './LayoutEditor';
 
 export default function InboxScreen({ ctx }) {
   const [data, setData] = useState({ mine: [], blocked: [], waiting: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
+  // Какая подзадача сейчас раскладывается по дням окна. Открывается по кнопке, а
+  // не всегда: во входящих бывает десяток карточек, и развёрнутая раскладка в
+  // каждой превратила бы экран решений в экран таблиц.
+  const [layoutPart, setLayoutPart] = useState(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -60,6 +65,20 @@ export default function InboxScreen({ ctx }) {
   );
 
   /**
+   * Постановка в план многодневной подзадачи: раскладка вместо дня.
+   *
+   * Часы по дням окна человек расставляет сам — см. LayoutEditor, там же и
+   * причина, почему кнопки «поровну» нет.
+   */
+  const planLayout = (part, layout, force) => act(
+    part.id,
+    () => api.planPartLayout(part.id, layout, force),
+    force
+      ? `Взято сверх нормы на ${layout.length} дн. — автор увидит переработку`
+      : `В плане: ${layout.length} дн., ${hoursText(part.estimateHours)}. Автору ушло уведомление`
+  ).then(() => setLayoutPart(null));
+
+  /**
    * Предложить другой срок.
    *
    * Ближайшее подходящее окно ищет бэкенд, а не интерфейс: у него есть все дни
@@ -73,11 +92,18 @@ export default function InboxScreen({ ctx }) {
         start: addDays(String(part.dueDate), 1),
       });
       if (!fit.date) {
-        toast.error('До конца горизонта нет дня, куда это помещается. Придётся двигать другое или признать переработку');
+        toast.error(part.startDate
+          ? 'До конца горизонта нет окна под этот объём. Придётся двигать другое или признать переработку'
+          : 'До конца горизонта нет дня, куда это помещается. Придётся двигать другое или признать переработку');
         return;
       }
-      await api.proposeDate(part.id, fit.date);
-      toast.success(`Срок ${dshort(fit.date)} предложен автору — вместе с цифрой занятости, без названий ваших дел`);
+      // У многодневной сервер возвращает окно целиком, и предлагать надо его, а
+      // не одну дату: иначе начало осталось бы на месте, и предложение молча
+      // превратилось бы в «дайте вдвое больше времени».
+      await api.proposeDate(part.id, fit.date, fit.from);
+      toast.success(fit.from
+        ? `Окно ${dnum(fit.from)} — ${dnum(fit.date)} предложено автору`
+        : `Срок ${dshort(fit.date)} предложен автору — вместе с цифрой занятости, без названий ваших дел`);
       await reload();
       ctx.refreshInbox();
     } catch (error) {
@@ -107,6 +133,11 @@ export default function InboxScreen({ ctx }) {
           ) : data.mine.map(part => {
             const a = part.assessment || {};
             const date = String(part.dueDate);
+            // Многодневная подзадача: решение здесь другое. «В план на 22-е» ей
+            // не подходит — надо сказать, сколько часов в какой день окна, и
+            // делается это в раскладке, а не одной кнопкой.
+            const windowed = !!a.windowed;
+            const open = layoutPart === part.id;
             return (
               <div className="tsk-inbox-card" key={part.id}>
                 <div className="tsk-inbox-title">{part.title}</div>
@@ -115,24 +146,41 @@ export default function InboxScreen({ ctx }) {
                   от {userName(part.task?.author)}
                   {part.task?.project && ` · ${part.task.project.name}`}
                   {' · '}{estimateText(part.estimateHours)}
-                  {' · срок '}<b>{dshort(date)}</b>
+                  {windowed
+                    ? <>{' · окно '}<b>{dateRange(a.from, a.to)}</b></>
+                    : <>{' · срок '}<b>{dshort(date)}</b></>}
                 </div>
 
                 <div className={`tsk-fit ${a.fits ? 'is-ok' : 'is-bad'}`}>
-                  {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
+                  {a.reason === 'vacation' && (windowed
+                    ? 'В эти дни у вас отпуск.'
+                    : 'В этот день у вас отпуск.')}
+                  {a.reason === 'day_off' && windowed
+                    && 'В окне нет ни одного вашего рабочего дня.'}
                   {a.reason === 'no_norm' && 'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
-                  {a.reason === 'ok' && (
+                  {a.reason === 'ok' && (windowed ? (
+                    <>За {a.workingDays} раб. дн. окна свободно <b>{hoursText(a.capacity)}</b> —
+                      работы на {hoursText(a.need)}. Помещается.</>
+                  ) : (
                     <>{dshort(date)}: станет <b>{hoursText(a.after)}</b> из {hoursText(a.norm)}. Помещается,
                       свободного останется {hoursText(a.free)}.</>
-                  )}
-                  {a.reason === 'overload' && (
+                  ))}
+                  {a.reason === 'overload' && (windowed ? (
+                    <>Работы на <b>{hoursText(a.need)}</b>, а за {a.workingDays} раб. дн. окна свободно
+                      {' '}{hoursText(a.capacity)} — не хватает {hoursText(a.over)}.</>
+                  ) : (
                     <>{dshort(date)}: станет <b>{hoursText(a.after)}</b> из {hoursText(a.norm)} —
                       не помещается, переработка {hoursText(a.over)}.</>
-                  )}
+                  ))}
                 </div>
 
                 <div className="tsk-acts">
-                  {a.fits ? (
+                  {windowed ? (
+                    <button className={`tsk-btn ${a.fits ? 'is-primary' : ''}`} disabled={busy === part.id}
+                      onClick={() => setLayoutPart(open ? null : part.id)}>
+                      {open ? 'Свернуть раскладку' : 'Разложить по дням'}
+                    </button>
+                  ) : a.fits ? (
                     <button className="tsk-btn is-primary" disabled={busy === part.id}
                       onClick={() => plan(part, date)}>
                       В план на {dshort(date)}
@@ -143,10 +191,21 @@ export default function InboxScreen({ ctx }) {
                       Предложить другой срок
                     </button>
                   )}
-                  <button className="tsk-btn" disabled={busy === part.id}
-                    onClick={() => a.fits ? propose(part) : plan(part, date, true)}>
-                    {a.fits ? 'Другой день' : 'Всё равно взять'}
-                  </button>
+                  {/* У многодневной второй выход один и тот же независимо от
+                      помещаемости: предложить автору другое окно. «Всё равно
+                      взять» тут нет — переработку подтверждают в раскладке,
+                      по конкретным дням, а не одной кнопкой на всё окно. */}
+                  {windowed ? (
+                    <button className="tsk-btn" disabled={busy === part.id}
+                      onClick={() => propose(part)}>
+                      Предложить другое окно
+                    </button>
+                  ) : (
+                    <button className="tsk-btn" disabled={busy === part.id}
+                      onClick={() => a.fits ? propose(part) : plan(part, date, true)}>
+                      {a.fits ? 'Другой день' : 'Всё равно взять'}
+                    </button>
+                  )}
                   <button className="tsk-btn" onClick={() => ctx.openTask(part.taskId)}>
                     Открыть задачу
                   </button>
@@ -155,6 +214,20 @@ export default function InboxScreen({ ctx }) {
                     Не моё
                   </button>
                 </div>
+
+                {open && (
+                  <LayoutEditor
+                    window={{ from: a.from, to: a.to }}
+                    estimateHours={part.estimateHours}
+                    // Дни приезжают вместе с разбором: за теми же числами второй
+                    // раз ходить незачем, а два запроса — два способа их посчитать.
+                    days={a.days}
+                    userId={ctx.me?.id}
+                    busy={busy === part.id}
+                    onCancel={() => setLayoutPart(null)}
+                    onSubmit={(layout, force) => planLayout(part, layout, force)}
+                  />
+                )}
               </div>
             );
           })}
@@ -196,7 +269,11 @@ export default function InboxScreen({ ctx }) {
                       Появится во входящих, когда завершится предыдущая подзадача
                     </div>
                   </div>
-                  <Badge tone="muted">{estimateText(part.estimateHours)}</Badge>
+                  <Badge tone="muted">
+                    {estimateText(part.estimateHours)}
+                    {part.startDate && String(part.startDate) !== String(part.dueDate)
+                      && ` · ${dateRange(part.startDate, part.dueDate)}`}
+                  </Badge>
                 </div>
               ))}
             </>

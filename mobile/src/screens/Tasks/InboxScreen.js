@@ -30,7 +30,10 @@ import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {setInboxCount} from '../../store/tasksStore';
 import {Clock} from 'lucide-react-native';
-import {addDays, clockText, dfull, dnum, hoursText, shortName} from './taskMeta';
+import LayoutSheet from './LayoutSheet';
+import {
+  addDays, clockText, dateRange, dfull, dnum, hoursText, isWindowed, shortName,
+} from './taskMeta';
 
 export default function InboxScreen({navigation, route}) {
   const c = useTheme();
@@ -41,6 +44,10 @@ export default function InboxScreen({navigation, route}) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(null);
+  // Какая подзадача раскладывается по дням окна. Лист открывается по кнопке, а не
+  // сам: во входящих бывает десяток карточек, и раскладка в каждой превратила бы
+  // экран решений в экран таблиц.
+  const [layoutPart, setLayoutPart] = useState(null);
   const planDate = route.params?.planDate;
   const freeHours = Number(route.params?.freeHours || 0);
 
@@ -90,15 +97,21 @@ export default function InboxScreen({navigation, route}) {
       });
       if (!fit.date) {
         Alert.alert(
-          'Нет свободного дня',
-          'До конца горизонта нет дня, куда это помещается. Придётся двигать другое или признать переработку.',
+          isWindowed(part) ? 'Нет свободного окна' : 'Нет свободного дня',
+          isWindowed(part)
+            ? 'До конца горизонта нет окна под этот объём. Придётся двигать другое или признать переработку.'
+            : 'До конца горизонта нет дня, куда это помещается. Придётся двигать другое или признать переработку.',
         );
         return;
       }
-      await tasksApi.proposeDate(part.id, fit.date);
+      // У многодневной сервер возвращает окно целиком, и предлагать надо его: без
+      // начала предложение молча превратилось бы в «дайте вдвое больше времени».
+      await tasksApi.proposeDate(part.id, fit.date, fit.from);
       Alert.alert(
-        'Срок предложен',
-        `Автор увидит ${dnum(fit.date)} и вашу занятость — без названий ваших дел`,
+        fit.from ? 'Окно предложено' : 'Срок предложен',
+        fit.from
+          ? `Автор увидит ${dateRange(fit.from, fit.date)} и вашу занятость — без названий ваших дел`
+          : `Автор увидит ${dnum(fit.date)} и вашу занятость — без названий ваших дел`,
       );
       await load({silent: true});
     } catch (e) {
@@ -126,8 +139,16 @@ export default function InboxScreen({navigation, route}) {
 
   if (loading) return <LogoLoader />;
 
+  /**
+   * Приход из календаря: «что поместится в это свободное окно».
+   *
+   * Многодневная подзадача сюда не попадает намеренно. Вопрос экрана — что
+   * сделать в конкретный свободный час, а у неё работа размазана по дням окна, и
+   * поставить её «на этот день» нельзя: сервер ждёт раскладку. Показывать её
+   * здесь значило бы предлагать кнопку, которая ответит отказом.
+   */
   const visibleMine = planDate
-    ? data.mine.filter(part => Number(part.estimateHours) <= freeHours)
+    ? data.mine.filter(part => !isWindowed(part) && Number(part.estimateHours) <= freeHours)
     : data.mine;
 
   return (
@@ -162,6 +183,9 @@ export default function InboxScreen({navigation, route}) {
           const a = part.assessment || {};
           const date = String(planDate || part.dueDate);
           const disabled = busy === part.id;
+          // Многодневная подзадача: решение здесь другое. «В план на 22-е» ей не
+          // подходит — надо сказать, сколько часов в какой день окна.
+          const windowed = !!a.windowed;
 
           return (
             <View key={part.id} style={styles.card}>
@@ -177,7 +201,9 @@ export default function InboxScreen({navigation, route}) {
                 <View style={styles.cardMetaRight}>
                   <Clock size={13} color={c.textTertiary} />
                   <Text style={styles.cardFrom}>{clockText(part.estimateHours)}</Text>
-                  <Text style={styles.cardFrom}>· {dnum(date)}</Text>
+                  <Text style={styles.cardFrom}>
+                    · {windowed ? dateRange(a.from, a.to) : dnum(date)}
+                  </Text>
                 </View>
               </View>
 
@@ -185,20 +211,38 @@ export default function InboxScreen({navigation, route}) {
                 <Text style={[styles.fitText, {color: (planDate || a.fits) ? c.success : c.error}]}>
                   {planDate
                     ? `Свободное окно ${dnum(date)} — ${hoursText(freeHours)}`
-                    : <>
-                      {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
-                      {a.reason === 'no_norm' &&
-                        'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
-                      {a.reason === 'ok' &&
-                        `${dnum(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — помещается`}
-                      {a.reason === 'overload' &&
-                        `${dnum(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — переработка ${hoursText(a.over)}`}
-                    </>}
+                    : windowed
+                      ? <>
+                        {a.reason === 'vacation' && 'В эти дни у вас отпуск.'}
+                        {a.reason === 'day_off' && 'В окне нет ни одного вашего рабочего дня.'}
+                        {a.reason === 'no_norm' &&
+                          'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
+                        {a.reason === 'ok' &&
+                          `За ${a.workingDays} раб. дн. окна свободно ${hoursText(a.capacity)} — работы на ${hoursText(a.need)}`}
+                        {a.reason === 'overload' &&
+                          `Работы на ${hoursText(a.need)}, свободно ${hoursText(a.capacity)} — не хватает ${hoursText(a.over)}`}
+                      </>
+                      : <>
+                        {a.reason === 'vacation' && 'В этот день у вас отпуск.'}
+                        {a.reason === 'no_norm' &&
+                          'Вам не задана норма рабочего дня — посчитать загрузку нельзя.'}
+                        {a.reason === 'ok' &&
+                          `${dnum(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — помещается`}
+                        {a.reason === 'overload' &&
+                          `${dnum(date)}: станет ${hoursText(a.after)} из ${hoursText(a.norm)} — переработка ${hoursText(a.over)}`}
+                      </>}
                 </Text>
               </View>
 
               <View style={styles.acts}>
-                {planDate || a.fits ? (
+                {windowed ? (
+                  <Pressable
+                    style={[styles.btn, styles.btnPrimary, disabled && styles.btnOff]}
+                    disabled={disabled}
+                    onPress={() => setLayoutPart(part)}>
+                    <Text style={styles.btnPrimaryText}>Разложить по дням</Text>
+                  </Pressable>
+                ) : planDate || a.fits ? (
                   <Pressable
                     style={[styles.btn, styles.btnPrimary, disabled && styles.btnOff]}
                     disabled={disabled}
@@ -220,7 +264,19 @@ export default function InboxScreen({navigation, route}) {
                   </Pressable>
                 )}
 
-                {!planDate && (
+                {/* У многодневной второй выход один и тот же независимо от
+                    помещаемости: попросить другое окно. «Всё равно взять» тут нет —
+                    переработку подтверждают в раскладке, по конкретным дням. */}
+                {!planDate && windowed && (
+                  <Pressable
+                    style={[styles.btn, disabled && styles.btnOff]}
+                    disabled={disabled}
+                    onPress={() => propose(part)}>
+                    <Text style={styles.btnText}>Другое окно</Text>
+                  </Pressable>
+                )}
+
+                {!planDate && !windowed && (
                   <Pressable
                     style={[styles.btn, disabled && styles.btnOff]}
                     disabled={disabled}
@@ -295,6 +351,34 @@ export default function InboxScreen({navigation, route}) {
             </View>
           </Pressable>
         ))
+      )}
+
+      {/* Лист раскладки. Живёт вне карточек: модальное окно должно быть одно на
+          экран, а не по одному на каждую входящую подзадачу. */}
+      {!!layoutPart && (
+        <LayoutSheet
+          visible
+          window={{from: layoutPart.assessment?.from, to: layoutPart.assessment?.to}}
+          estimateHours={layoutPart.estimateHours}
+          // Дни приезжают вместе с разбором во входящих: за теми же числами
+          // второй раз ходить незачем, а два запроса — два способа их посчитать.
+          days={layoutPart.assessment?.days}
+          userId={layoutPart.assignees?.[0]?.userId}
+          title={layoutPart.title}
+          busy={busy === layoutPart.id}
+          onClose={() => setLayoutPart(null)}
+          onSubmit={(layout, force) => {
+            const part = layoutPart;
+            setLayoutPart(null);
+            return run(
+              part.id,
+              () => tasksApi.planPartLayout(part.id, layout, force),
+              force
+                ? `Взято сверх нормы на ${layout.length} дн. — автор увидит переработку.`
+                : `В плане: ${layout.length} дн., ${hoursText(part.estimateHours)}. Автору ушло уведомление.`,
+            );
+          }}
+        />
       )}
 
     </ScrollView>

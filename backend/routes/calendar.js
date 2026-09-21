@@ -24,12 +24,15 @@ try {
 }
 
 /**
- * Подписывает блоки задач их кодом (РЕМ-42, у части — РЕМ-42/2).
+ * Подписывает блоки задач их кодом (РЕМ-42, у части — РЕМ-42/2) и taskId.
  *
  * Код лежит в задаче, а событие календаря знает только про часть, поэтому его
  * приходится добирать отдельным запросом — но только для тех событий, у которых
  * есть taskPartId. В обычном дне таких единицы, и лишнего запроса при пустом
  * списке не будет.
+ *
+ * taskId едет рядом с кодом, потому что клику по блоку некуда вести без него:
+ * календарь открывает карточку задачи, а не форму события.
  *
  * Номер части считается по её месту в задаче, поэтому тянутся все части
  * затронутых задач, а не только запланированные.
@@ -71,6 +74,7 @@ async function withTaskCodes(events) {
     const code = codeByTask.get(taskId);
     if (!code) return event;
     const plain = typeof event.toJSON === 'function' ? event.toJSON() : { ...event };
+    plain.taskId = taskId;
     plain.taskCode = countByTask.get(taskId) > 1
       ? `${code}/${indexByPart.get(event.taskPartId) + 1}`
       : code;
@@ -403,6 +407,25 @@ router.get('/events', authenticate, async (req, res) => {
 });
 
 // Получить индикаторы событий для календаря (количество событий по дням)
+/**
+ * Цвет точки в мини-календаре сайдбара.
+ *
+ * Цвет отдаёт сервер — так здесь уже сделано для аккредитаций и ТО, и разводить
+ * два способа ради одного типа незачем. Фиолетовый у задачи тот же, что у
+ * `--secondary` на фронте: точка и блок на странице календаря должны совпадать.
+ *
+ * Для блока задачи цвет типа перебивает цвет события, а не наоборот. Причина в
+ * умолчании поля color в модели: оно равно `#4a90e2`, и у блока, которому цвет
+ * никто не выбирал, в базе всё равно лежит синий от личного события. Тот же
+ * порядок держит eventColor во frontend/src/components/calendar/eventTypes.js.
+ */
+const DOT_COLOR_BY_TYPE = { task: '#5856D6' };
+const DEFAULT_DOT_COLOR = '#4a90e2';
+
+function dotColor(event) {
+  return DOT_COLOR_BY_TYPE[event.eventType] || event.color || DEFAULT_DOT_COLOR;
+}
+
 router.get('/event-indicators', authenticate, async (req, res) => {
   try {
     if (!CalendarEvent) {
@@ -465,8 +488,9 @@ router.get('/event-indicators', authenticate, async (req, res) => {
           }
         ]
       },
-      // ✅ ДОБАВЛЕНО: Получаем цвет события и exceptions для повторяющихся событий
-      attributes: ['id', 'startTime', 'endTime', 'color', 'isRecurring', 'recurrenceRule', 'exceptions']
+      // eventType нужен ради цвета точки: у блока задачи своего цвета нет, и
+      // без типа он был бы неотличим от личного события.
+      attributes: ['id', 'startTime', 'endTime', 'color', 'eventType', 'isRecurring', 'recurrenceRule', 'exceptions']
     });
 
     // ✅ ИЗМЕНЕНО: Теперь возвращаем массивы с цветами вместо количества
@@ -480,14 +504,14 @@ router.get('/event-indicators', authenticate, async (req, res) => {
           if (!indicators[dateKey]) {
             indicators[dateKey] = [];
           }
-          indicators[dateKey].push({ color: event.color || '#4a90e2' });
+          indicators[dateKey].push({ color: dotColor(event) });
         });
       } else {
         const dateKey = new Date(event.startTime).toISOString().split('T')[0];
         if (!indicators[dateKey]) {
           indicators[dateKey] = [];
         }
-        indicators[dateKey].push({ color: event.color || '#4a90e2' });
+        indicators[dateKey].push({ color: dotColor(event) });
       }
     });
 
@@ -1079,7 +1103,9 @@ router.get('/upcoming', authenticate, async (req, res) => {
       limit: 20
     });
 
-    res.json(events);
+    // Блоки задач попадают и сюда, а «Предстоящие события» без кода задачи
+    // показывали бы несколько одинаковых строк вроде «Созвон».
+    res.json(await withTaskCodes(events));
   } catch (error) {
     console.error('Get upcoming events error:', error);
     res.status(500).json({ error: 'Failed to fetch upcoming events', details: error.message });

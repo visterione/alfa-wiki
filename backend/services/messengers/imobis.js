@@ -142,9 +142,13 @@ async function senders(organization, sandbox, token) {
  * Шаблоны аккаунта. У ВК-канала сообщение уходит только по одобренному шаблону,
  * поэтому список нужен рядом с полем текста — как и у Fromni, но здесь его
  * хотя бы видно честно.
+ *
+ * Токен принимается наравне с двумя справками выше (ver. 8.51). Без него список
+ * спрашивался у аккаунта из .env, тогда как счёт у Имобиса с 8.25 свой у
+ * каждого филиала: ответ приходил про чужой аккаунт и выглядел настоящим.
  */
-async function templates(organization, sandbox) {
-  const data = await call(organization, 'GET', '/template/show', {}, { sandbox });
+async function templates(organization, sandbox, token) {
+  const data = await call(organization, 'GET', '/template/show', {}, { sandbox, token });
   const rows = (data && (data.templates || data.data || data.result)) || data;
   return Array.isArray(rows) ? rows : [];
 }

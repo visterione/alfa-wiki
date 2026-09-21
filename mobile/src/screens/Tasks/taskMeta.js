@@ -249,6 +249,62 @@ export function dnum(key) {
 /** «чт, 20.08.26» — срок в карточке задачи. */
 export const ddate = key => `${DOW[dow(key)].toLowerCase()}, ${dnum(key)}`;
 
+/**
+ * «17.08 – 21.08.26» — окно работы или период задачи.
+ *
+ * Повторяющийся хвост даты не печатается дважды: на телефоне ширины нет вовсе, а
+ * «17.08.26 – 21.08.26» — это одно и то же, сказанное подряд. Совпадающие концы
+ * возвращаются одной датой: диапазон сообщал бы о протяжённости, которой нет.
+ * Правило и вид те же, что в вебе (frontend/src/pages/Tasks/utils/dates.js) —
+ * человек открывает одну и ту же задачу и там, и здесь.
+ */
+export function dateRange(from, to) {
+  if (!from && !to) return '—';
+  if (!from || !to || String(from) === String(to)) return dnum(to || from);
+  const [a, b] = [String(from), String(to)].sort();
+  const start = fromKey(a);
+  const end = fromKey(b);
+  const pad = value => String(value).padStart(2, '0');
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const sameMonth = sameYear && start.getMonth() === end.getMonth();
+  const head = sameMonth
+    ? pad(start.getDate())
+    : sameYear
+      ? `${pad(start.getDate())}.${pad(start.getMonth() + 1)}`
+      : dnum(a);
+  return `${head} – ${dnum(b)}`;
+}
+
+/**
+ * Многодневная ли подзадача (ver. 8.48).
+ *
+ * Пустой startDate — это рабочее состояние «работа на один день», в котором
+ * живут все подзадачи до 8.48, а не незаполненные данные. Совпадающие концы окна
+ * тоже означают один день. Правило повторяет серверное (services/tasks/parts.js):
+ * разойдясь, телефон предложил бы раскладку там, где сервер её не ждёт.
+ */
+export const isWindowed = part =>
+  !!part?.startDate && String(part.startDate) !== String(part.dueDate);
+
+/** Границы окна работы. У однодневной подзадачи оба конца — её срок. */
+export function windowOf(part) {
+  const to = String(part?.dueDate || '').slice(0, 10);
+  const from = part?.startDate ? String(part.startDate).slice(0, 10) : to;
+  return {from: from <= to ? from : to, to};
+}
+
+/** Дни периода включительно — по ним рисуются строки раскладки. */
+export function daysBetween(from, to) {
+  const out = [];
+  const cursor = fromKey(from);
+  const last = fromKey(to);
+  while (cursor <= last) {
+    out.push(toKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
 /** Код части: РЕМ-42/2. У задачи из одной части — просто её код. */
 export function partCode(code, index) {
   if (!code) return '';

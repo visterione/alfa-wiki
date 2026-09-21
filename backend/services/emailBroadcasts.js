@@ -25,6 +25,11 @@ async function runOnce(now = new Date()) {
     const result = await sendBulkEmail({
       subject: log.subject,
       htmlContent: log.htmlContent,
+      // Документ конструктора, а не готовый HTML рядом с ним: письмо
+      // пересобирается в момент отправки. Это не прихоть — у каждого получателя
+      // свой адрес отписки, и отсев отписавшихся считается тоже сейчас, а не
+      // тогда, когда рассылку запланировали.
+      design: log.design || null,
       recipients: log.recipients || [],
       attachments: log.attachments || [],
       senderInfo: sender?.displayName || sender?.username || 'Альфа Вики'

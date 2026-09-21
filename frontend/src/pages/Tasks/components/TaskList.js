@@ -133,8 +133,26 @@ export default function TaskList({ ctx }) {
                 // Не только крайний срок, но и начало: по одной дате нельзя
                 // отличить дело на день от цепочки на неделю, а в списке это
                 // первое, что хочется знать о составной задаче.
-                const dates = parts.map(p => String(p.dueDate)).sort();
-                const due = dateRange(dates[0], dates[dates.length - 1]);
+                //
+                // С ver. 8.48 начало берётся и из окон подзадач: подзадача
+                // больше не обязана укладываться в день, и одна многодневная
+                // растягивает задачу ровно так же, как цепочка из четырёх.
+                // Сервер считает то же самое в span — здесь оно посчитано
+                // заново, потому что этот список ходит и за старыми ответами.
+                const dates = parts
+                  .flatMap(p => [String(p.startDate || p.dueDate), String(p.dueDate)])
+                  .sort();
+                // Свой срок задачи важнее выведенного: это то, что обещали, и то,
+                // о чём говорят вслух. Выведенный период показывается, когда своего
+                // срока у задачи нет.
+                const due = task.dueDate
+                  ? dateRange(task.startDate || task.dueDate, task.dueDate)
+                  : dateRange(dates[0], dates[dates.length - 1]);
+                // Срок нарушен подзадачами — видно и в списке, а не только в
+                // открытой карточке: строка, которая уже не уложится в обещанное,
+                // должна попадаться на глаза раньше.
+                const late = task.breaksDeadline
+                  || (task.dueDate && dates[dates.length - 1] > String(task.dueDate).slice(0, 10));
                 const complex = parts.length > 1;
                 const isOpen = opened.has(task.id);
 
@@ -183,7 +201,11 @@ export default function TaskList({ ctx }) {
                       </td>
                       <td><Mode mode={task.mode} /></td>
                       <td>{hoursText(task.totalEffortHours)}</td>
-                      <td className="tsk-due">{due}</td>
+                      <td className={`tsk-due ${late ? 'is-late' : ''}`}
+                        title={late ? `Срок задачи ${dnum(task.dueDate)} — подзадачи выходят за него` : undefined}
+                      >
+                        {due}
+                      </td>
                       <td><StatusBadge status={task.status} /></td>
                     </tr>
 
@@ -221,9 +243,13 @@ export default function TaskList({ ctx }) {
                                 на троих это не два часа, а шесть. */}
                             {hoursText(Number(part.estimateHours || 0) * Math.max(partUsers.length, 1))}
                           </td>
-                          {/* У части срок всегда один день: диапазон у неё
-                              взяться неоткуда, она и есть единица работы. */}
-                          <td className="tsk-due">{part.dueDate ? dnum(part.dueDate) : '—'}</td>
+                          {/* У подзадачи с ver. 8.48 может быть окно: она
+                              перестала быть обязанной укладываться в день, и
+                              диапазон здесь означает ровно это — границы работы,
+                              внутри которых исполнитель раскладывает часы. */}
+                          <td className="tsk-due">
+                            {part.dueDate ? dateRange(part.startDate || part.dueDate, part.dueDate) : '—'}
+                          </td>
                           <td><StatusBadge status={part.status} /></td>
                         </tr>
                       );

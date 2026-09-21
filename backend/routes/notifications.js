@@ -44,8 +44,9 @@ const router = express.Router();
  * «наружу ничего не уходит» должно быть проверяемым, а не общим.
  */
 const PROVIDER_TITLES = {
-  imobis: 'Имобис (SMS напрямую)',
-  fromni: 'Fromni (Notify, SMS)'
+  imobis: 'Имобис (SMS)',
+  // Notify и только: SMS через Fromni убрана из каскада в 8.50.
+  fromni: 'Fromni (Notify)'
 };
 
 async function safetyState() {
@@ -260,7 +261,8 @@ router.get('/templates', authenticate, requireAdmin, async (req, res) => {
 
 router.post('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { event, text, smsText, channelTexts, medCenterId, beforeMinutes, withConfirm, withCancel } = req.body || {};
+    const { event, text, smsText, channelTexts, medCenterId, beforeMinutes,
+            withConfirm, withCancel, withRating } = req.body || {};
     if (!EVENTS.includes(event)) return res.status(400).json({ error: 'Неизвестное событие' });
     if (!medCenterId) return res.status(400).json({ error: 'Нужно выбрать филиал' });
 
@@ -286,7 +288,10 @@ router.post('/templates', authenticate, requireAdmin, async (req, res) => {
       medCenterId,
       beforeMinutes: event === 'reminder' ? (Number(beforeMinutes) || 1440) : null,
       withConfirm: !!withConfirm,
-      withCancel: !!withConfirm && !!withCancel
+      withCancel: !!withConfirm && !!withCancel,
+      // Кнопки оценки бывают только у просьбы об отзыве (ver. 8.49): под
+      // записью оценивать ещё нечего, а под отменой — уже незачем.
+      withRating: event === 'review' && !!withRating
     });
     res.status(201).json(row);
   } catch (err) {
@@ -304,7 +309,7 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
     }
 
     const { text, smsText, channelTexts, cascade, beforeMinutes, afterMinutes,
-            frequency, withConfirm, withCancel, isActive } = req.body || {};
+            frequency, withConfirm, withCancel, withRating, isActive } = req.body || {};
 
     // Тексты каналов (ver. 8.03). Пустые ключи выбрасываем, а не храним пустыми
     // строками: «нет своего текста» и «текст из одного пробела» — разные вещи,
@@ -341,6 +346,12 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
       // кнопка отказа. Сторожим это здесь, а не только галкой в интерфейсе, —
       // шаблон правится и запросом, а последствие тут отправляется людям.
       withCancel: nextConfirm && (withCancel !== undefined ? !!withCancel : row.withCancel),
+      // Сторожим здесь же и по той же причине, что и отмену выше: шаблон
+      // правится и запросом, а кнопка оценки под подтверждением записи
+      // спросила бы про приём, которого ещё не было.
+      withRating: row.event === 'review'
+        ? (withRating !== undefined ? !!withRating : row.withRating)
+        : false,
       isActive: isActive !== undefined ? !!isActive : row.isActive
     });
     res.json(row);
@@ -536,12 +547,30 @@ router.get('/settings', authenticate, requireAdmin, async (req, res) => {
       // это два разных мессенджера, и приоритет между ними — решение заказчика.
       // Список короткий намеренно: ВКонтакте, Viber и WhatsApp убраны в 8.03,
       // сеть ими не пользуется.
+      //
+      // Notify появился прямой ступенью в 8.51. Каналом это всегда был Имобис:
+      // в подключении Fromni вводился её токен Имобиса и ссылка на группу ВК,
+      // то есть агрегатор пересылал запрос туда же, куда мы теперь ходим сами.
+      // Лишний посредник стоил ровно того же, чего стоил у SMS: исход отправки
+      // Fromni не сообщает, и «дошло ли уведомление» оставалось без ответа.
+      //
+      // Ступени Fromni в списке больше нет вовсе — это решение заказчика, и
+      // вместе с SMS из 8.50 оно означает, что каскад к агрегатору не ходит
+      // ни за чем. Код канала (services/messengers/fromni.js) оставлен на
+      // месте: вернуть ступень — дописать строку сюда.
+      //
+      // SMS через Fromni убрана в 8.50. SMS осталась одна — прямая, через
+      // Имобис, и уточнение «напрямую» в её названии стало лишним: отличать её
+      // больше не от чего. Двух ступеней с одним смыслом в списке быть не
+      // должно — выбирая между ними, администратор выбирал не канал, а
+      // провайдера, о котором знать не обязан. Прямая ступень отвечает, дошло
+      // ли сообщение, а Fromni этого не сообщает вовсе — ровно та причина, по
+      // которой прямая отправка появилась в 7.95.
       available: [
         { name: 'telegram',    title: 'Telegram-бот', provider: 'Вики',   channel: 'telegram' },
         { name: 'max',         title: 'MAX-бот',      provider: 'Вики',   channel: 'max' },
-        { name: 'imobis:sms',  title: 'SMS напрямую', provider: 'Имобис', channel: 'sms' },
-        { name: 'notify+vk',   title: 'Notify',       provider: 'Fromni', channel: 'notify' },
-        { name: 'sms+webchat', title: 'SMS',          provider: 'Fromni', channel: 'sms' }
+        { name: 'imobis:vk',   title: 'Notify',       provider: 'Имобис', channel: 'notify' },
+        { name: 'imobis:sms',  title: 'SMS',          provider: 'Имобис', channel: 'sms' }
       ],
       organizations: ORGANIZATIONS,
       // Счёта у Имобиса здесь больше нет (ver. 8.25): он свой у каждого филиала
@@ -576,13 +605,18 @@ router.get('/branches/:medCenterId/imobis', authenticate, requireAdmin, async (r
       return res.json({ balance: null, senders: [], error: 'у филиала не задан токен Имобиса' });
     }
 
-    const [balanceResult, sendersResult] = await Promise.allSettled([
+    const [balanceResult, sendersResult, templatesResult] = await Promise.allSettled([
       imobis.balance(null, !!config.sandbox, config.token),
       // Имена отправителя спрашиваем здесь же. Имя проходит модерацию у
       // операторов, придумать его нельзя, а вписанное с опечаткой не выдаёт
       // себя ничем: SMS просто не уходит. Список из аккаунта отвечает на это
       // прямо, и ради него не приходится лезть в консоль за imobis:check.
-      imobis.senders(null, !!config.sandbox, config.token)
+      imobis.senders(null, !!config.sandbox, config.token),
+      // Шаблоны спрашиваем ради ВК-канала (ver. 8.51): сообщение уходит там
+      // только по одобренному шаблону, и пустой список — самый частый ответ на
+      // «Notify не работает, хотя всё заполнено». Из консоли это видно было и
+      // раньше, но лезть туда ради настройки филиала никто не станет.
+      imobis.templates(null, !!config.sandbox, config.token)
     ]);
 
     if (balanceResult.status === 'rejected') {
@@ -601,10 +635,20 @@ router.get('/branches/:medCenterId/imobis', authenticate, requireAdmin, async (r
         .filter(Boolean)
       : [];
 
+    // Формат строки шаблона у них не типизирован — так же, как у имён
+    // отправителя выше: приходил и объект, и строка. Берём первое похожее на
+    // название и не гадаем дальше.
+    const templates = templatesResult.status === 'fulfilled'
+      ? templatesResult.value
+        .map(row => (typeof row === 'object' ? (row.name || row.title || row.template || '') : String(row)))
+        .filter(Boolean)
+      : [];
+
     res.json({
       balance: Number.isFinite(value) ? value : null,
       currency: (data && data.currency) || 'RUB',
       sandbox: !!config.sandbox,
+      templates,
       senders,
       // Имя, вписанное в карточке, но не заведённое в аккаунте, — самая тихая из
       // поломок этого модуля, поэтому отвечаем на неё прямо, а не списком.
@@ -835,8 +879,13 @@ router.put('/branches/:medCenterId', authenticate, requireAdmin, async (req, res
         const value = String(imobis.token || '').trim();
         if (value) next.token = value; else delete next.token;
       }
+      // Группа ВК с 8.51 хранится так, как её ввели: ссылкой, коротким адресом
+      // или числом. Раньше поле приводилось к числу, и ссылка — тот вид, в
+      // котором настройка лежит у человека под рукой, — превращалась в null
+      // молча: поле выглядело незаполненным, хотя его заполняли. Разбор ушёл в
+      // момент отправки, services/notifications/vkGroup.js.
       if (imobis.vkGroup !== undefined) {
-        const value = Number(imobis.vkGroup) || null;
+        const value = String(imobis.vkGroup ?? '').trim().slice(0, 200);
         if (value) next.vkGroup = value; else delete next.vkGroup;
       }
       if (imobis.sandbox !== undefined) {

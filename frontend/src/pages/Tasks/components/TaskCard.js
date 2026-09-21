@@ -18,8 +18,10 @@ import { tasks as api, BASE_URL } from '../../../services/api';
 import {
   STATUS_LABEL, STATUS_ICON, STATUS_COLOR, userName, shortName, partCode,
 } from '../utils/labels';
-import { hoursText, ddate, dfull, clockText } from '../utils/dates';
+import { hoursText, ddate, dfull, dnum, dateRange, addDays, clockText } from '../utils/dates';
 import { Badge, Avatar, AvatarStack, Empty, useMaskClose } from './Bits';
+import LayoutEditor from './LayoutEditor';
+import DueRange, { spanDays } from './DueRange';
 
 /**
  * Продление: не одна кнопка «+30 минут», а выбор.
@@ -43,18 +45,36 @@ function historyText(row) {
         ? `создал задачу из ${p.parts} подзадач на ${p.people} чел.`
         : 'создал задачу';
     case 'planned':
+      // Многодневная подзадача пишет в историю раскладку, а не день: «взял в
+      // план на 22-е» у работы на неделю — неправда, и по такой записи нельзя
+      // понять, сколько человек на неё отвёл.
+      if (p.until && p.until !== p.date) {
+        const spread = (p.layout || []).map(row => `${dnum(row.date)} — ${hoursText(row.hours)}`).join(', ');
+        return p.overload
+          ? `разложил на ${(p.layout || []).length} дн. сверх нормы: ${spread}`
+          : `разложил на ${(p.layout || []).length} дн.: ${spread}`;
+      }
       return p.overload
         ? `взял в план на ${ddate(p.date)} сверх нормы — стало ${hoursText(p.after)} из ${hoursText(p.norm)}`
         : `поставил в план на ${ddate(p.date)}`;
     case 'proposed_date':
-      return `предложил срок ${ddate(p.to)}${p.busyHours !== null && p.busyHours !== undefined
-        ? ` — было занято ${hoursText(p.busyHours)} из ${hoursText(p.norm)}` : ''}`;
+      return `предложил срок ${p.toStart ? `${dnum(p.toStart)} — ${dnum(p.to)}` : ddate(p.to)}${
+        p.busyHours !== null && p.busyHours !== undefined
+          ? ` — было занято ${hoursText(p.busyHours)} из ${hoursText(p.norm)}` : ''}`;
     case 'accepted_date': return `согласовал срок ${ddate(p.date)}`;
     case 'declined': return 'вернул задачу автору с пометкой «не моя зона»';
-    case 'moved':
+    case 'moved': {
+      const where = p.toStart && p.toStart !== p.to
+        ? `на ${dnum(p.toStart)} — ${dnum(p.to)}`
+        : `на ${ddate(p.to)}`;
       return p.becameStuck
-        ? `перенёс на ${ddate(p.to)} — третий перенос, задача требует решения`
-        : `перенёс на ${ddate(p.to)}`;
+        ? `перенёс ${where} — третий перенос, задача требует решения`
+        : `перенёс ${where}`;
+    }
+    case 'stretched':
+      return p.from
+        ? `изменил срок: работа идёт ${dnum(p.from)} — ${dnum(p.to)}`
+        : `изменил срок: снова один день, ${ddate(p.to)}`;
     case 'extended': return `продлил: ${hoursText(p.from)} → ${hoursText(p.to)}`;
     case 'split': return `разбил подзадачу: ${hoursText(p.head)} + ${hoursText(p.tail)}`;
     case 'forced': return `продавил проверку загрузки: «${p.explanation}»`;
@@ -72,7 +92,8 @@ function historyTone(row) {
   // Смена видимости — не хорошее и не плохое событие, но заметное: круг
   // читающих задачу изменился, и в ленте это должно бросаться в глаза.
   if (row.action === 'team_changed') return 'violet';
-  if (row.action === 'moved' || row.action === 'extended' || row.action === 'proposed_date') return 'warn';
+  if (row.action === 'moved' || row.action === 'extended' || row.action === 'proposed_date'
+    || row.action === 'stretched') return 'warn';
   if (row.action === 'planned' || row.action === 'accepted_date') return 'ok';
   if (row.action === 'status_changed') {
     if (row.payload?.to === 'done') return 'ok';
@@ -83,16 +104,51 @@ function historyTone(row) {
   return 'info';
 }
 
+/**
+ * Что означает новый срок: перенос или другую длительность работы.
+ *
+ * Различие не косметическое, и потому его считают, а не спрашивают. Перенос —
+ * «эта работа делается не на той неделе, а на следующей», и он идёт в счётчик
+ * трёх переносов. Другая длительность — «работа идёт не день, а пять», и она
+ * счётчик обнуляет: условия переписаны, и наследовать новой работе приговор
+ * предыдущей неправильно.
+ *
+ * Ту же границу держит сервер: /move отказывает, если длина изменилась, а
+ * /stretch — если не изменилась. Без второй проверки «растягиванием» на ту же
+ * длину можно было бы двигать работу сколько угодно, ни разу не дойдя до
+ * разговора о том, почему она не делается.
+ */
+function rescheduleKind(part, from, to) {
+  if (!to) return null;
+  const was = spanDays(part.startDate || part.dueDate, part.dueDate);
+  const now = spanDays(from || to, to);
+  if (was !== now) return 'stretch';
+  const sameStart = String(part.startDate || part.dueDate) === String(from || to);
+  return sameStart ? null : 'move';
+}
+
 export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
   const maskProps = useMaskClose(onClose);
   const [task, setTask] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [movingPart, setMovingPart] = useState(null);
-  const [moveDate, setMoveDate] = useState('');
+  /**
+   * Какая подзадача сейчас меняет срок и на какой.
+   *
+   * Один набор состояния, а не два. Раньше рядом стояли «Перенести» и
+   * «Растянуть» с двумя панелями и двумя парами полей — две кнопки про одно и то
+   * же поле. Теперь срок меняют одним контролом, а перенос это или другая
+   * длительность, выводится из того, изменилась ли длина: см. rescheduleKind.
+   */
+  const [reschedulePart, setReschedulePart] = useState(null);
+  const [dueFrom, setDueFrom] = useState(null);
+  const [dueTo, setDueTo] = useState('');
   // Какая часть сейчас спрашивает «завершаем или на проверку» и какая — «на
   // сколько продлить». Строкой с id, а не флагом: частей в задаче несколько.
   const [finishingPart, setFinishingPart] = useState(null);
   const [extendingPart, setExtendingPart] = useState(null);
+  // Какая подзадача сейчас раскладывается по дням и какая — растягивается на
+  // окно. Обе строкой с id, по той же причине: подзадач в задаче несколько.
+  const [layoutPart, setLayoutPart] = useState(null);
   const [tab, setTab] = useState('main');
   const [teamOpen, setTeamOpen] = useState(false);
 
@@ -149,6 +205,25 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * Открыть правку срока.
+   *
+   * Второй аргумент — предложенный конец: им пользуется выход из «анализируется»,
+   * где человеку сразу предлагают срок подлиннее, потому что именно за этим он
+   * туда и пришёл. В обычном случае срок открывается тем, какой есть, и
+   * предлагать за человека нечего.
+   */
+  const openReschedule = (part, suggestedTo) => {
+    const from = part.startDate || String(part.dueDate);
+    const to = suggestedTo || String(part.dueDate);
+    setReschedulePart(part.id);
+    setDueFrom(from === to ? null : from);
+    setDueTo(to);
+    setFinishingPart(null);
+    setExtendingPart(null);
+    setLayoutPart(null);
   };
 
   const cancel = async () => {
@@ -228,12 +303,30 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                 стоять должен рядом с ними. Прятать это в настройки нельзя: круг
                 читающих — первое, что человек должен узнать об открытой
                 карточке, особенно если он в ней что-то пишет. */}
+            {/* Одна дата, а не две. Стояли «Срок задачи» и рядом «по
+                подзадачам» — два ответа на один вопрос, причём у обычной задачи
+                на один день второй превращался в «25.09.26 — 25.09.26» и сбивал
+                с толку. Свой срок у задачи есть — показываем его; нет —
+                показываем, на какие дни она расписана. Расхождение важно только
+                когда оно есть, и тогда о нём говорит бейдж, а какая именно
+                подзадача вылезла — отметка на ней самой, ниже. */}
+            {(task.dueDate || task.span) && (
+              <div>
+                {task.dueDate ? 'Срок задачи' : 'Расписана на'}
+                <div style={{ color: 'var(--text-primary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  {task.dueDate
+                    ? dateRange(task.startDate || task.dueDate, task.dueDate)
+                    : dateRange(task.span.from, task.span.to)}
+                  {task.breaksDeadline && <Badge tone="bad">срок нарушен</Badge>}
+                </div>
+              </div>
+            )}
             <div>
               Кому видна
               <div style={{ color: 'var(--text-primary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
                 {task.team
                   ? <><Shield size={14} strokeWidth={1.9} /> {task.team.name}</>
-                  : <><Lock size={14} strokeWidth={1.9} /> Личная</>}
+                  : <><Lock size={14} strokeWidth={1.9} /> Без команды</>}
                 {canChangeTeam && (
                   <button type="button" className="tsk-link-btn" onClick={() => setTeamOpen(true)}>
                     изменить
@@ -291,6 +384,14 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
             .map((part, index) => {
             const notPlanned = (part.assignees || []).filter(a => !a.plannedDate);
             const mine = (part.assignees || []).find(a => a.userId === ctx.me?.id);
+            // Многодневная подзадача: окно [startDate..dueDate]. Совпадающие
+            // концы — это по-прежнему один день, и рисовать для них диапазон
+            // значило бы сообщать о протяжённости, которой нет.
+            const windowed = !!part.startDate && String(part.startDate) !== String(part.dueDate);
+            const frame = { from: part.startDate || part.dueDate, to: String(part.dueDate) };
+            const windowDays = Math.round(
+              (new Date(`${frame.to}T00:00:00`) - new Date(`${frame.from}T00:00:00`)) / 86400000
+            ) + 1;
             const partHistory = (task.history || []).filter(row => row.partId === part.id);
             const lastProposal = partHistory.map(row => row.action).lastIndexOf('proposed_date');
             const lastAccept = partHistory.map(row => row.action).lastIndexOf('accepted_date');
@@ -315,14 +416,33 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                   <span className="tsk-hours-chip">
                     <Clock size={13} strokeWidth={1.9} />{clockText(part.estimateHours)}
                   </span>
-                  {' · '}{ddate(String(part.dueDate))}
+                  {' · '}{windowed
+                    ? <>{dateRange(frame.from, frame.to)} <Badge tone="muted">{windowDays} дн.</Badge></>
+                    : ddate(String(part.dueDate))}
                   {part.assignees?.length > 1 && <Badge tone="violet">общая</Badge>}
+                  {/* Раскладка своей подзадачи: на какие дни человек её
+                      разложил. Срок говорит, к чему она должна быть сделана, а
+                      это — когда он над ней сидит. */}
+                  {windowed && mine?.plannedDate && mine?.plannedUntil && (
+                    <Badge tone="ok">в плане {dateRange(mine.plannedDate, mine.plannedUntil)}</Badge>
+                  )}
                   {part.moveCount > 0 && (
                     <Badge tone={part.moveCount >= 3 ? 'bad' : 'warn'}>
                       переносов: {part.moveCount}
                     </Badge>
                   )}
                 </div>
+
+                {/* Какая подзадача вышла за срок задачи — видно на ней самой.
+                    Признак считает сервер (partsService.partOutsideTask): в
+                    карточке он должен совпадать с тем, что видит автор в форме. */}
+                {part.outsideTask && (
+                  <div className="tsk-part-outside">
+                    {part.outsideTask === 'after'
+                      ? `выходит за срок задачи${task.dueDate ? ` — ${dnum(task.dueDate)}` : ''}`
+                      : `начинается раньше срока задачи${task.startDate ? ` — ${dnum(task.startDate)}` : ''}`}
+                  </div>
+                )}
 
                 {!!notPlanned.length && (
                   <div style={{ fontSize: 12, color: 'var(--warning)', marginTop: 6 }}>
@@ -337,12 +457,23 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                     <div className="tsk-trade-title">Требует решения</div>
                     <div className="tsk-trade-text">
                       Подзадача переносится третий раз подряд. Обычно это значит, что
-                      она слишком крупная или на самом деле не нужна.
+                      она слишком крупная, идёт дольше одного дня или на самом деле
+                      не нужна.
                     </div>
                     <div className="tsk-acts" style={{ marginTop: 10 }}>
                       <button className="tsk-btn" disabled={busy}
                         onClick={() => act(() => api.splitPart(part.id, {}), 'Разбито надвое — теперь подзадачи мельче и помещаются в день')}>
                         Разбить на подзадачи
+                      </button>
+                      {/* Третий выход (ver. 8.48): работа и не должна была
+                          помещаться в день. Раньше это приходилось изображать
+                          четырьмя подзадачами «Вёрстка (1/4)», и три переноса
+                          считались каждому куску отдельно. Ведёт в тот же
+                          контрол срока, что и обычное изменение: отдельной
+                          возможности «растянуть» в модуле нет. */}
+                      <button className="tsk-btn" disabled={busy}
+                        onClick={() => openReschedule(part, addDays(frame.to, 4))}>
+                        Работа идёт несколько дней
                       </button>
                       {isAuthor && (
                         <button className="tsk-btn is-danger" onClick={cancel}>Отменить задачу</button>
@@ -355,11 +486,14 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                   <div className="tsk-part-actions">
                     {!mine.plannedDate ? (
                       <button className="tsk-part-action is-plan" disabled={busy}
-                        onClick={() => act(
-                          () => api.planPart(part.id, String(part.dueDate)),
-                          `В плане на ${dfull(String(part.dueDate))}`
-                        )}>
-                        <CalendarClock size={15} />Взять в план
+                        onClick={() => (windowed
+                          ? setLayoutPart(layoutPart === part.id ? null : part.id)
+                          : act(
+                            () => api.planPart(part.id, String(part.dueDate)),
+                            `В плане на ${dfull(String(part.dueDate))}`
+                          ))}>
+                        <CalendarClock size={15} />
+                        {windowed ? 'Разложить по дням' : 'Взять в план'}
                       </button>
                     ) : (
                       <>
@@ -386,15 +520,14 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                             <Clock3 size={15} />Продлить
                           </button>
                         )}
+                        {/* Одна кнопка на перенос и на другую длительность:
+                            и то и другое — новый срок, и спрашивать об этом
+                            дважды незачем. Чем обернётся правка, показывает сама
+                            панель по ходу выбора. */}
                         {part.status !== 'done' && (
                           <button className="tsk-part-action" disabled={busy}
-                            onClick={() => {
-                              setMovingPart(part.id);
-                              setMoveDate(String(mine.plannedDate || part.dueDate));
-                              setFinishingPart(null);
-                              setExtendingPart(null);
-                            }}>
-                            <CalendarClock size={15} />Перенести
+                            onClick={() => openReschedule(part)}>
+                            <CalendarClock size={15} />Изменить срок
                           </button>
                         )}
                         {part.status === 'done' && (
@@ -456,18 +589,65 @@ export default function TaskCard({ taskId, ctx, onClose, onChanged }) {
                   </div>
                 )}
 
-                {movingPart === part.id && (
-                  <div className="tsk-move">
-                    <input className="tsk-input" type="date" value={moveDate}
-                      onChange={e => setMoveDate(e.target.value)} />
-                    <button className="tsk-btn is-primary" disabled={busy || !moveDate}
-                      onClick={() => act(
-                        () => api.movePart(part.id, moveDate),
-                        `Перенесено на ${dfull(moveDate)}`
-                      ).then(() => setMovingPart(null))}>
-                      Перенести
-                    </button>
-                    <button className="tsk-btn" onClick={() => setMovingPart(null)}>Отмена</button>
+                {/* Раскладка многодневной подзадачи по дням окна. */}
+                {layoutPart === part.id && (
+                  <LayoutEditor
+                    window={frame}
+                    estimateHours={part.estimateHours}
+                    userId={ctx.me?.id}
+                    busy={busy}
+                    onCancel={() => setLayoutPart(null)}
+                    onSubmit={(layout, force) => act(
+                      () => api.planPartLayout(part.id, layout, force),
+                      `В плане: ${layout.length} дн., ${hoursText(part.estimateHours)}`
+                    ).then(() => setLayoutPart(null))}
+                  />
+                )}
+
+                {/* Новый срок — одним контролом. Что он означает и чем
+                    обернётся, панель говорит по ходу выбора: молчаливая развилка
+                    между «+1 перенос» и «счётчик обнулён» была бы магией. */}
+                {reschedulePart === part.id && (
+                  <div className="tsk-reschedule">
+                    <DueRange from={dueFrom} to={dueTo}
+                      onChange={({ from, to }) => { setDueFrom(from); setDueTo(to); }} />
+                    <div className="tsk-reschedule-what">
+                      {(() => {
+                        const kind = rescheduleKind(part, dueFrom, dueTo);
+                        const days = spanDays(dueFrom || dueTo, dueTo);
+                        if (!kind) return 'Выберите другой срок — день или несколько.';
+                        if (kind === 'move') {
+                          return part.moveCount >= 2
+                            ? 'Это перенос, и он третий: подзадача уйдёт в «анализируется», и дальше понадобится решение, а не перенос.'
+                            : `Это перенос: длительность та же. Счётчик переносов станет ${part.moveCount + 1} из 3.`;
+                        }
+                        return days > 1
+                          ? `Работа будет идти ${days} дн. Подзадача вернётся во входящие — часы по дням надо будет разложить заново, и счётчик переносов обнулится.`
+                          : 'Работа снова станет однодневной. Подзадача вернётся во входящие, счётчик переносов обнулится.';
+                      })()}
+                    </div>
+                    <div className="tsk-acts">
+                      <button className="tsk-btn is-primary"
+                        disabled={busy || !rescheduleKind(part, dueFrom, dueTo)}
+                        onClick={() => {
+                          const kind = rescheduleKind(part, dueFrom, dueTo);
+                          const days = spanDays(dueFrom || dueTo, dueTo);
+                          const label = dueFrom ? `${dnum(dueFrom)} — ${dnum(dueTo)}` : dfull(dueTo);
+                          return act(
+                            () => (kind === 'move'
+                              ? api.movePart(part.id, dueFrom || dueTo, dueFrom ? dueTo : undefined)
+                              : api.stretchPart(part.id, dueFrom || dueTo, dueTo)),
+                            kind === 'move'
+                              ? `Перенесено на ${label}`
+                              : days > 1
+                                ? `Срок: ${label}. Осталось разложить часы по дням`
+                                : `Снова один день — ${label}`
+                          ).then(() => setReschedulePart(null));
+                        }}>
+                        Изменить срок
+                      </button>
+                      <button className="tsk-btn" onClick={() => setReschedulePart(null)}>Отмена</button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -643,7 +823,10 @@ function TeamBinding({ task, ctx, busy, onClose, onPick }) {
         onClick={() => onPick(null, null)}
       >
         <Lock size={14} strokeWidth={1.9} />
-        <span>Личная задача</span>
+        {/* «Без команды», а не «Личная задача»: поле про видимость, и подпись про
+            владение обещала то, чего оно не значит — задача без команды вполне
+            может быть поручена другому человеку. */}
+        <span>Без команды</span>
         <b>исполнители, автор и руководитель над ними</b>
       </button>
       {myTeams.map(team => (

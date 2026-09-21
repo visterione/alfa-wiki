@@ -850,7 +850,9 @@ const ReviewBoard = () => {
       {/* Header */}
       <div className="review-board-header">
         <div className="header-left">
-          <button className="btn-back" onClick={() => navigate('/reviews')}>
+          {/* ?all — просьба показать список как есть: у кого доска одна,
+              /reviews открывает её же, и кнопка «Назад» никуда бы не вела. */}
+          <button className="btn-back" onClick={() => navigate('/reviews?all=1')}>
             <ArrowLeft size={20} />
           </button>
           <div className="header-info">

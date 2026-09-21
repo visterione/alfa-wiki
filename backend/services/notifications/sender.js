@@ -26,6 +26,8 @@ const safety = require('./safety');
 const consent = require('./consent');
 const doctorBlocklist = require('./doctorBlocklist');
 const branches = require('./branches');
+const visitRatings = require('./visitRatings');
+const vkGroup = require('./vkGroup');
 
 // Какой организации принадлежит клиника МИС. Нужно, чтобы уйти во Fromni под
 // правильным аккаунтом: у каждой организации он свой. Заполняется в настройках,
@@ -196,7 +198,10 @@ function imobisRoute(names, config, texts) {
   // каждого медцентра свой, и «взять чужое имя, раз своего нет» — ровно то
   // поведение, из-за которого нельзя было ответить, с какого счёта ушла SMS.
   const sender = config.sender;
-  const group = config.vkGroup;
+  // Группа может быть записана ссылкой (ver. 8.51) — разбираем её здесь, а не
+  // при сохранении: в карточке филиала лежит то, что человек ввёл, и оно
+  // должно там и остаться.
+  const group = vkGroup.forImobis(config.vkGroup);
 
   const route = [];
   for (const name of names) {
@@ -205,7 +210,7 @@ function imobisRoute(names, config, texts) {
       route.push({ channel: 'sms', sender, text: texts.sms });
     } else if (name === 'vk') {
       if (!group) continue;
-      route.push({ channel: 'vk', group: Number(group), text: texts.long });
+      route.push({ channel: 'vk', group, text: texts.long });
     } else if (name === 'viber') {
       if (!sender) continue;
       route.push({ channel: 'viber', sender, text: texts.long });
@@ -310,6 +315,9 @@ async function deliver(item, clinicId = null, medCenterId = null) {
         const buttons = [];
         if (item.withConfirm && item.apptId) buttons.push([{ text: '✅ Подтверждаю', data: `confirm:${item.apptId}` }]);
         if (item.withCancel && item.apptId) buttons.push([{ text: '✖️ Отменить запись', data: `cancel:${item.apptId}` }]);
+        // Оценка визита (ver. 8.49); почему в кнопке id строки очереди, а не
+        // визита — см. visitRatings.buttonRow.
+        if (item.withRating) buttons.push(visitRatings.buttonRow(item.id));
         const options = buttons.length ? { buttons } : {};
         await channel.sendText(found.bot, found.subscriber.externalUserId, body, options);
         return item.update({ status: 'sent', channel: platform, sentAt: new Date(), error: null });

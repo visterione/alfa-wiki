@@ -1,4 +1,5 @@
 import React from 'react';
+import { eventColor, eventTimeText, eventTitle } from './eventTypes';
 
 const weekDays = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
@@ -103,19 +104,14 @@ export default function MonthView({ currentDate, events, onEventClick, onCellCli
                   <div
                     key={event.id}
                     className={`day-event-item ${event.status === 'completed' ? 'is-done' : ''}`}
-                    style={{ borderLeftColor: event.color }}
+                    style={{ borderLeftColor: eventColor(event) }}
                     onClick={(e) => {
                       e.stopPropagation();
                       onEventClick(event);
                     }}
                   >
-                    <span className="event-time">
-                      {new Date(event.startTime).toLocaleTimeString('ru-RU', { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}
-                    </span>
-                    <span className="event-title">{event.title}</span>
+                    <span className="event-time">{eventTimeText(event)}</span>
+                    <span className="event-title">{eventTitle(event)}</span>
                   </div>
                 ))}
                 {dayEvents.length > 3 && (

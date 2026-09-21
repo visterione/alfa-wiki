@@ -32,7 +32,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  CalendarCheck, Timer, Flame, RotateCcw, AlertTriangle, Hourglass,
+  CalendarCheck, Timer, Flame, RotateCcw, AlertTriangle, Hourglass, CalendarRange,
 } from 'lucide-react';
 
 import { tasks as api } from '../../../services/api';
@@ -116,7 +116,7 @@ export default function TeamStats({ teamId, ctx }) {
 
   const t = data.totals;
   const maxProjectHours = Math.max(...data.byProject.map(p => p.hours), 1);
-  const workingPeople = data.people.filter(row => row.done || row.moved || row.extended);
+  const workingPeople = data.people.filter(row => row.done || row.moved || row.extended || row.stretched);
 
   return (
     <>
@@ -167,6 +167,19 @@ export default function TeamStats({ teamId, ctx }) {
           label={plural(t.extended, 'продление оценки', 'продления оценки', 'продлений оценки')}
           hint={t.extendedHours ? `недооценили на ${hoursText(t.extendedHours)}` : 'оценки сходятся'}
           tone={t.extended ? 'warn' : null}
+        />
+        {/* Растягивание рядом с продлением: это тот же промах в оценке, только
+            в днях, а не в часах. Отдельная плитка, а не строка в подсказке,
+            потому что вывод из них разный — часы недооценили или не разглядели,
+            что работа вообще не на один день. */}
+        <Kpi
+          icon={CalendarRange}
+          value={t.stretched || 0}
+          label={plural(t.stretched || 0, 'подзадача растянута', 'подзадачи растянуты', 'подзадач растянуто')}
+          hint={t.stretchedDays
+            ? `оказались длиннее на ${t.stretchedDays} ${plural(t.stretchedDays, 'день', 'дня', 'дней')}`
+            : 'границы работы угадывали верно'}
+          tone={t.stretched ? 'warn' : null}
         />
         <Kpi
           icon={Flame}
@@ -236,6 +249,7 @@ export default function TeamStats({ teamId, ctx }) {
                   <th>В срок</th>
                   <th>Переносов</th>
                   <th>Продлений</th>
+                  <th>Растянуто</th>
                 </tr>
               </thead>
               <tbody>
@@ -252,6 +266,7 @@ export default function TeamStats({ teamId, ctx }) {
                     <td>{row.onTimePercent === null ? '—' : `${row.onTimePercent}%`}</td>
                     <td>{row.moved || '—'}</td>
                     <td>{row.extended || '—'}</td>
+                    <td>{row.stretched || '—'}</td>
                   </tr>
                 ))}
               </tbody>

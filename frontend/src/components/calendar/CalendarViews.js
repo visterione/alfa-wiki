@@ -1,5 +1,8 @@
 import React from 'react';
 import { Clock, MapPin, User } from 'lucide-react';
+import {
+  eventColor, eventSoftColor, eventTimeText, eventTitle, eventTypeLabel
+} from './eventTypes';
 
 // Вспомогательная функция для получения локальной даты из ISO строки
 const getLocalDate = (isoString) => {
@@ -75,18 +78,13 @@ export function WeekView({ currentDate, events, onEventClick }) {
                   key={event.id}
                   className={`week-event ${event.status === 'completed' ? 'is-done' : ''}`}
                   style={{
-                    backgroundColor: event.color + '20',
-                    borderLeftColor: event.color
+                    backgroundColor: eventSoftColor(event),
+                    borderLeftColor: eventColor(event)
                   }}
                   onClick={() => onEventClick(event)}
                 >
-                  <div className="week-event-time">
-                    {new Date(event.startTime).toLocaleTimeString('ru-RU', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </div>
-                  <div className="week-event-title">{event.title}</div>
+                  <div className="week-event-time">{eventTimeText(event)}</div>
+                  <div className="week-event-title">{eventTitle(event)}</div>
                   {event.location && (
                     <div className="week-event-location">
                       <MapPin size={12} />
@@ -147,23 +145,15 @@ export function DayView({ currentDate, events, onEventClick }) {
                     key={event.id}
                     className={`day-event ${event.status === 'completed' ? 'is-done' : ''}`}
                     style={{
-                      backgroundColor: event.color + '20',
-                      borderLeftColor: event.color
+                      backgroundColor: eventSoftColor(event),
+                      borderLeftColor: eventColor(event)
                     }}
                     onClick={() => onEventClick(event)}
                   >
                     <div className="day-event-time">
-                      {new Date(event.startTime).toLocaleTimeString('ru-RU', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                      {' - '}
-                      {new Date(event.endTime).toLocaleTimeString('ru-RU', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                      {eventTimeText(event, { range: true })}
                     </div>
-                    <div className="day-event-title">{event.title}</div>
+                    <div className="day-event-title">{eventTitle(event)}</div>
                     {event.description && (
                       <div className="day-event-description">
                         {event.description}
@@ -203,23 +193,6 @@ export function AgendaView({ events, onEventClick }) {
     return acc;
   }, {});
 
-  const formatTime = (dateStr) => {
-    return new Date(dateStr).toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const EVENT_TYPE_LABELS = {
-    personal: 'Личное',
-    meeting: 'Встреча',
-    deadline: 'Дедлайн',
-    reminder: 'Напоминание',
-    accreditation: 'Аккредитация',
-    vehicle_service: 'ТО транспорта',
-    doctor_schedule: 'Расписание врача'
-  };
-
   const PRIORITY_LABELS = {
     low: 'Низкий',
     medium: 'Средний',
@@ -244,19 +217,19 @@ export function AgendaView({ events, onEventClick }) {
                   key={event.id}
                   className={`agenda-event ${event.status === 'completed' ? 'is-done' : ''}`}
                   onClick={() => onEventClick(event)}
-                  style={{ borderLeftColor: event.color }}
+                  style={{ borderLeftColor: eventColor(event) }}
                 >
                   <div className="agenda-event-time">
                     <Clock size={16} />
-                    {formatTime(event.startTime)} - {formatTime(event.endTime)}
+                    {eventTimeText(event, { range: true })}
                   </div>
 
                   <div className="agenda-event-main">
-                    <h4 className="agenda-event-title">{event.title}</h4>
+                    <h4 className="agenda-event-title">{eventTitle(event)}</h4>
 
                     <div className="agenda-event-meta">
-                      <span className="event-type-badge" style={{ backgroundColor: event.color }}>
-                        {EVENT_TYPE_LABELS[event.eventType] || event.eventType}
+                      <span className="event-type-badge" style={{ backgroundColor: eventColor(event) }}>
+                        {eventTypeLabel(event)}
                       </span>
 
                       {event.priority !== 'medium' && (

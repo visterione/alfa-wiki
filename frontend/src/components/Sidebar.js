@@ -413,8 +413,9 @@ function QuickAccessButtons({ onClose }) {
     return () => { alive = false; window.removeEventListener('vacancies-changed', load); };
   }, []);
   // Маркетинг (ver. 8.22) пришёл на место «Анонсов»: те стали его вкладкой.
-  // Кнопка видна, если открыта хотя бы одна вкладка из трёх — модуль сам решит,
-  // какую показать первой.
+  // Кнопка видна, если открыта хотя бы одна вкладка — модуль сам решит, какую
+  // показать первой. Рассылки, отделившиеся от анонсов в 8.43, ходят под тем же
+  // правом, поэтому отдельной проверки им не нужно.
   const marketingLevels = user?.adminAccess?.marketing || {};
   const canAccessMarketing = isAdmin
     || ['promotions', 'ads', 'announcements'].some(k => marketingLevels[k] === 'read' || marketingLevels[k] === 'edit');
@@ -671,9 +672,9 @@ function QuickAccessButtons({ onClose }) {
       </button>
 
       {/* Мишень, а не мегафон (ver. 8.31). Мегафоном в этом же модуле помечена
-          вкладка «Анонсы», и раздел в панели назывался именем одной из трёх
-          своих вкладок — акции и карта площадок в такое название не входят.
-          Мишень читается как «целевая аудитория» и покрывает все три. */}
+          вкладка «Анонсы», и раздел в панели назывался именем одной из своих
+          вкладок — акции, карта площадок и рассылки в такое название не входят.
+          Мишень читается как «целевая аудитория» и покрывает все. */}
       <button
         className={`quick-access-btn marketing ${isOnMarketing ? 'active' : ''} ${!canAccessMarketing ? 'locked' : ''}`}
         data-icon-motion={canAccessMarketing ? 'target' : undefined}

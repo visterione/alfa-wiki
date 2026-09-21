@@ -62,7 +62,55 @@ function shape(task, deps = []) {
     mode: partsService.taskMode(parts),
     people: partsService.taskPeople(parts),
     totalEffortHours: partsService.totalEffortHours(parts),
+    // Период, в который задача фактически расписана (ver. 8.48). Выводится, а не
+    // хранится: второй источник правды рядом с окнами подзадач разошёлся бы с
+    // ними на первом же переносе. Срок задачи (dueDate) приезжает из базы рядом
+    // — его можно нарушить, и потому он хранится.
+    span: partsService.taskSpan(parts),
+    breaksDeadline: partsService.breaksDeadline(plain, parts),
+    // Отметка стоит на той подзадаче, которую надо править, а не общим признаком
+    // на задачу: «одна подзадача выходит за срок» заставляет угадывать, какая.
+    parts: parts.map(part => ({
+      ...part,
+      outsideTask: partsService.partOutsideTask(plain, part),
+    })),
     deps: deps.filter(d => parts.some(p => p.id === d.partId)),
+  };
+}
+
+/**
+ * Помещается ли подзадача — один вопрос, два разных ответа.
+ *
+ * Однодневная спрашивает про один день: «станет 8,2 из 6,4». Многодневная — про
+ * ёмкость окна целиком: «нужно 20 ч, свободно 14». Разводить это по вызывающим
+ * нельзя — тогда экран входящих, форма постановки и постановка в план начнут
+ * считать помещаемость каждый по-своему, а это ровно то число, ради которого
+ * модуль существует.
+ *
+ * Дни окна возвращаются только для многодневной: интерфейсу они нужны, чтобы
+ * нарисовать раскладку с остатком по каждому дню. Для однодневной там один день,
+ * и он уже разобран в самом ответе.
+ */
+async function assessFor(part, userId, viewer) {
+  const { from, to } = partsService.windowOf(part);
+  const days = await loadQuery.daysOf(userId, from, to, viewer);
+  const estimateHours = Number(part.estimateHours || 0);
+  if (partsService.isWindowed(part)) {
+    return {
+      windowed: true, from, to, days,
+      ...planning.assessWindow({ days, estimateHours }),
+    };
+  }
+  const day = days[0] || {};
+  return {
+    windowed: false, from, to, date: to,
+    ...planning.assessAssignment({
+      currentHours: day.hours || 0,
+      norm: day.norm ?? null,
+      estimateHours,
+      onVacation: day.onVacation,
+      onDayOff: day.onDayOff,
+    }),
   };
 }
 
@@ -186,18 +234,9 @@ router.get('/inbox', authenticate, async (req, res) => {
     const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
     const withFit = [];
     for (const part of ready) {
-      const date = String(part.dueDate);
-      const days = await loadQuery.daysOf(req.user.id, date, date, viewer);
-      const today = days[0] || { hours: 0, onVacation: false };
       withFit.push({
         ...part.get({ plain: true }),
-        assessment: planning.assessAssignment({
-          currentHours: today.hours || 0,
-          norm: today.norm ?? null,
-          estimateHours: Number(part.estimateHours),
-          onVacation: today.onVacation,
-          onDayOff: today.onDayOff,
-        }),
+        assessment: await assessFor(part, req.user.id, viewer),
       });
     }
 
@@ -389,12 +428,41 @@ router.post('/', authenticate, async (req, res) => {
     if (teamId && !(await canBindToTeam(teamId, req.user.id))) {
       return res.status(403).json({ error: 'Можно привязать только к своей команде' });
     }
+    /**
+     * Срок задачи (ver. 8.48): начало и конец, оба необязательные.
+     *
+     * Задача без своего срока — обычное дело: работа, у которой есть только сроки
+     * подзадач, никому ничего не обещала. Требовать срок значило бы заставлять
+     * придумывать дату там, где её нет.
+     *
+     * startDate пустой при заполненном dueDate — это «один день», то же правило,
+     * что у подзадач.
+     */
+    const taskDueDate = req.body.dueDate ? String(req.body.dueDate).slice(0, 10) : null;
+    const taskStartDate = taskDueDate && req.body.startDate
+      ? String(req.body.startDate).slice(0, 10) : null;
+    if (taskStartDate && taskStartDate > taskDueDate) {
+      return res.status(400).json({ error: 'Срок задачи начинается позже своего конца' });
+    }
+
     for (const part of incoming) {
       if (!Array.isArray(part.assignees) || !part.assignees.length) {
         return res.status(400).json({ error: 'У каждой подзадачи должен быть исполнитель' });
       }
       if (!part.dueDate) return res.status(400).json({ error: 'У каждой подзадачи должен быть срок' });
+      if (part.startDate && String(part.startDate).slice(0, 10) > String(part.dueDate).slice(0, 10)) {
+        return res.status(400).json({ error: 'Окно подзадачи начинается позже своего срока' });
+      }
+      if (!(Number(part.estimateHours) > 0)) {
+        return res.status(400).json({ error: 'У каждой подзадачи должен быть объём работы' });
+      }
     }
+
+    // Подзадача со сроком за пределами срока задачи НЕ отклоняется: иногда
+    // именно так и выясняется, что обещание было невыполнимым, и запрет заставил
+    // бы автора подогнать даты под обещание вместо того, чтобы его пересмотреть.
+    // Признак конфликта считает partsService.breaksDeadline, и показывают его и
+    // форма, и карточка.
 
     // Цикл в связях «после» ловится до сохранения: иначе часть навсегда
     // застрянет в ожидании готовности той, которая ждёт её саму.
@@ -410,21 +478,22 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'В связях «после» есть цикл', cycle });
     }
 
-    // Разбор загрузки по каждому исполнителю каждой части.
+    // Разбор загрузки по каждому исполнителю каждой части. Однодневная часть
+    // проверяется по своему дню, многодневная — по ёмкости всего окна: см.
+    // assessFor, там же и причина, почему это одна функция на все экраны.
     const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
     const overloads = [];
     for (const part of incoming) {
       for (const userId of part.assignees) {
-        const date = String(part.dueDate);
-        const [dayInfo] = await loadQuery.daysOf(userId, date, date, viewer);
-        const assessment = planning.assessAssignment({
-          currentHours: dayInfo?.hours || 0,
-          norm: dayInfo?.norm ?? null,
+        const probe = {
+          startDate: part.startDate ? String(part.startDate).slice(0, 10) : null,
+          dueDate: String(part.dueDate).slice(0, 10),
           estimateHours: Number(part.estimateHours || 0),
-          onVacation: dayInfo?.onVacation,
-          onDayOff: dayInfo?.onDayOff,
-        });
-        if (!assessment.fits) overloads.push({ userId, dueDate: date, ...assessment });
+        };
+        // days из разбора здесь не нужны — это раскладка, дело исполнителя, — а
+        // в ответе на неудачную постановку они раздули бы его на порядок.
+        const { days, ...assessment } = await assessFor(probe, userId, viewer);
+        if (!assessment.fits) overloads.push({ userId, dueDate: probe.dueDate, ...assessment });
       }
     }
 
@@ -464,6 +533,8 @@ router.post('/', authenticate, async (req, res) => {
         projectId,
         teamId,
         authorId: req.user.id,
+        startDate: taskStartDate,
+        dueDate: taskDueDate,
         attachments: req.body.attachments || [],
       }, { transaction });
 
@@ -474,6 +545,7 @@ router.post('/', authenticate, async (req, res) => {
           taskId: task.id,
           title: String(src.title || title).trim(),
           estimateHours: Number(src.estimateHours),
+          startDate: src.startDate ? String(src.startDate).slice(0, 10) : null,
           dueDate: src.dueDate,
           status: partsService.STATUS.NEW,
           sortOrder: i,
@@ -502,9 +574,14 @@ router.post('/', authenticate, async (req, res) => {
 
       // Собственная одиночная задача не требует переговоров с самим собой и
       // по макету сразу появляется в календаре автора.
+      //
+      // Многодневная сюда не попадает намеренно: её часы надо разложить по дням
+      // окна, а раскладку в модуле делает человек, а не система. Своя
+      // многодневная задача уходит автору же во входящие — там он её и разложит.
       if (incoming.length === 1
           && incoming[0].assignees.length === 1
-          && incoming[0].assignees[0] === req.user.id) {
+          && incoming[0].assignees[0] === req.user.id
+          && !incoming[0].startDate) {
         const partId = idMap.get(localParts[0].id);
         const part = await TaskPart.findByPk(partId, { transaction });
         const date = String(part.dueDate);
@@ -679,11 +756,104 @@ async function findPart(id) {
 const assigneeOf = (part, userId) => (part.assignees || []).find(a => a.userId === userId);
 
 /**
- * Поставить часть в план на день.
+ * Выложить раскладку в календарь: по блоку на каждый день (ver. 8.48).
+ *
+ * Отдельной сущности «сессия работы» в модуле нет и не появилось — ею оказался
+ * сам блок в календаре. У однодневной подзадачи он один, у многодневной их
+ * столько, сколько дней в раскладке, и всё остальное — нормы, цвета дней,
+ * переработка, показатели команды — продолжает работать без единой правки,
+ * потому что загрузка и так считается суммированием блоков по дням.
+ *
+ * Время внутри дня по-прежнему условное: блоки складываются подряд от начала
+ * смены (см. nextFloatingSlot), и интерфейс модуля его не показывает.
+ */
+async function placeBlocks(part, userId, layout, days, transaction) {
+  if (!layout.length) return [];
+  const from = layout[0].date;
+  const to = layout[layout.length - 1].date;
+  const existing = await CalendarEvent.findAll({
+    attributes: loadQuery.LOAD_FIELDS,
+    where: {
+      createdBy: userId,
+      startTime: { [Op.lte]: new Date(`${to}T23:59:59`) },
+      endTime: { [Op.gte]: new Date(`${from}T00:00:00`) },
+      // Свои же блоки этой подзадачи в расчёт не идут: при переносе они в этой
+      // же транзакции удаляются, и учитывать их значило бы выкладывать новую
+      // раскладку после места, которое строкой ниже освободится.
+      [Op.or]: [{ taskPartId: null }, { taskPartId: { [Op.ne]: part.id } }],
+    },
+    raw: true,
+    transaction,
+  });
+
+  const byDate = new Map();
+  for (const event of existing) {
+    const key = loadQuery.toKey(event.startTime);
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key).push(event);
+  }
+  const workStart = new Map((days || []).map(day => [day.date, day.workStart]));
+
+  const rows = layout.map(row => {
+    const slot = planning.nextFloatingSlot(
+      byDate.get(row.date) || [], row.date, row.hours, workStart.get(row.date)
+    );
+    return {
+      title: part.title,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      eventType: 'task',
+      status: 'planned',
+      // «Занято, без названия»: коллеге нужно знать, что время у человека
+      // занято, а чем именно — его дело. Сам исполнитель и его руководитель
+      // видят задачу там, где ей место, — в модуле «Задачи».
+      visibility: 'busy',
+      createdBy: userId,
+      taskPartId: part.id,
+      isFloating: true,
+      dayOrder: slot.dayOrder,
+    };
+  });
+  await CalendarEvent.bulkCreate(rows, { transaction });
+  return rows;
+}
+
+/** Человеческий перечень перегруженных дней — для отказа, который надо понять. */
+function overloadText(overloads) {
+  return overloads
+    .map(day => `${dateText(day.date)} — станет ${day.after} из ${day.norm} ч`)
+    .join('; ');
+}
+
+/** Сдвиг даты на календарные дни. */
+function shiftDate(date, count) {
+  const value = new Date(`${String(date).slice(0, 10)}T00:00:00`);
+  value.setDate(value.getDate() + count);
+  return loadQuery.toKey(value);
+}
+
+/** Длина окна в календарных днях. */
+function windowLength(part) {
+  const { from, to } = partsService.windowOf(part);
+  return Math.round((new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`)) / 86400000);
+}
+
+/**
+ * Поставить часть в план.
  *
  * Здесь и только здесь часть превращается в блок времени. До этого момента она
  * не занимает у человека ни часа — именно поэтому «не обработана» отличается от
  * «в работе», и именно поэтому автор видит, что задача до него ещё не дошла.
+ *
+ * Однодневная часть встаёт в день. Многодневная (ver. 8.48) требует раскладки:
+ * человек сам говорит, сколько часов сидит над ней в каждый день окна, и в
+ * календаре появляется по блоку на день.
+ *
+ * Раскладывает человек, а не система, и автоматического «поровну по дням» здесь
+ * нет намеренно. Ровный слой молча влезает в уже плотный день и перегружает
+ * его — ровно то, против чего модуль затевался. Сервер проверяет два условия:
+ * сумма совпала с оценкой, и ни один день не ушёл в переработку без ведома
+ * человека.
  */
 router.post('/parts/:id/plan', authenticate, async (req, res) => {
   try {
@@ -692,6 +862,10 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
 
     const mine = assigneeOf(part, req.user.id);
     if (!mine) return res.status(403).json({ error: 'Вы не исполнитель этой подзадачи' });
+
+    if (partsService.isWindowed(part)) {
+      return planWindowed(req, res, part, mine);
+    }
 
     const date = String(req.body.date || part.dueDate);
     const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
@@ -744,7 +918,10 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
         dayOrder: slot.dayOrder,
       }, { transaction });
 
-      await mine.update({ plannedDate: date }, { transaction });
+      // plannedUntil обнуляется явно: часть могла быть многодневной и стать
+      // однодневной (см. /stretch), и оставшийся хвост показывал бы в списках
+      // раскладку, которой уже нет.
+      await mine.update({ plannedDate: date, plannedUntil: null }, { transaction });
       await part.update({
         status: partsService.STATUS.PLAN,
         dueDate: date,
@@ -775,6 +952,84 @@ router.post('/parts/:id/plan', authenticate, async (req, res) => {
 });
 
 /**
+ * Постановка в план многодневной части: проверка раскладки и её выкладка.
+ *
+ * Вынесено из маршрута отдельной функцией, а не сделано ветвлением внутри: у
+ * однодневной и многодневной части совпадают только права и уведомление, а всё
+ * остальное — что проверяем, что пишем в календарь и что пишем в историю —
+ * разное, и в одном теле это читалось бы как два маршрута, слепленных if-ом.
+ *
+ * Срок и начало окна здесь НЕ меняются, в отличие от однодневной постановки, где
+ * выбранный день становится новым сроком. Окно — это договорённость автора и
+ * исполнителя о границах работы; раскладка живёт внутри него и его не двигает.
+ * Сдвинуть окно можно переносом (/move) — он и считается переносом.
+ */
+async function planWindowed(req, res, part, mine) {
+  const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
+  const { from, to } = partsService.windowOf(part);
+  const days = await loadQuery.daysOf(req.user.id, from, to, viewer);
+  const estimateHours = Number(part.estimateHours);
+
+  const check = planning.validateLayout({ entries: req.body.layout, estimateHours, days });
+  if (!check.ok) {
+    return res.status(409).json({
+      error: check.error,
+      requiresLayout: true,
+      window: { from, to },
+      estimateHours,
+      days,
+      assessment: planning.assessWindow({ days, estimateHours }),
+    });
+  }
+
+  // Взять сверх нормы можно — это своё решение исполнителя, а не обход чужого.
+  // Но автор увидит, что человек ушёл в переработку, и увидит, в какие дни.
+  if (check.overloads.length && !req.body.force) {
+    return res.status(409).json({
+      error: `Переработка: ${overloadText(check.overloads)}`,
+      requiresConfirm: true,
+      overloads: check.overloads,
+      window: { from, to },
+      days,
+    });
+  }
+
+  const layout = check.layout;
+  const planned = layout[0].date;
+  const until = layout[layout.length - 1].date;
+
+  await sequelize.transaction(async transaction => {
+    await CalendarEvent.destroy({
+      where: { taskPartId: part.id, createdBy: req.user.id },
+      transaction,
+    });
+    await placeBlocks(part, req.user.id, layout, days, transaction);
+    await mine.update({ plannedDate: planned, plannedUntil: until }, { transaction });
+    await part.update({ status: partsService.STATUS.PLAN }, { transaction });
+    await log(part.taskId, part.id, req.user.id, 'planned', {
+      date: planned,
+      until,
+      layout,
+      windowed: true,
+      overload: check.overloads.length > 0,
+      overloads: check.overloads,
+    }, transaction);
+  });
+
+  if (part.task.authorId !== req.user.id) {
+    await notifyUsers([part.task.authorId], {
+      title: '✅ Взято в план',
+      body: `${actorName(req.user)} разложил «${part.title}» на ${layout.length} дн.: `
+        + `${dateText(planned)} — ${dateText(until)}`,
+      taskId: part.taskId,
+      code: part.task.code,
+    });
+  }
+
+  return res.json({ planned: true, date: planned, until, layout, overloads: check.overloads });
+}
+
+/**
  * Предложить другой срок.
  *
  * Календарь исполнителя не меняется: задача в него не попала. Автору уходит
@@ -790,14 +1045,33 @@ router.post('/parts/:id/propose', authenticate, async (req, res) => {
     const date = String(req.body.date || '');
     if (!date) return res.status(400).json({ error: 'Нужен предлагаемый срок' });
 
+    /**
+     * У многодневной части окно СДВИГАЕТСЯ, а не растягивается.
+     *
+     * «Предлагаю не 22–26, а 29 сент. — 3 окт.» — это то, что человек имеет в
+     * виду, называя другой срок. Если оставить начало на месте, предложение
+     * молча превратится в «дайте мне на это вдвое больше времени», то есть в
+     * другой разговор. Растянуть окно тоже можно, но это отдельное действие
+     * (/stretch) с отдельным следом в истории.
+     */
+    const dueDate = date;
+    const startDate = partsService.isWindowed(part)
+      ? String(req.body.from || shiftDate(dueDate, -windowLength(part)))
+      : null;
+    if (startDate && startDate > dueDate) {
+      return res.status(400).json({ error: 'Начало предложенного окна позже его конца' });
+    }
+
     const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
     const [was] = await loadQuery.daysOf(req.user.id, String(part.dueDate), String(part.dueDate), viewer);
 
     await sequelize.transaction(async transaction => {
-      await part.update({ dueDate: date, status: partsService.STATUS.NEW }, { transaction });
+      await part.update({ startDate, dueDate, status: partsService.STATUS.NEW }, { transaction });
       await log(part.taskId, part.id, req.user.id, 'proposed_date', {
         from: String(part.dueDate),
-        to: date,
+        to: dueDate,
+        fromStart: part.startDate ? String(part.startDate) : null,
+        toStart: startDate,
         // Цифра занятости — да, состав дня — нет.
         busyHours: was?.hours ?? null,
         norm: was?.norm ?? null,
@@ -806,12 +1080,13 @@ router.post('/parts/:id/propose', authenticate, async (req, res) => {
 
     await notifyUsers([part.task.authorId], {
       title: '📅 Предложен другой срок',
-      body: `${actorName(req.user)}: «${part.title}» — ${dateText(date)}`,
+      body: `${actorName(req.user)}: «${part.title}» — `
+        + (startDate ? `${dateText(startDate)} — ${dateText(dueDate)}` : dateText(dueDate)),
       taskId: part.taskId,
       code: part.task.code,
     });
 
-    res.json({ proposed: true, date });
+    res.json({ proposed: true, date: dueDate, from: startDate });
   } catch (error) {
     console.error('Предложение срока:', error);
     res.status(500).json({ error: 'Не удалось предложить срок' });
@@ -910,6 +1185,11 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
 
     const date = String(req.body.date || '');
     if (!date) return res.status(400).json({ error: 'Нужен новый день' });
+
+    if (partsService.isWindowed(part)) {
+      return moveWindowed(req, res, part, mine, date);
+    }
+
     const [dayInfo] = await loadQuery.daysOf(req.user.id, date, date, { id: req.user.id, isAdmin: req.user.isAdmin });
     if (dayInfo?.onVacation) return res.status(409).json({ error: 'На этот день запланирован отпуск' });
     if (dayInfo?.onDayOff || dayInfo?.norm === null) return res.status(409).json({ error: 'Этот день не входит в рабочее расписание' });
@@ -933,7 +1213,7 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
         { startTime: slot.startTime, endTime: slot.endTime, dayOrder: slot.dayOrder },
         { where: { taskPartId: part.id, createdBy: req.user.id }, transaction }
       );
-      await mine.update({ plannedDate: date }, { transaction });
+      await mine.update({ plannedDate: date, plannedUntil: null }, { transaction });
       await part.update({ dueDate: date, moveCount: next.moveCount, status: next.status }, { transaction });
       await log(part.taskId, part.id, req.user.id, 'moved', {
         to: date,
@@ -960,6 +1240,187 @@ router.post('/parts/:id/move', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * Перенос многодневной части: окно сдвигается целиком, раскладка снимается.
+ *
+ * Сдвиг, а не растягивание: перенос значит «эта работа делается не на той
+ * неделе, а на следующей», и длина окна при нём сохраняется. Признать, что
+ * работа оказалась длиннее, — другое решение, и у него свой маршрут (/stretch) и
+ * свой след в истории.
+ *
+ * Раскладка не переезжает вместе с окном, даже когда сдвиг ровно на неделю и дни
+ * недели совпадают, — и новая в этом же запросе не составляется. Причина та же,
+ * по которой в модуле нет автоматического «поровну по дням»: в новом окне другая
+ * занятость, и перенесённые часы молча перегрузили бы дни, которых человек не
+ * видел. Часть возвращается в состояние «надо разложить», и человек делает это
+ * отдельным шагом — глядя на свободное время новой недели.
+ *
+ * Отсюда и статус: не PLAN, а NEW. Часть снова ждёт разбора, и показывать её
+ * запланированной, пока в календаре нет ни одного блока, значит врать во всех
+ * списках сразу.
+ *
+ * Счётчик переносов увеличивается один раз на всю подзадачу, а не на каждый её
+ * день: правило трёх переносов — про решение сдвинуть работу, а не про число
+ * затронутых блоков.
+ */
+async function moveWindowed(req, res, part, mine, date) {
+  const length = windowLength(part);
+  const from = date;
+  const to = req.body.until ? String(req.body.until).slice(0, 10) : shiftDate(date, length);
+  if (from > to) return res.status(400).json({ error: 'Начало окна позже его конца' });
+  if (windowLength({ startDate: from, dueDate: to }) !== length) {
+    return res.status(400).json({
+      error: 'Перенос сохраняет длину окна. Другая длительность — это изменение срока работы',
+      expectedLength: length + 1,
+    });
+  }
+
+  const next = planning.afterMove(part);
+  await sequelize.transaction(async transaction => {
+    await CalendarEvent.destroy({
+      where: { taskPartId: part.id, createdBy: req.user.id },
+      transaction,
+    });
+    await mine.update({ plannedDate: null, plannedUntil: null }, { transaction });
+    await part.update({
+      startDate: from,
+      dueDate: to,
+      moveCount: next.moveCount,
+      status: next.requiresDecision ? partsService.STATUS.STUCK : partsService.STATUS.NEW,
+    }, { transaction });
+    await log(part.taskId, part.id, req.user.id, 'moved', {
+      to,
+      toStart: from,
+      windowed: true,
+      moveCount: next.moveCount,
+      becameStuck: next.requiresDecision,
+    }, transaction);
+  });
+
+  if (part.task.authorId !== req.user.id) {
+    await notifyUsers([part.task.authorId], {
+      title: next.requiresDecision ? '⚠️ Требует решения' : '📅 Задача перенесена',
+      body: next.requiresDecision
+        ? `«${part.title}» переносится третий раз — нужно разбить, изменить срок или отменить`
+        : `${actorName(req.user)} перенёс «${part.title}» на ${dateText(from)} — ${dateText(to)}`,
+      taskId: part.taskId,
+      code: part.task.code,
+    });
+  }
+
+  return res.json({ moved: true, date: to, from, ...next });
+}
+
+/**
+ * Изменить длительность работы: растянуть на несколько дней или сжать в один.
+ *
+ * Третий выход из «анализируется», рядом с разбиением. Правило трёх переносов
+ * упирается в вопрос «почему эта работа не помещается», и до ver. 8.48 на него
+ * был единственный ответ: кусок слишком крупный, разбейте. Но самый частый ответ
+ * другой — работа и не должна была помещаться в день, её на неделю. Раньше это
+ * приходилось изображать четырьмя подзадачами «Вёрстка (1/4)», и три переноса
+ * считались каждому куску отдельно.
+ *
+ * Как и разбиение, обнуляет счётчик переносов: условия переписаны, и наследовать
+ * новой работе приговор предыдущей неправильно. И так же, как разбиение,
+ * возвращает часть во входящие — длительность изменилась, значит раскладку надо
+ * составить заново, глядя на новое свободное время.
+ *
+ * Сжать обратно в один день (from = to) можно тем же маршрутом: ошибиться в
+ * другую сторону так же легко, и отдельного действия для отмены это не стоит.
+ */
+router.post('/parts/:id/stretch', authenticate, async (req, res) => {
+  try {
+    const part = await findPart(req.params.id);
+    if (!part) return res.status(404).json({ error: 'Часть не найдена' });
+    if (!assigneeOf(part, req.user.id) && part.task.authorId !== req.user.id) {
+      return res.status(403).json({ error: 'Изменить срок может исполнитель или автор' });
+    }
+
+    const from = String(req.body.from || '').slice(0, 10);
+    const to = String(req.body.to || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return res.status(400).json({ error: 'Нужны начало и конец окна' });
+    }
+    if (from > to) return res.status(400).json({ error: 'Начало окна позже его конца' });
+
+    /**
+     * Длительность обязана измениться — иначе это перенос.
+     *
+     * Без этой проверки маршрут был дырой в правиле трёх переносов: он обнуляет
+     * счётчик, и «растянув» работу на ту же длину можно было сдвигать её сколько
+     * угодно, ни разу не дойдя до разговора о том, почему она не делается.
+     * Сдвиг живёт в /move и считается переносом, здесь — только признание, что
+     * работа идёт другое число дней.
+     */
+    if (windowLength({ startDate: from, dueDate: to }) === windowLength(part)) {
+      return res.status(400).json({
+        error: 'Длительность та же — это перенос, а не изменение срока работы',
+        isMove: true,
+        days: windowLength(part) + 1,
+      });
+    }
+
+    // from === to означает «снова один день»: startDate обнуляется, и часть
+    // возвращается к прежнему поведению целиком, а не остаётся окном нулевой
+    // длины, которое пришлось бы особо обрабатывать в каждом расчёте.
+    const startDate = from === to ? null : from;
+
+    const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
+    const assessments = [];
+    for (const assignee of part.assignees || []) {
+      const { days, ...assessment } = await assessFor(
+        { startDate, dueDate: to, estimateHours: part.estimateHours },
+        assignee.userId,
+        viewer
+      );
+      assessments.push({ userId: assignee.userId, ...assessment });
+    }
+
+    await sequelize.transaction(async transaction => {
+      await part.update({
+        startDate,
+        dueDate: to,
+        moveCount: 0,
+        status: partsService.STATUS.NEW,
+      }, { transaction });
+
+      // Блоки снимаются у всех исполнителей: окно изменилось, и держать в
+      // календаре раскладку по прежним дням значит показывать людям неправду.
+      await CalendarEvent.destroy({ where: { taskPartId: part.id }, transaction });
+      await TaskPartAssignee.update(
+        { plannedDate: null, plannedUntil: null },
+        { where: { partId: part.id }, transaction }
+      );
+
+      await log(part.taskId, part.id, req.user.id, 'stretched', {
+        from: startDate,
+        to,
+        wasStart: part.startDate ? String(part.startDate) : null,
+        wasDue: String(part.dueDate),
+      }, transaction);
+    });
+
+    const recipients = [
+      ...(part.assignees || []).map(a => a.userId),
+      part.task.authorId,
+    ].filter(id => id !== req.user.id);
+    await notifyUsers([...new Set(recipients)], {
+      title: '📆 Срок изменён',
+      body: startDate
+        ? `${actorName(req.user)}: «${part.title}» — ${dateText(startDate)} — ${dateText(to)}. Разложите часы по дням`
+        : `${actorName(req.user)}: «${part.title}» — ${dateText(to)}, один день`,
+      taskId: part.taskId,
+      code: part.task.code,
+    });
+
+    res.json({ stretched: true, from: startDate, to, assessments });
+  } catch (error) {
+    console.error('Изменение срока части:', error);
+    res.status(500).json({ error: 'Не удалось изменить срок подзадачи' });
+  }
+});
+
 /** Продлить запланированный блок и честно пересчитать трудозатраты. */
 router.post('/parts/:id/extend', authenticate, async (req, res) => {
   try {
@@ -978,12 +1439,29 @@ router.post('/parts/:id/extend', authenticate, async (req, res) => {
 
     await sequelize.transaction(async transaction => {
       await part.update({ estimateHours }, { transaction });
+      /**
+       * Часы добавляются в ПОСЛЕДНИЙ блок каждого исполнителя, а не во все разом.
+       *
+       * Раньше всем блокам части ставился одинаковый endTime = начало + полная
+       * оценка. Пока блок у человека был один, это и означало «блок вырос». У
+       * многодневной части (ver. 8.48) блоков столько, сколько дней в раскладке,
+       * и то же присваивание раздуло бы КАЖДЫЙ день до полной оценки: вместо
+       * плюс часа человек получил бы кратное увеличение занятости, а вместе с
+       * ним — красную неделю и переработку, которой не было.
+       *
+       * Именно последний день, а не первый: продление случается в конце работы,
+       * когда выяснилось, что не успеваешь, и дописывать часы в уже прошедший
+       * понедельник значит задним числом переписывать его загрузку.
+       */
       const blocks = await CalendarEvent.findAll({
         where: { taskPartId: part.id },
+        order: [['startTime', 'ASC']],
         transaction,
       });
-      for (const block of blocks) {
-        const endTime = new Date(new Date(block.startTime).getTime() + estimateHours * 60 * 60 * 1000);
+      const lastOf = new Map();
+      for (const block of blocks) lastOf.set(block.createdBy, block);
+      for (const block of lastOf.values()) {
+        const endTime = new Date(new Date(block.endTime).getTime() + hours * 60 * 60 * 1000);
         await block.update({ endTime }, { transaction });
       }
       await log(part.taskId, part.id, req.user.id, 'extended', {
@@ -1036,6 +1514,10 @@ router.post('/parts/:id/split', authenticate, async (req, res) => {
         taskId: part.taskId,
         title: String(req.body.secondTitle || `${part.title} — продолжение`).trim(),
         estimateHours: tail,
+        // Окно наследуется обеими половинами: разбиение отвечает на вопрос «чем
+        // это будет сделано», а не «когда». Границы работы остаются те, о
+        // которых договорились.
+        startDate: part.startDate,
         dueDate: part.dueDate,
         status: partsService.STATUS.NEW,
         sortOrder: (part.sortOrder || 0) + 1,
@@ -1056,7 +1538,7 @@ router.post('/parts/:id/split', authenticate, async (req, res) => {
       // календаре прежние часы значит показывать человеку неправду.
       await CalendarEvent.destroy({ where: { taskPartId: part.id }, transaction });
       await TaskPartAssignee.update(
-        { plannedDate: null },
+        { plannedDate: null, plannedUntil: null },
         { where: { partId: part.id }, transaction }
       );
 
@@ -1090,14 +1572,35 @@ router.put('/parts/:id/status', authenticate, async (req, res) => {
       const was = part.status;
       await part.update({ status }, { transaction });
 
-      // Блок в календаре помечается завершённым, чтобы дело читалось как
-      // сделанное, а не висело наравне с невыполненным. Часы при этом остаются
-      // потраченными: время на работу ушло, и возвращать его в свободные —
-      // значит показывать закрытый день пустым и снова ставить на него задачи.
+      /**
+       * Блок в календаре помечается завершённым, чтобы дело читалось как
+       * сделанное, а не висело наравне с невыполненным. Часы при этом остаются
+       * потраченными: время на работу ушло, и возвращать его в свободные —
+       * значит показывать закрытый день пустым и снова ставить на него задачи.
+       *
+       * Но это верно только про дни, которые УЖЕ БЫЛИ. Многодневная подзадача
+       * (ver. 8.48) разложена по нескольким дням, и законченная в среду работа
+       * на четверг и пятницу больше времени не занимает: там её не делали и
+       * делать не будут. Оставь эти блоки завершёнными — и человек до конца
+       * недели выглядит занятым работой, которой нет, а руководитель считает,
+       * что поручить ему нечего.
+       *
+       * Поэтому дни с завтрашнего помечаются отменёнными: busyHours пропускает
+       * cancelled («его не делали») и считает completed («время потрачено») —
+       * ровно то различие, которое здесь и нужно. Отменённые, а не удалённые,
+       * потому что решение обратимо: «вернуть в работу» ниже поднимает все блоки
+       * подзадачи обратно в planned, и раскладка восстанавливается целиком.
+       */
       if (status === partsService.STATUS.DONE) {
+        const tomorrow = new Date(`${loadQuery.toKey(new Date())}T00:00:00`);
+        tomorrow.setDate(tomorrow.getDate() + 1);
         await CalendarEvent.update(
           { status: 'completed' },
-          { where: { taskPartId: part.id }, transaction }
+          { where: { taskPartId: part.id, startTime: { [Op.lt]: tomorrow } }, transaction }
+        );
+        await CalendarEvent.update(
+          { status: 'cancelled' },
+          { where: { taskPartId: part.id, startTime: { [Op.gte]: tomorrow } }, transaction }
         );
       } else if (was === partsService.STATUS.DONE) {
         await CalendarEvent.update(
@@ -1167,9 +1670,30 @@ router.get('/parts/:id/next-fit', authenticate, async (req, res) => {
 
     const viewer = { id: req.user.id, isAdmin: req.user.isAdmin };
     const days = await loadQuery.daysOf(userId, start, end, viewer);
+    const estimateHours = Number(part.estimateHours);
+
+    /**
+     * У многодневной части ищется окно, а не день.
+     *
+     * Спрашивать «в какой день влезут 20 ч» бессмысленно: ни в один и не должны.
+     * Окно той же длины скользит по горизонту, и подходит первое, чьей свободной
+     * ёмкости хватает на всю оценку. Длина сохраняется намеренно — ответ на
+     * вопрос «когда» не должен втихую менять ответ на вопрос «сколько это займёт».
+     */
+    if (partsService.isWindowed(part)) {
+      const length = windowLength(part);
+      for (let at = 0; at + length < days.length; at += 1) {
+        const slice = days.slice(at, at + length + 1);
+        if (planning.assessWindow({ days: slice, estimateHours }).fits) {
+          return res.json({ date: slice[slice.length - 1].date, from: slice[0].date, searchedTo: end });
+        }
+      }
+      return res.json({ date: null, from: null, searchedTo: end });
+    }
+
     const date = workload.nextFit(
       days.map(d => ({ ...d, events: [], preHours: d.hours })),
-      Number(part.estimateHours),
+      estimateHours,
       viewer
     );
 

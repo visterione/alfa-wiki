@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, Plus, Filter, Calendar as CalendarIcon,
   Clock, MapPin, Users, Tag, AlertCircle, CheckCircle, X
@@ -18,16 +18,6 @@ import {
 } from '../components/calendar';
 import './Calendar.css';
 
-const EVENT_TYPES = {
-  personal: { label: 'Личное', color: '#4a90e2' },
-  meeting: { label: 'Встреча', color: '#10b981' },
-  deadline: { label: 'Дедлайн', color: '#ef4444' },
-  reminder: { label: 'Напоминание', color: '#f59e0b' },
-  accreditation: { label: 'Аккредитация', color: '#ef4444' },
-  vehicle_service: { label: 'ТО транспорта', color: '#f59e0b' },
-  doctor_schedule: { label: 'Расписание врача', color: '#8b5cf6' }
-};
-
 const PRIORITIES = {
   low: { label: 'Низкий', color: '#94a3b8' },
   medium: { label: 'Средний', color: '#3b82f6' },
@@ -44,6 +34,7 @@ const STATUSES = {
 
 export default function Calendar() {
   const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('month'); // 'month', 'week', 'day', 'agenda'
   const [currentDate, setCurrentDate] = useState(() => {
@@ -229,6 +220,15 @@ export default function Calendar() {
   };
 
     const openEventModal = (event = null, date = null) => {
+    // Блок задачи правится только в своей карточке: сервер запрещает менять и
+    // удалять такое событие через календарь (иначе блок разошёлся бы с частью
+    // задачи), и форма события открывалась бы лишь затем, чтобы на сохранении
+    // выдать ошибку. Вместо формы — переход в модуль «Задачи».
+    if (event?.taskId) {
+      navigate(`/tasks?task=${event.taskId}`);
+      return;
+    }
+
     setSelectedEvent(event);
     setSelectedDate(date);
     setShowEventModal(true);

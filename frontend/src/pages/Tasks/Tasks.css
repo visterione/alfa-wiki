@@ -1943,6 +1943,9 @@
 /* Диапазон не переносится: «17 – 21.08.26», разорванное по тире, читается как
    две отдельные даты в две строки. */
 .tsk-due { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Период, вышедший за срок задачи. Не красная строка целиком: нарушено
+   обещание по датам, а не всё в задаче, и красить надо именно даты. */
+.tsk-due.is-late { color: var(--error); }
 
 /* Формат — серым: цвет в этой таблице закреплён за статусом, и второй цветной
    столбец рядом отбирал бы у него внимание. */
@@ -2257,9 +2260,25 @@
 /* Постановка задачи в две колонки: слева что за задача, справа кто и когда.
    В одну ленту форма выходила на полтора экрана — шкала дня занимает четыре
    сотни точек по высоте, — и заполнялась прокруткой. */
-.tsk-task-modal { width: 1180px; }
-.tsk-task-modal .tsk-modal-head { padding: 15px 18px; }
-.tsk-task-modal-body { padding: 15px 18px 16px; }
+/* Форма постановки — самое плотное окно модуля: в ней шкала дня, файлы, схема
+   цепочки и до десятка подзадач. Поэтому окно и шире, и выше остальных, и высота
+   задана явно, а не по содержимому: прокручиваться должна середина, а название со
+   сроком и кнопки отправки — оставаться на месте. */
+.tsk-task-modal {
+  width: 1340px;
+  height: min(900px, calc(100vh - 40px));
+  height: min(900px, calc(100dvh - 40px));
+  max-height: none;
+}
+.tsk-task-modal .tsk-modal-head { padding: 15px 20px; }
+.tsk-task-modal-body { padding: 16px 20px 18px; }
+
+/* Название и срок одной строкой: «что сделать и когда» — два вопроса, на которые
+   отвечают вместе и первыми. Срок не сжимается, как бы длинно ни звалась задача. */
+.tsk-task-headline { display: flex; align-items: center; gap: 10px; }
+.tsk-task-headline .tsk-task-title-input { flex: 1; min-width: 0; }
+.tsk-task-headline .tsk-due-pick { flex: 0 0 auto; }
+.tsk-task-headline .tsk-due-btn { min-height: 42px; font-size: 13.5px; }
 .tsk-task-title-input { height: 42px; font-size: 16px; font-weight: 550; }
 .tsk-task-modal .tsk-task-description { margin-top: 10px; min-height: 104px; }
 .tsk-task-modal .tsk-dropzone { padding: 15px 16px; }
@@ -2273,18 +2292,170 @@
 .tsk-task-fields .tsk-custom-select { min-width: 0; }
 .tsk-task-fields .tsk-label { margin: 0 0 5px 3px; color: var(--text-tertiary); font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
 .tsk-task-fields .tsk-input { min-height: 38px; }
+/* Кто делает — выбор из двух положений, и выглядит он как выбор. Ссылка «делаю
+   сам» сбоку читалась как примечание и терялась. */
+.tsk-seg {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+.tsk-seg button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.tsk-seg button.is-on { background: var(--bg-primary); color: var(--text-primary); font-weight: 550; box-shadow: var(--shadow-sm); }
+.tsk-seg button:disabled { opacity: .45; cursor: default; }
+
+/* Исполнитель-автор: аватар и имя. Выбирать тут нечего, поэтому строка, а не
+   поле, — и место у неё то же, что у дропдауна в режиме «Поручить». */
+.tsk-doer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  margin-top: 9px;
+  font-size: 13px;
+}
+.tsk-doer-name { color: var(--text-primary); }
+.tsk-doer-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+/* Разбиение — там же, где в разбитой задаче стоит «+ Подзадача»: это один и тот
+   же ход, «работы здесь больше одной». Отбито от полей заметнее обычного отступа:
+   это не следующее поле формы, а другой разговор. */
+.tsk-split-btn { margin-top: 18px; justify-content: center; gap: 8px; }
+
+/* Кнопка-иконка: сброс выбранного времени и прочее, где слово было бы длиннее
+   самого действия. */
+.tsk-icon-btn {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.tsk-icon-btn:hover { border-color: var(--primary); color: var(--primary); }
 .tsk-task-section-head { margin: 15px 2px 7px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
 .tsk-task-description { min-height: 74px; resize: vertical; line-height: 1.45; }
 .tsk-task-modal-foot { min-height: 58px; padding: 11px 18px; }
 .tsk-task-modal .tsk-part { padding: 10px; margin-bottom: 8px; border-radius: 12px; }
 
+/* Исполнители — одна кнопка с дропдауном. Раньше выбранные стояли чипами над
+   полем поиска, и на трёх-четырёх людях выбор занимал больше места, чем вся
+   остальная подзадача. */
 .tsk-people-picker { position: relative; z-index: 30; }
-.tsk-people-picker > .tsk-input { height: 37px; }
-.tsk-picker-selected { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
-.tsk-picker-selected > div { min-width: 0; max-width: 240px; height: 34px; display: flex; align-items: center; gap: 7px; padding: 4px 4px 4px 6px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-secondary); }
-.tsk-picker-selected span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.tsk-picker-selected button { width: 23px; height: 23px; display: grid; place-items: center; padding: 0 0 2px; border: 0; border-radius: 7px; background: transparent; color: var(--text-tertiary); font: inherit; font-size: 17px; cursor: pointer; }
-.tsk-picker-selected button:hover { color: var(--error); background: color-mix(in srgb, var(--error) 8%, transparent); }
+.tsk-people-btn {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.tsk-people-btn:hover { border-color: var(--primary); }
+.tsk-people-btn.is-open { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.tsk-people-btn:disabled { opacity: .55; cursor: default; }
+.tsk-people-btn > svg:first-child { opacity: .5; flex: 0 0 auto; }
+.tsk-people-btn-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tsk-people-btn-empty { color: var(--text-tertiary); }
+.tsk-people-btn-chevron { margin-left: auto; flex: 0 0 auto; opacity: .5; }
+.tsk-people-btn .tsk-avs { flex: 0 0 auto; }
+
+/* Поиск внутри меню, а не отдельным полем над кнопкой: выбрать людей — одно
+   действие, и делиться на два ему незачем. */
+.tsk-people-menu.is-checks { display: flex; flex-direction: column; overflow: hidden; }
+.tsk-people-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+}
+.tsk-people-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.tsk-people-list { min-height: 0; overflow-y: auto; }
+.tsk-people-list button.is-on { background: var(--primary-light); }
+.tsk-people-row-name { min-width: 0; display: flex; flex-direction: column; }
+
+/* Галочка нарисована, а не взята из input[type=checkbox]: системный чекбокс в
+   тёмной теме и в двух браузерах выглядит по-разному, а строка списка должна
+   выглядеть одинаково. */
+.tsk-check {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: #fff;
+}
+.tsk-check.is-on { border-color: var(--primary); background: var(--primary); }
+
+/* Подзадача разложена на секции: раньше поля шли одним потоком, и в задаче из
+   четырёх подзадач было не видно, где кончается одна и какой вопрос к чему. */
+.tsk-part-sect { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--border-light); }
+.tsk-part-sect:first-of-type { border-top: 0; padding-top: 0; }
+.tsk-part-sect-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+/* Срок стоит в строке подзаголовка, поэтому его подпись не должна наследовать
+   капс и разрядку заголовка. */
+.tsk-part-sect-head .tsk-due-btn {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 6px 9px;
+}
+.tsk-part-sect .tsk-scale { margin-top: 0; }
 .tsk-people-menu { z-index: 10000; overflow-y: auto; padding: 5px; border: 1px solid color-mix(in srgb, var(--border-light) 65%, rgba(255,255,255,.42)); border-radius: 13px; background: color-mix(in srgb, var(--bg-primary) 94%, transparent); -webkit-backdrop-filter: blur(28px) saturate(150%); backdrop-filter: blur(28px) saturate(150%); box-shadow: 0 18px 44px rgba(12,20,33,.18); }
 .tsk-people-menu button { width: 100%; min-height: 39px; display: flex; align-items: center; gap: 9px; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .tsk-people-menu button:hover { background: var(--bg-secondary); }
@@ -2612,8 +2783,16 @@
 /* ── Шкала рабочего дня ────────────────────────────────────────────────── */
 
 .tsk-scale { margin-top: 11px; }
-.tsk-scale-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.tsk-scale-date { max-width: 160px; background: var(--bg-primary); }
+.tsk-scale-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 22px; }
+
+/* Срок над шкалой: сам контрол и, у работы в несколько дней, её объём. */
+.tsk-part-due {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+}
 .tsk-scale-chosen {
   display: inline-flex;
   align-items: baseline;
@@ -2724,6 +2903,174 @@
   );
 }
 .tsk-scale-legend em { margin-left: auto; font-style: normal; }
+
+/* ── Раскладка часов по дням окна (ver. 8.48) ──────────────────────────── */
+
+/* Строка на день, а не таблица: окно редко длиннее двух недель, и шапка с
+   названиями колонок заняла бы больше места, чем объясняла — в каждой строке и
+   так подписано, что за число. */
+.tsk-layout {
+  margin-top: 11px;
+  padding: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+}
+.tsk-layout-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.tsk-layout-window { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.tsk-layout-window svg { opacity: .6; }
+.tsk-layout-need b { color: var(--text-primary); font-weight: 600; }
+/* Нехватка ёмкости — предупреждение, а не ошибка: разложить сверх нормы можно,
+   и цвет обязан говорить «посмотри», а не «нельзя». */
+.tsk-layout-need em { font-style: normal; color: var(--warning); }
+
+.tsk-layout-rows { display: grid; gap: 4px; margin: 10px 0; }
+/* Поле ввода и полоса дня выровнены в колонки: разложенные часы сравнивают
+   между днями глазом, сверху вниз, и разъехавшиеся поля это сравнение ломают. */
+.tsk-layout-row {
+  display: grid;
+  grid-template-columns: 52px 74px minmax(56px, 1fr) minmax(0, 1.6fr);
+  align-items: center;
+  gap: 9px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.tsk-layout-row.is-over { background: color-mix(in srgb, var(--error) 7%, transparent); }
+.tsk-layout-row.is-closed { opacity: .62; }
+.tsk-layout-day { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.tsk-layout-input {
+  width: 100%;
+  padding: 5px 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-primary);
+}
+.tsk-layout-closed { color: var(--text-tertiary); }
+.tsk-layout-over { color: var(--error); }
+/* Свободное время дня — кнопка, а не подпись: по ней заполняют строку. Выглядит
+   она подписью намеренно — это подсказка, которая заодно работает. */
+.tsk-layout-free {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+}
+.tsk-layout-free:hover:not(:disabled) { color: var(--primary); border-bottom-color: currentColor; }
+.tsk-layout-free:disabled { cursor: default; }
+
+.tsk-layout-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 9px;
+  border-top: 1px dashed var(--border-light);
+}
+.tsk-layout-total { font-size: 12.5px; color: var(--text-secondary); }
+.tsk-layout-total b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tsk-layout-total.is-ready b { color: var(--success); }
+.tsk-layout-total em { font-style: normal; color: var(--text-tertiary); }
+.tsk-layout-btns { display: flex; gap: 8px; }
+
+@media (max-width: 640px) {
+  /* На телефоне четыре колонки не помещаются: полоса дня уходит во вторую
+     строку под поле ввода, а не сжимается в неразличимую полоску. */
+  .tsk-layout-row {
+    grid-template-columns: 52px 74px minmax(0, 1fr);
+  }
+  .tsk-layout-row .tsk-bar { grid-column: 2 / -1; grid-row: 2; }
+}
+
+/* Правка срока в карточке: контрол и строка о том, чем правка обернётся. Одна
+   панель на перенос и на другую длительность — их и различает-то только длина. */
+.tsk-reschedule {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border-light);
+  display: grid;
+  gap: 9px;
+  justify-items: start;
+}
+.tsk-reschedule-what {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ── Срок работы: один день или несколько ──────────────────────────────── */
+
+/* Один контрол на оба случая. Переключателя «работа идёт несколько дней» здесь
+   нет: длительность выпадает из того, как выбрали срок, и отдельной сущностью
+   она не является. */
+.tsk-due-pick { position: relative; }
+.tsk-due-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.tsk-due-btn svg { opacity: .6; }
+.tsk-due-btn:hover { border-color: var(--primary); }
+.tsk-due-btn.is-open { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+/* Срок в несколько дней — не «особый режим», а тот же срок, просто длиннее.
+   Поэтому отличается насыщенностью текста, а не цветом или иконкой. */
+.tsk-due-btn.is-range { font-weight: 500; }
+.tsk-due-btn:disabled { opacity: .55; cursor: default; }
+
+/* Поповер выезжает от левого края кнопки, а не из центра, как в панели периода:
+   там он центрирован относительно подписи посередине шкалы, здесь — под полем. */
+.tsk-due-pop { left: 0; }
+/* День за пределами разрешённого срока: виден, но недоступен. Спрятать его нельзя
+   — сетка месяца должна оставаться месяцем, иначе не понять, какое это число. */
+.tsk-period-days button:disabled { color: var(--text-tertiary); opacity: .4; cursor: default; }
+.tsk-period-days button:disabled:hover { background: transparent; color: var(--text-tertiary); }
+
+/* Дни внутри срока залиты слабо, концы — насыщенно: видно и протяжённость, и
+   границы. Одной заливкой на весь диапазон концы теряются, а только концами
+   пропадает то, что между ними. */
+.tsk-period-days button.is-in { background: var(--primary-light); color: var(--primary); border-radius: 0; }
+.tsk-period-days button.is-edge { background: var(--primary); color: #fff; font-weight: 600; }
+.tsk-period-days button.is-start { border-radius: 8px 0 0 8px; }
+.tsk-period-days button.is-end { border-radius: 0 8px 8px 0; }
+.tsk-period-days button.is-start.is-end { border-radius: 8px; }
+
+/* ── Объём и ёмкость срока в несколько дней ────────────────────────────── */
+
+.tsk-window { margin-top: 11px; }
+.tsk-window-hours { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+.tsk-window-hours .tsk-input { max-width: 86px; text-align: right; font-variant-numeric: tabular-nums; }
+.tsk-window-dash { color: var(--text-tertiary); }
+.tsk-window-cap {
+  display: grid;
+  gap: 3px;
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.tsk-window-cap b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tsk-window-cap.is-bad b { color: var(--error); }
 
 /* ── Схема цепочки под частями ─────────────────────────────────────────── */
 

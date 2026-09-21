@@ -21,3 +21,47 @@
   .ann-email-item { align-items: flex-start; flex-direction: column; }
   .ann-email-state { justify-items: start; }
 }
+
+/* Отписавшиеся от рассылок (ver. 8.43). Карточка сложена по умолчанию: список
+   нужен не каждый день, а когда человек просит вернуть его в рассылку. */
+.ann-optouts { margin-top: 14px; }
+.ann-optouts > header { display: flex; align-items: center; gap: 10px; }
+.ann-optouts > header h3 { flex: 1; margin: 0; }
+.ann-optouts .ola-card-body { padding: 0 !important; }
+
+.ann-optouts-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--ola-line);
+}
+
+.ann-optouts-search {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--ola-line);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.ann-optouts-search:focus { outline: none; border-color: var(--primary); }
+
+.ann-optout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 18px;
+  border-top: 1px solid var(--ola-line);
+}
+
+.ann-optout-row:first-of-type { border-top: 0; }
+.ann-optout-row > div { min-width: 0; display: grid; gap: 3px; }
+.ann-optout-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.ann-optout-row span { color: var(--text-secondary); font-size: 12px; }
+.ann-optouts-note { margin: 0; padding: 12px 18px; font-size: 12px; color: var(--text-secondary); }

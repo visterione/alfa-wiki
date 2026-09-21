@@ -276,7 +276,7 @@ router.get('/:id/overview', authenticate, async (req, res) => {
             model: TaskPartAssignee,
             as: 'assignees',
             required: false,
-            attributes: ['userId', 'plannedDate'],
+            attributes: ['userId', 'plannedDate', 'plannedUntil'],
           }],
         },
       ],
@@ -319,8 +319,13 @@ router.get('/:id/overview', authenticate, async (req, res) => {
             partId: part.id,
             title: part.title,
             status: part.status,
+            // Окно работы (ver. 8.48): подзадача больше не обязана укладываться
+            // в один день, и обзор команды должен показывать её границы, а не
+            // одну дату — иначе работа на неделю выглядит делом на четверг.
+            startDate: part.startDate,
             dueDate: part.dueDate,
             plannedDate: assignee.plannedDate,
+            plannedUntil: assignee.plannedUntil,
             estimateHours: part.estimateHours,
             project: task.project || null,
             isOverdue: String(part.dueDate) < today,
@@ -446,7 +451,7 @@ router.get('/:id/stats', authenticate, async (req, res) => {
     // кусок на троих это не два часа, а шесть.
     const hoursOf = part => Number(part.estimateHours || 0) * Math.max((part.assignees || []).length, 1);
     const people = new Map((team.plain.members || []).map(m => [m.userId, {
-      userId: m.userId, done: 0, hours: 0, onTime: 0, moved: 0, extended: 0,
+      userId: m.userId, done: 0, hours: 0, onTime: 0, moved: 0, extended: 0, stretched: 0,
     }]));
     const bump = (userId, field, value = 1) => {
       const row = people.get(userId);
@@ -457,6 +462,13 @@ router.get('/:id/stats', authenticate, async (req, res) => {
       done: 0, hours: 0, onTime: 0, late: 0,
       moved: 0, becameStuck: 0,
       extended: 0, extendedHours: 0,
+      // Растягивание (ver. 8.48): признали, что работа идёт не один день.
+      // Считается рядом с продлением, потому что это тот же промах в оценке,
+      // только в другом измерении — не «часов больше», а «дней больше». И это
+      // такой же след решения о работе, которое человек принял сам, а не
+      // наблюдение за ним: границу показателей модуль проводит по этому, а не
+      // по строгости (см. deliberatelyAbsent в reports.js).
+      stretched: 0, stretchedDays: 0,
       forced: 0, declined: 0,
     };
     const byProject = new Map();
@@ -507,6 +519,22 @@ router.get('/:id/stats', authenticate, async (req, res) => {
         stats.extended += 1;
         stats.extendedHours += Math.max(Number(payload.to || 0) - Number(payload.from || 0), 0);
         bump(event.userId, 'extended');
+      }
+
+      if (event.action === 'stretched' && payload.from) {
+        stats.stretched += 1;
+        // Насколько окно стало длиннее прежнего, а не сколько в нём дней:
+        // растянуть однодневную подзадачу на пять дней и добавить один день к
+        // четырёхдневной — разные решения, и складывать их в одно число нельзя.
+        const wasFrom = payload.wasStart || payload.wasDue;
+        const wasDays = wasFrom
+          ? Math.round((new Date(`${payload.wasDue}T00:00:00`) - new Date(`${wasFrom}T00:00:00`)) / 86400000) + 1
+          : 1;
+        const nowDays = Math.round(
+          (new Date(`${payload.to}T00:00:00`) - new Date(`${payload.from}T00:00:00`)) / 86400000
+        ) + 1;
+        stats.stretchedDays += Math.max(nowDays - wasDays, 0);
+        bump(event.userId, 'stretched');
       }
 
       if (event.action === 'forced') {

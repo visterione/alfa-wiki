@@ -127,6 +127,78 @@ function inboxFor(parts, userId) {
   );
 }
 
+/**
+ * Многодневная ли часть.
+ *
+ * Пустой startDate — это не «данные не заполнены», а рабочее состояние «работа
+ * на один день», в котором живут все части до ver. 8.48. Поэтому признак
+ * многодневности спрашивается функцией, а не сравнением с null по всему коду:
+ * место, где забудут про NULL, ведёт себя не как «один день», а как окно
+ * нулевой длины, и раскладка в нём никогда не сойдётся с оценкой.
+ */
+function isWindowed(part) {
+  return !!part?.startDate && String(part.startDate) !== String(part.dueDate);
+}
+
+/** Границы окна работы. У однодневной части это один и тот же день. */
+function windowOf(part) {
+  const to = String(part?.dueDate || '').slice(0, 10);
+  const from = part?.startDate ? String(part.startDate).slice(0, 10) : to;
+  return { from: from <= to ? from : to, to };
+}
+
+/**
+ * Период задачи целиком, выведенный из подзадач.
+ *
+ * Выводится, а не хранится — по той же причине, по которой не хранится статус:
+ * держать рядом с окнами подзадач ещё и сводный период значит завести второй
+ * источник правды, который разойдётся на первом же переносе. Срок задачи
+ * (Task.dueDate) — другое дело: это договорённость автора, её можно нарушить, и
+ * потому она хранится.
+ *
+ * days — календарные дни включительно, а не рабочие. «Задача на 8 дней» в
+ * разговоре значит «с понедельника по следующий вторник», и вычитать оттуда
+ * выходные значит отвечать не на тот вопрос, который задали.
+ */
+function taskSpan(parts) {
+  const windows = (parts || []).filter(p => p?.dueDate).map(windowOf);
+  if (!windows.length) return null;
+  const from = windows.map(w => w.from).sort()[0];
+  const to = windows.map(w => w.to).sort().slice(-1)[0];
+  const days = Math.round(
+    (new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`)) / 86400000
+  ) + 1;
+  return { from, to, days };
+}
+
+/**
+ * Выходит ли подзадача за срок задачи — и с какой стороны.
+ *
+ * Считается ПО ОДНОЙ подзадаче, а не общим признаком на задачу. Общего признака
+ * («одна подзадача выходит за этот срок») человеку мало: он видит, что где-то
+ * конфликт, и должен угадать где. Отметка обязана стоять на той строке, которую
+ * надо править.
+ *
+ * Не ошибка и не запрет: автор вправе сохранить задачу, у которой подзадача
+ * выходит за обещанный срок, — иногда именно так и выясняется, что обещание было
+ * невыполнимым. Но выглядеть это должно как конфликт, а не как нормальное
+ * положение дел.
+ */
+function partOutsideTask(task, part) {
+  if (!task || !part?.dueDate) return null;
+  const { from, to } = windowOf(part);
+  const taskDue = task.dueDate ? String(task.dueDate).slice(0, 10) : null;
+  const taskStart = task.startDate ? String(task.startDate).slice(0, 10) : null;
+  if (taskDue && to > taskDue) return 'after';
+  if (taskStart && from < taskStart) return 'before';
+  return null;
+}
+
+/** Есть ли в задаче хоть одна подзадача за пределами её срока. */
+function breaksDeadline(task, parts) {
+  return (parts || []).some(part => partOutsideTask(task, part) !== null);
+}
+
 /** Достигла ли часть порога, после которого перенос требует решения. */
 function isStuck(part) {
   return Number(part?.moveCount || 0) >= STUCK_AFTER_MOVES;
@@ -207,6 +279,11 @@ module.exports = {
   taskMode,
   taskPeople,
   totalEffortHours,
+  isWindowed,
+  windowOf,
+  taskSpan,
+  partOutsideTask,
+  breaksDeadline,
   inboxFor,
   isStuck,
   canMoveSilently,

@@ -198,7 +198,7 @@ function templatesForEvent(all, event, medCenterId) {
  *   Спрашивается именно каждое, а не событие целиком: филиал вправе получать
  *   запись вебхуком, а напоминания по ней по-прежнему ставить у себя.
  *
- * @returns {Promise<Array<{text, withConfirm, withCancel, plannedAt?, dedupKey?}>>}
+ * @returns {Promise<Array<{text, withConfirm, withCancel, withRating, plannedAt?, dedupKey?}>>}
  *   Обычно одна строка. У записи их может быть несколько: само уведомление и
  *   напоминания, у каждого свой момент отправки.
  */
@@ -230,6 +230,11 @@ async function build(event, snap, found = {}, { allow = () => true } = {}) {
       cascade: Array.isArray(template.cascade) && template.cascade.length ? template.cascade : null,
       withConfirm: template.withConfirm,
       withCancel: template.withCancel,
+      // Кнопки оценки 1–5 (ver. 8.49). Снимок делаем здесь, вместе с текстами и
+      // по той же причине: просьба об отзыве уходит через часы после приёма, и
+      // галка, снятая за это время, не должна отобрать кнопки у сообщения,
+      // которое уже пообещало их текстом.
+      withRating: template.withRating,
       template
     });
   }

@@ -106,6 +106,9 @@ const STATUS_VIEW = {
 // мессенджера, поэтому у неё знака одного нет — показывать один из двух было бы
 // неправдой, и рисуются оба.
 function stepChannel(name) {
+  // sms+webchat — ступень SMS через Fromni, убранная из каскада в 8.50. Имя
+  // оставлено: этот же разбор читает журнал отправок, а там строки с ней
+  // останутся навсегда — так и было отправлено.
   if (name === 'imobis:sms' || name === 'sms+webchat') return 'sms';
   if (name === 'notify+vk') return 'notify';
   return null;
@@ -684,8 +687,9 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
 
   const stepOf = (name) => steps.find(a => a.name === name) || { name, title: name, provider: '', channel: null };
 
-  // Две ступени SMS (Имобис и Fromni) делят один текст: канал у них один и тот
-  // же, и держать два одинаковых поля значило бы предлагать их разойтись.
+  // Две ступени одного канала делят один текст: держать два одинаковых поля
+  // значило бы предлагать им разойтись. С 8.50 такой пары в каскаде нет —
+  // ступень SMS осталась одна, — но проверка общая и переживёт следующую.
   const sharesChannel = (channel) =>
     current.cascade.filter(n => stepOf(n).channel === channel).length > 1;
 
@@ -729,6 +733,15 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
           {template.withConfirm && (
             <Check1 checked={template.withCancel} onChange={v => onToggle(template, { withCancel: v })}>
               И кнопку «Отменить запись»
+            </Check1>
+          )}
+
+          {/* Оценка — только у просьбы об отзыве (ver. 8.49): под записью
+              оценивать ещё нечего. Соседство с подтверждением здесь случайное,
+              вместе эти галки не встречаются ни у одного события. */}
+          {template.event === 'review' && (
+            <Check1 checked={template.withRating} onChange={v => onToggle(template, { withRating: v })}>
+              Добавлять кнопки оценки 1–5
             </Check1>
           )}
 
@@ -816,7 +829,7 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
                   <div className="ola-order-body">
                     {sharesChannel(channel) && (
                       <div className="ola-order-shared">
-                        Текст общий со второй ступенью {channel === 'sms' ? 'SMS' : channel}
+                        Текст общий со второй ступенью {channel === 'sms' ? 'SMS' : channel === 'notify' ? 'Notify' : channel}
                       </div>
                     )}
 
@@ -1429,12 +1442,17 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
                   onChange={e => setSender(e.target.value)}
                 />
               </div>
-              <div className="ola-field narrow">
+              {/* Ссылку принимаем как есть (ver. 8.51). Поле было числовым, и
+                  вставленная в него ссылка молча теряла всё, кроме цифр, —
+                  https://vk.com/3k_anapa превращалась в пустоту, а выглядело
+                  это как «поле не заполнили». Разбор ссылки живёт на сервере,
+                  в vkGroup.js. */}
+              <div className="ola-field">
                 <label>Группа ВК</label>
                 <input
-                  className="ola-input" inputMode="numeric" placeholder="номер"
+                  className="ola-input" placeholder="https://vk.com/3k_anapa"
                   value={vkGroup}
-                  onChange={e => setVkGroup(e.target.value.replace(/\D/g, ''))}
+                  onChange={e => setVkGroup(e.target.value)}
                 />
               </div>
               <div className="ola-field narrow">
@@ -1459,6 +1477,12 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
                     ? `${account.balance.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${account.currency || '₽'}`
                     : 'баланс не отдан'}
                   {account.senders?.length ? ` · имена: ${account.senders.join(', ')}` : ''}
+                  {/* Шаблоны нужны ВК-каналу (ver. 8.51): без одобренного
+                      шаблона Notify не уходит, и «шаблонов нет» — это ответ,
+                      а не отсутствие ответа. */}
+                  {account.templates?.length
+                    ? ` · шаблоны: ${account.templates.join(', ')}`
+                    : ' · шаблонов нет'}
                 </span>
               )}
               {account && account.error && (

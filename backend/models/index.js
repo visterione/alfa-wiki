@@ -2324,6 +2324,11 @@ const EmailTemplate = sequelize.define('EmailTemplate', {
     allowNull: false,
     comment: 'HTML содержимое письма'
   },
+  design: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment: 'Документ конструктора (ver. 8.43). NULL — шаблон приехал готовым HTML'
+  },
   createdBy: {
     type: DataTypes.UUID,
     allowNull: false,
@@ -2355,6 +2360,11 @@ const EmailLog = sequelize.define('EmailLog', {
     type: DataTypes.TEXT,
     allowNull: false,
     comment: 'HTML содержимое письма'
+  },
+  design: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    comment: 'Документ конструктора (ver. 8.43). NULL — письмо отправлено готовым HTML'
   },
   recipients: {
     type: DataTypes.JSONB,
@@ -2399,6 +2409,79 @@ const EmailLog = sequelize.define('EmailLog', {
     { fields: ['sentAt'] },
     { fields: ['status'] }
   ]
+});
+
+/**
+ * Отказ от почтовых рассылок (ver. 8.43).
+ *
+ * Ключ — адрес, а не пользователь, и это принципиально. Получателем рассылки
+ * стал пациент, у которого нет и не будет учётной записи в портале; список его
+ * адресов приезжает файлом. Единственное, что связывает отписавшегося с
+ * будущей рассылкой, — сам адрес.
+ *
+ * Здесь же хранятся отказы сотрудников: разделять их незачем, правило одно —
+ * если адрес в этой таблице, письма на него не уходят.
+ */
+const EmailOptOut = sequelize.define('EmailOptOut', {
+  email: {
+    type: DataTypes.STRING(320),
+    primaryKey: true,
+    allowNull: false,
+    comment: 'Адрес в нижнем регистре — ключ отказа'
+  },
+  source: {
+    type: DataTypes.STRING(32),
+    defaultValue: 'link',
+    comment: 'Откуда пришёл отказ: link (ссылка в письме), oneclick (заголовок List-Unsubscribe), manual (руками в портале)'
+  },
+  reason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Необязательная причина, которую человек указал сам'
+  }
+}, {
+  tableName: 'email_optouts',
+  timestamps: true,
+  updatedAt: false
+});
+
+/**
+ * Сохранённый модуль конструктора писем (ver. 8.43).
+ *
+ * Настроенная секция или блок, который переиспользуют в других письмах: шапку
+ * с логотипом и подвал с контактами собирают один раз. Хранится кусок
+ * документа, а не HTML, — модуль должен вставляться живым и правиться дальше.
+ *
+ * Модули общие для всех, у кого есть право на анонсы. Личных нет намеренно:
+ * смысл модуля в том, чтобы фирменный блок был один на всю сеть.
+ */
+const EmailModule = sequelize.define('EmailModule', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: {
+    type: DataTypes.STRING(200),
+    allowNull: false,
+    comment: 'Как модуль называется в палитре'
+  },
+  kind: {
+    type: DataTypes.STRING(16),
+    allowNull: false,
+    defaultValue: 'section',
+    comment: 'section — секция с колонками, block — отдельный блок'
+  },
+  payload: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    comment: 'Кусок документа конструктора: секция или блок целиком'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'Кто сохранил модуль'
+  }
+}, {
+  tableName: 'email_modules',
+  timestamps: true,
+  indexes: [{ fields: ['kind'] }]
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2687,6 +2770,32 @@ const Task = sequelize.define('Task', {
     comment: 'Команда, которой открыта задача целиком. NULL — личная задача'
   },
   authorId: { type: DataTypes.UUID, allowNull: false },
+  // Срок задачи (ver. 8.48): начало и конец. Хранится, потому что это
+  // договорённость, а не производная — автор сначала говорит «с понедельника по
+  // пятницу», а расписывает подзадачи внутрь уже потом.
+  //
+  // Это главное поле срока в модуле. У простой задачи без подзадач оно и есть её
+  // срок: подзадача там одна, неявная, и спрашивать у неё второй срок значило бы
+  // задавать один вопрос дважды. Свои сроки у подзадач появляются только когда
+  // работу разбивают, и живут они внутри этого.
+  //
+  // Выведенный период задачи (min начала … max срока по подзадачам) тоже есть —
+  // его считает partsService.taskSpan, — но он отвечает на другой вопрос: когда
+  // работа фактически расписана. Нарушить его нельзя по определению, а срок
+  // задачи нарушить можно, и ровно это и надо видеть.
+  //
+  // startDate пустой значит «один день» — то же правило, что у подзадач, чтобы
+  // на весь модуль оно было одно.
+  startDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Первый день работы над задачей. NULL — задача на один день (dueDate)'
+  },
+  dueDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Срок задачи. NULL — у задачи своего срока нет, есть только сроки подзадач'
+  },
   attachments: {
     type: DataTypes.JSONB,
     allowNull: false,
@@ -2702,7 +2811,8 @@ const Task = sequelize.define('Task', {
     { fields: ['authorId'] },
     { fields: ['projectId'] },
     { fields: ['teamId'] },
-    { fields: ['isArchived'] }
+    { fields: ['isArchived'] },
+    { fields: ['dueDate'] }
   ]
 });
 
@@ -2719,6 +2829,20 @@ const TaskPart = sequelize.define('TaskPart', {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: false,
     comment: 'Оценка в часах на одного исполнителя'
+  },
+  // Начало окна работы (ver. 8.48). Окно — это [startDate..dueDate], и оценка
+  // раскладывается по его рабочим дням: подзадача на 20 ч больше не обязана
+  // поместиться в один день.
+  //
+  // NULL значит «один день, как раньше», и это не заготовка на будущее, а
+  // рабочее состояние: у всех подзадач до 8.48 здесь пусто, и ведут они себя в
+  // точности как прежде. Проставить startDate = dueDate задним числом было бы
+  // ровнее на вид, но превратило бы каждую старую подзадачу в «окно в один
+  // день» и заставило бы интерфейс рисовать раскладку там, где выбирать нечего.
+  startDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Начало окна работы. NULL — подзадача на один день (dueDate)'
   },
   dueDate: {
     type: DataTypes.DATEONLY,
@@ -2748,7 +2872,8 @@ const TaskPart = sequelize.define('TaskPart', {
   indexes: [
     { fields: ['taskId'] },
     { fields: ['status'] },
-    { fields: ['dueDate'] }
+    { fields: ['dueDate'] },
+    { fields: ['startDate'] }
   ]
 });
 
@@ -2775,6 +2900,19 @@ const TaskPartAssignee = sequelize.define('TaskPartAssignee', {
   plannedDate: {
     type: DataTypes.DATEONLY,
     comment: 'День, на который исполнитель поставил часть. NULL — лежит во входящих'
+  },
+  // Последний день раскладки (ver. 8.48). Источник правды о раскладке — блоки в
+  // календаре: у многодневной подзадачи их несколько, по одному на день. Эти две
+  // даты нужны затем, чтобы список задач и входящие могли написать «в плане
+  // 22–25 сент.», не поднимая календарь на каждую строку.
+  //
+  // plannedDate при этом остаётся ПЕРВЫМ днём и сохраняет своё главное
+  // свойство: NULL значит «лежит во входящих», и на нём держится весь экран
+  // входящих. Поэтому вторая дата добавлена рядом, а первая не превращена в
+  // диапазон.
+  plannedUntil: {
+    type: DataTypes.DATEONLY,
+    comment: 'Последний день раскладки. NULL при заполненном plannedDate — раскладка в один день'
   },
   declinedAt: {
     type: DataTypes.DATE,
@@ -3798,6 +3936,10 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   // тоже осмысленна, а главное — старое поле продолжает означать ровно то, что
   // означало, и отправщик со старой логикой от новой галки не изменится.
   withCancel: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Кнопки оценки 1–5 под сообщением (ver. 8.49). Отдельным признаком, а не
+  // третьим значением withConfirm: у отзыва подтверждения не бывает по смыслу —
+  // визит уже состоялся, — а у записи не бывает оценки, оценивать ещё нечего.
+  withRating: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, { tableName: 'notif_templates', timestamps: true });
 
@@ -3854,6 +3996,8 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   // что и тексты выше: между заведением и отправкой проходят часы, и галку за
   // это время могут снять. Кнопка должна соответствовать обещанному тексту.
   withCancel: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Снимок той же природы, что и два признака выше (ver. 8.49).
+  withRating: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   // Видно, что сообщение не потерялось, а ждёт конца тихих часов.
   postponedFrom: { type: DataTypes.DATE, allowNull: true, field: 'postponed_from' },
   plannedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'planned_at' },
@@ -3876,6 +4020,35 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
     { fields: ['status', 'planned_at'] }
   ]
 });
+
+// Оценка визита кнопкой в боте (ver. 8.49).
+//
+// Не путать с omni_sessions.rating: там человек оценивает работу оператора
+// после закрытия обращения, здесь — приём и врача. Два разных вопроса к разным
+// людям, и складывать их в одну среднюю нельзя.
+//
+// Филиал и врач лежат здесь копией, а не достаются по визиту при чтении:
+// notif_appointments — рабочий стол детектора и живёт до ближайшей уборки, а
+// оценка остаётся навсегда и должна отвечать «кого оценили» сама по себе.
+const NotifVisitRating = sequelize.define('NotifVisitRating', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  outboxId: { type: DataTypes.UUID, field: 'outbox_id' },
+  apptId: { type: DataTypes.INTEGER, field: 'appt_id' },
+  patientId: { type: DataTypes.INTEGER, field: 'patient_id' },
+  medCenterId: { type: DataTypes.UUID },
+  doctorName: { type: DataTypes.STRING(255), field: 'doctor_name' },
+  visitAt: { type: DataTypes.DATE, field: 'visit_at' },
+  score: { type: DataTypes.SMALLINT, allowNull: false },
+  comment: { type: DataTypes.TEXT, allowNull: true },
+  platform: { type: DataTypes.STRING(20), allowNull: true },
+  subscriberId: { type: DataTypes.UUID, field: 'subscriber_id' },
+  reviewId: { type: DataTypes.UUID, allowNull: true },
+  // До какого момента следующее сообщение человека считается причиной низкой
+  // оценки, а не новым вопросом оператору. Пусто — не ждём.
+  commentWaitUntil: { type: DataTypes.DATE, field: 'comment_wait_until' },
+  ratedAt: { type: DataTypes.DATE, field: 'rated_at', defaultValue: DataTypes.NOW },
+  commentedAt: { type: DataTypes.DATE, field: 'commented_at' }
+}, { tableName: 'notif_visit_ratings', timestamps: true });
 
 // === СОБЫТИЯ ОТ МИС (ver. 7.88) ===
 // Приёмник настройки «уведомления о событиях» в Renovatio. Сначала только
@@ -4445,6 +4618,10 @@ User.hasMany(EmailTemplate, { foreignKey: 'createdBy', as: 'emailTemplates' });
 EmailLog.belongsTo(User, { foreignKey: 'sentBy', as: 'sender' });
 User.hasMany(EmailLog, { foreignKey: 'sentBy', as: 'sentEmails' });
 
+// Модули конструктора писем: кто сохранил. Нужно в палитре — «чей это подвал»
+// первый вопрос, когда модулей набирается десяток.
+EmailModule.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
+
 // EmailFavoriteRecipient relationships
 EmailFavoriteRecipient.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(EmailFavoriteRecipient, { foreignKey: 'userId', as: 'favoriteRecipients' });
@@ -4943,6 +5120,7 @@ const CallCenterSnippet = sequelize.define('CallCenterSnippet', {
 MessengerBot.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 NotifBranchSettings.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 NotifTemplate.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+NotifVisitRating.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 
 module.exports = {
   sequelize,
@@ -4989,6 +5167,7 @@ module.exports = {
   NotifTemplate,
   NotifBranchSettings,
   NotifOutbox,
+  NotifVisitRating,
   MisEvent,
   Vehicle,
   VehicleFile,
@@ -5041,6 +5220,8 @@ module.exports = {
   // Email module
   EmailTemplate,
   EmailLog,
+  EmailOptOut,
+  EmailModule,
   EmailFavoriteRecipient,
   EmailFavoriteTemplate,
   // Referral bonuses module

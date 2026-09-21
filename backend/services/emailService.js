@@ -434,40 +434,100 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Отправляет массовую рассылку email батчами с паузами между ними.
+ *
+ * ── Что изменилось в ver. 8.43 ───────────────────────────────────────────────
+ *
+ * Раньше функция рассылала ОДИН И ТОТ ЖЕ HTML всему списку. С выходом рассылок
+ * на пациентов это перестало быть возможным: у каждого получателя свой адрес
+ * отписки, а значит и своё письмо. Поэтому письмо собирается в два шага — общая
+ * разметка с подстановками {{...}} считается один раз до цикла, а personalize()
+ * подставляет в неё значения получателя уже внутри цикла. Обращение по имени
+ * досталось тем же механизмом, отдельной работы под него не понадобилось.
+ *
+ * Отказавшиеся отсеиваются ЗДЕСЬ, а не при наборе списка. Между планированием
+ * отложенной рассылки и её отправкой проходят дни, и человек, отписавшийся в
+ * этот промежуток, иначе получил бы ровно то письмо, от которого отписался.
+ *
  * @param {Object} params
  * @param {string} params.subject
- * @param {string} params.htmlContent
+ * @param {string} params.htmlContent   готовый HTML (старый режим); при наличии design не используется
+ * @param {Object} [params.design]      документ конструктора (ver. 8.43)
  * @param {Array<{email, displayName}>} params.recipients
  * @param {Array<{name, path, mimeType}>} params.attachments
  * @param {string} params.senderInfo
  * @param {Function} [params.onProgress] - callback({ sent, failed, total }) после каждого письма
- * @returns {Promise<{success: boolean, sent: number, failed: number, errors: Array}>}
+ * @returns {Promise<{success: boolean, sent: number, failed: number, skipped: number, errors: Array}>}
  */
-const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [], senderInfo, onProgress }) => {
+const sendBulkEmail = async ({ subject, htmlContent, design = null, recipients, attachments = [], senderInfo, onProgress }) => {
   const path = require('path');
   const fs = require('fs');
+  const emailRenderer = require('./emailRenderer');
+  const optout = require('./emailOptout');
   const transporter = createBroadcastTransporter();
-  const results = { success: true, sent: 0, failed: 0, errors: [] };
+  const results = { success: true, sent: 0, failed: 0, skipped: 0, errors: [] };
 
   const BATCH_SIZE = parseInt(process.env.BROADCAST_BATCH_SIZE || '20');
   const BATCH_DELAY = parseInt(process.env.BROADCAST_BATCH_DELAY_MS || '3000');
 
-  // Встраиваем изображения из HTML как inline attachments
-  const { html: processedHtml, images } = embedImagesInline(htmlContent);
+  // Отписавшиеся выбывают до первой отправки. Их не считаем ни отправленными,
+  // ни ошибками: письма им не было, и это не сбой, а штатный исход.
+  const fullList = Array.isArray(recipients) ? recipients : [];
+  let allowedList = fullList;
+  try {
+    const filtered = await optout.filterRecipients(fullList);
+    allowedList = filtered.allowed;
+    results.skipped = filtered.skipped.length;
+    if (results.skipped) console.log(`Отписавшихся в списке: ${results.skipped}, им письмо не уйдёт`);
+  } catch (error) {
+    // Недоступная таблица отказов не должна отменять рассылку целиком, но
+    // молчать об этом нельзя: в этот прогон отписка не сработает.
+    console.error('Не удалось проверить отписки, рассылка идёт по полному списку:', error.message);
+  }
+  // Дальше по функции работает именно очередь, а не исходный список: в истории
+  // рассылки остаётся полный набор адресов (кому письмо предназначалось), а
+  // отправляется только то, что осталось после отсева.
+  const queue = allowedList;
 
-  console.log(`📧 Starting broadcast: ${recipients.length} recipients, batch=${BATCH_SIZE}, delay=${BATCH_DELAY}ms`);
+  /**
+   * Картинки: вложением или ссылкой.
+   *
+   * Вложение (cid:) показывается даже при выключенной загрузке картинок, и для
+   * письма на тридцать сотрудников это лучший выбор — так работал старый режим,
+   * и для него ничего не меняется. Для рассылки на тысячи адресов тот же приём
+   * становится проблемой: каждая копия письма несёт с собой все картинки, и
+   * мегабайтный макет на пять тысяч человек — это пять гигабайт через SMTP.
+   * Поэтому у писем из конструктора картинки по умолчанию едут ссылками на
+   * портал, а вложения остаются выбором для небольших внутренних рассылок.
+   */
+  const imageMode = design
+    ? (design?.settings?.imageMode === 'attach' ? 'attach' : 'link')
+    : 'attach';
 
-  for (let batchStart = 0; batchStart < recipients.length; batchStart += BATCH_SIZE) {
-    const batch = recipients.slice(batchStart, batchStart + BATCH_SIZE);
+  const baseHtml = design
+    ? emailRenderer.render(design, { subject }).html
+    : htmlContent;
+
+  const { html: processedHtml, images } = imageMode === 'attach'
+    ? embedImagesInline(baseHtml)
+    : { html: baseHtml, images: [] };
+
+  if (design && !process.env.PUBLIC_BASE_URL) {
+    console.warn('PUBLIC_BASE_URL не задан: картинки и ссылка отписки в письме работать не будут');
+  }
+
+  console.log(`📧 Starting broadcast: ${queue.length} recipients, batch=${BATCH_SIZE}, delay=${BATCH_DELAY}ms, images=${imageMode}`);
+
+  for (let batchStart = 0; batchStart < queue.length; batchStart += BATCH_SIZE) {
+    const batch = queue.slice(batchStart, batchStart + BATCH_SIZE);
     const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);
+    const totalBatches = Math.ceil(queue.length / BATCH_SIZE);
     console.log(`📦 Batch ${batchNum}/${totalBatches} (${batch.length} recipients)`);
 
     for (const recipient of batch) {
       if (!recipient.email) {
         results.failed++;
         results.errors.push({ email: recipient.displayName || 'Unknown', error: 'Email не указан' });
-        onProgress?.({ sent: results.sent, failed: results.failed, total: recipients.length });
+        onProgress?.({ sent: results.sent, failed: results.failed, total: queue.length, skipped: results.skipped });
         continue;
       }
 
@@ -493,13 +553,33 @@ const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [
           }
         }
 
+        // Второй шаг рендера: общая разметка + адрес отписки этого получателя.
+        // Больше в письме ничего не персонализируется — обращение по имени и
+        // подстановка медцентра убраны как неиспользуемые.
+        const unsubscribeUrl = optout.unsubscribeUrl(recipient.email);
+        const personalHtml = emailRenderer.personalize(processedHtml, {
+          unsubscribe_url: unsubscribeUrl,
+        });
+
         const mailOptions = {
           from: process.env.SMTP_FROM_BROADCAST || process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
           to: recipient.email,
           subject: subject,
-          html: processedHtml,
+          html: personalHtml,
           attachments: emailAttachments
         };
+
+        // Отписка в заголовках — то, по чему почтовые службы отличают рассылку
+        // от переписки. Gmail с 2024 года требует её от отправителей свыше 5000
+        // писем в сутки, и без неё в спам уходит домен целиком, а не письмо.
+        // List-Unsubscribe-Post включает отписку в один клик по RFC 8058: почтовый
+        // клиент сам дёргает адрес POST-запросом, не открывая браузер.
+        if (process.env.PUBLIC_BASE_URL) {
+          mailOptions.headers = {
+            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          };
+        }
 
         await transporter.sendMail(mailOptions);
         results.sent++;
@@ -509,11 +589,11 @@ const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [
         results.errors.push({ email: recipient.email, error: error.message });
       }
 
-      onProgress?.({ sent: results.sent, failed: results.failed, total: recipients.length });
+      onProgress?.({ sent: results.sent, failed: results.failed, total: queue.length, skipped: results.skipped });
     }
 
     // Пауза между батчами, кроме последнего
-    if (batchStart + BATCH_SIZE < recipients.length) {
+    if (batchStart + BATCH_SIZE < queue.length) {
       console.log(`⏸️  Waiting ${BATCH_DELAY}ms before next batch...`);
       await sleep(BATCH_DELAY);
     }

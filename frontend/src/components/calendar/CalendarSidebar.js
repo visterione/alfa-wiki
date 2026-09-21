@@ -1,19 +1,10 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, Filter, Clock, MapPin } from 'lucide-react';
+import { EVENT_TYPES, eventColor, eventTimeText, eventTitle } from './eventTypes';
 
 const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-
-const EVENT_TYPES = {
-  personal: { label: 'Личное', color: '#4a90e2' },
-  meeting: { label: 'Встреча', color: '#10b981' },
-  deadline: { label: 'Дедлайн', color: '#ef4444' },
-  reminder: { label: 'Напоминание', color: '#f59e0b' },
-  accreditation: { label: 'Аккредитация', color: '#ef4444' },
-  vehicle_service: { label: 'ТО транспорта', color: '#f59e0b' },
-  doctor_schedule: { label: 'Расписание врача', color: '#8b5cf6' }
-};
 
 // === MINI CALENDAR ===
 export function MiniCalendar({ selectedDate, onDateSelect }) {
@@ -208,14 +199,6 @@ export function UpcomingEvents({ events, onEventClick }) {
     }
   };
 
-  const formatTime = (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   return (
     <div className="upcoming-events">
       <h3>Предстоящие события</h3>
@@ -231,15 +214,15 @@ export function UpcomingEvents({ events, onEventClick }) {
               key={event.id}
               className="upcoming-event"
               onClick={() => onEventClick(event)}
-              style={{ borderLeftColor: event.color }}
+              style={{ borderLeftColor: eventColor(event) }}
             >
               <div className="upcoming-event-date">
                 {formatDate(event.startTime)}
               </div>
-              <div className="upcoming-event-title">{event.title}</div>
+              <div className="upcoming-event-title">{eventTitle(event)}</div>
               <div className="upcoming-event-time">
                 <Clock size={14} />
-                {formatTime(event.startTime)}
+                {eventTimeText(event)}
               </div>
               {event.location && (
                 <div className="upcoming-event-location">

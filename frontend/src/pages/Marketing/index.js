@@ -1,8 +1,8 @@
 /**
  * Модуль «Маркетинг» (ver. 8.22).
  *
- * Три вкладки — акции, карта рекламных площадок и анонсы — собраны в один
- * раздел. До 8.22 они лежали в трёх разных местах: акции и карта —
+ * Четыре вкладки — акции, карта рекламных площадок, анонсы через ботов и
+ * почтовые рассылки — собраны в один раздел. До 8.22 они лежали в трёх разных местах: акции и карта —
  * самостоятельными HTML-страницами в backend/bot/, вставленными в вики, а
  * анонсы — отдельной кнопкой в полосе быстрого доступа. Маркетолог ходил между
  * ними через поиск по вики, потому что в сайдбаре было видно только третью.
@@ -21,11 +21,12 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Map as MapIcon, Megaphone, Tag } from 'lucide-react';
+import { Map as MapIcon, Megaphone, Tag, Mail } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PromotionsTab from './PromotionsTab';
 import AdsTab from './AdsTab';
 import AnnouncementsTab from './AnnouncementsTab';
+import MailingsTab from './MailingsTab';
 import { ToolsSlotContext } from './toolsSlot';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import '../admin/AdminOpenLine.css';
@@ -33,9 +34,10 @@ import '../Announcements.css';
 import './Marketing.css';
 
 const TABS = [
-  { key: 'promotions',    path: 'promotions',    label: 'Акции',  icon: Tag },
-  { key: 'ads',           path: 'ads',           label: 'Карта',  icon: MapIcon },
-  { key: 'announcements', path: 'announcements', label: 'Анонсы', icon: Megaphone }
+  { key: 'promotions',    path: 'promotions',    label: 'Акции',    icon: Tag },
+  { key: 'ads',           path: 'ads',           label: 'Карта',    icon: MapIcon },
+  { key: 'announcements', path: 'announcements', label: 'Анонсы',   icon: Megaphone },
+  { key: 'mailings',      path: 'mailings',      label: 'Рассылки', icon: Mail }
 ];
 
 /**
@@ -54,7 +56,11 @@ export function useMarketingLevels() {
     return {
       promotions: level('promotions'),
       ads: level('ads'),
-      announcements: level('announcements')
+      announcements: level('announcements'),
+      // Рассылки отделились от анонсов в 8.43, но своего флага в правах не
+      // получили: заводить его значило бы раздать всем администраторам новую
+      // настройку, о которой никто не просил. Кто вёл анонсы — ведёт и рассылки.
+      mailings: level('announcements')
     };
   }, [user, isAdmin]);
 }
@@ -69,8 +75,8 @@ export default function Marketing() {
 
   const visible = TABS.filter(t => levels[t.key] !== 'block');
 
-  // Человек может иметь доступ к одной вкладке из трёх, и тогда адрес модуля
-  // без вкладки должен вести именно к ней, а не к первой по списку.
+  // Человек может иметь доступ к одной вкладке из четырёх, и тогда адрес
+  // модуля без вкладки должен вести именно к ней, а не к первой по списку.
   if (!visible.length) return <Navigate to="/" replace />;
   if (!tab || !visible.some(t => t.path === tab)) {
     return <Navigate to={`/marketing/${visible[0].path}`} replace />;
@@ -105,6 +111,7 @@ export default function Marketing() {
           {active.key === 'promotions' && <PromotionsTab level={levels.promotions} />}
           {active.key === 'ads' && <AdsTab level={levels.ads} />}
           {active.key === 'announcements' && <AnnouncementsTab level={levels.announcements} />}
+          {active.key === 'mailings' && <MailingsTab level={levels.mailings} />}
         </ToolsSlotContext.Provider>
       </div>
     </div>

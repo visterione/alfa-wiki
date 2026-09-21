@@ -26,7 +26,7 @@ import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {Clock} from 'lucide-react-native';
 import Avatar from '../../components/Avatar';
-import {STATUS_ICON, STATUS_COLOR, clockText, dnum} from './taskMeta';
+import {STATUS_ICON, STATUS_COLOR, clockText, dateRange} from './taskMeta';
 
 const FILTERS = [
   ['all', 'Все'],
@@ -110,10 +110,25 @@ export default function TaskListScreen({navigation}) {
         <Text style={styles.empty}>В этом фильтре пусто.</Text>
       ) : (
         list.map(task => {
-          const due = (task.parts || [])
-            .map(p => String(p.dueDate))
-            .sort()
-            .pop();
+          /**
+           * Период, в который задача расписана, а не только крайний срок.
+           *
+           * По одной дате нельзя отличить дело на день от работы на неделю, а с
+           * ver. 8.48 растянуть задачу может и одна многодневная подзадача — не
+           * только цепочка из четырёх. Начало берётся из окон подзадач, конец —
+           * из их сроков.
+           */
+          const dates = (task.parts || [])
+            .flatMap(p => [String(p.startDate || p.dueDate), String(p.dueDate)])
+            .sort();
+          // Свой срок задачи важнее выведенного: это то, что обещали. Выведенный
+          // период показывается, когда своего срока у задачи нет.
+          const due = task.dueDate
+            ? dateRange(task.startDate || task.dueDate, task.dueDate)
+            : dates.length ? dateRange(dates[0], dates[dates.length - 1]) : null;
+          const late = task.breaksDeadline
+            || (task.dueDate && dates.length
+              && dates[dates.length - 1] > String(task.dueDate).slice(0, 10));
           const users = (task.parts || [])
             .flatMap(part => (part.assignees || []).map(a => a.user))
             .filter((user, i, arr) => user && arr.findIndex(x => x?.id === user.id) === i);
@@ -155,7 +170,9 @@ export default function TaskListScreen({navigation}) {
                 <View style={styles.cardMetaRow}>
                   <Clock size={13} color={c.textTertiary} />
                   <Text style={styles.cardMeta}>{clockText(task.totalEffortHours)}</Text>
-                  {!!due && <Text style={styles.cardMeta}>· {dnum(due)}</Text>}
+                  {!!due && (
+                    <Text style={[styles.cardMeta, late && {color: c.error}]}>· {due}</Text>
+                  )}
                 </View>
               </View>
             </Pressable>

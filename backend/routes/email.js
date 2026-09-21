@@ -1,9 +1,11 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const { body, validationResult } = require('express-validator');
-const { EmailTemplate, EmailLog, EmailFavoriteRecipient, EmailFavoriteTemplate, User, Role } = require('../models');
+const { EmailTemplate, EmailLog, EmailOptOut, EmailModule, EmailFavoriteRecipient, EmailFavoriteTemplate, User, Role } = require('../models');
 const { authenticate, requireMarketing } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
+const emailRenderer = require('../services/emailRenderer');
+const optout = require('../services/emailOptout');
 const { Op } = require('sequelize');
 const multer = require('multer');
 const XLSX = require('xlsx-js-style');
@@ -15,6 +17,10 @@ const router = express.Router();
 const requireAnnouncements = requireMarketing('announcements', 'read');
 const requireAnnouncementsEdit = requireMarketing('announcements', 'edit');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// Картинкам потолок выше: снимок с телефона легко весит 15 МБ, а до письма он
+// всё равно доедет ужатым до 1200px. Отказывать на входе из-за исходного веса
+// значило бы просить маркетолога сначала сжать файл где-то ещё.
+const uploadImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 // In-memory store для активных задач рассылки
 const sendJobs = new Map();
@@ -52,8 +58,7 @@ router.get('/templates', authenticate, requireAnnouncements, async (req, res) =>
 // POST /api/email/templates - Создать шаблон
 router.post('/templates', authenticate, requireAnnouncementsEdit, [
   body('name').trim().notEmpty().withMessage('Название обязательно'),
-  body('subject').trim().notEmpty().withMessage('Тема обязательна'),
-  body('htmlContent').notEmpty().withMessage('Содержимое обязательно')
+  body('subject').trim().notEmpty().withMessage('Тема обязательна')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -61,11 +66,23 @@ router.post('/templates', authenticate, requireAnnouncementsEdit, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, subject, htmlContent, isPublic } = req.body;
+    const { name, subject, isPublic } = req.body;
+    const design = req.body.design && typeof req.body.design === 'object' ? req.body.design : null;
+    if (!design && !String(req.body.htmlContent || '').trim()) {
+      return res.status(400).json({ error: 'Шаблон пустой: соберите письмо в конструкторе или вставьте готовый HTML' });
+    }
+
+    // У шаблона из конструктора HTML тоже хранится — им живёт предпросмотр в
+    // списке шаблонов и старые места, которые о документе ничего не знают.
+    const htmlContent = design
+      ? emailRenderer.render(design, { subject }).html
+      : req.body.htmlContent;
+
     const template = await EmailTemplate.create({
       name,
       subject,
       htmlContent,
+      design,
       createdBy: req.user.id,
       isPublic: isPublic !== false // По умолчанию публичный
     });
@@ -91,7 +108,13 @@ router.put('/templates/:id', authenticate, requireAnnouncementsEdit, async (req,
       return res.status(403).json({ error: 'Нет прав на редактирование' });
     }
 
-    await template.update(req.body);
+    // Документ и HTML не должны разойтись: если пришёл design, HTML
+    // пересобирается из него, а присланный игнорируется.
+    const patch = { ...req.body };
+    if (patch.design && typeof patch.design === 'object') {
+      patch.htmlContent = emailRenderer.render(patch.design, { subject: patch.subject || template.subject }).html;
+    }
+    await template.update(patch);
     res.json(template);
   } catch (error) {
     console.error('❌ Error updating template:', error);
@@ -120,12 +143,286 @@ router.delete('/templates/:id', authenticate, requireAnnouncementsEdit, async (r
   }
 });
 
+// === КОНСТРУКТОР ПИСЕМ (ver. 8.43) ===
+
+/**
+ * Предпросмотр: документ конструктора → HTML.
+ *
+ * Рендер живёт на сервере, а не во фронтенде, ради единственного правила: у
+ * письма должен быть ОДИН способ превратиться в HTML. Холст конструктора —
+ * приближение на React, и расходись он с настоящим письмом, узнавали бы об этом
+ * уже получатели. Поэтому предпросмотр зовёт ровно ту же функцию, что и
+ * отправка, и показывает её вывод в iframe.
+ *
+ * Возвращает и замечания: пустой текст превью, картинки без подписи, перевес
+ * письма. Они ничего не запрещают — только называют.
+ */
+router.post('/preview', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    const { design, subject = '' } = req.body;
+    if (!design || typeof design !== 'object') {
+      return res.status(400).json({ error: 'Нужен документ письма' });
+    }
+    const { html, warnings } = emailRenderer.render(design, { subject });
+
+    // В предпросмотре адрес отписки заглушаем решёткой: настоящий ведёт на
+    // страницу отписки, и нажать его из предпросмотра было бы неприятным
+    // сюрпризом. Больше в письме подставлять нечего.
+    const preview = emailRenderer.personalize(html, { unsubscribe_url: '#' });
+
+    res.json({ html: preview, warnings, bytes: Buffer.byteLength(html, 'utf8') });
+  } catch (error) {
+    console.error('❌ Error rendering email preview:', error);
+    res.status(500).json({ error: 'Не удалось собрать письмо' });
+  }
+});
+
+/**
+ * Загрузка картинки для письма (ver. 8.43).
+ *
+ * Отдельный маршрут вместо общего /media/upload, и не ради каприза. Картинка в
+ * письме живёт по другим правилам, чем картинка на вики-странице:
+ *
+ *   • Шире 1200px она не нужна никогда. Письмо 600px, на экране с двойной
+ *     плотностью нужно 1200 — всё, что сверху, это вес, который получатель
+ *     скачивает по мобильному интернету и не видит.
+ *   • Вес важнее качества. Фотография из телефона на 6 МБ в письме — это
+ *     письмо, которое не откроют: почтовые клиенты тянут картинки по очереди, и
+ *     первые секунды человек смотрит на пустые рамки.
+ *   • Прозрачность в письме почти всегда вредна: тёмная тема Gmail подкладывает
+ *     под картинку свой фон, и логотип с альфа-каналом оказывается чёрным по
+ *     чёрному. PNG с прозрачностью мы не трогаем (иначе сломаем логотипы на
+ *     светлой подложке), но говорим об этом в ответе.
+ *
+ * Файл кладётся в общий uploads, потому что именно он публично отдаётся с 443 —
+ * картинка в письме должна открываться у человека, который в портал не входил.
+ */
+router.post('/image', authenticate, requireAnnouncementsEdit, uploadImage.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не пришёл' });
+    if (!req.file.mimetype.startsWith('image/')) {
+      return res.status(400).json({ error: 'Это не картинка' });
+    }
+
+    const sharp = require('sharp');
+    const fsp = require('fs').promises;
+    const path = require('path');
+
+    const dir = path.join(__dirname, '..', 'uploads', new Date().toISOString().slice(0, 7));
+    await fsp.mkdir(dir, { recursive: true });
+
+    const source = sharp(req.file.buffer, { animated: true });
+    const meta = await source.metadata();
+
+    // GIF остаётся GIF: пересобрать анимацию в jpeg значит потерять её, а
+    // анимированная картинка в письме — осознанный выбор маркетолога.
+    const isGif = meta.format === 'gif';
+    const hasAlpha = Boolean(meta.hasAlpha);
+    const ext = isGif ? 'gif' : (hasAlpha ? 'png' : 'jpg');
+    const name = `${randomUUID()}.${ext}`;
+    const target = path.join(dir, name);
+
+    let pipeline = source.resize({ width: 1200, withoutEnlargement: true });
+    if (isGif) pipeline = pipeline.gif();
+    else if (hasAlpha) pipeline = pipeline.png({ compressionLevel: 9 });
+    else pipeline = pipeline.jpeg({ quality: 82, mozjpeg: true });
+
+    const out = await pipeline.toBuffer();
+    await fsp.writeFile(target, out);
+
+    const relative = `/uploads/${path.basename(dir)}/${name}`;
+    res.status(201).json({
+      url: relative,
+      width: Math.min(meta.width || 0, 1200),
+      bytes: out.length,
+      shrunk: (meta.width || 0) > 1200,
+      hasAlpha,
+    });
+  } catch (error) {
+    console.error('❌ Error uploading email image:', error);
+    res.status(500).json({ error: 'Не удалось загрузить картинку' });
+  }
+});
+
+/**
+ * Отправить письмо себе (ver. 8.43).
+ *
+ * Предпросмотр показывает, как письмо собралось, но не как оно доедет: не видно
+ * ни того, что сделает с ним Gmail, ни того, как выглядит тема в списке писем,
+ * ни того, обрежет ли клиент картинки. Проверить это можно ровно одним
+ * способом — отправить себе.
+ *
+ * Адрес не принимается параметром намеренно: письмо уходит на почту того, кто
+ * нажал кнопку. Иначе «отправить себе» становится способом разослать черновик
+ * куда угодно мимо истории рассылок и мимо отписок.
+ */
+router.post('/test-send', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    if (!req.user.email) {
+      return res.status(400).json({ error: 'У вашей учётной записи не указана почта' });
+    }
+    const { subject = '(без темы)', design = null, htmlContent = '' } = req.body;
+    if (!design && !String(htmlContent).trim()) {
+      return res.status(400).json({ error: 'Письмо пустое' });
+    }
+
+    const result = await sendBulkEmail({
+      subject: `[проверка] ${subject}`,
+      htmlContent,
+      design,
+      recipients: [{ email: req.user.email, displayName: req.user.displayName || req.user.username }],
+      attachments: [],
+      senderInfo: req.user.displayName || req.user.username,
+    });
+
+    // Собственная отписка не должна мешать проверять письма: её отсев здесь
+    // выглядел бы как молчаливый сбой отправки.
+    if (result.skipped) {
+      return res.status(400).json({ error: 'Ваш адрес отписан от рассылок — проверочное письмо не ушло' });
+    }
+    if (!result.sent) {
+      return res.status(500).json({ error: result.errors[0]?.error || 'Письмо не ушло' });
+    }
+    res.json({ ok: true, email: req.user.email });
+  } catch (error) {
+    console.error('❌ Error sending test email:', error);
+    res.status(500).json({ error: 'Не удалось отправить проверочное письмо' });
+  }
+});
+
+// === СОХРАНЁННЫЕ МОДУЛИ (ver. 8.43) ===
+//
+// Модуль — настроенная секция или блок, который вставляют в другие письма.
+// Хранится кусок документа конструктора, а не готовый HTML: вставившись в
+// письмо, модуль должен оставаться живым и правиться дальше.
+
+router.get('/modules', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const modules = await EmailModule.findAll({
+      include: [{ model: User, as: 'author', attributes: ['id', 'displayName', 'username'] }],
+      order: [['createdAt', 'DESC']],
+    });
+    res.json(modules);
+  } catch (error) {
+    console.error('❌ Error fetching email modules:', error);
+    res.status(500).json({ error: 'Не удалось загрузить модули' });
+  }
+});
+
+router.post('/modules', authenticate, requireAnnouncementsEdit, [
+  body('name').trim().notEmpty().withMessage('Название обязательно'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  try {
+    const { name, kind = 'section', payload } = req.body;
+    if (!payload || typeof payload !== 'object') {
+      return res.status(400).json({ error: 'Модуль пустой' });
+    }
+    if (!['section', 'block'].includes(kind)) {
+      return res.status(400).json({ error: 'Неизвестный вид модуля' });
+    }
+
+    // Проверяем, что модуль вообще собирается в письмо. Сохранить кусок,
+    // который потом не отрендерится, — значит подложить мину в чужое письмо
+    // через месяц, когда его вставят и отправят.
+    const probe = kind === 'section'
+      ? { version: 2, settings: {}, sections: [payload] }
+      : { version: 2, settings: {}, sections: [{ columns: [{ width: 100, blocks: [payload] }] }] };
+    emailRenderer.render(probe, { subject: 'Проверка модуля' });
+
+    const module = await EmailModule.create({ name, kind, payload, createdBy: req.user.id });
+    res.status(201).json(module);
+  } catch (error) {
+    console.error('❌ Error saving email module:', error);
+    res.status(500).json({ error: 'Не удалось сохранить модуль' });
+  }
+});
+
+router.put('/modules/:id', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    const module = await EmailModule.findByPk(req.params.id);
+    if (!module) return res.status(404).json({ error: 'Модуль не найден' });
+    // Правим только название: содержимое модуля меняют, вставив его в письмо и
+    // сохранив заново. Иначе пришлось бы держать второй редактор для модулей.
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Название обязательно' });
+    await module.update({ name });
+    res.json(module);
+  } catch (error) {
+    console.error('❌ Error renaming email module:', error);
+    res.status(500).json({ error: 'Не удалось переименовать модуль' });
+  }
+});
+
+router.delete('/modules/:id', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    const module = await EmailModule.findByPk(req.params.id);
+    if (!module) return res.status(404).json({ error: 'Модуль не найден' });
+    await module.destroy();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Error deleting email module:', error);
+    res.status(500).json({ error: 'Не удалось удалить модуль' });
+  }
+});
+
+// === ОТПИСКИ ===
+
+// GET /api/email/optouts - Кто отказался от рассылок
+router.get('/optouts', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 500 });
+    const { count, rows } = await EmailOptOut.findAndCountAll({
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset
+    });
+    res.json({ total: count, items: rows });
+  } catch (error) {
+    console.error('❌ Error fetching optouts:', error);
+    res.status(500).json({ error: 'Ошибка загрузки списка отписавшихся' });
+  }
+});
+
+/**
+ * Вернуть адрес в рассылку.
+ *
+ * Нужно ровно для одного случая: человек отписался по ошибке и просит вернуть.
+ * Поэтому право требуется то же, что на отправку, — иначе это кнопка «подписать
+ * обратно всех, кто ушёл».
+ */
+router.delete('/optouts/:email', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    await optout.optIn(req.params.email);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Error removing optout:', error);
+    res.status(500).json({ error: 'Не удалось вернуть адрес в рассылку' });
+  }
+});
+
+// POST /api/email/optouts - Отписать адрес вручную (по просьбе человека)
+router.post('/optouts', authenticate, requireAnnouncementsEdit, [
+  body('email').trim().isEmail().withMessage('Нужен корректный адрес')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    await optout.optOut(req.body.email, { source: 'manual', reason: req.body.reason || null });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Error adding optout:', error);
+    res.status(500).json({ error: 'Не удалось записать отказ' });
+  }
+});
+
 // === EMAIL SENDING ===
 
 // POST /api/email/send - Запустить рассылку (возвращает jobId сразу, отправка идёт в фоне)
 router.post('/send', authenticate, requireAnnouncementsEdit, [
   body('subject').trim().notEmpty().withMessage('Тема обязательна'),
-  body('htmlContent').notEmpty().withMessage('Содержимое обязательно'),
   body('recipients').isArray({ min: 1 }).withMessage('Укажите получателей')
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -133,7 +430,22 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { subject, htmlContent, recipients, attachments = [], scheduledAt } = req.body;
+  const { subject, recipients, attachments = [], scheduledAt } = req.body;
+  const design = req.body.design && typeof req.body.design === 'object' ? req.body.design : null;
+
+  // Письмо приходит одним из двух способов и ровно одним: документом
+  // конструктора или готовым HTML. Проверка не в express-validator, потому что
+  // требование перекрёстное — обязательно одно ИЛИ другое.
+  if (!design && !String(req.body.htmlContent || '').trim()) {
+    return res.status(400).json({ error: 'Письмо пустое: соберите его в конструкторе или вставьте готовый HTML' });
+  }
+
+  // HTML рядом с документом — снимок того, что ушло людям, для истории. Боевая
+  // отправка всё равно пересобирает письмо из документа на каждого получателя:
+  // адрес отписки у всех свой.
+  const htmlContent = design
+    ? emailRenderer.render(design, { subject }).html
+    : req.body.htmlContent;
   const senderInfo = req.user.displayName || req.user.username;
   const sentBy = req.user.id;
 
@@ -146,6 +458,7 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
       const log = await EmailLog.create({
         subject,
         htmlContent,
+        design,
         recipients: recipients.map(r => ({ email: r.email, userId: r.userId, displayName: r.displayName })),
         attachments: attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType })),
         sentBy,
@@ -166,6 +479,7 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
     sent: 0,
     failed: 0,
     total: recipients.length,
+    skipped: 0,
     errors: [],
     startedAt: Date.now()
   });
@@ -179,20 +493,32 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
       const result = await sendBulkEmail({
         subject,
         htmlContent,
+        design,
         recipients,
         attachments,
         senderInfo,
-        onProgress: ({ sent, failed }) => {
+        onProgress: ({ sent, failed, total, skipped }) => {
           const job = sendJobs.get(jobId);
-          if (job) { job.sent = sent; job.failed = failed; }
+          if (!job) return;
+          job.sent = sent;
+          job.failed = failed;
+          // Отписавшиеся выбывают уже внутри отправки, поэтому итог здесь
+          // меньше того, что мы назвали клиенту в ответе. Без этой поправки
+          // полоса замирала бы на «95 из 100» и выглядела зависшей.
+          if (typeof total === 'number') job.total = total;
+          if (typeof skipped === 'number') job.skipped = skipped;
         }
       });
 
       const job = sendJobs.get(jobId);
       if (job) {
+        // Рассылка, где все адресаты отписаны, — это не провал отправки:
+        // отправлять было некому, и ошибок при этом не случилось.
         job.status = result.failed === 0 ? 'done' : (result.sent === 0 ? 'failed' : 'partial');
         job.sent = result.sent;
         job.failed = result.failed;
+        job.skipped = result.skipped;
+        job.total = result.sent + result.failed;
         job.errors = result.errors;
       }
 
@@ -200,6 +526,7 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
       await EmailLog.create({
         subject,
         htmlContent,
+        design,
         recipients: recipients.map(r => ({ email: r.email, userId: r.userId, displayName: r.displayName })),
         attachments: attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType })),
         sentBy,
@@ -446,7 +773,25 @@ router.post('/favorites/templates/:templateId', authenticate, requireAnnouncemen
 
 // === EXCEL IMPORT ===
 
-// POST /api/email/recipients/parse-excel - Извлечь email-адреса из Excel-файла
+/**
+ * Разбор файла с получателями (ver. 8.43).
+ *
+ * Файл читается как ТАБЛИЦА: ищем строку заголовков, в ней — колонки с адресом
+ * и именем. Заголовки распознаются по смыслу, а не по точному написанию:
+ * «E-mail», «почта», «Адрес электронной почты» — всё это одно и то же, и
+ * заставлять человека переименовывать колонку ради нас значит гарантированно
+ * получать файлы с неправильным заголовком.
+ *
+ * Имя в письмо не подставляется — персонализацию убрали. Оно нужно в списке
+ * получателей: выбирать из сотни строк «Иванов Иван» проще, чем из сотни
+ * почтовых адресов.
+ *
+ * Если заголовков нет — берём только адреса, как делал самый первый вариант
+ * разбора. Старые файлы не должны перестать открываться.
+ */
+const EMAIL_HEADER = /(e-?mail|почт|адрес)/i;
+const NAME_HEADER = /(имя|фио|ф\.и\.о|name|получател|клиент|пациент)/i;
+
 router.post('/recipients/parse-excel', authenticate, requireAnnouncementsEdit, upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -455,28 +800,65 @@ router.post('/recipients/parse-excel', authenticate, requireAnnouncementsEdit, u
 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const found = new Set();
+    const byEmail = new Map();
+
+    const remember = (email, displayName) => {
+      const addr = String(email || '').trim().toLowerCase();
+      if (!emailRegex.test(addr)) return;
+      const existing = byEmail.get(addr);
+      // Первое непустое значение выигрывает: если адрес встретился дважды и во
+      // второй раз без имени, имя терять не надо.
+      byEmail.set(addr, {
+        email: addr,
+        displayName: existing?.displayName || String(displayName || '').trim() || addr,
+      });
+    };
 
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
-      for (const cellKey of Object.keys(sheet)) {
-        if (cellKey.startsWith('!')) continue; // служебные поля
-        const cell = sheet[cellKey];
-        if (!cell || cell.v == null) continue;
-        // Берём строковое значение ячейки и разбиваем по разделителям
-        const raw = String(cell.v);
-        const parts = raw.split(/[\s,;]+/);
-        for (const part of parts) {
-          const trimmed = part.trim().toLowerCase();
-          if (emailRegex.test(trimmed)) {
-            found.add(trimmed);
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
+      if (!rows.length) continue;
+
+      // Строка заголовков — первая, где есть колонка, похожая на адрес, и при
+      // этом в ней самой адреса нет (иначе это уже данные).
+      let headerIndex = -1;
+      let cols = null;
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const row = (rows[i] || []).map(c => String(c ?? '').trim());
+        const emailCol = row.findIndex(c => EMAIL_HEADER.test(c) && !emailRegex.test(c.toLowerCase()));
+        if (emailCol === -1) continue;
+        headerIndex = i;
+        cols = { email: emailCol, name: row.findIndex(c => NAME_HEADER.test(c)) };
+        break;
+      }
+
+      if (cols) {
+        for (let i = headerIndex + 1; i < rows.length; i++) {
+          const row = rows[i] || [];
+          remember(row[cols.email], cols.name >= 0 ? row[cols.name] : '');
+        }
+        continue;
+      }
+
+      // Заголовков нет — старое поведение: выбираем всё, что похоже на адрес.
+      for (const row of rows) {
+        for (const cell of row) {
+          for (const part of String(cell ?? '').split(/[\s,;]+/)) {
+            remember(part, '');
           }
         }
       }
     }
 
-    const emails = Array.from(found);
-    res.json({ emails, count: emails.length });
+    const recipients = Array.from(byEmail.values());
+    res.json({
+      recipients,
+      // Старое поле оставлено: им пользуется прежний код на фронтенде, пока он
+      // не обновится, и по нему же удобно считать, сколько адресов нашлось.
+      emails: recipients.map(r => r.email),
+      count: recipients.length,
+      withNames: recipients.filter(r => r.displayName !== r.email).length,
+    });
   } catch (error) {
     console.error('❌ Error parsing Excel:', error);
     res.status(500).json({ error: 'Ошибка разбора файла' });

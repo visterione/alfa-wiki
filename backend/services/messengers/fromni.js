@@ -31,7 +31,10 @@ const KEY_ENV = {
 
 // Запасной порядок ступеней. Основной приходит из настроек (services/
 // notifications/settings.js) — этот нужен, если вызывающий его не передал.
-const CASCADE = (process.env.FROMNI_CASCADE || 'notify+vk,sms+webchat').split(',').map(s => s.trim());
+//
+// SMS отсюда убрана в 8.50: она ушла целиком на прямую отправку через Имобис,
+// и запасной порядок не должен возвращать её обратно в обход настройки.
+const CASCADE = (process.env.FROMNI_CASCADE || 'notify+vk').split(',').map(s => s.trim());
 
 // Старый nginx у Fromni просит legacy-ренегоциацию TLS, которую OpenSSL 3
 // запрещает по умолчанию, — та же настройка, что у синхронизации подписчиков.
@@ -109,7 +112,7 @@ async function channelsFor(organization, order = CASCADE) {
  * Отправляет уведомление на телефон. Дальше Fromni сама идёт по ступеням до
  * первой доставки.
  *
- * @param {Object}   texts  тексты по ступеням: { 'sms+webchat': 'коротко', ... }
+ * @param {Object}   texts  тексты по ступеням: { 'notify+vk': 'текст', ... }
  *                          и `default` для остальных. У SMS длина считается
  *                          сегментами, и один лишний символ стоит второй SMS —
  *                          поэтому текст на ступень свой, а не общий.

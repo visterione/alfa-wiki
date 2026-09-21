@@ -410,12 +410,25 @@ export const tasks = {
   // Действия над своей частью. Здесь и только здесь часть превращается в блок
   // времени и начинает занимать часы.
   planPart: (id, date, force) => api.post(`/tasks/parts/${id}/plan`, {date, force}),
-  proposeDate: (id, date) => api.post(`/tasks/parts/${id}/propose`, {date}),
+  // Многодневная подзадача (ver. 8.48) ставится в план раскладкой — [{date,
+  // hours}] по дням окна, — и в календаре появляется по блоку на день. Одной
+  // датой её не поставить: сервер ответит 409 с requiresLayout.
+  planPartLayout: (id, layout, force) =>
+    api.post(`/tasks/parts/${id}/plan`, {layout, force}),
+  proposeDate: (id, date, from) => api.post(`/tasks/parts/${id}/propose`, {date, from}),
   acceptDate: id => api.post(`/tasks/parts/${id}/accept`),
   declinePart: (id, reason) => api.post(`/tasks/parts/${id}/decline`, {reason}),
-  movePart: (id, date) => api.post(`/tasks/parts/${id}/move`, {date}),
+  // Перенос сохраняет длительность: у работы в несколько дней until задаёт новый
+  // конец, и сервер откажет, если длина изменилась — это уже другое действие
+  // (stretchPart). Раскладка при переносе снимается: в новых днях другая
+  // занятость, и прежние часы молча перегрузили бы дни, которых человек не видел.
+  movePart: (id, date, until) => api.post(`/tasks/parts/${id}/move`, {date, until}),
   extendPart: (id, hours = 0.5) => api.post(`/tasks/parts/${id}/extend`, {hours}),
   splitPart: (id, data) => api.post(`/tasks/parts/${id}/split`, data),
+  // Изменить длительность работы: другое число дней или обратно в один день
+  // (from === to). Обнуляет счётчик переносов и возвращает во входящие. Длина
+  // обязана измениться — сдвиг без смены длины это movePart.
+  stretchPart: (id, from, to) => api.post(`/tasks/parts/${id}/stretch`, {from, to}),
   setPartStatus: (id, status) => api.put(`/tasks/parts/${id}/status`, {status}),
   getNextFit: (id, params) => api.get(`/tasks/parts/${id}/next-fit`, {params}),
   cancelTask: id => api.delete(`/tasks/${id}`),

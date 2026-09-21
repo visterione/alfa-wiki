@@ -23,9 +23,11 @@ import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {useAuth} from '../../store/authStore';
 import {Clock, FileText, GitBranch, History} from 'lucide-react-native';
 import Avatar from '../../components/Avatar';
+import LayoutSheet from './LayoutSheet';
 import {
   MODE_LABEL, STATUS_LABEL, STATUS_ICON, STATUS_COLOR, addDays, clockText,
-  ddate, dfull, dnum, hoursText, partCode, shortName,
+  dateRange, ddate, dfull, dnum, hoursText, isWindowed, partCode, shortName,
+  windowOf,
 } from './taskMeta';
 
 /**
@@ -35,7 +37,7 @@ import {
  */
 function historyColor(c, row) {
   if (row.action === 'declined' || row.action === 'forced') return c.error;
-  if (['moved', 'extended', 'proposed_date'].includes(row.action)) return c.warning;
+  if (['moved', 'extended', 'proposed_date', 'stretched'].includes(row.action)) return c.warning;
   if (['planned', 'accepted_date'].includes(row.action)) return c.success;
   if (row.action === 'status_changed') {
     if (row.payload?.to === 'done') return c.success;
@@ -53,19 +55,34 @@ function historyText(row) {
         ? `создал задачу из ${p.parts} подзадач на ${p.people} чел.`
         : 'создал задачу';
     case 'planned':
+      // Многодневная подзадача пишет в историю раскладку, а не день: «взял в план
+      // на 22-е» у работы на неделю неправда, и по такой записи не понять, сколько
+      // человек на неё отвёл.
+      if (p.until && p.until !== p.date) {
+        return `${p.overload ? 'разложил сверх нормы' : 'разложил'} на ${
+          (p.layout || []).length} дн.: ${(p.layout || [])
+          .map(row => `${dnum(row.date)} — ${hoursText(row.hours)}`)
+          .join(', ')}`;
+      }
       return p.overload
         ? `взял в план на ${dnum(p.date)} сверх нормы — стало ${hoursText(p.after)} из ${hoursText(p.norm)}`
         : `поставил в план на ${dnum(p.date)}`;
     case 'proposed_date':
-      return `предложил срок ${dnum(p.to)}`;
+      return `предложил срок ${p.toStart ? dateRange(p.toStart, p.to) : dnum(p.to)}`;
     case 'accepted_date':
       return `согласовал срок ${dnum(p.date)}`;
     case 'declined':
       return 'вернул задачу автору с пометкой «не моя зона»';
-    case 'moved':
+    case 'moved': {
+      const where = p.toStart && p.toStart !== p.to ? dateRange(p.toStart, p.to) : dnum(p.to);
       return p.becameStuck
-        ? `перенёс на ${dnum(p.to)} — третий перенос, задача требует решения`
-        : `перенёс на ${dnum(p.to)}`;
+        ? `перенёс на ${where} — третий перенос, задача требует решения`
+        : `перенёс на ${where}`;
+    }
+    case 'stretched':
+      return p.from
+        ? `изменил срок: работа идёт ${dateRange(p.from, p.to)}`
+        : `изменил срок: снова один день, ${dnum(p.to)}`;
     case 'extended':
       return `продлил: ${hoursText(p.from)} → ${hoursText(p.to)}`;
     case 'split':
@@ -88,6 +105,14 @@ export default function TaskCardScreen({route, navigation}) {
 
   const [task, setTask] = useState(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * Открытый лист раскладки: {part, window}.
+   *
+   * Только постановка в план. Смена срока раскладку не составляет, а снимает:
+   * в новых днях другая занятость, и человек раскладывает часы заново отдельным
+   * шагом — той же кнопкой «Разложить по дням».
+   */
+  const [layout, setLayout] = useState(null);
   // Вкладки как в вебе: части, схема и история шли одной лентой, и до истории
   // добирались прокруткой мимо всего остального — на телефоне особенно долгой.
   const [tab, setTab] = useState('main');
@@ -122,18 +147,79 @@ export default function TaskCardScreen({route, navigation}) {
     }
   };
 
-  const moveNext = async part => {
+  /**
+   * Изменить срок: сдвинуть его или сделать работу другой длительности.
+   *
+   * Одно действие, а не два, как было сначала («Перенести» и «Растянуть»): и то и
+   * другое — новый срок у той же работы, и различает их только длина. Веб
+   * различает её сам по выбранному в календаре диапазону; здесь календаря с
+   * диапазоном нет, поэтому спрашиваем списком — но вопрос один.
+   *
+   * Сдвиг сохраняет длительность и идёт в счётчик трёх переносов; другое число
+   * дней счётчик обнуляет и возвращает подзадачу во входящие, потому что часы по
+   * новым дням надо разложить заново. Эту же границу держит сервер: /move
+   * откажет, если длина изменилась, а /stretch — если не изменилась.
+   */
+  const reschedule = async part => {
+    const frame = windowOf(part);
+    const days = Math.round(
+      (new Date(`${frame.to}T00:00:00`) - new Date(`${frame.from}T00:00:00`)) / 86400000,
+    ) + 1;
+
+    const lengths = [1, 2, 3, 5, 10]
+      .filter(n => n !== days)
+      .map(n => ({
+        text: n === 1
+          ? `Один день — ${dnum(frame.from)}`
+          : `${n} дн. — ${dateRange(frame.from, addDays(frame.from, n - 1))}`,
+        onPress: () => run(
+          () => tasksApi.stretchPart(part.id, frame.from, addDays(frame.from, n - 1)),
+          n === 1
+            ? `Снова один день — ${dfull(frame.from)}.`
+            : `Срок: ${dateRange(frame.from, addDays(frame.from, n - 1))}. Осталось разложить часы по дням.`,
+        ),
+      }));
+
+    Alert.alert(
+      'Изменить срок',
+      `Сейчас ${days === 1 ? `один день, ${dnum(frame.to)}` : `${days} дн., ${dateRange(frame.from, frame.to)}`}.`
+      + '\n\nСдвиг сохранит длительность и пойдёт в счётчик переносов. Другое число дней вернёт подзадачу во входящие — часы по дням надо будет разложить заново.',
+      [
+        {text: 'Сдвинуть на ближайшее свободное', onPress: () => moveToNextFit(part)},
+        ...lengths,
+        {text: 'Отмена', style: 'cancel'},
+      ],
+    );
+  };
+
+  /**
+   * Сдвиг на ближайшее подходящее место. Ищет сервер: у него все дни и все нормы.
+   *
+   * «Нет окна» — валидный ответ, и показать его надо честно, а не подобрать день
+   * молча. У работы в несколько дней сервер возвращает окно той же длины.
+   */
+  const moveToNextFit = async part => {
     setBusy(true);
     try {
       const {data: fit} = await tasksApi.getNextFit(part.id, {
         start: addDays(String(part.dueDate), 1),
       });
       if (!fit.date) {
-        Alert.alert('Нет свободного дня', 'В ближайшие 30 дней задача не помещается.');
+        Alert.alert(
+          'Нет свободного места',
+          isWindowed(part)
+            ? 'В ближайшие 30 дней срока под этот объём нет.'
+            : 'В ближайшие 30 дней задача не помещается.',
+        );
         return;
       }
-      await tasksApi.movePart(part.id, fit.date);
-      Alert.alert('Перенесено', `Новый день: ${dfull(fit.date)}.`);
+      await tasksApi.movePart(part.id, fit.from || fit.date, fit.from ? fit.date : undefined);
+      Alert.alert(
+        'Перенесено',
+        fit.from
+          ? `Новый срок: ${dateRange(fit.from, fit.date)}. Осталось разложить часы по дням.`
+          : `Новый день: ${dfull(fit.date)}.`,
+      );
       await load();
     } catch (e) {
       Alert.alert('Не получилось', e?.response?.data?.error || 'Попробуйте ещё раз');
@@ -175,6 +261,19 @@ export default function TaskCardScreen({route, navigation}) {
           <Clock size={13} color={c.textTertiary} />
           <Text style={styles.headMetaText}>{clockText(task.totalEffortHours)}</Text>
         </View>
+        {/* Срок задачи (ver. 8.48) — главное поле, и в карточке оно рядом с
+            остальными реквизитами. Своего срока может и не быть: тогда
+            показываем, на какие дни задача расписана по подзадачам. Бейдж
+            «срок нарушен» говорит о расхождении, а какая подзадача вылезла —
+            видно отметкой на ней самой. */}
+        {(task.dueDate || task.span) && (
+          <Text style={[styles.headMetaText, task.breaksDeadline && {color: c.error}]}>
+            {task.dueDate
+              ? dateRange(task.startDate || task.dueDate, task.dueDate)
+              : dateRange(task.span.from, task.span.to)}
+            {task.breaksDeadline ? ' · срок нарушен' : ''}
+          </Text>
+        )}
       </View>
 
       <View style={styles.author}>
@@ -278,6 +377,11 @@ export default function TaskCardScreen({route, navigation}) {
         const actions = partHistory.map(row => row.action);
         const hasPendingProposal = actions.lastIndexOf('proposed_date') > actions.lastIndexOf('accepted_date');
         const PartStatusIcon = STATUS_ICON[part.status];
+        // Многодневная подзадача (ver. 8.48): окно [startDate..dueDate]. Часы по
+        // его дням раскладывает исполнитель, и в календаре появляется по блоку на
+        // день, а не один блок на всю работу.
+        const windowed = isWindowed(part);
+        const frame = windowOf(part);
 
         return (
           <View key={part.id} style={styles.part}>
@@ -303,13 +407,30 @@ export default function TaskCardScreen({route, navigation}) {
                 <Clock size={13} color={c.textTertiary} />
                 <Text style={styles.partMeta}>{clockText(part.estimateHours)}</Text>
               </View>
-              <Text style={styles.partMeta}>· {ddate(String(part.dueDate))}</Text>
+              <Text style={styles.partMeta}>
+                · {windowed ? dateRange(frame.from, frame.to) : ddate(String(part.dueDate))}
+              </Text>
+              {windowed && mine?.plannedDate && mine?.plannedUntil && (
+                <Text style={[styles.partMeta, {color: c.success}]}>
+                  · в плане {dateRange(mine.plannedDate, mine.plannedUntil)}
+                </Text>
+              )}
               {part.moveCount > 0 && (
                 <Text style={[styles.partMeta, {color: c.warning}]}>
                   · переносов {part.moveCount}
                 </Text>
               )}
             </View>
+
+            {/* Какая подзадача вышла за срок задачи — видно на ней самой, а не
+                общим предупреждением: иначе человек должен угадывать. */}
+            {!!part.outsideTask && (
+              <Text style={[styles.partNote, {color: c.error}]}>
+                {part.outsideTask === 'after'
+                  ? `Выходит за срок задачи${task.dueDate ? ` — ${dnum(task.dueDate)}` : ''}`
+                  : `Начинается раньше срока задачи${task.startDate ? ` — ${dnum(task.startDate)}` : ''}`}
+              </Text>
+            )}
 
             {!!notPlanned.length && (
               <Text style={[styles.partNote, {color: c.warning}]}>
@@ -324,19 +445,27 @@ export default function TaskCardScreen({route, navigation}) {
                 <Text style={[styles.stuckTitle, {color: c.error}]}>Требует решения</Text>
                 <Text style={styles.stuckText}>
                   Подзадача переносится третий раз подряд. Обычно это значит, что она
-                  слишком крупная или на самом деле не нужна.
+                  слишком крупная, идёт дольше одного дня или на самом деле не нужна.
                 </Text>
-                <Pressable
-                  style={[styles.btn, busy && styles.btnOff]}
-                  disabled={busy}
-                  onPress={() =>
-                    run(
-                      () => tasksApi.splitPart(part.id, {}),
-                      'Разбито надвое — теперь подзадачи мельче и помещаются в день.',
-                    )
-                  }>
-                  <Text style={styles.btnText}>Разбить на подзадачи</Text>
-                </Pressable>
+                <View style={styles.acts}>
+                  <Pressable
+                    style={[styles.btn, busy && styles.btnOff]}
+                    disabled={busy}
+                    onPress={() =>
+                      run(
+                        () => tasksApi.splitPart(part.id, {}),
+                        'Разбито надвое — теперь подзадачи мельче и помещаются в день.',
+                      )
+                    }>
+                    <Text style={styles.btnText}>Разбить на подзадачи</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.btn, busy && styles.btnOff]}
+                    disabled={busy}
+                    onPress={() => reschedule(part)}>
+                    <Text style={styles.btnText}>Изменить срок</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
 
@@ -347,12 +476,16 @@ export default function TaskCardScreen({route, navigation}) {
                     style={[styles.btn, styles.btnPrimary, busy && styles.btnOff]}
                     disabled={busy}
                     onPress={() =>
-                      run(
-                        () => tasksApi.planPart(part.id, String(part.dueDate)),
-                        `В плане на ${dfull(String(part.dueDate))}.`,
-                      )
+                      windowed
+                        ? setLayout({part, window: frame})
+                        : run(
+                          () => tasksApi.planPart(part.id, String(part.dueDate)),
+                          `В плане на ${dfull(String(part.dueDate))}.`,
+                        )
                     }>
-                    <Text style={styles.btnPrimaryText}>Взять в план</Text>
+                    <Text style={styles.btnPrimaryText}>
+                      {windowed ? 'Разложить по дням' : 'Взять в план'}
+                    </Text>
                   </Pressable>
                 ) : part.status === 'done' ? (
                   <Pressable
@@ -389,11 +522,14 @@ export default function TaskCardScreen({route, navigation}) {
                         <Text style={styles.btnText}>На проверку</Text>
                       </Pressable>
                     )}
+                    {/* Одна кнопка на сдвиг и на другую длительность: и то и
+                        другое — новый срок у той же работы. Что именно выбрали,
+                        видно в списке, который она открывает. */}
                     <Pressable
                       style={[styles.btn, busy && styles.btnOff]}
                       disabled={busy}
-                      onPress={() => moveNext(part)}>
-                      <Text style={styles.btnText}>Перенести</Text>
+                      onPress={() => reschedule(part)}>
+                      <Text style={styles.btnText}>Изменить срок</Text>
                     </Pressable>
                     {/* Те же шаги продления, что в вебе: получасом обходилось
                         не всегда, и кнопку жали по четыре раза подряд. */}
@@ -490,6 +626,30 @@ export default function TaskCardScreen({route, navigation}) {
           )}>
           <Text style={styles.cancelText}>Отменить задачу</Text>
         </Pressable>
+      )}
+
+      {/* Лист раскладки — один на экран, а не по одному на подзадачу: модальное
+          окно в задаче из четырёх подзадач должно быть одно. */}
+      {!!layout && (
+        <LayoutSheet
+          visible
+          window={layout.window}
+          estimateHours={layout.part.estimateHours}
+          userId={user?.id}
+          title={layout.part.title}
+          busy={busy}
+          onClose={() => setLayout(null)}
+          onSubmit={(rows, force) => {
+            const {part} = layout;
+            setLayout(null);
+            return run(
+              () => tasksApi.planPartLayout(part.id, rows, force),
+              force
+                ? `Взято сверх нормы на ${rows.length} дн. — автор увидит переработку.`
+                : `В плане: ${rows.length} дн., ${hoursText(part.estimateHours)}.`,
+            );
+          }}
+        />
       )}
     </ScrollView>
   );

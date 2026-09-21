@@ -574,16 +574,34 @@ export const tasks = {
   getBadge: () => api.get('/tasks/badge'),
 
   // === ДЕЙСТВИЯ НАД ЧАСТЬЮ ===
-  // Здесь и только здесь часть превращается в блок времени и занимает часы
+  // Здесь и только здесь часть превращается в блок времени и занимает часы.
+  //
+  // У многодневной подзадачи (ver. 8.48) вместо дня передаётся раскладка —
+  // [{date, hours}] по дням окна, — и в календаре появляется по блоку на день.
+  // 409 с requiresLayout означает, что раскладка не сошлась: в ответе окно, дни
+  // с остатком по каждому и текст, что именно не так. 409 с requiresConfirm —
+  // раскладка верна, но какой-то день уходит в переработку: повторить с force.
   planPart: (id, date, force) => api.post(`/tasks/parts/${id}/plan`, { date, force }),
-  // Календарь исполнителя не меняется: задача в него не попала
-  proposeDate: (id, date) => api.post(`/tasks/parts/${id}/propose`, { date }),
+  planPartLayout: (id, layout, force) =>
+    api.post(`/tasks/parts/${id}/plan`, { layout, force }),
+  // Календарь исполнителя не меняется: задача в него не попала.
+  // У многодневной окно сдвигается целиком, сохраняя длину: from задаёт начало
+  // явно, без него оно считается от предложенного срока назад.
+  proposeDate: (id, date, from) => api.post(`/tasks/parts/${id}/propose`, { date, from }),
   acceptDate: (id) => api.post(`/tasks/parts/${id}/accept`),
   declinePart: (id, reason) => api.post(`/tasks/parts/${id}/decline`, { reason }),
-  // 409 после третьего переноса: дальше нужно решение, а не перенос
-  movePart: (id, date) => api.post(`/tasks/parts/${id}/move`, { date }),
+  // Перенос сохраняет длительность: у работы в несколько дней until задаёт новый
+  // конец, и сервер откажет, если длина изменилась — это уже другое действие
+  // (stretchPart). Раскладка при переносе снимается: в новых днях другая
+  // занятость, и прежние часы молча перегрузили бы дни, которых человек не видел.
+  // 409 после третьего переноса: дальше нужно решение, а не перенос.
+  movePart: (id, date, until) => api.post(`/tasks/parts/${id}/move`, { date, until }),
   extendPart: (id, hours = 0.5) => api.post(`/tasks/parts/${id}/extend`, { hours }),
   splitPart: (id, data) => api.post(`/tasks/parts/${id}/split`, data),
+  // Изменить длительность работы: другое число дней или обратно в один день
+  // (from === to). Как и разбиение, обнуляет счётчик переносов и возвращает во
+  // входящие. Длина обязана измениться — сдвиг без смены длины это movePart.
+  stretchPart: (id, from, to) => api.post(`/tasks/parts/${id}/stretch`, { from, to }),
   setPartStatus: (id, status) => api.put(`/tasks/parts/${id}/status`, { status }),
   getNextFit: (id, params) => api.get(`/tasks/parts/${id}/next-fit`, { params }),
 
@@ -675,6 +693,31 @@ export const email = {
   createTemplate: (data) => api.post('/email/templates', data),
   updateTemplate: (id, data) => api.put(`/email/templates/${id}`, data),
   deleteTemplate: (id) => api.delete(`/email/templates/${id}`),
+
+  // === КОНСТРУКТОР (ver. 8.43) ===
+  // Предпросмотр собирает письмо на сервере той же функцией, что и отправка:
+  // у письма должен быть один способ превратиться в HTML, иначе холст и
+  // настоящее письмо разойдутся, и узнают об этом получатели.
+  preview: (data) => api.post('/email/preview', data),
+  // Картинки письма идут своим маршрутом, а не через общий /media/upload: там
+  // файл ложится как есть, а письму нужен ужатый до 1200px и с известным весом.
+  uploadImage: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/email/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  testSend: (data) => api.post('/email/test-send', data),
+
+  // === МОДУЛИ КОНСТРУКТОРА ===
+  getModules: () => api.get('/email/modules'),
+  saveModule: (data) => api.post('/email/modules', data),
+  renameModule: (id, name) => api.put(`/email/modules/${id}`, { name }),
+  deleteModule: (id) => api.delete(`/email/modules/${id}`),
+
+  // === ОТПИСКИ ===
+  getOptouts: (params) => api.get('/email/optouts', { params }),
+  addOptout: (data) => api.post('/email/optouts', data),
+  removeOptout: (mail) => api.delete(`/email/optouts/${encodeURIComponent(mail)}`),
 
   // === SENDING ===
   send: (data) => api.post('/email/send', data),

@@ -289,7 +289,18 @@ async function enqueue(found, snap, allow = () => true) {
         const existing = await NotifOutbox.findOne({ where: { dedupKey: item.dedupKey, status: 'pending' } });
         if (existing) {
           if (new Date(item.plannedAt) > new Date(existing.plannedAt)) {
-            await existing.update({ plannedAt: item.plannedAt, apptId: snap.apptId, text: item.text });
+            // Переносим строку на последний визит целиком, со всеми текстами.
+            // Раньше обновлялся только text, а channelTexts оставались от
+            // первого визита — и в боте, который с 8.03 берёт текст именно
+            // оттуда, просьба приходила с фамилией предыдущего врача.
+            await existing.update({
+              plannedAt: item.plannedAt,
+              apptId: snap.apptId,
+              text: item.text,
+              smsText: item.smsText || null,
+              channelTexts: item.channelTexts || {},
+              withRating: !!item.withRating
+            });
           }
           continue;
         }
@@ -306,6 +317,7 @@ async function enqueue(found, snap, allow = () => true) {
         channelTexts: item.channelTexts || {},
         withConfirm: item.withConfirm,
         withCancel: item.withCancel,
+        withRating: !!item.withRating,
         plannedAt: item.plannedAt || new Date()
       });
       added++;

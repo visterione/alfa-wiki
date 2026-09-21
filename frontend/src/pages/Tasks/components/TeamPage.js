@@ -30,7 +30,7 @@ import {
 
 import { tasks as api } from '../../../services/api';
 import { TEAM_ROLE_LABEL, userName, shortName, STATUS_COLOR, STATUS_LABEL, STATUS_ICON, partCode, plural } from '../utils/labels';
-import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, ddate } from '../utils/dates';
+import { weekOf, monthGrid, addDays, addMonths, dstr, monthTitle, ddate, dateRange } from '../utils/dates';
 import { Avatar, Empty, Note } from './Bits';
 import PeriodControl from './PeriodControl';
 import LoadTable from './LoadTable';
@@ -408,8 +408,14 @@ function Overview({ teamId, ctx }) {
                           <b>{part.taskTitle}</b>
                         )}
                       </span>
+                      {/* Окно работы, а не одна дата: подзадача на неделю
+                          (ver. 8.48) иначе читалась бы как дело на четверг, и
+                          вопрос «кто за что отвечает» получал бы неверный
+                          ответ по срокам. */}
                       <span className="tsk-owner-part-due" title={STATUS_LABEL[part.status]}>
-                        {ddate(part.dueDate)}
+                        {part.startDate && String(part.startDate) !== String(part.dueDate)
+                          ? dateRange(part.startDate, part.dueDate)
+                          : ddate(part.dueDate)}
                       </span>
                       <span className="tsk-code">{partCode(part.code, null)}</span>
                     </button>

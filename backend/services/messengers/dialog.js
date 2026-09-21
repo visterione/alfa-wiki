@@ -20,6 +20,7 @@ const openLine = require('../openLine');
 const openLineFiles = require('../openLineFiles');
 const openLinePatient = require('../openLinePatient');
 const broadcasts = require('../broadcasts');
+const visitRatings = require('../notifications/visitRatings');
 
 const GREETING =
   'Здравствуйте! Это бот медцентра «Альфа».\n\n' +
@@ -35,6 +36,22 @@ const MENU =
   'Что дальше:\n' +
   '• напоминания о визитах будут приходить сюда автоматически;\n' +
   '• чтобы задать вопрос, просто напишите его сообщением.';
+
+// Ответы на оценку визита (ver. 8.49). Высокая — благодарность и всё: просить
+// после пятёрки что-то ещё значит превращать любезность в задание. Низкая —
+// один вопрос, без анкеты: человек уже потратил на нас нажатие, и второй экран
+// с уточнениями он просто закроет.
+const RATING_THANKS =
+  'Спасибо, оценка учтена. Нам это важно.';
+
+const RATING_ASK_REASON =
+  'Спасибо за честный ответ.\n\n' +
+  'Расскажите, пожалуйста, что пошло не так — ответьте следующим сообщением. ' +
+  'Мы разберёмся в клинике и вернёмся к вам.';
+
+const RATING_REASON_TAKEN =
+  'Спасибо, передали в клинику. С вашим сообщением разберутся, ' +
+  'и при необходимости с вами свяжутся.';
 
 const PHONE_HINT =
   'Похоже, это номер телефона, но разобрать его не получилось.\n\n' +
@@ -283,6 +300,19 @@ async function handleText(channel, bot, update) {
     return;
   }
 
+  // Рассказ о причине низкой оценки (ver. 8.49). Проверяем до открытой линии:
+  // это ответ на наш вопрос, а не новый вопрос к нам, и заводить по нему
+  // обращение значило бы позвать оператора туда, где его не спрашивали.
+  //
+  // Окно короткое (два часа) и закрывается первым же сообщением, поэтому
+  // обычная переписка с колл-центром от этой ветки не страдает.
+  const waiting = await visitRatings.awaitingComment(subscriber.id);
+  if (waiting) {
+    await visitRatings.attachComment(waiting, update.text || '');
+    await channel.sendText(bot, update.chatId, RATING_REASON_TAKEN);
+    return;
+  }
+
   const accepted = await openLine.acceptIncoming({
     bot,
     subscriber,
@@ -337,9 +367,13 @@ async function handleText(channel, bot, update) {
 const PLATFORM_TITLES = { telegram: 'Telegram-бота', max: 'MAX-бота' };
 
 /**
- * Нажатие кнопки под сообщением бота. Их четыре: «Подтверждаю» и «Отменить
- * запись» под записью и напоминанием, оценка работы после закрытия обращения и
- * отказ от рассылок под рекламным анонсом.
+ * Нажатие кнопки под сообщением бота. Их пять: «Подтверждаю» и «Отменить
+ * запись» под записью и напоминанием, оценка визита 1–5 под просьбой об отзыве,
+ * оценка работы оператора после закрытия обращения и отказ от рассылок под
+ * рекламным анонсом.
+ *
+ * Две оценки различаются намеренно и приходят разными действиями: vrate — про
+ * приём и врача, rate — про работу сотрудника колл-центра.
  */
 async function handleButton(channel, bot, update) {
   const [action, value, extra] = String(update.data || '').split(':');
@@ -371,6 +405,30 @@ async function handleButton(channel, bot, update) {
         'Напоминания о визитах это не отменяет: они будут приходить как раньше. ' +
         'И вопрос сюда написать по-прежнему можно.');
     }
+    return null;
+  }
+
+  // Оценка визита (ver. 8.49). Кнопки не снимаем намеренно: промах по соседней
+  // цифре в мессенджере нечем отозвать, а переписать оценку нажатием — можно.
+  if (action === 'vrate' && value) {
+    const subscriber = await upsertSubscriber(bot, update);
+    const result = await visitRatings.record({
+      outboxId: value,
+      score: extra,
+      subscriber,
+      platform: bot.platform
+    });
+
+    if (!result) {
+      // Строки очереди уже нет — сообщение старше уборки журнала. Молчать
+      // нельзя: человек нажал кнопку и ждёт хоть какого-то отклика.
+      await channel.answerCallback(bot, update.callbackId, 'Спасибо!');
+      return null;
+    }
+
+    await channel.answerCallback(bot, update.callbackId, 'Спасибо за оценку');
+    await channel.sendText(bot, update.chatId,
+      result.low ? RATING_ASK_REASON : RATING_THANKS);
     return null;
   }
 

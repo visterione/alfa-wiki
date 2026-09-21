@@ -105,6 +105,119 @@ function assessAssignment({ currentHours, norm, estimateHours, onVacation = fals
 }
 
 /**
+ * Ёмкость окна работы: помещается ли оценка в [startDate..dueDate] целиком.
+ *
+ * Это тот же вопрос, на который для однодневной части отвечает
+ * assessAssignment, но заданный про несколько дней. Ёмкость считается суммой
+ * остатков по дням, а не «норма × дни минус занятое»: перегруженный вторник не
+ * должен компенсироваться пустой пятницей — см. freeOverPeriod в workload, там
+ * же и причина.
+ *
+ * Выходные и отпуск из окна выпадают молча, и это правильно: окно «с понедельника
+ * по пятницу» человек задаёт календарными датами, а работать в нём собирается в
+ * свои рабочие дни. Окно, в котором рабочих дней не осталось совсем, — отдельный
+ * ответ, а не ноль ёмкости: «не помещается» и «работать в эти дни нельзя вообще»
+ * требуют от автора разных решений.
+ */
+function assessWindow({ days, estimateHours }) {
+  const list = Array.isArray(days) ? days : [];
+  const working = list.filter(day => !day.onVacation && !day.onDayOff && day.norm);
+  if (!working.length) {
+    const reason = list.some(day => day.onVacation) ? 'vacation'
+      : list.some(day => !day.onDayOff && !day.norm) ? 'no_norm' : 'day_off';
+    return {
+      fits: false, reason, capacity: 0, workingDays: 0,
+      need: round(Number(estimateHours) || 0), over: round(Number(estimateHours) || 0),
+    };
+  }
+  const capacity = round(working.reduce((sum, day) => sum + Number(day.free || 0), 0));
+  const need = round(Number(estimateHours) || 0);
+  const fits = need <= capacity + 1e-9;
+  return {
+    fits,
+    reason: fits ? 'ok' : 'overload',
+    capacity,
+    workingDays: working.length,
+    need,
+    over: fits ? 0 : round(need - capacity),
+  };
+}
+
+/**
+ * Проверка раскладки часов по дням окна.
+ *
+ * Раскладывает человек, а не система. Автоматического «поровну по дням» в модуле
+ * нет намеренно: ровный слой молча влезает в уже плотный день и перегружает
+ * его — ровно то, против чего модуль затевался. Поэтому здесь не расчёт, а
+ * проверка того, что человек составил сам.
+ *
+ * Сумма обязана совпасть с оценкой до копейки. Соблазн принять «почти столько»
+ * велик, но оценка — это то, что автор и исполнитель друг другу обещали, и
+ * раскладка, которая её не покрывает, означает недоговорённость, а не округление.
+ *
+ * Переработка допускается, но не молча: перегруженные дни возвращаются списком,
+ * и маршрут обязан либо получить подтверждение, либо отказать. Это то же
+ * правило, что и у однодневной постановки, — взять сверх нормы можно, это своё
+ * решение исполнителя.
+ */
+const LAYOUT_STEP = 0.25;
+
+function validateLayout({ entries, estimateHours, days }) {
+  const byDate = new Map((days || []).map(day => [day.date, day]));
+  const rows = Array.isArray(entries) ? entries : [];
+  if (!rows.length) {
+    return { ok: false, error: 'Разложите часы по дням окна' };
+  }
+
+  const layout = [];
+  const seen = new Set();
+  const overloads = [];
+  for (const row of rows) {
+    const date = String(row?.date || '').slice(0, 10);
+    const hours = Number(row?.hours || 0);
+    const day = byDate.get(date);
+    if (!day) {
+      return { ok: false, error: `${date} — этот день за пределами окна подзадачи` };
+    }
+    if (seen.has(date)) {
+      return { ok: false, error: `${date} указан дважды` };
+    }
+    seen.add(date);
+    if (!Number.isFinite(hours) || hours <= 0) continue;
+    if (Math.abs(hours / LAYOUT_STEP - Math.round(hours / LAYOUT_STEP)) > 1e-9) {
+      return { ok: false, error: 'Часы кратны 15 минутам' };
+    }
+    if (day.onVacation) return { ok: false, error: `${date} — у вас отпуск` };
+    if (day.onDayOff || !day.norm) {
+      return { ok: false, error: `${date} не входит в ваше рабочее расписание` };
+    }
+    const after = round(Number(day.hours || 0) + hours);
+    if (after > Number(day.norm) + 1e-9) {
+      overloads.push({ date, after, norm: round(Number(day.norm)), over: round(after - Number(day.norm)) });
+    }
+    layout.push({ date, hours: round(hours) });
+  }
+
+  if (!layout.length) return { ok: false, error: 'Разложите часы по дням окна' };
+
+  const total = round(layout.reduce((sum, row) => sum + row.hours, 0));
+  const need = round(Number(estimateHours) || 0);
+  if (Math.abs(total - need) > 0.005) {
+    return {
+      ok: false,
+      error: total < need
+        ? `Разложено ${total} ч из ${need} — не хватает ${round(need - total)} ч`
+        : `Разложено ${total} ч вместо ${need} — лишние ${round(total - need)} ч`,
+      total,
+      need,
+    };
+  }
+
+  layout.sort((a, b) => (a.date < b.date ? -1 : 1));
+  return { ok: true, layout, total, overloads };
+}
+
+/**
  * Обход проверки загрузки.
  *
  * Обойти можно всегда — запрещать руководителю ставить срочную задачу означало
@@ -130,9 +243,12 @@ function round(value) {
 module.exports = {
   WORK_DAY_START,
   MIN_EXPLANATION,
+  LAYOUT_STEP,
   nextFloatingSlot,
   afterMove,
   splitEstimate,
   assessAssignment,
+  assessWindow,
+  validateLayout,
   validateForce,
 };
