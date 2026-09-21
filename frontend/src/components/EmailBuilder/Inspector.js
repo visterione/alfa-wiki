@@ -491,9 +491,10 @@ function usePopover(open, btnRef, popRef, close, width, height) {
       document.removeEventListener('mousedown', outside);
       document.removeEventListener('keydown', esc);
     };
-    // close приходит новой функцией на каждый рендер, и в зависимостях он
-    // пересоздавал бы подписки на каждое нажатие клавиши в поиске.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // close намеренно не в зависимостях: он приходит новой функцией на каждый
+    // рендер и пересоздавал бы подписки на каждое нажатие клавиши в поиске.
+    // Внутри него только setOpen, а он у React не меняется от рендера к рендеру,
+    // поэтому замыкание, снятое при открытии, остаётся верным до закрытия.
   }, [open, width, height]);
 
   return at;
