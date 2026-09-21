@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { BASE_URL } from '../../services/api';
 import { fontStack, ensureWebFont } from './fonts';
+import { ICON_BY_KEY } from './icons';
 
 // Ширина содержимого письма: 600 минус боковые поля карточки. Тем же числом
 // рендерер считает ширину картинок и колонок — см. ctx.contentWidth.
@@ -508,6 +509,46 @@ export default function BlockView({ block, settings, selected, onChange, renderC
         }[block.overlayStyle] || `linear-gradient(rgba(0,0,0,${overlay}), rgba(0,0,0,${overlay}))`)
         : '';
       const layers = [shade, src ? `url(${src})` : ''].filter(Boolean).join(', ');
+
+      const inner = (
+        <div style={{ width: '100%', padding: '28px 24px', textAlign: block.align || 'center' }}>
+          {block.title && (
+            <div style={{
+              fontFamily: s.fontFamily,
+              fontSize: Number(block.titleSize) || 28,
+              lineHeight: 1.25,
+              fontWeight: 700,
+              ...textGradientStyle(block.textGradient, block.color || '#fff'),
+            }}>
+              {block.title}
+            </div>
+          )}
+          {block.text && (
+            <div style={{ fontFamily: s.fontFamily, fontSize: 15, lineHeight: 1.5, color: block.color || '#fff', paddingTop: 10 }}>
+              {block.text}
+            </div>
+          )}
+          {block.buttonText && (
+            <div style={{ paddingTop: 18 }}>
+              <span className="eb-button" style={{ background: block.buttonBg || s.linkColor, color: '#fff', borderRadius: 10, padding: '14px 28px', fontSize: 16 }}>
+                {block.buttonText}
+              </span>
+            </div>
+          )}
+        </div>
+      );
+
+      // Фотография сверху, текст под ней: здесь она обычная картинка, и высота
+      // блока ей больше не указ — та относится только к тексту поверх фото.
+      if (block.layout === 'under') {
+        return (
+          <div style={{ background: block.bg || '#1C1C1E' }}>
+            {src && <img src={src} alt="" style={{ display: 'block', width: '100%' }} />}
+            {inner}
+          </div>
+        );
+      }
+
       return (
         <div
           style={{
@@ -521,32 +562,7 @@ export default function BlockView({ block, settings, selected, onChange, renderC
             backgroundPosition: 'center',
           }}
         >
-          <div style={{ width: '100%', padding: '28px 24px', textAlign: block.align || 'center' }}>
-            {block.title && (
-              <div style={{
-                fontFamily: s.fontFamily,
-                fontSize: Number(block.titleSize) || 28,
-                lineHeight: 1.25,
-                fontWeight: 700,
-                ...textGradientStyle(block.textGradient, block.color || '#fff'),
-              }}>
-                {block.title}
-              </div>
-            )}
-            {block.text && (
-              <div style={{ fontFamily: s.fontFamily, fontSize: 15, lineHeight: 1.5, color: block.color || '#fff', paddingTop: 10 }}>
-                {block.text}
-              </div>
-            )}
-            {block.buttonText && (
-              <div style={{ paddingTop: 18 }}>
-                <span className="eb-button" style={{ background: block.buttonBg || s.linkColor, color: '#fff', borderRadius: 10, padding: '14px 28px', fontSize: 16 }}>
-                  {block.buttonText}
-                </span>
-              </div>
-            )}
-
-          </div>
+          {inner}
         </div>
       );
     }
@@ -596,16 +612,35 @@ export default function BlockView({ block, settings, selected, onChange, renderC
       if (!items.length) return <div className="eb-empty-inline" />;
       const size = Number(block.iconSize) || 28;
       const gap = Number(block.gap) ?? 14;
+      const lane = size + Math.max(12, Math.round(size / 2));
       return (
         <div style={{ fontFamily: s.fontFamily }}>
           {items.map((item, i) => {
-            const icon = previewSrc(item?.image);
+            const own = previewSrc(item?.image);
+            // Иконка на холсте рисуется компонентом lucide, а в письме — тем же
+            // контуром, но картинкой. Набор один (см. icons.js), поэтому то,
+            // что человек выбрал, и то, что доедет до получателя, совпадает.
+            const Icon = ICON_BY_KEY[item?.icon]?.Icon;
+            const glyph = Math.round(size * (block.iconBg ? 0.58 : 1));
             return (
-              <div key={i} style={{ display: 'flex', gap: 14, paddingTop: i ? gap : 0 }}>
+              <div key={i} style={{ display: 'flex', gap: lane - size, paddingTop: i ? gap : 0 }}>
                 <div style={{ flex: `0 0 ${size}px` }}>
-                  {icon
-                    ? <img src={icon} alt="" style={{ display: 'block', width: size }} />
-                    : <div style={{ fontSize: size, lineHeight: 1 }}>{item?.emoji || '•'}</div>}
+                  {own && <img src={own} alt="" style={{ display: 'block', width: size }} />}
+                  {!own && Icon && (
+                    <div style={{
+                      width: size,
+                      height: size,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: block.iconBg || 'transparent',
+                      color: block.iconColor || block.color || s.textColor,
+                    }}>
+                      <Icon size={glyph} strokeWidth={2} />
+                    </div>
+                  )}
+                  {!own && !Icon && <div style={{ fontSize: size, lineHeight: 1 }}>{item?.emoji || '•'}</div>}
                 </div>
                 <div style={{ minWidth: 0 }}>
                   {item?.title && <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.35, color: block.color || s.textColor }}>{item.title}</div>}

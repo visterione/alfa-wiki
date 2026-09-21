@@ -44,6 +44,15 @@ const BOT_STEPS = ['telegram', 'max'];
 // нам нечем.
 const EMPTY_IMOBIS = { token: '', sender: '', vkGroup: null, sandbox: false };
 
+// Счёт филиала в CRM партнёра, которая делает ИИ-звонки (ver. 8.52). Живёт там
+// же, где счёт Имобиса, и по той же причине: у партнёра лиды разведены по
+// клиникам, общего адреса на сеть нет, и наследовать «как в общих» не от чего.
+//
+// header — имя заголовка, в котором уезжает token. По умолчанию Authorization,
+// но у партнёра он вполне может называться X-Api-Key, а узнаем мы это уже после
+// релиза; поле избавляет от миграции ради одной строки.
+const EMPTY_AI_CALL = { url: '', token: '', header: 'Authorization', enabled: false };
+
 // ── Источник события (ver. 8.25) ──────────────────────────────────────────
 //
 // Оповещение доходит до нас одним из двух путей, и путь зависит от события:
@@ -177,6 +186,16 @@ function resolveImobis(own) {
 }
 
 /**
+ * Настройка ИИ-звонков филиала. Возвращается всегда объект — по той же причине,
+ * что и у Имобиса: заявке нужно отличать «филиал не настроен» от «филиала нет»,
+ * и обе эти беды выглядят одинаково пустым url.
+ */
+function resolveAiCall(own) {
+  const stored = (own && own.aiCall) || {};
+  return { ...EMPTY_AI_CALL, ...stored, header: String(stored.header || EMPTY_AI_CALL.header) };
+}
+
+/**
  * Откуда берутся события филиала. Ключ отсутствует — умолчание события.
  *
  * Неизвестное значение отбрасывается молча и осознанно: оно означало бы
@@ -194,6 +213,7 @@ function resolveEventSources(own) {
 }
 
 const imobisFor = async (medCenterId) => resolveImobis(await branch(medCenterId));
+const aiCallFor = async (medCenterId) => resolveAiCall(await branch(medCenterId));
 const eventSourcesFor = async (medCenterId) => resolveEventSources(await branch(medCenterId));
 
 /**
@@ -295,10 +315,10 @@ function quietFor(quiet, channel) {
 
 module.exports = {
   CASCADE_KEY, QUIET_KEY,
-  DEFAULT_CASCADE, DEFAULT_QUIET, EMPTY_IMOBIS, BOT_STEPS,
+  DEFAULT_CASCADE, DEFAULT_QUIET, EMPTY_IMOBIS, EMPTY_AI_CALL, BOT_STEPS,
   SOURCES, DEFAULT_EVENT_SOURCES,
   cascade, quietHours, groupSteps, read, write,
   isQuiet, nextAllowed, quietFor, minutesOf,
-  branch, forgetBranch, cascadeFor, quietHoursFor, imobisFor, branchEnabled,
-  eventSourcesFor, eventSourceFor, resolveImobis, resolveEventSources
+  branch, forgetBranch, cascadeFor, quietHoursFor, imobisFor, aiCallFor, branchEnabled,
+  eventSourcesFor, eventSourceFor, resolveImobis, resolveAiCall, resolveEventSources
 };

@@ -22,6 +22,7 @@ const { NotifAppointment, NotifOutbox, Setting, sequelize } = require('../../mod
 const templates = require('./templates');
 const doctorBlocklist = require('./doctorBlocklist');
 const settings = require('./settings');
+const aiCall = require('./aiCall');
 
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
@@ -243,6 +244,18 @@ async function runOnce(now = new Date()) {
       // раз сравнивать надо уже с новым состоянием.
       await NotifAppointment.upsert(snap);
 
+      // Визит подтвердили — догоняющий звонок больше не нужен (ver. 8.52).
+      // Именно переход, а не сам признак: подтверждённым визит остаётся до
+      // приёма, и без сравнения с прошлым состоянием мы ходили бы в заявки на
+      // каждую последующую правку визита.
+      //
+      // Кто нажал кнопку, здесь не важно и намеренно не выясняется: отметка
+      // могла появиться и от администратора, принявшего подтверждение по
+      // телефону. Такому человеку звонить тем более незачем.
+      if (aiCall.isAnswered(snap) && !aiCall.isAnswered(before)) {
+        await aiCall.drop(snap.apptId, 'визит подтверждён в МИС');
+      }
+
       // Запрет действует не только на новое событие: если визит уже поставил
       // напоминание в очередь, а затем ему назначили служебного врача, снимаем и
       // эту старую строку. Иначе блокировка зависела бы от момента её настройки.
@@ -252,6 +265,9 @@ async function runOnce(now = new Date()) {
           { status: 'skipped', error: 'служебный врач: отправка заблокирована' },
           { where: { apptId: snap.apptId, status: 'pending' } }
         );
+        // Запрет закрывает и заявку на звонок: иначе визит к служебному врачу
+        // молчал бы в мессенджере и звонил роботом (ver. 8.52).
+        await aiCall.drop(snap.apptId, 'служебный врач: отправка заблокирована');
         continue;
       }
 
@@ -318,6 +334,10 @@ async function enqueue(found, snap, allow = () => true) {
         withConfirm: item.withConfirm,
         withCancel: item.withCancel,
         withRating: !!item.withRating,
+        // Снимок настройки догоняющего звонка (ver. 8.52); заявку заведёт
+        // отправщик, когда сообщение действительно уйдёт.
+        callAfterMinutes: item.callAfterMinutes || null,
+        callMinLeadMinutes: item.callMinLeadMinutes || null,
         plannedAt: item.plannedAt || new Date()
       });
       added++;
@@ -330,10 +350,16 @@ async function enqueue(found, snap, allow = () => true) {
   // Отменённый визит: снимаем всё, что ещё не ушло по нему. Напоминание о
   // визите, которого не будет, хуже, чем отсутствие напоминания.
   if (found.event === 'cancelled' || found.event === 'moved') {
+    const why = found.event === 'cancelled' ? 'визит отменён' : 'визит перенесён';
     await NotifOutbox.update(
-      { status: 'skipped', error: found.event === 'cancelled' ? 'визит отменён' : 'визит перенесён' },
+      { status: 'skipped', error: why },
       { where: { apptId: snap.apptId, status: 'pending', event: 'reminder', plannedAt: { [Op.gt]: new Date() } } }
     );
+    // Вместе с напоминанием снимается и заявка на звонок (ver. 8.52). Перенос
+    // сюда входит наравне с отменой: по новому времени уйдёт новое напоминание
+    // со своими кнопками, и старая заявка спросила бы про час, которого больше
+    // нет.
+    await aiCall.drop(snap.apptId, why);
   }
 
   return added;

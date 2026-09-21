@@ -106,6 +106,7 @@
     "migrate:7.86": "node scripts/runSqlMigration.js 7.86",
     "migrate:7.86:check": "node scripts/runSqlMigration.js 7.86 --check",
     "notifier:outbox": "node scripts/notifier.js --outbox",
+    "notifier:calls": "node scripts/notifier.js --calls",
     "notifier:reset": "node scripts/notifier.js --reset",
     "migrate:7.87": "node scripts/runSqlMigration.js 7.87",
     "migrate:7.87:check": "node scripts/runSqlMigration.js 7.87 --check",
@@ -183,7 +184,9 @@
     "migrate:8.50": "node scripts/runSqlMigration.js 8.50",
     "migrate:8.50:check": "node scripts/runSqlMigration.js 8.50 --check",
     "migrate:8.51": "node scripts/runSqlMigration.js 8.51",
-    "migrate:8.51:check": "node scripts/runSqlMigration.js 8.51 --check"
+    "migrate:8.51:check": "node scripts/runSqlMigration.js 8.51 --check",
+    "migrate:8.52": "node scripts/runSqlMigration.js 8.52",
+    "migrate:8.52:check": "node scripts/runSqlMigration.js 8.52 --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

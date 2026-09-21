@@ -408,6 +408,19 @@ app.use('/uploads/open-line', require('./services/openLineFiles').openLineFileGu
   { setHeaders: secureUploadHeaders(setUploadHeaders) }
 ));
 
+// Картинки писем (ver. 8.53). Единственная ветка uploads с годовым сроком
+// жизни, и без него рассылка работает заметно хуже: express.static по умолчанию
+// отдаёт max-age=0, поэтому прокси Gmail перезапрашивал картинку при каждом
+// открытии письма — баннер у получателя «долго грузился» каждый раз заново, а
+// в письме, сохранённом на диск, успевал не прогрузиться вовсе. Имя файла тут
+// случайный UUID, содержимое по адресу не меняется, так что кэшировать можно
+// навсегда. Ветка стоит выше общей статики, иначе до неё не дойдёт очередь.
+app.use('/uploads/email', express.static(path.join(__dirname, 'uploads/email'), {
+  maxAge: '365d',
+  immutable: true,
+  setHeaders: setUploadHeaders,
+}));
+
 app.use('/uploads', serveStatic);
 app.use('/uploads/map', express.static(path.join(__dirname, 'uploads/map')));
 

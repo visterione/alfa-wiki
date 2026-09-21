@@ -388,6 +388,13 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
   const addBlock = (type, si, ci, at) => {
     const block = createBlock(type);
     if (!block) return;
+    // В секции из нескольких колонок боковые поля блока не нужны: их уже дала
+    // сама секция, а внутри колонки в 268px ещё 48px полей съедают пятую часть
+    // строки. Заготовки колонок так и сделаны — блоки, добавленные руками,
+    // должны вставать так же, иначе колонка с текстом и колонка с картинкой
+    // начинаются с разных отступов.
+    const narrow = (design.sections[si]?.columns?.length || 1) > 1;
+    if (narrow && block.padding) block.padding = { ...block.padding, left: 0, right: 0 };
     const list = blocksAt(design, si, ci);
     const index = at ?? list.length;
     apply(setBlocks(design, si, ci, [...list.slice(0, index), block, ...list.slice(index)]));

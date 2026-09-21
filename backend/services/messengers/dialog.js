@@ -21,6 +21,7 @@ const openLineFiles = require('../openLineFiles');
 const openLinePatient = require('../openLinePatient');
 const broadcasts = require('../broadcasts');
 const visitRatings = require('../notifications/visitRatings');
+const aiCall = require('../notifications/aiCall');
 
 const GREETING =
   'Здравствуйте! Это бот медцентра «Альфа».\n\n' +
@@ -463,9 +464,19 @@ async function confirmVisit(channel, bot, update, apptId) {
   try {
     const ok = await misClient.confirmAppointment(apptId);
     console.log(`[dialog] подтверждение визита ${apptId}: ${ok ? 'принято МИС' : 'МИС отказала'}`);
+
     // Ответ на кнопку живёт секунды — сначала гасим часики, потом пишем в чат.
     await channel.answerCallback(bot, update.callbackId, ok ? 'Спасибо, визит подтверждён' : 'Не получилось, попробуйте позже');
     if (ok) await dropButtons(channel, bot, update);
+
+    // Догоняющий звонок отменяем сразу по нажатию, не дожидаясь, пока отметку
+    // принесёт детектор (ver. 8.52). Детектор увидит её в течение минуты, и
+    // срок заявки может истечь ровно в этой минуте — а звонок человеку,
+    // который только что нажал кнопку, хуже, чем отсутствие звонка вовсе.
+    //
+    // Гасим и когда МИС отказала: отвечать роботом на нажатую кнопку нельзя ни
+    // при каком исходе записи в МИС. Свой отказ администратор увидит в журнале.
+    await aiCall.drop(apptId, 'пациент нажал «Подтверждаю»');
     await channel.sendText(bot, update.chatId, ok
       ? 'Спасибо! Визит подтверждён, ждём вас.'
       : 'Не удалось отметить подтверждение. Мы всё равно вас ждём — при необходимости позвоните нам.');
@@ -516,6 +527,9 @@ async function cancelVisit(channel, bot, update, apptId) {
     console.log(`[dialog] отмена визита ${apptId}: ${ok ? 'принята МИС' : 'МИС отказала'}`);
 
     await channel.answerCallback(bot, update.callbackId, ok ? 'Запись отменена' : 'Не получилось, попробуйте позже');
+
+    // Звонить по отменённому визиту незачем — как и напоминать о нём.
+    await aiCall.drop(apptId, 'пациент отменил запись кнопкой');
     if (ok) await dropButtons(channel, bot, update);
     await channel.sendText(bot, update.chatId, ok
       ? 'Запись отменена. Если захотите записаться на другое время — напишите сюда, подберём.'

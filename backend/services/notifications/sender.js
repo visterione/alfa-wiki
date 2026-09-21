@@ -27,6 +27,7 @@ const consent = require('./consent');
 const doctorBlocklist = require('./doctorBlocklist');
 const branches = require('./branches');
 const visitRatings = require('./visitRatings');
+const aiCall = require('./aiCall');
 const vkGroup = require('./vkGroup');
 
 // Какой организации принадлежит клиника МИС. Нужно, чтобы уйти во Fromni под
@@ -628,7 +629,21 @@ async function runOnce(limit = 100) {
         continue;
       }
       const done = await deliver(item, clinicId, medCenterId);
-      if (done.status === 'sent') sent++; else failed++;
+      if (done.status === 'sent') {
+        sent++;
+        // Заявка на догоняющий звонок ставится здесь, а не при заведении
+        // события (ver. 8.52): срок отсчитывается от момента, когда человек
+        // сообщение получил. Напоминание лежит в очереди сутки, и отсчёт от
+        // постановки означал бы звонок раньше самого напоминания.
+        //
+        // Неудача здесь не считается неудачей отправки: сообщение пациенту уже
+        // ушло, и терять его из-за недоступной таблицы заявок нельзя.
+        try {
+          await aiCall.scheduleFor(done, medCenterId);
+        } catch (err) {
+          console.error(`[sender] заявка на звонок по строке ${item.id}:`, err.message);
+        }
+      } else failed++;
     } catch (err) {
       // Непойманное здесь означало бы остановку всей очереди из-за одной строки.
       console.error(`[sender] строка ${item.id}:`, err.message);

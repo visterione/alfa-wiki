@@ -10,14 +10,16 @@
  * хотя общие настройки нужны как раз чаще всего.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import EmojiPicker from 'emoji-picker-react';
-import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Upload, Trash2, Link2, Loader2, Plus, ChevronUp, ChevronDown } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Upload, Trash2, Link2, Loader2, Plus, ChevronUp, ChevronDown, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { email } from '../../services/api';
 import { previewSrc, gradientCss } from './BlockView';
 import { FONTS, SAFE_FONT_KEYS, WEB_FONT_KEYS, fontStack, ensureWebFont } from './fonts';
 import { GROUPS, groupOfField } from './blocks';
+import { EMAIL_ICONS, ICON_GROUPS, ICON_BY_KEY } from './icons';
 
 // Четвёртый вариант — «по ширине». В письме он есть только у текста: атрибут
 // align на ячейке justify не принимает, и рендерер отдаёт туда обычное «влево».
@@ -442,6 +444,152 @@ function CardField({ value, onChange }) {
 }
 
 /**
+ * Слой поверх страницы, привязанный к кнопке (ver. 8.53).
+ *
+ * Выпадашка внутри панели свойств обрезается её краем: панель прокручивается,
+ * а значит, обязана прятать всё, что из неё вылезло. Поэтому списки, которые
+ * не помещаются в поле, рисуются в body, а положение им считают здесь — от
+ * кнопки, с прижатием к краям окна. Слой едет за кнопкой при прокрутке: без
+ * этого он остаётся висеть там, где его открыли.
+ *
+ * Возвращает координаты или null, пока их не посчитали, — до первого расчёта
+ * слой рисовать нельзя, иначе он мигает в левом верхнем углу.
+ */
+function usePopover(open, btnRef, popRef, close, width, height) {
+  const [at, setAt] = useState(null);
+
+  useEffect(() => {
+    if (!open) { setAt(null); return undefined; }
+
+    const place = () => {
+      const box = btnRef.current?.getBoundingClientRect();
+      if (!box) return;
+      const left = Math.min(Math.max(12, box.right - width), Math.max(12, window.innerWidth - width - 12));
+      // Снизу, если снизу помещается; иначе сверху; если не помещается нигде —
+      // прижимаем к краю окна: обрезанный список лучше списка за экраном.
+      const below = window.innerHeight - box.bottom - 12;
+      const top = below >= height || below >= box.top
+        ? Math.min(box.bottom + 6, window.innerHeight - height - 12)
+        : box.top - height - 6;
+      setAt({ left, top: Math.max(12, top) });
+    };
+
+    place();
+    const outside = (e) => {
+      if (popRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
+      close();
+    };
+    const esc = (e) => { if (e.key === 'Escape') close(); };
+
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    document.addEventListener('mousedown', outside);
+    document.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+      document.removeEventListener('mousedown', outside);
+      document.removeEventListener('keydown', esc);
+    };
+    // close приходит новой функцией на каждый рендер, и в зависимостях он
+    // пересоздавал бы подписки на каждое нажатие клавиши в поиске.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, width, height]);
+
+  return at;
+}
+
+/**
+ * Выбор иконки (ver. 8.53).
+ *
+ * Набор тот же, что рисует интерфейс портала, — lucide. До этого в пунктах
+ * стояли эмодзи, и на них пришла ровно одна претензия, но содержательная:
+ * цветной эмодзи в деловом письме выглядит случайным, а набор у каждой почты
+ * свой, так что у получателя он ещё и не тот, что видел отправитель. Линейная
+ * иконка одинакова везде, потому что в письмо она уезжает картинкой, которую
+ * рисует наш же сервер.
+ *
+ * Список открывается слоем поверх страницы, а не выпадашкой внутри панели.
+ * Панель свойств прокручивается и обрезает всё, что вылезло за её край, —
+ * прошлый подборщик так и срезало снизу. Слой в body ничем не обрезан, а
+ * положение считается от кнопки и прижимается к краям окна.
+ */
+function IconField({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [group, setGroup] = useState('all');
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+
+  const current = ICON_BY_KEY[value];
+
+  const at = usePopover(open, btnRef, popRef, () => setOpen(false), 320, 380);
+
+  // Поиск идёт и по названию, и по словам-подсказкам: «анализы» должны найти
+  // пробирку, хотя в её названии этого слова нет.
+  const found = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return EMAIL_ICONS.filter((i) => {
+      if (group !== 'all' && i.group !== group) return false;
+      if (!q) return true;
+      return i.label.toLowerCase().includes(q) || i.keywords.includes(q) || i.key.includes(q);
+    });
+  }, [query, group]);
+
+  const Current = current?.Icon;
+
+  return (
+    <div className="eb-iconpick">
+      <button type="button" className="eb-iconpick-btn" ref={btnRef} onClick={() => setOpen(v => !v)}>
+        <span className="eb-iconpick-now">{Current ? <Current size={18} /> : <Search size={16} />}</span>
+        <span>{current?.label || 'Выбрать иконку'}</span>
+      </button>
+      {value && (
+        <button type="button" className="eb-icon-btn" title="Убрать" onClick={() => onChange('')}>
+          <Trash2 size={12} />
+        </button>
+      )}
+      {open && at && createPortal(
+        <div className="eb-iconpop" ref={popRef} style={{ left: at.left, top: at.top }}>
+          <div className="eb-iconpop-head">
+            <Search size={13} />
+            <input
+              autoFocus
+              className="eb-iconpop-search"
+              placeholder="Найти иконку"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <button type="button" className="eb-icon-btn" title="Закрыть" onClick={() => setOpen(false)}><X size={13} /></button>
+          </div>
+          <div className="eb-iconpop-groups">
+            <button type="button" className={group === 'all' ? 'active' : ''} onClick={() => setGroup('all')}>Все</button>
+            {ICON_GROUPS.map(([id, label]) => (
+              <button key={id} type="button" className={group === id ? 'active' : ''} onClick={() => setGroup(id)}>{label}</button>
+            ))}
+          </div>
+          <div className="eb-iconpop-grid">
+            {found.map(({ key, Icon, label }) => (
+              <button
+                key={key}
+                type="button"
+                title={label}
+                className={key === value ? 'active' : ''}
+                onClick={() => { onChange(key); setOpen(false); }}
+              >
+                <Icon size={20} />
+              </button>
+            ))}
+            {!found.length && <div className="eb-iconpop-empty">Ничего не нашлось</div>}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+/**
  * Выбор эмодзи.
  *
  * Набирать эмодзи руками в поле ввода можно только через системную панель, а в
@@ -450,18 +598,13 @@ function CardField({ value, onChange }) {
  */
 function EmojiField({ value, onChange }) {
   const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const outside = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', outside);
-    return () => document.removeEventListener('mousedown', outside);
-  }, [open]);
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+  const at = usePopover(open, btnRef, popRef, () => setOpen(false), 280, 340);
 
   return (
-    <div className="eb-emoji" ref={boxRef}>
-      <button type="button" className="eb-emoji-btn" onClick={() => setOpen(v => !v)}>
+    <div className="eb-emoji">
+      <button type="button" className="eb-emoji-btn" ref={btnRef} onClick={() => setOpen(v => !v)}>
         <span>{value || '🙂'}</span>
         <small>{value ? 'Заменить' : 'Выбрать'}</small>
       </button>
@@ -470,8 +613,8 @@ function EmojiField({ value, onChange }) {
           <Trash2 size={12} />
         </button>
       )}
-      {open && (
-        <div className="eb-emoji-pop">
+      {open && at && createPortal(
+        <div className="eb-emoji-pop" ref={popRef} style={{ left: at.left, top: at.top }}>
           <EmojiPicker
             width={280}
             height={340}
@@ -479,7 +622,8 @@ function EmojiField({ value, onChange }) {
             previewConfig={{ showPreview: false }}
             onEmojiClick={(e) => { onChange(e.emoji); setOpen(false); }}
           />
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -587,6 +731,9 @@ function Field({ field, value, onChange, block }) {
 
     case 'emoji':
       return <EmojiField value={value} onChange={onChange} />;
+
+    case 'icon':
+      return <IconField value={value} onChange={onChange} />;
 
     case 'font':
       return <FontField value={value} onChange={onChange} placeholder={field.placeholder} />;

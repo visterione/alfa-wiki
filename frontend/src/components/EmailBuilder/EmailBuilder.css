@@ -608,7 +608,134 @@
 .eb-emoji-btn span { font-size: 20px; line-height: 1; }
 .eb-emoji-btn small { font-size: 11px; color: var(--text-tertiary); }
 
-.eb-emoji-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; }
+/* Слой в body, как у подборщика иконок: внутри панели свойств его срезало
+   нижним краем, и нижний ряд эмодзи был недосягаем. */
+.eb-emoji-pop { position: fixed; z-index: 3000; }
+
+/* ── Подборщик иконок ─────────────────────────────────────────────────────── */
+
+.eb-iconpick { position: relative; display: flex; align-items: center; gap: 6px; }
+
+.eb-iconpick-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.eb-iconpick-btn:hover { border-color: var(--primary); }
+.eb-iconpick-btn span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.eb-iconpick-now {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--primary);
+}
+
+/* Слой живёт в body: панель свойств прокручивается и обрезала бы список
+   снизу — так и было у подборщика эмодзи. Положение ставит React. */
+.eb-iconpop {
+  position: fixed;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-height: 380px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.eb-iconpop-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 8px 10px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+}
+
+.eb-iconpop-search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.eb-iconpop-groups {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-light);
+  scrollbar-width: none;
+}
+
+.eb-iconpop-groups::-webkit-scrollbar { display: none; }
+
+.eb-iconpop-groups button {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.eb-iconpop-groups button.active { background: var(--primary); color: #fff; }
+
+.eb-iconpop-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.eb-iconpop-grid button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.eb-iconpop-grid button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.eb-iconpop-grid button.active { border-color: var(--primary); color: var(--primary); }
+
+.eb-iconpop-empty {
+  grid-column: 1 / -1;
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
 
 /* ── Группы полей в панели свойств ────────────────────────────────────────── */
 

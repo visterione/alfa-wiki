@@ -5,6 +5,7 @@ const { EmailTemplate, EmailLog, EmailOptOut, EmailModule, EmailFavoriteRecipien
 const { authenticate, requireMarketing } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
 const emailRenderer = require('../services/emailRenderer');
+const emailIcons = require('../services/emailIconImage');
 const optout = require('../services/emailOptout');
 const { Op } = require('sequelize');
 const multer = require('multer');
@@ -208,7 +209,10 @@ router.post('/image', authenticate, requireAnnouncementsEdit, uploadImage.single
     const fsp = require('fs').promises;
     const path = require('path');
 
-    const dir = path.join(__dirname, '..', 'uploads', new Date().toISOString().slice(0, 7));
+    // Картинки писем лежат отдельной веткой uploads: только у неё есть право
+    // отдаваться с годовым сроком жизни (см. server.js), потому что имя файла —
+    // случайный UUID и содержимое по нему не меняется.
+    const dir = path.join(__dirname, '..', 'uploads', 'email', new Date().toISOString().slice(0, 7));
     await fsp.mkdir(dir, { recursive: true });
 
     const source = sharp(req.file.buffer, { animated: true });
@@ -225,12 +229,12 @@ router.post('/image', authenticate, requireAnnouncementsEdit, uploadImage.single
     let pipeline = source.resize({ width: 1200, withoutEnlargement: true });
     if (isGif) pipeline = pipeline.gif();
     else if (hasAlpha) pipeline = pipeline.png({ compressionLevel: 9 });
-    else pipeline = pipeline.jpeg({ quality: 82, mozjpeg: true });
+    else pipeline = pipeline.jpeg({ quality: 82, mozjpeg: true, progressive: true });
 
     const out = await pipeline.toBuffer();
     await fsp.writeFile(target, out);
 
-    const relative = `/uploads/${path.basename(dir)}/${name}`;
+    const relative = `/uploads/email/${path.basename(dir)}/${name}`;
     res.status(201).json({
       url: relative,
       width: Math.min(meta.width || 0, 1200),
@@ -241,6 +245,42 @@ router.post('/image', authenticate, requireAnnouncementsEdit, uploadImage.single
   } catch (error) {
     console.error('❌ Error uploading email image:', error);
     res.status(500).json({ error: 'Не удалось загрузить картинку' });
+  }
+});
+
+/**
+ * Иконка письма картинкой (ver. 8.53).
+ *
+ * Единственный маршрут раздела без проверки входа, и иначе быть не может: по
+ * этому адресу ходит не сотрудник портала, а почтовый клиент получателя —
+ * Gmail тянет картинку своим прокси, у которого никакого токена нет.
+ *
+ * Открытость безопасна ровно настолько, насколько ограничены параметры: имя
+ * берётся из набора в emailIcons.js, цвет обязан быть шестнадцатеричным,
+ * размер зажат в вилку. Ничего, что пришло из адреса, не доходит ни до диска,
+ * ни до разметки в исходном виде (см. normalize в emailIconImage.js).
+ *
+ * Год в Cache-Control — не оптимизация, а лечение жалобы: по умолчанию
+ * express.static отдаёт max-age=0, и прокси Gmail перезапрашивает картинку при
+ * каждом открытии письма. Здесь же адрес описывает картинку целиком, поэтому
+ * содержимое по нему не изменится никогда.
+ */
+router.get('/icon/:key([a-z0-9-]+).png', async (req, res) => {
+  try {
+    const file = await emailIcons.iconFile({
+      key: req.params.key,
+      size: req.query.size,
+      color: req.query.color,
+      bg: req.query.bg,
+    });
+    if (!file) return res.status(404).end();
+
+    res.type('png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.sendFile(file);
+  } catch (error) {
+    console.error('❌ Error rendering email icon:', error);
+    res.status(500).end();
   }
 });
 

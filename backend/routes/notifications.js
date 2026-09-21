@@ -17,7 +17,7 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { NotifTemplate, NotifOutbox, MedCenter, NotifBranchSettings, MessengerBot } = require('../models');
+const { NotifTemplate, NotifOutbox, NotifCallRequest, MedCenter, NotifBranchSettings, MessengerBot } = require('../models');
 const { getChannel } = require('../services/messengers');
 const templates = require('../services/notifications/templates');
 const sender = require('../services/notifications/sender');
@@ -46,8 +46,31 @@ const router = express.Router();
 const PROVIDER_TITLES = {
   imobis: 'Имобис (SMS)',
   // Notify и только: SMS через Fromni убрана из каскада в 8.50.
-  fromni: 'Fromni (Notify)'
+  fromni: 'Fromni (Notify)',
+  aicall: 'CRM партнёра (ИИ-звонки)'
 };
+
+// Что означает включённый переключатель. У ботов и SMS наружу уходит наш текст,
+// у CRM — карточка пациента, и подписывать их одинаково значило бы скрыть
+// разницу, ради которой предохранитель и нужен (ver. 8.52).
+const PROVIDER_EFFECT = {
+  aicall: 'данные пациентов уходят в CRM партнёра'
+};
+const DEFAULT_EFFECT = 'сообщения уходят пациентам';
+
+/**
+ * Настройка CRM филиала в том виде, в каком её можно показать (ver. 8.52).
+ * Ключ наружу не отдаётся — только признак «задан» и хвост, по той же причине,
+ * по какой так показан токен Имобиса: два филиала легко получают один ключ
+ * вставкой из буфера, и увидеть это можно только так.
+ */
+const aiCallView = (config) => ({
+  url: config.url || '',
+  header: config.header,
+  enabled: !!config.enabled,
+  tokenSet: !!config.token,
+  tokenTail: config.token ? `…${String(config.token).slice(-6)}` : ''
+});
 
 async function safetyState() {
   const state = await safety.read();
@@ -55,6 +78,7 @@ async function safetyState() {
     providers: safety.EXTERNAL_PROVIDERS.map(name => ({
       name,
       title: PROVIDER_TITLES[name] || name,
+      effect: PROVIDER_EFFECT[name] || DEFAULT_EFFECT,
       allowed: state.allowExternal.includes(name)
     })),
     // Ограничение круга получателей — вторая половина безопасного режима, и о
@@ -220,6 +244,27 @@ router.put('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
 
 // ── Шаблоны ───────────────────────────────────────────────────────────────
 
+/**
+ * Настройка догоняющего звонка, приведённая к допустимому виду (ver. 8.52).
+ *
+ * Ноль и пустая строка означают «не звонить» и ложатся в NULL: выключение
+ * должно быть отсутствием настройки, а не нулём, который в интерфейсе
+ * неотличим от «сразу же».
+ */
+function callPatch(event, withConfirm, { callAfterMinutes, callMinLeadMinutes }) {
+  if (event !== 'reminder' || !withConfirm) {
+    return { callAfterMinutes: null, callMinLeadMinutes: null };
+  }
+  const after = Number(callAfterMinutes) || null;
+  return {
+    callAfterMinutes: after,
+    // Порог без срока сам по себе ничего не значит — храним его только рядом с
+    // включённым звонком, иначе в базе осталось бы настроенное «поздно» у
+    // события, которое не звонит вовсе.
+    callMinLeadMinutes: after ? (Number(callMinLeadMinutes) || null) : null
+  };
+}
+
 router.get('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
     const rows = await NotifTemplate.findAll({
@@ -262,7 +307,7 @@ router.get('/templates', authenticate, requireAdmin, async (req, res) => {
 router.post('/templates', authenticate, requireAdmin, async (req, res) => {
   try {
     const { event, text, smsText, channelTexts, medCenterId, beforeMinutes,
-            withConfirm, withCancel, withRating } = req.body || {};
+            withConfirm, withCancel, withRating, callAfterMinutes, callMinLeadMinutes } = req.body || {};
     if (!EVENTS.includes(event)) return res.status(400).json({ error: 'Неизвестное событие' });
     if (!medCenterId) return res.status(400).json({ error: 'Нужно выбрать филиал' });
 
@@ -291,7 +336,11 @@ router.post('/templates', authenticate, requireAdmin, async (req, res) => {
       withCancel: !!withConfirm && !!withCancel,
       // Кнопки оценки бывают только у просьбы об отзыве (ver. 8.49): под
       // записью оценивать ещё нечего, а под отменой — уже незачем.
-      withRating: event === 'review' && !!withRating
+      withRating: event === 'review' && !!withRating,
+      // Догоняющий звонок — только у напоминания и только с кнопкой (ver. 8.52).
+      // Сторожим здесь, а не одной галкой в интерфейсе: шаблон правится и
+      // запросом, а последствие тут — звонок живому человеку.
+      ...callPatch(event, !!withConfirm, { callAfterMinutes, callMinLeadMinutes })
     });
     res.status(201).json(row);
   } catch (err) {
@@ -309,7 +358,8 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
     }
 
     const { text, smsText, channelTexts, cascade, beforeMinutes, afterMinutes,
-            frequency, withConfirm, withCancel, withRating, isActive } = req.body || {};
+            frequency, withConfirm, withCancel, withRating, isActive,
+            callAfterMinutes, callMinLeadMinutes } = req.body || {};
 
     // Тексты каналов (ver. 8.03). Пустые ключи выбрасываем, а не храним пустыми
     // строками: «нет своего текста» и «текст из одного пробела» — разные вещи,
@@ -352,7 +402,13 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
       withRating: row.event === 'review'
         ? (withRating !== undefined ? !!withRating : row.withRating)
         : false,
-      isActive: isActive !== undefined ? !!isActive : row.isActive
+      isActive: isActive !== undefined ? !!isActive : row.isActive,
+      // Снятая кнопка «Подтверждаю» уносит и звонок: спрашивать роботом про
+      // подтверждение, которого мы не предлагали, не за чем (ver. 8.52).
+      ...callPatch(row.event, nextConfirm, {
+        callAfterMinutes: callAfterMinutes !== undefined ? callAfterMinutes : row.callAfterMinutes,
+        callMinLeadMinutes: callMinLeadMinutes !== undefined ? callMinLeadMinutes : row.callMinLeadMinutes
+      })
     });
     res.json(row);
   } catch (err) {
@@ -817,6 +873,10 @@ router.get('/branches', authenticate, requireAdmin, async (req, res) => {
         // полную карту, а не только отличия: интерфейсу нужно показать выбор
         // по каждому событию, а умолчания он повторять не должен.
         eventSources: await notifSettings.eventSourcesFor(mc.id),
+        // CRM для догоняющих ИИ-звонков (ver. 8.52). Ключ наружу не отдаём по
+        // той же причине, что и токен Имобиса выше, и так же показываем хвост:
+        // два филиала легко получают один ключ вставкой из буфера.
+        aiCall: aiCallView(notifSettings.resolveAiCall(own)),
         configured: !!own
       };
     }));
@@ -838,7 +898,7 @@ router.put('/branches/:medCenterId', authenticate, requireAdmin, async (req, res
     const medCenter = await MedCenter.findByPk(req.params.medCenterId);
     if (!medCenter) return res.status(404).json({ error: 'Филиал не найден' });
 
-    const { quietHours, imobis, isEnabled, eventSources } = req.body || {};
+    const { quietHours, imobis, isEnabled, eventSources, aiCall } = req.body || {};
 
     const patch = {};
     if (quietHours !== undefined) patch.quietHours = quietHours || null;
@@ -892,6 +952,37 @@ router.put('/branches/:medCenterId', authenticate, requireAdmin, async (req, res
         if (imobis.sandbox) next.sandbox = true; else delete next.sandbox;
       }
       patch.imobis = Object.keys(next).length ? next : null;
+    }
+
+    if (aiCall !== undefined) {
+      const [existing] = await NotifBranchSettings.findOrCreate({
+        where: { medCenterId: req.params.medCenterId },
+        defaults: { medCenterId: req.params.medCenterId }
+      });
+      const next = { ...(existing.aiCall || {}) };
+
+      // Адрес обязателен только на деле: пустой означает «стереть», и филиал
+      // просто перестаёт звонить. Запрещать сохранение без него незачем —
+      // настройку заполняют в два приёма, сначала адрес, потом ключ.
+      if (aiCall.url !== undefined) {
+        const value = String(aiCall.url || '').trim().slice(0, 500);
+        if (value) next.url = value; else delete next.url;
+      }
+      // Ключ, как и у Имобиса, стирается только явно переданной пустотой: поле
+      // в форме пустое всегда, и если бы пустая строка ехала на каждое
+      // сохранение, правка адреса уносила бы с собой доступ.
+      if (aiCall.token !== undefined) {
+        const value = String(aiCall.token || '').trim();
+        if (value) next.token = value; else delete next.token;
+      }
+      if (aiCall.header !== undefined) {
+        const value = String(aiCall.header || '').trim().slice(0, 100);
+        if (value) next.header = value; else delete next.header;
+      }
+      if (aiCall.enabled !== undefined) {
+        if (aiCall.enabled) next.enabled = true; else delete next.enabled;
+      }
+      patch.aiCall = Object.keys(next).length ? next : null;
     }
 
     const [row] = await NotifBranchSettings.findOrCreate({
@@ -987,6 +1078,54 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
     res.json({ rows, counts, total: count, limit, offset });
   } catch (err) {
     console.error('[notifications] GET /outbox:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Журнал догоняющих звонков (ver. 8.52).
+ *
+ * Отдельно от журнала сообщений, потому что отвечает на другой вопрос. Там
+ * спрашивают «дошло ли до человека», здесь — «почему по нему не позвонили», и
+ * причин не звонить больше, чем причин позвонить: подтвердил, отменил, поздно,
+ * у филиала нет CRM, предохранитель. Все они записаны в самой заявке.
+ *
+ * Полезная нагрузка наружу не отдаётся: в ней карточка пациента, и в списке,
+ * который открывают, чтобы посмотреть статусы, ей делать нечего.
+ */
+router.get('/call-requests', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const where = {};
+    if (['pending', 'sent', 'failed', 'skipped'].includes(req.query.status)) {
+      where.status = req.query.status;
+    }
+    if (req.query.phone) {
+      where.phone = { [Op.iLike]: `%${String(req.query.phone).replace(/\D/g, '')}%` };
+    }
+    if (req.query.medCenterId) where.medCenterId = req.query.medCenterId;
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const { rows, count } = await NotifCallRequest.findAndCountAll({
+      where,
+      attributes: { exclude: ['payload', 'response'] },
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset
+    });
+
+    // Сводка за сутки — по тем же правилам, что и у сообщений: это состояние
+    // модуля, а не итог выборки, и от набранного в поиске номера не зависит.
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const counts = {};
+    for (const status of ['sent', 'failed', 'skipped', 'pending']) {
+      counts[status] = await NotifCallRequest.count({ where: { status, createdAt: { [Op.gte]: since } } });
+    }
+
+    res.json({ rows, counts, total: count, limit, offset });
+  } catch (err) {
+    console.error('[notifications] GET /call-requests:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

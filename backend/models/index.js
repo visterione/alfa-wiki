@@ -3940,6 +3940,19 @@ const NotifTemplate = sequelize.define('NotifTemplate', {
   // третьим значением withConfirm: у отзыва подтверждения не бывает по смыслу —
   // визит уже состоялся, — а у записи не бывает оценки, оценивать ещё нечего.
   withRating: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Догоняющий ИИ-звонок, если человек не ответил на кнопки (ver. 8.52).
+  //
+  // Только у напоминания и только вместе с withConfirm: звонок существует ровно
+  // затем, чтобы выяснить у молчуна то, что не выяснила кнопка. Под записью
+  // спрашивать нечего — человек минуту назад говорил с администратором.
+  //
+  // NULL в callAfterMinutes означает «не звонить»: выключение должно быть
+  // отсутствием настройки, а не нулём, который легко перепутать с «сразу же».
+  callAfterMinutes: { type: DataTypes.INTEGER, allowNull: true, field: 'call_after_minutes' },
+  // За сколько до визита заявка гаснет. Без этого порога звонок уходил бы
+  // человеку, который уже сидит у кабинета: администратор вправе поставить
+  // «напомнить за 2 часа», и тогда срок в три часа истекает после приёма.
+  callMinLeadMinutes: { type: DataTypes.INTEGER, allowNull: true, field: 'call_min_lead_minutes' },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, { tableName: 'notif_templates', timestamps: true });
 
@@ -3958,6 +3971,12 @@ const NotifBranchSettings = sequelize.define('NotifBranchSettings', {
   // запись у Имобиса заведена на каждый медцентр, трафик по ним распределён, и
   // общего счёта сети попросту нет. Филиал без токена SMS не отправляет.
   imobis: { type: DataTypes.JSONB, allowNull: true },
+  // Счёт филиала в CRM, которая делает ИИ-звонки: { url, token, header,
+  // enabled } (ver. 8.52). На филиал, а не на сеть, — так решил заказчик: лиды
+  // у партнёра разведены по клиникам, и общего адреса, куда их складывать,
+  // нет. Филиал без адреса заявки на звонок не отправляет и помечает их
+  // пропущенными — молча копить их в очереди было бы хуже.
+  aiCall: { type: DataTypes.JSONB, allowNull: true, field: 'ai_call' },
   // Каким путём приходит каждое событие: { created: 'poll', lab_full:
   // 'webhook' } (ver. 8.25). Забором берётся всё, что можно спросить у
   // getAppointments; готовность лабораторных исследований спросить нечем —
@@ -3998,6 +4017,15 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   withCancel: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   // Снимок той же природы, что и два признака выше (ver. 8.49).
   withRating: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Снимок настройки звонка с шаблона, породившего строку (ver. 8.52).
+  //
+  // Именно снимок, а не поиск шаблона в момент отправки: напоминаний у филиала
+  // бывает несколько — за сутки и за два часа, — и по строке очереди уже не
+  // узнать, которое из них её завело. Единственная зацепка была бы в разборе
+  // ключа идемпотентности, а строить на нём поведение, которое звонит живым
+  // людям, нельзя.
+  callAfterMinutes: { type: DataTypes.INTEGER, allowNull: true, field: 'call_after_minutes' },
+  callMinLeadMinutes: { type: DataTypes.INTEGER, allowNull: true, field: 'call_min_lead_minutes' },
   // Видно, что сообщение не потерялось, а ждёт конца тихих часов.
   postponedFrom: { type: DataTypes.DATE, allowNull: true, field: 'postponed_from' },
   plannedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'planned_at' },
@@ -4049,6 +4077,63 @@ const NotifVisitRating = sequelize.define('NotifVisitRating', {
   ratedAt: { type: DataTypes.DATE, field: 'rated_at', defaultValue: DataTypes.NOW },
   commentedAt: { type: DataTypes.DATE, field: 'commented_at' }
 }, { tableName: 'notif_visit_ratings', timestamps: true });
+
+// Заявка на догоняющий ИИ-звонок (ver. 8.52).
+//
+// ЗАЧЕМ. Напоминание с кнопками «Подтверждаю» и «Отменить запись» получает не
+// каждый: часть людей его просто не открывает. Про таких колл-центр узнавал
+// только в день приёма и обзванивал вручную. Заявка — это отложенный вопрос
+// «ответил ли он», заданный через настроенное время после отправки; если нет,
+// данные пациента уходят в CRM партнёра, и звонок делает уже она.
+//
+// ПОЧЕМУ ОТДЕЛЬНАЯ ТАБЛИЦА, А НЕ СТРОКА В NOTIF_OUTBOX. По очереди отвечают на
+// вопрос «что человек получил и почему не получил», и передача его данных
+// стороннему API — не ответ на него, а соседний вопрос: кому мы их отдали и что
+// нам сказали в ответ. Плюс на очередь завязан каскад отправщика, который
+// попытался бы такую строку кому-нибудь доставить.
+//
+// Данные пациента лежат здесь копией, как и в notif_visit_ratings, и по той же
+// причине: notif_appointments — рабочий стол детектора, а заявка должна отвечать
+// «кого и почему передали наружу» сама по себе, в том числе когда снимок визита
+// уже убран.
+const NotifCallRequest = sequelize.define('NotifCallRequest', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  apptId: { type: DataTypes.INTEGER, field: 'appt_id' },
+  // Сообщение, на которое не ответили. Уникально: одно отправленное напоминание
+  // порождает ровно одну заявку, и это же отсекает повтор, если отправщик
+  // возьмётся за ту же строку дважды.
+  outboxId: { type: DataTypes.UUID, field: 'outbox_id' },
+  medCenterId: { type: DataTypes.UUID, field: 'med_center_id' },
+  patientId: { type: DataTypes.INTEGER, field: 'patient_id' },
+  phone: { type: DataTypes.STRING(30) },
+  patientName: { type: DataTypes.STRING(255), field: 'patient_name' },
+  doctorName: { type: DataTypes.STRING(255), field: 'doctor_name' },
+  visitAt: { type: DataTypes.DATE, field: 'visit_at' },
+  // Когда спрашивать «ответил ли он»: момент отправки плюс срок из шаблона.
+  plannedAt: { type: DataTypes.DATE, allowNull: false, field: 'planned_at' },
+  // Снимок порога с шаблона — по той же причине, по какой снят и срок.
+  minLeadMinutes: { type: DataTypes.INTEGER, field: 'min_lead_minutes' },
+  // pending — ждёт срока; sent — лид ушёл в CRM; skipped — звонить не нужно или
+  // уже поздно, причина в error; failed — CRM не приняла.
+  status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'pending' },
+  attempts: { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 0 },
+  error: { type: DataTypes.TEXT, allowNull: true },
+  // Что именно ушло наружу. Храним целиком: это передача персональных данных
+  // третьему лицу, и на вопрос «что вы им отдали» отвечать придётся дословно.
+  payload: { type: DataTypes.JSONB, allowNull: true },
+  // Что ответила CRM. Нужен, пока формат их ответа не устоялся: без него
+  // разбирать отказ можно только по коду состояния.
+  response: { type: DataTypes.JSONB, allowNull: true },
+  sentAt: { type: DataTypes.DATE, allowNull: true, field: 'sent_at' }
+}, {
+  tableName: 'notif_call_requests',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['outbox_id'] },
+    { fields: ['status', 'planned_at'] },
+    { fields: ['appt_id'] }
+  ]
+});
 
 // === СОБЫТИЯ ОТ МИС (ver. 7.88) ===
 // Приёмник настройки «уведомления о событиях» в Renovatio. Сначала только
@@ -5167,6 +5252,7 @@ module.exports = {
   NotifTemplate,
   NotifBranchSettings,
   NotifOutbox,
+  NotifCallRequest,
   NotifVisitRating,
   MisEvent,
   Vehicle,

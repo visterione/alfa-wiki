@@ -4,7 +4,7 @@ import {
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
   Star, FlaskConical, Building2, ChevronDown, ChevronLeft, ChevronRight,
-  ShieldCheck, MonitorSmartphone, Copy, RotateCcw, Trash2, UserPlus
+  ShieldCheck, MonitorSmartphone, Copy, RotateCcw, Trash2, UserPlus, PhoneCall
 } from 'lucide-react';
 import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
@@ -651,7 +651,9 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
     cascade: Array.isArray(template.cascade) ? template.cascade : [],
     beforeMinutes: template.beforeMinutes,
     afterMinutes: template.afterMinutes,
-    frequency: template.frequency
+    frequency: template.frequency,
+    callAfterMinutes: template.callAfterMinutes,
+    callMinLeadMinutes: template.callMinLeadMinutes
   };
 
   const patch = (next) => setDraft(d => ({ ...(d || current), ...next }));
@@ -661,10 +663,12 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
 
   const dirty = !!draft && JSON.stringify({
     channelTexts: draft.channelTexts, cascade: draft.cascade,
-    beforeMinutes: draft.beforeMinutes, afterMinutes: draft.afterMinutes, frequency: draft.frequency
+    beforeMinutes: draft.beforeMinutes, afterMinutes: draft.afterMinutes, frequency: draft.frequency,
+    callAfterMinutes: draft.callAfterMinutes, callMinLeadMinutes: draft.callMinLeadMinutes
   }) !== JSON.stringify({
     channelTexts: template.channelTexts || {}, cascade: template.cascade || [],
-    beforeMinutes: template.beforeMinutes, afterMinutes: template.afterMinutes, frequency: template.frequency
+    beforeMinutes: template.beforeMinutes, afterMinutes: template.afterMinutes, frequency: template.frequency,
+    callAfterMinutes: template.callAfterMinutes, callMinLeadMinutes: template.callMinLeadMinutes
   });
 
   const save = async () => {
@@ -673,7 +677,9 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
       cascade: current.cascade,
       beforeMinutes: current.beforeMinutes,
       afterMinutes: current.afterMinutes,
-      frequency: current.frequency
+      frequency: current.frequency,
+      callAfterMinutes: current.callAfterMinutes,
+      callMinLeadMinutes: current.callMinLeadMinutes
     });
     setDraft(null);
   };
@@ -736,6 +742,23 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
             </Check1>
           )}
 
+          {/* Догоняющий звонок (ver. 8.52) — только у напоминания и только под
+              кнопкой: он существует затем, чтобы выяснить у молчуна то, чего не
+              выяснила кнопка. Сроки прячем за галкой, а не показываем двумя
+              полями с нулями: ноль в поле «через сколько» читается как «сразу
+              же», а означал бы «никогда». */}
+          {template.event === 'reminder' && template.withConfirm && (
+            <Check1
+              checked={!!current.callAfterMinutes}
+              onChange={v => patch({
+                callAfterMinutes: v ? (template.callAfterMinutes || 180) : null,
+                callMinLeadMinutes: v ? (current.callMinLeadMinutes || 120) : null
+              })}
+            >
+              Позвонить, если не ответил
+            </Check1>
+          )}
+
           {/* Оценка — только у просьбы об отзыве (ver. 8.49): под записью
               оценивать ещё нечего. Соседство с подтверждением здесь случайное,
               вместе эти галки не встречаются ни у одного события. */}
@@ -763,6 +786,25 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
                 minutes={current.beforeMinutes}
                 onChange={v => patch({ beforeMinutes: v })}
               />
+            )}
+            {/* Два поля, а не одно. Срок отсчитывается от отправки напоминания,
+                а звонок имеет смысл только до приёма: при напоминании за два
+                часа и сроке в три звонок пришёлся бы на время приёма. Порог —
+                единственное, что это ловит, и он же гасит заявку, доживающую до
+                утра после тихих часов. */}
+            {template.event === 'reminder' && !!current.callAfterMinutes && (
+              <>
+                <TimingField
+                  label="Позвонить через"
+                  minutes={current.callAfterMinutes}
+                  onChange={v => patch({ callAfterMinutes: v || null })}
+                />
+                <TimingField
+                  label="Не звонить позже чем за"
+                  minutes={current.callMinLeadMinutes}
+                  onChange={v => patch({ callMinLeadMinutes: v || null })}
+                />
+              </>
             )}
             {template.event === 'review' && (
               <>
@@ -1337,9 +1379,29 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
   const [account, setAccount] = useState(null);
   const [checking, setChecking] = useState(false);
 
+  // CRM для догоняющих звонков (ver. 8.52). Ключ, как и у Имобиса, в состоянии
+  // не живёт: наружу он не отдаётся, и поле пустое до тех пор, пока его не
+  // впишут заново.
+  const [crmUrl, setCrmUrl] = useState(branch.aiCall?.url || '');
+  const [crmHeader, setCrmHeader] = useState(branch.aiCall?.header || 'Authorization');
+  const [crmToken, setCrmToken] = useState('');
+
   const senderDirty = sender !== (branch.imobis.sender || '');
   const groupDirty = String(vkGroup) !== String(branch.imobis.vkGroup ?? '');
   const dirty = senderDirty || groupDirty || !!token.trim();
+
+  const crmUrlDirty = crmUrl !== (branch.aiCall?.url || '');
+  const crmHeaderDirty = crmHeader !== (branch.aiCall?.header || 'Authorization');
+  const crmDirty = crmUrlDirty || crmHeaderDirty || !!crmToken.trim();
+
+  const saveCrm = async () => {
+    const patch = { aiCall: {} };
+    if (crmUrlDirty) patch.aiCall.url = crmUrl.trim();
+    if (crmHeaderDirty) patch.aiCall.header = crmHeader.trim();
+    if (crmToken.trim()) patch.aiCall.token = crmToken.trim();
+    await onSave(branch.medCenterId, patch);
+    setCrmToken('');
+  };
 
   const save = async () => {
     const patch = { imobis: {} };
@@ -1498,6 +1560,73 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
                 имени «{branch.imobis.sender}» нет в аккаунте — SMS с ним не уйдут
               </div>
             )}
+          </div>
+
+          {/* CRM для догоняющих ИИ-звонков (ver. 8.52). Стоит рядом со счётом
+              Имобиса и по той же причине, по какой тот лежит у филиала: у
+              партнёра лиды разведены по клиникам, общего адреса на сеть нет.
+
+              Передача включается отдельным тумблером, а не одним наличием
+              адреса: адрес вписывают заранее, проверяют, и между «вписан» и
+              «работает» должен быть осознанный шаг — наружу уходит карточка
+              пациента, а не наш текст. */}
+          <div className="ola-block">
+            <h4><PhoneCall size={13} /> CRM для ИИ-звонков</h4>
+            <div className="ola-row">
+              <div className="ola-field">
+                <label>Адрес</label>
+                <input
+                  className="ola-input" autoComplete="off"
+                  placeholder="https://crm.example.ru/api/leads"
+                  value={crmUrl}
+                  onChange={e => setCrmUrl(e.target.value)}
+                />
+              </div>
+              <div className="ola-field">
+                <label>
+                  Ключ
+                  {branch.aiCall?.tokenSet
+                    ? <span className="ola-badge">{branch.aiCall.tokenTail}</span>
+                    : <span className="ola-badge warn">не задан</span>}
+                </label>
+                <input
+                  className="ola-input" type="password" autoComplete="off"
+                  placeholder={branch.aiCall?.tokenSet
+                    ? 'задан — впишите новый, чтобы заменить'
+                    : 'выдаёт партнёр'}
+                  value={crmToken}
+                  onChange={e => setCrmToken(e.target.value)}
+                />
+              </div>
+              {/* Имя заголовка настраивается, потому что узнаём мы его от
+                  партнёра уже после выката: Authorization у большинства, но
+                  X-Api-Key встречается не реже, и миграция ради одной строки
+                  была бы лишней. */}
+              <div className="ola-field">
+                <label>Заголовок</label>
+                <input
+                  className="ola-input" autoComplete="off"
+                  placeholder="Authorization"
+                  value={crmHeader}
+                  onChange={e => setCrmHeader(e.target.value)}
+                />
+              </div>
+              <div className="ola-field narrow">
+                <Switch
+                  checked={!!branch.aiCall?.enabled}
+                  onChange={v => onSave(branch.medCenterId, { aiCall: { enabled: v } })}
+                >передавать заявки</Switch>
+              </div>
+            </div>
+
+            <div className="ola-row">
+              <button className="ola-btn primary" disabled={!crmDirty} onClick={saveCrm}>
+                <Save size={14} /> Сохранить
+              </button>
+              {branch.aiCall?.enabled && !branch.aiCall?.url && (
+                <span className="ola-bot-state bad">адрес не указан — заявки будут пропускаться</span>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1809,7 +1938,37 @@ const CHANNEL_FILTER_VIEW = [
 const PAGE_SIZE = 50;
 const EMPTY_FILTERS = { status: '', event: '', channel: '', delivery: '', phone: '', from: '', to: '' };
 
+/**
+ * Журнал: сообщения и звонки (ver. 8.52).
+ *
+ * Две ленты, а не одна с фильтром по событию. Они отвечают на разные вопросы:
+ * у сообщений спрашивают «дошло ли до человека», у звонков — «почему по нему не
+ * позвонили», и вторая лента состоит в основном из причин не звонить. Свести их
+ * в одну значило бы мешать отправки с непереданными заявками в общей сортировке
+ * по времени, где ни один из двух вопросов уже не читается.
+ */
 function LogTab() {
+  const [mode, setMode] = useState('messages');
+
+  return (
+    <>
+      <div className="ola-log-modes">
+        <button
+          className={`ola-btn ${mode === 'messages' ? 'primary' : ''}`}
+          onClick={() => setMode('messages')}
+        ><Send size={14} /> Сообщения</button>
+        <button
+          className={`ola-btn ${mode === 'calls' ? 'primary' : ''}`}
+          onClick={() => setMode('calls')}
+        ><PhoneCall size={14} /> Звонки</button>
+      </div>
+
+      {mode === 'messages' ? <MessagesLog /> : <CallsLog />}
+    </>
+  );
+}
+
+function MessagesLog() {
   const [log, setLog] = useState(null);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
@@ -1985,6 +2144,132 @@ function LogTab() {
   );
 }
 
+// Те же четыре исхода, что и у сообщений, но названные по-своему. «Доставлено»
+// у заявки означало бы, что человеку позвонили, а мы знаем лишь то, что лид
+// приняли; «пропущено» — что что-то потерялось, тогда как это как раз штатный
+// и самый частый исход: человек подтвердил визит, и звонить незачем.
+const CALL_STATUS_VIEW = {
+  sent:    { label: 'передано в CRM',  icon: Check,         cls: 'ok'    },
+  pending: { label: 'ждёт срока',      icon: Clock,         cls: 'wait'  },
+  failed:  { label: 'CRM не приняла',  icon: AlertTriangle, cls: 'bad'   },
+  skipped: { label: 'не понадобилось', icon: Ban,           cls: 'muted' }
+};
+
+function CallsLog() {
+  const [log, setLog] = useState(null);
+  const [status, setStatus] = useState('');
+  const [phone, setPhone] = useState('');
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    const timer = setTimeout(() => {
+      const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
+      if (status) params.status = status;
+      if (phone.replace(/\D/g, '')) params.phone = phone.replace(/\D/g, '');
+
+      notifApi.callRequests(params)
+        .then(({ data }) => setLog(data))
+        .catch(() => toast.error('Не удалось загрузить заявки на звонок'))
+        .finally(() => setLoading(false));
+    }, phone ? 350 : 0);
+
+    return () => clearTimeout(timer);
+  }, [status, phone, page]);
+
+  const total = log?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <>
+      <div className="ola-log-head">
+        {Object.entries(CALL_STATUS_VIEW).map(([key, view]) => (
+          <button
+            key={key}
+            className={`ola-stat ${view.cls} ${status === key ? 'active' : ''}`}
+            onClick={() => { setStatus(status === key ? '' : key); setPage(0); }}
+          >
+            <span className="value">{log ? (log.counts[key] ?? 0) : '—'}</span>
+            <span className="label">{view.label}</span>
+          </button>
+        ))}
+
+        <div className="ola-log-search">
+          <Search size={16} />
+          <input
+            placeholder="Поиск по номеру"
+            value={phone}
+            onChange={e => { setPhone(e.target.value); setPage(0); }}
+          />
+        </div>
+      </div>
+
+      {log && (
+        <div className="ola-log-count">
+          {loading
+            ? 'Ищем…'
+            : (total === 0
+              ? 'Ничего не нашлось'
+              : `${total.toLocaleString('ru-RU')} ${plural(total, 'заявка', 'заявки', 'заявок')}`
+                + (pages > 1 ? ` · страница ${page + 1} из ${pages}` : ''))}
+        </div>
+      )}
+
+      {log && log.rows.length === 0 && (
+        <div className="ola-empty">
+          <PhoneCall size={34} />
+          <h3>Заявок на звонок нет</h3>
+          <p>
+            Заявка заводится по напоминанию с кнопкой «Подтверждаю», у которого
+            задан срок звонка. Проверьте событие «Напоминание о визите» на вкладке
+            «Тексты».
+          </p>
+        </div>
+      )}
+
+      {(log?.rows || []).map(row => {
+        const view = CALL_STATUS_VIEW[row.status] || CALL_STATUS_VIEW.pending;
+        const Icon = view.icon;
+        return (
+          <article key={row.id} className={`ola-row-card ${view.cls}`}>
+            <div className="ola-row-top">
+              <span className="ola-card-icon small accent"><PhoneCall size={14} /></span>
+              <span className="event">{row.patientName || 'без имени'}</span>
+              <span className="phone">{row.phone || 'без телефона'}</span>
+              {row.attempts > 1 && <span className="ola-badge warn">попыток {row.attempts}</span>}
+              <span className={`ola-row-status ${view.cls}`}><Icon size={13} /> {view.label}</span>
+              <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
+            </div>
+            {/* Время приёма здесь важнее времени заявки: по нему видно, был ли
+                смысл звонить вообще, а именно это и спрашивают у журнала. */}
+            <div className="ola-row-text">
+              Визит {row.apptId || '—'}
+              {row.visitAt ? ` · приём ${new Date(row.visitAt).toLocaleString('ru-RU')}` : ''}
+              {row.doctorName ? ` · ${row.doctorName}` : ''}
+            </div>
+            {row.error && <div className="ola-row-error">{row.error}</div>}
+          </article>
+        );
+      })}
+
+      {pages > 1 && (
+        <div className="ola-log-pager">
+          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(0)}>Начало</button>
+          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+            <ChevronLeft size={15} /> Назад
+          </button>
+          <span className="ola-log-pager-state">{page + 1} из {pages}</span>
+          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)}>
+            Вперёд <ChevronRight size={15} />
+          </button>
+          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>Конец</button>
+        </div>
+      )}
+    </>
+  );
+}
+
 /**
  * Предохранители: что уходит наружу и на какие номера (ver. 8.06).
  *
@@ -2067,8 +2352,12 @@ function SafetyPanel({ safety, onChange }) {
           {(safety.providers || []).map(p => (
             <div key={p.name} className={`ola-safety-row ${p.allowed ? 'on' : ''}`}>
               <span className="name">{p.title}</span>
+              {/* Что именно уходит, зависит от провайдера: у ботов и SMS это
+                  наш текст, у CRM — карточка пациента (ver. 8.52). Общая
+                  подпись скрывала бы ровно ту разницу, ради которой
+                  предохранитель и нужен. */}
               <span className="state">
-                {p.allowed ? 'сообщения уходят пациентам' : 'помечается пропущенным'}
+                {p.allowed ? (p.effect || 'сообщения уходят пациентам') : 'помечается пропущенным'}
               </span>
               <Switch
                 checked={p.allowed}

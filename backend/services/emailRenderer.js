@@ -47,6 +47,7 @@
 
 const sanitizeHtml = require('sanitize-html');
 const fonts = require('./emailFonts');
+const icons = require('./emailIconImage');
 
 const DOC_VERSION = 1;
 
@@ -325,6 +326,29 @@ const gradientTextClass = (gradient, ctx) => {
 };
 
 /**
+ * Класс, который действует только на телефоне (ver. 8.53).
+ *
+ * Инлайновый стиль перебить нечем: медиазапрос живёт в <style>, а у блока в
+ * письме почти всё оформление прибито атрибутом style. Поэтому всё, что должно
+ * меняться на узком экране и при этом зависит от настроек блока — высота
+ * баннера, размер заголовка, доля картинки, — уезжает сюда: рендерер просит
+ * класс, получает имя и вешает его на тег, а правило встаёт внутрь
+ * медиазапроса в шапке.
+ *
+ * Одинаковые наборы правил делят один класс: в письме из десяти баннеров с
+ * одной высотой не должно быть десяти одинаковых строк CSS.
+ */
+const mobileClass = (ctx, declarations) => {
+  if (!ctx || !declarations) return '';
+  if (!ctx.mobile) ctx.mobile = new Map();
+  const known = ctx.mobile.get(declarations);
+  if (known) return known;
+  const name = `aw-m${ctx.mobile.size + 1}`;
+  ctx.mobile.set(declarations, name);
+  return name;
+};
+
+/**
  * Фон: сплошной цвет или градиент.
  *
  * Сплошной цвет объявляется ПЕРЕД градиентом: клиент, не знающий второго
@@ -572,7 +596,12 @@ const blockRenderers = {
     // знает border-radius. Круглый аватар в письме всегда так и деградирует,
     // подменять его картинкой с прорезанным фоном не стоит — она не загрузится.
     const radius = block.shape === 'circle' ? Math.round(width / 2) : px(block.radius, 0);
-    const img = `<img src="${esc(src)}" width="${width}" alt="${esc(block.alt || '')}" style="display:block;border:0;outline:none;text-decoration:none;width:${width}px;max-width:100%;height:auto;${radius ? `border-radius:${radius}px;` : ''}${block.borderWidth ? `border:${px(block.borderWidth)}px solid ${esc(block.borderColor || '#FFFFFF')};` : ''}">`;
+    // На телефоне ширина считается долей, а не числом. Число тут десктопное:
+    // картинка «на половину ширины» внутри колонки — это 260px, и в столбике на
+    // узком экране она осталась бы марочкой посреди пустоты. max-width:100%
+    // спасает только от вылезания за край, вернуть замысел он не может.
+    const fluid = mobileClass(ctx, `width:${widthPct}% !important;max-width:${widthPct}% !important;`);
+    const img = `<img src="${esc(src)}"${fluid ? ` class="${fluid}"` : ''} width="${width}" alt="${esc(block.alt || '')}" style="display:block;border:0;outline:none;text-decoration:none;width:${width}px;max-width:100%;height:auto;${radius ? `border-radius:${radius}px;` : ''}${block.borderWidth ? `border:${px(block.borderWidth)}px solid ${esc(block.borderColor || '#FFFFFF')};` : ''}">`;
     const href = safeUrl(withUtm(block.href, s));
     const body = href ? `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:block;border:0;">${img}</a>` : img;
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${align(block.align, 'center')}"><tr><td align="${align(block.align, 'center')}">${body}</td></tr></table>`;
@@ -844,7 +873,11 @@ const blockRenderers = {
    */
   hero(block, s, ctx) {
     const src = absoluteUrl(block.src, ctx.baseUrl);
-    const width = ctx.contentWidth + 48;
+    // Ширина полосы под баннером — ровно то, что осталось от колонки. Раньше
+    // здесь было «плюс 48»: столько занимали боковые поля общей карточки в
+    // плоском письме до секций. Карточки давно нет, поля считает секция, и
+    // прибавка делала прямоугольник в Outlook на 48px шире самого письма.
+    const width = ctx.contentWidth;
     const height = px(block.height, 260);
     const bg = esc(block.bg || '#1C1C1E');
     const color = esc(block.color || '#FFFFFF');
@@ -852,9 +885,14 @@ const blockRenderers = {
 
     const parts = [];
     if (block.title) {
-      const titleCls = gradientTextClass(block.textGradient, ctx);
+      // Заголовок баннера набирается крупно, и на телефоне тот же кегль рвёт
+      // слова пополам. Уменьшаем его пропорционально, но не ниже 20px —
+      // заголовок мельче подзаголовка перестаёт быть заголовком.
+      const mobileSize = Math.max(20, Math.round(px(block.titleSize, 28) * 0.72));
+      const cls = [gradientTextClass(block.textGradient, ctx), mobileClass(ctx, `font-size:${mobileSize}px !important;`)]
+        .filter(Boolean).join(' ');
       const titleColor = block.color || gradientFallback(block.textGradient) || '#FFFFFF';
-      parts.push(`<div${titleCls ? ` class="${titleCls}"` : ''} style="font-family:${fontOf(block, s, ctx)};font-size:${px(block.titleSize, 28)}px;line-height:1.25;font-weight:700;color:${esc(titleColor)};">${esc(block.title)}</div>`);
+      parts.push(`<div${cls ? ` class="${cls}"` : ''} style="font-family:${fontOf(block, s, ctx)};font-size:${px(block.titleSize, 28)}px;line-height:1.25;font-weight:700;color:${esc(titleColor)};">${esc(block.title)}</div>`);
     }
     if (block.text) {
       parts.push(`<div style="font-family:${fontOf(block, s, ctx)};font-size:15px;line-height:1.5;color:${color};padding-top:10px;">${esc(block.text)}</div>`);
@@ -869,7 +907,26 @@ const blockRenderers = {
       }, s, ctx)}</div>`);
     }
 
-    const content = `<div style="padding:28px 24px;text-align:${align(block.align, 'center')};">${parts.join('')}</div>`;
+    const content = `<div class="aw-hero-pad" style="padding:28px 24px;text-align:${align(block.align, 'center')};">${parts.join('')}</div>`;
+
+    // Фотография сверху, текст под ней (ver. 8.53).
+    //
+    // Отдельная раскладка появилась из-за доставки, а не из-за вкуса. Текст
+    // поверх фотографии держится на фоновой картинке, а фоновую картинку
+    // почтовый клиент тянет последней и не кладёт в сохранённое письмо: у
+    // получателя баннер несколько секунд (а в скачанном письме — навсегда)
+    // остаётся цветным прямоугольником. Обычный <img> едет в общей очереди
+    // картинок, кэшируется прокси Gmail и остаётся в письме, сохранённом на
+    // диск. Платой за это становится текст рядом с фотографией, а не на ней.
+    if (block.layout === 'under') {
+      const photo = src
+        ? `<tr><td style="font-size:0;line-height:0;"><img src="${esc(src)}" width="${width}" alt="${esc(block.alt || block.title || '')}" style="display:block;border:0;width:100%;max-width:100%;height:auto;"></td></tr>`
+        : '';
+      return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
+${photo}
+<tr><td bgcolor="${bg}" style="background-color:${bg};">${content}</td></tr>
+</table>`;
+    }
 
     // Затемнение — не слой поверх картинки, а ещё один слой В САМОМ фоне:
     // linear-gradient из одного цвета в себя же, положенный над url(). Слоем
@@ -887,25 +944,20 @@ const blockRenderers = {
       : '';
     const layers = [shade, src ? `url('${esc(src)}')` : ''].filter(Boolean).join(', ');
 
+    // Высота на телефоне. Атрибут height и height в стиле держат десктопное
+    // число, и на экране вдвое уже баннер оставался той же высоты — фотография
+    // обрезалась до узкой полоски посередине, а текст в ней не помещался.
+    const mobileHeight = Math.max(140, Math.round(height * 0.66));
+    const shrink = mobileClass(ctx, `height:${mobileHeight}px !important;`);
+
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
-<tr><td align="center" height="${height}"${src ? ` background="${esc(src)}"` : ''} bgcolor="${bg}" valign="middle" style="height:${height}px;background-color:${bg};${layers ? `background-image:${layers};background-size:cover;background-position:center;` : ''}">
+<tr><td${shrink ? ` class="${shrink}"` : ''} align="center" height="${height}"${src ? ` background="${esc(src)}"` : ''} bgcolor="${bg}" valign="middle" style="height:${height}px;background-color:${bg};${layers ? `background-image:${layers};background-size:cover;background-position:center;` : ''}">
 <!--[if mso]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px;"><v:fill ${src ? `type="frame" src="${esc(src)}" ` : ''}color="${bg}"/><v:textbox inset="0,0,0,0"><![endif]-->
 ${content}
 <!--[if mso]></v:textbox></v:rect><![endif]-->
 </td></tr></table>`;
   },
 
-  /**
-   * Текст с картинкой сбоку, которую он обтекает.
-   *
-   * В письме обтекание делается не float, а атрибутом align на самой картинке:
-   * float половина клиентов игнорирует, а align понимают все, включая Outlook.
-   * Стиль float ставится рядом — для тех, кто наоборот.
-   *
-   * На телефоне обтекание выключается и картинка встаёт во всю ширину: текст,
-   * обтекающий картинку в 200px на экране в 320px, превращается в лесенку из
-   * двух слов. За это отвечает класс aw-wrap-img и медиазапрос в шапке письма.
-   */
   textimage(block, s, ctx) {
     const src = absoluteUrl(block.src, ctx.baseUrl);
     const side = block.side === 'right' ? 'right' : 'left';
@@ -944,11 +996,29 @@ ${content}
     if (!items.length) return '';
     const size = px(block.iconSize, 28);
     const gap = px(block.gap, 14);
+    // Ширина колонки под иконку считается от самой иконки: с подложкой кружок
+    // шире глифа, и фиксированные 14px отбивки при иконке в 56px слипались бы
+    // с заголовком.
+    const lane = size + Math.max(12, Math.round(size / 2));
 
     const rows = items.map((item, i) => {
-      const src = absoluteUrl(item?.image, ctx.baseUrl);
+      const own = absoluteUrl(item?.image, ctx.baseUrl);
+      // Иконка набора уходит в письмо картинкой, а не буквой и не SVG: SVG в
+      // почте не показывает никто, а шрифтовые наборы вырезаются вместе со
+      // <style>. Адрес собирает emailIconImage — картинка по нему рисуется один
+      // раз и дальше отдаётся из кэша (см. маршрут /api/email/icon).
+      const drawn = !own && item?.icon
+        // Свой цвет иконки необязателен: без него она берёт цвет текста блока —
+        // на тёмной полосе перекрашивают один раз, и иконки едут следом.
+        ? icons.iconUrl({ key: item.icon, size, color: block.iconColor || inkOf(block, s), bg: block.iconBg }, ctx.baseUrl)
+        : '';
+      const src = own || drawn;
+
+      // Эмодзи остаётся запасным: он виден и с выключенными картинками, потому
+      // что это текст. Там, где выбрана иконка, он уезжает в alt — почтовый
+      // клиент покажет его на месте незагруженной картинки.
       const icon = src
-        ? `<img src="${esc(src)}" width="${size}" alt="" style="display:block;border:0;width:${size}px;height:auto;">`
+        ? `<img src="${esc(src)}" width="${size}" height="${size}" alt="${esc(item?.emoji || '')}" style="display:block;border:0;width:${size}px;height:${size}px;">`
         : `<div style="font-size:${size}px;line-height:1;">${esc(item?.emoji || '•')}</div>`;
 
       const title = item?.title
@@ -960,7 +1030,7 @@ ${content}
 
       const top = i ? `padding-top:${gap}px;` : '';
       return `<tr>`
-        + `<td valign="top" width="${size + 14}" style="width:${size + 14}px;${top}">${icon}</td>`
+        + `<td valign="top" width="${lane}" style="width:${lane}px;${top}">${icon}</td>`
         + `<td valign="top" style="${top}">${title}${text}</td>`
         + `</tr>`;
     }).join('');
@@ -968,24 +1038,6 @@ ${content}
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">${rows}</table>`;
   },
 
-  /**
-   * Подвал с отпиской — обычный блок палитры (ver. 8.43).
-   *
-   * Раньше он добавлялся сам и не убирался: для рассылки на внешние адреса
-   * отписка — условие доставки, а не вежливость, и казалось правильным не дать
-   * её снять. На практике это значило, что текст подвала правился в настройках
-   * письма, которых никто не находил, а сам подвал висел там, где решил
-   * рендерер, а не там, где нужно макету.
-   *
-   * Теперь это блок как все: его ставят, двигают, оформляют и — да — могут не
-   * поставить вовсе. Проверка перед отправкой об этом скажет; решение остаётся
-   * за отправителем.
-   *
-   * Неизменна ровно одна вещь: ссылка ведёт на {{unsubscribe_url}}, адрес
-   * подставляется на отправке и у каждого получателя свой. Подпись у ссылки
-   * любая, но пустую подменяем умолчанием — отписка без текста это отписка,
-   * которую не найдут.
-   */
   unsubscribe(block, s, ctx) {
     const color = esc(block.color || s.mutedColor);
     const linkColor = esc(block.linkColor || block.color || s.mutedColor);
@@ -1130,6 +1182,12 @@ function renderSection(section, s, ctx, { first, last } = {}) {
   const weights = cols.map(c => Math.max(1, Number(c.width) || Math.round(100 / cols.length)));
   const weightSum = weights.reduce((a, b) => a + b, 0);
 
+  // Промежуток между колонками на телефоне становится полем под колонкой:
+  // ячейки встают друг на друга, и ячейка-распорка сбоку от них исчезает
+  // вместе со своей шириной. Последняя колонка поле не получает — иначе внизу
+  // секции появляется лишний зазор, которого в замысле не было.
+  const stackGap = cols.length > 1 && gap > 0 ? mobileClass(ctx, `padding-bottom:${gap}px !important;`) : '';
+
   const cells = cols.map((col, i) => {
     const w = Math.floor((usable * weights[i]) / weightSum);
     const colBg = background(col);
@@ -1139,7 +1197,8 @@ function renderSection(section, s, ctx, { first, last } = {}) {
       ? `<td class="aw-gap" width="${gap}" style="width:${gap}px;font-size:0;line-height:0;">&nbsp;</td>`
       : '';
     const valign = ['top', 'middle', 'bottom'].includes(col.valign || section.valign) ? (col.valign || section.valign) : 'top';
-    return `<td class="aw-col" width="${w}" valign="${valign}"${colBg.bgcolor ? ` bgcolor="${colBg.bgcolor}"` : ''} style="width:${w}px;${colBg.css}${colPad}">`
+    const cls = ['aw-col', stackGap, i === cols.length - 1 ? 'aw-col-last' : ''].filter(Boolean).join(' ');
+    return `<td class="${cls}" width="${w}" valign="${valign}"${colBg.bgcolor ? ` bgcolor="${colBg.bgcolor}"` : ''} style="width:${w}px;${colBg.css}${colPad}">`
       + `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${body}</table>`
       + `</td>${spacer}`;
   }).join('');
@@ -1208,7 +1267,7 @@ function renderPreheader(text) {
  * и покажет десктопную раскладку: это ожидаемо и приемлемо, Outlook на телефоне
  * не бывает узким настолько, чтобы это мешало.
  */
-function responsiveStyles(s, extra = []) {
+function responsiveStyles(s, extra = [], mobile = []) {
   return `<style type="text/css">
 ${extra.join('\n')}
   body { margin:0; padding:0; width:100% !important; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
@@ -1218,8 +1277,18 @@ ${extra.join('\n')}
   @media only screen and (max-width:620px) {
     .aw-card { width:100% !important; max-width:100% !important; border-radius:0 !important; }
     .aw-col { display:block !important; width:100% !important; max-width:100% !important; }
-    .aw-gap { display:none !important; width:0 !important; height:12px !important; }
+    /* Промежуток между колонками на телефоне — не пустая ячейка сбоку, а поле
+       под колонкой: столбик из ячеек, поставленных друг на друга, иначе слипается.
+       Сама ячейка-распорка при этом убирается: ширины у неё больше нет, а
+       display:none и height в одном правиле друг друга отменяют — height
+       ничего не значит для того, чего на странице нет. */
+    .aw-gap { display:none !important; width:0 !important; }
+    .aw-col-last { padding-bottom:0 !important; }
     .aw-wrap-img { float:none !important; width:100% !important; margin:0 0 12px 0 !important; }
+    /* Баннер: поля внутри урезаются, иначе на узком экране от фотографии
+       остаётся полоса по краям, а заголовок ломается по слогам. */
+    .aw-hero-pad { padding:22px 18px !important; }
+${mobile.map(rule => `    ${rule}`).join('\n')}
   }
 </style>`;
 }
@@ -1244,6 +1313,10 @@ function render(design, options = {}) {
     // сейчас это градиент буквами. Собирается при обходе дерева, выводится
     // в <style> шапки; порядок важен, поэтому body считается до шаблона письма.
     styles: [],
+    // Правила, которые действуют только на узком экране: собираются так же, но
+    // выводятся внутрь медиазапроса. Ключ — сам набор правил, значение — имя
+    // класса, поэтому одинаковые наборы не размножаются (см. mobileClass).
+    mobile: new Map(),
     // Использованные веб-шрифты. Подключаются в шапке только те, что реально
     // встретились в письме.
     webFonts: new Set(),
@@ -1277,7 +1350,7 @@ function render(design, options = {}) {
 <title>${subject}</title>
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 ${fonts.webFontTags([...ctx.webFonts])}
-${responsiveStyles(s, ctx.styles)}
+${responsiveStyles(s, ctx.styles, [...ctx.mobile].map(([decl, name]) => `.${name}{${decl}}`))}
 </head>
 <body style="margin:0;padding:0;background:${esc(s.bodyBg)};">
 ${renderPreheader(s.preheader)}

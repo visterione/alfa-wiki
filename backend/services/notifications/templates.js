@@ -188,6 +188,28 @@ function templatesForEvent(all, event, medCenterId) {
 }
 
 /**
+ * Настройка догоняющего звонка, снятая с шаблона (ver. 8.52).
+ *
+ * Снимок, а не поиск шаблона в момент отправки: напоминаний у филиала бывает
+ * несколько — за сутки и за два часа, — и по строке очереди уже не узнать,
+ * которое из них её завело.
+ *
+ * Условие «только напоминание» живёт здесь одним выражением, а не проверкой в
+ * каждом месте, где заявка может завестись. Под записью подтверждать нечего:
+ * человек минуту назад говорил с администратором, и звонок с вопросом «придёте
+ * ли вы» выглядел бы так, будто мы его не услышали.
+ */
+function callFields(template) {
+  if (template.event !== 'reminder' || !template.withConfirm) {
+    return { callAfterMinutes: null, callMinLeadMinutes: null };
+  }
+  return {
+    callAfterMinutes: template.callAfterMinutes || null,
+    callMinLeadMinutes: template.callMinLeadMinutes || null
+  };
+}
+
+/**
  * Готовит тексты к отправке по событию.
  *
  * @param {Function} allow фильтр по источнику события (ver. 8.25). Детектор
@@ -235,6 +257,7 @@ async function build(event, snap, found = {}, { allow = () => true } = {}) {
       // галка, снятая за это время, не должна отобрать кнопки у сообщения,
       // которое уже пообещало их текстом.
       withRating: template.withRating,
+      ...callFields(template),
       template
     });
   }
@@ -284,7 +307,8 @@ async function build(event, snap, found = {}, { allow = () => true } = {}) {
         smsText: template.smsText ? render(template.smsText, values) : null,
         channelTexts,
         withConfirm: template.withConfirm,
-      withCancel: template.withCancel,
+        withCancel: template.withCancel,
+        ...callFields(template),
         plannedAt,
         dedupKey: `${snap.apptId}:reminder:${template.beforeMinutes}:${snap.timeStart.toISOString()}`
       });
@@ -295,6 +319,6 @@ async function build(event, snap, found = {}, { allow = () => true } = {}) {
 }
 
 module.exports = {
-  build, render, valuesFor, firstName, nameParts, shortDoctor,
+  build, render, valuesFor, firstName, nameParts, shortDoctor, callFields,
   numericDate, numericDateTime, formattedDateTime, templatesForEvent
 };

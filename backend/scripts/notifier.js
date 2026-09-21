@@ -16,15 +16,17 @@
  *   node scripts/notifier.js --once    один проход обоих циклов, для проверки
  *   node scripts/notifier.js --dry     показать, что нашлось, ничего не отправляя
  *   node scripts/notifier.js --outbox  разобрать очередь: что ушло, что нет и почему
+ *   node scripts/notifier.js --calls   заявки на догоняющий ИИ-звонок
  *   node scripts/notifier.js --reset   очистить очередь, снимки и водяной знак
  */
 
 require('dotenv').config();
 
 const { Client } = require('pg');
-const { sequelize, NotifOutbox, NotifAppointment, Setting, BotSubscriber, MessengerBot } = require('../models');
+const { sequelize, NotifOutbox, NotifAppointment, NotifCallRequest, Setting, BotSubscriber, MessengerBot } = require('../models');
 const detector = require('../services/notifications/detector');
 const sender = require('../services/notifications/sender');
+const aiCall = require('../services/notifications/aiCall');
 const broadcasts = require('../services/broadcasts');
 const emailBroadcasts = require('../services/emailBroadcasts');
 
@@ -37,6 +39,10 @@ const SEND_MS = Number(process.env.NOTIFIER_SEND_MS || 20000);
 // Тик чаще остальных и короче порции: сто адресатов при двадцати в секунду —
 // это пять секунд работы, ровно столько, сколько до следующего тика.
 const BROADCAST_MS = Number(process.env.NOTIFIER_BROADCAST_MS || 5000);
+// Догоняющие звонки (ver. 8.52). Реже всех остальных: заявка измеряется часами,
+// и минута туда-сюда ничего не меняет, а каждый заход — это поход в МИС за
+// согласием пациента.
+const CALL_MS = Number(process.env.NOTIFIER_CALL_MS || 60000);
 
 // Тот же приём, что у забора обновлений: два запущенных экземпляра слали бы
 // уведомления дважды, а процессы поднимают руками в tmux.
@@ -92,6 +98,23 @@ async function sendTick() {
   }
 }
 
+async function callTick() {
+  if (dry) {
+    const pending = await NotifCallRequest.count({ where: { status: 'pending' } });
+    console.log(`[notifier] --dry: заявок на звонок ${pending}, ничего не передаю`);
+    return;
+  }
+  try {
+    const { sent, skipped, failed } = await aiCall.runOnce();
+    // Пропущенные печатаем наравне с отправленными: «звонок не состоялся» —
+    // это исход, о котором спросят, и тишина в журнале на него не ответит.
+    if (sent || skipped || failed) {
+      console.log(`[notifier] звонки: передано ${sent}, не понадобилось ${skipped}, не удалось ${failed}`);
+    }
+  } catch (err) {
+    console.error('[notifier] звонки:', err.message);
+  }
+}
 
 // Заходы не должны накладываться: порция иногда затягивается — на 429 движок
 // честно ждёт столько, сколько попросила платформа.
@@ -139,6 +162,7 @@ async function showOutbox(limit = 15) {
 
   const misClient = require('../services/misClient');
   const sender = require('../services/notifications/sender');
+const aiCall = require('../services/notifications/aiCall');
 
   // Состояние предохранителей живёт в базе с 8.06 — спрашиваем, а не читаем из
   // окружения. Печатаем поимённо: до 8.06 здесь сообщалось только о Fromni, и
@@ -174,22 +198,57 @@ async function showOutbox(limit = 15) {
 
 
 /**
+ * Заявки на догоняющий звонок (ver. 8.52).
+ *
+ * Отвечает на вопрос, который возникает первым: почему по этому визиту не
+ * позвонили. Причин не звонить больше, чем причин позвонить, — подтвердил,
+ * отменил, поздно, филиал без настроенной CRM, — и все они записаны в самой
+ * заявке, а не выводятся из чего-то ещё.
+ */
+async function showCalls(limit = 15) {
+  const rows = await NotifCallRequest.findAll({ order: [['createdAt', 'DESC']], limit });
+
+  if (!rows.length) {
+    console.log('Заявок на звонок нет — либо срок не настроен, либо напоминания с кнопками ещё не уходили.');
+    return;
+  }
+
+  for (const row of rows) {
+    const when = new Date(row.plannedAt).toLocaleString('ru-RU');
+    const visit = row.visitAt ? new Date(row.visitAt).toLocaleString('ru-RU') : '—';
+    console.log(`${row.status.toUpperCase().padEnd(8)} визит ${row.apptId || '—'}   приём ${visit}`);
+    console.log(`   пациент: ${row.patientName || '—'}   ${row.phone || '—'}`);
+    console.log(`   звонить: ${when}   порог ${row.minLeadMinutes ?? '—'} мин   попыток ${row.attempts}`);
+    if (row.sentAt) console.log(`   передано: ${new Date(row.sentAt).toLocaleString('ru-RU')}`);
+    if (row.error) console.log(`   причина: ${row.error}`);
+    console.log('');
+  }
+}
+
+/**
  * Сброс к чистому листу: очередь, снимки визитов и водяной знак. Нужен на время
  * обкатки — снимок, снятый неполным запросом, потом уже не поправить, потому что
  * повторное появление того же визита событием не считается.
  */
 async function reset() {
   const outbox = await NotifOutbox.destroy({ where: {} });
+  const calls = await NotifCallRequest.destroy({ where: {} });
   const snapshots = await NotifAppointment.destroy({ where: {} });
   await Setting.destroy({ where: { key: detector.WATERMARK_KEY } });
 
-  console.log(`Очищено: очередь ${outbox}, снимков ${snapshots}, водяной знак сброшен.`);
+  console.log(`Очищено: очередь ${outbox}, заявок на звонок ${calls}, снимков ${snapshots}, водяной знак сброшен.`);
   console.log('Следующий запуск начнёт с текущей минуты — историю не выгребает.');
 }
 
 async function main() {
   if (args.includes('--reset')) {
     await reset();
+    await sequelize.close();
+    return;
+  }
+
+  if (args.includes('--calls')) {
+    await showCalls(Number(args[args.indexOf('--calls') + 1]) || 15);
     await sequelize.close();
     return;
   }
@@ -212,6 +271,7 @@ async function main() {
 
   await detectTick();
   await sendTick();
+  await callTick();
   await broadcastTick();
   await emailBroadcastTick();
 
@@ -223,6 +283,7 @@ async function main() {
 
   const detectTimer = setInterval(() => { if (!stopping) detectTick(); }, DETECT_MS);
   const sendTimer = setInterval(() => { if (!stopping) sendTick(); }, SEND_MS);
+  const callTimer = setInterval(() => { if (!stopping) callTick(); }, CALL_MS);
   const broadcastTimer = setInterval(() => { if (!stopping) broadcastTick(); }, BROADCAST_MS);
   const emailBroadcastTimer = setInterval(() => { if (!stopping) emailBroadcastTick(); }, SEND_MS);
 
@@ -231,6 +292,7 @@ async function main() {
     stopping = true;
     clearInterval(detectTimer);
     clearInterval(sendTimer);
+    clearInterval(callTimer);
     clearInterval(broadcastTimer);
     clearInterval(emailBroadcastTimer);
     if (lockClient) await lockClient.end().catch(() => {});

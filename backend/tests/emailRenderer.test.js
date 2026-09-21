@@ -142,7 +142,7 @@ test('колонки складываются в столбик на телеф�
   }]));
 
   // 600 минус боковые поля секции (48), минус промежуток (16), пополам
-  assert.match(html, /class="aw-col" width="268"/);
+  assert.match(html, /class="aw-col[^"]*" width="268"/);
   assert.match(html, /\.aw-col \{ display:block !important/);
   assert.match(html, /Слева/);
   assert.match(html, /Справа/);
@@ -384,6 +384,10 @@ test('баннер держится на трёх способах сразу и
   assert.match(html, /background-image:linear-gradient\(rgba\(0,0,0,0\.35\), rgba\(0,0,0,0\.35\)\), url\('https:\/\/wiki\.example\.ru\/uploads\/hero\.jpg'\)/);
   assert.match(html, /<v:fill type="frame" src="https:\/\/wiki\.example\.ru\/uploads\/hero\.jpg"/);
   assert.match(html, /height:300px/);
+  // Прямоугольник для Outlook шириной ровно с полосу под баннером: у блока
+  // здесь свои боковые поля по 24px, значит 600 − 48. Пока тут было «плюс 48»
+  // от старой общей карточки, прямоугольник вылезал за письмо.
+  assert.match(html, /<v:rect[^>]*style="width:552px;height:300px;"/);
 });
 
 test('затемнение баннера лежит слоем в фоне, а не внутри ячейки', () => {
@@ -440,14 +444,17 @@ test('пункты с иконками работают на эмодзи без
   assert.doesNotMatch(html, /<img/);
 });
 
-test('иконка-картинка вытесняет эмодзи, если её загрузили', () => {
+test('иконка-картинка вытесняет эмодзи, а сам эмодзи уезжает в alt', () => {
   const { html } = renderer.render(doc([{
     type: 'iconlist',
     items: [{ emoji: '🩺', image: '/uploads/icon.png', title: 'Приём' }],
   }]), { baseUrl: 'https://wiki.example.ru' });
 
   assert.match(html, /src="https:\/\/wiki\.example\.ru\/uploads\/icon\.png"/);
-  assert.doesNotMatch(html, /🩺/);
+  // Эмодзи остаётся запасным знаком: с выключенными картинками почта покажет
+  // на месте иконки именно его, а не пустое место.
+  assert.match(html, /alt="🩺"/);
+  assert.doesNotMatch(html, /line-height:1;">🩺/);
 });
 
 test('плашка со скидкой стоит над заголовком, а не поверх картинки', () => {
@@ -706,8 +713,8 @@ test('колонки секции делят ширину по долям и с�
   }]));
 
   // 600 минус промежуток 20 = 580; 33 и 67 от него.
-  assert.match(html, /class="aw-col" width="191"/);
-  assert.match(html, /class="aw-col" width="388"/);
+  assert.match(html, /class="aw-col[^"]*" width="191"/);
+  assert.match(html, /class="aw-col[^"]*" width="388"/);
   assert.match(html, /class="aw-gap" width="20"/);
 });
 
@@ -719,7 +726,7 @@ test('у колонки может быть свой фон и свои поля
     ],
   }]));
 
-  assert.match(html, /class="aw-col"[^>]*bgcolor="#FF3B30"[^>]*padding:10px 10px 10px 10px/);
+  assert.match(html, /class="aw-col[^"]*"[^>]*bgcolor="#FF3B30"[^>]*padding:10px 10px 10px 10px/);
 });
 
 test('скругление достаётся внешним углам письма, а не каждой секции', () => {
@@ -760,7 +767,7 @@ test('документ первой версии открывается и вы�
 
   const { html } = renderer.render(v1);
   assert.match(html, /Первый/);
-  assert.match(html, /class="aw-col" width="268"/);
+  assert.match(html, /class="aw-col[^"]*" width="268"/);
 });
 
 test('повторный перевод документа во вторую версию ничего не ломает', () => {
@@ -860,3 +867,128 @@ test('без красной строки отступ не появляется 
 });
 
 
+
+/**
+ * ── Телефон и доставка картинок (ver. 8.53) ─────────────────────────────────
+ *
+ * Правки этого раздела приехали из обратной связи по первым рассылкам: баннер
+ * на телефоне оставался десктопным, колонки слипались, а фоновая фотография
+ * доезжала до получателя позже всего письма. Каждая проверка ниже — про
+ * конкретную из этих жалоб.
+ */
+
+test('баннер уменьшается на телефоне, а не остаётся десктопным', () => {
+  const { html } = renderer.render(doc([{
+    type: 'hero', src: '/uploads/email/b.jpg', title: 'Открыли новый медцентр', height: 400, titleSize: 34,
+  }]), { baseUrl: 'https://wiki.example.ru' });
+
+  // Высота и кегль заголовка живут в атрибуте style, перебить их можно только
+  // классом из медиазапроса — поэтому у баннера он обязан быть.
+  const mobile = html.match(/@media only screen and \(max-width:620px\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(mobile, /height:264px !important/);   // 400 × 0,66
+  assert.match(mobile, /font-size:24px !important/); // 34 × 0,72
+  assert.match(mobile, /\.aw-hero-pad \{ padding:22px 18px !important/);
+  assert.match(html, /class="aw-hero-pad"/);
+});
+
+test('заголовок баннера не опускается ниже читаемого кегля', () => {
+  const { html } = renderer.render(doc([{ type: 'hero', title: 'Акция', titleSize: 18, height: 150 }]));
+  const mobile = html.match(/@media only screen and \(max-width:620px\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(mobile, /font-size:20px !important/);
+  assert.match(mobile, /height:140px !important/);
+});
+
+test('баннер умеет ехать обычной картинкой, а не фоном', () => {
+  // Фоновую картинку почта тянет последней и не кладёт в сохранённое письмо —
+  // ради этого у баннера появилась вторая раскладка.
+  const { html } = renderer.render(doc([{
+    type: 'hero', layout: 'under', src: '/uploads/email/b.jpg', title: 'Открыли', bg: '#1C1C1E',
+  }]), { baseUrl: 'https://wiki.example.ru' });
+
+  assert.match(html, /<img src="https:\/\/wiki\.example\.ru\/uploads\/email\/b\.jpg"[^>]*width:100%/);
+  assert.doesNotMatch(html, /background-image/);
+  assert.doesNotMatch(html, /v:rect/);
+  assert.match(html, /bgcolor="#1C1C1E"/);
+  assert.match(html, /Открыли/);
+});
+
+test('промежуток между колонками на телефоне становится полем под колонкой', () => {
+  const { html } = renderer.render(doc([{
+    type: 'columns',
+    gap: 20,
+    columns: [
+      { width: 50, blocks: [{ type: 'text', html: '<p>Л</p>' }] },
+      { width: 50, blocks: [{ type: 'text', html: '<p>П</p>' }] },
+    ],
+  }]));
+
+  const mobile = html.match(/@media only screen and \(max-width:620px\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(mobile, /padding-bottom:20px !important/);
+  assert.match(mobile, /\.aw-col-last \{ padding-bottom:0 !important/);
+  // У распорки больше нет высоты в правиле: display:none и height вместе не
+  // работают, и колонки слипались.
+  assert.doesNotMatch(mobile, /\.aw-gap \{[^}]*height:/);
+  // Последняя колонка поля не получает, первая — получает.
+  assert.match(html, /class="aw-col aw-m\d+" width="\d+"/);
+  assert.match(html, /class="aw-col aw-m\d+ aw-col-last"/);
+});
+
+test('картинка на телефоне держит свою долю, а не десктопное число пикселей', () => {
+  const { html } = renderer.render(doc([{
+    type: 'columns',
+    columns: [
+      { width: 50, blocks: [{ type: 'image', src: '/uploads/email/a.jpg', width: 60 }] },
+      { width: 50, blocks: [{ type: 'text', html: '<p>П</p>' }] },
+    ],
+  }]), { baseUrl: 'https://wiki.example.ru' });
+
+  const mobile = html.match(/@media only screen and \(max-width:620px\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(mobile, /width:60% !important;max-width:60% !important/);
+  assert.match(html, /<img src="[^"]+" class="aw-m\d+"/);
+});
+
+test('одинаковые мобильные правила делят один класс', () => {
+  const { html } = renderer.render(doc([
+    { type: 'hero', title: 'А', height: 300, titleSize: 28 },
+    { type: 'hero', title: 'Б', height: 300, titleSize: 28 },
+  ]));
+  const mobile = html.match(/@media only screen and \(max-width:620px\) \{[\s\S]*?\n  \}/)[0];
+  assert.equal((mobile.match(/height:198px !important/g) || []).length, 1);
+});
+
+test('иконка пункта уходит в письмо картинкой с нашего адреса', () => {
+  const { html } = renderer.render(doc([{
+    type: 'iconlist',
+    iconSize: 40,
+    iconColor: '#0A84FF',
+    iconBg: '#EAF4FF',
+    items: [{ icon: 'test-tubes', title: 'Анализы за сутки' }],
+  }]), { baseUrl: 'https://wiki.example.ru' });
+
+  // SVG в письме не показывает ни один клиент, поэтому иконка — PNG, а все её
+  // настройки лежат в адресе: по нему же она и кэшируется.
+  assert.match(html, /src="https:\/\/wiki\.example\.ru\/api\/email\/icon\/test-tubes\.png\?size=40&amp;color=0A84FF&amp;bg=EAF4FF"/);
+  assert.match(html, /width="40" height="40"/);
+});
+
+test('иконки не существует — письмо собирается без неё, а не падает', () => {
+  // Набор иконок может измениться, а письма в базе остаются со старыми именами.
+  const { html } = renderer.render(doc([{
+    type: 'iconlist',
+    items: [{ icon: 'такой-иконки-нет', emoji: '✅', title: 'Пункт' }],
+  }]), { baseUrl: 'https://wiki.example.ru' });
+
+  assert.doesNotMatch(html, /api\/email\/icon/);
+  assert.match(html, /✅/);
+  assert.match(html, /Пункт/);
+});
+
+test('своя картинка пункта сильнее иконки набора', () => {
+  const { html } = renderer.render(doc([{
+    type: 'iconlist',
+    items: [{ icon: 'check', image: '/uploads/email/own.png', title: 'Пункт' }],
+  }]), { baseUrl: 'https://wiki.example.ru' });
+
+  assert.match(html, /uploads\/email\/own\.png/);
+  assert.doesNotMatch(html, /api\/email\/icon/);
+});
