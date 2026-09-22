@@ -471,6 +471,7 @@ app.use('/api/bot-subscribers', require('./routes/bot-subscribers'));
 // приходит без нашего JWT, подлинность проверяется секретом вебхука внутри.
 app.use('/api/messenger', require('./routes/messenger-webhook'));
 app.use('/api/open-line', require('./routes/open-line'));
+app.use('/api/mail', require('./routes/mail'));
 app.use('/api/broadcasts', require('./routes/broadcasts'));
 app.use('/api/site-widgets', require('./routes/site-widgets'));
 app.use('/api/notifications', require('./routes/notifications'));

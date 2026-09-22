@@ -1,0 +1,484 @@
+/*
+ * Настройка почтовых ящиков (ver. 8.58).
+ *
+ * Карточка на ящик, а не таблица: у ящика слишком разнородные сведения —
+ * состояние синхронизации, возможности сервера, список людей с доступом. В
+ * таблице это либо не помещается, либо превращается в горизонтальную прокрутку.
+ */
+
+.amail-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  color: var(--text-primary);
+}
+
+.amail-page--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+  color: var(--text-secondary);
+}
+
+.amail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.amail-head h1 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 6px;
+  font-size: 21px;
+  font-weight: 650;
+}
+
+.amail-head p {
+  margin: 0;
+  max-width: 620px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ── Форма ──────────────────────────────────────────────────────────────── */
+
+.amail-form {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.amail-form h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.amail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.amail-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.amail-grid label > span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.amail-grid label > span small {
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.amail-grid input,
+.amail-grid select {
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.amail-grid input:focus,
+.amail-grid select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.amail-grid input:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.amail-signature {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.amail-signature > span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.amail-signature > span small { font-weight: 400; color: var(--text-tertiary); }
+
+.amail-signature textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.amail-signature textarea:focus { outline: none; border-color: var(--primary); }
+
+.amail-form__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── Карточка ящика ─────────────────────────────────────────────────────── */
+
+.amail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.amail-card {
+  padding: 16px 18px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+
+.amail-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.amail-card__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.amail-card__title h3 {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+.amail-email {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.amail-chip {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.amail-chip--off {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.amail-state {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.amail-state--ok { background: var(--green-100); color: var(--green-700); }
+.amail-state--work { background: var(--primary-light); color: var(--primary); }
+.amail-state--bad { background: var(--red-100); color: var(--red-700); }
+.amail-state--muted { background: var(--bg-tertiary); color: var(--text-tertiary); }
+
+.amail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.amail-stats b { color: var(--text-primary); }
+
+.amail-muted { color: var(--text-tertiary); font-size: 12.5px; }
+
+.amail-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--red-50);
+  color: var(--red-700);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.amail-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.amail-cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.amail-cap.yes { background: var(--green-100); color: var(--green-700); }
+.amail-cap.no { background: var(--bg-tertiary); color: var(--text-tertiary); }
+
+.amail-test {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.amail-test.ok { background: var(--green-100); color: var(--green-700); }
+.amail-test.bad { background: var(--red-50); color: var(--red-700); }
+
+/* ── Кнопки ─────────────────────────────────────────────────────────────── */
+
+.amail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.amail-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.amail-btn:hover:not(:disabled) { background: var(--bg-hover); }
+.amail-btn:disabled { opacity: 0.6; cursor: default; }
+
+.amail-btn--primary {
+  background: var(--primary);
+  border-color: transparent;
+  color: #fff;
+}
+
+.amail-btn--primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+.amail-btn--danger { color: var(--red-600); }
+.amail-btn--danger:hover { background: var(--red-50); }
+
+.amail-btn--small { padding: 4px 10px; font-size: 12px; }
+
+.amail-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.amail-icon-btn:hover { background: var(--red-50); color: var(--red-600); }
+
+/* ── Доступы ────────────────────────────────────────────────────────────── */
+
+.amail-access {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+
+.amail-access__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.amail-access__head h4 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+.amail-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 13px;
+}
+
+.amail-person:last-child { border-bottom: none; }
+
+.amail-person__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.amail-person__name small {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.amail-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.amail-picker {
+  margin-bottom: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.amail-picker__search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+}
+
+.amail-picker__search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.amail-picker__list {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.amail-picker__list button {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.amail-picker__list button:hover { background: var(--bg-hover); }
+
+.amail-picker__list button small {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ── Журнал ─────────────────────────────────────────────────────────────── */
+
+.amail-audit {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.amail-audit__row {
+  display: grid;
+  grid-template-columns: 150px 150px 110px 1fr;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.amail-audit__when { color: var(--text-tertiary); }
+.amail-audit__what { color: var(--primary); font-weight: 600; }
+.amail-audit__detail {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 20px;
+  color: var(--text-tertiary);
+}
+
+.amail-spin { animation: amail-spin 1s linear infinite; }
+
+@keyframes amail-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 768px) {
+  .amail-head { flex-direction: column; }
+  .amail-card__head { flex-direction: column; }
+  .amail-person { flex-wrap: wrap; gap: 8px; }
+  .amail-audit__row { grid-template-columns: 1fr; gap: 2px; padding: 8px 0; }
+}

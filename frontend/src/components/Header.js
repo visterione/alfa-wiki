@@ -4,7 +4,7 @@ import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
   Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot, Newspaper,
-  ArrowLeft, KeyRound, Building2, Radio
+  ArrowLeft, KeyRound, Building2, Radio, Mail
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ShiftWidget from './openline/ShiftWidget';
@@ -508,6 +508,17 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                     <Link to="/admin/open-line" className="header-dropdown-item" data-icon-motion="settings" onClick={() => setShowDropdown(false)}>
                       <span className="header-dropdown-item-icon"><Radio size={17} /></span>
                       Открытая линия
+                    </Link>
+                  )}
+                  {/* Заведение почтовых ящиков и раздача доступа к ним
+                      (ver. 8.58). Это единственный вход в модуль для того, у
+                      кого ящиков ещё нет: кнопка «Почта» в панели быстрого
+                      доступа появляется только при наличии доступа хотя бы к
+                      одному ящику, а первый ящик нужно откуда-то завести. */}
+                  {(isAdmin || user?.adminAccess?.mail) && (
+                    <Link to="/admin/mail" className="header-dropdown-item" data-icon-motion="mail" onClick={() => setShowDropdown(false)}>
+                      <span className="header-dropdown-item-icon"><Mail size={17} /></span>
+                      Почтовые ящики
                     </Link>
                   )}
                   {(isAdmin || user?.adminAccess?.parser) && (

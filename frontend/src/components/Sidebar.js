@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, vacancies as vacanciesApi } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, vacancies as vacanciesApi, mail as mailApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -412,6 +412,34 @@ function QuickAccessButtons({ onClose }) {
     window.addEventListener('vacancies-changed', load);
     return () => { alive = false; window.removeEventListener('vacancies-changed', load); };
   }, []);
+
+  // Почта (ver. 8.58). Кнопку показываем только тем, у кого есть доступ хотя бы
+  // к одному ящику, и спрашиваем это у бэкенда по той же причине, что у
+  // вакансий: флага раздела нет, право выражено самой выдачей доступа к ящику.
+  // Заодно приходит и число непрочитанных — отдельного запроса ради значка не
+  // потребовалось.
+  const [canAccessMail, setCanAccessMail] = useState(false);
+  const [mailUnread, setMailUnread] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const { data } = await mailApi.accounts();
+        if (!alive) return;
+        const list = data.accounts || [];
+        // Ящиков нет — значит и раздела для человека нет. Показывать кнопку,
+        // которая ведёт на «доступа нет», незачем.
+        setCanAccessMail(list.length > 0);
+        setMailUnread(list.reduce((sum, account) => sum + (account.unread || 0), 0));
+      } catch {
+        if (alive) setCanAccessMail(false);
+      }
+    };
+    load();
+    window.addEventListener('mail-changed', load);
+    return () => { alive = false; window.removeEventListener('mail-changed', load); };
+  }, []);
   // Маркетинг (ver. 8.22) пришёл на место «Анонсов»: те стали его вкладкой.
   // Кнопка видна, если открыта хотя бы одна вкладка — модуль сам решит, какую
   // показать первой. Рассылки, отделившиеся от анонсов в 8.43, ходят под тем же
@@ -505,12 +533,13 @@ function QuickAccessButtons({ onClose }) {
    * доступа меняет вид кнопки, но не её наличие.
    */
   const FIXED_QUICK_BUTTONS = 11;
-  const quickButtons = FIXED_QUICK_BUTTONS + (canAccessVacancies ? 1 : 0);
+  const quickButtons = FIXED_QUICK_BUTTONS + (canAccessVacancies ? 1 : 0) + (canAccessMail ? 1 : 0);
   const placeholderSlots = Array.from(
     { length: (5 - (quickButtons % 5)) % 5 },
     (_, index) => index + 1
   );
   const isOnOpenLine = location.pathname.startsWith('/open-line');
+  const isOnMail = location.pathname.startsWith('/mail');
   const isOnMarketing = location.pathname.startsWith('/marketing');
 
   const handleClick = (path) => {
@@ -656,6 +685,25 @@ function QuickAccessButtons({ onClose }) {
           {vacanciesCount > 0 && (
             <span className="quick-access-badge">
               {vacanciesCount > 99 ? '99+' : vacanciesCount}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* Почта (ver. 8.58). Без замка, в отличие от соседей: замок означает
+          «раздел есть, но тебе не открыт», а здесь раздела у человека просто
+          нет — ящик ему не выдали, и знать о чужой почте ему незачем. */}
+      {canAccessMail && (
+        <button
+          className={`quick-access-btn mail ${isOnMail ? 'active' : ''}`}
+          data-icon-motion="mail"
+          onClick={() => handleClick('/mail')}
+          title="Почта"
+        >
+          <Mail size={20} />
+          {mailUnread > 0 && (
+            <span className="quick-access-badge">
+              {mailUnread > 99 ? '99+' : mailUnread}
             </span>
           )}
         </button>

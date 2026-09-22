@@ -1557,3 +1557,86 @@ export const notifications = {
   // каждого медцентра своя учётная запись и свой API-ключ.
   checkImobis: (medCenterId) => api.get(`/notifications/branches/${medCenterId}/imobis`)
 };
+
+// ── Почта (ver. 8.58) ──────────────────────────────────────────────────────
+//
+// Зеркало IMAP-ящиков сети. Ящики заводит администратор, человек получает
+// доступ к готовому — своих паролей здесь никто не вводит.
+export const mail = {
+  // Ящики, к которым есть доступ, вместе с непрочитанными по каждому.
+  accounts: () => api.get('/mail/accounts'),
+  folders: (accountId) => api.get(`/mail/accounts/${accountId}/folders`),
+
+  // Без accountId ищет по всем доступным ящикам сразу — человеку с пятью
+  // ящиками это главное удобство.
+  messages: (params) => api.get('/mail/messages', { params }),
+  message: (id) => api.get(`/mail/messages/${id}`),
+  // Остальные письма той же переписки. Собираются по всем доступным ящикам:
+  // письмо ушло с одного адреса, ответ пришёл на другой — для человека это одна
+  // история, хотя для IMAP два разных ящика.
+  thread: (id) => api.get(`/mail/messages/${id}/thread`),
+
+  // Настоящий поиск по зеркалу. Без accountId ищет сразу по всем доступным
+  // ящикам — в IMAP такого запроса не существует в принципе, там поиск живёт
+  // внутри одной папки одного ящика, и ровно ради этого модуль и затевался.
+  search: (params) => api.get('/mail/search', { params }),
+  // Только разбор строки, без обращения к письмам: подсказка под полем должна
+  // показывать, что поиск понял, пока человек ещё печатает.
+  parseQuery: (q) => api.get('/mail/search/parse', { params: { q } }),
+
+  // Черновики. Ответ и пересылка заполняются на сервере: получатели, тема с
+  // приставкой и цитата должны выглядеть одинаково у всех, а не так, как сумел
+  // собрать конкретный браузер.
+  drafts: () => api.get('/mail/drafts'),
+  createDraft: (data) => api.post('/mail/drafts', data),
+  saveDraft: (id, data) => api.put(`/mail/drafts/${id}`, data),
+  removeDraft: (id) => api.delete(`/mail/drafts/${id}`),
+  sendDraft: (id) => api.post(`/mail/drafts/${id}/send`),
+  // Суточный предел отправки: у reg.ru он общий с модулем рассылок, и упереться
+  // в него значит остаться без исходящей почты до утра.
+  quota: (accountId) => api.get('/mail/quota', { params: { accountId } }),
+
+  attachToDraft: (id, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    // Заголовок обязателен, хотя границу multipart проставляет браузер: у
+    // нашего экземпляра axios по умолчанию стоит application/json, и с ним
+    // FormData уехала бы пустым объектом.
+    return api.post(`/mail/drafts/${id}/attachments`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  detachFromDraft: (id, attachmentId) => api.delete(`/mail/drafts/${id}/attachments/${attachmentId}`),
+
+  savedSearches: () => api.get('/mail/saved-searches'),
+  saveSearch: (data) => api.post('/mail/saved-searches', data),
+  removeSearch: (id) => api.delete(`/mail/saved-searches/${id}`),
+
+  // Отметка уходит на сервер через очередь, а не сразу: соединений с reg.ru
+  // мало, и ждать свободного внутри запроса значит подвесить интерфейс.
+  setFlag: (id, op) => api.post(`/mail/messages/${id}/flags`, { op }),
+  setTaken: (id, taken) => api.post(`/mail/messages/${id}/taken`, { taken }),
+
+  // Удаление настоящее: письмо уезжает в «Корзину» на reg.ru и пропадает у всех,
+  // включая тех, кто работает через Roundcube. Отдельное право, отдельный
+  // вопрос человеку и запись в журнале.
+  removeMessage: (id) => api.delete(`/mail/messages/${id}`),
+
+  attachmentUrl: (messageId, attachmentId) =>
+    `${api.defaults.baseURL}/mail/messages/${messageId}/attachments/${attachmentId}`,
+
+  admin: {
+    accounts: () => api.get('/mail/admin/accounts'),
+    create: (data) => api.post('/mail/admin/accounts', data),
+    update: (id, data) => api.put(`/mail/admin/accounts/${id}`, data),
+    remove: (id) => api.delete(`/mail/admin/accounts/${id}`),
+    // Проверка отвечает 200 и при отказе сервера: опечатка в пароле — это
+    // рабочий ответ формы, а не сбой портала, и админу надо видеть, какой
+    // именно отказ пришёл от reg.ru.
+    test: (id) => api.post(`/mail/admin/accounts/${id}/test`),
+    sync: (id) => api.post(`/mail/admin/accounts/${id}/sync`),
+    grant: (id, data) => api.post(`/mail/admin/accounts/${id}/access`, data),
+    revoke: (id, userId) => api.delete(`/mail/admin/accounts/${id}/access/${userId}`),
+    audit: (params) => api.get('/mail/admin/audit', { params })
+  }
+};

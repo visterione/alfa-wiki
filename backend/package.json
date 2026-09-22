@@ -191,7 +191,11 @@
     "migrate:8.52:check": "node scripts/runSqlMigration.js 8.52 --check",
     "migrate:8.55": "node scripts/runSqlMigration.js 8.55",
     "migrate:8.56": "node scripts/migrateReviewBoardsPerMedCenter.js",
-    "migrate:8.56:check": "node scripts/migrateReviewBoardsPerMedCenter.js --check"
+    "migrate:8.56:check": "node scripts/migrateReviewBoardsPerMedCenter.js --check",
+    "migrate:8.58": "node scripts/runSqlMigration.js 8.58",
+    "migrate:8.58:check": "node scripts/runSqlMigration.js 8.58 --check",
+    "mail:sync": "node scripts/mailSync.js",
+    "mail:account": "node scripts/mailAccount.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
@@ -207,12 +211,15 @@
     "express-validator": "^7.0.1",
     "firebase-admin": "^14.2.0",
     "helmet": "^7.1.0",
+    "imapflow": "^2.0.5",
     "jsonwebtoken": "^9.0.2",
+    "mailparser": "^3.9.28",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
     "node-telegram-bot-api": "^0.67.0",
     "nodemailer": "^7.0.12",
+    "pdf-parse": "^1.1.4",
     "pdfkit": "^0.17.2",
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",

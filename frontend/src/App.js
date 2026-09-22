@@ -22,6 +22,7 @@ const VacancyStart = lazy(() => import('./pages/Vacancy/VacancyStart'));
 const VacancyForm = lazy(() => import('./pages/Vacancy/VacancyForm'));
 const VacancyServices = lazy(() => import('./pages/Vacancy/VacancyServices'));
 const OpenLine = lazy(() => import('./pages/OpenLine'));
+const Mail = lazy(() => import('./pages/Mail'));
 // Публичные страницы анкеты: их открывает врач, у которого нет и не будет
 // аккаунта в портале.
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
@@ -54,6 +55,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const WhatsNew = lazy(() => import('./pages/WhatsNew'));
 const AdminReleaseNotes = lazy(() => import('./pages/admin/AdminReleaseNotes'));
 const AdminOpenLine = lazy(() => import('./pages/admin/AdminOpenLine'));
+const AdminMail = lazy(() => import('./pages/admin/AdminMail'));
 const Marketing = lazy(() => import('./pages/Marketing'));
 const Warehouse = lazy(() => import('./pages/warehouse/Warehouse'));
 // Публичные карточки по QR грузятся отдельным чанком: их открывают с телефона по
@@ -203,6 +205,23 @@ function AppRoutes() {
             там делать нечего, и один промах мимо вкладки уводил его туда. */}
         <Route path="admin/open-line" element={
           <ProtectedRoute requireAdminAccess="openLineAdmin"><AdminOpenLine /></ProtectedRoute>
+        } />
+
+        {/* Почта (ver. 8.58): почтовый клиент для общих ящиков сети.
+
+            Права здесь не флаг раздела, в отличие от соседей. Видит ли человек
+            почту, решает наличие доступа хотя бы к одному ящику
+            (mail_account_users) — доступ к ящику и есть право. Флаг mail
+            открывает другое: заведение ящиков и раздачу доступов, и живёт он на
+            соседнем маршруте. Два места настройки одного и того же неизбежно
+            разошлись бы, а разойтись им тут особенно некстати: в ящиках
+            переписка с пациентами. */}
+        <Route path="mail" element={
+          <ProtectedRoute><Mail /></ProtectedRoute>
+        } />
+
+        <Route path="admin/mail" element={
+          <ProtectedRoute requireAdminAccess="mail"><AdminMail /></ProtectedRoute>
         } />
 
         {/* Маркетинг (ver. 8.22): акции, карта рекламных площадок и анонсы.
