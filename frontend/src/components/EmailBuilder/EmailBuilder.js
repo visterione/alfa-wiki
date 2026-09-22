@@ -988,14 +988,6 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
         {preview.loading && <div className="eb-preview-loading"><Loader2 size={18} className="eb-spin" /> Собираем письмо…</div>}
         <iframe title="Предпросмотр письма" srcDoc={previewHtml} sandbox="" />
       </div>
-      {theme === 'dark' && (
-        <p className="eb-preview-note">
-          Так письмо перекрасит почта с тёмной темой. Вид приблизительный: Gmail,
-          Outlook и Apple&nbsp;Mail делают это каждый по-своему, и ни один не
-          спрашивает отправителя. Картинки не перекрашиваются — ни здесь, ни у
-          получателя.
-        </p>
-      )}
     </div>
   );
 
@@ -1033,16 +1025,20 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
         <button type="button" className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')} title="Светлая тема почты"><Sun size={14} /></button>
         <button type="button" className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')} title="Тёмная тема почты — так письмо перекрасит Gmail"><Moon size={14} /></button>
       </div>
+      {/*
+        Иконкой, без подписи и без счётчика макетов: строка инструментов и так
+        длинная, а «3 из 4» человеку ничего не решает — он всё равно ждёт файл.
+        Что кнопка делает, говорит подсказка; что она занята — вращение.
+      */}
       <button
         type="button"
-        className="eb-btn eb-btn-slim"
+        className="eb-icon-btn"
         disabled={pdfStep !== null || preview.loading || !preview.html}
         onClick={downloadLayouts}
-        title="Скачать PDF с четырьмя макетами: компьютер и телефон, светлая тема и тёмная"
+        title="Скачать PDF с четырьмя макетами письма: компьютер и телефон, светлая тема и тёмная"
+        aria-label="Скачать PDF с макетами письма"
       >
-        {pdfStep !== null
-          ? <><Loader2 size={14} className="eb-spin" /> Макет… {pdfStep}/4</>
-          : <><FileDown size={14} /> Макет в PDF</>}
+        {pdfStep !== null ? <Loader2 size={15} className="eb-spin" /> : <FileDown size={15} />}
       </button>
       {visibleWarnings.length > 0 && (
         <button

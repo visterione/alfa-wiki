@@ -35,6 +35,17 @@
 .email-toolbar-right .btn { padding: 6px 12px; font-size: 13px; }
 .email-toolbar-right .btn.active { background: var(--primary-light); color: var(--primary); }
 
+/* Кнопка без подписи. Квадрат, а не приплюснутый прямоугольник: рядом с ней
+   стоят иконки конструктора того же размера, и разнобой высот читается как
+   съехавшая вёрстка. */
+.email-toolbar-right .btn-icon-only {
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  gap: 0;
+}
+
 /* Отправка с выбором времени: одна кнопка вместо переключателя «Сейчас / По
    времени» и отдельного поля даты, которые занимали полполосы всегда, хотя
    нужны раз в письмо. */

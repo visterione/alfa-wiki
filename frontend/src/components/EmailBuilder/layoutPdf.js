@@ -5,75 +5,104 @@
  *
  * Согласование письма до этого выглядело так: отправить его себе, открыть в
  * приложении почты, сделать снимок экрана и переслать коллеге. В снимке едет
- * шапка Gmail, адрес отправителя, кнопки ответа — всё, кроме того, что надо
+ * шапка Gmail, адрес отправителя и кнопки ответа — всё, кроме того, что надо
  * посмотреть, и ровно в одном виде из четырёх. Здесь письмо выгружается как
- * есть: четыре макета (компьютер и телефон, светлая тема и тёмная) в одном
- * файле, который можно отправить на проверку и получить «да» или «нет».
+ * есть: четыре макета (компьютер и телефон, светлая тема и тёмная), каждый на
+ * своём листе целиком, без разрывов.
  *
- * ── Почему снимок, а не вёрстка PDF ──────────────────────────────────────────
+ * ── Чем рисуется ────────────────────────────────────────────────────────────
  *
- * Письмо рисуется браузером из того же HTML, который уйдёт получателям, и
- * снимается как картинка. Собирать PDF из документа конструктора значило бы
- * завести ТРЕТИЙ способ превратить письмо в изображение (после рендерера и
- * холста) — и однажды согласовать одно, а отправить другое.
+ * Письмо заворачивается в SVG (foreignObject) и рисуется на холст как картинка.
+ * Разметку при этом раскладывает сам браузер — тот же движок, что показывает
+ * предпросмотр, — поэтому текст, переносы и межсловные пробелы в PDF ровно
+ * такие же, как на экране.
  *
- * ── Почему страницы режутся, а не ужимаются ──────────────────────────────────
+ * Первая попытка была на html2canvas, и от неё пришлось отказаться: он
+ * раскладывает текст средствами DOM, а РИСУЕТ его вызовами canvas.fillText по
+ * отдельным словам. Как только в письме появляется веб-шрифт, ширины при
+ * раскладке и при отрисовке расходятся, слова уезжают, знаки препинания
+ * отрываются от слов, и письмо в PDF выглядит рассыпавшимся. У foreignObject
+ * этой развилки нет: раскладка и отрисовка — один и тот же проход браузера.
  *
- * Письмо высокое: полторы-две тысячи пикселей обычное дело. Вписать такую
- * ленту в один лист A4 можно, но читать в ней будет нечего — текст станет
- * мельче типографской точки. Поэтому масштаб фиксированный (лист держит
- * привычные 600px ширины письма), а то, что не поместилось, переносится на
- * следующую страницу. Лист с подписью «(2 из 3)» понятнее листа с лупой.
+ * Плата за это — автономность. Внутрь SVG-картинки браузер не пускает ни одной
+ * внешней ссылки, поэтому и картинки письма, и гарнитуры приходится сначала
+ * скачать и вшить в документ (inlineImages и collectFontCss ниже).
+ *
+ * ── Почему один макет = один лист ───────────────────────────────────────────
+ *
+ * Лист с подписью «2 из 3» читается как испорченный файл: человек, которому его
+ * прислали на согласование, видит письмо разорванным пополам и первым делом
+ * спрашивает, что сломалось. Поэтому макет вписывается в лист целиком, а
+ * ориентация листа выбирается та, при которой он выйдет крупнее: высокому
+ * письму лучше книжная, широкому и короткому — альбомная.
  */
 
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
-import html2canvas from 'html2canvas';
 
 pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts;
 
-// Лист A4 в пунктах и поля. Ширина содержимого — то, во что укладывается
-// письмо шириной 600px; из их отношения и берётся единый масштаб всех снимков.
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-const MARGIN = 28;
-const CONTENT_W = PAGE_W - MARGIN * 2;
-const CAPTION_H = 26;
-const CONTENT_H = PAGE_H - MARGIN * 2 - CAPTION_H;
+// Лист A4 в пунктах, поля и место под подпись макета.
+const A4_W = 595.28;
+const A4_H = 841.89;
+const MARGIN = 24;
+const CAPTION = 24;
 
-// Пунктов на пиксель письма. Один на все четыре макета: иначе телефонная
-// версия, вписанная в ту же ширину листа, оказывалась бы увеличенной втрое, и
-// сравнить её с компьютерной было бы не с чем.
-const PT_PER_PX = CONTENT_W / 600;
-
-// Плотность снимка. Двойная — это ровно тот запас, с которым текст письма
-// остаётся чётким при печати и при увеличении на экране; тройная утраивает вес
-// файла ради разницы, которую видно только в лупу.
+// Плотность снимка. Двойная — запас, с которым текст остаётся чётким при
+// увеличении на экране и при печати; тройная утраивает вес файла ради разницы,
+// заметной только в лупу.
 const SCALE = 2;
 
+/*
+  Ширина макетов. 700 для компьютера, а не 600: письмо держит свои 600px, но
+  вокруг него видна полоса фона — именно по ней видно, что тёмная шапка идёт от
+  края до края. 390 — ширина обычного телефона, на ней срабатывает медиазапрос,
+  складывающий колонки в столбик.
+*/
 const LAYOUTS = [
-  { device: 'desktop', theme: 'light', width: 700, label: 'Компьютер · светлая тема' },
-  { device: 'desktop', theme: 'dark', width: 700, label: 'Компьютер · тёмная тема' },
-  { device: 'mobile', theme: 'light', width: 390, label: 'Телефон · светлая тема' },
-  { device: 'mobile', theme: 'dark', width: 390, label: 'Телефон · тёмная тема' },
+  { width: 700, theme: 'light', label: 'Компьютер · светлая тема' },
+  { width: 700, theme: 'dark', label: 'Компьютер · тёмная тема' },
+  { width: 390, theme: 'light', label: 'Телефон · светлая тема' },
+  { width: 390, theme: 'dark', label: 'Телефон · тёмная тема' },
 ];
 
 /**
- * Картинки письма — внутрь снимка, а не ссылкой.
+ * Ожидание с предохранителем.
  *
- * Картинки в письме лежат по адресу портала (PUBLIC_BASE_URL), и для страницы
- * конструктора это чужой источник: на бою совпадает домен, но не всегда порт, а
- * в разработке фронтенд стоит на 9000, бэкенд на 9001. Холст, в который попала
- * картинка с чужого источника, браузер помечает «испорченным» и больше не даёт
- * прочитать — снимок из него не достать. html2canvas в таком случае просто
- * пропускает картинку, и в PDF на её месте оказывается пустота: согласовывать
- * такой макет нельзя, а понять, почему он пустой, невозможно.
+ * Все ожидания здесь — чужие обещания: загрузка гарнитуры, декодирование
+ * картинки, следующий кадр отрисовки. Любое из них может не наступить никогда
+ * (заблокированный шрифт, битый файл, вкладка в фоне), а зависшая навсегда
+ * выгрузка выглядит для человека как сломанная кнопка. Предел ожидания
+ * превращает это в «нарисовали, как успели», что всегда лучше.
+ */
+const within = (promise, ms) => Promise.race([
+  Promise.resolve(promise).catch(() => {}),
+  new Promise(resolve => setTimeout(resolve, ms)),
+]);
+
+/** Следующий кадр отрисовки — но не дольше, чем ms. */
+const nextFrame = (ms = 1000) => new Promise((resolve) => {
+  const done = () => resolve();
+  const timer = setTimeout(done, ms);
+  requestAnimationFrame(() => { clearTimeout(timer); done(); });
+});
+
+const dataUrlOf = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
+/**
+ * Картинки письма — внутрь документа, а не ссылкой.
  *
- * Поэтому картинки заранее скачиваются и подставляются в письмо как data:-URI.
- * Запрос идёт тем же способом, каким страница ходит в API, и /uploads отвечает
- * с нужными заголовками (cors в server.js стоит раньше раздачи файлов). Что не
- * скачалось — оставляем ссылкой: пустое место в одном макете лучше, чем
- * несобравшийся файл.
+ * Внутри SVG-картинки внешние ссылки не работают вовсе: браузер не пустит
+ * запрос наружу, и на месте фотографий окажется пустота. Поэтому файлы
+ * скачиваются заранее и подставляются как data:-URI.
+ *
+ * Что не скачалось — оставляем ссылкой. Пустое место на одном макете лучше,
+ * чем несобравшийся файл.
  */
 async function inlineImages(html) {
   const urls = new Set();
@@ -86,120 +115,177 @@ async function inlineImages(html) {
       // В атрибуте адрес экранирован (&amp;), а скачивать надо настоящий.
       const response = await fetch(raw.replace(/&amp;/g, '&'), { mode: 'cors', credentials: 'omit' });
       if (!response.ok) return null;
-      const blob = await response.blob();
-      const data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      return [raw, data];
+      return [raw, await dataUrlOf(await response.blob())];
     } catch {
       return null;
     }
   }));
 
   let out = html;
-  pairs.filter(Boolean).forEach(([raw, data]) => {
-    out = out.split(raw).join(data);
-  });
+  pairs.filter(Boolean).forEach(([raw, data]) => { out = out.split(raw).join(data); });
   return out;
 }
 
 /**
- * Ждём, пока письмо действительно нарисовано.
+ * Гарнитуры письма — тоже внутрь документа.
  *
- * `load` у iframe срабатывает раньше, чем доезжают картинки с портала, и снимок
- * без ожидания получается с пустыми рамками вместо фотографий. `decode()`
- * вместо события `load` — он честно отвечает и по уже загруженной картинке,
- * тогда как обработчик `load` на ней уже никогда не позовут.
+ * Письмо подключает веб-шрифты ссылкой на Google Fonts, а внутри SVG эта ссылка
+ * мертва. Забираем таблицу стилей (она отдаётся с разрешающим заголовком), а из
+ * неё — сами файлы гарнитур, и вшиваем их в документ как data:-URI.
+ *
+ * Если не получилось — не беда: письмо нарисуется запасным шрифтом из того же
+ * стека. Получатели Gmail и Outlook увидят ровно его же, потому что веб-шрифты
+ * эти клиенты вырезают.
  */
-async function waitForPaint(doc) {
-  const images = [...doc.images];
-  await Promise.all(images.map(img => (
-    img.decode ? img.decode().catch(() => {}) : Promise.resolve()
-  )));
-  if (doc.fonts?.ready) await doc.fonts.ready.catch(() => {});
-  // Два кадра: первый отдаёт браузеру перерисовку после загрузки картинок,
-  // второй гарантирует, что она уже случилась.
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+async function collectFontCss(html) {
+  const hrefs = [...html.matchAll(/<link[^>]+href="(https:\/\/fonts\.googleapis\.com[^"]+)"/gi)]
+    .map(m => m[1].replace(/&amp;/g, '&'));
+  if (!hrefs.length) return '';
+
+  const sheets = await Promise.all(hrefs.map(async (href) => {
+    try {
+      const response = await fetch(href);
+      if (!response.ok) return '';
+      let css = await response.text();
+      const files = [...css.matchAll(/url\((https:\/\/fonts\.gstatic\.com[^)]+)\)/g)].map(m => m[1]);
+      const inlined = await Promise.all(files.map(async (url) => {
+        try {
+          const file = await fetch(url);
+          return file.ok ? [url, await dataUrlOf(await file.blob())] : null;
+        } catch {
+          return null;
+        }
+      }));
+      inlined.filter(Boolean).forEach(([url, data]) => { css = css.split(url).join(data); });
+      // Начертания, которые скачать не удалось, выкидываем: ссылка на gstatic
+      // внутри SVG всё равно не сработает, а @font-face с мёртвым адресом
+      // заставляет браузер ждать его впустую.
+      return css.replace(/@font-face\s*{[^}]*fonts\.gstatic\.com[^}]*}/g, '');
+    } catch {
+      return '';
+    }
+  }));
+
+  return sheets.join('\n');
 }
 
 /**
- * Один макет → canvas.
+ * Высота письма при заданной ширине.
  *
- * Письмо рисуется в настоящем iframe нужной ширины, а не в блоке на странице:
- * складывание колонок в столбик на телефоне держится на медиазапросе, а он
- * считается от ширины окна. В блоке внутри страницы окно осталось бы
- * компьютерным, и «телефонный» макет вышел бы таким же, как обычный.
+ * Меряем в настоящем iframe, а не в блоке на странице: складывание колонок в
+ * столбик на телефоне держится на медиазапросе, а он считается от ширины окна.
+ * В блоке внутри страницы окно осталось бы компьютерным, и «телефонный» макет
+ * вышел бы таким же, как обычный.
  */
-async function captureLayout(html, width) {
+async function measure(html, width) {
   const frame = document.createElement('iframe');
-  // Уводим за пределы экрана, но не прячем display:none и не сворачиваем в
-  // нулевой размер: невидимый элемент браузер не раскладывает, и снимать было
-  // бы нечего.
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = `position:fixed;left:-10000px;top:0;border:0;width:${width}px;height:600px;`;
   document.body.appendChild(frame);
-
   try {
-    await new Promise((resolve) => {
+    await within(new Promise((resolve) => {
       frame.addEventListener('load', resolve, { once: true });
       frame.srcdoc = html;
-    });
-
+    }), 15000);
     const doc = frame.contentDocument;
-    await waitForPaint(doc);
+    // `load` срабатывает раньше, чем доезжают картинки, а без них высота
+    // письма получается меньше настоящей и низ макета обрежется.
+    await within(Promise.all([...doc.images].map(img => (
+      img.decode ? img.decode().catch(() => {}) : Promise.resolve()
+    ))), 15000);
+    if (doc.fonts?.ready) await within(doc.fonts.ready, 8000);
+    await nextFrame();
+    await nextFrame();
 
-    const height = Math.max(
-      doc.documentElement.scrollHeight,
-      doc.body.scrollHeight,
-      600,
-    );
-    frame.style.height = `${height}px`;
-    await new Promise(r => requestAnimationFrame(r));
-
-    return await html2canvas(doc.documentElement, {
-      backgroundColor: getComputedStyle(doc.body).backgroundColor || '#ffffff',
-      scale: SCALE,
-      width,
-      height,
-      // Клон, в котором html2canvas рисует, получает ровно те же размеры окна —
-      // иначе медиазапрос в нём пересчитается на другую ширину, и снимок
-      // разойдётся с тем, что видно в предпросмотре.
-      windowWidth: width,
-      windowHeight: height,
-      useCORS: true,
-      logging: false,
-      imageTimeout: 20000,
-    });
+    return {
+      height: Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight, 200),
+      background: getComputedStyle(doc.body).backgroundColor || '#ffffff',
+    };
   } finally {
     frame.remove();
   }
 }
 
-/** Вырезает из снимка кусок высотой в страницу и отдаёт его как PNG. */
-function slice(canvas, fromPx, heightPx) {
-  const cut = document.createElement('canvas');
-  cut.width = canvas.width;
-  cut.height = Math.round(heightPx * SCALE);
-  // Последний кусок берём ровно по остатку письма, а не по высоте страницы:
-  // добор до полного листа дал бы прозрачную полосу, которая в PDF печатается
-  // белой и в тёмном макете читается как обрыв письма.
-  const ctx = cut.getContext('2d');
-  ctx.drawImage(
-    canvas,
-    0, Math.round(fromPx * SCALE), canvas.width, cut.height,
-    0, 0, canvas.width, cut.height,
-  );
-  try {
-    return cut.toDataURL('image/png');
-  } catch (error) {
-    // Холст «испорчен» картинкой с чужого источника, которую не удалось
-    // скачать заранее. Сообщение важнее самого сбоя: без него человек видит
-    // невнятную SecurityError и не понимает, что чинить.
-    throw new Error('В письме есть картинка с чужого адреса — снимок из браузера её не пропускает. Загрузите её в письмо через конструктор.');
-  }
+/**
+ * Письмо → самодостаточный SVG.
+ *
+ * Разметка пересобирается через DOMParser и XMLSerializer, а не склеивается
+ * строками: внутри SVG действуют правила XML, и незакрытый <meta> или <br> из
+ * обычного HTML ломает картинку целиком, без объяснений.
+ */
+function buildSvg(html, width, height, fontCss) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+
+  const css = [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n');
+  doc.querySelectorAll('style, link, script, title, meta, base').forEach(n => n.remove());
+
+  // Условные комментарии для Outlook в XML недопустимы и браузеру не нужны:
+  // всё, что внутри них, он и так не показывает.
+  const comments = doc.createTreeWalker(doc.documentElement, NodeFilter.SHOW_COMMENT);
+  const trash = [];
+  while (comments.nextNode()) trash.push(comments.currentNode);
+  trash.forEach(n => n.remove());
+
+  const wrap = doc.createElement('div');
+  wrap.setAttribute('style', `${doc.body.getAttribute('style') || ''};width:${width}px;`);
+  while (doc.body.firstChild) wrap.appendChild(doc.body.firstChild);
+  wrap.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+
+  const body = new XMLSerializer().serializeToString(wrap);
+  const styles = `${fontCss}\n${css}`.replace(/]]>/g, ']]&gt;');
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`
+    + `<foreignObject x="0" y="0" width="${width}" height="${height}">`
+    + `<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[${styles}]]></style>`
+    + body
+    + '</foreignObject></svg>';
+}
+
+/** SVG → PNG нужной плотности. */
+async function rasterize(svg, width, height, background) {
+  const image = new Image();
+  image.width = width;
+  image.height = height;
+  let failed = false;
+  await within(new Promise((resolve) => {
+    image.onload = resolve;
+    image.onerror = () => { failed = true; resolve(); };
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }), 20000);
+  // Браузер отказался разбирать SVG — чаще всего из-за разметки, которую не
+  // принял XML. Молча отдать пустой лист нельзя: человек отправит его на
+  // согласование и не поймёт, что смотрит в пустоту.
+  if (failed || !image.complete) throw new Error('Браузер не смог нарисовать письмо для PDF');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(width * SCALE);
+  canvas.height = Math.round(height * SCALE);
+  const ctx = canvas.getContext('2d');
+  // Подложка нужна: прозрачные места в PDF печатаются белым, и у тёмного
+  // макета поля вокруг письма оказались бы светлыми.
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(SCALE, SCALE);
+  ctx.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL('image/png');
+}
+
+/**
+ * Ориентация листа под конкретный макет.
+ *
+ * Не по типу устройства, а по пропорции: у высокого письма альбомный лист
+ * отнимает высоту, и макет на нём выходит в полтора раза мельче, чем на
+ * книжном. Выбираем ту ориентацию, при которой письмо окажется крупнее, —
+ * ради этого всё и делается.
+ */
+function fitPage(widthPx, heightPx) {
+  const box = (pw, ph) => [pw - MARGIN * 2, ph - MARGIN * 2 - CAPTION];
+  const portrait = box(A4_W, A4_H);
+  const landscape = box(A4_H, A4_W);
+  const scaleOf = ([w, h]) => Math.min(w / widthPx, h / heightPx);
+  return scaleOf(landscape) > scaleOf(portrait)
+    ? { orientation: 'landscape', fit: landscape }
+    : { orientation: 'portrait', fit: portrait };
 }
 
 /**
@@ -208,21 +294,24 @@ function slice(canvas, fromPx, heightPx) {
  * @param {object}   params
  * @param {string}   params.html      светлое письмо (готовый HTML из предпросмотра)
  * @param {string}   params.htmlDark  оно же, перекрашенное под тёмную тему почты
- * @param {string}   params.subject   тема — она же заголовок файла
+ * @param {string}   params.subject   тема — она же имя файла
  * @param {function} params.onStep    отчёт о ходе: (готово, всего)
  */
 export async function exportLayoutsPdf({ html, htmlDark, subject = '', onStep }) {
   if (!html) throw new Error('Письмо ещё не собрано');
 
-  const content = [];
   const title = subject.trim() || 'Письмо без темы';
 
-  // Скачиваем картинки один раз на оба вида: тёмная тема меняет только цвета,
-  // адреса картинок в ней те же.
-  const [light, night] = await Promise.all([
+  // Картинки и гарнитуры скачиваем по одному разу на всю выгрузку: у тёмной
+  // темы те же адреса, она меняет только цвета.
+  const [light, night, fontCss] = await Promise.all([
     inlineImages(html),
     inlineImages(htmlDark || html),
+    collectFontCss(html),
   ]);
+
+  const content = [];
+  let firstOrientation = 'portrait';
 
   for (let i = 0; i < LAYOUTS.length; i += 1) {
     const layout = LAYOUTS[i];
@@ -230,26 +319,20 @@ export async function exportLayoutsPdf({ html, htmlDark, subject = '', onStep })
 
     const source = layout.theme === 'dark' ? night : light;
     // eslint-disable-next-line no-await-in-loop
-    const canvas = await captureLayout(source, layout.width);
+    const { height, background } = await measure(source, layout.width);
+    const svg = buildSvg(source, layout.width, height, fontCss);
+    // eslint-disable-next-line no-await-in-loop
+    const png = await rasterize(svg, layout.width, height, background);
 
-    const cssHeight = canvas.height / SCALE;
-    const pageHeightPx = CONTENT_H / PT_PER_PX;
-    const pages = Math.max(1, Math.ceil(cssHeight / pageHeightPx));
+    const page = fitPage(layout.width, height);
+    if (i === 0) firstOrientation = page.orientation;
 
-    for (let p = 0; p < pages; p += 1) {
-      const from = p * pageHeightPx;
-      const piece = Math.min(pageHeightPx, cssHeight - from);
-      content.push({
-        text: pages > 1 ? `${layout.label} · ${p + 1} из ${pages}` : layout.label,
-        style: 'caption',
-        pageBreak: content.length ? 'before' : undefined,
-      });
-      content.push({
-        image: slice(canvas, from, piece),
-        width: layout.width * PT_PER_PX,
-        alignment: 'center',
-      });
-    }
+    content.push({
+      text: layout.label,
+      style: 'caption',
+      ...(i === 0 ? {} : { pageBreak: 'before', pageOrientation: page.orientation }),
+    });
+    content.push({ image: png, fit: page.fit, alignment: 'center' });
   }
 
   onStep?.(LAYOUTS.length, LAYOUTS.length);
@@ -260,12 +343,11 @@ export async function exportLayoutsPdf({ html, htmlDark, subject = '', onStep })
 
   const doc = {
     pageSize: 'A4',
+    pageOrientation: firstOrientation,
     pageMargins: [MARGIN, MARGIN, MARGIN, MARGIN],
     info: { title: `Макет письма — ${title}` },
     content,
-    styles: {
-      caption: { fontSize: 9, color: '#8E8E93', margin: [0, 0, 0, 8] },
-    },
+    styles: { caption: { fontSize: 9, color: '#8E8E93', margin: [0, 0, 0, 8] } },
     defaultStyle: { font: 'Roboto', fontSize: 9 },
     footer: (page, total) => ({
       columns: [
@@ -292,5 +374,3 @@ export async function exportLayoutsPdf({ html, htmlDark, subject = '', onStep })
     }
   });
 }
-
-export const LAYOUT_COUNT = LAYOUTS.length;

@@ -428,18 +428,6 @@
    тёмного письма читается как поле письма, которого там нет. */
 .eb-preview-frame.dark iframe { background: #141414; }
 
-/* Оговорка под тёмным макетом. Стоит именно под ним, а не в подсказке кнопки:
-   человек смотрит на перекрашенное письмо и должен тут же знать, что это
-   приближение, а не снимок из Gmail. */
-.eb-preview-note {
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-tertiary);
-  background: var(--bg-tertiary, var(--bg-secondary));
-  border-radius: var(--radius-sm, 8px);
-}
 
 .eb-preview-loading {
   position: absolute;

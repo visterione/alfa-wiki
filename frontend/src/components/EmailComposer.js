@@ -1002,8 +1002,18 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
 
         <div className="email-toolbar-right">
           <div className="email-templates-dropdown" ref={templatesRef}>
-            <button className={`btn btn-ghost ${showTemplates ? 'active' : ''}`} onClick={() => setShowTemplates(v => !v)}>
-              <LayoutTemplate size={15} /> Шаблоны
+            {/*
+              Кнопки панели — иконками. Слов в строке инструментов набралось
+              столько, что до кнопки «Отправить» приходилось читать всю полосу;
+              иконка узнаётся быстрее, а что она делает, говорит подсказка.
+            */}
+            <button
+              className={`btn btn-ghost btn-icon-only ${showTemplates ? 'active' : ''}`}
+              onClick={() => setShowTemplates(v => !v)}
+              title="Шаблоны и заготовки писем"
+              aria-label="Шаблоны и заготовки писем"
+            >
+              <LayoutTemplate size={16} />
             </button>
               {showTemplates && (
                 <div className="email-templates-list">
@@ -1105,8 +1115,13 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
               )}
           </div>
           {versions.length > 0 && (
-            <button className="btn btn-ghost" onClick={() => setShowVersions(true)}>
-              <History size={15} /> Версии · {versions.length}
+            <button
+              className="btn btn-ghost btn-icon-only"
+              onClick={() => setShowVersions(true)}
+              title={`Версии письма · ${versions.length}`}
+              aria-label={`Версии письма, всего ${versions.length}`}
+            >
+              <History size={16} />
             </button>
           )}
           <div className="email-send" ref={sendMenuRef}>

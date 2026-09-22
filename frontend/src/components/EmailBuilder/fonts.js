@@ -50,7 +50,15 @@ export const ensureWebFont = (key) => {
   document.head.appendChild(link);
 };
 
-/** Собирает шрифты, которыми пользуется документ, и подгружает их разом. */
+/**
+ * Собирает шрифты, которыми пользуется документ, и подгружает их разом.
+ *
+ * Обходит обе раскладки документа. Со второй версии (ver. 8.43) блоки лежат в
+ * секциях и колонках, а плоский design.blocks остался только у писем первой
+ * версии. Пока обход шёл по одному design.blocks, шрифт, назначенный ОТДЕЛЬНОМУ
+ * блоку, не подгружался вовсе: на холсте заголовок показывался запасным
+ * шрифтом, и человек правил письмо, не видя настоящей гарнитуры.
+ */
 export const ensureDocumentFonts = (design) => {
   if (!design) return;
   ensureWebFont(design.settings?.font);
@@ -60,4 +68,7 @@ export const ensureDocumentFonts = (design) => {
     if (b.type === 'columns') (b.columns || []).forEach(c => walk(c.blocks));
   });
   walk(design.blocks);
+  (Array.isArray(design.sections) ? design.sections : []).forEach((section) => {
+    (section?.columns || []).forEach(col => walk(col.blocks));
+  });
 };
