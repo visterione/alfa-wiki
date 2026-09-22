@@ -21,7 +21,7 @@
  */
 import React, {useCallback, useState} from 'react';
 import {
-  View, Text, ScrollView, TextInput, Pressable, StyleSheet, Alert,
+  View, Text, Image, ScrollView, TextInput, Pressable, StyleSheet, Alert,
   KeyboardAvoidingView, Platform, Linking, ActivityIndicator,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
@@ -38,7 +38,7 @@ import {radius, font, cardSurface} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
 import {
   NEXT_STATUSES, statusLabel, statusColor, DECISION_CATEGORIES, HISTORY_LABELS,
-  dateText, dateTimeText,
+  dateText, dateTimeText, platformLogo,
 } from './reviewsMeta';
 
 export default function ReviewScreen({route, navigation}) {
@@ -119,17 +119,28 @@ export default function ReviewScreen({route, navigation}) {
       </View>
 
       <View style={[styles.card, styles.gap]}>
+        {/* Третьим элементом строки — знак, если он у значения есть. Знак
+            бывает только у площадки, и выносить её из общего списка в
+            отдельный блок ради одной картинки дороже, чем оставить третий
+            элемент необязательным */}
         {[
           ['Пациент', review.patientName],
           ['Дата отзыва', dateText(review.reviewDate)],
-          ['Площадка', review.platform?.name],
+          ['Площадка', review.platform?.name, platformLogo(review.platform?.name)],
           ['Врач', review.doctorName],
           ['Доска', review.board?.name],
           ['Назначен', review.assignees?.[0]?.displayName || 'никому'],
-        ].filter(([, value]) => value).map(([label, value]) => (
+        ].filter(([, value]) => value).map(([label, value, logo]) => (
           <View key={label} style={styles.row}>
             <Text style={styles.rowLabel}>{label}</Text>
-            <Text style={styles.rowValue}>{value}</Text>
+            {logo
+              ? (
+                <View style={styles.rowValueWithLogo}>
+                  <Image source={logo} style={styles.rowLogo} />
+                  <Text style={styles.rowValue}>{value}</Text>
+                </View>
+              )
+              : <Text style={styles.rowValue}>{value}</Text>}
           </View>
         ))}
       </View>
@@ -285,6 +296,8 @@ const makeStyles = c => StyleSheet.create({
   row: {flexDirection: 'row', alignItems: 'flex-start', gap: 12},
   rowLabel: {fontFamily: font.regular, fontSize: 12, color: c.textSecondary, width: 110},
   rowValue: {flex: 1, fontFamily: font.medium, fontSize: 13, color: c.textPrimary},
+  rowValueWithLogo: {flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6},
+  rowLogo: {width: 16, height: 16, borderRadius: 4, resizeMode: 'contain'},
 
   link: {
     flexDirection: 'row',
