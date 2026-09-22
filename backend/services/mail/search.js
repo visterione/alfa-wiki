@@ -35,6 +35,8 @@ const FIELD_ALIASES = {
   after: 'after', после: 'after', since: 'after',
   folder: 'folder', папка: 'folder',
   file: 'file', файл: 'file', вложение: 'file',
+  larger: 'larger', больше: 'larger',
+  smaller: 'smaller', меньше: 'smaller',
 };
 
 const HAS_VALUES = {
@@ -46,6 +48,8 @@ const IS_VALUES = {
   read: 'read', прочитанное: 'read',
   flagged: 'flagged', флажок: 'flagged', важное: 'flagged',
   answered: 'answered', отвеченное: 'answered',
+  unanswered: 'unanswered', неотвеченное: 'unanswered',
+  unflagged: 'unflagged', безфлажка: 'unflagged',
 };
 
 /**
@@ -101,6 +105,15 @@ function parseDate(value) {
   return null;
 }
 
+function parseSize(value) {
+  const match = /^(\d+(?:[.,]\d+)?)\s*(б|b|кб|kb|мб|mb)?$/i.exec(String(value || '').trim());
+  if (!match) return null;
+  const unit = (match[2] || 'б').toLowerCase();
+  const multiplier = { 'б': 1, b: 1, 'кб': 1024, kb: 1024, 'мб': 1048576, mb: 1048576 }[unit];
+  const bytes = Math.round(Number(match[1].replace(',', '.')) * multiplier);
+  return Number.isSafeInteger(bytes) && bytes >= 0 ? bytes : null;
+}
+
 /**
  * Разбирает строку запроса. Ничего не отвергает: непонятная приставка остаётся
  * обычным словом, битая дата просто игнорируется. Поиск, который отвечает «вы
@@ -112,7 +125,7 @@ function parseQuery(input) {
     phrases: [],    // то, что взято в кавычки — ищется подряд
     from: [], to: [], cc: [], subject: [], file: [], folder: [],
     has: [], is: [],
-    before: null, after: null,
+    before: null, after: null, larger: null, smaller: null,
   };
 
   for (const token of tokenize(input)) {
@@ -136,6 +149,10 @@ function parseQuery(input) {
           if (date) result[field] = date;
           // Непонятная дата молча отбрасывается: превращать её в слово для
           // поиска было бы хуже — «после:позавчера» не должно искать текст.
+          continue;
+        }
+        if (field === 'larger' || field === 'smaller') {
+          result[field] = parseSize(value);
           continue;
         }
         if (field === 'has') {
@@ -164,7 +181,8 @@ function hasAnything(parsed) {
   return Boolean(
     parsed.terms.length || parsed.phrases.length || parsed.from.length || parsed.to.length ||
     parsed.cc.length || parsed.subject.length || parsed.file.length || parsed.folder.length ||
-    parsed.has.length || parsed.is.length || parsed.before || parsed.after
+    parsed.has.length || parsed.is.length || parsed.before || parsed.after ||
+    parsed.larger !== null || parsed.smaller !== null
   );
 }
 
@@ -330,9 +348,13 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
   if (parsed.is.includes('read')) where.push('m."isSeen"');
   if (parsed.is.includes('flagged')) where.push('m."isFlagged"');
   if (parsed.is.includes('answered')) where.push('m."isAnswered"');
+  if (parsed.is.includes('unanswered')) where.push('NOT m."isAnswered"');
+  if (parsed.is.includes('unflagged')) where.push('NOT m."isFlagged"');
 
   if (parsed.after) where.push(`m."receivedAt" >= $${p(parsed.after)}`);
   if (parsed.before) where.push(`m."receivedAt" < $${p(parsed.before)}`);
+  if (parsed.larger !== null) where.push(`m.size >= $${p(parsed.larger)}`);
+  if (parsed.smaller !== null) where.push(`m.size <= $${p(parsed.smaller)}`);
 
   // ── Сортировка ──
   //
@@ -426,6 +448,7 @@ async function searchMessages(options) {
 module.exports = {
   parseQuery,
   parseDate,
+  parseSize,
   tokenize,
   hasAnything,
   buildSearchSql,

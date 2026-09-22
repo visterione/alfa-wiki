@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseQuery, parseDate, tokenize, hasAnything } = require('../services/mail/search');
+const { parseQuery, parseDate, parseSize, tokenize, hasAnything } = require('../services/mail/search');
 
 test('обычные слова остаются словами', () => {
   const q = parseQuery('гарантийное письмо Иванов');
@@ -99,6 +99,20 @@ test('один только фильтр — это уже запрос', () => 
   // «Покажи всё с вложениями за последний месяц» — законный запрос без слов.
   assert.equal(hasAnything(parseQuery('есть:вложение')), true);
   assert.equal(hasAnything(parseQuery('после:месяц')), true);
+});
+
+test('фильтр размера понимает байты, КБ и МБ', () => {
+  assert.equal(parseSize('512'), 512);
+  assert.equal(parseSize('1,5мб'), 1572864);
+  const q = parseQuery('больше:2мб меньше:10MB');
+  assert.equal(q.larger, 2 * 1024 * 1024);
+  assert.equal(q.smaller, 10 * 1024 * 1024);
+});
+
+test('расширенные отрицательные статусы разбираются как фильтры', () => {
+  const q = parseQuery('статус:неотвеченное статус:безфлажка');
+  assert.deepEqual(q.is, ['unanswered', 'unflagged']);
+  assert.equal(hasAnything(q), true);
 });
 
 test('несколько уточнений одного вида складываются', () => {

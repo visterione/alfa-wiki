@@ -28,12 +28,12 @@ const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { parsePagination } = require('../utils/pagination');
 const { accessibleAccounts, accessibleAccountIds, accessTo } = require('../services/mail/access');
 const { encryptPassword } = require('../services/mail/crypto');
-const { testAccount } = require('../services/mail/imap');
+const { testAccount, withConnection } = require('../services/mail/imap');
 const { setFlag, setTaken, requestDelete } = require('../services/mail/flags');
 const { attachmentAbsPath, STORE_ROOT } = require('../services/mail/store');
 const { sendDraft, sentToday, DAILY_PER_ACCOUNT, MAX_RECIPIENTS } = require('../services/mail/send');
 const { htmlToPlain } = require('../services/mail/parse');
-const { syncAccount } = require('../services/mail/sync');
+const { syncAccount, syncFolders } = require('../services/mail/sync');
 const { searchMessages, parseQuery } = require('../services/mail/search');
 const { Op } = require('sequelize');
 
@@ -126,6 +126,62 @@ router.get('/accounts/:accountId/folders', authenticate, async (req, res) => {
   } catch (error) {
     console.error('❌ Почта: не отдались папки:', error);
     res.status(500).json({ error: 'Не удалось получить список папок' });
+  }
+});
+
+// Список IMAP принадлежит тому же серверу, что и Roundcube. Обновляем зеркало
+// по запросу человека; после этого фоновая заливка подхватит старые письма.
+router.post('/accounts/:accountId/folders/refresh', authenticate, async (req, res) => {
+  try {
+    if (!await accessTo(req.user.id, req.params.accountId)) {
+      return res.status(403).json({ error: 'Нет доступа к этому ящику' });
+    }
+    const account = await MailAccount.scope('withSecret').findByPk(req.params.accountId);
+    if (!account || !account.isActive) return res.status(404).json({ error: 'Ящик не найден' });
+    const folders = await withConnection(account, (client) => syncFolders(client, account));
+    audit(req, { accountId: account.id, action: 'folders_refresh' });
+    res.json({ folders: folders.map((f) => ({ id: f.id, path: f.path, name: f.name,
+      specialUse: f.specialUse, backfillDone: f.backfillDone })) });
+    syncAccount(account.id).catch((err) => console.error('📬 Почта: загрузка папок не прошла —', err.message));
+  } catch (error) {
+    console.error('❌ Почта: не обновились папки:', error);
+    res.status(502).json({ error: 'Не удалось прочитать папки на почтовом сервере' });
+  }
+});
+
+router.post('/accounts/:accountId/folders', authenticate, async (req, res) => {
+  try {
+    if (!await accessTo(req.user.id, req.params.accountId)) {
+      return res.status(403).json({ error: 'Нет доступа к этому ящику' });
+    }
+    const name = String(req.body.name || '').trim();
+    // Разделитель каталога берём с сервера: пользователь задаёт только один
+    // сегмент. Иначе можно нечаянно создать иерархию или системную папку.
+    if (!name || name.length > 100 || /[\\/\x00-\x1f]/.test(name) || /^inbox$/i.test(name)) {
+      return res.status(400).json({ error: 'Введите имя папки до 100 символов без / и \\' });
+    }
+    const account = await MailAccount.scope('withSecret').findByPk(req.params.accountId);
+    if (!account || !account.isActive) return res.status(404).json({ error: 'Ящик не найден' });
+    const parentId = req.body.parentId || null;
+    let parent = null;
+    if (parentId) {
+      parent = await MailFolder.findOne({ where: { id: parentId, accountId: account.id } });
+      if (!parent) return res.status(404).json({ error: 'Родительская папка не найдена' });
+    }
+    const delimiter = parent?.delimiter || (await MailFolder.findOne({ where: { accountId: account.id, path: 'INBOX' } }))?.delimiter || '.';
+    if (name.includes(delimiter)) return res.status(400).json({ error: 'Имя содержит разделитель папок' });
+    const folderPath = parent ? `${parent.path}${delimiter}${name}` : name;
+    if (folderPath.length > 1000) return res.status(400).json({ error: 'Слишком длинный путь папки' });
+    await withConnection(account, async (client) => {
+      await client.mailboxCreate(folderPath);
+      await syncFolders(client, account);
+    });
+    const folder = await MailFolder.findOne({ where: { accountId: account.id, path: folderPath } });
+    audit(req, { accountId: account.id, action: 'folder_create', detail: { path: folderPath } });
+    res.status(201).json({ folder });
+  } catch (error) {
+    console.error('❌ Почта: папка не создалась:', error);
+    res.status(502).json({ error: 'Не удалось создать папку на почтовом сервере' });
   }
 });
 
@@ -241,6 +297,7 @@ router.get('/search', authenticate, async (req, res) => {
         subject: parsed.subject, file: parsed.file, folder: parsed.folder,
         has: parsed.has, is: parsed.is,
         after: parsed.after, before: parsed.before,
+        larger: parsed.larger, smaller: parsed.smaller,
       },
     });
   } catch (error) {
@@ -510,6 +567,43 @@ router.delete('/messages/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('❌ Почта: письмо не удалилось:', error);
     res.status(500).json({ error: 'Не удалось удалить письмо' });
+  }
+});
+
+// Переносим в папку на сервере: она сразу станет видна и в Roundcube.
+router.post('/messages/:id/move', authenticate, async (req, res) => {
+  try {
+    const { message, error } = await loadMessageForUser(req, req.params.id);
+    if (error === 404) return res.status(404).json({ error: 'Письмо не найдено' });
+    if (error === 403) return res.status(403).json({ error: 'Нет доступа к этому ящику' });
+    const target = await MailFolder.findOne({ where: {
+      id: req.body.folderId, accountId: message.accountId, selectable: true,
+    } });
+    if (!target) return res.status(404).json({ error: 'Папка не найдена в этом ящике' });
+    if (target.id === message.folderId) return res.json({ ok: true });
+    const account = await MailAccount.scope('withSecret').findByPk(message.accountId);
+    const result = await withConnection(account, async (client) => {
+      await client.mailboxOpen(message.folder.path, { readOnly: false });
+      if (client.capabilities.has('MOVE')) {
+        return client.messageMove(String(message.uid), target.path, { uid: true });
+      } else {
+        const copied = await client.messageCopy(String(message.uid), target.path, { uid: true });
+        await client.messageFlagsAdd(String(message.uid), ['\\Deleted'], { uid: true });
+        await client.messageDelete(String(message.uid), { uid: true });
+        return copied;
+      }
+    });
+    audit(req, { accountId: message.accountId, messageId: message.id, action: 'move',
+      detail: { from: message.folder.path, to: target.path } });
+    // С UIDPLUS сервер сразу сообщает UID в новой папке, поэтому сохраняем уже
+    // скачанные тело и вложения. Без него запись восстановит синхронизатор.
+    const newUid = result?.uidMap?.get(Number(message.uid));
+    if (newUid) await message.update({ folderId: target.id, uid: String(newUid) });
+    else await message.destroy();
+    res.json({ ok: true, pendingSync: !newUid });
+  } catch (error) {
+    console.error('❌ Почта: письмо не перенеслось:', error);
+    res.status(502).json({ error: 'Не удалось перенести письмо на почтовом сервере' });
   }
 });
 

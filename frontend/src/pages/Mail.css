@@ -1,9 +1,8 @@
 /*
  * Почта (ver. 8.58).
  *
- * Три колонки на десктопе: ящики и папки, список писем, чтение. Ширины
- * фиксированы у крайних и резиновая у средней — список читается глазами по
- * левому краю, и его ширина должна быть предсказуемой.
+ * Две колонки на десктопе: список писем и чтение. Папки открываются поверх
+ * списка по запросу, ящик выбирается над поиском.
  *
  * На телефоне колонки показываются по одной, переключение классом
  * mail-pane-*. Мобильная раскладка живёт целиком внутри @media 768 и в
@@ -14,8 +13,9 @@
  */
 
 .mail-page {
+  position: relative;
   display: grid;
-  grid-template-columns: 260px minmax(320px, 420px) 1fr;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   height: calc(100vh - var(--header-height, 64px));
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -50,6 +50,14 @@
 /* ── Левая колонка ──────────────────────────────────────────────────────── */
 
 .mail-sidebar {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  width: min(320px, 100vw);
+  height: 100%;
+  box-sizing: border-box;
+  box-shadow: 4px 0 18px rgba(0, 0, 0, 0.12);
   border-right: 1px solid var(--border-light);
   background: var(--bg-secondary);
   overflow-y: auto;
@@ -159,6 +167,78 @@
   text-transform: uppercase;
   color: var(--text-tertiary);
 }
+
+.mail-folders__title--actions,
+.mail-folders__title--actions > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.mail-account-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.mail-account-picker select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.mail-account-picker .mail-chip { white-space: nowrap; }
+
+.mail-advanced {
+  max-height: 48vh;
+  overflow: auto;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+}
+
+.mail-advanced__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.mail-advanced label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.mail-advanced input,
+.mail-advanced select,
+.mail-move-select {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.mail-advanced .mail-advanced__check {
+  flex-direction: row;
+  align-items: center;
+}
+
+.mail-advanced__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.mail-move-select { font-size: 12px; max-width: 180px; cursor: pointer; }
 
 .mail-folder {
   display: flex;
@@ -521,6 +601,9 @@
 }
 
 .mail-icon-btn:hover { background: var(--bg-hover); }
+.mail-icon-btn.active { background: var(--primary-light); color: var(--primary); }
+.mail-icon-btn:disabled { opacity: 0.5; cursor: default; }
+.mail-attachment:disabled { opacity: 0.65; cursor: wait; }
 
 /* На десктопе возврата к списку не нужно — список и так виден. */
 .mail-back { display: none; }
@@ -612,6 +695,8 @@
   color: var(--text-primary);
   font-size: 12.5px;
   text-decoration: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .mail-attachment:hover { background: var(--bg-hover); }
@@ -834,8 +919,7 @@
     height: calc(100vh - var(--header-height, 56px));
   }
 
-  /* Колонки показываются по одной. Три колонки на пятидюймовом экране
-     превратились бы в три нечитаемые полосы. */
+  /* На телефоне список и чтение показываются по одному. */
   .mail-sidebar,
   .mail-list,
   .mail-reader {
@@ -847,20 +931,17 @@
   .mail-pane-list .mail-list { display: flex; }
   .mail-pane-read .mail-reader { display: flex; }
 
-  .mail-pane-list {
-    grid-template-rows: auto 1fr;
-    overflow-y: auto;
-  }
+  .mail-pane-list { overflow: hidden; }
 
   .mail-sidebar {
     padding: 10px 8px;
-    border-bottom: 1px solid var(--border-light);
-    max-height: 40vh;
+    max-height: 100%;
   }
 
-  /* Папки и сохранённые поиски на телефоне заняли бы пол-экрана до того, как
-     человек увидит хоть одно письмо. Список писем важнее. */
-  .mail-folders { display: none; }
+  .mail-folders { display: block; }
+  .mail-account-picker { flex-wrap: wrap; }
+  .mail-account-picker select { flex-basis: 100%; }
+  .mail-advanced__grid { grid-template-columns: 1fr; }
 
   /* Кнопку удаления сохранённого поиска на телефоне не спрятать за наведение —
      наведения там нет. Но и самих поисков в мобильной раскладке не видно. */

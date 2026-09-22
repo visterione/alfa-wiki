@@ -1622,8 +1622,13 @@ export const mail = {
   // вопрос человеку и запись в журнале.
   removeMessage: (id) => api.delete(`/mail/messages/${id}`),
 
-  attachmentUrl: (messageId, attachmentId) =>
-    `${api.defaults.baseURL}/mail/messages/${messageId}/attachments/${attachmentId}`,
+  // Авторизация живёт в заголовке axios; обычная ссылка не передаёт токен.
+  attachment: (messageId, attachmentId) => api.get(
+    `/mail/messages/${messageId}/attachments/${attachmentId}`, { responseType: 'blob' }
+  ),
+  refreshFolders: (accountId) => api.post(`/mail/accounts/${accountId}/folders/refresh`),
+  createFolder: (accountId, data) => api.post(`/mail/accounts/${accountId}/folders`, data),
+  moveMessage: (id, folderId) => api.post(`/mail/messages/${id}/move`, { folderId }),
 
   admin: {
     accounts: () => api.get('/mail/admin/accounts'),
