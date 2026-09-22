@@ -1,9 +1,10 @@
 const express = require('express');
-const { MedCenter, UserMedCenter, CourseMedCenter } = require('../models');
+const { MedCenter, UserMedCenter, CourseMedCenter, ReviewBoard, Review } = require('../models');
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { isValidBadgeColor } = require('../utils/chatBadgeIcons');
 const userChatBadge = require('../services/userChatBadge');
 const medCentersService = require('../services/medCenters');
+const reviewBoards = require('../services/reviewBoards');
 
 const router = express.Router();
 
@@ -144,6 +145,18 @@ router.post('/', authenticate, requireAdminAccess('medCenters'), async (req, res
 
     const medCenter = await MedCenter.create(data);
     medCentersService.invalidate();
+
+    // Доска отзывов заводится вместе с филиалом (ver. 8.56). Раньше её
+    // создавали отдельной кнопкой, и новый филиал жил без доски ровно до того
+    // дня, когда кто-нибудь это замечал — обычно по пропавшим отзывам.
+    // Ошибка здесь не должна отменять создание филиала: доску можно завести
+    // и потом, повторным заполнением, а филиал уже создан.
+    try {
+      await reviewBoards.createBoardForMedCenter(medCenter, req.user.id);
+    } catch (boardError) {
+      console.error('Create review board for med center error:', boardError);
+    }
+
     res.status(201).json(medCenter);
   } catch (error) {
     if (isMisIdConflict(error)) return res.status(409).json({ error: error.parent?.message || error.message });
@@ -173,10 +186,22 @@ router.put('/:id', authenticate, async (req, res) => {
     const badgeChanged = (data.color !== undefined && data.color !== medCenter.color) ||
                          (data.sortOrder !== undefined && data.sortOrder !== medCenter.sortOrder);
 
+    // Подразделение перестало быть служебным — значит, к нему теперь ходят
+    // пациенты, а у филиала с пациентами есть доска отзывов.
+    const becameReal = medCenter.isVirtual && data.isVirtual === false;
+
     await medCenter.update(data);
 
     // Иначе следующие пять минут справочник отдавал бы старые значения.
     medCentersService.invalidate();
+
+    if (becameReal) {
+      try {
+        await reviewBoards.createBoardForMedCenter(medCenter, req.user.id);
+      } catch (boardError) {
+        console.error('Create review board for med center error:', boardError);
+      }
+    }
     if (badgeChanged) await userChatBadge.recomputeForMedCenter(medCenter.id);
 
     res.json(medCenter);
@@ -198,13 +223,21 @@ router.delete('/:id', authenticate, requireAdminAccess('medCenters'), async (req
     const medCenter = await MedCenter.findByPk(req.params.id);
     if (!medCenter) return res.status(404).json({ error: 'Медцентр не найден' });
 
+    // Доска отзывов ссылается на филиал и держит удаление. Считаем не доски, а
+    // отзывы на них: доска заводится сама (ver. 8.56) и у только что созданного
+    // по ошибке филиала она пустая — такую незачем показывать как препятствие,
+    // её уносит вместе с филиалом. Доска с отзывами удаление останавливает.
+    const board = await ReviewBoard.findOne({ where: { medCenterId: medCenter.id } });
+    const boardReviews = board ? await Review.count({ where: { boardId: board.id } }) : 0;
+
     const [users, courses] = await Promise.all([
       UserMedCenter.count({ where: { medCenterId: medCenter.id } }),
       CourseMedCenter.count({ where: { medCenterId: medCenter.id } })
     ]);
     const blockers = [
-      users   ? `сотрудников: ${users}` : null,
-      courses ? `курсов: ${courses}`    : null
+      users        ? `сотрудников: ${users}`      : null,
+      courses      ? `курсов: ${courses}`         : null,
+      boardReviews ? `отзывов: ${boardReviews}`   : null
     ].filter(Boolean);
 
     if (blockers.length) {
@@ -213,6 +246,7 @@ router.delete('/:id', authenticate, requireAdminAccess('medCenters'), async (req
       });
     }
 
+    if (board) await board.destroy();
     await medCenter.destroy();
     medCentersService.invalidate();
     res.json({ success: true });

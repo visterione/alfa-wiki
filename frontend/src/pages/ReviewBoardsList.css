@@ -166,6 +166,31 @@
   margin-bottom: 0.75rem;
 }
 
+/* Знак филиала на карточке — тот же, что в шапке доски: белая плашка, рамка
+   фирменного цвета из --mc-accent, ширина по логотипу. Почему именно так —
+   объяснено в ReviewBoard.css */
+.review-board-card .board-brand {
+  --mc-accent: var(--accent-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-width: 36px;
+  max-width: 120px;
+  flex-shrink: 0;
+  padding: 4px 7px;
+  border-radius: 9px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--mc-accent) 30%, transparent);
+}
+
+.review-board-card .board-brand img {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
 .review-board-card .board-card-header h3 {
   font-size: 1.25rem;
   font-weight: 600;

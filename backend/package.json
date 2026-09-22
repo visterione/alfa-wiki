@@ -87,6 +87,8 @@
     "migrate:safe-db:check": "node scripts/migrateSafeDatabase.js --check",
     "seed:warehouse": "node scripts/seedWarehouse.js",
     "migrate:sql": "node scripts/runSqlMigration.js",
+    "migrate:8.57": "node scripts/runSqlMigration.js 8.57",
+    "migrate:8.57:check": "node scripts/runSqlMigration.js 8.57 --check",
     "migrate:7.80": "node scripts/runSqlMigration.js 7.80",
     "migrate:7.80:check": "node scripts/runSqlMigration.js 7.80 --check",
     "migrate:7.81": "node scripts/runSqlMigration.js 7.81",
@@ -186,7 +188,10 @@
     "migrate:8.51": "node scripts/runSqlMigration.js 8.51",
     "migrate:8.51:check": "node scripts/runSqlMigration.js 8.51 --check",
     "migrate:8.52": "node scripts/runSqlMigration.js 8.52",
-    "migrate:8.52:check": "node scripts/runSqlMigration.js 8.52 --check"
+    "migrate:8.52:check": "node scripts/runSqlMigration.js 8.52 --check",
+    "migrate:8.55": "node scripts/runSqlMigration.js 8.55",
+    "migrate:8.56": "node scripts/migrateReviewBoardsPerMedCenter.js",
+    "migrate:8.56:check": "node scripts/migrateReviewBoardsPerMedCenter.js --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

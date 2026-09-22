@@ -8,7 +8,6 @@ import {
 import { reviews, users } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { useMedCenters } from '../context/MedCentersContext';
 import { REVIEW_STATUSES } from '../utils/reviewConstants';
 import ReviewWorkflowEditor from '../components/ReviewWorkflowEditor';
 import './ReviewBoardSettings.css';
@@ -20,17 +19,12 @@ const ReviewBoardSettings = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  // Ссылку на справочник показываем тем, кого он пустит: правом на раздел, а не
+  // одним isAdmin — доступ к медцентрам выдаётся и отдельно.
+  const canEditMedCenters = user?.isAdmin || user?.adminAccess?.medCenters === true;
+
   const [board, setBoard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  // Board info
-  const { medCenters } = useMedCenters();
-  const [boardName, setBoardName] = useState('');
-  // Филиал доски. Пустая строка — «не привязана»: доска может быть и не про
-  // филиал, и заставлять выбирать нельзя.
-  const [boardMedCenterId, setBoardMedCenterId] = useState('');
-  const [boardDescription, setBoardDescription] = useState('');
 
   // Permissions
   const [permissions, setPermissions] = useState([]);
@@ -77,9 +71,6 @@ const ReviewBoardSettings = () => {
 
       const boardData = boardRes.data;
       setBoard(boardData);
-      setBoardName(boardData.name);
-      setBoardDescription(boardData.description || '');
-      setBoardMedCenterId(boardData.medCenterId || '');
       setPermissions(permissionsRes.data);
       setUsersList(usersRes.data);
       setSyncConfigs(syncRes.data || []);
@@ -102,39 +93,6 @@ const ReviewBoardSettings = () => {
       navigate('/reviews');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDeleteBoard = async () => {
-    if (!window.confirm(`Удалить доску "${board.name}" и все её отзывы? Это действие необратимо.`)) return;
-    try {
-      await reviews.deleteBoard(boardId);
-      toast.success('Доска удалена');
-      navigate('/reviews');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Ошибка при удалении доски');
-    }
-  };
-
-  const handleSaveGeneral = async () => {
-    if (!boardName.trim()) {
-      toast.error('Название доски обязательно');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      await reviews.updateBoard(boardId, {
-        name: boardName.trim(),
-        description: boardDescription.trim() || null,
-        medCenterId: boardMedCenterId || null
-      });
-      toast.success('Настройки сохранены');
-    } catch (err) {
-      console.error('Error saving:', err);
-      toast.error('Ошибка при сохранении');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -459,64 +417,26 @@ const ReviewBoardSettings = () => {
           <div className="settings-section">
             <h2>Основные настройки</h2>
 
-            <div className="form-group">
-              <label>Название доски</label>
-              <input
-                type="text"
-                value={boardName}
-                onChange={(e) => setBoardName(e.target.value)}
-                placeholder="Название доски"
-              />
-            </div>
-
-            {/* Привязка к филиалу. Нужна не для порядка: без неё оценки
-                нельзя собрать по клинике — в отзыве филиала нет, а название
-                доски строкой запрос сопоставить не может. */}
-            <div className="form-group">
-              <label>Медцентр</label>
-              <select
-                value={boardMedCenterId}
-                onChange={(e) => setBoardMedCenterId(e.target.value)}
-              >
-                <option value="">Не привязана к филиалу</option>
-                {medCenters
-                  .filter(mc => !mc.isVirtual)
-                  .map(mc => (
-                    <option key={mc.id} value={mc.id}>{mc.name}</option>
-                  ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Описание</label>
-              <textarea
-                value={boardDescription}
-                onChange={(e) => setBoardDescription(e.target.value)}
-                placeholder="Описание доски (необязательно)"
-                rows={3}
-              />
-            </div>
-
-            <button
-              className="btn-save"
-              onClick={handleSaveGeneral}
-              disabled={saving}
-            >
-              <Save size={16} />
-              {saving ? 'Сохранение...' : 'Сохранить'}
-            </button>
-
-            <div className="danger-zone">
-              <div className="danger-action">
-                <div className="danger-action-info">
-                  <strong>Удалить доску</strong>
-                  <p>Безвозвратно удалит доску и все её отзывы</p>
-                </div>
-                <button className="btn-delete-board" onClick={handleDeleteBoard}>
-                  <Trash2 size={16} />
-                  Удалить доску
-                </button>
+            {/* Править здесь нечего: доска — это медцентр (ver. 8.56). Название
+                и адрес живут в справочнике филиалов, и раньше их дублировали
+                сюда руками — адрес доски «3К» успел разойтись с настоящим.
+                Показываем, откуда они берутся, и куда идти, чтобы поправить. */}
+            <div className="board-branch">
+              <div className="board-branch-info">
+                <strong>{board?.medCenter?.name || '—'}</strong>
+                {(board?.medCenter?.city || board?.medCenter?.address) && (
+                  <p>{[board.medCenter.city, board.medCenter.address].filter(Boolean).join(', ')}</p>
+                )}
               </div>
+              <p className="board-branch-note">
+                Доска заводится вместе с медцентром — по одной на каждый. Название, адрес
+                и логотип берутся из его карточки.{' '}
+                {canEditMedCenters && (
+                  <button className="btn-link" onClick={() => navigate('/admin/med-centers')}>
+                    Открыть справочник медцентров
+                  </button>
+                )}
+              </p>
             </div>
           </div>
         )}

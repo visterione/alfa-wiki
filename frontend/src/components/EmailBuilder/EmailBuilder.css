@@ -424,6 +424,23 @@
 .eb-preview-frame iframe { width: 100%; height: 100%; min-height: 420px; border: 0; border-radius: var(--radius-md); background: #fff; }
 .eb-preview-frame.mobile iframe { width: 390px; max-width: 100%; box-shadow: var(--shadow-lg); }
 
+/* Тёмный вид письма. Подложка под iframe тоже тёмная: белая рамка вокруг
+   тёмного письма читается как поле письма, которого там нет. */
+.eb-preview-frame.dark iframe { background: #141414; }
+
+/* Оговорка под тёмным макетом. Стоит именно под ним, а не в подсказке кнопки:
+   человек смотрит на перекрашенное письмо и должен тут же знать, что это
+   приближение, а не снимок из Gmail. */
+.eb-preview-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary, var(--bg-secondary));
+  border-radius: var(--radius-sm, 8px);
+}
+
 .eb-preview-loading {
   position: absolute;
   inset: 0;
@@ -654,7 +671,7 @@
   display: flex;
   flex-direction: column;
   width: 320px;
-  max-height: 380px;
+  max-height: 400px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
@@ -692,14 +709,22 @@
 
 .eb-iconpop-groups::-webkit-scrollbar { display: none; }
 
+/* Высота задана явно: у кнопки line-height берётся из браузерного умолчания, и
+   в одной раскладке надпись стоит в середине таблетки, а в другой съезжает за
+   её нижний край. */
 .eb-iconpop-groups button {
+  display: inline-flex;
+  align-items: center;
   flex: 0 0 auto;
-  padding: 4px 9px;
+  height: 24px;
+  padding: 0 10px;
   border: 0;
   border-radius: 999px;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
+  font-family: inherit;
   font-size: 11px;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -735,6 +760,16 @@
   text-align: center;
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+/* Счётчик внизу: в наборе полторы тысячи иконок, и без него непонятно, кончился
+   список или просто ещё не дорисовался при прокрутке. */
+.eb-iconpop-foot {
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-light);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: center;
 }
 
 /* ── Группы полей в панели свойств ────────────────────────────────────────── */

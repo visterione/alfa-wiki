@@ -34,7 +34,7 @@ import {
   Plus, Copy, Trash2, ChevronUp, ChevronDown, GripVertical,
   Monitor, Smartphone, Undo2, Redo2, AlertTriangle, Loader2,
   Columns3, Rows3, ZoomIn, ZoomOut, Paintbrush, Bookmark,
-  MousePointerSquareDashed,
+  MousePointerSquareDashed, Sun, Moon, FileDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { email as emailApi } from '../../services/api';
@@ -47,6 +47,7 @@ import {
   withIds, toV2, styleKeysOf, stripIds, mapAllBlocks, allBlocks,
 } from './blocks';
 import { ensureDocumentFonts } from './fonts';
+import { exportLayoutsPdf } from './layoutPdf';
 import './EmailBuilder.css';
 
 // ── Работа с документом ─────────────────────────────────────────────────────
@@ -96,6 +97,20 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
   const [selected, setSelected] = useState(null);
   const [device, setDevice] = useState('desktop');
   /**
+   * Тема почты в предпросмотре (ver. 8.57).
+   *
+   * Не то же самое, что тема портала. Gmail перекрашивает письмо под тёмную
+   * тему системы получателя сам, не спрашивая и не глядя на `color-scheme` в
+   * шапке письма: светлая карточка становится тёмной, а аккуратная тёмная
+   * шапка выворачивается в светлую, и белый логотип на ней пропадает. Узнать
+   * об этом, отправив письмо себе, можно только после того, как оно ушло
+   * людям, — поэтому тёмный вид стоит здесь, рядом с «компьютер / телефон».
+   */
+  const [theme, setTheme] = useState('light');
+  // Выгрузка макетов в PDF: снимки четырёх видов делаются по очереди и
+  // занимают несколько секунд, поэтому кнопка отчитывается о ходе.
+  const [pdfStep, setPdfStep] = useState(null);
+  /**
    * Масштаб холста.
    *
    * По умолчанию подбирается сам под ширину колонки: письмо держит свои
@@ -111,7 +126,7 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
   const canvasRef = useRef(null);
   const zoom = manualZoom ?? fitZoom;
   const [paletteTab, setPaletteTab] = useState('blocks');
-  const [preview, setPreview] = useState({ html: '', warnings: [], loading: false });
+  const [preview, setPreview] = useState({ html: '', htmlDark: '', warnings: [], darkWarnings: [], loading: false });
 
   /**
    * Перенос оформления с блока на блок («формат по образцу»).
@@ -328,27 +343,52 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
 
   useEffect(() => { ensureDocumentFonts(design); }, [design]);
 
-  // Ширина колонки меняется от размера окна и от того, свёрнута ли панель
-  // свойств, поэтому следим наблюдателем, а не считаем один раз при открытии.
+  /**
+   * Ширина колонки меняется от размера окна и от того, свёрнута ли панель
+   * свойств, поэтому следим наблюдателем, а не считаем один раз при открытии.
+   *
+   * Замер отложен до следующего кадра, и это не микрооптимизация. Масштаб
+   * холста — это CSS zoom на листе: меняя его, мы меняем высоту содержимого,
+   * от неё появляется или пропадает полоса прокрутки, от неё меняется ширина
+   * самого наблюдаемого узла — и наблюдатель зовут повторно, не успев
+   * разослать первую пачку уведомлений. Браузер сообщает об этом исключением
+   * «ResizeObserver loop completed with undelivered notifications», которое в
+   * dev-режиме CRA выводится красным окном поверх конструктора. requestAnimationFrame
+   * разрывает круг: правка масштаба уезжает за пределы текущей развёртки.
+   */
   useEffect(() => {
     const node = canvasRef.current;
     if (!node || typeof ResizeObserver === 'undefined') return undefined;
 
     const letterWidth = design.settings.width || DEFAULT_SETTINGS.width;
-    const recalc = () => {
+    let frame = 0;
+
+    const measure = () => {
+      frame = 0;
       const styles = getComputedStyle(node);
       const inner = node.clientWidth
         - parseFloat(styles.paddingLeft || 0)
         - parseFloat(styles.paddingRight || 0);
       if (inner <= 0) return;
       // Ниже 40% читать письмо всё равно нельзя — там уже прокрутка честнее.
-      setFitZoom(Math.max(40, Math.min(100, Math.floor((inner / letterWidth) * 100))));
+      const next = Math.max(40, Math.min(100, Math.floor((inner / letterWidth) * 100)));
+      // Одинаковое значение не доводим до состояния: лишний setState here стоит
+      // целой перерисовки холста со всеми блоками.
+      setFitZoom(prev => (prev === next ? prev : next));
     };
 
-    recalc();
-    const observer = new ResizeObserver(recalc);
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(measure);
+    };
+
+    measure();
+    const observer = new ResizeObserver(schedule);
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [design.settings.width]);
 
   // ── Секции ────────────────────────────────────────────────────────────────
@@ -632,7 +672,18 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
     const timer = setTimeout(async () => {
       try {
         const { data } = await emailApi.preview({ design, subject });
-        if (!cancelled) setPreview({ html: data.html, warnings: data.warnings || [], loading: false, bytes: data.bytes });
+        if (!cancelled) {
+          setPreview({
+            html: data.html,
+            // Тёмный вид приезжает тем же ответом: оба сделаны из одного
+            // рендера, и разойтись им негде.
+            htmlDark: data.htmlDark || data.html,
+            warnings: data.warnings || [],
+            darkWarnings: data.darkWarnings || [],
+            loading: false,
+            bytes: data.bytes,
+          });
+        }
       } catch (error) {
         if (!cancelled) {
           setPreview(p => ({ ...p, loading: false }));
@@ -642,6 +693,56 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
     }, 400);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [design, subject]);
+
+  /**
+   * Замечания, которые показываем сейчас.
+   *
+   * В тёмном виде к общим добавляются свои: тёмная полоса, которая вывернется
+   * в светлую, и PNG с прозрачностью, под которым окажется тёмная подложка. В
+   * светлом виде они не нужны — там всё это выглядит правильно.
+   */
+  const visibleWarnings = useMemo(() => (
+    theme === 'dark'
+      ? [...preview.warnings, ...preview.darkWarnings]
+      : preview.warnings
+  ), [theme, preview.warnings, preview.darkWarnings]);
+
+  /**
+   * Четыре макета письма одним PDF — для согласования (ver. 8.57).
+   *
+   * Раньше письмо показывали коллеге, отправив его себе и переслав снимок
+   * экрана из почты: в снимке ехала шапка Gmail, адрес отправителя и кнопки
+   * ответа, а сам макет был один из четырёх. Здесь выгружаются все четыре
+   * разом, и файл можно просто отправить на проверку.
+   *
+   * Снимается тот же HTML, что показан в предпросмотре, — то есть тот, что
+   * уйдёт получателям. Собирать PDF из документа конструктора значило бы
+   * завести третий способ нарисовать письмо и однажды согласовать одно, а
+   * отправить другое.
+   */
+  const downloadLayouts = useCallback(async () => {
+    if (!preview.html) {
+      toast.error('Письмо ещё собирается — попробуйте через секунду');
+      return;
+    }
+    setPdfStep(0);
+    try {
+      await exportLayoutsPdf({
+        html: preview.html,
+        htmlDark: preview.htmlDark,
+        subject,
+        onStep: (done) => setPdfStep(done),
+      });
+      toast.success('Макеты письма сохранены в PDF');
+    } catch (error) {
+      console.error('Не удалось собрать PDF с макетами:', error);
+      // Сообщение из самой выгрузки, когда оно есть: «картинка с чужого
+      // адреса» человек починит, а «не удалось» — нет.
+      toast.error(error?.message || 'Не удалось собрать PDF с макетами письма', { duration: 7000 });
+    } finally {
+      setPdfStep(null);
+    }
+  }, [preview.html, preview.htmlDark, subject]);
 
   // ── Отрисовка ─────────────────────────────────────────────────────────────
 
@@ -879,12 +980,22 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
     </div>
   );
 
+  const previewHtml = theme === 'dark' ? (preview.htmlDark || preview.html) : preview.html;
+
   const previewPane = (
     <div className="eb-preview split">
-      <div className={`eb-preview-frame ${device}`}>
+      <div className={`eb-preview-frame ${device} ${theme}`}>
         {preview.loading && <div className="eb-preview-loading"><Loader2 size={18} className="eb-spin" /> Собираем письмо…</div>}
-        <iframe title="Предпросмотр письма" srcDoc={preview.html} sandbox="" />
+        <iframe title="Предпросмотр письма" srcDoc={previewHtml} sandbox="" />
       </div>
+      {theme === 'dark' && (
+        <p className="eb-preview-note">
+          Так письмо перекрасит почта с тёмной темой. Вид приблизительный: Gmail,
+          Outlook и Apple&nbsp;Mail делают это каждый по-своему, и ни один не
+          спрашивает отправителя. Картинки не перекрашиваются — ни здесь, ни у
+          получателя.
+        </p>
+      )}
     </div>
   );
 
@@ -918,14 +1029,29 @@ export default function EmailBuilder({ value, onChange, subject = '', toolbarSlo
         <button type="button" className={device === 'desktop' ? 'active' : ''} onClick={() => setDevice('desktop')} title="Письмо на компьютере"><Monitor size={14} /></button>
         <button type="button" className={device === 'mobile' ? 'active' : ''} onClick={() => setDevice('mobile')} title="Письмо на телефоне"><Smartphone size={14} /></button>
       </div>
-      {preview.warnings.length > 0 && (
+      <div className="eb-segmented">
+        <button type="button" className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')} title="Светлая тема почты"><Sun size={14} /></button>
+        <button type="button" className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')} title="Тёмная тема почты — так письмо перекрасит Gmail"><Moon size={14} /></button>
+      </div>
+      <button
+        type="button"
+        className="eb-btn eb-btn-slim"
+        disabled={pdfStep !== null || preview.loading || !preview.html}
+        onClick={downloadLayouts}
+        title="Скачать PDF с четырьмя макетами: компьютер и телефон, светлая тема и тёмная"
+      >
+        {pdfStep !== null
+          ? <><Loader2 size={14} className="eb-spin" /> Макет… {pdfStep}/4</>
+          : <><FileDown size={14} /> Макет в PDF</>}
+      </button>
+      {visibleWarnings.length > 0 && (
         <button
           type="button"
           className="eb-btn eb-btn-slim warn"
-          title={preview.warnings.join('\n')}
-          onClick={() => toast(preview.warnings.join('\n'), { duration: 8000, icon: '⚠️' })}
+          title={visibleWarnings.join('\n')}
+          onClick={() => toast(visibleWarnings.join('\n'), { duration: 8000, icon: '⚠️' })}
         >
-          <AlertTriangle size={14} /> {preview.warnings.length}
+          <AlertTriangle size={14} /> {visibleWarnings.length}
         </button>
       )}
     </>

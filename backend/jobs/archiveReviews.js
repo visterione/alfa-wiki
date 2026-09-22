@@ -3,7 +3,7 @@
  * Запускается крон-задачей reviewArchiveCron.js
  */
 
-const { Review, ReviewBoard } = require('../models');
+const { Review, ReviewBoard, MedCenter } = require('../models');
 const { Op } = require('sequelize');
 
 async function archiveFinalReviews() {
@@ -14,7 +14,12 @@ async function archiveFinalReviews() {
         archived: false
       },
       include: [
-        { model: ReviewBoard, as: 'board', attributes: ['id', 'name'] }
+        // Филиал — ради названия доски в журнале: своего имени у доски нет
+        // (ver. 8.56), оно приходит отсюда.
+        {
+          model: ReviewBoard, as: 'board', attributes: ['id'],
+          include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }]
+        }
       ]
     });
 

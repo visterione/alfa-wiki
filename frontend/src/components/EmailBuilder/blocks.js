@@ -446,13 +446,31 @@ export const BLOCK_TYPES = {
       { key: 'color', label: 'Цвет текста', type: 'color', clearable: true, hint: 'Понадобится, когда блок стоит на тёмной полосе' },
       { key: 'mutedColor', label: 'Цвет пояснений', type: 'color', clearable: true },
       { key: 'iconColor', label: 'Цвет иконки', type: 'color', clearable: true, hint: 'Без него иконка берёт цвет текста блока' },
-      { key: 'iconBg', label: 'Подложка иконки', type: 'color', clearable: true, hint: 'Кружок под иконкой' },
-      { key: 'iconSize', label: 'Размер иконки', type: 'slider', min: 16, max: 64, suffix: 'px' },
+      { key: 'iconStroke', label: 'Толщина линии', type: 'slider', min: 0.5, max: 4, step: 0.25, default: 2, suffix: 'px' },
+      { key: 'iconSize', label: 'Размер иконки', type: 'slider', min: 16, max: 128, default: 28, suffix: 'px' },
+      { key: 'iconBg', label: 'Подложка', type: 'color', clearable: true, hint: 'Без цвета подложки нет, и скругление с долей ни на что не влияют' },
+      // Скругление подложки одним ползунком вместо выбора формы: список из трёх
+      // кнопок закрывает круг, скруглённый квадрат и квадрат, а ползунок — всё,
+      // что между ними, и ровно теми же тремя положениями.
+      { key: 'iconRadius', label: 'Скругление подложки', type: 'slider', min: 0, max: 50, default: 50, suffix: '%', hint: '50% — круг, 0% — квадрат' },
+      { key: 'iconScale', label: 'Иконка в подложке', type: 'slider', min: 30, max: 100, default: 58, suffix: '%' },
+      { key: 'iconGap', label: 'Отступ до текста', type: 'number', min: 4, max: 48, suffix: 'px', placeholder: 'по размеру' },
+      {
+        key: 'iconAlign',
+        label: 'Иконка по высоте',
+        type: 'select',
+        options: [['top', 'По верху'], ['middle', 'По центру']],
+        hint: 'По центру — когда у пункта одна строка, по верху — когда пояснение длинное',
+      },
       { key: 'gap', label: 'Между пунктами', type: 'number', min: 0, max: 40, suffix: 'px' },
       { key: 'font', label: 'Шрифт', type: 'font', placeholder: 'как в письме' },
       { key: 'padding', label: 'Отступы', type: 'padding' },
     ],
     note: 'Иконка уходит в письмо картинкой: SVG в почте не показывает ни один клиент. Там, где получатель отключил картинки, на её месте встанет эмодзи, если он задан у пункта.',
+    // Набор целиком, а не выжимка: заранее угадать, что понадобится, нельзя, а
+    // каждая ненайденная иконка — это пункт, собранный «из того, что было».
+    // Отобранная часть при этом стоит в подборщике первой и разложена по
+    // группам — см. CURATED в backend/scripts/buildEmailIcons.js.
   },
 
   unsubscribe: {
@@ -674,7 +692,8 @@ const GROUP_BY_FIELD = {
   badgeBg: 'style', badgeColor: 'style', priceColor: 'style', buttonBg: 'style',
   lineColor: 'style', thickness: 'style', width: 'style', height: 'style',
   overlay: 'style', overlayStyle: 'style', imageWidth: 'style', logoWidth: 'style',
-  iconSize: 'style', iconColor: 'style', iconBg: 'style',
+  iconSize: 'style', iconColor: 'style', iconBg: 'style', iconStroke: 'style',
+  iconRadius: 'style', iconScale: 'style', iconGap: 'style', iconAlign: 'style',
   gap: 'style', valign: 'style', side: 'style',
   columnCount: 'style', columnWidths: 'style', paddingX: 'style', paddingY: 'style',
 

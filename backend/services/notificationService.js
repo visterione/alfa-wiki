@@ -399,9 +399,12 @@ async function sendWelcomeMessage(userId) {
 async function sendReviewCreatedNotification(userId, review, board, creator, isNegative = false) {
   const prefix = isNegative ? '📝 Новый отрицательный отзыв' : '📝 Новый положительный отзыв';
   const creatorName = creator?.displayName || creator?.username || 'Автоматически';
+  // Доска зовётся по филиалу, и сюда она приезжает из разных мест — иногда без
+  // подключённого филиала. title() дочитает его сам (ver. 8.56).
+  const boardName = await board.title();
   const messageText = `${prefix}\n\n` +
     `Пациент: ${review.patientName}\n` +
-    `Доска: ${board.name}\n` +
+    `Доска: ${boardName}\n` +
     `Оценка: ${'⭐'.repeat(review.rating)}\n` +
     `Создал: ${creatorName}\n\n` +
     `[Открыть отзыв →](/reviews/board/${board.id}?review=${review.id})`;
@@ -445,9 +448,10 @@ async function sendReviewStatusChangedNotification(userId, review, oldStatusLabe
 async function sendReviewAssignedNotification(userId, review, board, assigner) {
   const statusLabel = getStatusById(review.status)?.label || review.status;
   const assignerName = assigner?.displayName || assigner?.username || 'Автоматически';
+  const boardName = await board.title();
   const messageText = `👤 Вам назначен отзыв для обработки\n\n` +
     `Пациент: ${review.patientName}\n` +
-    `Доска: ${board.name}\n` +
+    `Доска: ${boardName}\n` +
     `Статус: ${statusLabel}\n` +
     `Назначил: ${assignerName}\n\n` +
     `[Открыть отзыв →](/reviews/board/${board.id}?review=${review.id})`;

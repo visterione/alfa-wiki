@@ -996,21 +996,30 @@ ${content}
     if (!items.length) return '';
     const size = px(block.iconSize, 28);
     const gap = px(block.gap, 14);
-    // Ширина колонки под иконку считается от самой иконки: с подложкой кружок
-    // шире глифа, и фиксированные 14px отбивки при иконке в 56px слипались бы
-    // с заголовком.
-    const lane = size + Math.max(12, Math.round(size / 2));
+    // Отступ иконки от текста: по умолчанию от её размера, иначе при иконке в
+    // 64px фиксированные 14px слипались бы с заголовком, а при 16px зияли.
+    const lane = size + px(block.iconGap, Math.max(12, Math.round(size / 2)));
+    const valign = block.iconAlign === 'middle' ? 'middle' : 'top';
 
     const rows = items.map((item, i) => {
       const own = absoluteUrl(item?.image, ctx.baseUrl);
       // Иконка набора уходит в письмо картинкой, а не буквой и не SVG: SVG в
       // почте не показывает никто, а шрифтовые наборы вырезаются вместе со
       // <style>. Адрес собирает emailIconImage — картинка по нему рисуется один
-      // раз и дальше отдаётся из кэша (см. маршрут /api/email/icon).
+      // раз и дальше отдаётся из кэша (см. маршрут /api/email/icon). Оформление
+      // общее на весь блок: иконки в одном списке разного вида — это не список.
       const drawn = !own && item?.icon
-        // Свой цвет иконки необязателен: без него она берёт цвет текста блока —
-        // на тёмной полосе перекрашивают один раз, и иконки едут следом.
-        ? icons.iconUrl({ key: item.icon, size, color: block.iconColor || inkOf(block, s), bg: block.iconBg }, ctx.baseUrl)
+        ? icons.iconUrl({
+          key: item.icon,
+          size,
+          // Свой цвет иконки необязателен: без него она берёт цвет текста
+          // блока — на тёмной полосе перекрашивают один раз, иконки едут следом.
+          color: block.iconColor || inkOf(block, s),
+          bg: block.iconBg,
+          radius: block.iconRadius,
+          scale: block.iconScale,
+          stroke: block.iconStroke,
+        }, ctx.baseUrl)
         : '';
       const src = own || drawn;
 
@@ -1030,8 +1039,8 @@ ${content}
 
       const top = i ? `padding-top:${gap}px;` : '';
       return `<tr>`
-        + `<td valign="top" width="${lane}" style="width:${lane}px;${top}">${icon}</td>`
-        + `<td valign="top" style="${top}">${title}${text}</td>`
+        + `<td valign="${valign}" width="${lane}" style="width:${lane}px;${top}">${icon}</td>`
+        + `<td valign="${valign}" style="${top}">${title}${text}</td>`
         + `</tr>`;
     }).join('');
 

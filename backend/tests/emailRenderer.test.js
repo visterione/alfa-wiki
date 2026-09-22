@@ -992,3 +992,33 @@ test('своя картинка пункта сильнее иконки наб�
   assert.match(html, /uploads\/email\/own\.png/);
   assert.doesNotMatch(html, /api\/email\/icon/);
 });
+
+test('оформление иконок общее на блок и целиком уезжает в адрес картинки', () => {
+  const { html } = renderer.render(doc([{
+    type: 'iconlist',
+    iconSize: 48,
+    iconColor: '#FFFFFF',
+    iconBg: '#0A84FF',
+    iconRadius: 14,
+    iconScale: 52,
+    iconStroke: 2.5,
+    iconGap: 18,
+    iconAlign: 'middle',
+    items: [{ icon: 'test-tubes', title: 'Анализы' }, { icon: 'clock', title: 'Быстро' }],
+  }]), { baseUrl: 'https://wiki.example.ru' });
+
+  assert.match(html, /icon\/test-tubes\.png\?size=48&amp;color=FFFFFF&amp;bg=0A84FF&amp;radius=14&amp;scale=52&amp;stroke=2\.5/);
+  // Оформление общее: вторая иконка отличается только именем.
+  assert.match(html, /icon\/clock\.png\?size=48&amp;color=FFFFFF&amp;bg=0A84FF&amp;radius=14&amp;scale=52&amp;stroke=2\.5/);
+  // Отступ до текста задан руками, значит колонка под иконку — 48 + 18.
+  assert.match(html, /width="66" style="width:66px;/);
+  assert.match(html, /<td valign="middle"/);
+});
+
+test('отступ иконки от текста по умолчанию считается от её размера', () => {
+  // При иконке в 64px фиксированные 14px слипались бы с заголовком.
+  const big = renderer.render(doc([{ type: 'iconlist', iconSize: 64, items: [{ icon: 'check', title: 'А' }] }])).html;
+  assert.match(big, /width="96"/);
+  const small = renderer.render(doc([{ type: 'iconlist', iconSize: 16, items: [{ icon: 'check', title: 'А' }] }])).html;
+  assert.match(small, /width="28"/);
+});

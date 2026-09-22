@@ -36,6 +36,10 @@ function resolveHistoryActionLabel(entry, actionLabels) {
  * Генерация PDF отчета по отзыву
  */
 async function generateReviewPdf(review, board, history) {
+  // Доска зовётся по филиалу (ver. 8.56), и название спрашиваем до того, как
+  // начнём рисовать: внутри Promise асинхронного чтения уже не сделать.
+  const boardName = await board.title();
+
   return new Promise((resolve, reject) => {
     try {
       const now = new Date();
@@ -56,7 +60,7 @@ async function generateReviewPdf(review, board, history) {
         size: 'A4',
         info: {
           Title: `Отчет по отзыву - ${review.patientName}`,
-          Author: board.name,
+          Author: boardName,
           Subject: 'Отчет по отзыву',
           CreationDate: now
         }
@@ -71,7 +75,7 @@ async function generateReviewPdf(review, board, history) {
       doc.pipe(stream);
 
       // Заголовок
-      doc.fontSize(20).font('DejaVu-Bold').text(board.name, { align: 'center' });
+      doc.fontSize(20).font('DejaVu-Bold').text(boardName, { align: 'center' });
       doc.fontSize(12).font('DejaVu').text('Отчет по отзыву', { align: 'center' });
       doc.fontSize(10).text(`Сформирован: ${now.toLocaleDateString('ru-RU', {
         year: 'numeric',

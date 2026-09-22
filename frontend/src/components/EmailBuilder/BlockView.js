@@ -29,6 +29,47 @@ import { BASE_URL } from '../../services/api';
 import { fontStack, ensureWebFont } from './fonts';
 import { ICON_BY_KEY } from './icons';
 
+/**
+ * Иконка на холсте (ver. 8.54).
+ *
+ * Рисуется тем же контуром и по той же геометрии, что и PNG в письме
+ * (см. buildSvg в backend/services/emailIconImage.js): глиф ужимается до доли
+ * подложки и встаёт в её середину, скругление считается от половины стороны.
+ * Расходиться им нельзя — холст для того и нужен, чтобы видеть письмо.
+ *
+ * Контур берётся из набора во фронтенде, а не картинкой с сервера: иначе
+ * каждое движение ползунка цвета — это запрос, а пока он идёт, иконка мигает.
+ */
+export function IconGlyph({ icon, emoji, size, color, bg, radius = 50, scale = 58, stroke = 2 }) {
+  const found = ICON_BY_KEY[icon];
+  if (!found) return <div style={{ fontSize: size, lineHeight: 1 }}>{emoji || '•'}</div>;
+
+  const k = bg ? scale / 100 : 1;
+  const offset = (24 - 24 * k) / 2;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      style={{ display: 'block' }}
+    >
+      {bg && <rect x="0" y="0" width="24" height="24" rx={12 * radius / 50} ry={12 * radius / 50} fill={bg} />}
+      <g
+        transform={k === 1 ? undefined : `translate(${offset} ${offset}) scale(${k})`}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        /* Контур собран нашим же скриптом из lucide и лежит в репозитории —
+           пользовательского в нём ничего нет. */
+        dangerouslySetInnerHTML={{ __html: found.d }}
+      />
+    </svg>
+  );
+}
+
 // Ширина содержимого письма: 600 минус боковые поля карточки. Тем же числом
 // рендерер считает ширину картинок и колонок — см. ctx.contentWidth.
 export const CONTENT_WIDTH = 552;
@@ -612,35 +653,25 @@ export default function BlockView({ block, settings, selected, onChange, renderC
       if (!items.length) return <div className="eb-empty-inline" />;
       const size = Number(block.iconSize) || 28;
       const gap = Number(block.gap) ?? 14;
-      const lane = size + Math.max(12, Math.round(size / 2));
+      const lane = Number(block.iconGap) || Math.max(12, Math.round(size / 2));
+      const valign = block.iconAlign === 'middle' ? 'center' : 'flex-start';
+      const style = {
+        color: block.iconColor || block.color || s.textColor,
+        bg: block.iconBg || '',
+        radius: Number.isFinite(Number(block.iconRadius)) ? Number(block.iconRadius) : 50,
+        scale: Number.isFinite(Number(block.iconScale)) ? Number(block.iconScale) : 58,
+        stroke: Number(block.iconStroke) || 2,
+      };
       return (
         <div style={{ fontFamily: s.fontFamily }}>
           {items.map((item, i) => {
             const own = previewSrc(item?.image);
-            // Иконка на холсте рисуется компонентом lucide, а в письме — тем же
-            // контуром, но картинкой. Набор один (см. icons.js), поэтому то,
-            // что человек выбрал, и то, что доедет до получателя, совпадает.
-            const Icon = ICON_BY_KEY[item?.icon]?.Icon;
-            const glyph = Math.round(size * (block.iconBg ? 0.58 : 1));
             return (
-              <div key={i} style={{ display: 'flex', gap: lane - size, paddingTop: i ? gap : 0 }}>
+              <div key={i} style={{ display: 'flex', gap: lane, alignItems: valign, paddingTop: i ? gap : 0 }}>
                 <div style={{ flex: `0 0 ${size}px` }}>
-                  {own && <img src={own} alt="" style={{ display: 'block', width: size }} />}
-                  {!own && Icon && (
-                    <div style={{
-                      width: size,
-                      height: size,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: '50%',
-                      background: block.iconBg || 'transparent',
-                      color: block.iconColor || block.color || s.textColor,
-                    }}>
-                      <Icon size={glyph} strokeWidth={2} />
-                    </div>
-                  )}
-                  {!own && !Icon && <div style={{ fontSize: size, lineHeight: 1 }}>{item?.emoji || '•'}</div>}
+                  {own
+                    ? <img src={own} alt="" style={{ display: 'block', width: size }} />
+                    : <IconGlyph icon={item?.icon} emoji={item?.emoji} size={size} {...style} />}
                 </div>
                 <div style={{ minWidth: 0 }}>
                   {item?.title && <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.35, color: block.color || s.textColor }}>{item.title}</div>}

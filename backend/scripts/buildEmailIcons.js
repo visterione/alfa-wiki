@@ -1,24 +1,34 @@
 'use strict';
 
 /**
- * Сборка набора иконок для писем (ver. 8.53).
+ * Сборка набора иконок для писем (ver. 8.54).
  *
  * Иконки в письме рисует не браузер: SVG в почте не показывает ни Gmail, ни
  * Outlook, поэтому в письмо уходит картинка. Рисовать её надо из тех же
  * контуров, что и в интерфейсе портала, иначе иконка в письме и иконка в
  * конструкторе — разные иконки, и человек выбирает вслепую.
  *
+ * В набор идёт весь lucide, а не отобранная часть: заранее угадать, что
+ * понадобится маркетологу, нельзя, и каждая ненайденная иконка — это письмо,
+ * собранное «из того, что было». Полторы тысячи контуров весят 57 КБ в сжатом
+ * виде — меньше, чем подборщик эмодзи по соседству.
+ *
+ * Отобранная часть (CURATED) при этом никуда не делась: у неё русские названия,
+ * слова для поиска и раскладка по группам, и в подборщике она стоит первой. Всё
+ * остальное описывается автоматически — по словарю WORDS, который переводит
+ * слова из английских имён.
+ *
  * Контуры берутся из lucide-react, который уже стоит во фронтенде. Раскладывать
- * его в бэкенд зависимостью не нужно: нужны не компоненты, а несколько десятков
- * строк с путями, и они не меняются. Скрипт прогоняет отобранные иконки через
- * react-dom/server, вынимает внутренность <svg> и пишет два файла:
+ * его в бэкенд зависимостью не нужно: нужны не компоненты, а строки с путями.
+ * Скрипт прогоняет иконки через react-dom/server, вынимает внутренность <svg>
+ * и пишет два файла:
  *
- *   backend/services/emailIcons.js                     — контуры для рендера в PNG
- *   frontend/src/components/EmailBuilder/icons.js      — компоненты для подборщика
+ *   backend/services/emailIcons.js                 — контуры для отрисовки в PNG
+ *   frontend/src/components/EmailBuilder/icons.js  — контуры и описания для подборщика
  *
- * Оба собираются из одного списка ниже, поэтому набор в письме и набор в
- * подборщике не могут разойтись. Запуск: `node scripts/buildEmailIcons.js` из
- * каталога backend (react и lucide-react берутся из frontend/node_modules).
+ * Оба собираются за один проход, поэтому набор в письме и набор в подборщике
+ * разойтись не могут. Запуск: `node scripts/buildEmailIcons.js` из каталога
+ * backend (react и lucide-react берутся из frontend/node_modules).
  */
 
 const path = require('path');
@@ -36,12 +46,12 @@ const { renderToStaticMarkup } = req('react-dom/server');
 const lucide = req('lucide-react');
 
 /**
- * Отобранный набор.
+ * Группы подборщика.
  *
- * Не весь lucide: тысяча иконок в подборщике — это не выбор, а поиск вслепую.
- * Здесь то, что встречается в письмах сети медцентров, и у каждой иконки есть
- * русское название и слова для поиска — иначе искать придётся по английскому
- * имени файла, которого человек не знает.
+ * Разложена по ним только отобранная часть набора: остальное живёт во вкладке
+ * «Все», куда ходят поиском. Раскладывать полторы тысячи иконок по восьми
+ * группам бессмысленно — в каждой оказалось бы по двести штук, и выбор снова
+ * стал бы перебором.
  */
 const GROUPS = [
   ['med', 'Медицина'],
@@ -54,7 +64,14 @@ const GROUPS = [
   ['misc', 'Знаки'],
 ];
 
-const ICONS = [
+/**
+ * Отобранная часть набора.
+ *
+ * То, что встречается в письмах сети медцентров. У каждой иконки русское
+ * название и слова для поиска: «анализы» должны находить пробирку, хотя в её
+ * имени этого слова нет.
+ */
+const CURATED = [
   // ── Медицина ──────────────────────────────────────────────────────────────
   ['HeartPulse', 'med', 'Пульс', 'сердце кардио пульс экг диагностика'],
   ['Stethoscope', 'med', 'Стетоскоп', 'врач терапевт приём осмотр'],
@@ -182,6 +199,148 @@ const ICONS = [
   ['Coffee', 'misc', 'Уют', 'кофе отдых ожидание'],
 ];
 
+/**
+ * Английское слово из имени иконки → русское.
+ *
+ * Нужен ради поиска. Имена у lucide английские, и человек, которому нужна
+ * стрелка, набирает «стрелка», а не «arrow». Отобранная часть набора описана
+ * вручную (см. CURATED), всё остальное — почти полторы тысячи иконок —
+ * описывать руками бессмысленно: словарь из трёхсот слов покрывает их имена и
+ * делает весь набор находимым по-русски.
+ *
+ * Из этих же слов складывается название иконки, когда переводятся все части
+ * имени: «arrow-up-circle» → «Стрелка вверх круг». Там, где перевелось не всё,
+ * название остаётся английским — это честнее, чем половина фразы по-русски.
+ */
+const WORDS = {
+  // направления и движение
+  arrow: 'стрелка', arrows: 'стрелки', up: 'вверх', down: 'вниз', left: 'влево', right: 'вправо',
+  chevron: 'шеврон уголок', chevrons: 'шевроны уголки', move: 'переместить', corner: 'угол',
+  navigation: 'навигация', compass: 'компас', route: 'маршрут', signpost: 'указатель',
+  forward: 'вперёд', back: 'назад', redo: 'повторить', undo: 'отменить', refresh: 'обновить',
+  rotate: 'поворот', flip: 'отразить', trending: 'тренд', skip: 'пропустить', step: 'шаг',
+  front: 'вперёд', top: 'верх', bottom: 'низ', center: 'центр', start: 'начало', end: 'конец',
+  to: 'к', from: 'от', in: 'в', out: 'из', around: 'вокруг', between: 'между',
+
+  // фигуры
+  square: 'квадрат', circle: 'круг', triangle: 'треугольник', octagon: 'восьмиугольник',
+  diamond: 'ромб', rectangle: 'прямоугольник', round: 'круглый', dot: 'точка', line: 'линия',
+  dash: 'штрих', dashed: 'пунктир', slash: 'перечёркнуто', cone: 'конус', hexagon: 'шестиугольник',
+  grid: 'сетка', box: 'коробка', half: 'половина', big: 'большой', small: 'маленький',
+  wide: 'широкий', narrow: 'узкий', stack: 'стопка', layers: 'слои',
+
+  // знаки
+  check: 'галочка готово', plus: 'плюс добавить', minus: 'минус убрать', x: 'крестик закрыть',
+  close: 'закрыть', ban: 'запрет', alert: 'внимание', warning: 'предупреждение', info: 'информация',
+  help: 'помощь', question: 'вопрос', asterisk: 'звёздочка', ellipsis: 'многоточие', more: 'ещё',
+  badge: 'значок', flag: 'флаг', star: 'звезда', heart: 'сердце', bookmark: 'закладка',
+  percent: 'процент скидка', equal: 'равно', divide: 'делить', sigma: 'сумма', pi: 'пи',
+  symbol: 'символ', ampersand: 'амперсанд', signature: 'подпись', pilcrow: 'абзац',
+  off: 'выключено', on: 'включено', all: 'все', toggle: 'переключатель',
+
+  // файлы и документы
+  file: 'файл документ', folder: 'папка', archive: 'архив', clipboard: 'буфер список',
+  book: 'книга', books: 'книги', library: 'библиотека', notebook: 'тетрадь', album: 'альбом',
+  text: 'текст', type: 'шрифт', quote: 'цитата', spell: 'орфография', table: 'таблица',
+  list: 'список', kanban: 'канбан', scroll: 'свиток', receipt: 'чек', ticket: 'билет купон',
+  save: 'сохранить', download: 'скачать', upload: 'загрузить', copy: 'копировать',
+  paste: 'вставить', print: 'печать', printer: 'принтер', edit: 'правка', pencil: 'карандаш',
+  pen: 'ручка', eraser: 'ластик', replace: 'заменить', select: 'выбрать', filter: 'фильтр',
+  search: 'поиск найти', zoom: 'увеличить', scan: 'сканировать снимок', barcode: 'штрихкод',
+
+  // люди
+  user: 'человек пользователь', users: 'люди группа', person: 'человек', baby: 'малыш ребёнок',
+  smile: 'улыбка', angry: 'злой', annoyed: 'раздражён', frown: 'грусть', laugh: 'смех',
+  hand: 'рука', thumbs: 'палец оценка', accessibility: 'доступность', contact: 'контакт',
+  crown: 'корона', graduation: 'выпускной образование', award: 'награда', trophy: 'кубок',
+  cake: 'торт', gift: 'подарок', party: 'праздник', baby2: 'ребёнок',
+
+  // связь
+  mail: 'почта письмо', message: 'сообщение', messages: 'сообщения', send: 'отправить',
+  reply: 'ответить', share: 'поделиться', phone: 'телефон', smartphone: 'смартфон',
+  bell: 'колокольчик уведомление', megaphone: 'рупор объявление', mic: 'микрофон',
+  headphones: 'наушники', speaker: 'динамик', volume: 'громкость', audio: 'звук',
+  radio: 'радио', antenna: 'антенна', signal: 'сигнал', wifi: 'вайфай', bluetooth: 'блютус',
+  nfc: 'нфс', satellite: 'спутник', rss: 'лента', link: 'ссылка', at: 'собака',
+
+  // техника
+  monitor: 'монитор экран', screen: 'экран', laptop: 'ноутбук', tablet: 'планшет',
+  keyboard: 'клавиатура', mouse: 'мышь', pointer: 'указатель', cursor: 'курсор',
+  touchpad: 'тачпад', server: 'сервер', database: 'база данных', cloud: 'облако',
+  hard: 'жёсткий', drive: 'диск', cpu: 'процессор', chip: 'чип', circuit: 'схема',
+  battery: 'батарея', charging: 'зарядка', plug: 'розетка', power: 'питание', zap: 'молния быстро',
+  cable: 'кабель', usb: 'юсб', terminal: 'терминал консоль', code: 'код',
+  bug: 'ошибка жук', git: 'гит', branch: 'ветка', commit: 'коммит', merge: 'слияние',
+  pull: 'тянуть', push: 'толкать', request: 'запрос', app: 'приложение', window: 'окно',
+  panel: 'панель', panels: 'панели', sidebar: 'боковая панель', layout: 'раскладка',
+  menu: 'меню', settings: 'настройки', cog: 'шестерёнка настройки', sliders: 'ползунки',
+  wrench: 'ключ инструмент', hammer: 'молоток', screwdriver: 'отвёртка',
+
+  // деньги
+  wallet: 'кошелёк', banknote: 'купюра деньги', coins: 'монеты', dollar: 'доллар',
+  euro: 'евро', ruble: 'рубль', russian: 'русский', pound: 'фунт', sterling: 'стерлинг',
+  yen: 'иена', japanese: 'японский', rupee: 'рупия', indian: 'индийский', franc: 'франк',
+  swiss: 'швейцарский', credit: 'кредит', card: 'карта', shopping: 'покупки',
+  cart: 'корзина', basket: 'корзина', bag: 'сумка', store: 'магазин', tag: 'ценник',
+  piggy: 'копилка', bank: 'банк', landmark: 'учреждение банк', hand2: 'рука',
+
+  // время
+  calendar: 'календарь', clock: 'часы время', alarm: 'будильник', timer: 'таймер секундомер',
+  hourglass: 'песочные часы', history: 'история', watch: 'часы',
+
+  // медицина
+  heart2: 'сердце', pulse: 'пульс', activity: 'кардиограмма активность',
+  stethoscope: 'стетоскоп', pill: 'таблетка лекарство', syringe: 'шприц укол',
+  thermometer: 'градусник температура', microscope: 'микроскоп', flask: 'колба',
+  test: 'проба тест', tube: 'пробирка', tubes: 'пробирки', dna: 'днк', brain: 'мозг',
+  bone: 'кость', ear: 'ухо', eye: 'глаз', bandage: 'пластырь', cross: 'крест',
+  hospital: 'больница', ambulance: 'скорая', bed: 'койка кровать', wheelchair: 'коляска',
+  virus: 'вирус', shield: 'щит защита', lock: 'замок', unlock: 'открыть', key: 'ключ',
+  keyhole: 'скважина', fingerprint: 'отпечаток',
+
+  // места и транспорт
+  map: 'карта', pin: 'булавка точка', locate: 'найти на карте', globe: 'глобус мир',
+  home: 'дом', house: 'дом', building: 'здание', warehouse: 'склад', factory: 'завод',
+  tower: 'башня', door: 'дверь', wall: 'стена', brick: 'кирпич', tent: 'палатка',
+  car: 'машина', bus: 'автобус', train: 'поезд', plane: 'самолёт', ship: 'корабль',
+  truck: 'грузовик доставка', bike: 'велосипед', parking: 'парковка', fuel: 'заправка',
+  anchor: 'якорь', rocket: 'ракета', luggage: 'багаж', armchair: 'кресло', sofa: 'диван',
+
+  // природа и погода
+  sun: 'солнце', moon: 'луна ночь', cloud2: 'облако', rain: 'дождь', snow: 'снег',
+  snowflake: 'снежинка', wind: 'ветер', umbrella: 'зонт', tree: 'дерево', leaf: 'лист',
+  flower: 'цветок', sprout: 'росток', wheat: 'пшеница', mountain: 'гора', waves: 'волны',
+  droplet: 'капля', droplets: 'капли', flame: 'огонь', ice: 'лёд', earth: 'земля',
+  bird: 'птица', fish: 'рыба', bug2: 'жук', egg: 'яйцо', bean: 'зерно',
+
+  // еда
+  apple: 'яблоко', candy: 'конфета', coffee: 'кофе', cup: 'чашка', wine: 'вино',
+  milk: 'молоко', salad: 'салат', utensils: 'приборы еда', pizza: 'пицца', slice: 'кусок',
+  beef: 'мясо', carrot: 'морковь', cookie: 'печенье', ice2: 'мороженое',
+
+  // медиа
+  image: 'картинка фото', images: 'картинки', camera: 'камера фото', video: 'видео',
+  film: 'плёнка кино', play: 'играть смотреть', pause: 'пауза', stop: 'стоп',
+  music: 'музыка', disc: 'диск', gallery: 'галерея', picture: 'картинка', aperture: 'диафрагма',
+  palette: 'палитра', brush: 'кисть', paint: 'краска', pipette: 'пипетка', droplet2: 'капля',
+
+  // графики
+  chart: 'график диаграмма', bar: 'столбец', pie: 'круговая', gauge: 'шкала', axis3: 'оси',
+  gantt: 'гантт', area: 'область', trend: 'тренд', sort: 'сортировка', az: 'аз', za: 'яа',
+  align: 'выравнивание', justify: 'по ширине', distribute: 'распределить',
+  horizontal: 'по горизонтали', vertical: 'по вертикали', space: 'промежуток',
+  fold: 'свернуть', unfold: 'развернуть', open: 'открыть', closed: 'закрыто',
+  stretch: 'растянуть', split: 'разделить', separator: 'разделитель', diff: 'различия',
+  compare: 'сравнить', create: 'создать', iteration: 'итерация', input: 'ввод',
+  output: 'вывод', log: 'журнал', ruler: 'линейка', grip: 'захват', lasso: 'лассо',
+  scissors: 'ножницы', package: 'коробка посылка', puzzle: 'пазл', lightbulb: 'лампочка идея',
+  lamp: 'лампа', flashlight: 'фонарь', target: 'цель', crosshair: 'прицел',
+  smoke: 'дым', vent: 'вентиляция', air: 'воздух', fan: 'вентилятор', vibrate: 'вибрация',
+  cigarette: 'сигарета', anvil: 'наковальня', wheel: 'колесо', nut: 'гайка',
+  hop: 'хмель', pocket: 'карман', restore: 'восстановить', symlink: 'ссылка',
+  locate2: 'найти', signal2: 'сигнал', trash: 'корзина удалить', archive2: 'архив',
+};
+
 /** Имя компонента lucide → ключ, под которым иконка живёт в письме. */
 const slug = (name) => name
   .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
@@ -189,73 +348,137 @@ const slug = (name) => name
   .toLowerCase();
 
 /** Внутренность <svg> у иконки: контуры без обёртки и без размеров. */
-function bodyOf(name) {
-  const Component = lucide[name];
-  if (!Component) throw new Error(`В lucide-react нет иконки ${name}`);
-  const markup = renderToStaticMarkup(React.createElement(Component, { size: 24 }));
-  const inner = markup.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
-  // Самозакрывающиеся теги: react-dom отдаёт <path></path>, в SVG для sharp
-  // это допустимо, но короче и читаемее без парных закрытий.
-  return inner.replace(/><\/(path|circle|rect|line|polyline|polygon|ellipse)>/g, '/>');
+const bodyOf = (Component) => renderToStaticMarkup(React.createElement(Component, { size: 24 }))
+  .replace(/^<svg[^>]*>/, '')
+  .replace(/<\/svg>$/, '')
+  // Самозакрывающиеся теги: react-dom отдаёт <path></path>, для SVG это то же
+  // самое, но короче — а файл идёт в браузер целиком.
+  .replace(/><\/(path|circle|rect|line|polyline|polygon|ellipse)>/g, '/>');
+
+/**
+ * Все иконки lucide, схлопнутые по одинаковым контурам.
+ *
+ * У набора много синонимов: Trash2 и Trash2Icon — одна и та же иконка под
+ * двумя именами, а в старых версиях к ним добавляются переименованные. Каждая
+ * такая пара — лишняя строка в подборщике и лишний повод выбрать не то, чего
+ * ждёшь. Каноническим считается самое короткое имя без суффикса Icon; остальные
+ * имена уходят в слова для поиска, чтобы по ним тоже находилось.
+ */
+const byBody = new Map();
+Object.keys(lucide)
+  .filter(name => /^[A-Z]/.test(name) && lucide[name] && lucide[name].$$typeof)
+  .forEach((name) => {
+    const body = bodyOf(lucide[name]);
+    if (!byBody.has(body)) byBody.set(body, []);
+    byBody.get(body).push(name);
+  });
+
+const curatedByName = new Map(CURATED.map(([name, group, label, keywords]) => [name, { group, label, keywords }]));
+
+/** Человеческое название из английского имени: «arrow-up» → «Arrow up». */
+const humanize = (key) => key.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
+
+/**
+ * Какое из синонимов считать настоящим именем.
+ *
+ * Сперва то, что названо в CURATED: иначе «BadgeCheck» превращается в
+ * «Verified», а «Sparkles» — в «Stars», и русское название, написанное для
+ * первого, достаётся некому. Дальше — самое короткое имя без приставки Lucide
+ * и без суффикса Icon: это и есть то, под которым иконка известна.
+ */
+const canonicalOf = (names) => names.find(n => curatedByName.has(n))
+  || names.filter(n => !/Icon$/.test(n) && !/^Lucide/.test(n)).sort((a, b) => a.length - b.length)[0]
+  || names[0];
+
+const entries = [];
+for (const [body, names] of byBody) {
+  const canonical = canonicalOf(names);
+  const key = slug(canonical);
+  const own = curatedByName.get(canonical);
+
+  const parts = key.split('-');
+  const russian = parts.map(w => WORDS[w]).filter(Boolean);
+  // Название по-русски собирается только когда перевелись все части имени:
+  // «Стрелка вверх круг» понятно, «Стрелка up круг» — нет.
+  const label = own?.label
+    || (russian.length === parts.length
+      ? russian.map(w => w.split(' ')[0]).join(' ').replace(/^./, c => c.toUpperCase())
+      : humanize(key));
+
+  // В слова для поиска идёт всё: английское имя, его синонимы и русские слова
+  // из словаря. Ищут и так и так, а лишнее слово в поиске никому не мешает.
+  const keywords = [own?.keywords, names.map(slug).join(' '), russian.join(' ')]
+    .filter(Boolean).join(' ').toLowerCase();
+
+  entries.push({ key, group: own?.group || '', label, keywords, body, curated: Boolean(own) });
 }
 
-const entries = ICONS.map(([name, group, label, keywords]) => ({
-  key: slug(name),
-  name,
-  group,
-  label,
-  keywords,
-  body: bodyOf(name),
-}));
-
-const seen = new Set();
-entries.forEach((e) => {
-  if (seen.has(e.key)) throw new Error(`Ключ ${e.key} встретился дважды`);
-  seen.add(e.key);
+// Порядок в подборщике: сперва отобранное, в том порядке, в котором его
+// расписали по группам, дальше всё остальное по алфавиту.
+const curatedOrder = new Map(CURATED.map(([name], i) => [slug(name), i]));
+entries.sort((a, b) => {
+  const ai = curatedOrder.has(a.key) ? curatedOrder.get(a.key) : Infinity;
+  const bi = curatedOrder.has(b.key) ? curatedOrder.get(b.key) : Infinity;
+  if (ai !== bi) return ai - bi;
+  return a.key.localeCompare(b.key);
 });
+
+// Каждая отобранная иконка обязана доехать до набора под своим именем. Пока
+// проверки не было, две из них молча схлопнулись в синонимы (Verified и Stars)
+// и остались без русского названия — заметить это по числу в выводе нельзя.
+const byKey = new Set(entries.map(e => e.key));
+const lost = CURATED.map(([n]) => n).filter(n => !byKey.has(slug(n)));
+if (lost.length) throw new Error(`Отобранные иконки не доехали до набора: ${lost.join(', ')}`);
 
 const HEADER = `/**
  * Набор иконок для писем.
  *
  * Файл собран скриптом backend/scripts/buildEmailIcons.js из lucide-react —
- * руками его не правят: следующая сборка сотрёт правку. Чтобы добавить иконку,
- * допишите её в список в скрипте и запустите его заново.
+ * руками его не правят: следующая сборка сотрёт правку. Чтобы поправить
+ * название, слова для поиска или группу, найдите иконку в списке CURATED в
+ * скрипте и запустите его заново.
  */`;
 
+// ── Бэкенду нужны только контуры ────────────────────────────────────────────
+//
+// Названия и группы — дело подборщика; серверу они не нужны ни для отрисовки,
+// ни для проверки, а файл с ними весил бы в полтора раза больше.
 const backendFile = `'use strict';
 
 ${HEADER}
 
-const GROUPS = [
-${GROUPS.map(([id, label]) => `  ['${id}', ${JSON.stringify(label)}],`).join('\n')}
-];
-
 const ICONS = {
-${entries.map(e => `  '${e.key}': {\n    label: ${JSON.stringify(e.label)},\n    group: '${e.group}',\n    keywords: ${JSON.stringify(e.keywords)},\n    body: ${JSON.stringify(e.body)},\n  },`).join('\n')}
+${entries.map(e => `  '${e.key}': ${JSON.stringify(e.body)},`).join('\n')}
 };
 
-module.exports = { GROUPS, ICONS };
+module.exports = { ICONS };
 `;
 
 fs.writeFileSync(path.join(__dirname, '..', 'services', 'emailIcons.js'), backendFile);
 
+// ── Фронтенду нужны контуры и описания ──────────────────────────────────────
+//
+// Контур едет во фронтенд, чтобы подборщик и холст рисовали иконку сами, без
+// похода на сервер: иначе открытие подборщика — это полторы тысячи запросов.
+// Строки, а не компоненты: полторы тысячи компонентов lucide в сборке весят на
+// порядок больше, а рисуются они всё равно одним и тем же <svg>.
 const frontFile = `${HEADER}
-
-import {
-${entries.map(e => `  ${e.name},`).join('\n')}
-} from 'lucide-react';
 
 export const ICON_GROUPS = [
 ${GROUPS.map(([id, label]) => `  ['${id}', ${JSON.stringify(label)}],`).join('\n')}
 ];
 
-export const EMAIL_ICONS = [
-${entries.map(e => `  { key: '${e.key}', Icon: ${e.name}, group: '${e.group}', label: ${JSON.stringify(e.label)}, keywords: ${JSON.stringify(e.keywords)} },`).join('\n')}
+/** ключ, группа, название, слова для поиска, контур */
+const RAW = [
+${entries.map(e => `  ['${e.key}','${e.group}',${JSON.stringify(e.label)},${JSON.stringify(e.keywords)},${JSON.stringify(e.body)}],`).join('\n')}
 ];
+
+export const EMAIL_ICONS = RAW.map(([key, group, label, keywords, d]) => ({ key, group, label, keywords, d }));
 
 export const ICON_BY_KEY = EMAIL_ICONS.reduce((acc, i) => { acc[i.key] = i; return acc; }, {});
 `;
 
 fs.writeFileSync(path.join(ROOT, 'frontend', 'src', 'components', 'EmailBuilder', 'icons.js'), frontFile);
 
-console.log(`Готово: ${entries.length} иконок в ${GROUPS.length} группах.`);
+const curated = entries.filter(e => e.curated).length;
+console.log(`Готово: ${entries.length} иконок, из них ${curated} отобранных в ${GROUPS.length} группах.`);

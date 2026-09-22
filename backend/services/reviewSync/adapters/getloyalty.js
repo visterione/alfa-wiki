@@ -30,6 +30,18 @@ const PLATFORM_NAMES = {
   plasopro:    'Plaso.pro'
 };
 
+// Площадки, которые мы у GetLoyalty не берём (ver. 8.55).
+//
+// Plaso.pro отдаёт отзывы, не относящиеся к нашим клиникам: агрегатор подтягивает
+// туда чужие карточки, и на доску они приезжали как обычный негатив — обработчик
+// тратил на них время, а статистика по площадкам считала их нашими. Ответить на
+// такой отзыв через GetLoyalty всё равно нельзя.
+//
+// Отсев идёт по identity источника: сами source_hash_key площадки в фильтр
+// филиала не попадают, поэтому её отзывы отпадают там же, где отзывы чужих
+// филиалов, и в нашу базу не доходят вовсе.
+const IGNORED_IDENTITIES = new Set(['plasopro']);
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Логин: возвращает строку сессионной куки cPHPSESSID
 // ──────────────────────────────────────────────────────────────────────────────
@@ -106,7 +118,7 @@ async function getFilials(session) {
   return Object.entries(catalogue.filials).map(([id, f]) => {
     // Собираем площадки для этого филиала
     const platforms = Object.values(catalogue.sources || {})
-      .filter(s => s.filials?.includes(id))
+      .filter(s => s.filials?.includes(id) && !IGNORED_IDENTITIES.has(s.identity))
       .map(s => PLATFORM_NAMES[s.identity] || s.identity)
       .filter((v, i, a) => a.indexOf(v) === i); // unique
 
@@ -155,6 +167,7 @@ async function fetchReviews(credentials, options = {}) {
   const sourceMap = {}; // hash_key → название площадки
 
   for (const [hashKey, source] of Object.entries(catalogue.sources || {})) {
+    if (IGNORED_IDENTITIES.has(source.identity)) continue;
     if (source.filials?.includes(String(filialId))) {
       filialHashKeys.add(hashKey);
       sourceMap[hashKey] = PLATFORM_NAMES[source.identity] || source.identity;

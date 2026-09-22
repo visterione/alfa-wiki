@@ -58,6 +58,39 @@
   color: var(--text-primary);
 }
 
+/* Знак филиала в шапке доски.
+
+   Подложка белая, а не под цвет филиала: логотипы в справочнике разного
+   происхождения — часть с прозрачным фоном, часть обычными jpeg с белым
+   квадратом, — и на цветной плашке вторые выглядели бы наклейкой поверх неё.
+   Белая плашка одинаково честна к обоим и держится в тёмной теме, где иначе
+   тёмный логотип на тёмном фоне просто пропадает. Фирменный цвет остаётся в
+   рамке — он приходит в --mc-accent.
+
+   Ширина по содержимому: логотипы сети вытянутые, и в квадрате со стороной
+   строки от них остаётся полоска в треть высоты. */
+.review-board-header .board-brand {
+  --mc-accent: var(--accent-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  min-width: 40px;
+  max-width: 140px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--mc-accent) 30%, transparent);
+}
+
+.review-board-header .board-brand img {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
 .header-info h1 {
   font-size: 1.5rem;
   font-weight: 600;
@@ -550,6 +583,10 @@
 }
 
 .card-meta .platform {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
   color: var(--text-primary);
 }
 
@@ -1179,6 +1216,9 @@
 }
 
 .review-message-footer .source-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--text-secondary);
 }
 

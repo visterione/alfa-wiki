@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { reviews } from '../services/api';
 import { REVIEW_STATUSES, DECISION_CATEGORIES, formatMsDuration } from '../utils/reviewConstants';
+import PlatformLogo from '../components/PlatformLogo';
 import toast from 'react-hot-toast';
 import './ReviewStatistics.css';
 
@@ -355,7 +356,10 @@ const ReviewStatistics = () => {
             ) : (
               chartData?.platformData.map(platform => (
                 <div key={platform.id} className="bar-row">
-                  <div className="bar-label">{platform.name}</div>
+                  <div className="bar-label">
+                    <PlatformLogo name={platform.name} />
+                    {platform.name}
+                  </div>
                   <div className="bar-wrapper">
                     <div
                       className="bar"

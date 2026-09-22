@@ -324,11 +324,21 @@
 }
 
 .platform-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.25rem 0.5rem;
   background: var(--bg-tertiary);
   border-radius: 4px;
   font-size: 0.75rem;
+}
+
+/* Значение с логотипом площадки в карточке отзыва: остальные строки остаются
+   обычным текстом, поэтому выравнивание задано точечно, а не всем .value */
+.detail-row .value--with-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .rating-stars {

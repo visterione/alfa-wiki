@@ -6,6 +6,8 @@ const { authenticate, requireMarketing } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
 const emailRenderer = require('../services/emailRenderer');
 const emailIcons = require('../services/emailIconImage');
+const darkMode = require('../services/emailDarkMode');
+const quota = require('../services/emailQuota');
 const optout = require('../services/emailOptout');
 const { Op } = require('sequelize');
 const multer = require('multer');
@@ -171,7 +173,19 @@ router.post('/preview', authenticate, requireAnnouncementsEdit, async (req, res)
     // сюрпризом. Больше в письме подставлять нечего.
     const preview = emailRenderer.personalize(html, { unsubscribe_url: '#' });
 
-    res.json({ html: preview, warnings, bytes: Buffer.byteLength(html, 'utf8') });
+    // Тёмный снимок едет тем же ответом, а не отдельным запросом, и это важно:
+    // оба вида обязаны быть сделаны из ОДНОГО рендера. Пока человек правит
+    // письмо, два запроса подряд легко приносят два разных его состояния, и
+    // светлый с тёмным начинают расходиться на глазах.
+    const previewDark = darkMode.simulate(preview);
+
+    res.json({
+      html: preview,
+      htmlDark: previewDark,
+      warnings,
+      darkWarnings: darkMode.inspect(design),
+      bytes: Buffer.byteLength(html, 'utf8'),
+    });
   } catch (error) {
     console.error('❌ Error rendering email preview:', error);
     res.status(500).json({ error: 'Не удалось собрать письмо' });
@@ -494,13 +508,110 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
     if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
       return res.status(400).json({ error: 'Время отправки должно быть в будущем' });
     }
+  }
+
+  const startAt = scheduledAt ? new Date(scheduledAt) : new Date();
+  const slim = (r) => ({ email: r.email, userId: r.userId, displayName: r.displayName });
+  const slimAttachments = attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType }));
+
+  /**
+   * Суточный предел (ver. 8.57).
+   *
+   * Список, который не помещается в сутки, не отменяется и не режется — он
+   * растягивается по дням. Каждый день становится отдельной отложенной
+   * рассылкой: у неё свой список получателей, свой статус и своя отмена, а
+   * связывает их batchId. Отдельного механизма под это нет намеренно — порция
+   * это обычная отложенная рассылка, и весь ход отправки у неё уже есть.
+   */
+  let planned;
+  try {
+    planned = await quota.planFor(recipients.length, startAt);
+  } catch (error) {
+    // Предел — это предосторожность, а не условие отправки. Если посчитать его
+    // не удалось (упал запрос, нет таблицы settings), рассылка должна уйти, а
+    // не встать: молчаливый отказ отправить письмо хуже, чем отправленное без
+    // проверки. Но сказать об этом в журнале надо.
+    console.error('❌ Не удалось посчитать суточный предел рассылки:', error.message);
+    planned = { perDay: 0, plan: [{ date: null, count: recipients.length }] };
+  }
+
+  if (planned.overflow) {
+    return res.status(400).json({
+      error: `Суточный предел (${planned.perDay}) слишком мал: даже за год рассылка не помещается. Поднимите предел или сократите список.`,
+    });
+  }
+
+  if (planned.plan.length > 1) {
+    // Многодневную рассылку не начинаем молча: человек должен сначала увидеть,
+    // на сколько дней она растянется. Интерфейс показывает план заранее, а эта
+    // проверка страхует от отправки в обход него — например, повтором старого
+    // запроса.
+    if (req.body.acceptPlan !== true) {
+      return res.status(409).json({
+        error: 'Рассылка не помещается в суточный предел',
+        needsPlan: true,
+        perDay: planned.perDay,
+        plan: planned.plan,
+        total: recipients.length,
+      });
+    }
+
+    const batchId = randomUUID();
+    try {
+      let offset = 0;
+      const rows = [];
+      for (let i = 0; i < planned.plan.length; i += 1) {
+        const portion = planned.plan[i];
+        const slice = recipients.slice(offset, offset + portion.count);
+        offset += portion.count;
+        // Первая порция уходит в назначенное время (или сейчас), следующие — в
+        // тот же час следующих дней: рассылка, начатая в десять утра,
+        // продолжается в десять утра.
+        const when = i === 0 ? startAt : quota.portionTime(portion.date, startAt);
+        // eslint-disable-next-line no-await-in-loop
+        const log = await EmailLog.create({
+          subject,
+          htmlContent,
+          design,
+          recipients: slice.map(slim),
+          attachments: slimAttachments,
+          sentBy,
+          sentAt: null,
+          scheduledAt: when,
+          status: 'scheduled',
+          batchId,
+          partIndex: i + 1,
+          partTotal: planned.plan.length,
+        });
+        rows.push({ id: log.id, date: portion.date, count: portion.count, scheduledAt: when });
+      }
+      return res.json({
+        scheduled: true,
+        split: true,
+        batchId,
+        perDay: planned.perDay,
+        parts: rows,
+        total: recipients.length,
+      });
+    } catch (error) {
+      console.error('❌ Error splitting email broadcast:', error);
+      // Порции, успевшие записаться до сбоя, уберём: половина плана хуже, чем
+      // его отсутствие — человек увидит в истории рассылку, которая уйдёт
+      // неполной, и не поймёт почему.
+      await EmailLog.destroy({ where: { batchId } }).catch(() => {});
+      return res.status(500).json({ error: 'Не удалось разложить рассылку по дням' });
+    }
+  }
+
+  if (scheduledAt) {
+    const when = new Date(scheduledAt);
     try {
       const log = await EmailLog.create({
         subject,
         htmlContent,
         design,
-        recipients: recipients.map(r => ({ email: r.email, userId: r.userId, displayName: r.displayName })),
-        attachments: attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType })),
+        recipients: recipients.map(slim),
+        attachments: slimAttachments,
         sentBy,
         sentAt: null,
         scheduledAt: when,
@@ -524,8 +635,39 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
     startedAt: Date.now()
   });
 
+  /*
+    Строка в истории заводится ДО отправки, а не после неё (ver. 8.57).
+
+    Раньше рассылка появлялась в истории, только когда дойдёт последнее письмо.
+    Пока она шла, её не было нигде — и это мешало дважды. Во-первых, коллега,
+    открывший раздел в эту минуту, не видел, что рассылка уже идёт, и мог
+    запустить такую же. Во-вторых, суточный предел считается по этой же
+    таблице: три рассылки по девятьсот писем, запущенные подряд, проходили бы
+    проверку каждая, потому что предыдущие ещё не записались.
+
+    Если процесс упадёт посреди отправки, строка останется в состоянии
+    «отправляется». Это лучше, чем её отсутствие: повторно её никто не заберёт
+    (планировщик берёт только запланированные), зато видно, что случилось.
+  */
+  let log = null;
+  try {
+    log = await EmailLog.create({
+      subject,
+      htmlContent,
+      design,
+      recipients: recipients.map(slim),
+      attachments: slimAttachments,
+      sentBy,
+      sentAt: null,
+      status: 'sending'
+    });
+  } catch (error) {
+    console.error('❌ Error creating email log:', error);
+    return res.status(500).json({ error: 'Не удалось начать рассылку' });
+  }
+
   // Отвечаем клиенту немедленно
-  res.json({ jobId, total: recipients.length });
+  res.json({ jobId, id: log.id, total: recipients.length });
 
   // Отправка в фоне
   (async () => {
@@ -563,20 +705,18 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
       }
 
       const status = result.failed === 0 ? 'sent' : (result.sent === 0 ? 'failed' : 'partial');
-      await EmailLog.create({
-        subject,
-        htmlContent,
-        design,
-        recipients: recipients.map(r => ({ email: r.email, userId: r.userId, displayName: r.displayName })),
-        attachments: attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType })),
-        sentBy,
+      await log.update({
         status,
+        sentAt: new Date(),
         errorDetails: result.errors.length > 0 ? JSON.stringify(result.errors) : null
       });
     } catch (error) {
       console.error('❌ Background email broadcast error:', error);
       const job = sendJobs.get(jobId);
       if (job) { job.status = 'failed'; job.errors = [{ error: error.message }]; }
+      // Строка уже в истории: не оставляем её вечно «отправляется» — иначе
+      // упавшая рассылка навсегда занимает место в суточном пределе.
+      await log.update({ status: 'failed', sentAt: new Date(), errorDetails: error.message }).catch(() => {});
     }
   })();
 });
@@ -586,6 +726,62 @@ router.get('/send/status/:jobId', authenticate, requireAnnouncements, (req, res)
   const job = sendJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Задача не найдена' });
   res.json(job);
+});
+
+// === СУТОЧНЫЙ ПРЕДЕЛ И ПЛАН РАССЫЛКИ (ver. 8.57) ===
+
+/**
+ * Предел и загруженность ближайших дней.
+ *
+ * Смотреть его может любой, у кого есть доступ к разделу: «почему рассылка
+ * растянулась на неделю» — первый вопрос, и ответ на него не секрет.
+ */
+router.get('/limit', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const days = Math.min(60, Math.max(1, parseInt(req.query.days, 10) || 14));
+    res.json(await quota.calendar(days));
+  } catch (error) {
+    console.error('❌ Error reading email daily limit:', error);
+    res.status(500).json({ error: 'Не удалось прочитать суточный предел' });
+  }
+});
+
+/** Смена предела. 0 — снять ограничение совсем. */
+router.put('/limit', authenticate, requireAnnouncementsEdit, [
+  body('perDay').isInt({ min: 0, max: 1000000 }).withMessage('Предел — целое число от 0'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const perDay = await quota.setLimit(req.body.perDay);
+    res.json(await quota.calendar(14));
+    console.log(`📧 Суточный предел рассылок изменён на ${perDay} (${req.user.username})`);
+  } catch (error) {
+    console.error('❌ Error saving email daily limit:', error);
+    res.status(500).json({ error: 'Не удалось сохранить суточный предел' });
+  }
+});
+
+/**
+ * План рассылки: по скольку писем и в какие дни она уйдёт.
+ *
+ * Спрашивается до отправки, чтобы человек увидел расклад заранее, а не узнал о
+ * нём из ответа сервера. Тот же расчёт делает и сам /send — здесь он только
+ * показывается, ничего не создавая.
+ */
+router.post('/plan', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const count = Math.max(0, parseInt(req.body.count, 10) || 0);
+    const startAt = req.body.startAt ? new Date(req.body.startAt) : new Date();
+    if (Number.isNaN(startAt.getTime())) {
+      return res.status(400).json({ error: 'Непонятная дата начала' });
+    }
+    const planned = await quota.planFor(count, startAt);
+    res.json({ ...planned, total: count });
+  } catch (error) {
+    console.error('❌ Error planning email broadcast:', error);
+    res.status(500).json({ error: 'Не удалось построить план рассылки' });
+  }
 });
 
 // === EMAIL HISTORY ===
@@ -634,14 +830,25 @@ router.get('/history/:id', authenticate, requireAnnouncements, async (req, res) 
 
 router.post('/history/:id/cancel', authenticate, requireAnnouncementsEdit, async (req, res) => {
   try {
-    const [changed] = await EmailLog.update(
-      { status: 'canceled' },
-      { where: { id: req.params.id, status: 'scheduled' } }
-    );
+    /*
+      Рассылку, растянутую по дням, отменяем целиком (ver. 8.57).
+
+      Порции — это строки одной рассылки, а не десять разных писем, и «отменить»
+      человек нажимает именно на рассылку. Отменять их по одной значило бы
+      девять раз подтвердить одно решение, а забытая порция ушла бы через
+      неделю сама. Порции, которые уже ушли, остаются отправленными: отменить
+      письмо, которое у получателя, нечем.
+    */
+    const row = await EmailLog.findByPk(req.params.id, { attributes: ['id', 'batchId'] });
+    const where = row?.batchId
+      ? { batchId: row.batchId, status: 'scheduled' }
+      : { id: req.params.id, status: 'scheduled' };
+
+    const [changed] = await EmailLog.update({ status: 'canceled' }, { where });
     if (!changed) {
       return res.status(400).json({ error: 'Отменить можно только запланированную рассылку' });
     }
-    res.json({ ok: true });
+    res.json({ ok: true, canceled: changed });
   } catch (error) {
     console.error('❌ Error canceling scheduled email:', error);
     res.status(500).json({ error: 'Не удалось отменить рассылку' });

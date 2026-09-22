@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, Send, Plus, Edit, Trash2, Save, Star, Table2, Clock, History, ArrowLeft, LayoutTemplate, ChevronDown, BadgePercent, Tags, Newspaper } from 'lucide-react';
+import { X, FileText, Send, Plus, Edit, Trash2, Save, Star, Table2, Clock, History, ArrowLeft, LayoutTemplate, ChevronDown, BadgePercent, Tags, Newspaper, CalendarRange, Gauge } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EmailBuilder, { createDesign } from './EmailBuilder';
 import { PRESETS } from './EmailBuilder/blocks';
@@ -13,6 +13,40 @@ const moscowDateTimeValue = (date) => new Intl.DateTimeFormat('sv-SE', {
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
 }).format(date).replace(' ', 'T');
 const parseMoscowDateTime = (value) => value ? new Date(`${value}:00+03:00`) : null;
+
+// Дата плана приходит с сервера строкой YYYY-MM-DD по Москве. Разбираем её
+// вручную, а не через Date: `new Date('2026-09-22')` — это полночь UTC, и в
+// нашем поясе она показалась бы предыдущим днём у половины пользователей.
+const DAY_NAMES = ['воскресенье', 'понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу'];
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+function dayParts(key) {
+  const [y, m, d] = String(key || '').split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return { y, m, d, date: new Date(y, m - 1, d) };
+}
+
+const formatDay = (key) => {
+  const p = dayParts(key);
+  return p ? `${p.d} ${MONTHS_GEN[p.m - 1]}` : '—';
+};
+
+/** «В понедельник 1000» — как заказчик и описывал план. */
+const formatWeekday = (key) => {
+  const p = dayParts(key);
+  return p ? DAY_NAMES[p.date.getDay()] : '';
+};
+
+const pluralDays = (n) => {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return 'дней';
+  if (mod10 === 1) return 'день';
+  if (mod10 >= 2 && mod10 <= 4) return 'дня';
+  return 'дней';
+};
+
+const nfmt = (n) => Number(n || 0).toLocaleString('ru-RU');
 
 /*
   Иконка заготовки. Раньше у всех четырёх стояли одинаковые «искры», и в списке
@@ -85,6 +119,21 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [sending, setSending] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
+  /**
+   * План рассылки по дням (ver. 8.57).
+   *
+   * Список получателей вырос до тысяч, а почтовые службы смотрят не на письмо,
+   * а на поведение отправителя: десять тысяч писем за час с одного домена — та
+   * самая картина, после которой в спам уходит домен целиком. Поэтому рассылка,
+   * не помещающаяся в суточный предел, растягивается по дням, и расклад надо
+   * показать ДО нажатия «Отправить», а не сообщить о нём после.
+   *
+   * Считает план сервер — тем же кодом, что потом и разрезает рассылку. Считать
+   * его здесь значило бы завести второй ответ на тот же вопрос.
+   */
+  const [plan, setPlan] = useState(null);
+  // Подтверждение многодневной рассылки: { plan, perDay, total, run }.
+  const [planDialog, setPlanDialog] = useState(null);
   const [sendMode, setSendMode] = useState('now');
   const [sendProgress, setSendProgress] = useState(null); // { jobId, sent, failed, total, status }
   const [showTemplates, setShowTemplates] = useState(false);
@@ -703,6 +752,82 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
     return run();
   };
 
+  /**
+   * План пересчитывается при каждой правке списка и даты начала.
+   *
+   * Задержка — не ради экономии запросов: получателей добавляют пачками по
+   * роли и файлом, и считать план на каждом шаге этой пачки значит показывать
+   * числа, которые тут же меняются.
+   */
+  useEffect(() => {
+    if (!recipients.length) { setPlan(null); return undefined; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const startAt = parseMoscowDateTime(scheduledAt);
+        const { data } = await email.getPlan({
+          count: recipients.length,
+          startAt: startAt && !Number.isNaN(startAt.getTime()) ? startAt.toISOString() : undefined,
+        });
+        if (!cancelled) setPlan(data);
+      } catch {
+        // Не посчитался — значит про предел просто ничего не скажем. Отправку
+        // это не трогает: сервер посчитает его заново и сам, а мешать работе
+        // из-за неудавшейся справки нельзя.
+        if (!cancelled) setPlan(null);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [recipients.length, scheduledAt]);
+
+  /**
+   * Отправка, которая может упереться в суточный предел.
+   *
+   * Сервер на такую рассылку отвечает 409 и планом: это не ошибка, а вопрос
+   * «растянуть на столько-то дней?». Получив согласие, повторяем тот же запрос
+   * с acceptPlan — и рассылка расходится порциями по дням.
+   */
+  const sendWithPlan = async (payload, onDone) => {
+    try {
+      return await onDone(await email.send(payload));
+    } catch (error) {
+      const data = error.response?.data;
+      if (error.response?.status === 409 && data?.needsPlan) {
+        setPlanDialog({
+          plan: data.plan,
+          perDay: data.perDay,
+          total: data.total,
+          run: async () => {
+            setPlanDialog(null);
+            setSending(true);
+            try {
+              await onDone(await email.send({ ...payload, acceptPlan: true }));
+            } catch (retryError) {
+              toast.error(retryError.response?.data?.error || 'Не удалось запустить рассылку');
+            } finally {
+              setSending(false);
+            }
+          },
+        });
+        return undefined;
+      }
+      throw error;
+    }
+  };
+
+  /** «Рассылка разложена по дням» — один и тот же итог у обоих способов. */
+  const reportSplit = (data) => {
+    const days = data.parts?.length || 0;
+    const last = data.parts?.[days - 1]?.date;
+    toast.success(
+      `Рассылка на ${data.total} писем разложена по дням: ${days} ${pluralDays(days)}`
+      + (last ? `, последняя порция ${formatDay(last)}` : ''),
+      { duration: 7000 },
+    );
+    clearDraft();
+    onClose();
+  };
+
   // Send email
   const handleSend = () => withWarnings(async () => {
     if (!messageIsValid()) return;
@@ -710,12 +835,17 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
     setPendingSend(null);
     setSending(true);
     try {
-      const { data } = await email.send(messagePayload());
-      // Письмо ушло — ни черновик, ни его версии больше не нужны и не должны
-      // всплывать в следующий раз как «несохранённая работа».
-      clearDraft();
-      // Сервер вернул jobId сразу, отправка идёт в фоне
-      setSendProgress({ jobId: data.jobId, sent: 0, failed: 0, total: data.total, status: 'running' });
+      await sendWithPlan(messagePayload(), (({ data }) => {
+        // Рассылка не поместилась в сутки и разложена по дням: немедленной
+        // отправки не было, показывать полосу хода нечему.
+        if (data.split) return reportSplit(data);
+        // Письмо ушло — ни черновик, ни его версии больше не нужны и не должны
+        // всплывать в следующий раз как «несохранённая работа».
+        clearDraft();
+        // Сервер вернул jobId сразу, отправка идёт в фоне
+        setSendProgress({ jobId: data.jobId, sent: 0, failed: 0, total: data.total, status: 'running' });
+        return undefined;
+      }));
     } catch (error) {
       console.error('Error sending email:', error);
       toast.error(error.response?.data?.error || 'Ошибка запуска рассылки');
@@ -734,19 +864,76 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
     setPendingSend(null);
     setSending(true);
     try {
-      await email.send({
-        ...messagePayload(),
-        scheduledAt: when.toISOString()
-      });
-      clearDraft();
-      toast.success(`Почтовая рассылка запланирована на ${scheduledAt.slice(0, 10)} ${scheduledAt.slice(11)} МСК`);
-      onClose();
+      await sendWithPlan(
+        { ...messagePayload(), scheduledAt: when.toISOString() },
+        (({ data }) => {
+          if (data.split) return reportSplit(data);
+          clearDraft();
+          toast.success(`Почтовая рассылка запланирована на ${scheduledAt.slice(0, 10)} ${scheduledAt.slice(11)} МСК`);
+          onClose();
+          return undefined;
+        }),
+      );
     } catch (error) {
       toast.error(error.response?.data?.error || 'Не удалось запланировать рассылку');
     } finally {
       setSending(false);
     }
   });
+
+  /**
+   * План рассылки в меню отправки.
+   *
+   * Стоит прямо над кнопкой, а не в настройках раздела: суточный предел важен
+   * ровно в ту секунду, когда человек собирается нажать «Отправить». Пока
+   * список помещается в сутки, план — одна успокаивающая строка; как только не
+   * помещается, разворачивается расклад по дням, ради которого всё и делалось.
+   */
+  const planDays = plan?.plan || [];
+  const planSplit = planDays.length > 1;
+
+  const planTable = (rows) => (
+    <ol className="email-plan-days">
+      {rows.map((row) => (
+        <li key={row.date}>
+          <span className="email-plan-when">
+            {formatDay(row.date)}
+            <i>{formatWeekday(row.date)}</i>
+          </span>
+          <b>{nfmt(row.count)}</b>
+          {row.used > 0 && (
+            <span className="email-plan-used" title="В этот день уже занято другими рассылками">
+              занято {nfmt(row.used)} из {nfmt(row.limit)}
+            </span>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+
+  const planSummary = !plan ? null : (
+    <div className={`email-plan${planSplit ? ' split' : ''}`}>
+      <div className="email-plan-head">
+        {planSplit ? <CalendarRange size={14} /> : <Gauge size={14} />}
+        <span>
+          {!plan.perDay
+            ? `${nfmt(plan.total)} писем · суточный предел снят`
+            : planSplit
+              ? `${nfmt(plan.total)} писем не уместятся в сутки — уйдут за ${planDays.length} ${pluralDays(planDays.length)}`
+              : `${nfmt(plan.total)} писем · в пределе ${nfmt(plan.perDay)} в сутки`}
+        </span>
+      </div>
+      {planSplit && planTable(planDays)}
+      {planSplit && (
+        <p className="email-plan-note">
+          Дробим не из осторожности ради осторожности: почтовые службы судят по
+          поведению отправителя, и залп в несколько тысяч писем с одного домена
+          роняет в спам весь домен, а не одно письмо. Порции уйдут сами, в то же
+          время суток; отменить можно всю рассылку целиком — в истории.
+        </p>
+      )}
+    </div>
+  );
 
   // Filter users by search - show favorites first, then rest
   const filteredUsers = allUsers.filter(user => {
@@ -929,8 +1116,9 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
             </button>
             {sendMenu && (
               <div className="email-send-menu">
+                {planSummary}
                 <button className="email-send-now" onClick={() => { setSendMenu(false); handleSend(); }}>
-                  <Send size={15} /> Отправить сейчас
+                  <Send size={15} /> {plan?.plan?.length > 1 ? 'Начать рассылку' : 'Отправить сейчас'}
                 </button>
                 <div className="email-send-later">
                   <label>
@@ -1227,6 +1415,45 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
               <button className="btn btn-ghost" onClick={() => setPendingSend(null)}>Вернуться к письму</button>
               <button className="btn btn-primary" onClick={() => { const run = pendingSend.run; setPendingSend(null); run(); }}>
                 Всё равно отправить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/*
+        Подтверждение многодневной рассылки.
+
+        Отдельным окном, потому что решение здесь не косметическое: человек
+        соглашается на то, что письма будут уходить ещё неделю, и последние
+        получатели прочтут его тогда, когда акция уже может закончиться. Это
+        надо увидеть до нажатия, а не после.
+      */}
+      {planDialog && (
+        <div className="modal-overlay email-dialog" style={{ zIndex: 10002 }} onClick={() => setPlanDialog(null)}>
+          <div className="modal email-plan-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Рассылка растянется на {planDialog.plan.length} {pluralDays(planDialog.plan.length)}</h2>
+              <button className="modal-close" onClick={() => setPlanDialog(null)}><X size={20} /></button>
+            </div>
+            <div className="email-plan-body">
+              <p>
+                Получателей {nfmt(planDialog.total)}, а суточный предел —{' '}
+                {nfmt(planDialog.perDay)} писем. Рассылка уйдёт порциями:
+              </p>
+              {planTable(planDialog.plan)}
+              <p className="email-warn-note">
+                Каждая порция станет отдельной строкой в истории, уйдёт сама и в
+                то же время суток. Отменить можно всю рассылку целиком, пока
+                порции ещё не ушли. Последние получатели увидят письмо{' '}
+                {formatDay(planDialog.plan[planDialog.plan.length - 1].date)} — если
+                письмо про акцию, проверьте, что она к этому дню не кончится.
+              </p>
+            </div>
+            <div className="email-warn-actions">
+              <button className="btn btn-ghost" onClick={() => setPlanDialog(null)}>Вернуться к письму</button>
+              <button className="btn btn-primary" onClick={planDialog.run}>
+                Разложить по дням и запустить
               </button>
             </div>
           </div>

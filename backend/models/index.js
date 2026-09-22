@@ -2400,6 +2400,29 @@ const EmailLog = sequelize.define('EmailLog', {
   errorDetails: {
     type: DataTypes.TEXT,
     comment: 'JSON с деталями ошибок отправки'
+  },
+
+  // === Рассылка, растянутая по дням (ver. 8.57) ===
+  //
+  // Рассылка, которая не помещается в суточный предел, разрезается на порции —
+  // по строке на день. Порции остаются самостоятельными рассылками: у каждой
+  // свой список получателей, свой статус и своя отмена. Связывает их batchId,
+  // и нужен он ровно для истории: без него десять тысяч писем выглядят там как
+  // десять не связанных между собой рассылок с одинаковой темой.
+  batchId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'Общий ключ порций одной рассылки. NULL — рассылка уместилась в один день'
+  },
+  partIndex: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Номер порции, начиная с 1'
+  },
+  partTotal: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Сколько всего порций в рассылке'
   }
 }, {
   tableName: 'email_logs',
@@ -2407,7 +2430,9 @@ const EmailLog = sequelize.define('EmailLog', {
   indexes: [
     { fields: ['sentBy'] },
     { fields: ['sentAt'] },
-    { fields: ['status'] }
+    { fields: ['status'] },
+    // По batchId история собирает порции одной рассылки в одну строку.
+    { fields: ['batchId'] }
   ]
 });
 
@@ -3057,32 +3082,44 @@ const ReviewPlatform = sequelize.define('ReviewPlatform', {
   ]
 });
 
-// ReviewBoard model - доска отзывов (соответствует медцентру)
+// ReviewBoard model - доска отзывов; одна доска = один медцентр (ver. 8.56)
+//
+// Доска перестала быть самостоятельной сущностью. Модуль отзывов делали раньше,
+// чем появился справочник медцентров, поэтому доска заводилась руками и филиал
+// жил у неё в названии строкой; привязка (ver. 7.83) была заплаткой поверх
+// этого. Теперь наоборот: доска существует потому, что существует филиал, и
+// заводится вместе с ним. Своего названия и описания у неё больше нет — их
+// спрашивают у филиала, и расходиться им негде.
+//
+// В таблице остаётся то, что филиалу не принадлежит: процесс обработки
+// (сценарии, колонки), настройки уведомлений, доступ и подключение к
+// GetLoyalty. Ради этого доска и осталась отдельной строкой.
 const ReviewBoard = sequelize.define('ReviewBoard', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  // Название доски — название филиала, и колонки под него больше нет.
+  // Значение берётся из связи, поэтому medCenter нужно подключать всюду, где
+  // доска показывается человеку (в routes/reviews.js для этого есть
+  // boardInclude). Без связи здесь будет null — это видно сразу, в отличие от
+  // копии названия, которая тихо устаревала бы после переименования филиала.
   name: {
-    type: DataTypes.STRING(255),
-    allowNull: false,
-    comment: 'Название доски (медицинский центр)'
-  },
-  description: {
-    type: DataTypes.TEXT,
-    comment: 'Описание доски'
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('medCenter')?.name || null;
+    }
   },
   ownerId: {
     type: DataTypes.UUID,
     allowNull: false,
     comment: 'ID владельца доски'
   },
-  // Доски заводили до того, как появился нормальный справочник, и филиал жил
-  // только в названии строкой. Из-за этого оценки нельзя было собрать по
-  // клинике: сравнить название с справочником может человек, но не запрос.
-  // Привязка стоит на доске, а не на отзыве: досок десяток, отзывов тысячи, и
-  // филиал у доски один на всю её жизнь.
+  // Филиал, чьи отзывы собирает доска. Обязателен и уникален: доска без
+  // филиала не имеет ни названия, ни смысла, а вторая доска на тот же филиал
+  // разделила бы его отзывы на две несравнимые половины.
   medCenterId: {
     type: DataTypes.UUID,
-    allowNull: true,
-    comment: 'Филиал, отзывы которого собирает доска. NULL — доска не про филиал'
+    allowNull: false,
+    unique: true,
+    comment: 'Филиал, отзывы которого собирает доска. Одна доска на филиал'
   },
   archived: {
     type: DataTypes.BOOLEAN,
@@ -3375,11 +3412,28 @@ const ReviewHistory = sequelize.define('ReviewHistory', {
   ]
 });
 
+/**
+ * Название доски там, где филиал мог не приехать вместе с ней.
+ *
+ * Виртуальное поле name отвечает только когда medCenter подключён к запросу —
+ * так и задумано для ответов API. Но доску часто достают одной строкой ради
+ * прав или настроек процесса, а потом передают в уведомление или в отчёт, и
+ * подключать филиал к каждому такому запросу значило бы помнить об этом в
+ * полутора десятках мест. Здесь связь дочитывается при необходимости.
+ */
+ReviewBoard.prototype.title = async function title() {
+  const medCenter = this.getDataValue('medCenter') || await this.getMedCenter();
+  return medCenter?.name || null;
+};
+
 // ReviewBoard relationships
 ReviewBoard.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
-// SET NULL при удалении филиала: доска с историей отзывов переживает закрытие
-// клиники, и терять её из-за правки справочника нельзя.
-ReviewBoard.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter', onDelete: 'SET NULL' });
+// RESTRICT, а не SET NULL: без филиала доска не существует (ver. 8.56), и
+// обнулить ссылку значило бы оставить отзывы без названия и без владельца.
+// Закрытие клиники и так делается флагом isActive, а не удалением строки;
+// удалить филиал можно только вместе с пустой доской — это проверяет
+// обработчик DELETE /api/med-centers/:id.
+ReviewBoard.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter', onDelete: 'RESTRICT' });
 MedCenter.hasMany(ReviewBoard, { foreignKey: 'medCenterId', as: 'reviewBoards' });
 ReviewBoard.hasMany(Review, { foreignKey: 'boardId', as: 'reviews', onDelete: 'CASCADE' });
 ReviewBoard.hasMany(ReviewBoardPermission, { foreignKey: 'boardId', as: 'permissions', onDelete: 'CASCADE' });

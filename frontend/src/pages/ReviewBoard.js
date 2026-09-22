@@ -21,6 +21,8 @@ import {
   formatDuration,
   getStageUrgency
 } from '../utils/reviewConstants';
+import PlatformLogo from '../components/PlatformLogo';
+import { fileUrl } from '../utils/fileUrl';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
 
@@ -192,6 +194,10 @@ const ReviewBoard = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Логотип филиала не загрузился — прячем знак целиком, а не оставляем рамку
+  // с крестиком: шапка доски не место для сообщений о чужих битых файлах.
+  const [brandBroken, setBrandBroken] = useState(false);
 
   // Highlight review card from URL param ?review=:id (e.g. from bot notification link)
   const [highlightedReviewId, setHighlightedReviewId] = useState(null);
@@ -810,17 +816,6 @@ const ReviewBoard = () => {
     }
   };
 
-  const getAvatarUrl = (avatarPath) => {
-    if (!avatarPath) return null;
-    if (avatarPath.startsWith('http://localhost') || avatarPath.startsWith('https://localhost')) {
-      const path = avatarPath.replace(/^https?:\/\/localhost:\d+\//, '');
-      return `${BASE_URL}/${path}`;
-    }
-    if (avatarPath.startsWith('http')) return avatarPath;
-    const normalised = avatarPath.startsWith('/') ? avatarPath.slice(1) : avatarPath;
-    return `${BASE_URL}/${normalised}`;
-  };
-
   const clearFilters = () => {
     setFilters({ platform: null, rating: null, assignee: null, doctor: '' });
   };
@@ -857,8 +852,32 @@ const ReviewBoard = () => {
           </button>
           <div className="header-info">
             <h1>{board.name}</h1>
-            {board.description && <p>{board.description}</p>}
+            {/* Подпись — адрес филиала из справочника. Своего описания у доски
+                нет с ver. 8.56: адрес в него вписывали руками, и он разошёлся
+                с карточкой филиала */}
+            {(board.medCenter?.city || board.medCenter?.address) && (
+              <p>{[board.medCenter.city, board.medCenter.address].filter(Boolean).join(', ')}</p>
+            )}
           </div>
+          {/* Знак филиала. Доска и есть филиал, но называют её по-разному —
+              знак отвечает на «чья это доска» раньше, чем прочитано название,
+              и на общих экранах (архив, статистика) это тот же знак. Нет
+              логотипа или он не загрузился — ничего не показываем: название
+              рядом, и пустой серый квадрат ему не помощник */}
+          {fileUrl(board.logoUrl) && !brandBroken && (
+            <span
+              className="board-brand"
+              style={{ '--mc-accent': board.color || 'var(--accent-500)' }}
+              title={board.medCenter?.name || board.name}
+            >
+              <img
+                src={fileUrl(board.logoUrl)}
+                alt=""
+                draggable={false}
+                onError={() => setBrandBroken(true)}
+              />
+            </span>
+          )}
         </div>
         <div className="header-actions">
           <button
@@ -997,7 +1016,10 @@ const ReviewBoard = () => {
                         </div>
                       </div>
                       <div className="card-meta">
-                        <span className="platform">{review.platform?.name}</span>
+                        <span className="platform">
+                          <PlatformLogo name={review.platform?.name} />
+                          {review.platform?.name}
+                        </span>
                         <span className="date">
                           <Calendar size={12} />
                           {new Date(review.reviewDate).toLocaleDateString('ru-RU')}
@@ -1088,8 +1110,8 @@ const ReviewBoard = () => {
                                     title="Открыть профиль"
                                     onClick={(e) => { e.stopPropagation(); navigate(`/users/${member.id}`); }}
                                   >
-                                    {getAvatarUrl(member.avatar) ? (
-                                      <img src={getAvatarUrl(member.avatar)} alt="" />
+                                    {fileUrl(member.avatar) ? (
+                                      <img src={fileUrl(member.avatar)} alt="" />
                                     ) : (
                                       <User size={13} />
                                     )}
@@ -1205,8 +1227,8 @@ const ReviewBoard = () => {
                     }}
                   >
                     <div className="assignee-picker-avatar">
-                      {getAvatarUrl(candidate.avatar)
-                        ? <img src={getAvatarUrl(candidate.avatar)} alt="" />
+                      {fileUrl(candidate.avatar)
+                        ? <img src={fileUrl(candidate.avatar)} alt="" />
                         : <User size={16} />
                       }
                     </div>
@@ -1452,7 +1474,10 @@ const ReviewBoard = () => {
                         {selectedReview.doctorName && (
                           <span className="doctor-line">Лечащий врач: {selectedReview.doctorName}</span>
                         )}
-                        <span className="source-line">{selectedReview.platform?.name} | {board?.name}</span>
+                        <span className="source-line">
+                          <PlatformLogo name={selectedReview.platform?.name} size={16} />
+                          {selectedReview.platform?.name} | {board?.name}
+                        </span>
                       </div>
                       <button className="btn-copy-inline" onClick={copyReviewText} title="Копировать текст отзыва">
                         <Copy size={14} />
@@ -1495,8 +1520,8 @@ const ReviewBoard = () => {
                       <div className="assignees-list">
                         {selectedReview.assignees.map(a => (
                           <div key={a.id} className="assignee-item">
-                            {getAvatarUrl(a.avatar) ? (
-                              <img src={getAvatarUrl(a.avatar)} alt="" />
+                            {fileUrl(a.avatar) ? (
+                              <img src={fileUrl(a.avatar)} alt="" />
                             ) : (
                               <div className="avatar-placeholder">
                                 <User size={14} />
@@ -1526,7 +1551,7 @@ const ReviewBoard = () => {
                       const colorByLabel = (label) => REVIEW_STATUSES.find(s => s.label === label)?.color || '#6b7280';
 
                       if (isComment) {
-                        const avatarUrl = getAvatarUrl(entry.user?.avatar);
+                        const avatarUrl = fileUrl(entry.user?.avatar);
                         return (
                           <div key={entry.id} className="history-comment">
                             <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
@@ -1592,7 +1617,7 @@ const ReviewBoard = () => {
                             <div key={entry.id} className="history-comment history-reply">
                               <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
                                 {entry.user?.avatar
-                                  ? <img src={getAvatarUrl(entry.user.avatar)} alt="" />
+                                  ? <img src={fileUrl(entry.user.avatar)} alt="" />
                                   : <div className="comment-avatar-placeholder"><Reply size={16} /></div>
                                 }
                               </div>
@@ -1838,8 +1863,8 @@ const ReviewBoard = () => {
                       onClick={() => setSelectedAssignee(u.id)}
                     >
                       <div className="user-info">
-                        {getAvatarUrl(u.avatar) ? (
-                          <img src={getAvatarUrl(u.avatar)} alt="" />
+                        {fileUrl(u.avatar) ? (
+                          <img src={fileUrl(u.avatar)} alt="" />
                         ) : (
                           <div className="avatar-placeholder"><User size={14} /></div>
                         )}

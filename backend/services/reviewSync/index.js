@@ -6,7 +6,7 @@
  * Каждая доска настраивается отдельно (login + password + filialId).
  */
 
-const { ReviewSyncConfig, ReviewPlatform, Review, ReviewBoard } = require('../../models');
+const { ReviewSyncConfig, ReviewPlatform, Review, ReviewBoard, MedCenter } = require('../../models');
 const { Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const adapter = require('./adapters/getloyalty');
@@ -50,7 +50,11 @@ async function syncConfig(config, options = {}) {
 
   if (!rawReviews.length) return 0;
 
-  const board = await ReviewBoard.findByPk(config.boardId);
+  // Филиал подключён, потому что доска уезжает отсюда в уведомления, а имя ей
+  // даёт он (ver. 8.56).
+  const board = await ReviewBoard.findByPk(config.boardId, {
+    include: [{ model: MedCenter, as: 'medCenter' }]
+  });
   if (!board) return 0;
 
   const now = new Date();

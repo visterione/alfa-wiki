@@ -181,6 +181,40 @@ async function getNotificationRecipients(board, eventType) {
   return Array.from(recipientIds);
 }
 
+// Что доска берёт у филиала: название (оно же её собственное), знак, цвет
+// метки и адрес для подписи. Квадратный логотип предпочтительнее — филиал
+// помечают кружком.
+const MED_CENTER_ATTRS = [
+  'id', 'name', 'displayName', 'color', 'logoUrl', 'logoSquareUrl', 'city', 'address'
+];
+
+/**
+ * Подключение доски к запросу.
+ *
+ * Филиал подключается всегда, потому что имя доски — это имя филиала
+ * (ver. 8.56, см. модель ReviewBoard). Забыть его нельзя: доска приедет
+ * безымянной. Отдельная функция, а не общая константа, — Sequelize правит
+ * переданный объект include под себя, и делить один на все запросы нельзя.
+ *
+ * Если attributes сужаются, name перечисляем явно: вычисляемое поле, которого
+ * не просили, Sequelize в ответ не кладёт.
+ */
+function boardInclude(options = {}) {
+  return {
+    model: ReviewBoard,
+    as: 'board',
+    ...options,
+    include: [{ model: MedCenter, as: 'medCenter', attributes: MED_CENTER_ATTRS }]
+  };
+}
+
+// Знак филиала для карточки доски: логотип и фирменный цвет одним объектом.
+function brandOf(board) {
+  const mc = board?.medCenter;
+  if (!mc) return null;
+  return { logo: mc.logoSquareUrl || mc.logoUrl || null, color: mc.color || null };
+}
+
 /**
  * Добавление записи в историю отзыва
  */
@@ -323,7 +357,10 @@ router.get('/boards', authenticate, async (req, res) => {
       where: { ownerId: req.user.id, archived: false },
       include: [
         { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
-        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
+        // required + isActive: доска закрытого филиала уходит из списка вместе
+        // с ним. Отзывы её никуда не деваются и остаются в архиве — пропадает
+        // только карточка, открывать которую больше незачем.
+        { model: MedCenter, as: 'medCenter', attributes: MED_CENTER_ATTRS, where: { isActive: true } }
       ]
     });
 
@@ -336,7 +373,7 @@ router.get('/boards', authenticate, async (req, res) => {
           where: { archived: false },
           include: [
             { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
-            { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
+            { model: MedCenter, as: 'medCenter', attributes: MED_CENTER_ATTRS, where: { isActive: true } }
           ]
         }
       ]
@@ -378,30 +415,6 @@ router.get('/boards', authenticate, async (req, res) => {
     const assignedCountMap = {};
     assignedRows.forEach(r => { assignedCountMap[r.boardId] = parseInt(r.count); });
 
-    /**
-     * Знак медцентра для доски.
-     *
-     * Своего поля у доски нет: доска и есть медцентр, её так и называют при
-     * создании. Поэтому сопоставляем по названию — с displayName и name, без
-     * учёта регистра. Не нашли — доска просто останется без знака, это не
-     * ошибка: доску могли назвать и «Негатив 2026».
-     *
-     * Правильнее была бы ссылка на медцентр в модели доски, но это миграция и
-     * поле в форме создания; пока досок пять и названы они точно, сопоставление
-     * по имени отвечает на вопрос не хуже.
-     */
-    const medCenters = await MedCenter.findAll({
-      where: { isActive: true },
-      attributes: ['id', 'name', 'displayName', 'logoUrl', 'logoSquareUrl', 'color']
-    });
-    const logoByName = new Map();
-    for (const mc of medCenters) {
-      const logo = mc.logoSquareUrl || mc.logoUrl || null;
-      for (const title of [mc.name, mc.displayName]) {
-        if (title) logoByName.set(String(title).trim().toLowerCase(), { logo, color: mc.color });
-      }
-    }
-
     // Добавляем статистику для каждой доски (считаем ВСЕ отзывы, включая архивные)
     const boards = await Promise.all(
       Array.from(boardsMap.values()).map(async (board) => {
@@ -413,7 +426,7 @@ router.get('/boards', authenticate, async (req, res) => {
           attributes: [[Sequelize.fn('AVG', Sequelize.col('rating')), 'avgRating']]
         });
 
-        const brand = logoByName.get(String(board.name || '').trim().toLowerCase());
+        const brand = brandOf(board);
 
         return {
           ...board,
@@ -435,46 +448,10 @@ router.get('/boards', authenticate, async (req, res) => {
   }
 });
 
-/**
- * POST /api/reviews/boards
- * Создание новой доски
- */
-router.post('/boards', authenticate, async (req, res) => {
-  try {
-    const { name, description, medCenterId } = req.body;
-
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Название доски обязательно' });
-    }
-
-    const board = await ReviewBoard.create({
-      name: name.trim(),
-      description: description || null,
-      // Пустая строка из формы — это «не выбрано», а не идентификатор
-      medCenterId: medCenterId || null,
-      ownerId: req.user.id
-    });
-
-    // Добавляем владельца в permissions
-    await ReviewBoardPermission.create({
-      boardId: board.id,
-      userId: req.user.id,
-      role: 'owner'
-    });
-
-    const result = await ReviewBoard.findByPk(board.id, {
-      include: [
-        { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
-        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
-      ]
-    });
-
-    res.status(201).json({ ...result.toJSON(), userRole: 'owner' });
-  } catch (error) {
-    console.error('Error creating board:', error);
-    res.status(500).json({ error: 'Ошибка при создании доски' });
-  }
-});
+// Ручки создания доски нет с ver. 8.56: доска заводится вместе с филиалом
+// (services/reviewBoards.js), а не отдельным действием человека. Столько же
+// досок, сколько медцентров, — это свойство модуля, а не результат аккуратного
+// заполнения.
 
 /**
  * GET /api/reviews/boards/:id
@@ -485,7 +462,7 @@ router.get('/boards/:id', authenticate, async (req, res) => {
     const board = await ReviewBoard.findByPk(req.params.id, {
       include: [
         { model: User, as: 'owner', attributes: ['id', 'displayName', 'username', 'avatar'] },
-        { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'color'], required: false }
+        { model: MedCenter, as: 'medCenter', attributes: MED_CENTER_ATTRS, required: false }
       ]
     });
 
@@ -505,13 +482,19 @@ router.get('/boards/:id', authenticate, async (req, res) => {
       attributes: [[Sequelize.fn('AVG', Sequelize.col('rating')), 'avgRating']]
     });
 
+    // Знак филиала отдаём тем же полем, что и список досок: на обоих экранах
+    // это одна и та же метка, и разбираться в двух формах ответа фронту незачем.
+    const brand = brandOf(board);
+
     res.json({
       ...board.toJSON(),
       userRole: access.role,
       reviewCount,
       avgRating: avgRating?.dataValues?.avgRating
         ? parseFloat(avgRating.dataValues.avgRating).toFixed(1)
-        : null
+        : null,
+      logoUrl: brand?.logo || null,
+      color: brand?.color || null
     });
   } catch (error) {
     console.error('Error fetching board:', error);
@@ -534,11 +517,11 @@ router.put('/boards/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Только владелец может редактировать доску' });
     }
 
-    const { name, description, archived, medCenterId } = req.body;
+    // Менять у доски осталось нечего, кроме признака архива: название, описание
+    // и филиал ушли в справочник медцентров (ver. 8.56). Остальные настройки —
+    // процесс, колонки, уведомления, доступ — правятся своими ручками.
+    const { archived } = req.body;
     await board.update({
-      name: name !== undefined ? name.trim() : board.name,
-      description: description !== undefined ? description : board.description,
-      medCenterId: medCenterId !== undefined ? (medCenterId || null) : board.medCenterId,
       archived: archived !== undefined ? archived : board.archived
     });
 
@@ -549,28 +532,10 @@ router.put('/boards/:id', authenticate, async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/reviews/boards/:id
- * Удаление доски (только владелец)
- */
-router.delete('/boards/:id', authenticate, async (req, res) => {
-  try {
-    const board = await ReviewBoard.findByPk(req.params.id);
-    if (!board) {
-      return res.status(404).json({ error: 'Доска не найдена' });
-    }
-
-    if (board.ownerId !== req.user.id && !req.user.isAdmin) {
-      return res.status(403).json({ error: 'Только владелец может удалить доску' });
-    }
-
-    await board.destroy();
-    res.json({ message: 'Доска удалена' });
-  } catch (error) {
-    console.error('Error deleting board:', error);
-    res.status(500).json({ error: 'Ошибка при удалении доски' });
-  }
-});
+// Удаления доски тоже нет (ver. 8.56): доска живёт ровно столько, сколько
+// филиал. Закрытая клиника гасится флагом isActive — её доска уходит из списка,
+// а архив отзывов остаётся. Удалить филиал вместе с пустой доской можно в
+// справочнике медцентров.
 
 // ============================================================================
 // BOARD PERMISSIONS ROUTES
@@ -995,7 +960,7 @@ router.get('/archive', authenticate, async (req, res) => {
     const { rows: reviews, count: total } = await Review.findAndCountAll({
       where,
       include: [
-        { model: ReviewBoard, as: 'board', attributes: ['id', 'name'] },
+        boardInclude({ attributes: ['id', 'name'] }),
         { model: ReviewPlatform, as: 'platform' },
         { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] },
         { model: User, as: 'finalizer', attributes: ['id', 'displayName', 'username', 'avatar'] }
@@ -1560,7 +1525,7 @@ router.get('/assigned', authenticate, async (req, res) => {
         archived: false
       },
       include: [
-        { model: ReviewBoard, as: 'board', attributes: ['id', 'name'] },
+        boardInclude({ attributes: ['id', 'name'] }),
         { model: ReviewPlatform, as: 'platform' }
       ],
       order: [['reviewDate', 'DESC']],
@@ -1607,7 +1572,7 @@ router.get('/:id', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
       include: [
-        { model: ReviewBoard, as: 'board' },
+        boardInclude(),
         { model: ReviewPlatform, as: 'platform' },
         { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] },
         { model: User, as: 'finalizer', attributes: ['id', 'displayName', 'username', 'avatar'] },
@@ -1651,7 +1616,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.put('/:id', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -1706,7 +1671,7 @@ router.put('/:id', authenticate, async (req, res) => {
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -1733,7 +1698,7 @@ router.delete('/:id', authenticate, async (req, res) => {
 router.post('/:id/move', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -1880,7 +1845,7 @@ router.post('/:id/move', authenticate, async (req, res) => {
 router.post('/:id/assign', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -1941,7 +1906,7 @@ router.post('/:id/reply', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
       include: [
-        { model: ReviewBoard, as: 'board' },
+        boardInclude(),
         { model: ReviewPlatform, as: 'platform' }
       ]
     });
@@ -2005,7 +1970,7 @@ router.post('/:id/reply', authenticate, async (req, res) => {
 router.post('/:id/comment', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -2088,7 +2053,7 @@ router.post('/:id/finalize', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
       include: [
-        { model: ReviewBoard, as: 'board' },
+        boardInclude(),
         { model: ReviewPlatform, as: 'platform' },
         { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] },
         {
@@ -2206,7 +2171,7 @@ router.post('/:id/finalize', authenticate, async (req, res) => {
 router.get('/:id/pdf', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -2248,7 +2213,7 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
 router.post('/:id/archive', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -2292,7 +2257,7 @@ router.post('/:id/archive', authenticate, async (req, res) => {
 router.post('/:id/restore', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
-      include: [{ model: ReviewBoard, as: 'board' }]
+      include: [boardInclude()]
     });
 
     if (!review) {
@@ -2362,7 +2327,7 @@ router.delete('/files/:fileId', authenticate, async (req, res) => {
 
     if (reviewId) {
       const review = await Review.findByPk(reviewId, {
-        include: [{ model: ReviewBoard, as: 'board' }]
+        include: [boardInclude()]
       });
 
       if (!review) {

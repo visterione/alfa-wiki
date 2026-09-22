@@ -621,9 +621,9 @@ export const reviews = {
   // === BOARDS ===
   getBoards: () => api.get('/reviews/boards'),
   getBoard: (id) => api.get(`/reviews/boards/${id}`),
-  createBoard: (data) => api.post('/reviews/boards', data),
+  // Заводить и удалять доски нельзя с ver. 8.56: доска есть у каждого медцентра
+  // и появляется вместе с ним. Через updateBoard правится только архивность.
   updateBoard: (id, data) => api.put(`/reviews/boards/${id}`, data),
-  deleteBoard: (id) => api.delete(`/reviews/boards/${id}`),
 
   // === BOARD PERMISSIONS ===
   getBoardPermissions: (boardId) => api.get(`/reviews/boards/${boardId}/permissions`),
@@ -722,6 +722,14 @@ export const email = {
   // === SENDING ===
   send: (data) => api.post('/email/send', data),
   getJobStatus: (jobId) => api.get(`/email/send/status/${jobId}`),
+
+  // === СУТОЧНЫЙ ПРЕДЕЛ (ver. 8.57) ===
+  // Рассылка, которая не помещается в сутки, растягивается по дням. План
+  // спрашиваем заранее, чтобы человек увидел расклад до нажатия «Отправить»,
+  // а не узнал о нём из ответа сервера.
+  getLimit: (days) => api.get('/email/limit', { params: days ? { days } : undefined }),
+  setLimit: (perDay) => api.put('/email/limit', { perDay }),
+  getPlan: (data) => api.post('/email/plan', data),
 
   // === HISTORY ===
   getHistory: (params) => api.get('/email/history', { params }),

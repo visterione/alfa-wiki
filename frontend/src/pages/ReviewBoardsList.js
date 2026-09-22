@@ -1,25 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Plus, MessageSquare, Star, Settings, X, Archive, UserCheck
+  MessageSquare, Star, Settings, Archive, UserCheck
 } from 'lucide-react';
 import { reviews } from '../services/api';
-import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { useMedCenters } from '../context/MedCentersContext';
+import { fileUrl } from '../utils/fileUrl';
 import './ReviewBoardsList.css';
+
+/**
+ * Знак филиала на карточке доски.
+ *
+ * logoUrl и color приходят с доски готовыми: филиал у неё один и обязателен
+ * (ver. 8.56), сервер отдаёт его знак вместе с доской.
+ */
+function BoardBrand({ board }) {
+  const [broken, setBroken] = useState(false);
+
+  const src = fileUrl(board.logoUrl);
+  if (!src || broken) return null;
+
+  return (
+    <span className="board-brand" style={{ '--mc-accent': board.color || 'var(--accent-500)' }}>
+      <img src={src} alt="" draggable={false} onError={() => setBroken(true)} />
+    </span>
+  );
+}
 
 const ReviewBoardsList = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
-  const { medCenters } = useMedCenters();
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newBoard, setNewBoard] = useState({ name: '', description: '', medCenterId: '' });
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState('');
   const [redirecting, setRedirecting] = useState(false);
 
   // Кнопка «Назад» с доски приводит сюда с ?all — иначе единственную доску мы
@@ -42,8 +54,8 @@ const ReviewBoardsList = () => {
        * Сотруднику медцентра открывают ровно его доску, и выбирать ему не из
        * чего: список из одной карточки — лишний клик на каждый заход в раздел.
        *
-       * Владельца доски не уводим: список — единственное место, где есть
-       * «Создать доску», и завести вторую он иначе не сможет.
+       * Владельца доски не уводим: с доски он вернётся сюда кнопкой «Назад»,
+       * а больше попасть в список (и в архив) ему неоткуда.
        */
       if (!showAllBoards && list.length === 1 && list[0].userRole !== 'owner') {
         setRedirecting(true);
@@ -58,36 +70,6 @@ const ReviewBoardsList = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleCreateBoard = async (e) => {
-    e.preventDefault();
-    if (!newBoard.name.trim()) {
-      setError('Название доски обязательно');
-      return;
-    }
-
-    try {
-      setCreating(true);
-      setError('');
-      const response = await reviews.createBoard(newBoard);
-      setBoards([...boards, response.data]);
-      setShowCreateModal(false);
-      setNewBoard({ name: '', description: '', medCenterId: '' });
-      toast.success('Доска создана');
-      navigate(`/reviews/board/${response.data.id}`);
-    } catch (err) {
-      console.error('Error creating board:', err);
-      setError(err.response?.data?.error || 'Ошибка при создании доски');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const getRatingStars = (rating) => {
-    if (!rating) return '—';
-    const r = parseFloat(rating);
-    return '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r));
   };
 
   if (loading || redirecting) {
@@ -114,13 +96,6 @@ const ReviewBoardsList = () => {
             <Archive size={18} />
             Архив
           </button>
-          <button
-            className="btn-create-board"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <Plus size={20} />
-            Создать доску
-          </button>
         </div>
       </div>
 
@@ -128,20 +103,19 @@ const ReviewBoardsList = () => {
         <div className="reviews-boards-empty">
           <MessageSquare size={64} strokeWidth={1} />
           <h2>Нет доступных досок</h2>
-          <p>Создайте первую доску для отзывов вашего медцентра</p>
-          <button
-            className="btn-create-first"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <Plus size={20} />
-            Создать доску
-          </button>
+          {/* Завести доску отсюда больше нельзя: она есть у каждого медцентра
+              (ver. 8.56). Пусто — значит, доступ к ним не выдан */}
+          <p>Доски заводятся вместе с медцентрами. Доступ к ним выдаёт администратор</p>
         </div>
       ) : (
         <div className="reviews-boards-grid">
           {boards.map(board => (
             <div key={board.id} className="review-board-card">
               <div className="board-card-header">
+                {/* Знак филиала слева от названия: в сетке карточек клинику
+                    узнают по логотипу быстрее, чем прочитывают заголовок.
+                    Логотип не заполнен в справочнике — знака просто нет */}
+                <BoardBrand board={board} />
                 <h3 onClick={() => navigate(`/reviews/board/${board.id}`)}>
                   {board.name}
                 </h3>
@@ -153,8 +127,12 @@ const ReviewBoardsList = () => {
                 )}
               </div>
 
-              {board.description && (
-                <p className="board-description">{board.description}</p>
+              {/* Подпись под названием — адрес из карточки филиала. Раньше
+                  здесь было описание доски, и адрес вписывали в него руками */}
+              {(board.medCenter?.city || board.medCenter?.address) && (
+                <p className="board-description">
+                  {[board.medCenter.city, board.medCenter.address].filter(Boolean).join(', ')}
+                </p>
               )}
 
               <div className="board-card-footer">
@@ -193,91 +171,6 @@ const ReviewBoardsList = () => {
         </div>
       )}
 
-      {/* Модальное окно создания доски */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => !creating && setShowCreateModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Создать доску отзывов</h2>
-              <button
-                className="btn-close"
-                onClick={() => setShowCreateModal(false)}
-                disabled={creating}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateBoard} className="create-board-form">
-              {error && <div className="error-message">{error}</div>}
-
-              <div className="form-group">
-                <label htmlFor="board-name">Название доски *</label>
-                <input
-                  id="board-name"
-                  type="text"
-                  value={newBoard.name}
-                  onChange={(e) => setNewBoard({ ...newBoard, name: e.target.value })}
-                  placeholder="Например: Медцентр на Ленина"
-                  maxLength={255}
-                  disabled={creating}
-                  autoFocus
-                />
-              </div>
-
-              {/* Филиал выбирается сразу: доска почти всегда заводится под
-                  конкретный медцентр, а без привязки его оценку потом не
-                  собрать — в самом отзыве филиала нет. */}
-              <div className="form-group">
-                <label htmlFor="board-med-center">Медцентр (необязательно)</label>
-                <select
-                  id="board-med-center"
-                  value={newBoard.medCenterId}
-                  onChange={(e) => setNewBoard({ ...newBoard, medCenterId: e.target.value })}
-                  disabled={creating}
-                >
-                  <option value="">Не привязана к филиалу</option>
-                  {medCenters
-                    .filter(mc => !mc.isVirtual)
-                    .map(mc => (
-                      <option key={mc.id} value={mc.id}>{mc.name}</option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="board-description">Описание (необязательно)</label>
-                <textarea
-                  id="board-description"
-                  value={newBoard.description}
-                  onChange={(e) => setNewBoard({ ...newBoard, description: e.target.value })}
-                  placeholder="Краткое описание доски..."
-                  rows={3}
-                  disabled={creating}
-                />
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={creating}
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="btn-submit"
-                  disabled={creating || !newBoard.name.trim()}
-                >
-                  {creating ? 'Создание...' : 'Создать'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

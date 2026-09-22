@@ -38,6 +38,28 @@ export const DECISION_CATEGORIES = {
   other: 'Другое',
 };
 
+/**
+ * Логотипы площадок — те же файлы, что в вебе (frontend/public/platform-logos).
+ * Здесь они лежат в сборке, а не тянутся с сервера: значок размером в строку
+ * текста не стоит сетевого запроса, а на карточке отзывов в списке их было бы
+ * по одному на каждую.
+ *
+ * Есть только у площадок, которыми сеть пользуется. У остальных остаётся одно
+ * название — как и в вебе, и это не пропажа, а решение.
+ */
+const PLATFORM_LOGOS = {
+  'яндекс карты': require('../../../assets/images/platforms/yandex.png'),
+  '2гис': require('../../../assets/images/platforms/2gis.png'),
+  'продокторов': require('../../../assets/images/platforms/prodoctorov.png'),
+  docdoc: require('../../../assets/images/platforms/docdoc.png'),
+  'напоправку': require('../../../assets/images/platforms/napopravku.png'),
+  'докту': require('../../../assets/images/platforms/doctu.png'),
+};
+
+/** Регистр, лишние пробелы и точки в названии значения не имеют. */
+export const platformLogo = name =>
+  PLATFORM_LOGOS[(name || '').toLowerCase().replace(/[.\s]+/g, ' ').trim()] || null;
+
 export const HISTORY_LABELS = {
   created: 'Создан',
   status_change: 'Смена статуса',

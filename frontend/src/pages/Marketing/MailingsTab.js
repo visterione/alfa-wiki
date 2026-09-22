@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Clock, Copy, Mail, MailX, Plus, RefreshCw, ChevronDown, ChevronRight, Undo2 } from 'lucide-react';
+import { Clock, Copy, Mail, MailX, Plus, RefreshCw, ChevronDown, ChevronRight, Undo2, Gauge, CalendarRange } from 'lucide-react';
 import EmailComposer from '../../components/EmailComposer';
 import { email } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -143,6 +143,123 @@ function EmailOptouts({ canEdit }) {
   );
 }
 
+const nfmt = (n) => Number(n || 0).toLocaleString('ru-RU');
+
+const shortDay = (key) => {
+  const [, m, d] = String(key || '').split('-');
+  return d && m ? `${d}.${m}` : '—';
+};
+
+/**
+ * Суточный предел почтовых рассылок (ver. 8.57).
+ *
+ * Свёрнут по умолчанию: меняют его раз в полгода, когда прибавляется ящик или
+ * прогревается домен. А вот посмотреть, чем заняты ближайшие дни, приходится
+ * каждый раз перед крупной рассылкой — поэтому загруженность видна сразу, как
+ * только карточку открыли, и считать её в уме не надо.
+ *
+ * Почему предел вообще есть. Почтовые службы судят не о письме, а о поведении
+ * отправителя: несколько тысяч писем, ушедших с одного домена за час, — та
+ * самая картина, после которой в спам падает весь домен, включая записи на
+ * приём и восстановление пароля. Разбирать это потом приходится неделями.
+ */
+function EmailDailyLimit({ canEdit }) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState(null);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await email.getLimit(14);
+      setState(data);
+      setDraft(String(data.perDay ?? ''));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось прочитать суточный предел');
+      setState({ perDay: 0, days: [] });
+    }
+  }, []);
+
+  useEffect(() => { if (open && !state) load(); }, [open, state, load]);
+
+  const save = async () => {
+    const value = Number(draft);
+    if (!Number.isInteger(value) || value < 0) {
+      toast.error('Предел — целое число писем в сутки. 0 снимает ограничение');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data } = await email.setLimit(value);
+      setState(data);
+      toast.success(value ? `Предел — ${nfmt(value)} писем в сутки` : 'Ограничение снято');
+    } catch (err) {
+      toast.error(err.response?.data?.errors?.[0]?.msg || err.response?.data?.error || 'Не удалось сохранить предел');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="ola-card ann-optouts">
+      <header onClick={() => setOpen(v => !v)} style={{ cursor: 'pointer' }}>
+        <span className="ola-card-icon"><Gauge size={17} /></span>
+        <h3>Суточный предел{state ? (state.perDay ? ` · ${nfmt(state.perDay)} в сутки` : ' · снят') : ''}</h3>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </header>
+      {open && (
+        <div className="ola-card-body">
+          {state === null && <div className="ola-loading">Загрузка…</div>}
+          {state && (
+            <>
+              <div className="ann-limit-bar">
+                <label htmlFor="ann-limit-input">Писем в сутки:</label>
+                <input
+                  id="ann-limit-input"
+                  type="number"
+                  min="0"
+                  value={draft}
+                  disabled={!canEdit || saving}
+                  onChange={e => setDraft(e.target.value)}
+                />
+                {canEdit && (
+                  <button className="ola-btn primary" onClick={save} disabled={saving || draft === String(state.perDay)}>
+                    Сохранить
+                  </button>
+                )}
+                <button className="ola-btn" onClick={load} title="Обновить"><RefreshCw size={14} /></button>
+              </div>
+
+              <p className="ann-limit-hint">
+                Рассылка, которая в предел не помещается, не отменяется — она
+                растягивается по дням, и план показывается до отправки. Ноль
+                снимает ограничение совсем.
+                <br />
+                Ориентиры: Google&nbsp;Workspace — 2000 внешних получателей в
+                сутки на ящик, Яндекс&nbsp;360 — 500 у обычных тарифов. Домен,
+                с которого раньше почти не слали, поднимают постепенно: первые
+                дни сотни, дальше удвоение раз в несколько дней.
+              </p>
+
+              {state.days?.length > 0 && (
+                <ul className="ann-limit-days">
+                  {state.days.map(day => (
+                    <li key={day.date} className={state.perDay && day.used >= state.perDay ? 'full' : ''}>
+                      <span>{shortDay(day.date)}</span>
+                      <b>{nfmt(day.used)}</b>
+                      {state.perDay ? <span>свободно {nfmt(day.free)}</span> : <span>без предела</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmailAnnouncements({ canEdit }) {
   const [compose, setCompose] = useState(null);
   const [logs, setLogs] = useState(null);
@@ -161,8 +278,14 @@ function EmailAnnouncements({ canEdit }) {
 
   const cancel = async (id) => {
     try {
-      await email.cancelScheduled(id);
-      toast.success('Отложенная отправка отменена');
+      const { data } = await email.cancelScheduled(id);
+      // Рассылку из порций сервер отменяет целиком: «отменить» человек нажимает
+      // на рассылку, а не на один её день, и забытая порция ушла бы сама через
+      // неделю. Сколько строк при этом погасло — говорим, иначе исчезновение
+      // девяти соседних выглядит сбоем.
+      toast.success(data?.canceled > 1
+        ? `Отменены все ${data.canceled} порций рассылки`
+        : 'Отложенная отправка отменена');
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Не удалось отменить');
@@ -204,7 +327,17 @@ function EmailAnnouncements({ canEdit }) {
             <article className="ann-email-item" key={log.id}>
               <div>
                 <strong>{log.subject}</strong>
-                <span>{log.sender?.displayName || log.sender?.username || 'Система'} · {log.recipients?.length || 0} получателей</span>
+                <span>
+                  {log.sender?.displayName || log.sender?.username || 'Система'} · {log.recipients?.length || 0} получателей
+                  {/* Порция рассылки, растянутой по дням (ver. 8.57). Без этой
+                      подписи десять строк с одинаковой темой читаются как
+                      десять разных рассылок, отправленных по ошибке. */}
+                  {log.partTotal > 1 && (
+                    <em className="ann-email-part">
+                      <CalendarRange size={12} /> порция {log.partIndex} из {log.partTotal}
+                    </em>
+                  )}
+                </span>
               </div>
               <div className="ann-email-state">
                 <span className={`ola-badge ${log.status === 'failed' ? 'bad' : ['scheduled', 'sending'].includes(log.status) ? 'wait' : log.status === 'canceled' ? 'muted' : 'ok'}`}>
@@ -220,6 +353,7 @@ function EmailAnnouncements({ canEdit }) {
         </div>
       </div>
 
+      <EmailDailyLimit canEdit={canEdit} />
       <EmailOptouts canEdit={canEdit} />
     </section>
   );

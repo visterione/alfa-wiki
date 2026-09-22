@@ -10,6 +10,7 @@ import {
   REVIEW_STATUSES, getStatusColor,
   HISTORY_ACTION_LABELS, formatDuration
 } from '../utils/reviewConstants';
+import PlatformLogo from '../components/PlatformLogo';
 import toast from 'react-hot-toast';
 import './ReviewArchive.css';
 
@@ -442,6 +443,7 @@ const ReviewArchive = () => {
                       </td>
                       <td>
                         <span className="platform-badge">
+                          <PlatformLogo name={review.platform?.name} />
                           {review.platform?.name || '—'}
                         </span>
                       </td>
@@ -532,7 +534,10 @@ const ReviewArchive = () => {
                 </div>
                 <div className="detail-row">
                   <span className="label">Площадка:</span>
-                  <span className="value">{selectedReview.platform?.name || '—'}</span>
+                  <span className="value value--with-logo">
+                    <PlatformLogo name={selectedReview.platform?.name} />
+                    {selectedReview.platform?.name || '—'}
+                  </span>
                 </div>
                 <div className="detail-row">
                   <span className="label">Врач:</span>

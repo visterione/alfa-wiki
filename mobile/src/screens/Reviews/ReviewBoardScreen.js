@@ -25,7 +25,8 @@
  */
 import React, {useCallback, useMemo, useRef, useState} from 'react';
 import {
-  View, Text, FlatList, Pressable, StyleSheet, RefreshControl, useWindowDimensions,
+  View, Text, Image, FlatList, Pressable, StyleSheet, RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 
@@ -35,7 +36,9 @@ import Stars from '../../components/Stars';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
 import {radius, font} from '../../theme';
 import {useThemedStyles, useTheme} from '../../store/settingsStore';
-import {REVIEW_STATUSES, statusColor, stageAge, dateText} from './reviewsMeta';
+import {
+  REVIEW_STATUSES, statusColor, stageAge, dateText, platformLogo,
+} from './reviewsMeta';
 
 // Поля по краям экрана и просвет между колонками. Из них же считается шаг
 // примагничивания — иначе колонка останавливается не там, где её отпустили.
@@ -157,13 +160,25 @@ export default function ReviewBoardScreen({route, navigation}) {
                     </View>
                     <Text style={styles.cardName} numberOfLines={1}>{review.patientName}</Text>
                     <Text style={styles.cardText} numberOfLines={3}>{review.reviewText}</Text>
-                    <Text style={styles.cardMeta} numberOfLines={1}>
-                      {[
-                        review.platform?.name,
-                        review.doctorName,
-                        stageAge(review.stageEnteredAt),
-                      ].filter(Boolean).join(' · ')}
-                    </Text>
+                    {/* Знак площадки перед подписью: карточки на доске
+                        проглядывают, а не читают, и цветной кружок находится
+                        взглядом раньше названия. У площадок без своего файла
+                        строка остаётся прежней */}
+                    <View style={styles.cardMetaRow}>
+                      {Boolean(platformLogo(review.platform?.name)) && (
+                        <Image
+                          source={platformLogo(review.platform?.name)}
+                          style={styles.cardLogo}
+                        />
+                      )}
+                      <Text style={styles.cardMeta} numberOfLines={1}>
+                        {[
+                          review.platform?.name,
+                          review.doctorName,
+                          stageAge(review.stageEnteredAt),
+                        ].filter(Boolean).join(' · ')}
+                      </Text>
+                    </View>
                     {Boolean(review.assignees?.length) && (
                       <Text style={styles.cardWho} numberOfLines={1}>
                         {review.assignees[0].displayName}
@@ -218,7 +233,9 @@ const makeStyles = c => StyleSheet.create({
   cardWhen: {fontFamily: font.regular, fontSize: 11, color: c.textTertiary},
   cardName: {fontFamily: font.semiBold, fontSize: 14, color: c.textPrimary},
   cardText: {fontFamily: font.regular, fontSize: 13, color: c.textSecondary, lineHeight: 18},
-  cardMeta: {fontFamily: font.regular, fontSize: 11, color: c.textTertiary},
+  cardMetaRow: {flexDirection: 'row', alignItems: 'center', gap: 5},
+  cardMeta: {flex: 1, fontFamily: font.regular, fontSize: 11, color: c.textTertiary},
+  cardLogo: {width: 13, height: 13, borderRadius: 3, resizeMode: 'contain'},
   cardWho: {fontFamily: font.medium, fontSize: 11, color: c.primary},
   none: {
     fontFamily: font.regular,

@@ -16,7 +16,7 @@ import EmojiPicker from 'emoji-picker-react';
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Upload, Trash2, Link2, Loader2, Plus, ChevronUp, ChevronDown, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { email } from '../../services/api';
-import { previewSrc, gradientCss } from './BlockView';
+import { previewSrc, gradientCss, IconGlyph } from './BlockView';
 import { FONTS, SAFE_FONT_KEYS, WEB_FONT_KEYS, fontStack, ensureWebFont } from './fonts';
 import { GROUPS, groupOfField } from './blocks';
 import { EMAIL_ICONS, ICON_GROUPS, ICON_BY_KEY } from './icons';
@@ -501,48 +501,78 @@ function usePopover(open, btnRef, popRef, close, width, height) {
 }
 
 /**
- * Выбор иконки (ver. 8.53).
+ * Выбор иконки (ver. 8.53, весь набор — 8.54).
  *
- * Набор тот же, что рисует интерфейс портала, — lucide. До этого в пунктах
- * стояли эмодзи, и на них пришла ровно одна претензия, но содержательная:
- * цветной эмодзи в деловом письме выглядит случайным, а набор у каждой почты
- * свой, так что у получателя он ещё и не тот, что видел отправитель. Линейная
- * иконка одинакова везде, потому что в письмо она уезжает картинкой, которую
- * рисует наш же сервер.
+ * Набор тот же, что рисует интерфейс портала, — lucide, целиком, около полутора
+ * тысяч иконок. До этого в пунктах стояли эмодзи, и на них пришла ровно одна
+ * претензия, но содержательная: цветной эмодзи в деловом письме выглядит
+ * случайным, а набор у каждой почты свой, так что у получателя он ещё и не тот,
+ * что видел отправитель. Линейная иконка одинакова везде, потому что в письмо
+ * она уезжает картинкой, которую рисует наш же сервер.
+ *
+ * Полторы тысячи иконок — это не «выбрать», а «найти», поэтому:
+ *
+ *   • «Подборка» стоит первой и открыта по умолчанию: сотня иконок, отобранных
+ *     под письма медцентров, с русскими названиями и раскладкой по группам.
+ *     Остальное — во вкладке «Все», куда ходят поиском.
+ *   • Поиск ищет и по-русски, и по-английски: у отобранных слова написаны
+ *     руками, у остальных — собраны словарём из английского имени.
+ *   • Список рисуется порциями и дорастает при прокрутке: полторы тысячи
+ *     встроенных SVG разом — это несколько тысяч узлов и заметная задержка на
+ *     каждое нажатие клавиши в поиске.
  *
  * Список открывается слоем поверх страницы, а не выпадашкой внутри панели.
  * Панель свойств прокручивается и обрезает всё, что вылезло за её край, —
  * прошлый подборщик так и срезало снизу. Слой в body ничем не обрезан, а
  * положение считается от кнопки и прижимается к краям окна.
  */
+const PAGE = 120;
+
 function IconField({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [group, setGroup] = useState('all');
+  const [group, setGroup] = useState('pick');
+  const [limit, setLimit] = useState(PAGE);
   const btnRef = useRef(null);
   const popRef = useRef(null);
+  const at = usePopover(open, btnRef, popRef, () => setOpen(false), 320, 400);
 
   const current = ICON_BY_KEY[value];
 
-  const at = usePopover(open, btnRef, popRef, () => setOpen(false), 320, 380);
-
-  // Поиск идёт и по названию, и по словам-подсказкам: «анализы» должны найти
-  // пробирку, хотя в её названии этого слова нет.
+  // Поиск идёт по названию и по словам-подсказкам: «анализы» должны найти
+  // пробирку, хотя в её названии этого слова нет, а «arrow» — стрелку, хотя
+  // название у неё русское.
   const found = useMemo(() => {
     const q = query.trim().toLowerCase();
     return EMAIL_ICONS.filter((i) => {
-      if (group !== 'all' && i.group !== group) return false;
-      if (!q) return true;
-      return i.label.toLowerCase().includes(q) || i.keywords.includes(q) || i.key.includes(q);
+      // Поиск идёт по всему набору: искать внутри вкладки значит не находить
+      // то, что лежит рядом, и не понимать почему.
+      if (!q) {
+        if (group === 'all') return true;
+        if (group === 'pick') return Boolean(i.group);
+        return i.group === group;
+      }
+      return i.label.toLowerCase().includes(q) || i.keywords.includes(q);
     });
   }, [query, group]);
 
-  const Current = current?.Icon;
+  // Порция сбрасывается при каждой смене отбора: иначе после долгой прокрутки
+  // «Всех» поиск по двум буквам рисовал бы тысячу иконок разом.
+  useEffect(() => { setLimit(PAGE); }, [query, group]);
+
+  const onScroll = (e) => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) {
+      setLimit(l => (l >= found.length ? l : l + PAGE));
+    }
+  };
 
   return (
     <div className="eb-iconpick">
       <button type="button" className="eb-iconpick-btn" ref={btnRef} onClick={() => setOpen(v => !v)}>
-        <span className="eb-iconpick-now">{Current ? <Current size={18} /> : <Search size={16} />}</span>
+        <span className="eb-iconpick-now">
+          {current ? <IconGlyph icon={current.key} size={18} color="currentColor" /> : <Search size={16} />}
+        </span>
         <span>{current?.label || 'Выбрать иконку'}</span>
       </button>
       {value && (
@@ -557,20 +587,23 @@ function IconField({ value, onChange }) {
             <input
               autoFocus
               className="eb-iconpop-search"
-              placeholder="Найти иконку"
+              placeholder="Найти иконку — по-русски или по-английски"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
             <button type="button" className="eb-icon-btn" title="Закрыть" onClick={() => setOpen(false)}><X size={13} /></button>
           </div>
-          <div className="eb-iconpop-groups">
-            <button type="button" className={group === 'all' ? 'active' : ''} onClick={() => setGroup('all')}>Все</button>
-            {ICON_GROUPS.map(([id, label]) => (
-              <button key={id} type="button" className={group === id ? 'active' : ''} onClick={() => setGroup(id)}>{label}</button>
-            ))}
-          </div>
-          <div className="eb-iconpop-grid">
-            {found.map(({ key, Icon, label }) => (
+          {!query.trim() && (
+            <div className="eb-iconpop-groups">
+              <button type="button" className={group === 'pick' ? 'active' : ''} onClick={() => setGroup('pick')}>Подборка</button>
+              {ICON_GROUPS.map(([id, label]) => (
+                <button key={id} type="button" className={group === id ? 'active' : ''} onClick={() => setGroup(id)}>{label}</button>
+              ))}
+              <button type="button" className={group === 'all' ? 'active' : ''} onClick={() => setGroup('all')}>Все</button>
+            </div>
+          )}
+          <div className="eb-iconpop-grid" onScroll={onScroll}>
+            {found.slice(0, limit).map(({ key, label }) => (
               <button
                 key={key}
                 type="button"
@@ -578,10 +611,13 @@ function IconField({ value, onChange }) {
                 className={key === value ? 'active' : ''}
                 onClick={() => { onChange(key); setOpen(false); }}
               >
-                <Icon size={20} />
+                <IconGlyph icon={key} size={20} color="currentColor" />
               </button>
             ))}
             {!found.length && <div className="eb-iconpop-empty">Ничего не нашлось</div>}
+          </div>
+          <div className="eb-iconpop-foot">
+            {found.length > limit ? `Показаны ${limit} из ${found.length}` : `Иконок: ${found.length}`}
           </div>
         </div>,
         document.body,
@@ -698,19 +734,27 @@ function Field({ field, value, onChange, block }) {
         </div>
       );
 
-    case 'slider':
+    case 'slider': {
+      // Ползунок без значения показывает не минимум, а умолчание блока: у
+      // толщины линии минимум 0,5px, и незаданная толщина выглядела бы как
+      // самая тонкая, хотя рисуется двойкой.
+      const at = Number.isFinite(Number(value)) && value !== '' && value !== null
+        ? Number(value)
+        : (field.default ?? field.min);
       return (
         <div className="eb-slider">
           <input
             type="range"
             min={field.min}
             max={field.max}
-            value={Number(value) || field.min}
+            step={field.step ?? 1}
+            value={at}
             onChange={(e) => onChange(Number(e.target.value))}
           />
-          <b>{Number(value) || field.min}{field.suffix}</b>
+          <b>{at}{field.suffix}</b>
         </div>
       );
+    }
 
     case 'color':
       return <ColorField value={value} onChange={onChange} clearable={field.clearable} />;

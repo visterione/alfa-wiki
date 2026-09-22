@@ -1005,3 +1005,102 @@
 }
 
 .email-versions-hint { margin: auto; padding: 24px; max-width: 360px; text-align: center; font-size: 13px; line-height: 1.6; color: var(--text-tertiary); }
+
+/* ── План рассылки по дням (ver. 8.57) ──────────────────────────────────────
+   Суточный предел важен ровно в ту секунду, когда человек собирается нажать
+   «Отправить», — поэтому план стоит в самом меню отправки, над кнопкой, а не
+   в настройках раздела, куда за ним никто не пойдёт. */
+
+.email-send-menu { width: 340px; }
+
+.email-plan {
+  margin-bottom: 8px;
+  padding: 9px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+/* Рассылка, не влезающая в сутки, — это решение, а не уведомление: полоса
+   сбоку отличает её от спокойной строки «в пределе». */
+.email-plan.split {
+  color: var(--text-primary);
+  border-left: 3px solid var(--warning);
+}
+
+.email-plan-head { display: flex; align-items: flex-start; gap: 7px; }
+.email-plan-head svg { flex: none; margin-top: 1px; color: var(--text-tertiary); }
+.email-plan.split .email-plan-head svg { color: var(--warning); }
+
+.email-plan-days {
+  list-style: none;
+  margin: 9px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.email-plan-days li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.email-plan-days li:nth-child(odd) { background: rgba(var(--overlay-paper), 0.55); }
+
+.email-plan-when { flex: 1; display: flex; align-items: baseline; gap: 6px; }
+.email-plan-when i { font-style: normal; font-size: 11px; color: var(--text-tertiary); }
+.email-plan-days b { font-variant-numeric: tabular-nums; }
+.email-plan-used { font-size: 11px; color: var(--text-tertiary); }
+
+.email-plan-note { margin: 9px 0 0; font-size: 11px; line-height: 1.45; color: var(--text-tertiary); }
+
+.email-plan-modal { max-width: 520px; }
+.email-plan-body { padding: 4px 24px 0; font-size: 13px; line-height: 1.55; color: var(--text-primary); }
+.email-plan-body p { margin: 0 0 12px; }
+.email-plan-body .email-plan-days { max-height: 300px; font-size: 13px; }
+
+/* ── Суточный предел в настройках раздела ──────────────────────────────── */
+
+.ann-limit-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ann-limit-bar input {
+  width: 110px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.ann-limit-hint { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-tertiary); }
+
+.ann-limit-days {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 6px;
+}
+
+.ann-limit-days li {
+  padding: 7px 9px;
+  font-size: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.ann-limit-days span { display: block; color: var(--text-tertiary); font-size: 11px; }
+.ann-limit-days b { font-variant-numeric: tabular-nums; }
+
+/* День, забитый под завязку: следующая рассылка с него начаться не сможет, и
+   это надо видеть, не считая числа глазами. */
+.ann-limit-days li.full { border-left: 3px solid var(--warning); }
