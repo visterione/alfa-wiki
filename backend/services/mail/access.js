@@ -17,6 +17,7 @@
  */
 
 const { sequelize, MailAccount, MedCenter } = require('../../models');
+const { providerLogoDomain } = require('./provider');
 
 /**
  * Собирает эффективные права пользователя. Учитываются и новая many-to-many
@@ -91,6 +92,7 @@ async function accessibleAccounts(userId) {
         id: account.id,
         email: account.email,
         displayName: account.displayName,
+        providerLogoDomain: providerLogoDomain(account),
         medCenter: account.medCenter ? {
           id: account.medCenter.id,
           name: account.medCenter.name,

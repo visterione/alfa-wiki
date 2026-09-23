@@ -129,7 +129,7 @@ function buildFrameDoc(html, showImages, cidSources = {}) {
 </style></head><body>${body}</body></html>`;
 }
 
-function AccountLogo({ account, className = '' }) {
+function AccountLogo({ account, className = '', showProvider = false }) {
   const [failed, setFailed] = useState(false);
   const medCenter = account?.medCenter;
   const src = !failed ? fileUrl(medCenter?.logoUrl) : null;
@@ -137,9 +137,104 @@ function AccountLogo({ account, className = '' }) {
 
   return (
     <span className={`mail-account-logo ${className}`} style={{ '--mail-brand': medCenter?.color || 'var(--primary)' }}>
+      <span className="mail-account-logo__main">
+        {src
+          ? <img src={src} alt="" onError={() => setFailed(true)} />
+          : <span>{name.trim().charAt(0).toUpperCase() || 'П'}</span>}
+      </span>
+      {showProvider && <MailProviderLogo domain={account?.providerLogoDomain} />}
+    </span>
+  );
+}
+
+const senderLogoCache = new Map();
+const senderLogoQueue = [];
+let activeSenderLogoRequests = 0;
+const SENDER_COLORS = ['#5965d8', '#2e8b74', '#c56b38', '#9a5bc4', '#3278bd', '#b6526d', '#6f7f35'];
+
+function senderDomain(email) {
+  const value = String(email || '').trim().toLowerCase();
+  const at = value.lastIndexOf('@');
+  const domain = at >= 0 ? value.slice(at + 1).replace(/\.$/, '') : '';
+  return domain.includes('.') && /^[a-z0-9.-]+$/.test(domain) ? domain : null;
+}
+
+function senderColor(value) {
+  const hash = [...String(value || '')].reduce((sum, char) => ((sum * 31) + char.charCodeAt(0)) | 0, 0);
+  return SENDER_COLORS[Math.abs(hash) % SENDER_COLORS.length];
+}
+
+function drainSenderLogoQueue() {
+  while (activeSenderLogoRequests < 4 && senderLogoQueue.length) {
+    const task = senderLogoQueue.shift();
+    activeSenderLogoRequests += 1;
+    mailApi.senderLogo(task.domain)
+      .then(({ data }) => task.resolve(URL.createObjectURL(data)))
+      .catch(() => task.resolve(null))
+      .finally(() => {
+        activeSenderLogoRequests -= 1;
+        drainSenderLogoQueue();
+      });
+  }
+}
+
+function cachedSenderLogo(domain) {
+  if (!domain) return Promise.resolve(null);
+  if (!senderLogoCache.has(domain)) {
+    senderLogoCache.set(domain, new Promise((resolve) => {
+      senderLogoQueue.push({ domain, resolve });
+      drainSenderLogoQueue();
+    }));
+  }
+  return senderLogoCache.get(domain);
+}
+
+function MailProviderLogo({ domain }) {
+  const [src, setSrc] = useState(null);
+
+  useEffect(() => {
+    if (!domain) return undefined;
+    let active = true;
+    cachedSenderLogo(domain).then((value) => { if (active) setSrc(value); });
+    return () => { active = false; };
+  }, [domain]);
+
+  if (!src) return null;
+  return (
+    <span className="mail-account-logo__provider" aria-hidden="true">
+      <img src={src} alt="" onError={() => setSrc(null)} />
+    </span>
+  );
+}
+
+/** Внутренний сотрудник получает фото профиля, внешний бренд — BIMI/favicon. */
+function SenderAvatar({ message }) {
+  const internalSrc = fileUrl(message.senderAvatar);
+  const [internalFailed, setInternalFailed] = useState(false);
+  const [brandSrc, setBrandSrc] = useState(null);
+  const domain = senderDomain(message.fromEmail);
+  const name = message.fromName || message.fromEmail || '?';
+
+  useEffect(() => {
+    if ((internalSrc && !internalFailed) || !domain) return undefined;
+    let active = true;
+    cachedSenderLogo(domain).then((src) => { if (active) setBrandSrc(src); });
+    return () => { active = false; };
+  }, [domain, internalFailed, internalSrc]);
+
+  const src = internalSrc && !internalFailed ? internalSrc : brandSrc;
+  return (
+    <span
+      className="mail-row__avatar"
+      style={{ '--mail-sender-color': senderColor(message.fromEmail || name) }}
+      aria-hidden="true"
+    >
       {src
-        ? <img src={src} alt="" onError={() => setFailed(true)} />
-        : <span>{name.trim().charAt(0).toUpperCase() || 'П'}</span>}
+        ? <img src={src} alt="" loading="lazy" onError={() => {
+          if (src === internalSrc) setInternalFailed(true);
+          else setBrandSrc(null);
+        }} />
+        : <span>{name.trim().charAt(0).toUpperCase() || '?'}</span>}
     </span>
   );
 }
@@ -801,7 +896,7 @@ export default function Mail() {
                         className={account.id === accountId ? 'active' : ''}
                         onClick={() => selectAccount(account.id)}
                       >
-                        <AccountLogo account={account} />
+                        <AccountLogo account={account} showProvider />
                         <span><strong>{account.displayName}</strong><small><MailIcon size={12} />{account.email}</small></span>
                       </button>
                     ))}
@@ -1015,16 +1110,19 @@ export default function Mail() {
                 className="mail-row__open"
                 onClick={() => openMessage(message.id)}
               >
-                <span className="mail-row__top">
-                  <span className="mail-row__from">
-                    {message.fromName || message.fromEmail || 'Без отправителя'}
+                <SenderAvatar key={message.id} message={message} />
+                <span className="mail-row__content">
+                  <span className="mail-row__top">
+                    <span className="mail-row__from">
+                      {message.fromName || message.fromEmail || 'Без отправителя'}
+                    </span>
+                    <time className="mail-row__date" dateTime={message.receivedAt || undefined}>
+                      {rowDate(message.receivedAt)}
+                    </time>
                   </span>
-                  <time className="mail-row__date" dateTime={message.receivedAt || undefined}>
-                    {rowDate(message.receivedAt)}
-                  </time>
-                </span>
-                <span className="mail-row__subject">
-                  {message.subject || '(без темы)'}
+                  <span className="mail-row__subject">
+                    {message.subject || '(без темы)'}
+                  </span>
                 </span>
               </button>
               <span className="mail-row__markers">
@@ -1085,29 +1183,40 @@ export default function Mail() {
 
               <h1>{opened.message.subject || '(без темы)'}</h1>
 
-              <div className="mail-reader__people">
-                <span className="mail-reader__from">
-                  {opened.message.fromName
-                    ? <>{opened.message.fromName} <small>{opened.message.fromEmail}</small></>
-                    : opened.message.fromEmail}
-                </span>
-                <span className="mail-reader__date">{fullDate(opened.message.receivedAt)}</span>
-              </div>
-
-              {opened.addresses?.filter((a) => a.role === 'to' || a.role === 'cc').length > 0 && (
-                <div className="mail-reader__recipients">
-                  {['to', 'cc'].map((role) => {
-                    const list = opened.addresses.filter((a) => a.role === role);
-                    if (!list.length) return null;
-                    return (
-                      <div key={role}>
+              <div className="mail-reader__recipients">
+                <div className="mail-reader__recipient-row">
+                  <span className="mail-reader__recipient-main">
+                    <span className="mail-reader__role">От:</span>
+                    <span className="mail-reader__from">
+                      {opened.message.fromName
+                        ? <>{opened.message.fromName} <small>{opened.message.fromEmail}</small></>
+                        : opened.message.fromEmail}
+                    </span>
+                  </span>
+                  {!opened.addresses?.some((a) => a.role === 'to') && (
+                    <time className="mail-reader__date" dateTime={opened.message.receivedAt || undefined}>
+                      {fullDate(opened.message.receivedAt)}
+                    </time>
+                  )}
+                </div>
+                {['to', 'cc'].map((role) => {
+                  const list = (opened.addresses || []).filter((a) => a.role === role);
+                  if (!list.length) return null;
+                  return (
+                    <div className="mail-reader__recipient-row" key={role}>
+                      <span className="mail-reader__recipient-main">
                         <span className="mail-reader__role">{role === 'to' ? 'Кому:' : 'Копия:'}</span>
                         {list.map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(', ')}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      </span>
+                      {role === 'to' && (
+                        <time className="mail-reader__date" dateTime={opened.message.receivedAt || undefined}>
+                          {fullDate(opened.message.receivedAt)}
+                        </time>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
               <div className="mail-actions">
                 <div className="mail-actions__group">

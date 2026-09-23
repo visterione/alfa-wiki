@@ -36,6 +36,7 @@ const { sendDraft, sentToday, DAILY_PER_ACCOUNT, MAX_RECIPIENTS } = require('../
 const { htmlToPlain } = require('../services/mail/parse');
 const { syncAccount, syncFolders } = require('../services/mail/sync');
 const { searchMessages, parseQuery } = require('../services/mail/search');
+const { loadSenderLogo, normalizeDomain } = require('../services/mail/senderLogo');
 const { Op } = require('sequelize');
 
 const router = express.Router();
@@ -188,6 +189,28 @@ router.post('/accounts/:accountId/folders', authenticate, async (req, res) => {
 
 // ── Список писем ──────────────────────────────────────────────────────────
 
+// GET /api/mail/sender-logo?domain=example.com
+// Авторизованный прокси нужен не только ради CORS: если дать браузеру внешний
+// URL, загрузка логотипа снова раскроет отправителю IP сотрудника — ровно то,
+// от чего ниже защищено содержимое самого письма.
+router.get('/sender-logo', authenticate, async (req, res) => {
+  const domain = normalizeDomain(req.query.domain);
+  if (!domain) return res.status(400).json({ error: 'Некорректный домен' });
+
+  try {
+    const logo = await loadSenderLogo(domain);
+    if (!logo) return res.status(404).end();
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'private, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return res.send(logo);
+  } catch (error) {
+    return res.status(404).end();
+  }
+});
+
 // GET /api/mail/messages?accountId=&folderId=&unread=&attachments=&limit=&offset=
 router.get('/messages', authenticate, async (req, res) => {
   try {
@@ -228,10 +251,16 @@ router.get('/messages', authenticate, async (req, res) => {
              m."sentAt", m."receivedAt", m.size, m."isSeen", m."isFlagged", m."isAnswered",
              m."hasAttachments", m."attachmentsCount", m.preview, m."bodyState", m."threadKey",
              a.email AS "accountEmail", f.name AS "folderName", f."specialUse",
+             sender.avatar AS "senderAvatar",
              s."isRead" AS "readByMe", s."takenAt" AS "takenByMe"
       FROM mail_messages m
       JOIN mail_accounts a ON a.id = m."accountId"
       JOIN mail_folders f ON f.id = m."folderId"
+      LEFT JOIN LATERAL (
+        SELECT u.avatar FROM users u
+        WHERE u.avatar IS NOT NULL AND lower(u.email) = lower(m."fromEmail")
+        LIMIT 1
+      ) sender ON true
       LEFT JOIN mail_user_message_state s ON s."messageId" = m.id AND s."userId" = $${bind.length + 1}
       WHERE ${where.join(' AND ')}
       ORDER BY m."receivedAt" DESC

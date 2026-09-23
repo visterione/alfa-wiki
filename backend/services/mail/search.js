@@ -390,6 +390,7 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
            m."sentAt", m."receivedAt", m.size, m."isSeen", m."isFlagged", m."isAnswered",
            m."hasAttachments", m."attachmentsCount", m.preview, m."bodyState", m."threadKey",
            a.email AS "accountEmail", f.name AS "folderName", f."specialUse",
+           sender.avatar AS "senderAvatar",
            s."isRead" AS "readByMe", s."takenAt" AS "takenByMe",
            ${rank} AS "rank",
            ${exact} AS "exact",
@@ -401,6 +402,11 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
     FROM mail_messages m
     JOIN mail_accounts a ON a.id = m."accountId"
     JOIN mail_folders f ON f.id = m."folderId"
+    LEFT JOIN LATERAL (
+      SELECT u.avatar FROM users u
+      WHERE u.avatar IS NOT NULL AND lower(u.email) = lower(m."fromEmail")
+      LIMIT 1
+    ) sender ON true
     LEFT JOIN mail_message_bodies b ON b."messageId" = m.id
     LEFT JOIN mail_user_message_state s ON s."messageId" = m.id AND s."userId" = $${userIdx}
     WHERE ${where.join(' AND ')}

@@ -1571,6 +1571,10 @@ export const mail = {
   // ящиками это главное удобство.
   messages: (params) => api.get('/mail/messages', { params }),
   message: (id) => api.get(`/mail/messages/${id}`),
+  senderLogo: (domain) => api.get('/mail/sender-logo', {
+    params: { domain },
+    responseType: 'blob'
+  }),
   // Остальные письма той же переписки. Собираются по всем доступным ящикам:
   // письмо ушло с одного адреса, ответ пришёл на другой — для человека это одна
   // история, хотя для IMAP два разных ящика.
