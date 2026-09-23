@@ -386,13 +386,13 @@ function QuickAccessButtons({ onClose }) {
   // Рабочее окно линии теперь является обычным пользовательским разделом в
   // быстром доступе. Настройка линий остаётся отдельным правом в админке.
   const canAccessOpenLine = isAdmin || user?.adminAccess?.openLine === true;
-  // Вакансии (ver. 8.20) — второе поколение онбординга. Гранулярного флага у
-  // раздела нет намеренно: настройку видит админ, а заявки и задачи — тот, кто
-  // назначен исполнителем хоть на один шаг. Право «быть исполнителем» уже
-  // выражено назначением, и второе место настройки того же самого разошлось бы
-  // с первым. Поэтому видимость кнопки спрашиваем у бэкенда, а не выводим из
-  // флагов пользователя.
-  const [canAccessVacancies, setCanAccessVacancies] = useState(false);
+  // Вакансии (ver. 8.20) — второе поколение онбординга. У большинства право
+  // уже есть в данных пользователя; бэкенд дополнительно пропускает старых
+  // исполнителей, назначенных ещё до появления флага. Поэтому известное право
+  // используем сразу, а overview подтверждает доступ по обоим основаниям.
+  const [canAccessVacancies, setCanAccessVacancies] = useState(
+    () => isAdmin || user?.adminAccess?.vacancies === true
+  );
   const [vacanciesCount, setVacanciesCount] = useState(0);
 
   useEffect(() => {
@@ -403,9 +403,13 @@ function QuickAccessButtons({ onClose }) {
         if (!alive) return;
         setCanAccessVacancies(true);
         setVacanciesCount(data.myTasksCount || 0);
-      } catch {
-        // 403 — раздела у человека нет, и это штатный ответ, а не сбой.
-        if (alive) setCanAccessVacancies(false);
+      } catch (error) {
+        if (!alive) return;
+        // Только 403 означает, что право действительно отозвано. Сетевой сбой,
+        // 5xx или прерванный запрос не должны удалять уже доступную кнопку из
+        // панели: overview здесь одновременно служит источником бейджа, а
+        // недоступность счётчика не равна недоступности самого раздела.
+        if (error?.response?.status === 403) setCanAccessVacancies(false);
       }
     };
     load();

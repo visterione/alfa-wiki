@@ -62,9 +62,17 @@ function listDate(value) {
 function rowDate(value) {
   if (!value) return '';
   const date = new Date(value);
-  return `${date.toLocaleDateString('ru-RU', {
-    day: '2-digit', month: '2-digit', year: '2-digit',
-  })} · ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  const now = new Date();
+  const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+  if (date.toDateString() === now.toDateString()) return time;
+
+  const datePart = date.toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: '2-digit' }),
+  });
+  return `${datePart}, ${time}`;
 }
 
 function fullDate(value) {

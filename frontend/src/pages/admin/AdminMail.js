@@ -30,10 +30,56 @@ const SYNC_STATES = {
   error: { label: 'ошибка', tone: 'bad' },
 };
 
+const MAIL_PRESETS = [
+  {
+    key: 'reg-ru', label: 'REG.RU',
+    imapHost: 'mail.hosting.reg.ru', imapPort: 993, imapSecure: true,
+    smtpHost: 'mail.hosting.reg.ru', smtpPort: 465, smtpSecure: true,
+  },
+  {
+    key: 'google', label: 'Google Workspace / Gmail',
+    imapHost: 'imap.gmail.com', imapPort: 993, imapSecure: true,
+    smtpHost: 'smtp.gmail.com', smtpPort: 465, smtpSecure: true,
+    note: 'Используйте пароль приложения Google. Обычный пароль аккаунта для такого подключения не подходит.',
+  },
+  {
+    key: 'yandex', label: 'Яндекс 360 / Почта',
+    imapHost: 'imap.yandex.ru', imapPort: 993, imapSecure: true,
+    smtpHost: 'smtp.yandex.ru', smtpPort: 465, smtpSecure: true,
+    note: 'В Яндекс ID создайте отдельный пароль приложения для почты и разрешите доступ по IMAP.',
+  },
+  {
+    key: 'mail-ru', label: 'VK WorkSpace / Mail.ru',
+    imapHost: 'imap.mail.ru', imapPort: 993, imapSecure: true,
+    smtpHost: 'smtp.mail.ru', smtpPort: 465, smtpSecure: true,
+    note: 'Если в аккаунте включена защита входа, используйте пароль для внешнего приложения.',
+  },
+  {
+    key: 'microsoft', label: 'Microsoft 365 / Outlook',
+    imapHost: 'outlook.office365.com', imapPort: 993, imapSecure: true,
+    smtpHost: 'smtp.office365.com', smtpPort: 587, smtpSecure: false,
+    note: 'SMTP работает через STARTTLS. В организации должны быть разрешены IMAP и парольная SMTP-аутентификация; OAuth2 модуль пока не поддерживает.',
+  },
+  {
+    key: 'rambler', label: 'Рамблер/почта',
+    imapHost: 'imap.rambler.ru', imapPort: 993, imapSecure: true,
+    smtpHost: 'smtp.rambler.ru', smtpPort: 465, smtpSecure: true,
+  },
+];
+
+const presetFor = (account) => MAIL_PRESETS.find((preset) => (
+  preset.imapHost === account.imapHost
+  && preset.imapPort === Number(account.imapPort)
+  && preset.imapSecure === (account.imapSecure !== false)
+  && preset.smtpHost === account.smtpHost
+  && preset.smtpPort === Number(account.smtpPort)
+  && preset.smtpSecure === (account.smtpSecure !== false)
+))?.key || 'custom';
+
 const EMPTY_FORM = {
-  email: '', displayName: '', login: '', password: '', medCenterId: '',
-  imapHost: 'mail.hosting.reg.ru', imapPort: 993,
-  smtpHost: 'mail.hosting.reg.ru', smtpPort: 465,
+  provider: 'reg-ru', email: '', displayName: '', login: '', password: '', medCenterId: '',
+  imapHost: 'mail.hosting.reg.ru', imapPort: 993, imapSecure: true,
+  smtpHost: 'mail.hosting.reg.ru', smtpPort: 465, smtpSecure: true,
   signature: '',
 };
 
@@ -86,10 +132,20 @@ export default function AdminMail() {
       login: account.login,
       password: '',
       medCenterId: account.medCenter?.id || '',
-      imapHost: account.imapHost, imapPort: account.imapPort,
-      smtpHost: account.smtpHost, smtpPort: account.smtpPort,
+      provider: presetFor(account),
+      imapHost: account.imapHost, imapPort: account.imapPort, imapSecure: account.imapSecure !== false,
+      smtpHost: account.smtpHost, smtpPort: account.smtpPort, smtpSecure: account.smtpSecure !== false,
       signature: account.signature || '',
     });
+  };
+
+  const applyPreset = (key) => {
+    const preset = MAIL_PRESETS.find((item) => item.key === key);
+    setForm((current) => (preset
+      ? { ...current, provider: key, imapHost: preset.imapHost, imapPort: preset.imapPort,
+        imapSecure: preset.imapSecure, smtpHost: preset.smtpHost, smtpPort: preset.smtpPort,
+        smtpSecure: preset.smtpSecure }
+      : { ...current, provider: 'custom' }));
   };
 
   const save = async (e) => {
@@ -97,6 +153,7 @@ export default function AdminMail() {
     setSaving(true);
     try {
       const payload = { ...form, medCenterId: form.medCenterId || null };
+      delete payload.provider;
       if (editing === 'new') {
         await mailApi.admin.create(payload);
         toast.success('Ящик заведён. Проверьте подключение.');
@@ -218,6 +275,8 @@ export default function AdminMail() {
       .slice(0, 30);
   }, [staff, staffQuery, grantFor, accounts]);
 
+  const providerNote = MAIL_PRESETS.find((preset) => preset.key === form.provider)?.note;
+
   if (loading) {
     return <div className="amail-page amail-page--center"><Loader className="amail-spin" size={28} /></div>;
   }
@@ -242,6 +301,15 @@ export default function AdminMail() {
           <h2>{editing === 'new' ? 'Новый ящик' : 'Правка ящика'}</h2>
 
           <div className="amail-grid">
+            <label>
+              <span>Почтовый сервис <small>заполнит серверы автоматически</small></span>
+              <select value={form.provider} onChange={(e) => applyPreset(e.target.value)}>
+                {MAIL_PRESETS.map((preset) => (
+                  <option key={preset.key} value={preset.key}>{preset.label}</option>
+                ))}
+                <option value="custom">Другой — настроить вручную</option>
+              </select>
+            </label>
             <label>
               <span>Адрес</span>
               <input
@@ -293,30 +361,58 @@ export default function AdminMail() {
               <span>Сервер IMAP</span>
               <input
                 type="text" value={form.imapHost}
-                onChange={(e) => setForm({ ...form, imapHost: e.target.value })}
+                onChange={(e) => setForm({ ...form, provider: 'custom', imapHost: e.target.value })}
               />
             </label>
             <label>
               <span>Порт IMAP</span>
               <input
                 type="number" value={form.imapPort}
-                onChange={(e) => setForm({ ...form, imapPort: Number(e.target.value) })}
+                onChange={(e) => setForm({ ...form, provider: 'custom', imapPort: Number(e.target.value) })}
               />
+            </label>
+            <label>
+              <span>Шифрование IMAP</span>
+              <select
+                value={form.imapSecure ? 'ssl' : 'starttls'}
+                onChange={(e) => setForm({ ...form, provider: 'custom', imapSecure: e.target.value === 'ssl' })}
+              >
+                <option value="ssl">SSL/TLS при подключении</option>
+                <option value="starttls">STARTTLS</option>
+              </select>
             </label>
             <label>
               <span>Сервер SMTP</span>
               <input
                 type="text" value={form.smtpHost}
-                onChange={(e) => setForm({ ...form, smtpHost: e.target.value })}
+                onChange={(e) => setForm({ ...form, provider: 'custom', smtpHost: e.target.value })}
               />
             </label>
             <label>
               <span>Порт SMTP</span>
               <input
                 type="number" value={form.smtpPort}
-                onChange={(e) => setForm({ ...form, smtpPort: Number(e.target.value) })}
+                onChange={(e) => setForm({ ...form, provider: 'custom', smtpPort: Number(e.target.value) })}
               />
             </label>
+            <label>
+              <span>Шифрование SMTP</span>
+              <select
+                value={form.smtpSecure ? 'ssl' : 'starttls'}
+                onChange={(e) => setForm({ ...form, provider: 'custom', smtpSecure: e.target.value === 'ssl' })}
+              >
+                <option value="ssl">SSL/TLS при подключении</option>
+                <option value="starttls">STARTTLS</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="amail-provider-note">
+            <MailIcon size={15} />
+            <span>
+              Пресет только заполняет поля: адреса серверов, порты и шифрование можно изменить вручную.
+              {providerNote && <small>{providerNote}</small>}
+            </span>
           </div>
 
           {/* Подпись на ящик, а не на человека: письмо уходит от регистратуры

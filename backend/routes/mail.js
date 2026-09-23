@@ -951,8 +951,10 @@ router.get('/admin/accounts', authenticate, requireMailAdmin, async (req, res) =
         medCenter: a.medCenter,
         imapHost: a.imapHost,
         imapPort: a.imapPort,
+        imapSecure: a.imapSecure,
         smtpHost: a.smtpHost,
         smtpPort: a.smtpPort,
+        smtpSecure: a.smtpSecure,
         signature: a.signature,
         isActive: a.isActive,
         syncState: a.syncState,
@@ -1000,8 +1002,10 @@ router.post('/admin/accounts', authenticate, requireMailAdmin, [
       medCenterId: req.body.medCenterId || null,
       imapHost: req.body.imapHost || undefined,
       imapPort: req.body.imapPort || undefined,
+      imapSecure: req.body.imapSecure !== false,
       smtpHost: req.body.smtpHost || undefined,
       smtpPort: req.body.smtpPort || undefined,
+      smtpSecure: req.body.smtpSecure !== false,
       sortOrder: req.body.sortOrder ?? 100,
       createdBy: req.user.id,
       ...secret,
@@ -1022,7 +1026,7 @@ router.put('/admin/accounts/:id', authenticate, requireMailAdmin, async (req, re
     if (!account) return res.status(404).json({ error: 'Ящик не найден' });
 
     const patch = {};
-    for (const field of ['displayName', 'login', 'imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'sortOrder', 'isActive', 'signature']) {
+    for (const field of ['displayName', 'login', 'imapHost', 'imapPort', 'imapSecure', 'smtpHost', 'smtpPort', 'smtpSecure', 'sortOrder', 'isActive', 'signature']) {
       if (req.body[field] !== undefined) patch[field] = req.body[field];
     }
     if (req.body.medCenterId !== undefined) patch.medCenterId = req.body.medCenterId || null;
