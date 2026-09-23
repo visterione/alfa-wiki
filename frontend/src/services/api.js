@@ -1632,6 +1632,7 @@ export const mail = {
 
   admin: {
     accounts: () => api.get('/mail/admin/accounts'),
+    accessOptions: () => api.get('/mail/admin/access-options'),
     create: (data) => api.post('/mail/admin/accounts', data),
     update: (id, data) => api.put(`/mail/admin/accounts/${id}`, data),
     remove: (id) => api.delete(`/mail/admin/accounts/${id}`),
@@ -1642,6 +1643,8 @@ export const mail = {
     sync: (id) => api.post(`/mail/admin/accounts/${id}/sync`),
     grant: (id, data) => api.post(`/mail/admin/accounts/${id}/access`, data),
     revoke: (id, userId) => api.delete(`/mail/admin/accounts/${id}/access/${userId}`),
+    saveAccessRule: (id, data) => api.post(`/mail/admin/accounts/${id}/access-rules`, data),
+    revokeAccessRule: (id, ruleId) => api.delete(`/mail/admin/accounts/${id}/access-rules/${ruleId}`),
     audit: (params) => api.get('/mail/admin/audit', { params })
   }
 };

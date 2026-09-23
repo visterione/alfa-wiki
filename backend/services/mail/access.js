@@ -1,74 +1,128 @@
 'use strict';
 
 /**
- * Кто какой ящик видит (ver. 8.58).
+ * Кто какой ящик видит (ver. 8.59).
  *
- * Правило одно и намеренно жёсткое: доступ к ящику — это строка в
- * mail_account_users, и больше ничего. Полный администратор портала тоже не
- * читает чужую почту просто так: в этих ящиках жалобы и гарантийные письма с
- * фамилиями и диагнозами пациентов, и «он же админ, ему можно» — не тот
- * принцип, по которому такое должно открываться. Выдать доступ себе он может,
- * но это будет видимое действие, а не молчаливая возможность.
+ * Доступ складывается из двух источников:
+ *   - персональная строка в mail_account_users;
+ *   - групповое правило по медцентру, роли или их пересечению.
  *
- * Право adminAccess.mail отвечает за другое — за заведение ящиков и раздачу
- * доступов. Читать письма оно не позволяет.
+ * Правило с двумя условиями означает именно «медцентр И роль». Несколько
+ * совпавших источников объединяются: чтение даёт сам факт совпадения, а
+ * canSend/canDelete работают через логическое OR. Поэтому узкая персональная
+ * настройка не может случайно отнять право, уже выданное группе.
+ *
+ * Полный администратор портала по-прежнему не получает чужую почту молча.
+ * adminAccess.mail разрешает управлять ящиками и правилами, но не читать их.
  */
 
-const { MailAccount, MailAccountUser, MedCenter } = require('../../models');
+const { sequelize, MailAccount, MedCenter } = require('../../models');
 
-/** Ящики, к которым у человека есть доступ, вместе с его правами в каждом. */
+/**
+ * Собирает эффективные права пользователя. Учитываются и новая many-to-many
+ * связь ролей, и старое users.roleId: в портале ещё есть сотрудники обоих
+ * поколений, терять доступ при миграции профиля нельзя.
+ */
+async function resolvedGrants(userId, accountId = null) {
+  const bind = [userId];
+  const accountFilter = accountId ? 'AND grants."accountId" = $2' : '';
+  if (accountId) bind.push(accountId);
+
+  const [rows] = await sequelize.query(`
+    WITH grants AS (
+      SELECT mau."accountId", mau."canSend", mau."canDelete", mau."isDefault"
+      FROM mail_account_users mau
+      WHERE mau."userId" = $1
+
+      UNION ALL
+
+      SELECT rule."accountId", rule."canSend", rule."canDelete", FALSE AS "isDefault"
+      FROM mail_account_access_rules rule
+      JOIN users u ON u.id = $1 AND u."isActive" AND u."deletedAt" IS NULL
+      WHERE
+        (
+          rule."medCenterId" IS NULL
+          OR EXISTS (
+            SELECT 1 FROM user_med_centers umc
+            WHERE umc."userId" = u.id AND umc."medCenterId" = rule."medCenterId"
+          )
+        )
+        AND (
+          rule."roleId" IS NULL
+          OR u."roleId" = rule."roleId"
+          OR EXISTS (
+            SELECT 1 FROM user_roles ur
+            WHERE ur."userId" = u.id AND ur."roleId" = rule."roleId"
+          )
+        )
+    )
+    SELECT grants."accountId",
+           BOOL_OR(grants."canSend") AS "canSend",
+           BOOL_OR(grants."canDelete") AS "canDelete",
+           BOOL_OR(grants."isDefault") AS "isDefault"
+    FROM grants
+    WHERE TRUE ${accountFilter}
+    GROUP BY grants."accountId"
+  `, { bind });
+
+  return rows;
+}
+
+/** Ящики, к которым у человека есть доступ, вместе с итоговыми правами. */
 async function accessibleAccounts(userId) {
-  const rows = await MailAccountUser.findAll({
-    where: { userId },
+  const grants = await resolvedGrants(userId);
+  if (!grants.length) return [];
+
+  const rightsByAccount = new Map(grants.map((row) => [row.accountId, row]));
+  const accounts = await MailAccount.findAll({
+    where: { id: grants.map((row) => row.accountId), isActive: true },
     include: [{
-      model: MailAccount,
-      as: 'account',
-      where: { isActive: true },
-      required: true,
-      include: [{
-        model: MedCenter,
-        as: 'medCenter',
-        attributes: ['id', 'name', 'displayName', 'color', 'logoUrl', 'logoSquareUrl'],
-        required: false,
-      }],
+      model: MedCenter,
+      as: 'medCenter',
+      attributes: ['id', 'name', 'displayName', 'color', 'logoUrl', 'logoSquareUrl'],
+      required: false,
     }],
   });
 
-  return rows
-    .map((row) => ({
-      id: row.account.id,
-      email: row.account.email,
-      displayName: row.account.displayName,
-      medCenter: row.account.medCenter ? {
-        id: row.account.medCenter.id,
-        name: row.account.medCenter.name,
-        displayName: row.account.medCenter.displayName,
-        color: row.account.medCenter.color,
-        logoUrl: row.account.medCenter.logoSquareUrl || row.account.medCenter.logoUrl || null,
-      } : null,
-      syncState: row.account.syncState,
-      canSend: row.canSend,
-      canDelete: row.canDelete,
-      isDefault: row.isDefault,
-      sortOrder: row.account.sortOrder,
-    }))
+  return accounts
+    .map((account) => {
+      const rights = rightsByAccount.get(account.id);
+      return {
+        id: account.id,
+        email: account.email,
+        displayName: account.displayName,
+        medCenter: account.medCenter ? {
+          id: account.medCenter.id,
+          name: account.medCenter.name,
+          displayName: account.medCenter.displayName,
+          color: account.medCenter.color,
+          logoUrl: account.medCenter.logoSquareUrl || account.medCenter.logoUrl || null,
+        } : null,
+        syncState: account.syncState,
+        canSend: Boolean(rights.canSend),
+        canDelete: Boolean(rights.canDelete),
+        isDefault: Boolean(rights.isDefault),
+        sortOrder: account.sortOrder,
+      };
+    })
     .sort((a, b) => (a.sortOrder - b.sortOrder) || a.email.localeCompare(b.email, 'ru'));
 }
 
 /** Идентификаторы доступных ящиков — для запросов «искать во всех моих». */
 async function accessibleAccountIds(userId) {
-  const rows = await MailAccountUser.findAll({ where: { userId }, attributes: ['accountId'] });
-  return rows.map((r) => r.accountId);
+  const grants = await resolvedGrants(userId);
+  return grants.map((row) => row.accountId);
 }
 
-/**
- * Права на конкретный ящик. Возвращает null, если доступа нет, — обработчик
- * сам решает, ответить 403 или сделать вид, что ящика не существует.
- */
+/** Итоговые права на конкретный ящик либо null, если ни одно правило не подошло. */
 async function accessTo(userId, accountId) {
-  const row = await MailAccountUser.findOne({ where: { userId, accountId } });
-  if (!row) return null;
-  return { canRead: true, canSend: row.canSend, canDelete: row.canDelete };
+  const [rights] = await resolvedGrants(userId, accountId);
+  if (!rights) return null;
+  return {
+    canRead: true,
+    canSend: Boolean(rights.canSend),
+    canDelete: Boolean(rights.canDelete),
+  };
 }
 
-module.exports = { accessibleAccounts, accessibleAccountIds, accessTo };
+module.exports = { accessibleAccounts, accessibleAccountIds, accessTo, resolvedGrants };

@@ -232,6 +232,29 @@
   40%      { transform: translateY(-1.5px); }
 }
 
+/* ── Почта: конверт приподнимается, клапан раскрывается ──────────────────── */
+/* У Mail две детали: рамка конверта и V-образный клапан. Общий подъём даёт
+   ощущение входящего письма, а отдельное сжатие клапана — короткое открытие. */
+[data-icon-motion="mail"]:is(:hover, :focus-visible) svg:first-of-type {
+  animation: icon-mail-lift 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+[data-icon-motion="mail"]:is(:hover, :focus-visible) svg:first-of-type > :nth-child(2) {
+  transform-origin: 50% 0%;
+  animation: icon-mail-flap 0.55s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes icon-mail-lift {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  38%      { transform: translateY(-1.5px) rotate(-3deg); }
+  70%      { transform: translateY(.4px) rotate(1deg); }
+}
+
+@keyframes icon-mail-flap {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  42%      { transform: translateY(-1px) scaleY(.68); }
+}
+
 /* ── Вакансии: портфель приподнимают за ручку ─────────────────────────────── */
 /* В наборе портфель собран из двух деталей и в непривычном порядке: первым идёт
    корпус (rect), вторым ручка (path). Ручка трогается первой, корпус догоняет с

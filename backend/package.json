@@ -194,6 +194,8 @@
     "migrate:8.56:check": "node scripts/migrateReviewBoardsPerMedCenter.js --check",
     "migrate:8.58": "node scripts/runSqlMigration.js 8.58",
     "migrate:8.58:check": "node scripts/runSqlMigration.js 8.58 --check",
+    "migrate:8.59": "node scripts/runSqlMigration.js 8.59",
+    "migrate:8.59:check": "node scripts/runSqlMigration.js 8.59 --check",
     "mail:sync": "node scripts/mailSync.js",
     "mail:account": "node scripts/mailAccount.js"
   },

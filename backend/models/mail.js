@@ -71,6 +71,20 @@ module.exports = function defineMailModels(sequelize, DataTypes) {
     grantedBy: { type: DataTypes.UUID },
   }, { ...ts, tableName: 'mail_account_users' });
 
+  // Групповое правило не разворачивается в сотни персональных строк. Так
+  // новый сотрудник автоматически получает ящик, когда ему назначают нужный
+  // медцентр/роль, а удалённый из группы автоматически его теряет. Если
+  // заполнены оба поля, они работают как пересечение (медцентр И роль).
+  const MailAccountAccessRule = sequelize.define('MailAccountAccessRule', {
+    id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    accountId:   { type: DataTypes.UUID, allowNull: false },
+    medCenterId: { type: DataTypes.UUID },
+    roleId:      { type: DataTypes.UUID },
+    canSend:     { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    canDelete:   { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    grantedBy:   { type: DataTypes.UUID },
+  }, { ...ts, tableName: 'mail_account_access_rules' });
+
   // ── Папки ───────────────────────────────────────────────────────────────
 
   const MailFolder = sequelize.define('MailFolder', {
@@ -256,12 +270,12 @@ module.exports = function defineMailModels(sequelize, DataTypes) {
   }, { tableName: 'mail_sync_runs', timestamps: false });
 
   const models = {
-    MailAccount, MailAccountUser, MailFolder, MailMessage,
+    MailAccount, MailAccountUser, MailAccountAccessRule, MailFolder, MailMessage,
     MailAddress, MailMessageAddress, MailMessageBody, MailAttachment,
     MailUserMessageState, MailAudit, MailSyncRun, MailFlagOp, MailSavedSearch, MailDraft,
   };
 
-  function associateMail({ User, MedCenter }) {
+  function associateMail({ User, MedCenter, Role }) {
     MailAccount.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
     MailAccount.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
 
@@ -269,6 +283,12 @@ module.exports = function defineMailModels(sequelize, DataTypes) {
     MailAccountUser.belongsTo(MailAccount, { foreignKey: 'accountId', as: 'account' });
     MailAccountUser.belongsTo(User, { foreignKey: 'userId', as: 'user' });
     MailAccountUser.belongsTo(User, { foreignKey: 'grantedBy', as: 'grantor' });
+
+    MailAccount.hasMany(MailAccountAccessRule, { foreignKey: 'accountId', as: 'accessRules', onDelete: 'CASCADE' });
+    MailAccountAccessRule.belongsTo(MailAccount, { foreignKey: 'accountId', as: 'account' });
+    MailAccountAccessRule.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+    MailAccountAccessRule.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
+    MailAccountAccessRule.belongsTo(User, { foreignKey: 'grantedBy', as: 'grantor' });
 
     MailAccount.hasMany(MailFolder, { foreignKey: 'accountId', as: 'folders', onDelete: 'CASCADE' });
     MailFolder.belongsTo(MailAccount, { foreignKey: 'accountId', as: 'account' });

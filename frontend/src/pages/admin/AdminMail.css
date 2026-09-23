@@ -406,6 +406,35 @@
   overflow: hidden;
 }
 
+.amail-picker__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-primary);
+}
+
+.amail-picker__tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.amail-picker__tabs button.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+}
+
 .amail-picker__search {
   display: flex;
   align-items: center;
@@ -453,6 +482,84 @@
   color: var(--text-tertiary);
 }
 
+.amail-group-form {
+  padding: 12px;
+}
+
+.amail-group-form > p {
+  margin: 0 0 11px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.amail-group-form__filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+  align-items: end;
+  gap: 9px;
+}
+
+.amail-group-form__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.amail-group-form__filters select {
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.amail-group-form__filters select:focus { border-color: var(--primary); }
+
+.amail-group-form__and {
+  padding-bottom: 9px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.amail-group-form__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin-top: 12px;
+}
+
+.amail-access__section-label {
+  margin-top: 10px;
+  padding: 5px 0 3px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.amail-person--group {
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary-light) 45%, transparent);
+}
+
+.amail-person__group-icon {
+  flex: none;
+  color: var(--primary);
+}
+
 /* ── Журнал ─────────────────────────────────────────────────────────────── */
 
 .amail-audit {
@@ -498,5 +605,8 @@
   .amail-head { flex-direction: column; }
   .amail-card__head { flex-direction: column; }
   .amail-person { flex-wrap: wrap; gap: 8px; }
+  .amail-group-form__filters { grid-template-columns: 1fr; }
+  .amail-group-form__and { display: none; }
+  .amail-group-form__footer { justify-content: flex-start; }
   .amail-audit__row { grid-template-columns: 1fr; gap: 2px; padding: 8px 0; }
 }

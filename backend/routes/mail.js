@@ -21,8 +21,9 @@ const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 
 const {
-  sequelize, MailAccount, MailAccountUser, MailFolder, MailMessage, MailMessageBody,
-  MailAttachment, MailAudit, MailSavedSearch, MailDraft, User, MedCenter,
+  sequelize, MailAccount, MailAccountUser, MailAccountAccessRule, MailFolder,
+  MailMessage, MailMessageBody, MailAttachment, MailAudit, MailSavedSearch,
+  MailDraft, User, MedCenter, Role,
 } = require('../models');
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { parsePagination } = require('../utils/pagination');
@@ -917,6 +918,25 @@ router.get('/quota', authenticate, async (req, res) => {
 
 // ══ Администрирование ═════════════════════════════════════════════════════
 
+// Справочники лежат под почтовым правом, а не под /roles: человек, которому
+// поручили раздавать доступ к ящикам, не обязан иметь право редактировать роли.
+router.get('/admin/access-options', authenticate, requireMailAdmin, async (req, res) => {
+  try {
+    const [medCenters, roles] = await Promise.all([
+      MedCenter.findAll({
+        where: { isActive: true },
+        attributes: ['id', 'name', 'displayName'],
+        order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      }),
+      Role.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] }),
+    ]);
+    res.json({ medCenters, roles });
+  } catch (error) {
+    console.error('❌ Почта: не отдались справочники группового доступа:', error);
+    res.status(500).json({ error: 'Не удалось получить медцентры и роли' });
+  }
+});
+
 // GET /api/mail/admin/accounts
 router.get('/admin/accounts', authenticate, requireMailAdmin, async (req, res) => {
   try {
@@ -930,6 +950,15 @@ router.get('/admin/accounts', authenticate, requireMailAdmin, async (req, res) =
           required: false,
           include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName'] }],
         },
+        {
+          model: MailAccountAccessRule,
+          as: 'accessRules',
+          required: false,
+          include: [
+            { model: MedCenter, as: 'medCenter', attributes: ['id', 'name', 'displayName'], required: false },
+            { model: Role, as: 'role', attributes: ['id', 'name'], required: false },
+          ],
+        },
       ],
     });
 
@@ -941,6 +970,31 @@ router.get('/admin/accounts', authenticate, requireMailAdmin, async (req, res) =
       FROM mail_messages GROUP BY "accountId"
     `);
     const statsBy = new Map(stats.map((s) => [s.accountId, s]));
+
+    // Число людей под правилом полезнее абстрактного «роль + филиал»: до
+    // сохранения состава групп оно позволяет заметить пустое пересечение.
+    const [ruleCounts] = await sequelize.query(`
+      SELECT rule.id, COUNT(DISTINCT u.id)::int AS count
+      FROM mail_account_access_rules rule
+      JOIN users u ON u."isActive" AND u."deletedAt" IS NULL
+        AND (
+          rule."medCenterId" IS NULL
+          OR EXISTS (
+            SELECT 1 FROM user_med_centers umc
+            WHERE umc."userId" = u.id AND umc."medCenterId" = rule."medCenterId"
+          )
+        )
+        AND (
+          rule."roleId" IS NULL
+          OR u."roleId" = rule."roleId"
+          OR EXISTS (
+            SELECT 1 FROM user_roles ur
+            WHERE ur."userId" = u.id AND ur."roleId" = rule."roleId"
+          )
+        )
+      GROUP BY rule.id
+    `);
+    const ruleCountBy = new Map(ruleCounts.map((row) => [row.id, Number(row.count)]));
 
     res.json({
       accounts: accounts.map((a) => ({
@@ -970,6 +1024,20 @@ router.get('/admin/accounts', authenticate, requireMailAdmin, async (req, res) =
           canSend: x.canSend,
           canDelete: x.canDelete,
           isDefault: x.isDefault,
+        })),
+        accessRules: (a.accessRules || []).map((rule) => ({
+          id: rule.id,
+          medCenterId: rule.medCenterId,
+          medCenter: rule.medCenter ? {
+            id: rule.medCenter.id,
+            name: rule.medCenter.name,
+            displayName: rule.medCenter.displayName,
+          } : null,
+          roleId: rule.roleId,
+          role: rule.role ? { id: rule.role.id, name: rule.role.name } : null,
+          canSend: rule.canSend,
+          canDelete: rule.canDelete,
+          matchedUsers: ruleCountBy.get(rule.id) || 0,
         })),
       })),
     });
@@ -1152,6 +1220,86 @@ router.delete('/admin/accounts/:id/access/:userId', authenticate, requireMailAdm
   } catch (error) {
     console.error('❌ Почта: доступ не отозвался:', error);
     res.status(500).json({ error: 'Не удалось отозвать доступ' });
+  }
+});
+
+// POST /api/mail/admin/accounts/:id/access-rules
+// { medCenterId?, roleId?, canSend, canDelete }; если заданы оба фильтра, это И.
+router.post('/admin/accounts/:id/access-rules', authenticate, requireMailAdmin, [
+  body('medCenterId').optional({ nullable: true, checkFalsy: true }).isUUID(),
+  body('roleId').optional({ nullable: true, checkFalsy: true }).isUUID(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Некорректная группа доступа' });
+
+    const account = await MailAccount.findByPk(req.params.id);
+    if (!account) return res.status(404).json({ error: 'Ящик не найден' });
+
+    const medCenterId = req.body.medCenterId || null;
+    const roleId = req.body.roleId || null;
+    if (!medCenterId && !roleId) {
+      return res.status(400).json({ error: 'Выберите медцентр, роль или оба условия' });
+    }
+
+    const [medCenter, role] = await Promise.all([
+      medCenterId ? MedCenter.findByPk(medCenterId, { attributes: ['id', 'name'] }) : null,
+      roleId ? Role.findByPk(roleId, { attributes: ['id', 'name'] }) : null,
+    ]);
+    if (medCenterId && !medCenter) return res.status(404).json({ error: 'Медцентр не найден' });
+    if (roleId && !role) return res.status(404).json({ error: 'Роль не найдена' });
+
+    const where = { accountId: account.id, medCenterId, roleId };
+    const [rule, created] = await MailAccountAccessRule.findOrCreate({
+      where,
+      defaults: {
+        canSend: Boolean(req.body.canSend),
+        canDelete: Boolean(req.body.canDelete),
+        grantedBy: req.user.id,
+      },
+    });
+    if (!created) {
+      await rule.update({
+        canSend: Boolean(req.body.canSend),
+        canDelete: Boolean(req.body.canDelete),
+        grantedBy: req.user.id,
+      });
+    }
+
+    audit(req, {
+      accountId: account.id,
+      action: created ? 'access-rule-create' : 'access-rule-update',
+      detail: {
+        medCenter: medCenter?.name || null,
+        role: role?.name || null,
+        canSend: rule.canSend,
+        canDelete: rule.canDelete,
+      },
+    });
+
+    res.json({ ok: true, id: rule.id });
+  } catch (error) {
+    console.error('❌ Почта: групповое правило не сохранилось:', error);
+    res.status(500).json({ error: 'Не удалось сохранить групповое правило' });
+  }
+});
+
+router.delete('/admin/accounts/:id/access-rules/:ruleId', authenticate, requireMailAdmin, async (req, res) => {
+  try {
+    const removed = await MailAccountAccessRule.destroy({
+      where: { id: req.params.ruleId, accountId: req.params.id },
+    });
+    if (!removed) return res.status(404).json({ error: 'Правило не найдено' });
+
+    audit(req, {
+      accountId: req.params.id,
+      action: 'access-rule-revoke',
+      detail: { ruleId: req.params.ruleId },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Почта: групповое правило не удалилось:', error);
+    res.status(500).json({ error: 'Не удалось удалить групповое правило' });
   }
 });
 
