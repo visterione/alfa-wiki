@@ -406,6 +406,13 @@ router.get('/messages/:id', authenticate, async (req, res) => {
       attributes: ['id', 'filename', 'mimeType', 'size'],
       order: [['filename', 'ASC']],
     });
+    const inlineAttachments = await MailAttachment.findAll({
+      // Старые письма могли получить isInline=false, если сервер не передал
+      // Content-Disposition, хотя HTML ссылался на файл через cid:.
+      where: { messageId: message.id, contentId: { [Op.ne]: null } },
+      attributes: ['id', 'filename', 'mimeType', 'size', 'contentId'],
+      order: [['id', 'ASC']],
+    });
 
     const [addresses] = await sequelize.query(`
       SELECT ma.role, ma.name, a.email
@@ -441,6 +448,7 @@ router.get('/messages/:id', authenticate, async (req, res) => {
       // показать это честно, а не пустое письмо.
       body: body ? { text: body.textBody, html: body.htmlSanitized } : null,
       attachments,
+      inlineAttachments,
       addresses,
     });
   } catch (error) {

@@ -243,7 +243,9 @@ async function storeParsedBody(message, parsed, rawSource) {
     const attachmentRows = [];
     for (const att of attachments) {
       const saved = await saveAttachment(att.content);
-      const inline = att.contentDisposition === 'inline' || Boolean(att.cid && att.related);
+      // Наличие Content-ID уже означает, что HTML может ссылаться на эту часть
+      // через cid:. Некоторые серверы при этом не ставят disposition/related.
+      const inline = att.contentDisposition === 'inline' || Boolean(att.cid);
 
       // Текст достаём только из приложенных файлов. Картинки вёрстки разбирать
       // нечего, а тратить на них время при заливке архива — значит растянуть её.

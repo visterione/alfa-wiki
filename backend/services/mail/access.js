@@ -25,7 +25,12 @@ async function accessibleAccounts(userId) {
       as: 'account',
       where: { isActive: true },
       required: true,
-      include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'], required: false }],
+      include: [{
+        model: MedCenter,
+        as: 'medCenter',
+        attributes: ['id', 'name', 'displayName', 'color', 'logoUrl', 'logoSquareUrl'],
+        required: false,
+      }],
     }],
   });
 
@@ -34,7 +39,13 @@ async function accessibleAccounts(userId) {
       id: row.account.id,
       email: row.account.email,
       displayName: row.account.displayName,
-      medCenter: row.account.medCenter ? { id: row.account.medCenter.id, name: row.account.medCenter.name } : null,
+      medCenter: row.account.medCenter ? {
+        id: row.account.medCenter.id,
+        name: row.account.medCenter.name,
+        displayName: row.account.medCenter.displayName,
+        color: row.account.medCenter.color,
+        logoUrl: row.account.medCenter.logoSquareUrl || row.account.medCenter.logoUrl || null,
+      } : null,
       syncState: row.account.syncState,
       canSend: row.canSend,
       canDelete: row.canDelete,

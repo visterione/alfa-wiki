@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Inbox, Send, FileText, Trash2, AlertOctagon, Archive, Folder as FolderIcon,
-  Paperclip, Star, Search, RefreshCw, Mail as MailIcon, ArrowLeft, Settings,
-  Image as ImageIcon, CircleDot, UserCheck, Download, Loader, Bookmark,
-  BookmarkPlus, X, HelpCircle, Reply, ReplyAll, Forward, PenSquare, FileEdit,
-  Trash, MessagesSquare, ChevronDown, ChevronRight, SlidersHorizontal, FolderPlus
+  Paperclip, Flag, Search, RefreshCw, Mail as MailIcon, ArrowLeft,
+  Download, Loader, Bookmark,
+  BookmarkPlus, X, HelpCircle, Reply, ReplyAll, Forward, FileEdit,
+  Trash, MessagesSquare, ChevronDown, ChevronRight, SlidersHorizontal, FolderPlus, Plus
 } from 'lucide-react';
 import { mail as mailApi } from '../services/api';
-import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import Compose from '../components/mail/Compose';
+import { fileUrl } from '../utils/fileUrl';
 import './Mail.css';
 
 /**
@@ -17,12 +17,10 @@ import './Mail.css';
  *
  * Ящики заводит администратор, человек приходит на готовое — своих паролей
  * здесь никто не вводит. У одного сотрудника доступ бывает к нескольким ящикам
- * сразу. Выбор ящика расположен над поиском, папки открываются по кнопке.
+ * сразу. В рабочем окне выбран один ящик, его папки постоянно видны слева.
  *
- * Список по умолчанию показывает ВСЕ доступные ящики вперемешку, и поиск тоже
- * идёт по всем сразу. Это главное, ради чего модуль затевался: в IMAP такого
- * запроса не существует в принципе — там поиск живёт внутри одной папки одного
- * ящика, и человеку с пятью ящиками приходилось обходить их по очереди.
+ * Поиск работает внутри выбранного ящика и при необходимости уточняется
+ * фильтрами. Переключение ящика очищает открытое письмо и выбранную папку.
  *
  * Письмо рисуется в изолированном iframe без доступа к нашему origin. Разметка
  * приходит от постороннего, и пускать её в DOM портала нельзя: чужой CSS
@@ -61,6 +59,14 @@ function listDate(value) {
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function rowDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return `${date.toLocaleDateString('ru-RU', {
+    day: '2-digit', month: '2-digit', year: '2-digit',
+  })} · ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 function fullDate(value) {
   if (!value) return '';
   return new Date(value).toLocaleString('ru-RU', {
@@ -80,37 +86,22 @@ function fileSize(bytes) {
 }
 
 /**
- * Подсветку совпадения база отдаёт с тегами <em>. Вставлять чужую строку через
- * dangerouslySetInnerHTML не будем даже ради двух тегов: текст письма пришёл
- * снаружи. Разбираем сами и собираем из безопасных узлов.
- */
-function renderHighlight(text) {
-  if (!text) return null;
-  const parts = String(text).split(/(<em>|<\/em>)/);
-  const nodes = [];
-  let marked = false;
-
-  parts.forEach((part, i) => {
-    if (part === '<em>') { marked = true; return; }
-    if (part === '</em>') { marked = false; return; }
-    if (!part) return;
-    nodes.push(marked
-      ? <mark key={i} className="mail-mark">{part}</mark>
-      : <span key={i}>{part}</span>);
-  });
-
-  return nodes;
-}
-
-/**
  * Собирает документ для iframe. Письмо всегда рисуется на светлом фоне, даже
  * когда портал в тёмной теме: деловая почта свёрстана в расчёте на белый лист,
  * и половина писем на тёмном фоне превращается в чёрный текст на чёрном.
  */
-function buildFrameDoc(html, showImages) {
-  const body = showImages
-    ? String(html || '').replace(/data-mail-src=/g, 'src=')
-    : String(html || '');
+function normalizeContentId(value) {
+  let id = String(value || '').trim().replace(/^cid:/i, '').replace(/^<|>$/g, '');
+  try { id = decodeURIComponent(id); } catch (e) { /* content-id не обязан быть URL */ }
+  return id.toLowerCase();
+}
+
+function buildFrameDoc(html, showImages, cidSources = {}) {
+  let body = String(html || '').replace(/\bsrc=(['"])cid:([^'"]+)\1/gi, (whole, quote, cid) => {
+    const src = cidSources[normalizeContentId(cid)];
+    return src ? `src=${quote}${src}${quote}` : whole;
+  });
+  if (showImages) body = body.replace(/data-mail-src=/g, 'src=');
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -128,6 +119,21 @@ function buildFrameDoc(html, showImages) {
   a { color: #0068d9; }
   pre { white-space: pre-wrap; }
 </style></head><body>${body}</body></html>`;
+}
+
+function AccountLogo({ account, className = '' }) {
+  const [failed, setFailed] = useState(false);
+  const medCenter = account?.medCenter;
+  const src = !failed ? fileUrl(medCenter?.logoUrl) : null;
+  const name = medCenter?.displayName || medCenter?.name || account?.displayName || account?.email || '';
+
+  return (
+    <span className={`mail-account-logo ${className}`} style={{ '--mail-brand': medCenter?.color || 'var(--primary)' }}>
+      {src
+        ? <img src={src} alt="" onError={() => setFailed(true)} />
+        : <span>{name.trim().charAt(0).toUpperCase() || 'П'}</span>}
+    </span>
+  );
 }
 
 /** Человеческое описание того, что поиск понял из строки запроса. */
@@ -174,18 +180,14 @@ const SYNTAX_HINT = [
 const HOTKEYS = [
   ['J / K', 'следующее и предыдущее письмо'],
   ['R', 'ответить'],
-  ['U', 'вернуть в непрочитанные'],
   ['/', 'перейти к поиску'],
   ['Esc', 'сбросить поиск'],
 ];
 
 export default function Mail() {
-  const { user } = useAuth();
-  const canAdmin = Boolean(user?.isAdmin || user?.adminAccess?.mail);
-
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
-  const [accountId, setAccountId] = useState(null);      // null — все доступные
+  const [accountId, setAccountId] = useState(null);
   const [folders, setFolders] = useState([]);
   const [folderId, setFolderId] = useState(null);
 
@@ -194,12 +196,13 @@ export default function Mail() {
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
 
-  const [filters, setFilters] = useState({ unread: false, attachments: false });
-  const [showOrganizer, setShowOrganizer] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [busyFolders, setBusyFolders] = useState(false);
   const [downloading, setDownloading] = useState(null);
   const [moveFolders, setMoveFolders] = useState([]);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
+  const [cidSources, setCidSources] = useState({});
   const [advanced, setAdvanced] = useState({
     text: '', from: '', to: '', cc: '', subject: '', file: '', folder: '',
     after: '', before: '', larger: '', smaller: '', status: '', attachments: false,
@@ -208,8 +211,6 @@ export default function Mail() {
   const [query, setQuery] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
   const [searchInfo, setSearchInfo] = useState(null);
-  const [showHint, setShowHint] = useState(false);
-
   const [saved, setSaved] = useState([]);
 
   const [openId, setOpenId] = useState(null);
@@ -224,6 +225,8 @@ export default function Mail() {
 
   const [mobilePane, setMobilePane] = useState('list');
   const listRef = useRef(null);
+  const accountPickerRef = useRef(null);
+  const movePickerRef = useRef(null);
 
   const LIMIT = 50;
   const searching = activeQuery.trim().length > 0;
@@ -232,7 +235,6 @@ export default function Mail() {
   // списки зависимостей useCallback, а те вычисляются на каждом рендере —
   // объявление после первого же использования уронило бы страницу.
   const activeAccount = accounts.find((a) => a.id === accountId) || null;
-  const totalUnread = accounts.reduce((sum, a) => sum + (a.unread || 0), 0);
   const accountGroups = useMemo(() => {
     const groups = new Map();
     accounts.forEach((account) => {
@@ -242,18 +244,40 @@ export default function Mail() {
     });
     return [...groups.entries()];
   }, [accounts]);
+  const accountDrafts = useMemo(
+    () => drafts.filter((item) => item.accountId === accountId),
+    [drafts, accountId]
+  );
+  const accountSaved = useMemo(
+    () => saved.filter((item) => !item.accountId || item.accountId === accountId),
+    [saved, accountId]
+  );
 
   // ── Загрузка ────────────────────────────────────────────────────────────
 
   const loadAccounts = useCallback(async () => {
     try {
       const { data } = await mailApi.accounts();
-      setAccounts(data.accounts || []);
+      const next = data.accounts || [];
+      setAccounts(next);
+      setAccountId((current) => {
+        if (current && next.some((account) => account.id === current)) return current;
+        return (next.find((account) => account.isDefault) || next[0])?.id || null;
+      });
     } catch (e) {
       toast.error('Не удалось получить список ящиков');
     } finally {
       setLoadingAccounts(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const close = (event) => {
+      if (!accountPickerRef.current?.contains(event.target)) setAccountMenuOpen(false);
+      if (!movePickerRef.current?.contains(event.target)) setMoveMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
   }, []);
 
   const loadSaved = useCallback(async () => {
@@ -342,21 +366,22 @@ export default function Mail() {
   }, [query]);
 
   const load = useCallback(async (nextOffset = 0, append = false) => {
+    if (!accountId) {
+      setMessages([]);
+      setHasMore(false);
+      return;
+    }
     setLoadingList(true);
     try {
-      const params = { limit: LIMIT, offset: nextOffset };
-      if (accountId) params.accountId = accountId;
+      const params = { limit: LIMIT, offset: nextOffset, accountId };
       if (folderId) params.folderId = folderId;
 
       let data;
       if (activeQuery.trim()) {
-        params.q = [activeQuery.trim(), filters.unread && 'статус:непрочитанное',
-          filters.attachments && 'есть:вложение'].filter(Boolean).join(' ');
+        params.q = activeQuery.trim();
         ({ data } = await mailApi.search(params));
         setSearchInfo({ parsed: data.parsed, ms: data.ms, empty: data.empty });
       } else {
-        if (filters.unread) params.unread = 'true';
-        if (filters.attachments) params.attachments = 'true';
         ({ data } = await mailApi.messages(params));
         setSearchInfo(null);
       }
@@ -370,7 +395,7 @@ export default function Mail() {
     } finally {
       setLoadingList(false);
     }
-  }, [accountId, folderId, filters.unread, filters.attachments, activeQuery]);
+  }, [accountId, folderId, activeQuery]);
 
   useEffect(() => { load(0, false); }, [load]);
 
@@ -391,6 +416,7 @@ export default function Mail() {
     setMobilePane('read');
     setLoadingMessage(true);
     setShowImages(false);
+    setMoveMenuOpen(false);
     try {
       const { data } = await mailApi.message(id);
       setOpened(data);
@@ -436,18 +462,6 @@ export default function Mail() {
         ? { ...prev, message: { ...prev.message, ...patch } } : prev));
     } catch (e) {
       toast.error('Отметка не поставилась');
-    }
-  }, []);
-
-  const toggleTaken = useCallback(async (message, taken) => {
-    try {
-      await mailApi.setTaken(message.id, taken);
-      setMessages((prev) => prev.map((m) => (
-        m.id === message.id ? { ...m, takenByMe: taken ? new Date().toISOString() : null } : m
-      )));
-      toast.success(taken ? 'Письмо взято в работу' : 'Отметка снята');
-    } catch (e) {
-      toast.error('Не получилось отметить');
     }
   }, []);
 
@@ -548,10 +562,21 @@ export default function Mail() {
   }, [loadSaved]);
 
   const applySaved = useCallback((item) => {
-    if (item.accountId) setAccountId(item.accountId);
+    if (item.accountId) {
+      setAccountId(item.accountId);
+      setFolderId(null);
+    }
     setQuery(item.query);
     setActiveQuery(item.query);
-    setShowOrganizer(false);
+    setMobilePane('list');
+  }, []);
+
+  const selectAccount = useCallback((id) => {
+    setAccountId(id);
+    setFolderId(null);
+    setOpenId(null);
+    setOpened(null);
+    setAccountMenuOpen(false);
     setMobilePane('list');
   }, []);
 
@@ -577,6 +602,7 @@ export default function Mail() {
 
   const moveOpened = useCallback(async (targetId) => {
     if (!opened || !targetId) return;
+    setMoveMenuOpen(false);
     try {
       const { data } = await mailApi.moveMessage(opened.message.id, targetId);
       setMessages((prev) => prev.filter((m) => m.id !== opened.message.id));
@@ -600,6 +626,42 @@ export default function Mail() {
     }).catch(() => { if (!cancelled) setMoveFolders([]); });
     return () => { cancelled = true; };
   }, [opened?.message?.accountId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const urls = [];
+    setCidSources({});
+
+    const loadInline = async () => {
+      const inline = opened?.inlineAttachments || [];
+      if (!opened || !inline.length) return;
+
+      const entries = await Promise.all(inline.map(async (attachment) => {
+        try {
+          const { data } = await mailApi.attachment(opened.message.id, attachment.id);
+          const typed = data.slice(0, data.size, attachment.mimeType || 'application/octet-stream');
+          const url = URL.createObjectURL(typed);
+          if (cancelled) {
+            URL.revokeObjectURL(url);
+            return null;
+          }
+          urls.push(url);
+          return [normalizeContentId(attachment.contentId), url];
+        } catch (e) {
+          return null;
+        }
+      }));
+
+      if (cancelled) return;
+      setCidSources(Object.fromEntries(entries.filter((entry) => entry && entry[0])));
+    };
+
+    loadInline();
+    return () => {
+      cancelled = true;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [opened]);
 
   const parsedChips = useMemo(() => describeParsed(searchInfo?.parsed), [searchInfo]);
 
@@ -655,11 +717,10 @@ export default function Mail() {
             startCompose({ kind: 'reply', replyToId: opened.message.id });
           }
           break;
-        case 'u':
-          if (opened) { event.preventDefault(); toggleFlag(opened.message, 'unseen'); }
-          break;
         case 'Escape':
-          if (activeQuery) clearSearch();
+          if (moveMenuOpen) setMoveMenuOpen(false);
+          else if (accountMenuOpen) setAccountMenuOpen(false);
+          else if (activeQuery) clearSearch();
           else setMobilePane('list');
           break;
         default:
@@ -669,7 +730,7 @@ export default function Mail() {
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [messages, openId, opened, accounts, composeDraft, activeQuery, openMessage, startCompose, toggleFlag, clearSearch]);
+  }, [messages, openId, opened, accounts, composeDraft, activeQuery, accountMenuOpen, moveMenuOpen, openMessage, startCompose, clearSearch]);
 
   // ── Пустые состояния ────────────────────────────────────────────────────
 
@@ -689,72 +750,101 @@ export default function Mail() {
         <h2>Доступа к ящикам нет</h2>
         <p>
           Почтовые ящики заводит администратор и он же выдаёт к ним доступ.
-          {canAdmin
-            ? ' У вас есть право настраивать почту — заведите ящик и выдайте себе доступ.'
-            : ' Попросите администратора добавить вас к нужному ящику.'}
+          {' Попросите администратора добавить вас к нужному ящику.'}
         </p>
-        {canAdmin && (
-          <a className="mail-btn mail-btn--primary" href="/admin/mail">
-            <Settings size={16} /> Настройка ящиков
-          </a>
-        )}
       </div>
     );
   }
 
   return (
     <div className={`mail-page mail-pane-${mobilePane}`}>
+      <div className="mail-workspace">
 
-      {/* ── Папки и сохранённые поиски ── */}
-      {showOrganizer && <aside className="mail-sidebar">
-        <div className="mail-sidebar__head">
-          <h2>Папки и подборки</h2>
-          <button type="button" className="mail-icon-btn" onClick={() => setShowOrganizer(false)} title="Закрыть"><X size={16} /></button>
-        </div>
-
-        {!activeAccount && (
-          <div className="mail-sync-note">Выберите конкретный ящик, чтобы увидеть его папки или создать новую.</div>
-        )}
-
-        {activeAccount && (
-          <div className="mail-folders">
-            <div className="mail-folders__title mail-folders__title--actions">
-              <span>Папки {busyFolders && <Loader size={12} className="mail-spin" />}</span>
-              <span>
-                <button type="button" className="mail-icon-btn" onClick={refreshFolders} disabled={busyFolders} title="Получить папки и письма с сервера Roundcube"><RefreshCw size={14} /></button>
-                <button type="button" className="mail-icon-btn" onClick={createFolder} disabled={busyFolders} title="Создать папку"><FolderPlus size={14} /></button>
+      {/* ── Ящик, папки и сохранённые подборки ── */}
+      <aside className="mail-sidebar">
+        <div className="mail-sidebar__top">
+          <div className="mail-account-picker" ref={accountPickerRef}>
+            <button
+              type="button"
+              className="mail-account-picker__trigger"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+              aria-haspopup="listbox"
+              aria-expanded={accountMenuOpen}
+            >
+              <AccountLogo account={activeAccount} />
+              <span className="mail-account-picker__text">
+                <strong>{activeAccount?.medCenter?.displayName || activeAccount?.medCenter?.name || activeAccount?.displayName}</strong>
+                <small><MailIcon size={12} />{activeAccount?.email}</small>
               </span>
-            </div>
-            {folders.map((folder) => {
-              const Icon = folderIcon(folder);
-              return (
-                <button
-                  key={folder.id}
-                  type="button"
-                  className={`mail-folder ${folderId === folder.id ? 'active' : ''}`}
-                  onClick={() => { setFolderId(folder.id === folderId ? null : folder.id); setShowOrganizer(false); setMobilePane('list'); }}
-                >
-                  <Icon size={15} />
-                  <span className="mail-folder__name">{folder.name}</span>
-                  {folder.unread > 0 && <span className="mail-badge mail-badge--soft">{folder.unread}</span>}
-                </button>
-              );
-            })}
-            {activeAccount.syncState !== 'ready' && (
-              <div className="mail-sync-note">
-                {activeAccount.syncState === 'headers' && 'Идёт первичная загрузка: письма появляются по мере готовности.'}
-                {activeAccount.syncState === 'bodies' && 'Заголовки загружены, тела писем докачиваются.'}
-                {activeAccount.syncState === 'error' && 'Ящик не синхронизируется — сообщите администратору.'}
-                {activeAccount.syncState === 'idle' && 'Синхронизация ещё не запускалась.'}
+              <ChevronDown size={15} className={accountMenuOpen ? 'is-open' : ''} />
+            </button>
+
+            {accountMenuOpen && (
+              <div className="mail-account-menu" role="listbox" aria-label="Почтовые ящики">
+                {accountGroups.map(([name, items]) => (
+                  <div className="mail-account-menu__group" key={name}>
+                    <div className="mail-account-menu__label">{name}</div>
+                    {items.map((account) => (
+                      <button
+                        key={account.id}
+                        type="button"
+                        role="option"
+                        aria-selected={account.id === accountId}
+                        className={account.id === accountId ? 'active' : ''}
+                        onClick={() => selectAccount(account.id)}
+                      >
+                        <AccountLogo account={account} />
+                        <span><strong>{account.displayName}</strong><small><MailIcon size={12} />{account.email}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
               </div>
             )}
           </div>
-        )}
 
-        {drafts.length > 0 && (
+          {activeAccount?.canSend && (
+            <button type="button" className="mail-compose-icon" onClick={() => startCompose({ kind: 'new' })} title="Написать письмо" aria-label="Написать письмо">
+              <Plus size={20} />
+            </button>
+          )}
+        </div>
+
+        <div className="mail-folders">
+          <div className="mail-folders__title mail-folders__title--actions">
+            <span>Папки {busyFolders && <Loader size={12} className="mail-spin" />}</span>
+            <span>
+              <button type="button" className="mail-icon-btn" onClick={refreshFolders} disabled={busyFolders} title="Обновить папки"><RefreshCw size={14} /></button>
+              <button type="button" className="mail-icon-btn" onClick={createFolder} disabled={busyFolders} title="Создать папку"><FolderPlus size={14} /></button>
+            </span>
+          </div>
+          <button type="button" className={`mail-folder ${!folderId ? 'active' : ''}`} onClick={() => setFolderId(null)}>
+            <MailIcon size={15} /><span className="mail-folder__name">Все письма</span>
+          </button>
+          {folders.map((folder) => {
+            const Icon = folderIcon(folder);
+            return (
+              <button key={folder.id} type="button" className={`mail-folder ${folderId === folder.id ? 'active' : ''}`} onClick={() => setFolderId(folder.id)}>
+                <Icon size={15} />
+                <span className="mail-folder__name">{folder.name}</span>
+                {folder.unread > 0 && <span className="mail-badge mail-badge--soft">{folder.unread}</span>}
+              </button>
+            );
+          })}
+          {activeAccount?.syncState !== 'ready' && (
+            <div className="mail-sync-note">
+              {activeAccount?.syncState === 'headers' && 'Письма загружаются с сервера.'}
+              {activeAccount?.syncState === 'bodies' && 'Содержимое писем докачивается.'}
+              {activeAccount?.syncState === 'error' && 'Синхронизация остановлена с ошибкой.'}
+              {activeAccount?.syncState === 'idle' && 'Синхронизация ещё не запускалась.'}
+            </div>
+          )}
+        </div>
+
+        {accountDrafts.length > 0 && (
           <div className="mail-folders">
             <div className="mail-folders__title">Черновики</div>
-            {drafts.map((item) => (
+            {accountDrafts.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -771,10 +861,10 @@ export default function Mail() {
         )}
 
         {/* Сохранённые поиски доступны рядом с серверными папками. */}
-        {saved.length > 0 && (
+        {accountSaved.length > 0 && (
           <div className="mail-folders">
             <div className="mail-folders__title">Сохранённые поиски</div>
-            {saved.map((item) => (
+            {accountSaved.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -798,31 +888,10 @@ export default function Mail() {
             ))}
           </div>
         )}
-      </aside>}
+      </aside>
 
       {/* ── Список писем ── */}
       <section className="mail-list">
-        <div className="mail-account-picker">
-          <select
-            aria-label="Почтовый ящик"
-            value={accountId || ''}
-            onChange={(e) => { setAccountId(e.target.value || null); setFolderId(null); setShowOrganizer(false); }}
-          >
-            <option value="">Все ящики{totalUnread ? ` (${totalUnread} новых)` : ''}</option>
-            {accountGroups.map(([name, items]) => (
-              <optgroup key={name} label={name}>
-                {items.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.displayName} ({account.email}){account.unread ? ` · ${account.unread} новых` : ''}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <button type="button" className={`mail-chip ${showOrganizer ? 'active' : ''}`} onClick={() => setShowOrganizer((v) => !v)}><FolderIcon size={14} /> Папки</button>
-          {accounts.some((a) => a.canSend) && <button type="button" className="mail-chip" onClick={() => startCompose({ kind: 'new' })}><PenSquare size={14} /> Написать</button>}
-          {canAdmin && <a className="mail-icon-btn" href="/admin/mail" title="Настройка ящиков"><Settings size={16} /></a>}
-        </div>
         <div className="mail-list__head">
           <div className="mail-search">
             <Search size={15} />
@@ -832,21 +901,32 @@ export default function Mail() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') setActiveQuery(query); if (e.key === 'Escape') clearSearch(); }}
-              placeholder={accountId ? 'Поиск в этом ящике' : 'Поиск по всем ящикам'}
+              placeholder="Поиск в ящике"
             />
             {query && (
               <button type="button" className="mail-search__clear" onClick={clearSearch} title="Очистить">
                 <X size={14} />
               </button>
             )}
-            <button
-              type="button"
-              className={`mail-search__hint ${showHint ? 'active' : ''}`}
-              onClick={() => setShowHint((v) => !v)}
-              title="Как уточнить поиск"
-            >
-              <HelpCircle size={14} />
-            </button>
+            <div className="mail-help">
+              <button type="button" className="mail-search__hint" aria-label="Подсказка по поиску">
+                <HelpCircle size={14} />
+              </button>
+              <div className="mail-hint" role="tooltip">
+                <p>Обычные слова ищутся в теме, тексте, адресах и вложениях. Уточнить поиск:</p>
+                <dl>
+                  {SYNTAX_HINT.map(([example, what]) => (
+                    <div key={example}><dt>{example}</dt><dd>{what}</dd></div>
+                  ))}
+                </dl>
+                <p className="mail-hint__keys">Клавиши</p>
+                <dl>
+                  {HOTKEYS.map(([key, what]) => (
+                    <div key={key}><dt className="mail-hint__key">{key}</dt><dd>{what}</dd></div>
+                  ))}
+                </dl>
+              </div>
+            </div>
           </div>
           <button type="button" className={`mail-icon-btn ${showFilter ? 'active' : ''}`} onClick={() => setShowFilter((v) => !v)} title="Фильтр"><SlidersHorizontal size={17} /></button>
           <button
@@ -884,34 +964,7 @@ export default function Mail() {
           </form>
         )}
 
-        {showHint && (
-          <div className="mail-hint">
-            <p>
-              Обычные слова ищутся везде сразу — в теме, тексте, именах отправителей
-              и внутри вложений. Уточнить можно так:
-            </p>
-            <dl>
-              {SYNTAX_HINT.map(([example, what]) => (
-                <div key={example}>
-                  <dt onClick={() => setQuery((q) => `${q} ${example}`.trim())}>{example}</dt>
-                  <dd>{what}</dd>
-                </div>
-              ))}
-            </dl>
-
-            <p className="mail-hint__keys">Клавиши</p>
-            <dl>
-              {HOTKEYS.map(([key, what]) => (
-                <div key={key}>
-                  <dt className="mail-hint__key">{key}</dt>
-                  <dd>{what}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        )}
-
-        {searching ? (
+        {searching && (
           <div className="mail-search-state">
             <div className="mail-search-state__row">
               <span>
@@ -935,23 +988,6 @@ export default function Mail() {
               </div>
             )}
           </div>
-        ) : (
-          <div className="mail-filters">
-            <button
-              type="button"
-              className={`mail-chip ${filters.unread ? 'active' : ''}`}
-              onClick={() => setFilters((f) => ({ ...f, unread: !f.unread }))}
-            >
-              <CircleDot size={13} /> Непрочитанные
-            </button>
-            <button
-              type="button"
-              className={`mail-chip ${filters.attachments ? 'active' : ''}`}
-              onClick={() => setFilters((f) => ({ ...f, attachments: !f.attachments }))}
-            >
-              <Paperclip size={13} /> С вложениями
-            </button>
-          </div>
         )}
 
         <div className="mail-list__scroll" ref={listRef}>
@@ -962,38 +998,42 @@ export default function Mail() {
           )}
 
           {messages.map((message) => (
-            <button
+            <div
               key={message.id}
-              type="button"
               className={`mail-row ${message.isSeen ? '' : 'unread'} ${openId === message.id ? 'open' : ''}`}
-              onClick={() => openMessage(message.id)}
             >
-              <div className="mail-row__top">
-                <span className="mail-row__from">{message.fromName || message.fromEmail || 'Без отправителя'}</span>
-                <span className="mail-row__date">{listDate(message.receivedAt)}</span>
-              </div>
-              <div className="mail-row__subject">
-                {message.isFlagged && <Star size={13} className="mail-row__star" />}
-                {message.subject || '(без темы)'}
-              </div>
-              <div className="mail-row__preview">
-                {/* В выдаче поиска показываем не начало письма, а место
-                    совпадения: список из двухсот одинаковых начал бесполезен. */}
-                {message.highlight ? renderHighlight(message.highlight) : (message.preview || '')}
-              </div>
-              <div className="mail-row__meta">
-                {!accountId && <span className="mail-tag">{message.accountEmail}</span>}
-                {(!folderId || !accountId) && message.folderName && (
-                  <span className="mail-tag mail-tag--soft">{message.folderName}</span>
-                )}
+              <button
+                type="button"
+                className="mail-row__open"
+                onClick={() => openMessage(message.id)}
+              >
+                <span className="mail-row__top">
+                  <span className="mail-row__from">
+                    {message.fromName || message.fromEmail || 'Без отправителя'}
+                  </span>
+                  <time className="mail-row__date" dateTime={message.receivedAt || undefined}>
+                    {rowDate(message.receivedAt)}
+                  </time>
+                </span>
+                <span className="mail-row__subject">
+                  {message.subject || '(без темы)'}
+                </span>
+              </button>
+              <span className="mail-row__markers">
                 {message.hasAttachments && (
-                  <span className="mail-tag mail-tag--soft"><Paperclip size={11} /> {message.attachmentsCount || 1}</span>
+                  <Paperclip size={13} className="mail-row__attachment" aria-label="Есть вложения" />
                 )}
-                {message.takenByMe && (
-                  <span className="mail-tag mail-tag--taken"><UserCheck size={11} /> в работе</span>
-                )}
-              </div>
-            </button>
+                <button
+                  type="button"
+                  className={`mail-row__flag ${message.isFlagged ? 'active' : ''}`}
+                  onClick={() => toggleFlag(message, message.isFlagged ? 'unflag' : 'flag')}
+                  aria-label={message.isFlagged ? 'Снять флаг' : 'Установить флаг'}
+                  title={message.isFlagged ? 'Снять флаг' : 'Установить флаг'}
+                >
+                  <Flag size={13} fill={message.isFlagged ? 'currentColor' : 'none'} />
+                </button>
+              </span>
+            </div>
           ))}
 
           {hasMore && (
@@ -1008,6 +1048,7 @@ export default function Mail() {
           )}
         </div>
       </section>
+      </div>
 
       {/* ── Чтение ── */}
       <section className="mail-reader">
@@ -1061,77 +1102,95 @@ export default function Mail() {
               )}
 
               <div className="mail-actions">
-                {accounts.find((a) => a.id === opened.message.accountId)?.canSend && (
-                  <>
-                    <button
-                      type="button"
-                      className="mail-btn mail-btn--primary"
-                      onClick={() => startCompose({ kind: 'reply', replyToId: opened.message.id })}
-                    >
-                      <Reply size={15} /> Ответить
-                    </button>
-                    <button
-                      type="button"
-                      className="mail-btn"
-                      onClick={() => startCompose({ kind: 'reply', replyToId: opened.message.id, replyAll: true })}
-                      title="Ответить отправителю и всем, кто был в копии"
-                    >
-                      <ReplyAll size={15} /> Всем
-                    </button>
-                    <button
-                      type="button"
-                      className="mail-btn"
-                      onClick={() => startCompose({ kind: 'forward', replyToId: opened.message.id })}
-                    >
-                      <Forward size={15} /> Переслать
-                    </button>
-                  </>
-                )}
+                <div className="mail-actions__group">
+                  {accounts.find((a) => a.id === opened.message.accountId)?.canSend && (
+                    <>
+                      <button
+                        type="button"
+                        className="mail-action-icon mail-action-icon--primary"
+                        onClick={() => startCompose({ kind: 'reply', replyToId: opened.message.id })}
+                        title="Ответить"
+                        aria-label="Ответить"
+                      >
+                        <Reply size={17} />
+                      </button>
+                      <button
+                        type="button"
+                        className="mail-action-icon"
+                        onClick={() => startCompose({ kind: 'reply', replyToId: opened.message.id, replyAll: true })}
+                        title="Ответить всем"
+                        aria-label="Ответить всем"
+                      >
+                        <ReplyAll size={17} />
+                      </button>
+                      <button
+                        type="button"
+                        className="mail-action-icon"
+                        onClick={() => startCompose({ kind: 'forward', replyToId: opened.message.id })}
+                        title="Переслать"
+                        aria-label="Переслать"
+                      >
+                        <Forward size={17} />
+                      </button>
+                    </>
+                  )}
+                </div>
 
-                <button
-                  type="button"
-                  className="mail-btn"
-                  onClick={() => toggleFlag(opened.message, opened.message.isSeen ? 'unseen' : 'seen')}
-                >
-                  <CircleDot size={15} /> {opened.message.isSeen ? 'Непрочитанным' : 'Прочитано'}
-                </button>
-                <button
-                  type="button"
-                  className={`mail-btn ${opened.message.isFlagged ? 'active' : ''}`}
-                  onClick={() => toggleFlag(opened.message, opened.message.isFlagged ? 'unflag' : 'flag')}
-                >
-                  <Star size={15} /> {opened.message.isFlagged ? 'Снять флажок' : 'Флажок'}
-                </button>
-                <button
-                  type="button"
-                  className="mail-btn"
-                  onClick={() => {
-                    const row = messages.find((m) => m.id === opened.message.id);
-                    toggleTaken(opened.message, !row?.takenByMe);
-                  }}
-                >
-                  <UserCheck size={15} />
-                  {messages.find((m) => m.id === opened.message.id)?.takenByMe ? 'Не в работе' : 'Взять в работу'}
-                </button>
-                <select className="mail-move-select" value="" onChange={(e) => moveOpened(e.target.value)} aria-label="Переместить письмо в папку">
-                  <option value="">Переместить в…</option>
-                  {moveFolders.filter((f) => f.id !== opened.message.folderId && !f.specialUse).map((f) => (
-                    <option key={f.id} value={f.id}>{f.path}</option>
-                  ))}
-                </select>
-
-                {/* Удаление стоит последним и отделено: оно настоящее, письмо
-                    пропадает и на сервере. Соседство с «прочитано» было бы
-                    приглашением промахнуться. */}
-                {accounts.find((a) => a.id === opened.message.accountId)?.canDelete && (
+                <div className="mail-actions__group mail-actions__group--manage">
                   <button
                     type="button"
-                    className="mail-btn mail-btn--danger"
-                    onClick={() => removeMessage(opened.message)}
+                    className={`mail-action-icon mail-action-icon--flag ${opened.message.isFlagged ? 'active' : ''}`}
+                    onClick={() => toggleFlag(opened.message, opened.message.isFlagged ? 'unflag' : 'flag')}
+                    title={opened.message.isFlagged ? 'Снять флаг' : 'Установить флаг'}
+                    aria-label={opened.message.isFlagged ? 'Снять флаг' : 'Установить флаг'}
                   >
-                    <Trash size={15} /> Удалить
+                    <Flag size={17} fill={opened.message.isFlagged ? 'currentColor' : 'none'} />
                   </button>
-                )}
+
+                  <div className="mail-move-picker" ref={movePickerRef}>
+                    <button
+                      type="button"
+                      className={`mail-action-icon mail-move-picker__trigger ${moveMenuOpen ? 'active' : ''}`}
+                      onClick={() => setMoveMenuOpen((open) => !open)}
+                      title="Переместить в папку"
+                      aria-label="Переместить в папку"
+                      aria-haspopup="menu"
+                      aria-expanded={moveMenuOpen}
+                    >
+                      <FolderIcon size={17} />
+                      <ChevronDown size={11} className={moveMenuOpen ? 'is-open' : ''} />
+                    </button>
+                    {moveMenuOpen && (
+                      <div className="mail-move-menu" role="menu">
+                        <div className="mail-move-menu__label">Переместить в</div>
+                        {moveFolders.filter((folder) => folder.id !== opened.message.folderId).map((folder) => {
+                          const Icon = folderIcon(folder);
+                          return (
+                            <button key={folder.id} type="button" role="menuitem" onClick={() => moveOpened(folder.id)}>
+                              <Icon size={15} />
+                              <span>{folder.name || folder.path}</span>
+                            </button>
+                          );
+                        })}
+                        {moveFolders.filter((folder) => folder.id !== opened.message.folderId).length === 0 && (
+                          <div className="mail-move-menu__empty">Других папок нет</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {accounts.find((a) => a.id === opened.message.accountId)?.canDelete && (
+                    <button
+                      type="button"
+                      className="mail-action-icon mail-action-icon--danger"
+                      onClick={() => removeMessage(opened.message)}
+                      title="Удалить"
+                      aria-label="Удалить"
+                    >
+                      <Trash size={17} />
+                    </button>
+                  )}
+                </div>
               </div>
             </header>
 
@@ -1186,12 +1245,8 @@ export default function Mail() {
 
             {blockedImages > 0 && !showImages && (
               <div className="mail-images-bar">
-                <ImageIcon size={15} />
-                <span>
-                  Внешние картинки не загружены ({blockedImages}). Загрузка сообщит отправителю,
-                  что письмо открыли.
-                </span>
-                <button type="button" className="mail-btn mail-btn--small" onClick={() => setShowImages(true)}>
+                <span>Внешние картинки не загружены</span>
+                <button type="button" className="mail-images-bar__show" onClick={() => setShowImages(true)}>
                   Показать
                 </button>
               </div>
@@ -1213,7 +1268,7 @@ export default function Mail() {
                   className="mail-frame"
                   title="Текст письма"
                   sandbox="allow-popups allow-popups-to-escape-sandbox"
-                  srcDoc={buildFrameDoc(opened.body.html, showImages)}
+                  srcDoc={buildFrameDoc(opened.body.html, showImages, cidSources)}
                 />
               )}
 

@@ -142,6 +142,7 @@
 .content-wrapper:has(.tsk),
 .content-wrapper:has(.onb),
 .content-wrapper:has(.vac),
+.content-wrapper:has(.mail-page),
 .content-wrapper:has(.rb-app),
 .content-wrapper:has(.reviews-boards-page),
 .content-wrapper:has(.review-board-page),
@@ -154,6 +155,8 @@
   max-width: 100%;
   padding: 0;
 }
+
+.main-content:has(.mail-page) { min-width: 0; }
 
 /* Стандартный контент (для страниц wiki).
    Раньше страница занимала 80 % ширины и держалась по центру: предполагалось,
