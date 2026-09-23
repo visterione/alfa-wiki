@@ -112,6 +112,37 @@ export const media = {
   },
 };
 
+// ── Почта ───────────────────────────────────────────────────────────────────
+// Ящики общие, но права проверяет сервер на каждом запросе. Клиент хранит лишь
+// выбранный ящик и никогда не получает ни пароль, ни IMAP-настройки.
+export const mail = {
+  accounts: () => api.get('/mail/accounts'),
+  folders: accountId => api.get(`/mail/accounts/${accountId}/folders`),
+  messages: params => api.get('/mail/messages', {params}),
+  search: params => api.get('/mail/search', {params}),
+  message: id => api.get(`/mail/messages/${id}`),
+  setFlag: (id, op) => api.post(`/mail/messages/${id}/flags`, {op}),
+  removeMessage: id => api.delete(`/mail/messages/${id}`),
+  createDraft: data => api.post('/mail/drafts', data),
+  saveDraft: (id, data) => api.put(`/mail/drafts/${id}`, data),
+  sendDraft: id => api.post(`/mail/drafts/${id}/send`),
+  removeDraft: id => api.delete(`/mail/drafts/${id}`),
+  attachToDraft: (id, file) => {
+    const form = new FormData();
+    form.append('file', {
+      uri: file.uri,
+      type: file.type || 'application/octet-stream',
+      name: file.name || 'file',
+    });
+    return api.post(`/mail/drafts/${id}/attachments`, form, {
+      headers: {'Content-Type': 'multipart/form-data'}, timeout: UPLOAD_TIMEOUT,
+    });
+  },
+  detachFromDraft: (id, attachmentId) => api.delete(`/mail/drafts/${id}/attachments/${attachmentId}`),
+  attachmentUrl: (messageId, attachmentId) =>
+    `${CONFIG.API_URL}/mail/messages/${messageId}/attachments/${attachmentId}`,
+};
+
 // ── Сотрудники ──────────────────────────────────────────────────────────────
 // Лёгкий список для полей «кто»: председатель комиссии, МОЛ. Именно /users/list,
 // а не /chat/users: тот исключает самого себя (в переписке с собой смысла нет),

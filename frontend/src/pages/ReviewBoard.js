@@ -850,15 +850,6 @@ const ReviewBoard = () => {
           <button className="btn-back" onClick={() => navigate('/reviews?all=1')}>
             <ArrowLeft size={20} />
           </button>
-          <div className="header-info">
-            <h1>{board.name}</h1>
-            {/* Подпись — адрес филиала из справочника. Своего описания у доски
-                нет с ver. 8.56: адрес в него вписывали руками, и он разошёлся
-                с карточкой филиала */}
-            {(board.medCenter?.city || board.medCenter?.address) && (
-              <p>{[board.medCenter.city, board.medCenter.address].filter(Boolean).join(', ')}</p>
-            )}
-          </div>
           {/* Знак филиала. Доска и есть филиал, но называют её по-разному —
               знак отвечает на «чья это доска» раньше, чем прочитано название,
               и на общих экранах (архив, статистика) это тот же знак. Нет
@@ -878,6 +869,15 @@ const ReviewBoard = () => {
               />
             </span>
           )}
+          <div className="header-info">
+            <h1>{board.name}</h1>
+            {/* Подпись — адрес филиала из справочника. Своего описания у доски
+                нет с ver. 8.56: адрес в него вписывали руками, и он разошёлся
+                с карточкой филиала */}
+            {(board.medCenter?.city || board.medCenter?.address) && (
+              <p>{[board.medCenter.city, board.medCenter.address].filter(Boolean).join(', ')}</p>
+            )}
+          </div>
         </div>
         <div className="header-actions">
           <button

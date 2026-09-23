@@ -23,7 +23,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {getFocusedRouteNameFromRoute} from '@react-navigation/native';
 import {
-  Settings, ListTodo, GraduationCap, Package, MessageCircle, Star,
+  Settings, ListTodo, GraduationCap, Package, MessageCircle, Star, Mail,
   SquarePen, Users, Plus, LogOut,
 } from 'lucide-react-native';
 
@@ -35,6 +35,7 @@ import {
   useWarehouseAccess, useWarehouseBadge, refreshWarehouseBadge,
 } from '../store/warehouseStore';
 import {useReviewBoards, useReviewsBadge, refreshReviewsBadge} from '../store/reviewsStore';
+import {useMailAccounts} from '../store/mailStore';
 import {runQuickAction} from '../store/quickActions';
 import SocketService from '../services/socket';
 import {useAuth} from '../store/authStore';
@@ -110,6 +111,7 @@ const HIDDEN_ROUTES = [
   // Отзывы (ver. 7.26). Карточка держит внизу поле комментария, доска —
   // колонки во всю высоту: знак «Альфа» лёг бы прямо на них.
   'Review', 'ReviewBoard', 'ReviewsAssigned',
+  'MailMessage', 'MailCompose',
 ];
 
 const ORB_SIZE = 58;
@@ -310,6 +312,7 @@ const ICONS = {
   WarehouseTab: Package,
   ReviewsTab: Star,
   CoursesTab: GraduationCap,
+  MailTab: Mail,
   SettingsTab: Settings,
 };
 
@@ -643,6 +646,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
   const warehouseBadge = useWarehouseBadge();
   const reviewBoards = useReviewBoards();
   const reviewsBadge = useReviewsBadge();
+  const mailAccounts = useMailAccounts();
   // Под каким углом стоит подсветка выбранного раздела, в градусах от верха.
   // Углом, а не координатами: сектор приезжает в гнездо поворотом.
   const active = useRef(new Animated.Value(0)).current;
@@ -769,6 +773,7 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     TasksTab: inboxCount,
     WarehouseTab: warehouseBadge,
     ReviewsTab: reviewsBadge,
+    MailTab: (mailAccounts || []).reduce((sum, account) => sum + (Number(account.unread) || 0), 0),
   };
 
   const sections = state.routes
@@ -780,6 +785,10 @@ export default function AlfaTabBar({state, descriptors, navigation}) {
     // не должно менять шаг под уже занесённым пальцем.
     .filter(route => route.name !== 'ReviewsTab'
       || Boolean(reviewBoards?.length))
+    // Почта появляется только после ответа сервера: доступ у неё задаётся
+    // конкретными ящиками, а не общей ролью пользователя.
+    .filter(route => route.name !== 'MailTab'
+      || Boolean(mailAccounts?.length))
     .map(route => ({
       key: route.key,
       route,

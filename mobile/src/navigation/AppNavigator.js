@@ -67,6 +67,9 @@ import CoursesScreen from '../screens/Courses/CoursesScreen';
 import CourseScreen from '../screens/Courses/CourseScreen';
 import LessonScreen from '../screens/Courses/LessonScreen';
 import CourseTestScreen from '../screens/Courses/CourseTestScreen';
+import MailScreen from '../screens/Mail/MailScreen';
+import MailMessageScreen from '../screens/Mail/MailMessageScreen';
+import MailComposeScreen from '../screens/Mail/MailComposeScreen';
 import AlfaTabBar from './AlfaTabBar';
 import LogoLoader from '../components/LogoLoader';
 import {font} from '../theme';
@@ -559,6 +562,30 @@ function CoursesStack() {
 }
 
 /**
+ * Общая почта — короткий рабочий маршрут: разобрать входящее, скачать документ,
+ * ответить. Настройка ящиков остаётся в веб-админке, поскольку хранит серверные
+ * пароли и правила доступа, которым на телефоне делать нечего.
+ */
+function MailStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerBackground: () => <HeaderBackground />,
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: {fontFamily: font.semiBold, fontSize: 17, color: '#FFFFFF'},
+        headerTitleAlign: 'center',
+        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
+        ...STACK_ANIMATION,
+      }}>
+      <Stack.Screen name="MailHome" component={MailScreen} options={{title: 'Почта'}} />
+      <Stack.Screen name="MailMessage" component={MailMessageScreen} options={({route}) => ({title: route.params?.title || 'Письмо'})} />
+      <Stack.Screen name="MailCompose" component={MailComposeScreen} options={{title: 'Новое письмо'}} />
+    </Stack.Navigator>
+  );
+}
+
+/**
  * Вкладка «Настройки» (ver. 7.55) — она же бывший «Профиль».
  *
  * Два раздела слились в один: обе вкладки вели в личное, и граница между ними
@@ -720,6 +747,11 @@ function MainTabs() {
         name="CoursesTab"
         component={CoursesStack}
         options={{title: 'Курсы'}}
+      />
+      <Tab.Screen
+        name="MailTab"
+        component={MailStack}
+        options={{title: 'Почта'}}
       />
       <Tab.Screen
         name="SettingsTab"
