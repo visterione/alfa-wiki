@@ -1,21 +1,19 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus, Trash2, RefreshCw, Plug, UserPlus, X, Check, AlertTriangle,
-  Mail as MailIcon, ScrollText, Loader, Send, Search
+  Mail as MailIcon, ScrollText, Loader, Send, Search, UsersRound
 } from 'lucide-react';
-import { mail as mailApi, users as usersApi, medCenters as medCentersApi } from '../../services/api';
+import { mail as mailApi, users as usersApi } from '../../services/api';
 import toast from 'react-hot-toast';
 import './AdminMail.css';
 
 /**
- * Настройка почтовых ящиков (ver. 8.58).
+ * Настройка почтовых ящиков (ver. 8.59).
  *
- * Ящики заводит администратор и он же раздаёт доступ. Соблазн выдавать доступ
- * по должности — «все регистраторы такой-то клиники» — был и осознанно
- * отклонён: в этих ящиках жалобы и гарантийные письма с фамилиями пациентов, а
- * выдача по должности означает, что новый сотрудник получит всю историю
- * переписки раньше, чем кто-то об этом подумает. Поэтому только поимённо, и
- * каждая выдача — видимое действие живого человека, попадающее в журнал.
+ * Доступ можно дать человеку напрямую либо динамической группе по медцентру,
+ * роли или их пересечению. Групповое правило остаётся видимым в карточке и в
+ * журнале — это важно, потому что новый участник группы получает всю историю
+ * общего ящика автоматически.
  *
  * Пароль ящика вводится один раз и обратно не показывается никогда. При правке
  * пустое поле означает «не трогать», а не «стереть»: иначе исправление опечатки
@@ -83,10 +81,15 @@ const EMPTY_FORM = {
   signature: '',
 };
 
+const EMPTY_GROUP = {
+  medCenterId: '', roleId: '', canSend: false, canDelete: false,
+};
+
 export default function AdminMail() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [centers, setCenters] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [staff, setStaff] = useState([]);
 
   const [editing, setEditing] = useState(null);   // id ящика либо 'new'
@@ -96,7 +99,10 @@ export default function AdminMail() {
   const [testResult, setTestResult] = useState(null);
 
   const [grantFor, setGrantFor] = useState(null);
+  const [grantMode, setGrantMode] = useState('group');
   const [staffQuery, setStaffQuery] = useState('');
+  const [groupForm, setGroupForm] = useState(EMPTY_GROUP);
+  const [accessSaving, setAccessSaving] = useState(false);
 
   const [auditFor, setAuditFor] = useState(null);
   const [audit, setAudit] = useState([]);
@@ -115,7 +121,10 @@ export default function AdminMail() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    medCentersApi.list().then(({ data }) => setCenters(data.medCenters || data || [])).catch(() => {});
+    mailApi.admin.accessOptions().then(({ data }) => {
+      setCenters(data.medCenters || []);
+      setRoles(data.roles || []);
+    }).catch(() => toast.error('Не удалось получить медцентры и роли'));
     usersApi.listBasic().then(({ data }) => setStaff(data.users || data || [])).catch(() => {});
   }, []);
 
@@ -250,6 +259,53 @@ export default function AdminMail() {
     } catch (e) {
       toast.error('Не удалось отозвать доступ');
     }
+  };
+
+  const saveAccessRule = async (accountId, rule = null, patch = {}) => {
+    const values = rule || groupForm;
+    const payload = {
+      medCenterId: values.medCenterId || null,
+      roleId: values.roleId || null,
+      canSend: patch.canSend ?? values.canSend,
+      canDelete: patch.canDelete ?? values.canDelete,
+    };
+    if (!payload.medCenterId && !payload.roleId) {
+      toast.error('Выберите медцентр, роль или оба условия');
+      return;
+    }
+
+    setAccessSaving(true);
+    try {
+      await mailApi.admin.saveAccessRule(accountId, payload);
+      if (!rule) {
+        toast.success('Групповой доступ настроен');
+        setGrantFor(null);
+        setGroupForm(EMPTY_GROUP);
+      }
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Не удалось сохранить групповое правило');
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
+  const revokeAccessRule = async (accountId, rule) => {
+    const group = [rule.medCenter?.name, rule.role?.name].filter(Boolean).join(' + ');
+    if (!window.confirm(`Удалить групповое правило «${group}»?`)) return;
+    try {
+      await mailApi.admin.revokeAccessRule(accountId, rule.id);
+      load();
+    } catch (e) {
+      toast.error('Не удалось удалить групповое правило');
+    }
+  };
+
+  const toggleGrant = (accountId) => {
+    setGrantFor((current) => current === accountId ? null : accountId);
+    setGrantMode('group');
+    setStaffQuery('');
+    setGroupForm(EMPTY_GROUP);
   };
 
   const openAudit = async (account) => {
@@ -519,11 +575,13 @@ export default function AdminMail() {
               {/* ── Доступы ── */}
               <div className="amail-access">
                 <div className="amail-access__head">
-                  <h4>Доступ ({account.access.length})</h4>
+                  <h4>
+                    Доступ: персонально {account.access.length}, групп {account.accessRules?.length || 0}
+                  </h4>
                   <button
                     type="button"
                     className="amail-btn amail-btn--small"
-                    onClick={() => { setGrantFor(grantFor === account.id ? null : account.id); setStaffQuery(''); }}
+                    onClick={() => toggleGrant(account.id)}
                   >
                     <UserPlus size={14} /> Выдать
                   </button>
@@ -531,27 +589,152 @@ export default function AdminMail() {
 
                 {grantFor === account.id && (
                   <div className="amail-picker">
-                    <div className="amail-picker__search">
-                      <Search size={14} />
-                      <input
-                        autoFocus type="text" value={staffQuery}
-                        onChange={(e) => setStaffQuery(e.target.value)}
-                        placeholder="Фамилия или логин"
-                      />
+                    <div className="amail-picker__tabs">
+                      <button
+                        type="button"
+                        className={grantMode === 'group' ? 'active' : ''}
+                        onClick={() => setGrantMode('group')}
+                      >
+                        <UsersRound size={14} /> Группе
+                      </button>
+                      <button
+                        type="button"
+                        className={grantMode === 'person' ? 'active' : ''}
+                        onClick={() => setGrantMode('person')}
+                      >
+                        <UserPlus size={14} /> Сотруднику
+                      </button>
                     </div>
-                    <div className="amail-picker__list">
-                      {staffMatches.map((u) => (
-                        <button key={u.id} type="button" onClick={() => grant(account.id, u.id)}>
-                          {u.displayName || u.username}
-                          <small>{u.username}</small>
-                        </button>
-                      ))}
-                      {!staffMatches.length && <div className="amail-muted">Никого не нашлось</div>}
-                    </div>
+
+                    {grantMode === 'person' ? (
+                      <>
+                        <div className="amail-picker__search">
+                          <Search size={14} />
+                          <input
+                            autoFocus type="text" value={staffQuery}
+                            onChange={(e) => setStaffQuery(e.target.value)}
+                            placeholder="Фамилия или логин"
+                          />
+                        </div>
+                        <div className="amail-picker__list">
+                          {staffMatches.map((u) => (
+                            <button key={u.id} type="button" onClick={() => grant(account.id, u.id)}>
+                              {u.displayName || u.username}
+                              <small>{u.username}</small>
+                            </button>
+                          ))}
+                          {!staffMatches.length && <div className="amail-muted">Никого не нашлось</div>}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="amail-group-form">
+                        <p>
+                          Выберите хотя бы одно условие. Если выбраны оба, доступ получат
+                          только сотрудники этого медцентра с этой ролью.
+                        </p>
+                        <div className="amail-group-form__filters">
+                          <label>
+                            <span>Медцентр</span>
+                            <select
+                              value={groupForm.medCenterId}
+                              onChange={(e) => setGroupForm({ ...groupForm, medCenterId: e.target.value })}
+                            >
+                              <option value="">Любой медцентр</option>
+                              {centers.map((center) => (
+                                <option key={center.id} value={center.id}>
+                                  {center.displayName || center.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <span className="amail-group-form__and">И</span>
+                          <label>
+                            <span>Роль</span>
+                            <select
+                              value={groupForm.roleId}
+                              onChange={(e) => setGroupForm({ ...groupForm, roleId: e.target.value })}
+                            >
+                              <option value="">Любая роль</option>
+                              {roles.map((role) => (
+                                <option key={role.id} value={role.id}>{role.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="amail-group-form__footer">
+                          <label className="amail-toggle">
+                            <input
+                              type="checkbox" checked={groupForm.canSend}
+                              onChange={(e) => setGroupForm({ ...groupForm, canSend: e.target.checked })}
+                            />
+                            <Send size={13} /> отправка
+                          </label>
+                          <label className="amail-toggle">
+                            <input
+                              type="checkbox" checked={groupForm.canDelete}
+                              onChange={(e) => setGroupForm({ ...groupForm, canDelete: e.target.checked })}
+                            />
+                            <Trash2 size={13} /> удаление
+                          </label>
+                          <button
+                            type="button"
+                            className="amail-btn amail-btn--primary amail-btn--small"
+                            disabled={accessSaving || (!groupForm.medCenterId && !groupForm.roleId)}
+                            onClick={() => saveAccessRule(account.id)}
+                          >
+                            {accessSaving ? 'Сохраняем…' : 'Выдать группе'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {!account.access.length && <div className="amail-muted">Доступ пока ни у кого</div>}
+                {!account.access.length && !account.accessRules?.length && (
+                  <div className="amail-muted">Доступ пока никому не выдан</div>
+                )}
+
+                {!!account.accessRules?.length && (
+                  <div className="amail-access__section-label">Групповые правила</div>
+                )}
+
+                {(account.accessRules || []).map((rule) => (
+                  <div key={rule.id} className="amail-person amail-person--group">
+                    <UsersRound size={16} className="amail-person__group-icon" />
+                    <span className="amail-person__name">
+                      {[rule.medCenter?.displayName || rule.medCenter?.name, rule.role?.name]
+                        .filter(Boolean).join(' + ')}
+                      <small>
+                        {rule.medCenter && rule.role ? 'медцентр И роль' : rule.medCenter ? 'весь медцентр' : 'вся роль'}
+                        {' · '}{rule.matchedUsers} сотрудников
+                      </small>
+                    </span>
+                    <label className="amail-toggle" title="Может отправлять письма от имени ящика">
+                      <input
+                        type="checkbox" checked={rule.canSend} disabled={accessSaving}
+                        onChange={(e) => saveAccessRule(account.id, rule, { canSend: e.target.checked })}
+                      />
+                      <Send size={13} /> отправка
+                    </label>
+                    <label className="amail-toggle" title="Удаление письма стирает его и на сервере">
+                      <input
+                        type="checkbox" checked={rule.canDelete} disabled={accessSaving}
+                        onChange={(e) => saveAccessRule(account.id, rule, { canDelete: e.target.checked })}
+                      />
+                      <Trash2 size={13} /> удаление
+                    </label>
+                    <button
+                      type="button" className="amail-icon-btn" title="Удалить групповое правило"
+                      onClick={() => revokeAccessRule(account.id, rule)}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
+
+                {!!account.access.length && (
+                  <div className="amail-access__section-label">Персональные доступы</div>
+                )}
 
                 {account.access.map((access) => (
                   <div key={access.id} className="amail-person">
@@ -591,7 +774,9 @@ export default function AdminMail() {
                       <span className="amail-audit__who">{entry.user?.displayName || entry.user?.username || '—'}</span>
                       <span className="amail-audit__what">{entry.action}</span>
                       <span className="amail-audit__detail">
-                        {entry.detail?.subject || entry.detail?.filename || entry.detail?.user || ''}
+                        {entry.detail?.subject || entry.detail?.filename || entry.detail?.user
+                          || [entry.detail?.medCenter, entry.detail?.role].filter(Boolean).join(' + ')
+                          || entry.detail?.ruleId || ''}
                       </span>
                     </div>
                   ))}
