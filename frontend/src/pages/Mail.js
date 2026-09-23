@@ -773,7 +773,7 @@ export default function Mail() {
             >
               <AccountLogo account={activeAccount} />
               <span className="mail-account-picker__text">
-                <strong>{activeAccount?.medCenter?.displayName || activeAccount?.medCenter?.name || activeAccount?.displayName}</strong>
+                <strong>{activeAccount?.displayName || activeAccount?.email}</strong>
                 <small><MailIcon size={12} />{activeAccount?.email}</small>
               </span>
               <ChevronDown size={15} className={accountMenuOpen ? 'is-open' : ''} />
