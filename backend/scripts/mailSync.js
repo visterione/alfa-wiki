@@ -56,6 +56,17 @@ function log(message) {
   console.log(`[${new Date().toISOString()}] ${message}`);
 }
 
+// Старый PDF-парсер, который нужен для поиска внутри документов, иногда
+// выпускает поздний rejected Promise на повреждённых шрифтах/flate-потоках.
+// Его основной Promise уже перехватывается extractText(), но этот хвост живёт
+// отдельно от него. В Node 18 такой отказ без обработчика завершает процесс
+// синхронизации целиком. Для воркера это недопустимо: одно битое вложение не
+// должно останавливать остальные ящики и следующий круг.
+process.on('unhandledRejection', (reason) => {
+  const message = reason?.message || String(reason || 'неизвестная ошибка');
+  log(`вложение пропущено из-за ошибки фонового разбора: ${message}`);
+});
+
 async function activeAccounts() {
   const only = flagValue('account');
   const where = { isActive: true };
