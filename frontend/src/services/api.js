@@ -1630,6 +1630,9 @@ export const mail = {
   attachment: (messageId, attachmentId) => api.get(
     `/mail/messages/${messageId}/attachments/${attachmentId}`, { responseType: 'blob' }
   ),
+  attachmentPreview: (messageId, attachmentId) => api.get(
+    `/mail/messages/${messageId}/attachments/${attachmentId}/preview`, { responseType: 'blob' }
+  ),
   refreshFolders: (accountId) => api.post(`/mail/accounts/${accountId}/folders/refresh`),
   createFolder: (accountId, data) => api.post(`/mail/accounts/${accountId}/folders`, data),
   moveMessage: (id, folderId) => api.post(`/mail/messages/${id}/move`, { folderId }),

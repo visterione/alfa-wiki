@@ -4,7 +4,8 @@ import {
   Paperclip, Flag, Search, RefreshCw, Mail as MailIcon, ArrowLeft,
   Download, Loader, Bookmark,
   BookmarkPlus, X, HelpCircle, Reply, ReplyAll, Forward, FileEdit,
-  Trash, MessagesSquare, ChevronDown, ChevronRight, SlidersHorizontal, FolderPlus, Plus
+  Trash, MessagesSquare, ChevronDown, ChevronRight, SlidersHorizontal, FolderPlus, Plus,
+  File, FileArchive, FileAudio, FileCode, FileSpreadsheet, FileVideo, Image, Presentation
 } from 'lucide-react';
 import { mail as mailApi } from '../services/api';
 import toast from 'react-hot-toast';
@@ -91,6 +92,94 @@ function fileSize(bytes) {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} МБ`;
   if (n >= 1024) return `${Math.round(n / 1024)} КБ`;
   return `${n} Б`;
+}
+
+function attachmentExtension(attachment) {
+  const filename = String(attachment?.filename || '');
+  const dot = filename.lastIndexOf('.');
+  return dot > 0 ? filename.slice(dot + 1).toLowerCase() : '';
+}
+
+/** Тип определяем по MIME, а расширение оставляем запасным вариантом для старой почты. */
+function attachmentPresentation(attachment) {
+  const mime = String(attachment?.mimeType || '').toLowerCase();
+  const ext = attachmentExtension(attachment);
+  const byExtension = (list) => list.includes(ext);
+
+  if ((mime.startsWith('image/') && mime !== 'image/svg+xml') || byExtension(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp'])) {
+    return { kind: 'image', label: 'Изображение', Icon: Image, canPreview: true };
+  }
+  if (mime === 'application/pdf' || ext === 'pdf') return { kind: 'pdf', label: 'PDF', Icon: FileText };
+  if (mime.includes('spreadsheet') || mime.includes('excel') || byExtension(['xls', 'xlsx', 'csv', 'ods'])) {
+    return { kind: 'sheet', label: 'Таблица', Icon: FileSpreadsheet };
+  }
+  if (mime.includes('presentation') || byExtension(['ppt', 'pptx', 'odp'])) {
+    return { kind: 'slides', label: 'Презентация', Icon: Presentation };
+  }
+  if (mime.includes('word') || mime.includes('document') || mime === 'text/rtf' || byExtension(['doc', 'docx', 'odt', 'rtf'])) {
+    return { kind: 'document', label: 'Документ', Icon: FileText };
+  }
+  if (mime.startsWith('audio/') || byExtension(['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'])) {
+    return { kind: 'audio', label: 'Аудио', Icon: FileAudio };
+  }
+  if (mime.startsWith('video/') || byExtension(['mp4', 'mov', 'avi', 'mkv', 'webm'])) {
+    return { kind: 'video', label: 'Видео', Icon: FileVideo };
+  }
+  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z') || mime.includes('tar') || byExtension(['zip', 'rar', '7z', 'tar', 'gz'])) {
+    return { kind: 'archive', label: 'Архив', Icon: FileArchive };
+  }
+  if (mime.startsWith('text/') || mime.includes('json') || mime.includes('xml') || byExtension(['txt', 'json', 'xml', 'html', 'css', 'js', 'ts', 'sql', 'log'])) {
+    return { kind: 'code', label: 'Текст', Icon: FileCode };
+  }
+  return { kind: 'file', label: ext ? ext.toUpperCase() : 'Файл', Icon: File };
+}
+
+function MailAttachment({ attachment, messageId, downloading, onDownload }) {
+  const presentation = attachmentPresentation(attachment);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  useEffect(() => {
+    if (!presentation.canPreview || !messageId || !attachment?.id) return undefined;
+    let active = true;
+    let url = null;
+
+    mailApi.attachmentPreview(messageId, attachment.id)
+      .then(({ data }) => {
+        url = URL.createObjectURL(data);
+        if (active) setPreviewUrl(url);
+        else URL.revokeObjectURL(url);
+      })
+      .catch(() => { /* иконка типа файла остаётся запасным вариантом */ });
+
+    return () => {
+      active = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [attachment?.id, attachment?.mimeType, messageId, presentation.canPreview]);
+
+  const { Icon } = presentation;
+  return (
+    <button
+      type="button"
+      className={`mail-attachment mail-attachment--${presentation.kind} ${previewUrl ? 'has-preview' : ''}`}
+      onClick={() => onDownload(attachment)}
+      disabled={downloading}
+      title={`Скачать ${attachment.filename || 'вложение'}`}
+    >
+      <span className="mail-attachment__visual" aria-hidden="true">
+        {previewUrl
+          ? <img src={previewUrl} alt="" onError={() => setPreviewUrl(null)} />
+          : <Icon size={22} strokeWidth={1.8} />}
+      </span>
+      <span className="mail-attachment__details">
+        <span className="mail-attachment__name">{attachment.filename || 'Без названия'}</span>
+        <span className="mail-attachment__meta">{presentation.label} · {fileSize(attachment.size)}</span>
+      </span>
+      <span className="mail-attachment__action" aria-hidden="true">
+        {downloading ? <Loader size={16} className="mail-spin" /> : <Download size={16} />}
+      </span>
+    </button>
+  );
 }
 
 /**
@@ -874,10 +963,10 @@ export default function Mail() {
               aria-haspopup="listbox"
               aria-expanded={accountMenuOpen}
             >
-              <AccountLogo account={activeAccount} />
+              <AccountLogo account={activeAccount} showProvider />
               <span className="mail-account-picker__text">
                 <strong>{activeAccount?.displayName || activeAccount?.email}</strong>
-                <small><MailIcon size={12} />{activeAccount?.email}</small>
+                <small>{activeAccount?.email}</small>
               </span>
               <ChevronDown size={15} className={accountMenuOpen ? 'is-open' : ''} />
             </button>
@@ -1103,7 +1192,7 @@ export default function Mail() {
           {messages.map((message) => (
             <div
               key={message.id}
-              className={`mail-row ${message.isSeen ? '' : 'unread'} ${openId === message.id ? 'open' : ''}`}
+              className={`mail-row ${message.isSeen ? '' : 'unread'} ${message.isFlagged ? 'flagged' : ''} ${openId === message.id ? 'open' : ''}`}
             >
               <button
                 type="button"
@@ -1345,17 +1434,13 @@ export default function Mail() {
             {opened.attachments?.length > 0 && (
               <div className="mail-attachments">
                 {opened.attachments.map((a) => (
-                  <button
+                  <MailAttachment
                     key={a.id}
-                    type="button"
-                    className="mail-attachment"
-                    onClick={() => downloadAttachment(a)}
-                    disabled={downloading === a.id}
-                  >
-                    {downloading === a.id ? <Loader size={15} className="mail-spin" /> : <Download size={15} />}
-                    <span className="mail-attachment__name">{a.filename}</span>
-                    <span className="mail-attachment__size">{fileSize(a.size)}</span>
-                  </button>
+                    attachment={a}
+                    messageId={opened.message.id}
+                    downloading={downloading === a.id}
+                    onDownload={downloadAttachment}
+                  />
                 ))}
               </div>
             )}

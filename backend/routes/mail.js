@@ -18,6 +18,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 const multer = require('multer');
 const crypto = require('crypto');
+const sharp = require('sharp');
 const { body, validationResult } = require('express-validator');
 
 const {
@@ -63,6 +64,14 @@ function audit(req, { accountId, messageId, action, detail }) {
     detail: detail || {},
     ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().slice(0, 64),
   }).catch((err) => console.error('📬 Почта: не записался журнал —', err.message));
+}
+
+/** SVG и HTML не бывают превью: даже в <img> им не место в почтовом клиенте. */
+function canPreviewAttachment(attachment) {
+  const mime = String(attachment?.mimeType || '').toLowerCase();
+  if (/^image\/(?:jpeg|png|gif|webp|avif|bmp|tiff)$/.test(mime)) return true;
+  const ext = String(attachment?.filename || '').split('.').pop()?.toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'tif', 'tiff'].includes(ext);
 }
 
 /** Достаёт письмо вместе с проверкой, что спрашивающий имеет право его видеть. */
@@ -642,6 +651,45 @@ router.post('/messages/:id/move', authenticate, async (req, res) => {
   } catch (error) {
     console.error('❌ Почта: письмо не перенеслось:', error);
     res.status(502).json({ error: 'Не удалось перенести письмо на почтовом сервере' });
+  }
+});
+
+// GET /api/mail/messages/:id/attachments/:attachmentId/preview
+// Миниатюра создаётся на сервере, а не из исходного файла в браузере: большой
+// снимок не съедает трафик, а файл с подменённым MIME не получает шанс стать
+// активным содержимым страницы.
+router.get('/messages/:id/attachments/:attachmentId/preview', authenticate, async (req, res) => {
+  try {
+    const { message, error } = await loadMessageForUser(req, req.params.id);
+    if (error === 404) return res.status(404).json({ error: 'Письмо не найдено' });
+    if (error === 403) return res.status(403).json({ error: 'Нет доступа к этому ящику' });
+
+    const attachment = await MailAttachment.findOne({
+      where: { id: req.params.attachmentId, messageId: message.id },
+    });
+    if (!attachment || !attachment.storagePath || !canPreviewAttachment(attachment)) {
+      return res.status(404).end();
+    }
+
+    const abs = attachmentAbsPath(attachment.storagePath);
+    if (!fs.existsSync(abs)) return res.status(404).end();
+
+    const preview = await sharp(abs, { limitInputPixels: 16_000_000, animated: false })
+      .rotate()
+      .resize(160, 112, { fit: 'cover', position: 'centre' })
+      .jpeg({ quality: 78 })
+      .toBuffer();
+
+    audit(req, { accountId: message.accountId, messageId: message.id, action: 'attachment_preview',
+      detail: { attachmentId: attachment.id } });
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return res.send(preview);
+  } catch (error) {
+    return res.status(422).end();
   }
 });
 
