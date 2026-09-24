@@ -580,6 +580,13 @@ textarea.vac-input { padding: 9px 11px; line-height: 1.55; resize: vertical; }
   overflow: hidden;
 }
 .vac-block.is-open { box-shadow: 0 8px 22px rgba(20, 29, 45, .06); }
+/* Выпадающий список исполнителей выступает за край карточки; поднимаем только
+   ту карточку, где он открыт, и снимаем её обрезание, чтобы список не пропадал. */
+.vac-block:has(.vac-picker.is-open) {
+  position: relative;
+  z-index: 41;
+  overflow: visible;
+}
 
 .vac-block-head {
   display: flex;
