@@ -594,8 +594,10 @@
 .mk-doctor-platform { min-width:0; border:1px solid var(--border); border-radius:10px; padding:10px; }
 .mk-doctor-platform-title { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
 .mk-doctor-platform-title > span { color:var(--text-secondary); font-size:11px; }
-.mk-doctor-url-row { display:flex; gap:7px; margin-top:8px; }
-.mk-doctor-url-row input { min-width:0; flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-primary, #fff); color:inherit; }
+.mk-doctor-found-icon { color:var(--success, #16803c); }
+.mk-doctor-review-icon { color:var(--warning, #a15c00); }
+.mk-doctor-review-note { margin-top:7px; color:var(--warning, #a15c00); font-size:12px; }
+.mk-doctor-platform-message { margin-top:8px; color:var(--warning, #a15c00); font-size:12px; line-height:1.45; }
 .mk-doctor-comparison { margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:12px; }
 .mk-doctor-comparison > a { display:inline-flex; align-items:center; gap:4px; }
 .mk-doctor-field { padding:6px 0; border-top:1px solid var(--border); }

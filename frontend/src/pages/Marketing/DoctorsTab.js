@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ExternalLink, Loader2, RefreshCw, Search, Stethoscope } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, Stethoscope } from 'lucide-react';
 import { marketing } from '../../services/api';
 import './Marketing.css';
 
@@ -11,7 +11,8 @@ const STATUS = {
 };
 const label = key => ({
   identity: 'ФИО', specialties: 'Специальности', experience: 'Стаж',
-  price: 'Стоимость приёма', education: 'Образование', workplace: 'Место приёма'
+  price: 'Стоимость приёма', education: 'Образование', workplace: 'Место приёма',
+  services: 'Манипуляции и услуги'
 }[key] || key);
 
 function Comparison({ value }) {
@@ -34,8 +35,6 @@ export default function DoctorsTab() {
   const [scanId, setScanId] = useState(() => sessionStorage.getItem('marketingDoctorsScanId') || '');
   const [scan, setScan] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState('');
-  const [urls, setUrls] = useState({});
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -70,20 +69,6 @@ export default function DoctorsTab() {
     } finally { setLoading(false); }
   };
 
-  const compare = async (sourceIndex, doctorIndex, platform, key) => {
-    setBusy(key); setError('');
-    try {
-      await marketing.compareDoctor(scanId, {
-        source_index: sourceIndex, doctor_index: doctorIndex,
-        platform, profile_url: urls[key] || ''
-      });
-      const { data } = await marketing.getDoctorScan(scanId);
-      setScan(data);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Не удалось прочитать карточку площадки');
-    } finally { setBusy(''); }
-  };
-
   return <section className="mk-doctors">
     <div className="mk-doctors-heading">
       <div><h1><Stethoscope size={21}/> Врачи</h1>
@@ -95,7 +80,7 @@ export default function DoctorsTab() {
     </div>
     {error && <div className="mk-doctor-error">{error}</div>}
     {scan && <div className="mk-doctor-stage">{scan.stage}</div>}
-    {!scan && !loading && <div className="mk-doctor-empty">
+    {!scan && !loading && !error && <div className="mk-doctor-empty">
       Нажмите «Собрать список врачей». Парсер прочитает карточки с семи сайтов клиник.
     </div>}
     {(scan?.results || []).map((source, sourceIndex) => <section className="mk-doctor-source" key={source.clinic + '-' + sourceIndex}>
@@ -113,25 +98,20 @@ export default function DoctorsTab() {
             <summary>Данные исходной карточки</summary><p>{doctor.source_text}</p>
           </details>}
           <div className="mk-doctor-platforms">
-            {Object.entries(doctor.platform_searches || {}).map(([platform, searchUrl]) => {
-              const key = sourceIndex + ':' + doctorIndex + ':' + platform;
+            {['ПроДокторов', 'Яндекс', 'НаПоправку', 'СберЗдоровье', 'ДокТу'].map(platform => {
               const comparison = doctor.comparisons?.[platform];
+              const found = comparison?.status === 'found';
+              const pending = !comparison || comparison.status === 'searching';
               return <div className="mk-doctor-platform" key={platform}>
                 <div className="mk-doctor-platform-title">
-                  <a className="ola-btn secondary" href={searchUrl} target="_blank" rel="noreferrer">
-                    <Search size={14}/> Найти на {platform}
-                  </a><span>Скопируйте URL подтверждённой карточки сюда</span>
+                  {found ? <CheckCircle2 size={15} className="mk-doctor-found-icon"/> :
+                    <AlertTriangle size={15} className="mk-doctor-review-icon"/>}
+                  <b>{platform}</b>
+                  <span>{pending ? 'Поиск…' : found ? 'Найдено автоматически' : 'Нужна проверка'}</span>
                 </div>
-                <div className="mk-doctor-url-row">
-                  <input type="url" value={urls[key] || ''} placeholder="Прямая ссылка на карточку"
-                    onChange={event => setUrls(prev => ({ ...prev, [key]: event.target.value }))}/>
-                  <button className="ola-btn primary" onClick={() => compare(sourceIndex, doctorIndex, platform, key)}
-                    disabled={!urls[key] || busy === key}>
-                    {busy === key ? <Loader2 className="mk-spin" size={15}/> : 'Сверить'}
-                  </button>
-                </div>
-                {comparison?.error ? <div className="mk-doctor-error">{comparison.error}</div>
+                {comparison?.error ? <div className="mk-doctor-platform-message">{comparison.error}</div>
                   : <Comparison value={comparison}/>}
+                {comparison?.review_note && <div className="mk-doctor-review-note">⚠ {comparison.review_note}</div>}
               </div>;
             })}
           </div>

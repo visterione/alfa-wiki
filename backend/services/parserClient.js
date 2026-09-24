@@ -147,6 +147,24 @@ function describeError(err) {
         message: 'На парсере не задан PARSER_API_TOKEN — его API выключен.'
       };
     case 404:
+      if (String(err.config?.url || '').includes('/api/doctors/scans')) {
+        const detail = err.response?.data?.detail;
+        if (detail === 'Сканирование карточек не найдено') {
+          return {
+            status: 404,
+            error: 'doctor_scan_not_found',
+            message: 'Сканирование не найдено. Возможно, парсер перезапускался — нажмите «Собрать список врачей» ещё раз.'
+          };
+        }
+        if (detail === 'Сайт-источник не найден в этом сканировании' || detail === 'Карточка врача не найдена в этом сканировании') {
+          return { status: 404, error: 'doctor_not_found', message: detail };
+        }
+        return {
+          status: 502,
+          error: 'doctor_api_not_found',
+          message: 'Парсер вернул 404 для API врачей. Проверьте, что на сервере обновлён alfa-parser и перезапущен сервис alfa-parser.'
+        };
+      }
       return { status: 404, error: 'not_found', message: 'Парсер не знает такого источника' };
     default:
       return { status: 502, error: 'parser_error', message: 'Парсер вернул ошибку. Подробности в логах.' };
