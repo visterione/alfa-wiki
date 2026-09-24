@@ -78,8 +78,11 @@ async function getLogo(parserSourceId) {
 const ping = () => get('/api/ping');
 const startDoctorScan = () => post('/api/doctors/scans');
 const getDoctorScan = scanId => get('/api/doctors/scans/' + encodeURIComponent(scanId));
-const compareDoctorProfile = (scanId, body) =>
-  post('/api/doctors/scans/' + encodeURIComponent(scanId) + '/compare', body);
+const getLatestDoctorScan = () => get('/api/doctors/scans/latest');
+const getDoctorScanDoctor = (scanId, sourceIndex, doctorIndex) => get(
+  '/api/doctors/scans/' + encodeURIComponent(scanId)
+  + '/sources/' + encodeURIComponent(sourceIndex) + '/doctors/' + encodeURIComponent(doctorIndex)
+);
 
 const listSources = async () => (await get('/api/sources')).sources || [];
 const getSource = (parserSourceId) => get(`/api/sources/${encodeURIComponent(parserSourceId)}`);
@@ -184,7 +187,8 @@ module.exports = {
   listSources,
   startDoctorScan,
   getDoctorScan,
-  compareDoctorProfile,
+  getLatestDoctorScan,
+  getDoctorScanDoctor,
   getSource,
   listServices,
   fetchCatalog,

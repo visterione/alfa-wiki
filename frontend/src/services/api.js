@@ -424,7 +424,9 @@ export const marketing = {
   createPromo:    (data)  => api.post('/marketing/promos', data),
   startDoctorScan:()      => api.post('/marketing/doctors/scans'),
   getDoctorScan:  id      => api.get('/marketing/doctors/scans/' + encodeURIComponent(id)),
-  compareDoctor:  (id, data) => api.post('/marketing/doctors/scans/' + encodeURIComponent(id) + '/compare', data)
+  getLatestDoctorScan: () => api.get('/marketing/doctors/scans/latest'),
+  getDoctorScanDoctor: (id, sourceIndex, doctorIndex) => api.get('/marketing/doctors/scans/'
+    + encodeURIComponent(id) + '/sources/' + sourceIndex + '/doctors/' + doctorIndex)
 };
 
 // Courses

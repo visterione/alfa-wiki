@@ -35,6 +35,33 @@ router.post('/doctors/scans', ...doctorsAccess, async (req, res) => {
   }
 });
 
+// Раньше /doctors/scans/:scanId — иначе «latest» уйдёт туда как идентификатор.
+router.get('/doctors/scans/latest', ...doctorsAccess, async (req, res) => {
+  try {
+    res.json(await parser.getLatestDoctorScan());
+  } catch (err) {
+    const described = parser.describeError(err);
+    console.error('GET /api/marketing/doctors/scans/latest error:', err.message);
+    res.status(described.status).json({ error: described.error, message: described.message });
+  }
+});
+
+// Сравнения по площадкам — только для раскрытого врача: целиком сверка весит
+// мегабайты, а дерево без них — сотни килобайт.
+router.get('/doctors/scans/:scanId/sources/:sourceIndex/doctors/:doctorIndex', ...doctorsAccess, async (req, res) => {
+  try {
+    const { scanId, sourceIndex, doctorIndex } = req.params;
+    if (!/^\d+$/.test(sourceIndex) || !/^\d+$/.test(doctorIndex)) {
+      return res.status(400).json({ error: 'Неверный номер клиники или врача' });
+    }
+    res.json(await parser.getDoctorScanDoctor(scanId, sourceIndex, doctorIndex));
+  } catch (err) {
+    const described = parser.describeError(err);
+    console.error('GET /api/marketing/doctors/scans/:id/doctor error:', err.message);
+    res.status(described.status).json({ error: described.error, message: described.message });
+  }
+});
+
 router.get('/doctors/scans/:scanId', ...doctorsAccess, async (req, res) => {
   try {
     res.json(await parser.getDoctorScan(req.params.scanId));
@@ -42,24 +69,6 @@ router.get('/doctors/scans/:scanId', ...doctorsAccess, async (req, res) => {
     const described = parser.describeError(err);
     console.error('GET /api/marketing/doctors/scans error:', err.message);
     res.status(described.status).json({ error: described.error, message: described.message });
-  }
-});
-
-router.post('/doctors/scans/:scanId/compare', ...doctorsAccess, async (req, res) => {
-  try {
-    const { source_index, doctor_index, platform, profile_url } = req.body || {};
-    if (!Number.isInteger(source_index) || !Number.isInteger(doctor_index) || !platform || !profile_url) {
-      return res.status(400).json({ error: 'Укажите врача, площадку и прямую ссылку на карточку' });
-    }
-    res.json(await parser.compareDoctorProfile(req.params.scanId, {
-      source_index, doctor_index, platform, profile_url
-    }));
-  } catch (err) {
-    const described = parser.describeError(err);
-    const status = err.response?.status === 422 ? 400 : described.status;
-    const message = err.response?.data?.detail || described.message;
-    console.error('POST /api/marketing/doctors/compare error:', err.message);
-    res.status(status).json({ error: 'doctor_compare_failed', message });
   }
 });
 
