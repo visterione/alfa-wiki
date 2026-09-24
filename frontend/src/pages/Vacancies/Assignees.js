@@ -111,14 +111,22 @@ export function useAssignees(vacancyId) {
 export function useTemplateAssignees(templateId) {
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState('');
 
   const load = useCallback(async () => {
     if (!templateId) return;
+    setLoading(true);
+    setErrorText('');
     try {
       const { data: res } = await api.templateAssignments(templateId);
       setData(res);
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Не удалось загрузить исполнителей шаблона');
+      const message = error.response?.data?.error || 'Не удалось загрузить исполнителей шаблона';
+      setErrorText(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
   }, [templateId]);
 
@@ -135,23 +143,24 @@ export function useTemplateAssignees(templateId) {
   }, [templateId, load]);
 
   return useMemo(() => {
-    if (!data) return null;
     return {
       data,
       mode: 'template',
-      knownKeys: new Set((data.steps || []).map(step => step.key)),
+      knownKeys: new Set((data?.steps || []).map(step => step.key)),
       saving,
-      users: data.users || [],
-      nobodyEligible: !(data.users || []).some(user => user.hasAccess !== false),
+      users: data?.users || [],
+      nobodyEligible: Boolean(data) && !(data.users || []).some(user => user.hasAccess !== false),
+      loading,
+      error: errorText,
       forStep: (stepKey) => ({
         medCenterId: null,
         busy: saving === stepKey,
-        current: (data.assignments || []).filter(item => item.stepKey === stepKey)
+        current: (data?.assignments || []).filter(item => item.stepKey === stepKey)
       }),
       save,
       reload: load
     };
-  }, [data, saving, save, load]);
+  }, [data, saving, save, load, loading, errorText]);
 }
 
 /**

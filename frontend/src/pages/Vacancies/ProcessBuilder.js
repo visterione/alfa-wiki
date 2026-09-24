@@ -455,7 +455,14 @@ function StepCard({
                 </div>
               )}
 
-              {assignees.knownKeys.has(step.key) ? (
+              {assignees.loading ? (
+                <div className="vac-hint">Загружаем список исполнителей…</div>
+              ) : assignees.error ? (
+                <div className="vac-hint">
+                  Не удалось загрузить список исполнителей: {assignees.error}{' '}
+                  <button className="vac-btn is-ghost" onClick={assignees.reload}>Повторить</button>
+                </div>
+              ) : assignees.knownKeys.has(step.key) ? (
                 <StepAssigneesFor assignees={assignees} stepKey={step.key} scope={step.scope} />
               ) : (
                 <div className="vac-hint">
