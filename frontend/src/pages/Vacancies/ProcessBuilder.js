@@ -58,7 +58,7 @@ export function toStoredSteps(steps) {
   return (steps || []).map(({ _uid, ...step }) => step);
 }
 
-export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onChange }) {
+export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, assigneeMode = 'vacancy', onChange }) {
   const [open, setOpen] = useState(() => new Set());
 
   // Карточки шагов по ключу — чтобы со схемы попасть в нужную. Держим ссылки,
@@ -198,6 +198,7 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
           steps={steps}
           meta={meta}
           assignees={assignees}
+          assigneeMode={assigneeMode}
           locked={lockedKeys.has(step.key)}
           isOpen={open.has(step._uid)}
           onToggle={() => toggle(step._uid)}
@@ -214,13 +215,13 @@ export default function ProcessBuilder({ steps, meta, lockedKeys, assignees, onC
 
       {/* Служебная точка: кому писать о просрочке. Шагом она не является, и
           стоит под списком, а не среди шагов. */}
-      {assignees && <EscalationCard assignees={assignees} />}
+      {assignees && assigneeMode !== 'template' && <EscalationCard assignees={assignees} />}
     </div>
   );
 }
 
 function StepCard({
-  step, steps, meta, assignees, locked, isOpen, onToggle, onChange,
+  step, steps, meta, assignees, assigneeMode, locked, isOpen, onToggle, onChange,
   onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown, found, hold
 }) {
   const kindSpec = meta.stepKinds.find(k => k.key === step.kind);
@@ -443,8 +444,16 @@ function StepCard({
           {assignees && kindSpec?.assignee && step.scope !== 'candidate' && !step.archived && (
             <>
               <div className="vac-sect" style={{ marginTop: 6 }}>
-                <span>{step.scope === 'branch' ? 'Исполнители в этом филиале' : 'Исполнители на всю сеть'}</span>
+                <span>{assigneeMode === 'template'
+                  ? 'Исполнители по умолчанию для всех медцентров'
+                  : step.scope === 'branch' ? 'Исполнители в этом филиале' : 'Исполнители на всю сеть'}</span>
               </div>
+
+              {assigneeMode === 'template' && (
+                <div className="vac-hint">
+                  Вакансия получит это назначение для всех медцентров. В конкретной вакансии его можно заменить исполнителем филиала.
+                </div>
+              )}
 
               {assignees.knownKeys.has(step.key) ? (
                 <StepAssigneesFor assignees={assignees} stepKey={step.key} scope={step.scope} />

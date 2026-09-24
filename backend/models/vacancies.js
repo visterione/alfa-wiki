@@ -510,9 +510,9 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
   // допилить анкету под конкретную вакансию можно как угодно — ровно то, чего
   // просил заказчик: «предзаполнилось, а дальше добавим своё».
   //
-  // Филиала, исполнителей и чатов у шаблона нет намеренно. Исполнитель шага —
-  // конкретный человек в конкретном медцентре, и шаблон, тянущий за собой
-  // кадровика из чужого филиала, стоил бы больше правок, чем экономил.
+  // У шаблона нет филиала и чатов. Исполнители здесь — только сетевые
+  // значения по умолчанию: вакансия копирует их в свои назначения на сеть,
+  // а филиальное назначение при необходимости перекрывает этот список.
   const VacTemplate = sequelize.define('VacTemplate', {
     id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     title:       { type: DataTypes.STRING(200), allowNull: false },
@@ -521,6 +521,7 @@ module.exports = function defineVacancyModels(sequelize, DataTypes) {
     form:    { type: DataTypes.JSONB, allowNull: false, defaultValue: { blocks: [], steps: [] } },
     process: { type: DataTypes.JSONB, allowNull: false, defaultValue: { steps: [] } },
     emails:  { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+    assignments: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
 
     sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     createdBy: { type: DataTypes.UUID }

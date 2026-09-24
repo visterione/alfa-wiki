@@ -81,6 +81,7 @@ export function useAssignees(vacancyId) {
 
     return {
       data,
+      mode: 'vacancy',
       knownKeys,
       saving,
       users: data.users || [],
@@ -101,6 +102,53 @@ export function useAssignees(vacancyId) {
       save,
       // Перечитать после сохранения процесса: ключи новых шагов сервер узнаёт
       // только оттуда, а до этого назначать на них не на что.
+      reload: load
+    };
+  }, [data, saving, save, load]);
+}
+
+/** Общие назначения заготовки; при создании вакансии сервер копирует их на сеть. */
+export function useTemplateAssignees(templateId) {
+  const [data, setData] = useState(null);
+  const [saving, setSaving] = useState('');
+
+  const load = useCallback(async () => {
+    if (!templateId) return;
+    try {
+      const { data: res } = await api.templateAssignments(templateId);
+      setData(res);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Не удалось загрузить исполнителей шаблона');
+    }
+  }, [templateId]);
+
+  const save = useCallback(async (stepKey, _medCenterId, userIds) => {
+    setSaving(stepKey);
+    try {
+      await api.saveTemplateAssignment(templateId, stepKey, { userIds });
+      await load();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Не удалось сохранить');
+    } finally {
+      setSaving('');
+    }
+  }, [templateId, load]);
+
+  return useMemo(() => {
+    if (!data) return null;
+    return {
+      data,
+      mode: 'template',
+      knownKeys: new Set((data.steps || []).map(step => step.key)),
+      saving,
+      users: data.users || [],
+      nobodyEligible: !(data.users || []).some(user => user.hasAccess !== false),
+      forStep: (stepKey) => ({
+        medCenterId: null,
+        busy: saving === stepKey,
+        current: (data.assignments || []).filter(item => item.stepKey === stepKey)
+      }),
+      save,
       reload: load
     };
   }, [data, saving, save, load]);
@@ -205,13 +253,37 @@ export function StepAssignees({ assignees, current, busy, onSave, emptyNote }) {
  */
 export function StepAssigneesFor({ assignees, stepKey, scope }) {
   const { medCenterId, busy, current } = assignees.forStep(stepKey, scope);
+  const fallback = scope === 'branch' && assignees.mode !== 'template'
+    ? assignees.forStep(stepKey, 'network').current
+    : [];
   return (
-    <StepAssignees
-      assignees={assignees}
-      current={current}
-      busy={busy}
-      onSave={ids => assignees.save(stepKey, medCenterId, ids)}
-    />
+    <>
+      {scope === 'branch' && !current.length && Boolean(fallback.length) && (
+        <div className="vac-hint">
+          Пока не задан отдельный исполнитель филиала, используется общее назначение: {' '}
+          {fallback.map(item => item.user?.displayName || item.user?.username || 'сотрудник').join(', ')}.
+        </div>
+      )}
+      <StepAssignees
+        assignees={assignees}
+        current={current}
+        busy={busy}
+        onSave={ids => assignees.save(stepKey, medCenterId, ids)}
+        emptyNote={fallback.length
+          ? 'Общее назначение действует. Новый исполнитель заменит его только в этом филиале.'
+          : undefined}
+      />
+      {scope === 'branch' && current.length > 0 && fallback.length > 0 && (
+        <button
+          className="vac-btn is-ghost"
+          style={{ marginTop: 8 }}
+          disabled={busy}
+          onClick={() => assignees.save(stepKey, medCenterId, [])}
+        >
+          Вернуть общее назначение
+        </button>
+      )}
+    </>
   );
 }
 

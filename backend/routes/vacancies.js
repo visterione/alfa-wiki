@@ -11,8 +11,8 @@
  * В 8.34 шаблон вернулся, но не слоем, а заготовкой: вакансия берёт из него
  * КОПИЮ анкеты, процесса, писем и приложенных файлов и дальше живёт сама по
  * себе, ссылки на шаблон не храня. Отсюда и вся разница в коде — у шаблона нет
- * ни состояния набора, ни филиала, ни исполнителей, а его правка ничего не
- * меняет в уже заведённых вакансиях.
+ * ни состояния набора, ни филиала. Его общие назначения копируются как
+ * сетевые значения по умолчанию, а правка ничего не меняет в готовых вакансиях.
  *
  * Право — полный админ. Ежедневная работа с заявками и задачами живёт в
  * routes/vacancyWork.js и доступна ещё и назначенным исполнителям: задача без
@@ -303,6 +303,27 @@ router.post('/openings', async (req, res) => {
     // файлы шаблона, и оставить их значит показать кандидату документ, который
     // уедет вместе с удалённым шаблоном.
     if (template) {
+      const defaults = template.assignments || {};
+      const validSteps = new Set(processSchema.assignableSteps(template.process).map(step => step.key));
+      const requestedIds = [...new Set(Object.entries(defaults)
+        .filter(([stepKey, ids]) => validSteps.has(stepKey) && Array.isArray(ids))
+        .flatMap(([, ids]) => ids))];
+      if (requestedIds.length) {
+        const eligible = await User.findAll({
+          where: { id: { [Op.in]: requestedIds }, isActive: true, ...access.moduleAccessWhere(Sequelize) },
+          attributes: ['id']
+        });
+        const eligibleIds = new Set(eligible.map(user => user.id));
+        const inherited = Object.entries(defaults).flatMap(([stepKey, ids]) => (
+          validSteps.has(stepKey) && Array.isArray(ids)
+            ? [...new Set(ids)].filter(userId => eligibleIds.has(userId)).map(userId => ({
+              vacancyId: vacancy.id, stepKey, medCenterId: null, userId
+            }))
+            : []
+        ));
+        if (inherited.length) await VacAssignment.bulkCreate(inherited, { ignoreDuplicates: true });
+      }
+
       const form = await attachments.copyInto(
         vacancy.form,
         { templateId: template.id },
@@ -761,8 +782,8 @@ router.post('/templates', async (req, res) => {
  * собран в первой вакансии врача. Заставлять повторять его в шаблоне руками
  * значит ровно та же работа с тем же риском забыть половину.
  *
- * Берётся анкета, процесс, письма и приложенные файлы. Исполнители, чаты и
- * филиал не берутся — их в шаблоне нет.
+ * Берутся анкета, процесс, сетевые назначения, письма и приложенные файлы.
+ * Филиальные назначения не берутся: шаблон задаёт только общие значения.
  */
 router.post('/templates/from-opening/:id', loadVacancy, async (req, res) => {
   try {
@@ -777,6 +798,19 @@ router.post('/templates/from-opening/:id', loadVacancy, async (req, res) => {
       emails: vacancy.emails,
       createdBy: req.user.id
     });
+
+    const networkAssignments = await VacAssignment.findAll({
+      where: { vacancyId: vacancy.id, medCenterId: null },
+      attributes: ['stepKey', 'userId']
+    });
+    if (networkAssignments.length) {
+      const assignments = {};
+      for (const row of networkAssignments) {
+        assignments[row.stepKey] ||= [];
+        assignments[row.stepKey].push(row.userId);
+      }
+      await template.update({ assignments });
+    }
 
     const form = await attachments.copyInto(
       template.form,
@@ -814,6 +848,7 @@ router.get('/templates/:id', loadTemplate, async (req, res) => {
       description: template.description,
       form: template.form || { blocks: [], steps: [] },
       process: template.process || { steps: [] },
+      assignments: template.assignments || {},
       emails: template.emails || {},
       attachments: await attachments.listFor({ templateId: template.id }),
       updatedAt: template.updatedAt
@@ -875,11 +910,106 @@ router.put('/templates/:id/process', loadTemplate, async (req, res) => {
     const { errors, process: next } = processSchema.validateProcess(req.body?.process, req.template.form);
     if (errors.length) return res.status(400).json({ error: errors[0], errors });
 
-    await req.template.update({ process: next });
+    const validKeys = new Set((next.steps || []).map(step => step.key));
+    const assignments = Object.fromEntries(
+      Object.entries(req.template.assignments || {}).filter(([key]) => validKeys.has(key))
+    );
+    await req.template.update({ process: next, assignments });
     res.json({ ok: true, updatedAt: req.template.updatedAt });
   } catch (error) {
     console.error('[vacancies] save template process:', error);
     res.status(500).json({ error: 'Не удалось сохранить процесс' });
+  }
+});
+
+/** Общие исполнители шаблона — будущие сетевые значения по умолчанию. */
+router.get('/templates/:id/assignments', loadTemplate, async (req, res) => {
+  try {
+    const template = req.template;
+    const assignments = template.assignments || {};
+    const stepIds = [...new Set(Object.values(assignments).flat().filter(Boolean))];
+    const [eligible, assigned] = await Promise.all([
+      User.findAll({
+        where: { isActive: true, ...access.moduleAccessWhere(Sequelize) },
+        attributes: USER_FIELDS,
+        order: [['displayName', 'ASC']]
+      }),
+      stepIds.length ? User.findAll({ where: { id: { [Op.in]: stepIds } }, attributes: USER_FIELDS }) : []
+    ]);
+    const eligibleIds = new Set(eligible.map(user => user.id));
+    const users = new Map(eligible.map(user => [user.id, { ...user.get({ plain: true }), hasAccess: true }]));
+    for (const user of assigned) {
+      if (!users.has(user.id)) users.set(user.id, { ...user.get({ plain: true }), hasAccess: false });
+    }
+
+    res.json({
+      steps: processSchema.assignableSteps(template.process),
+      users: [...users.values()],
+      assignments: Object.entries(assignments).flatMap(([stepKey, ids]) => (
+        (Array.isArray(ids) ? ids : []).map(userId => ({
+          stepKey,
+          medCenterId: null,
+          userId,
+          user: users.has(userId) ? { ...users.get(userId), hasAccess: eligibleIds.has(userId) } : null
+        }))
+      ))
+    });
+  } catch (error) {
+    console.error('[vacancies] template assignments:', error);
+    res.status(500).json({ error: 'Не удалось загрузить исполнителей шаблона' });
+  }
+});
+
+router.put('/templates/:id/assignments/:stepKey', loadTemplate, async (req, res) => {
+  try {
+    const { stepKey } = req.params;
+    const userIds = Array.isArray(req.body?.userIds) ? [...new Set(req.body.userIds)] : [];
+    const result = await VacTemplate.sequelize.transaction(async transaction => {
+      // Несколько карточек шагов могут сохраняться почти одновременно.
+      // Блокировка строки нужна, чтобы каждое обновление прочитало актуальную
+      // карту назначений и не затёрло выбор из соседней карточки.
+      const template = await VacTemplate.findByPk(req.template.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!template) return { status: 404, error: 'Шаблон не найден' };
+      if (!processSchema.assignableSteps(template.process).some(step => step.key === stepKey)) {
+        return { status: 400, error: 'Неизвестный шаг' };
+      }
+
+      const assignments = { ...(template.assignments || {}) };
+      const existing = new Set(Array.isArray(assignments[stepKey]) ? assignments[stepKey] : []);
+      if (userIds.length) {
+        const users = await User.findAll({
+          where: { id: { [Op.in]: userIds } },
+          attributes: ['id', 'displayName', 'username', 'isActive', 'isAdmin', 'adminAccess'],
+          transaction
+        });
+        if (users.length !== userIds.length) return { status: 400, error: 'Кого-то из выбранных больше нет' };
+        const inactive = users.find(user => !user.isActive);
+        if (inactive) {
+          return { status: 400, error: `${inactive.displayName || inactive.username} больше не работает` };
+        }
+        const barred = users.find(user => !existing.has(user.id) && !access.hasModuleAccess(user));
+        if (barred) {
+          return {
+            status: 400,
+            error: `У ${barred.displayName || barred.username} нет доступа к разделу «Вакансии» — выдайте его в «Пользователях»`
+          };
+        }
+        assignments[stepKey] = userIds;
+      } else {
+        delete assignments[stepKey];
+      }
+
+      await template.update({ assignments }, { transaction });
+      return { stepKey, userIds };
+    });
+    if (result.status) return res.status(result.status).json({ error: result.error });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('[vacancies] save template assignments:', error);
+    res.status(500).json({ error: 'Не удалось сохранить исполнителей шаблона' });
   }
 });
 

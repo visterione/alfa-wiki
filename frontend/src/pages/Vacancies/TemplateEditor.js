@@ -1,10 +1,10 @@
 /**
  * Редактор шаблона должности (ver. 8.34).
  *
- * Тот же конструктор, что и у вакансии, но без всего, что привязано к месту и к
- * людям: филиала, исполнителей, чатов, ссылки и состояния набора. Осталось
- * ровно то, что повторяется от вакансии к вакансии, — анкета, процесс и тексты
- * писем.
+ * Тот же конструктор, что и у вакансии, но без филиала, чатов, ссылки и
+ * состояния набора. Здесь задаются общие исполнители по умолчанию, которые
+ * новая вакансия получает на всю сеть и может переопределить для своего филиала.
+ * Остальное повторяется от вакансии к вакансии — анкета, процесс и письма.
  *
  * Отдельный экран, а не флажок «это шаблон» в редакторе вакансии: у вакансии
  * половина кнопок означала бы «неприменимо», а объяснять, почему «Открыть
@@ -24,6 +24,7 @@ import FormBuilder, { fromStored, toStored } from './FormBuilder';
 import ProcessBuilder, { fromStoredSteps, toStoredSteps } from './ProcessBuilder';
 import EmailsEditor from './EmailsEditor';
 import MainTab from './MainTab';
+import { useTemplateAssignees } from './Assignees';
 
 const TABS = [
   { key: 'main', label: 'Основное' },
@@ -45,6 +46,7 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const assignees = useTemplateAssignees(templateId);
 
   const [errors, setErrors] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -113,7 +115,10 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
     setErrors([]);
     try {
       if (formDirty) await api.saveTemplate(templateId, { title, description, form: toStored(draft) });
-      if (processDirty) await api.saveTemplateProcess(templateId, { process: { steps: toStoredSteps(steps) } });
+      if (processDirty) {
+        await api.saveTemplateProcess(templateId, { process: { steps: toStoredSteps(steps) } });
+        await assignees?.reload();
+      }
       toast.success('Сохранено');
       await load();
       onChanged?.();
@@ -231,7 +236,14 @@ export default function TemplateEditor({ templateId, meta, onBack, onChanged }) 
       )}
 
       {tab === 'process' && (
-        <ProcessBuilder steps={steps} meta={meta} lockedKeys={NOTHING_LOCKED} onChange={setSteps} />
+        <ProcessBuilder
+          steps={steps}
+          meta={meta}
+          lockedKeys={NOTHING_LOCKED}
+          assignees={assignees}
+          assigneeMode="template"
+          onChange={setSteps}
+        />
       )}
 
       {tab === 'mail' && (
