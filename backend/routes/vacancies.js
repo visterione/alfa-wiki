@@ -554,6 +554,33 @@ router.get('/openings/:id/materials', loadVacancy, async (req, res) => {
   }
 });
 
+/** Отправить кандидату прямую ссылку на открытую вакансию. */
+router.post('/openings/:id/send-invite', loadVacancy, async (req, res) => {
+  try {
+    const vacancy = req.vacancy;
+    if (vacancy.status !== 'open') {
+      return res.status(400).json({ error: 'Сначала откройте набор по этой вакансии' });
+    }
+
+    const email = String(req.body?.email || '').trim().slice(0, 254);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Укажите корректный адрес электронной почты' });
+    }
+
+    const result = await mailer.sendDirectInvite(vacancy, email);
+    if (!result.success) {
+      const unconfigured = result.reason === 'smtp_not_configured';
+      return res.status(unconfigured ? 503 : 502).json({
+        error: unconfigured ? 'На сервере не настроена отправка почты' : 'Не удалось отправить письмо'
+      });
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[vacancies] send direct invite:', error);
+    res.status(500).json({ error: 'Не удалось отправить письмо' });
+  }
+});
+
 /**
  * Шаги, на которые никого не назначили.
  *

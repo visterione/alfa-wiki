@@ -14,13 +14,15 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link2, QrCode, Building2 } from 'lucide-react';
+import { Link2, QrCode, Building2, Mail } from 'lucide-react';
 
 import { vacancies as api } from '../../services/api';
 
 export default function ShareTab({ vacancy }) {
   const [materials, setMaterials] = useState(null);
   const [branch, setBranch] = useState(null);
+  const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -36,6 +38,20 @@ export default function ShareTab({ vacancy }) {
   }, [vacancy.id, vacancy.medCenter?.code]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sendInvite = async (event) => {
+    event.preventDefault();
+    setSending(true);
+    try {
+      await api.sendInvite(vacancy.id, { email });
+      toast.success(`Ссылка отправлена на ${email.trim()}`);
+      setEmail('');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Не удалось отправить письмо');
+    } finally {
+      setSending(false);
+    }
+  };
 
   if (!materials) return <div className="vac-empty">Собираем…</div>;
 
@@ -56,6 +72,27 @@ export default function ShareTab({ vacancy }) {
         fileName={`vakansiya-${vacancy.publicCode}`}
         note="Отправьте её человеку лично — откроется сразу анкета."
       />
+      <form className="vac-invite" onSubmit={sendInvite}>
+        <label className="vac-lab">
+          Отправить ссылку на вакансию по электронной почте
+          <input
+            className="vac-input"
+            type="email"
+            autoComplete="email"
+            required
+            maxLength={254}
+            placeholder="name@example.com"
+            value={email}
+            onChange={event => setEmail(event.target.value)}
+          />
+        </label>
+        <button className="vac-btn" type="submit" disabled={sending || vacancy.status !== 'open'}>
+          <Mail size={14} />{sending ? 'Отправляем…' : 'Отправить приглашение'}
+        </button>
+        {vacancy.status !== 'open' && (
+          <div className="vac-hint">Отправить приглашение можно после открытия набора.</div>
+        )}
+      </form>
 
       {branch && (
         <>

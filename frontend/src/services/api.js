@@ -1310,6 +1310,7 @@ export const vacancies = {
   emailPreview:    (id, key)  => api.get(`/vacancies/openings/${id}/email-preview/${key}`),
   specialities:    (id)       => api.get(`/vacancies/openings/${id}/specialities`),
   openingMaterials:(id)       => api.get(`/vacancies/openings/${id}/materials`),
+  sendInvite:      (id, data) => api.post(`/vacancies/openings/${id}/send-invite`, data),
   setStatus:       (id, data) => api.post(`/vacancies/openings/${id}/status`, data),
   deleteOpening:   (id)       => api.delete(`/vacancies/openings/${id}`),
 

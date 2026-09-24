@@ -1089,6 +1089,14 @@ textarea.vac-input { padding: 9px 11px; line-height: 1.55; resize: vertical; }
 }
 .vac-qr-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1 1 260px; }
 .vac-qr-side b { font-size: 15px; font-weight: 600; }
+.vac-invite {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 24px;
+}
+.vac-invite .vac-lab { flex: 1 1 280px; max-width: 440px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Работа с заявками

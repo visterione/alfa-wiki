@@ -20,7 +20,7 @@
 
 const nodemailer = require('nodemailer');
 
-const { publicBase, applicationUrl } = require('./links');
+const { publicBase, applicationUrl, vacancyUrl } = require('./links');
 const formSchema = require('./formSchema');
 
 const FROM = process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>';
@@ -209,6 +209,16 @@ async function sendDraftLink(vacancy, app, vacancyTitle) {
     ${paragraphs(text.body)}
     ${button(applicationUrl(app.accessToken), 'Продолжить заполнение')}
     <p style="color:#86868B;font-size:13px;">Ссылку никому не передавайте: по ней открывается ваша анкета.</p>
+  `));
+}
+
+/** Приглашение конкретному человеку по публичной ссылке на открытую вакансию. */
+async function sendDirectInvite(vacancy, email) {
+  const url = vacancyUrl(vacancy.publicCode);
+  const subject = `Вакансия: ${vacancy.title}`.replace(/[\r\n]+/g, ' ').slice(0, 200);
+  return send(email, subject, layout('Приглашение на вакансию', `
+    <p>Вам отправили ссылку на вакансию «${escapeHtml(vacancy.title)}» в ${escapeHtml(vacancy.medCenter?.name || 'медицинском центре Альфа')}.</p>
+    ${button(url, 'Открыть вакансию')}
   `));
 }
 
@@ -483,6 +493,7 @@ module.exports = {
   publicBase,
   sendVerificationCode,
   sendDraftLink,
+  sendDirectInvite,
   sendSubmitted,
   sendRevision,
   sendRejected,
