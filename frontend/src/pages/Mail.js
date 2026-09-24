@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Inbox, Send, FileText, Trash2, AlertOctagon, Archive, Folder as FolderIcon,
   Paperclip, Flag, Search, RefreshCw, Mail as MailIcon, ArrowLeft,
@@ -8,8 +9,10 @@ import {
   File, FileArchive, FileAudio, FileCode, FileSpreadsheet, FileVideo, Image, Presentation
 } from 'lucide-react';
 import { mail as mailApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import Compose from '../components/mail/Compose';
+import DatePickerInput from '../components/DatePickerInput';
 import { fileUrl } from '../utils/fileUrl';
 import './Mail.css';
 
@@ -40,6 +43,64 @@ const FOLDER_ICONS = {
 function folderIcon(folder) {
   if (folder.path && folder.path.toUpperCase() === 'INBOX') return Inbox;
   return FOLDER_ICONS[folder.specialUse] || FolderIcon;
+}
+
+const MAIL_STATUS_OPTIONS = [
+  ['', 'Любой'], ['непрочитанное', 'Непрочитанные'], ['прочитанное', 'Прочитанные'],
+  ['важное', 'С флажком'], ['безфлажка', 'Без флажка'],
+  ['отвеченное', 'С ответом'], ['неотвеченное', 'Без ответа'],
+];
+
+function MailStatusSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [popupPos, setPopupPos] = useState(null);
+  const rootRef = useRef(null);
+  const menuRef = useRef(null);
+  const selected = MAIL_STATUS_OPTIONS.find(([key]) => key === value)?.[1] || 'Любой';
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOutside = (event) => {
+      if (!rootRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      const menuHeight = Math.min(220, window.innerHeight - 16);
+      const top = rect.bottom + menuHeight + 5 <= window.innerHeight
+        ? rect.bottom + 5
+        : Math.max(8, rect.top - menuHeight - 5);
+      setPopupPos({ position: 'fixed', top, left: rect.left, width: rect.width, maxHeight: menuHeight });
+    }
+    setOpen((current) => !current);
+  };
+
+  return (
+    <div className={`mail-status-select${open ? ' is-open' : ''}`} ref={rootRef}>
+      <button type="button" className="mail-status-select__trigger" aria-haspopup="listbox" aria-expanded={open} onClick={toggle}>
+        <span>{selected}</span><ChevronDown size={14} />
+      </button>
+      {open && popupPos && createPortal(
+        <div ref={menuRef} className="mail-status-select__menu" style={popupPos} role="listbox" aria-label="Статус письма">
+          {MAIL_STATUS_OPTIONS.map(([key, label]) => (
+            <button key={key || 'any'} type="button" role="option" aria-selected={key === value} className={key === value ? 'selected' : ''}
+              onClick={() => { onChange(key); setOpen(false); }}>
+              {label}
+            </button>
+          ))}
+        </div>, document.body
+      )}
+    </div>
+  );
 }
 
 /**
@@ -377,6 +438,7 @@ const HOTKEYS = [
 ];
 
 export default function Mail() {
+  const { isAdmin } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [accountId, setAccountId] = useState(null);
@@ -1025,7 +1087,7 @@ export default function Mail() {
             <span>Папки {busyFolders && <Loader size={12} className="mail-spin" />}</span>
             <span>
               <button type="button" className="mail-icon-btn" onClick={refreshFolders} disabled={busyFolders} title="Обновить папки"><RefreshCw size={14} /></button>
-              <button type="button" className="mail-icon-btn" onClick={() => openFolderEditor()} disabled={busyFolders} title="Создать папку"><FolderPlus size={14} /></button>
+              {isAdmin && <button type="button" className="mail-icon-btn" onClick={() => openFolderEditor()} disabled={busyFolders} title="Создать папку"><FolderPlus size={14} /></button>}
             </span>
           </div>
           <button type="button" className={`mail-folder ${!folderId ? 'active' : ''}`} onClick={() => setFolderId(null)}>
@@ -1038,10 +1100,10 @@ export default function Mail() {
                 <button type="button" className={`mail-folder ${folderId === folder.id ? 'active' : ''}`} onClick={() => setFolderId(folder.id)}>
                   <Icon size={15} />
                   <span className="mail-folder__name">{folder.name}</span>
-                  {folder.unread > 0 && <span className="mail-badge mail-badge--soft">{folder.unread}</span>}
+                  {folder.unread > 0 && <span className="mail-folder__count mail-badge mail-badge--soft">{folder.unread}</span>}
                 </button>
-                {!folder.specialUse && folder.path.toUpperCase() !== 'INBOX' && (
-                  <button type="button" className="mail-folder-settings" onClick={() => openFolderEditor(folder)} title={`Правила папки «${folder.name}»`} aria-label={`Настройки папки ${folder.name}`}>
+                {isAdmin && !folder.specialUse && folder.path.toUpperCase() !== 'INBOX' && (
+                  <button type="button" className="mail-folder-settings" onClick={() => openFolderEditor(folder)} title={`Настройки папки «${folder.name}»`} aria-label={`Настройки папки ${folder.name}`}>
                     <Settings2 size={13} />
                   </button>
                 )}
@@ -1166,18 +1228,21 @@ export default function Mail() {
               ].map(([field, label]) => (
                 <label key={field}>{label}<input value={advanced[field]} onChange={(e) => setAdvanced((v) => ({ ...v, [field]: e.target.value }))} /></label>
               ))}
-              <label>С даты<input type="date" value={advanced.after} onChange={(e) => setAdvanced((v) => ({ ...v, after: e.target.value }))} /></label>
-              <label>По дату включительно<input type="date" value={advanced.before} onChange={(e) => setAdvanced((v) => ({ ...v, before: e.target.value }))} /></label>
+              <label>Статус<MailStatusSelect value={advanced.status} onChange={(status) => setAdvanced((v) => ({ ...v, status }))} /></label>
+              <label>С даты<DatePickerInput compact value={advanced.after} onChange={(after) => setAdvanced((v) => ({ ...v, after }))} placeholder="Выберите дату" /></label>
+              <label>По дату включительно<DatePickerInput compact value={advanced.before} onChange={(before) => setAdvanced((v) => ({ ...v, before }))} placeholder="Выберите дату" /></label>
               <label>Размер от, МБ<input type="number" min="0" step="0.1" value={advanced.larger} onChange={(e) => setAdvanced((v) => ({ ...v, larger: e.target.value }))} /></label>
               <label>Размер до, МБ<input type="number" min="0" step="0.1" value={advanced.smaller} onChange={(e) => setAdvanced((v) => ({ ...v, smaller: e.target.value }))} /></label>
-              <label>Статус<select value={advanced.status} onChange={(e) => setAdvanced((v) => ({ ...v, status: e.target.value }))}>
-                <option value="">Любой</option><option value="непрочитанное">Непрочитанные</option><option value="прочитанное">Прочитанные</option>
-                <option value="важное">С флажком</option><option value="безфлажка">Без флажка</option>
-                <option value="отвеченное">С ответом</option><option value="неотвеченное">Без ответа</option>
-              </select></label>
-              <label className="mail-advanced__check"><input type="checkbox" checked={advanced.attachments} onChange={(e) => setAdvanced((v) => ({ ...v, attachments: e.target.checked }))} /> Только с вложениями</label>
             </div>
-            <div className="mail-advanced__actions"><button type="button" className="mail-chip" onClick={() => { setAdvanced({ text: '', from: '', to: '', cc: '', subject: '', file: '', folder: '', after: '', before: '', larger: '', smaller: '', status: '', attachments: false }); clearSearch(); }}>Сбросить</button><button type="submit" className="mail-btn mail-btn--primary">Применить</button></div>
+            <div className="mail-advanced__actions">
+              <button type="button" className={`mail-advanced__switch${advanced.attachments ? ' active' : ''}`} role="switch" aria-checked={advanced.attachments} onClick={() => setAdvanced((v) => ({ ...v, attachments: !v.attachments }))}>
+                <span className="mail-advanced__switch-track"><span /></span><span>Вложения</span>
+              </button>
+              <div className="mail-advanced__buttons">
+                <button type="button" className="mail-chip" onClick={() => { setAdvanced({ text: '', from: '', to: '', cc: '', subject: '', file: '', folder: '', after: '', before: '', larger: '', smaller: '', status: '', attachments: false }); clearSearch(); }}>Сбросить</button>
+                <button type="submit" className="mail-btn mail-btn--primary">Применить</button>
+              </div>
+            </div>
           </form>
         )}
 
@@ -1518,7 +1583,7 @@ export default function Mail() {
         <div className="mail-folder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setFolderEditor(null); }}>
           <form className="mail-folder-modal" onSubmit={saveFolderRules}>
             <div className="mail-folder-modal__heading">
-              <div><h2>{folderEditor.id ? 'Правила папки' : 'Новая папка'}</h2><p>Правила действуют на новые письма из «Входящих». Уже полученные письма останутся на месте.</p></div>
+              <div><h2>{folderEditor.id ? 'Настройки папки' : 'Новая папка'}</h2></div>
               <button type="button" className="mail-icon-btn" onClick={() => setFolderEditor(null)} aria-label="Закрыть"><X size={18} /></button>
             </div>
             {!folderEditor.id && (
@@ -1527,16 +1592,15 @@ export default function Mail() {
               </label>
             )}
             <label className="mail-folder-modal__field">От кого содержит
-              <input maxLength={320} value={folderRuleForm.fromContains} onChange={(event) => setFolderRuleForm((v) => ({ ...v, fromContains: event.target.value }))} placeholder="например, @insurance.ru" />
+              <input maxLength={320} value={folderRuleForm.fromContains} onChange={(event) => setFolderRuleForm((v) => ({ ...v, fromContains: event.target.value }))} />
             </label>
             <label className="mail-folder-modal__field">Тема содержит
-              <input maxLength={500} value={folderRuleForm.subjectContains} onChange={(event) => setFolderRuleForm((v) => ({ ...v, subjectContains: event.target.value }))} placeholder="например, договор" />
+              <input maxLength={500} value={folderRuleForm.subjectContains} onChange={(event) => setFolderRuleForm((v) => ({ ...v, subjectContains: event.target.value }))} />
             </label>
             <label className="mail-folder-modal__check">
               <input type="checkbox" checked={folderRuleForm.requireAttachments} onChange={(event) => setFolderRuleForm((v) => ({ ...v, requireAttachments: event.target.checked }))} />
               <span>Письмо содержит вложения</span>
             </label>
-            <p className="mail-folder-modal__hint">Достаточно совпадения с любым заполненным условием. Если условия не заданы, автоматическая сортировка выключена.</p>
             <div className="mail-folder-modal__actions">
               <button type="button" className="mail-btn" onClick={() => setFolderEditor(null)}>Отмена</button>
               <button type="submit" className="mail-btn mail-btn--primary" disabled={busyFolders}>{busyFolders ? 'Сохраняем…' : folderEditor.id ? 'Сохранить' : 'Создать папку'}</button>

@@ -18,7 +18,7 @@ function CalendarIcon() {
   );
 }
 
-export default function DatePickerInput({ value, onChange, placeholder = 'Выберите дату' }) {
+export default function DatePickerInput({ value, onChange, placeholder = 'Выберите дату', className = '', compact = false }) {
   const parsed = value ? new Date(value + 'T00:00:00') : null;
   const today = new Date();
 
@@ -105,19 +105,19 @@ export default function DatePickerInput({ value, onChange, placeholder = 'Выб
   };
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div className={className} style={{ position: 'relative' }}>
       <button
         ref={triggerRef}
         type="button"
         onClick={openPicker}
         style={{
           ...btn,
-          width: '100%', height: 40, padding: '0 12px', gap: 8,
-          border: '1px solid var(--border)',
-          background: 'var(--bg-secondary)',
+          width: '100%', height: compact ? 32 : 40, padding: compact ? '0 8px' : '0 12px', gap: compact ? 6 : 8,
+          border: '1px solid var(--border-light, var(--border))',
+          background: compact ? 'var(--bg-primary)' : 'var(--bg-secondary)',
           color: value ? 'var(--text-primary)' : 'var(--text-tertiary)',
-          borderRadius: 'var(--radius-md)',
-          justifyContent: 'flex-start', fontSize: 14,
+          borderRadius: compact ? 8 : 'var(--radius-md)',
+          justifyContent: 'flex-start', fontSize: compact ? 12 : 14,
         }}
       >
         <CalendarIcon />
