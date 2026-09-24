@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Inbox, Send, FileText, Trash2, AlertOctagon, Archive, Folder as FolderIcon,
   Paperclip, Flag, Search, RefreshCw, Mail as MailIcon, ArrowLeft,
-  Download, Loader, Bookmark,
+  Download, Loader, Bookmark, Settings2,
   BookmarkPlus, X, HelpCircle, Reply, ReplyAll, Forward, FileEdit,
   Trash, MessagesSquare, ChevronDown, ChevronRight, SlidersHorizontal, FolderPlus, Plus,
   File, FileArchive, FileAudio, FileCode, FileSpreadsheet, FileVideo, Image, Presentation
@@ -390,6 +390,8 @@ export default function Mail() {
 
   const [showFilter, setShowFilter] = useState(false);
   const [busyFolders, setBusyFolders] = useState(false);
+  const [folderEditor, setFolderEditor] = useState(null);
+  const [folderRuleForm, setFolderRuleForm] = useState({ name: '', fromContains: '', subjectContains: '', requireAttachments: false });
   const [downloading, setDownloading] = useState(null);
   const [moveFolders, setMoveFolders] = useState([]);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -514,19 +516,35 @@ export default function Mail() {
     } finally { setBusyFolders(false); }
   }, [accountId, loadFolders]);
 
-  const createFolder = useCallback(async () => {
-    if (!accountId) return;
-    const name = window.prompt('Название новой папки');
-    if (!name?.trim()) return;
+  const openFolderEditor = useCallback((folder = null) => {
+    setFolderEditor(folder || { id: null });
+    setFolderRuleForm({
+      name: folder?.name || '',
+      fromContains: folder?.fromContains || '',
+      subjectContains: folder?.subjectContains || '',
+      requireAttachments: Boolean(folder?.requireAttachments),
+    });
+  }, []);
+
+  const saveFolderRules = useCallback(async (event) => {
+    event.preventDefault();
+    if (!accountId || !folderEditor) return;
     setBusyFolders(true);
     try {
-      await mailApi.createFolder(accountId, { name: name.trim() });
+      const payload = {
+        fromContains: folderRuleForm.fromContains.trim(),
+        subjectContains: folderRuleForm.subjectContains.trim(),
+        requireAttachments: folderRuleForm.requireAttachments,
+      };
+      if (folderEditor.id) await mailApi.updateFolderRules(folderEditor.id, payload);
+      else await mailApi.createFolder(accountId, { ...payload, name: folderRuleForm.name.trim() });
       await loadFolders(accountId);
-      toast.success('Папка создана на почтовом сервере');
+      setFolderEditor(null);
+      toast.success(folderEditor.id ? 'Правила сохранены. Новые письма будут сортироваться автоматически.' : 'Папка создана на почтовом сервере');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Не удалось создать папку');
+      toast.error(err.response?.data?.error || (folderEditor.id ? 'Не удалось сохранить правила' : 'Не удалось создать папку'));
     } finally { setBusyFolders(false); }
-  }, [accountId, loadFolders]);
+  }, [accountId, folderEditor, folderRuleForm, loadFolders]);
 
   const applyAdvanced = useCallback((event) => {
     event.preventDefault();
@@ -1007,7 +1025,7 @@ export default function Mail() {
             <span>Папки {busyFolders && <Loader size={12} className="mail-spin" />}</span>
             <span>
               <button type="button" className="mail-icon-btn" onClick={refreshFolders} disabled={busyFolders} title="Обновить папки"><RefreshCw size={14} /></button>
-              <button type="button" className="mail-icon-btn" onClick={createFolder} disabled={busyFolders} title="Создать папку"><FolderPlus size={14} /></button>
+              <button type="button" className="mail-icon-btn" onClick={() => openFolderEditor()} disabled={busyFolders} title="Создать папку"><FolderPlus size={14} /></button>
             </span>
           </div>
           <button type="button" className={`mail-folder ${!folderId ? 'active' : ''}`} onClick={() => setFolderId(null)}>
@@ -1016,11 +1034,18 @@ export default function Mail() {
           {folders.map((folder) => {
             const Icon = folderIcon(folder);
             return (
-              <button key={folder.id} type="button" className={`mail-folder ${folderId === folder.id ? 'active' : ''}`} onClick={() => setFolderId(folder.id)}>
-                <Icon size={15} />
-                <span className="mail-folder__name">{folder.name}</span>
-                {folder.unread > 0 && <span className="mail-badge mail-badge--soft">{folder.unread}</span>}
-              </button>
+              <div className="mail-folder-row" key={folder.id}>
+                <button type="button" className={`mail-folder ${folderId === folder.id ? 'active' : ''}`} onClick={() => setFolderId(folder.id)}>
+                  <Icon size={15} />
+                  <span className="mail-folder__name">{folder.name}</span>
+                  {folder.unread > 0 && <span className="mail-badge mail-badge--soft">{folder.unread}</span>}
+                </button>
+                {!folder.specialUse && folder.path.toUpperCase() !== 'INBOX' && (
+                  <button type="button" className="mail-folder-settings" onClick={() => openFolderEditor(folder)} title={`Правила папки «${folder.name}»`} aria-label={`Настройки папки ${folder.name}`}>
+                    <Settings2 size={13} />
+                  </button>
+                )}
+              </div>
             );
           })}
           {activeAccount?.syncState !== 'ready' && (
@@ -1488,6 +1513,37 @@ export default function Mail() {
           </>
         )}
       </section>
+
+      {folderEditor && (
+        <div className="mail-folder-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setFolderEditor(null); }}>
+          <form className="mail-folder-modal" onSubmit={saveFolderRules}>
+            <div className="mail-folder-modal__heading">
+              <div><h2>{folderEditor.id ? 'Правила папки' : 'Новая папка'}</h2><p>Правила действуют на новые письма из «Входящих». Уже полученные письма останутся на месте.</p></div>
+              <button type="button" className="mail-icon-btn" onClick={() => setFolderEditor(null)} aria-label="Закрыть"><X size={18} /></button>
+            </div>
+            {!folderEditor.id && (
+              <label className="mail-folder-modal__field">Название папки
+                <input autoFocus maxLength={100} required value={folderRuleForm.name} onChange={(event) => setFolderRuleForm((v) => ({ ...v, name: event.target.value }))} placeholder="Например, Страховые" />
+              </label>
+            )}
+            <label className="mail-folder-modal__field">От кого содержит
+              <input maxLength={320} value={folderRuleForm.fromContains} onChange={(event) => setFolderRuleForm((v) => ({ ...v, fromContains: event.target.value }))} placeholder="например, @insurance.ru" />
+            </label>
+            <label className="mail-folder-modal__field">Тема содержит
+              <input maxLength={500} value={folderRuleForm.subjectContains} onChange={(event) => setFolderRuleForm((v) => ({ ...v, subjectContains: event.target.value }))} placeholder="например, договор" />
+            </label>
+            <label className="mail-folder-modal__check">
+              <input type="checkbox" checked={folderRuleForm.requireAttachments} onChange={(event) => setFolderRuleForm((v) => ({ ...v, requireAttachments: event.target.checked }))} />
+              <span>Письмо содержит вложения</span>
+            </label>
+            <p className="mail-folder-modal__hint">Достаточно совпадения с любым заполненным условием. Если условия не заданы, автоматическая сортировка выключена.</p>
+            <div className="mail-folder-modal__actions">
+              <button type="button" className="mail-btn" onClick={() => setFolderEditor(null)}>Отмена</button>
+              <button type="submit" className="mail-btn mail-btn--primary" disabled={busyFolders}>{busyFolders ? 'Сохраняем…' : folderEditor.id ? 'Сохранить' : 'Создать папку'}</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {composeDraft && (
         <Compose

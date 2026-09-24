@@ -96,6 +96,10 @@ module.exports = function defineMailModels(sequelize, DataTypes) {
     specialUse:    { type: DataTypes.STRING(20) },
     flags:         { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
     selectable:    { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    fromContains:  { type: DataTypes.STRING(320) },
+    subjectContains: { type: DataTypes.STRING(500) },
+    requireAttachments: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    rulesUpdatedAt: { type: DataTypes.DATE },
     // BIGINT приходит из pg строкой, и это правильно: UID и MODSEQ у активного
     // ящика перерастают 2^53, а молча потерять точность здесь означало бы
     // перезалить папку с нуля.

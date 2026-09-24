@@ -152,8 +152,9 @@ function folderOrder(box) {
  * писем реально пришло: сервер отдаёт только существующие, и дырки в нумерации
  * — норма.
  */
-async function fetchEnvelopes(client, account, folder, range) {
+async function fetchEnvelopes(client, account, folder, range, { routeCandidates, routeFromUid } = {}) {
   const rows = [];
+  let fetched = 0;
 
   for await (const msg of client.fetch(range, {
     uid: true,
@@ -171,7 +172,7 @@ async function fetchEnvelopes(client, account, folder, range) {
     const references = parseReferences(msg.headers);
     const flags = msg.flags ? [...msg.flags] : [];
 
-    rows.push({
+    const row = {
       accountId: account.id,
       folderId: folder.id,
       uid: String(msg.uid),
@@ -193,13 +194,18 @@ async function fetchEnvelopes(client, account, folder, range) {
       hasAttachments: hasRealAttachments(msg.bodyStructure),
       attachmentsCount: countRealAttachments(msg.bodyStructure),
       modSeq: toBigIntString(msg.modseq),
-    });
+    };
+    rows.push(row);
+    fetched += 1;
+    if (routeCandidates && routeFromUid !== null && routeFromUid !== undefined && BigInt(msg.uid) >= routeFromUid) {
+      routeCandidates.push(row);
+    }
 
     if (rows.length >= ENVELOPE_BATCH) await flushEnvelopes(rows.splice(0, rows.length));
   }
 
   if (rows.length) await flushEnvelopes(rows);
-  return rows.length;
+  return fetched;
 }
 
 /**
@@ -255,9 +261,12 @@ async function flushEnvelopes(rows) {
 
 async function syncFolder(client, account, folder, capabilities) {
   const box = await client.mailboxOpen(folder.path, { readOnly: true });
+  let previousUidNext = folder.uidNext ? BigInt(folder.uidNext) : null;
+  const routeCandidates = [];
 
   const remoteValidity = toBigIntString(box.uidValidity);
   const localValidity = toBigIntString(folder.uidValidity);
+  if (localValidity && remoteValidity !== localValidity) previousUidNext = null;
 
   // Смена UIDVALIDITY означает, что нумерация на сервере началась заново и все
   // наши UID указывают в пустоту. Единственный честный выход — перезалить папку.
@@ -277,7 +286,10 @@ async function syncFolder(client, account, folder, capabilities) {
   // 1. Новое. Всё, что старше известного нам максимума.
   const from = local.maxUid ? BigInt(local.maxUid) + 1n : 1n;
   if (BigInt(box.uidNext || 1) > from) {
-    fetched += await fetchEnvelopes(client, account, folder, `${from}:*`);
+    fetched += await fetchEnvelopes(client, account, folder, `${from}:*`, {
+      routeCandidates: folder.path.toUpperCase() === 'INBOX' ? routeCandidates : null,
+      routeFromUid: previousUidNext,
+    });
   }
 
   // 2. Архив. Первичная заливка идёт вниз от самого старого известного письма,
@@ -318,7 +330,58 @@ async function syncFolder(client, account, folder, capabilities) {
   await folder.save();
 
   await client.mailboxClose();
+  if (routeCandidates.length) await autoRouteNewMessages(client, account, folder, routeCandidates);
   return fetched;
+}
+
+function matchesFolderRule(message, folder) {
+  if (folder.rulesUpdatedAt && new Date(message.receivedAt) < new Date(folder.rulesUpdatedAt)) return false;
+  const tests = [];
+  if (folder.fromContains) tests.push(`${message.fromEmail || ''} ${message.fromName || ''}`.toLowerCase().includes(folder.fromContains.toLowerCase()));
+  if (folder.subjectContains) tests.push(String(message.subject || '').toLowerCase().includes(folder.subjectContains.toLowerCase()));
+  if (folder.requireAttachments) tests.push(Boolean(message.hasAttachments));
+  return tests.some(Boolean);
+}
+
+/**
+ * Автосортировка работает только для UID, появившихся после предыдущей
+ * синхронизации INBOX. Начальная заливка и историческая дозагрузка сюда не
+ * попадают, поэтому настройка никогда не перекладывает старую переписку.
+ */
+async function autoRouteNewMessages(client, account, inbox, candidates) {
+  const targets = await MailFolder.findAll({
+    where: { accountId: account.id, selectable: true },
+    order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+  });
+  const rules = targets.filter((folder) => folder.id !== inbox.id && !folder.specialUse && folder.path.toUpperCase() !== 'INBOX' && (
+    folder.fromContains || folder.subjectContains || folder.requireAttachments
+  ));
+  if (!rules.length) return;
+
+  await client.mailboxOpen(inbox.path, { readOnly: false });
+  for (const message of candidates) {
+    const target = rules.find((folder) => matchesFolderRule(message, folder));
+    if (!target) continue;
+    try {
+      let result;
+      if (client.capabilities.has('MOVE')) {
+        result = await client.messageMove(String(message.uid), target.path, { uid: true });
+      } else {
+        result = await client.messageCopy(String(message.uid), target.path, { uid: true });
+        await client.messageFlagsAdd(String(message.uid), ['\\Deleted'], { uid: true });
+        await client.messageDelete(String(message.uid), { uid: true });
+      }
+      const newUid = result?.uidMap?.get(Number(message.uid));
+      const local = await MailMessage.findOne({ where: { folderId: inbox.id, uid: String(message.uid) } });
+      if (local) {
+        if (newUid) await local.update({ folderId: target.id, uid: String(newUid) });
+        else await local.destroy(); // папка назначения получит копию при своей следующей синхронизации
+      }
+    } catch (error) {
+      console.warn(`📬 Почта: не удалось автоматически переместить письмо UID ${message.uid}:`, error.message);
+    }
+  }
+  await client.mailboxClose();
 }
 
 async function fetchFlagsChangedSince(client, folder, modSeq) {

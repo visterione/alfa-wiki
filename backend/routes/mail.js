@@ -123,6 +123,7 @@ router.get('/accounts/:accountId/folders', authenticate, async (req, res) => {
 
     const [folders] = await sequelize.query(`
       SELECT f.id, f.path, f.name, f."specialUse", f."sortOrder", f."messagesTotal",
+             f."fromContains", f."subjectContains", f."requireAttachments",
              f."backfillDone", f."lastSyncAt",
              COUNT(m.id) FILTER (WHERE NOT m."isSeen" AND NOT m."pendingDelete")::int AS unread,
              COUNT(m.id) FILTER (WHERE NOT m."pendingDelete")::int AS "inMirror"
@@ -166,6 +167,7 @@ router.post('/accounts/:accountId/folders', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Нет доступа к этому ящику' });
     }
     const name = String(req.body.name || '').trim();
+    const rules = readFolderRules(req.body);
     // Разделитель каталога берём с сервера: пользователь задаёт только один
     // сегмент. Иначе можно нечаянно создать иерархию или системную папку.
     if (!name || name.length > 100 || /[\\/\x00-\x1f]/.test(name) || /^inbox$/i.test(name)) {
@@ -188,11 +190,50 @@ router.post('/accounts/:accountId/folders', authenticate, async (req, res) => {
       await syncFolders(client, account);
     });
     const folder = await MailFolder.findOne({ where: { accountId: account.id, path: folderPath } });
+    if (folder) await folder.update({ ...rules, rulesUpdatedAt: hasFolderRule(rules) ? new Date() : null });
     audit(req, { accountId: account.id, action: 'folder_create', detail: { path: folderPath } });
     res.status(201).json({ folder });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
     console.error('❌ Почта: папка не создалась:', error);
     res.status(502).json({ error: 'Не удалось создать папку на почтовом сервере' });
+  }
+});
+
+function readFolderRules(body = {}) {
+  const fromContains = String(body.fromContains || '').trim();
+  const subjectContains = String(body.subjectContains || '').trim();
+  if (fromContains.length > 320 || subjectContains.length > 500) {
+    const error = new Error('Отправитель — до 320 символов, тема — до 500');
+    error.status = 400;
+    throw error;
+  }
+  return {
+    fromContains: fromContains || null,
+    subjectContains: subjectContains || null,
+    requireAttachments: Boolean(body.requireAttachments),
+  };
+}
+
+function hasFolderRule(rules) {
+  return Boolean(rules.fromContains || rules.subjectContains || rules.requireAttachments);
+}
+
+router.put('/folders/:folderId/rules', authenticate, async (req, res) => {
+  try {
+    const folder = await MailFolder.findByPk(req.params.folderId);
+    if (!folder) return res.status(404).json({ error: 'Папка не найдена' });
+    if (!await accessTo(req.user.id, folder.accountId)) {
+      return res.status(403).json({ error: 'Нет доступа к этому ящику' });
+    }
+    const rules = readFolderRules(req.body);
+    await folder.update({ ...rules, rulesUpdatedAt: hasFolderRule(rules) ? new Date() : null });
+    audit(req, { accountId: folder.accountId, action: 'folder_rules_update', detail: { path: folder.path } });
+    res.json({ folder });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    console.error('❌ Почта: правила папки не сохранились:', error);
+    res.status(500).json({ error: 'Не удалось сохранить правила папки' });
   }
 });
 
