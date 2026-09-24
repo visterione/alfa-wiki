@@ -130,6 +130,8 @@ export function useTemplateAssignees(templateId) {
     }
   }, [templateId]);
 
+  useEffect(() => { load(); }, [load]);
+
   const save = useCallback(async (stepKey, _medCenterId, userIds) => {
     setSaving(stepKey);
     try {
