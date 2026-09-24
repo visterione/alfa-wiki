@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ExternalLink, LoaderCircle, RefreshCw, Search, Stethoscope } from 'lucide-react';
+import { ExternalLink, Loader2, RefreshCw, Search, Stethoscope } from 'lucide-react';
 import { marketing } from '../../services/api';
 import './Marketing.css';
 
@@ -89,7 +89,7 @@ export default function DoctorsTab() {
       <div><h1><Stethoscope size={21}/> Врачи</h1>
         <p>Сверка карточек врачей клиник с медицинскими площадками.</p></div>
       <button className="ola-btn primary" onClick={start} disabled={loading}>
-        {loading ? <LoaderCircle className="mk-spin" size={16}/> : <RefreshCw size={16}/>}
+        {loading ? <Loader2 className="mk-spin" size={16}/> : <RefreshCw size={16}/>}
         {scanId ? 'Обновить список' : 'Собрать список врачей'}
       </button>
     </div>
@@ -127,7 +127,7 @@ export default function DoctorsTab() {
                     onChange={event => setUrls(prev => ({ ...prev, [key]: event.target.value }))}/>
                   <button className="ola-btn primary" onClick={() => compare(sourceIndex, doctorIndex, platform, key)}
                     disabled={!urls[key] || busy === key}>
-                    {busy === key ? <LoaderCircle className="mk-spin" size={15}/> : 'Сверить'}
+                    {busy === key ? <Loader2 className="mk-spin" size={15}/> : 'Сверить'}
                   </button>
                 </div>
                 {comparison?.error ? <div className="mk-doctor-error">{comparison.error}</div>
