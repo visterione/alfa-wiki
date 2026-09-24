@@ -1639,6 +1639,7 @@ export const mail = {
   refreshFolders: (accountId) => api.post(`/mail/accounts/${accountId}/folders/refresh`),
   createFolder: (accountId, data) => api.post(`/mail/accounts/${accountId}/folders`, data),
   updateFolderRules: (folderId, data) => api.put(`/mail/folders/${folderId}/rules`, data),
+  deleteFolder: (folderId) => api.delete(`/mail/folders/${folderId}`),
   moveMessage: (id, folderId) => api.post(`/mail/messages/${id}/move`, { folderId }),
 
   admin: {

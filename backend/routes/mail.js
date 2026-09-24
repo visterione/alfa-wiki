@@ -237,6 +237,36 @@ router.put('/folders/:folderId/rules', authenticate, async (req, res) => {
   }
 });
 
+router.delete('/folders/:folderId', authenticate, async (req, res) => {
+  try {
+    if (!req.user.isAdmin) return res.status(403).json({ error: 'Удалять папки может только администратор' });
+    const folder = await MailFolder.findByPk(req.params.folderId);
+    if (!folder) return res.status(404).json({ error: 'Папка не найдена' });
+    if (!await accessTo(req.user.id, folder.accountId)) {
+      return res.status(403).json({ error: 'Нет доступа к этому ящику' });
+    }
+    if (folder.specialUse || folder.path.toUpperCase() === 'INBOX') {
+      return res.status(400).json({ error: 'Системную папку удалить нельзя' });
+    }
+    const delimiter = folder.delimiter || '/';
+    const children = await MailFolder.findAll({ where: { accountId: folder.accountId } });
+    if (children.some((child) => child.id !== folder.id && child.path.startsWith(`${folder.path}${delimiter}`))) {
+      return res.status(409).json({ error: 'Сначала удалите вложенные папки' });
+    }
+
+    const account = await MailAccount.scope('withSecret').findByPk(folder.accountId);
+    if (!account || !account.isActive) return res.status(404).json({ error: 'Ящик не найден' });
+    await withConnection(account, (client) => client.mailboxDelete(folder.path));
+    audit(req, { accountId: folder.accountId, action: 'folder_delete', detail: { path: folder.path, name: folder.name } });
+    await folder.destroy();
+    res.json({ ok: true });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    console.error('❌ Почта: папка не удалилась:', error);
+    res.status(502).json({ error: 'Не удалось удалить папку на почтовом сервере. Возможно, сначала нужно удалить вложенные папки.' });
+  }
+});
+
 // ── Список писем ──────────────────────────────────────────────────────────
 
 // GET /api/mail/sender-logo?domain=example.com

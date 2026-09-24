@@ -453,6 +453,7 @@ export default function Mail() {
   const [showFilter, setShowFilter] = useState(false);
   const [busyFolders, setBusyFolders] = useState(false);
   const [folderEditor, setFolderEditor] = useState(null);
+  const [folderDeleteConfirm, setFolderDeleteConfirm] = useState(false);
   const [folderRuleForm, setFolderRuleForm] = useState({ name: '', fromContains: '', subjectContains: '', requireAttachments: false });
   const [downloading, setDownloading] = useState(null);
   const [moveFolders, setMoveFolders] = useState([]);
@@ -580,6 +581,7 @@ export default function Mail() {
 
   const openFolderEditor = useCallback((folder = null) => {
     setFolderEditor(folder || { id: null });
+    setFolderDeleteConfirm(false);
     setFolderRuleForm({
       name: folder?.name || '',
       fromContains: folder?.fromContains || '',
@@ -607,6 +609,26 @@ export default function Mail() {
       toast.error(err.response?.data?.error || (folderEditor.id ? 'Не удалось сохранить правила' : 'Не удалось создать папку'));
     } finally { setBusyFolders(false); }
   }, [accountId, folderEditor, folderRuleForm, loadFolders]);
+
+  const deleteFolder = useCallback(async () => {
+    if (!folderEditor?.id) return;
+    setBusyFolders(true);
+    try {
+      await mailApi.deleteFolder(folderEditor.id);
+      if (folderId === folderEditor.id) setFolderId(null);
+      if (opened?.message?.folderId === folderEditor.id) {
+        setOpened(null);
+        setOpenId(null);
+        setThread([]);
+      }
+      await loadFolders(accountId);
+      setFolderEditor(null);
+      setFolderDeleteConfirm(false);
+      toast.success('Папка удалена вместе с письмами на почтовом сервере');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось удалить папку');
+    } finally { setBusyFolders(false); }
+  }, [accountId, folderEditor, folderId, loadFolders, opened]);
 
   const applyAdvanced = useCallback((event) => {
     event.preventDefault();
@@ -1601,9 +1623,23 @@ export default function Mail() {
               <input type="checkbox" checked={folderRuleForm.requireAttachments} onChange={(event) => setFolderRuleForm((v) => ({ ...v, requireAttachments: event.target.checked }))} />
               <span>Письмо содержит вложения</span>
             </label>
-            <div className="mail-folder-modal__actions">
-              <button type="button" className="mail-btn" onClick={() => setFolderEditor(null)}>Отмена</button>
-              <button type="submit" className="mail-btn mail-btn--primary" disabled={busyFolders}>{busyFolders ? 'Сохраняем…' : folderEditor.id ? 'Сохранить' : 'Создать папку'}</button>
+            {folderEditor.id && isAdmin && folderDeleteConfirm && (
+              <div className="mail-folder-modal__delete-confirm" role="alert">
+                <p>Удалить папку «{folderEditor.name}» и все письма в ней?</p>
+                <div>
+                  <button type="button" className="mail-btn" onClick={() => setFolderDeleteConfirm(false)}>Отмена</button>
+                  <button type="button" className="mail-btn mail-btn--danger" onClick={deleteFolder} disabled={busyFolders}>{busyFolders ? 'Удаляем…' : 'Удалить папку'}</button>
+                </div>
+              </div>
+            )}
+            <div className="mail-folder-modal__footer">
+              {folderEditor.id && isAdmin && !folderDeleteConfirm && (
+                <button type="button" className="mail-folder-modal__delete" onClick={() => setFolderDeleteConfirm(true)}>Удалить папку</button>
+              )}
+              <div className="mail-folder-modal__actions">
+                <button type="button" className="mail-btn" onClick={() => setFolderEditor(null)}>Отмена</button>
+                <button type="submit" className="mail-btn mail-btn--primary" disabled={busyFolders}>{busyFolders ? 'Сохраняем…' : folderEditor.id ? 'Сохранить' : 'Создать папку'}</button>
+              </div>
             </div>
           </form>
         </div>
