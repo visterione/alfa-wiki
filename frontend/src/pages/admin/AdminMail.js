@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Plus, Trash2, RefreshCw, Plug, UserPlus, X, Check, AlertTriangle,
+  Trash2, RefreshCw, Plug, UserPlus, X, AlertTriangle, Pencil,
   Mail as MailIcon, ScrollText, Loader, Send, Search, UsersRound
 } from 'lucide-react';
 import { mail as mailApi, users as usersApi } from '../../services/api';
@@ -99,6 +99,7 @@ export default function AdminMail() {
   const [testResult, setTestResult] = useState(null);
 
   const [grantFor, setGrantFor] = useState(null);
+  const [accessFor, setAccessFor] = useState(null);
   const [grantMode, setGrantMode] = useState('group');
   const [staffQuery, setStaffQuery] = useState('');
   const [groupForm, setGroupForm] = useState(EMPTY_GROUP);
@@ -208,10 +209,9 @@ export default function AdminMail() {
   };
 
   const remove = async (account) => {
-    const total = account.stats?.total || 0;
     const ok = window.confirm(
       `Удалить ящик ${account.email}?\n\n` +
-      `Из портала пропадут ${total} писем и все выданные доступы. ` +
+      'Из портала пропадут письма и все выданные доступы. ' +
       'На сервере reg.ru письма останутся нетронутыми — при повторном заведении они загрузятся заново.'
     );
     if (!ok) return;
@@ -308,6 +308,13 @@ export default function AdminMail() {
     setGroupForm(EMPTY_GROUP);
   };
 
+  const toggleAccess = (accountId) => {
+    setAccessFor((current) => current === accountId ? null : accountId);
+    setGrantFor(null);
+    setStaffQuery('');
+    setGroupForm(EMPTY_GROUP);
+  };
+
   const openAudit = async (account) => {
     setAuditFor(account.id === auditFor ? null : account.id);
     if (account.id === auditFor) return;
@@ -332,6 +339,31 @@ export default function AdminMail() {
   }, [staff, staffQuery, grantFor, accounts]);
 
   const providerNote = MAIL_PRESETS.find((preset) => preset.key === form.provider)?.note;
+  const accountGroups = useMemo(() => {
+    const grouped = new Map();
+    accounts.forEach((account) => {
+      const center = account.medCenter;
+      const key = center?.id || '__without-center__';
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          key,
+          name: center?.displayName || center?.name || 'Без медцентра',
+          withoutCenter: !center,
+          accounts: [],
+        });
+      }
+      grouped.get(key).accounts.push(account);
+    });
+    return [...grouped.values()]
+      .sort((a, b) => Number(a.withoutCenter) - Number(b.withoutCenter)
+        || a.name.localeCompare(b.name, 'ru'))
+      .map((group) => ({
+        ...group,
+        accounts: group.accounts.sort((a, b) => (
+          (a.displayName || a.email).localeCompare(b.displayName || b.email, 'ru')
+        )),
+      }));
+  }, [accounts]);
 
   if (loading) {
     return <div className="amail-page amail-page--center"><Loader className="amail-spin" size={28} /></div>;
@@ -340,15 +372,9 @@ export default function AdminMail() {
   return (
     <div className="amail-page">
       <header className="amail-head">
-        <div>
-          <h1><MailIcon size={22} /> Почтовые ящики</h1>
-          <p>
-            Ящики заводятся здесь, сотрудники получают доступ к готовому — своих паролей
-            никто не вводит. Письма забирает отдельный процесс синхронизации.
-          </p>
-        </div>
+        <h1><MailIcon size={22} /> Почтовые ящики</h1>
         <button type="button" className="amail-btn amail-btn--primary" onClick={startCreate}>
-          <Plus size={16} /> Добавить ящик
+          Добавить ящик
         </button>
       </header>
 
@@ -500,84 +526,71 @@ export default function AdminMail() {
         </div>
       )}
 
-      <div className="amail-list">
-        {accounts.map((account) => {
-          const state = SYNC_STATES[account.syncState] || SYNC_STATES.idle;
-          const caps = account.capabilities || {};
-          return (
-            <article key={account.id} className="amail-card">
-              <div className="amail-card__head">
-                <div className="amail-card__title">
-                  <h3>{account.displayName}</h3>
-                  <span className="amail-email">{account.email}</span>
-                  {account.medCenter && <span className="amail-chip">{account.medCenter.name}</span>}
-                  {!account.isActive && <span className="amail-chip amail-chip--off">выключен</span>}
-                </div>
-                <span className={`amail-state amail-state--${state.tone}`}>{state.label}</span>
-              </div>
+      {!!accounts.length && (
+        <div className="amail-table-wrap">
+          <table className="amail-table">
+            <thead>
+              <tr>
+                <th>Ящик</th>
+                <th>Состояние</th>
+                <th className="amail-table__access-col">Доступ</th>
+                <th className="amail-table__actions-col"><span className="sr-only">Действия</span></th>
+              </tr>
+            </thead>
+            {accountGroups.map((group) => (
+              <tbody key={group.key}>
+                <tr className="amail-table__group"><th colSpan="4">{group.name}</th></tr>
+                {group.accounts.map((account) => {
+                  const state = SYNC_STATES[account.syncState] || SYNC_STATES.idle;
+                  return (
+                    <React.Fragment key={account.id}>
+                      <tr className="amail-table__account">
+                        <td>
+                          <div className="amail-table__mailbox">
+                            <strong>{account.displayName}</strong>
+                            <span>{account.email}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`amail-state amail-state--${state.tone}`}>{state.label}</span>
+                          {account.lastError && <AlertTriangle className="amail-status-error" size={15} title={account.lastError} />}
+                          {!account.isActive && <span className="amail-chip amail-chip--off">выключен</span>}
+                        </td>
+                        <td>
+                          <button
+                            type="button" className={`amail-square-btn ${accessFor === account.id ? 'is-active' : ''}`}
+                            title="Доступ" aria-label="Доступ" aria-expanded={accessFor === account.id}
+                            onClick={() => toggleAccess(account.id)}
+                          >
+                            <UsersRound size={16} />
+                          </button>
+                        </td>
+                        <td className="amail-table__actions">
+                          <button type="button" className="amail-square-btn" title="Изменить" aria-label="Изменить" onClick={() => startEdit(account)}><Pencil size={16} /></button>
+                          <button type="button" className="amail-square-btn" title="Проверить связь" aria-label="Проверить связь" disabled={testing === account.id} onClick={() => testConnection(account)}>
+                            {testing === account.id ? <Loader className="amail-spin" size={16} /> : <Plug size={16} />}
+                          </button>
+                          <button type="button" className="amail-square-btn" title="Синхронизировать" aria-label="Синхронизировать" onClick={() => syncNow(account)}><RefreshCw size={16} /></button>
+                          <button type="button" className={`amail-square-btn ${auditFor === account.id ? 'is-active' : ''}`} title="Журнал" aria-label="Журнал" onClick={() => openAudit(account)}><ScrollText size={16} /></button>
+                          <button type="button" className="amail-square-btn amail-square-btn--danger" title="Удалить" aria-label="Удалить" onClick={() => remove(account)}><Trash2 size={16} /></button>
+                        </td>
+                      </tr>
 
-              <div className="amail-stats">
-                <span><b>{account.stats?.total || 0}</b> писем</span>
-                <span><b>{account.stats?.unread || 0}</b> непрочитанных</span>
-                <span><b>{account.stats?.pending || 0}</b> без тела</span>
-                {account.lastSyncAt && (
-                  <span className="amail-muted">
-                    синхронизация {new Date(account.lastSyncAt).toLocaleString('ru-RU')}
-                  </span>
-                )}
-              </div>
+                      {testResult && testResult.id === account.id && (
+                        <tr className="amail-table__detail"><td colSpan="4">
+                          <div className={`amail-test ${testResult.ok === false ? 'bad' : 'ok'}`}>
+                            {testResult.ok === false
+                              ? <>Сервер отказал: {testResult.error}</>
+                              : <>Соединение установлено</>}
+                          </div>
+                        </td></tr>
+                      )}
 
-              {account.lastError && (
-                <div className="amail-error">
-                  <AlertTriangle size={15} /> {account.lastError}
-                </div>
-              )}
-
-              {/* Возможности сервера показываем не из любопытства: от CONDSTORE
-                  зависит, дорого или дёшево обходится синхронизация, и когда
-                  ящик начнёт отставать, это первое, куда стоит посмотреть. */}
-              {caps.raw && (
-                <div className="amail-caps">
-                  {[['CONDSTORE', caps.condstore], ['QRESYNC', caps.qresync], ['IDLE', caps.idle],
-                    ['MOVE', caps.move], ['UIDPLUS', caps.uidplus], ['SPECIAL-USE', caps.specialUse]]
-                    .map(([name, ok]) => (
-                      <span key={name} className={`amail-cap ${ok ? 'yes' : 'no'}`}>
-                        {ok ? <Check size={11} /> : <X size={11} />} {name}
-                      </span>
-                    ))}
-                </div>
-              )}
-
-              {testResult && testResult.id === account.id && (
-                <div className={`amail-test ${testResult.ok === false ? 'bad' : 'ok'}`}>
-                  {testResult.ok === false
-                    ? <>Сервер отказал: {testResult.error}</>
-                    : <>Подключение за {testResult.ms} мс, папок на сервере: {testResult.folders?.length}</>}
-                </div>
-              )}
-
-              <div className="amail-actions">
-                <button type="button" className="amail-btn" onClick={() => startEdit(account)}>Изменить</button>
-                <button type="button" className="amail-btn" disabled={testing === account.id} onClick={() => testConnection(account)}>
-                  <Plug size={15} /> {testing === account.id ? 'Проверяем…' : 'Проверить связь'}
-                </button>
-                <button type="button" className="amail-btn" onClick={() => syncNow(account)}>
-                  <RefreshCw size={15} /> Синхронизировать
-                </button>
-                <button type="button" className="amail-btn" onClick={() => openAudit(account)}>
-                  <ScrollText size={15} /> Журнал
-                </button>
-                <button type="button" className="amail-btn amail-btn--danger" onClick={() => remove(account)}>
-                  <Trash2 size={15} /> Удалить
-                </button>
-              </div>
-
-              {/* ── Доступы ── */}
-              <div className="amail-access">
+                      {accessFor === account.id && (
+                        <tr className="amail-table__detail"><td colSpan="4">
+                          <div className="amail-access">
                 <div className="amail-access__head">
-                  <h4>
-                    Доступ: персонально {account.access.length}, групп {account.accessRules?.length || 0}
-                  </h4>
+                  <h4>Доступ</h4>
                   <button
                     type="button"
                     className="amail-btn amail-btn--small"
@@ -690,102 +703,83 @@ export default function AdminMail() {
                   </div>
                 )}
 
-                {!account.access.length && !account.accessRules?.length && (
+                {!account.access.length && !account.accessRules?.length ? (
                   <div className="amail-muted">Доступ пока никому не выдан</div>
-                )}
-
-                {!!account.accessRules?.length && (
-                  <div className="amail-access__section-label">Групповые правила</div>
-                )}
-
-                {(account.accessRules || []).map((rule) => (
-                  <div key={rule.id} className="amail-person amail-person--group">
-                    <UsersRound size={16} className="amail-person__group-icon" />
-                    <span className="amail-person__name">
-                      {[rule.medCenter?.displayName || rule.medCenter?.name, rule.role?.name]
-                        .filter(Boolean).join(' + ')}
-                      <small>
-                        {rule.medCenter && rule.role ? 'медцентр И роль' : rule.medCenter ? 'весь медцентр' : 'вся роль'}
-                        {' · '}{rule.matchedUsers} сотрудников
-                      </small>
-                    </span>
-                    <label className="amail-toggle" title="Может отправлять письма от имени ящика">
-                      <input
-                        type="checkbox" checked={rule.canSend} disabled={accessSaving}
-                        onChange={(e) => saveAccessRule(account.id, rule, { canSend: e.target.checked })}
-                      />
-                      <Send size={13} /> отправка
-                    </label>
-                    <label className="amail-toggle" title="Удаление письма стирает его и на сервере">
-                      <input
-                        type="checkbox" checked={rule.canDelete} disabled={accessSaving}
-                        onChange={(e) => saveAccessRule(account.id, rule, { canDelete: e.target.checked })}
-                      />
-                      <Trash2 size={13} /> удаление
-                    </label>
-                    <button
-                      type="button" className="amail-icon-btn" title="Удалить групповое правило"
-                      onClick={() => revokeAccessRule(account.id, rule)}
-                    >
-                      <X size={15} />
-                    </button>
+                ) : (
+                  <div className="amail-access-table-wrap">
+                    <table className="amail-access-table">
+                      <thead>
+                        <tr>
+                          <th>Кому</th>
+                          <th title="Отправка" aria-label="Отправка"><Send size={14} /></th>
+                          <th title="Удаление" aria-label="Удаление"><Trash2 size={14} /></th>
+                          <th><span className="sr-only">Отозвать доступ</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(account.accessRules || []).map((rule) => (
+                          <tr key={`rule-${rule.id}`}>
+                            <td>
+                              <span className="amail-access-table__name">
+                                <UsersRound size={15} />
+                                {[rule.medCenter?.displayName || rule.medCenter?.name, rule.role?.name].filter(Boolean).join(' + ')}
+                              </span>
+                            </td>
+                            <td><input aria-label="Отправка" title="Может отправлять письма от имени ящика" type="checkbox" checked={rule.canSend} disabled={accessSaving} onChange={(e) => saveAccessRule(account.id, rule, { canSend: e.target.checked })} /></td>
+                            <td><input aria-label="Удаление" title="Удаление письма стирает его и на сервере" type="checkbox" checked={rule.canDelete} disabled={accessSaving} onChange={(e) => saveAccessRule(account.id, rule, { canDelete: e.target.checked })} /></td>
+                            <td><button type="button" className="amail-icon-btn" title="Удалить правило" aria-label="Удалить правило" onClick={() => revokeAccessRule(account.id, rule)}><X size={15} /></button></td>
+                          </tr>
+                        ))}
+                        {account.access.map((access) => (
+                          <tr key={`user-${access.id}`}>
+                            <td>
+                              <span className="amail-access-table__name">
+                                {access.user?.displayName || access.user?.username || '—'}
+                                {access.user?.username && <small>{access.user.username}</small>}
+                              </span>
+                            </td>
+                            <td><input aria-label="Отправка" title="Может отправлять письма от имени ящика" type="checkbox" checked={access.canSend} onChange={(e) => changeRights(account.id, access, { canSend: e.target.checked })} /></td>
+                            <td><input aria-label="Удаление" title="Удаление письма стирает его и на сервере" type="checkbox" checked={access.canDelete} onChange={(e) => changeRights(account.id, access, { canDelete: e.target.checked })} /></td>
+                            <td><button type="button" className="amail-icon-btn" title="Забрать доступ" aria-label="Забрать доступ" onClick={() => revoke(account.id, access)}><X size={15} /></button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-
-                {!!account.access.length && (
-                  <div className="amail-access__section-label">Персональные доступы</div>
                 )}
+                          </div>
+                        </td></tr>
+                      )}
 
-                {account.access.map((access) => (
-                  <div key={access.id} className="amail-person">
-                    <span className="amail-person__name">
-                      {access.user?.displayName || access.user?.username || '—'}
-                      <small>{access.user?.username}</small>
-                    </span>
-                    <label className="amail-toggle" title="Может отправлять письма от имени ящика">
-                      <input
-                        type="checkbox" checked={access.canSend}
-                        onChange={(e) => changeRights(account.id, access, { canSend: e.target.checked })}
-                      />
-                      <Send size={13} /> отправка
-                    </label>
-                    <label className="amail-toggle" title="Удаление письма стирает его и на сервере">
-                      <input
-                        type="checkbox" checked={access.canDelete}
-                        onChange={(e) => changeRights(account.id, access, { canDelete: e.target.checked })}
-                      />
-                      <Trash2 size={13} /> удаление
-                    </label>
-                    <button type="button" className="amail-icon-btn" title="Забрать доступ" onClick={() => revoke(account.id, access)}>
-                      <X size={15} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {auditFor === account.id && (
-                <div className="amail-audit">
-                  {!audit.length && <div className="amail-muted">Записей нет</div>}
-                  {audit.map((entry) => (
-                    <div key={entry.id} className="amail-audit__row">
-                      <span className="amail-audit__when">
-                        {new Date(entry.createdAt).toLocaleString('ru-RU')}
-                      </span>
-                      <span className="amail-audit__who">{entry.user?.displayName || entry.user?.username || '—'}</span>
-                      <span className="amail-audit__what">{entry.action}</span>
-                      <span className="amail-audit__detail">
-                        {entry.detail?.subject || entry.detail?.filename || entry.detail?.user
-                          || [entry.detail?.medCenter, entry.detail?.role].filter(Boolean).join(' + ')
-                          || entry.detail?.ruleId || ''}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                      {auditFor === account.id && (
+                        <tr className="amail-table__detail"><td colSpan="4">
+                          <div className="amail-audit">
+                            {!audit.length && <div className="amail-muted">Записей нет</div>}
+                            {audit.map((entry) => (
+                              <div key={entry.id} className="amail-audit__row">
+                                <span className="amail-audit__when">
+                                  {new Date(entry.createdAt).toLocaleString('ru-RU')}
+                                </span>
+                                <span className="amail-audit__who">{entry.user?.displayName || entry.user?.username || '—'}</span>
+                                <span className="amail-audit__what">{entry.action}</span>
+                                <span className="amail-audit__detail">
+                                  {entry.detail?.subject || entry.detail?.filename || entry.detail?.user
+                                    || [entry.detail?.medCenter, entry.detail?.role].filter(Boolean).join(' + ')
+                                    || entry.detail?.ruleId || ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </td></tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            ))}
+          </table>
+        </div>
+      )}
     </div>
   );
 }

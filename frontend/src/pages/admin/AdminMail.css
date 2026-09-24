@@ -1,15 +1,8 @@
-/*
- * Настройка почтовых ящиков (ver. 8.58).
- *
- * Карточка на ящик, а не таблица: у ящика слишком разнородные сведения —
- * состояние синхронизации, возможности сервера, список людей с доступом. В
- * таблице это либо не помещается, либо превращается в горизонтальную прокрутку.
- */
+/* Настройка почтовых ящиков. */
 
 .amail-page {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 20px 16px 48px;
+  width: 100%;
+  padding: 0 0 48px;
   color: var(--text-primary);
 }
 
@@ -23,7 +16,7 @@
 
 .amail-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 20px;
@@ -44,6 +37,18 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-secondary);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ── Форма ──────────────────────────────────────────────────────────────── */
@@ -165,7 +170,166 @@
   margin-top: 16px;
 }
 
-/* ── Карточка ящика ─────────────────────────────────────────────────────── */
+/* ── Таблица ящиков ─────────────────────────────────────────────────────── */
+
+.amail-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+
+.amail-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.amail-table th,
+.amail-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.amail-table > thead th {
+  background: var(--bg-secondary);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.amail-table__group th {
+  padding: 8px 14px;
+  background: color-mix(in srgb, var(--primary-light) 48%, var(--bg-primary));
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.amail-table__account:hover > td { background: var(--bg-hover); }
+.amail-table__account:last-child > td { border-bottom: none; }
+
+.amail-table__mailbox {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 260px;
+}
+
+.amail-table__mailbox strong { font-size: 13px; font-weight: 650; }
+.amail-table__mailbox span { color: var(--text-secondary); font-size: 12px; }
+
+.amail-table__account td:nth-child(2) {
+  min-width: 145px;
+  white-space: nowrap;
+}
+
+.amail-table__access-col { width: 72px; }
+.amail-table__actions-col { width: 196px; }
+
+.amail-table__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.amail-table__detail > td {
+  padding: 0;
+  background: var(--bg-secondary);
+}
+
+.amail-table__detail:last-child > td { border-bottom: none; }
+
+.amail-status-error {
+  margin-left: 6px;
+  vertical-align: middle;
+  color: var(--red-600);
+  cursor: help;
+}
+
+.amail-square-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.amail-square-btn:hover:not(:disabled),
+.amail-square-btn.is-active {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border-light));
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.amail-square-btn:disabled { opacity: .6; cursor: default; }
+.amail-square-btn--danger:hover:not(:disabled) { border-color: var(--red-200); background: var(--red-50); color: var(--red-600); }
+
+/* У каждой строки доступа — только чекбоксы: значения колонок объяснены
+   пиктограммами в шапке таблицы. */
+.amail-table__detail .amail-access {
+  margin: 0;
+  padding: 14px 16px 16px;
+  border-top: none;
+}
+
+.amail-access-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+}
+
+.amail-access-table {
+  width: 100%;
+  min-width: 360px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.amail-access-table th,
+.amail-access-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.amail-access-table th {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.amail-access-table th:not(:first-child),
+.amail-access-table td:not(:first-child) {
+  width: 34px;
+  text-align: center;
+}
+
+.amail-access-table tbody tr:last-child td { border-bottom: none; }
+.amail-access-table input { margin: 0; accent-color: var(--primary); }
+
+.amail-access-table__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.amail-access-table__name svg { color: var(--primary); }
+.amail-access-table__name small { color: var(--text-tertiary); }
 
 .amail-list {
   display: flex;
