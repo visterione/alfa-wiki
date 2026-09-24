@@ -154,7 +154,8 @@ const User = sequelize.define('User', {
       marketing: {
         promotions: 'block',
         ads: 'block',
-        announcements: 'block'
+        announcements: 'block',
+        doctors: 'block'
       }
     },
     comment: 'Гранулярный доступ к админ-разделам'

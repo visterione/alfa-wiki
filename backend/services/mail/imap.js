@@ -86,11 +86,21 @@ async function withConnection(account, fn) {
   let client = null;
   try {
     client = buildClient(account, password);
+    // Ошибки соединения ImapFlow выдаёт событием EventEmitter `error`. Они не
+    // попадают в try/catch операции: без слушателя Node завершит весь воркер.
+    client.on('error', (err) => {
+      client.mailConnectionError = err;
+      const detail = err?.message || String(err || 'неизвестная ошибка');
+      const code = err?.code ? ` (${err.code})` : '';
+      console.warn(`📬 Почта: IMAP-соединение ${account.email}${code}: ${detail}`);
+    });
     await client.connect();
     if (pool.noteSuccess()) console.log(`📬 Почта: потолок соединений поднят до ${pool.stats().ceiling}`);
 
     const capabilities = describeCapabilities(client);
-    return await fn(client, capabilities);
+    const result = await fn(client, capabilities);
+    if (client.mailConnectionError) throw client.mailConnectionError;
+    return result;
   } catch (err) {
     if (isCapacityRefusal(err)) {
       const lowered = pool.noteRefusal(err.message || String(err));

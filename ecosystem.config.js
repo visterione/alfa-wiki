@@ -63,6 +63,33 @@ module.exports = {
       },
 
       kill_timeout: 10000,
+    },
+
+    {
+      // Синхронизация почты должна жить отдельно от веб-процесса и
+      // автоматически запускаться снова после непредвиденного завершения.
+      name: 'alfa-wiki-mail-sync',
+      script: 'scripts/mailSync.js',
+      cwd: './backend',
+
+      instances: 1,
+      exec_mode: 'fork',
+
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '10s',
+      restart_delay: 5000,
+
+      error_file: '../logs/pm2-mail-sync-error.log',
+      out_file: '../logs/pm2-mail-sync-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      merge_logs: true,
+
+      env: {
+        NODE_ENV: 'production',
+      },
+
+      kill_timeout: 30000,
     }
   ]
 };

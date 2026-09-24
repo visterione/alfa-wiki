@@ -168,8 +168,15 @@ async function main() {
   log(`Почта: цикл запущен, круг каждые ${INTERVAL_MS / 1000} с, порция тел ${BODY_BATCH}`);
 
   while (!stopping) {
-    const deadline = await cycle();
-    const wait = Math.max(1000, (deadline || Date.now()) - Date.now());
+    let deadline;
+    try {
+      deadline = await cycle();
+    } catch (err) {
+      // Временная ошибка БД или воркера не должна останавливать процесс:
+      // следующий круг повторит попытку, а ошибка останется в журнале.
+      log(`ошибка цикла синхронизации — ${err.message || err}; повтор через ${INTERVAL_MS / 1000} с`);
+    }
+    const wait = Math.max(1000, (deadline || Date.now() + INTERVAL_MS) - Date.now());
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
 }

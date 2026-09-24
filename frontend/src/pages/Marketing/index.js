@@ -1,7 +1,7 @@
 /**
  * Модуль «Маркетинг» (ver. 8.22).
  *
- * Четыре вкладки — акции, карта рекламных площадок, анонсы через ботов и
+ * Пять вкладок — акции, карта рекламных площадок, анонсы через ботов и
  * почтовые рассылки — собраны в один раздел. До 8.22 они лежали в трёх разных местах: акции и карта —
  * самостоятельными HTML-страницами в backend/bot/, вставленными в вики, а
  * анонсы — отдельной кнопкой в полосе быстрого доступа. Маркетолог ходил между
@@ -21,12 +21,13 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Map as MapIcon, Megaphone, Tag, Mail } from 'lucide-react';
+import { Map as MapIcon, Megaphone, Tag, Mail, Stethoscope } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PromotionsTab from './PromotionsTab';
 import AdsTab from './AdsTab';
 import AnnouncementsTab from './AnnouncementsTab';
 import MailingsTab from './MailingsTab';
+import DoctorsTab from './DoctorsTab';
 import { ToolsSlotContext } from './toolsSlot';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import '../admin/AdminOpenLine.css';
@@ -37,7 +38,8 @@ const TABS = [
   { key: 'promotions',    path: 'promotions',    label: 'Акции',    icon: Tag },
   { key: 'ads',           path: 'ads',           label: 'Карта',    icon: MapIcon },
   { key: 'announcements', path: 'announcements', label: 'Анонсы',   icon: Megaphone },
-  { key: 'mailings',      path: 'mailings',      label: 'Рассылки', icon: Mail }
+  { key: 'mailings',      path: 'mailings',      label: 'Рассылки', icon: Mail },
+  { key: 'doctors',        path: 'doctors',        label: 'Врачи',    icon: Stethoscope }
 ];
 
 /**
@@ -60,7 +62,8 @@ export function useMarketingLevels() {
       // Рассылки отделились от анонсов в 8.43, но своего флага в правах не
       // получили: заводить его значило бы раздать всем администраторам новую
       // настройку, о которой никто не просил. Кто вёл анонсы — ведёт и рассылки.
-      mailings: level('announcements')
+      mailings: level('announcements'),
+      doctors: level('doctors')
     };
   }, [user, isAdmin]);
 }
@@ -75,7 +78,7 @@ export default function Marketing() {
 
   const visible = TABS.filter(t => levels[t.key] !== 'block');
 
-  // Человек может иметь доступ к одной вкладке из четырёх, и тогда адрес
+  // Человек может иметь доступ к одной вкладке из пяти, и тогда адрес
   // модуля без вкладки должен вести именно к ней, а не к первой по списку.
   if (!visible.length) return <Navigate to="/" replace />;
   if (!tab || !visible.some(t => t.path === tab)) {
@@ -112,6 +115,7 @@ export default function Marketing() {
           {active.key === 'ads' && <AdsTab level={levels.ads} />}
           {active.key === 'announcements' && <AnnouncementsTab level={levels.announcements} />}
           {active.key === 'mailings' && <MailingsTab level={levels.mailings} />}
+          {active.key === 'doctors' && <DoctorsTab level={levels.doctors} />}
         </ToolsSlotContext.Provider>
       </div>
     </div>

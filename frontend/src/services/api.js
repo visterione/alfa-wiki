@@ -421,7 +421,10 @@ export const map = {
 export const marketing = {
   getPromos:      ()      => api.get('/marketing/promos'),
   getPromoClinics:()      => api.get('/marketing/promo-clinics'),
-  createPromo:    (data)  => api.post('/marketing/promos', data)
+  createPromo:    (data)  => api.post('/marketing/promos', data),
+  startDoctorScan:()      => api.post('/marketing/doctors/scans'),
+  getDoctorScan:  id      => api.get('/marketing/doctors/scans/' + encodeURIComponent(id)),
+  compareDoctor:  (id, data) => api.post('/marketing/doctors/scans/' + encodeURIComponent(id) + '/compare', data)
 };
 
 // Courses

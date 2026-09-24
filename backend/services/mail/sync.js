@@ -538,6 +538,9 @@ async function fetchBodies(accountId, limit = 50) {
             await storeParsedBody(message, parsed, source);
             done += 1;
           } catch (err) {
+            // Ошибка IMAP затрагивает соединение целиком, а не конкретное
+            // письмо. Оставляем UID в очереди, чтобы повторить загрузку позже.
+            if (client.mailConnectionError) throw client.mailConnectionError;
             // Одно битое письмо не должно останавливать проход по ящику:
             // кривая кодировка и обрезанное вложение — обычное дело в архиве.
             console.warn(`📬 Почта: не разобралось письмо uid=${message.uid} (${err.message})`);
@@ -558,10 +561,16 @@ async function fetchBodies(accountId, limit = 50) {
     if (left.n === 0 && account.syncState === 'bodies') {
       await account.update({ syncState: 'ready', syncFinishedAt: new Date() });
     }
+    await account.update({ lastError: null, lastErrorAt: null });
 
     return { done, bytes, left: left.n };
   } catch (err) {
     await run.update({ finishedAt: new Date(), messagesFetched: done, bytesFetched: bytes, error: String(err.message || err).slice(0, 2000) });
+    await account.update({
+      syncState: 'error',
+      lastError: String(err.message || err).slice(0, 2000),
+      lastErrorAt: new Date(),
+    }).catch(() => {});
     throw err;
   }
 }
