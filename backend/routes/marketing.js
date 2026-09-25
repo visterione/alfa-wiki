@@ -35,10 +35,49 @@ router.post('/doctors/scans', ...doctorsAccess, async (req, res) => {
   }
 });
 
+/**
+ * Медцентр справочника для клиники из сверки: название, цвет и логотип для
+ * шапки — как у полок во вкладке «Акции».
+ *
+ * Парсер знает клинику по сайту и своему названию («Альфа Дети», «Альфа 3К»),
+ * справочник — по своему («Кидс», «3К»). Сначала сверяется адрес сайта, потом
+ * названия и синонимы (importAliases) с приставкой «Альфа»/«МЦ» и без неё.
+ * Латиница, похожая на кириллицу, приводится к ней: синоним «3k» — это «3К».
+ */
+const LOOKALIKE = { a: 'а', b: 'в', c: 'с', e: 'е', h: 'н', k: 'к', m: 'м', o: 'о', p: 'р', t: 'т', x: 'х', y: 'у' };
+const centerKey = value => String(value || '').toLowerCase().replace(/ё/g, 'е')
+  .replace(/[abcehkmoptxy]/g, ch => LOOKALIKE[ch]).replace(/[«»"]/g, '').replace(/\s+/g, ' ').trim();
+const withoutPrefix = key => key.replace(/^(мц|альфа)\s+/, '');
+const siteHost = url => {
+  try { return new URL(/^https?:/.test(url) ? url : 'https://' + url).hostname.replace(/^www\./, ''); } catch { return ''; }
+};
+
+async function doctorCenters(payload) {
+  const results = payload?.results;
+  if (!Array.isArray(results) || !results.length) return payload;
+  const centers = (await medCenters.list()).filter(mc => mc.servesPatients);
+  for (const source of results) {
+    const host = siteHost(source.url);
+    const label = centerKey(source.clinic);
+    const match = centers.find(mc => mc.site && siteHost(mc.site) === host)
+      || centers.find(mc => {
+        const keys = [mc.name, mc.displayName, ...(mc.importAliases || [])].map(centerKey);
+        const all = new Set([...keys, ...keys.map(withoutPrefix)]);
+        return all.has(label) || (withoutPrefix(label) && all.has(withoutPrefix(label)));
+      });
+    source.center = match
+      ? { name: match.name, color: match.color || null, logo: match.logoSquareUrl || match.logoUrl || null }
+      : null;
+  }
+  return payload;
+}
+
 // Раньше /doctors/scans/:scanId — иначе «latest» уйдёт туда как идентификатор.
 router.get('/doctors/scans/latest', ...doctorsAccess, async (req, res) => {
   try {
-    res.json(await parser.getLatestDoctorScan());
+    const data = await parser.getLatestDoctorScan();
+    if (data?.last) await doctorCenters(data.last);
+    res.json(data);
   } catch (err) {
     const described = parser.describeError(err);
     console.error('GET /api/marketing/doctors/scans/latest error:', err.message);
@@ -64,7 +103,7 @@ router.get('/doctors/scans/:scanId/sources/:sourceIndex/doctors/:doctorIndex', .
 
 router.get('/doctors/scans/:scanId', ...doctorsAccess, async (req, res) => {
   try {
-    res.json(await parser.getDoctorScan(req.params.scanId));
+    res.json(await doctorCenters(await parser.getDoctorScan(req.params.scanId)));
   } catch (err) {
     const described = parser.describeError(err);
     console.error('GET /api/marketing/doctors/scans error:', err.message);

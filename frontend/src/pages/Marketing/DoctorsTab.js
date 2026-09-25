@@ -1,17 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, Search, Stethoscope } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { marketing } from '../../services/api';
+import { MarketingTools } from './toolsSlot';
 import './Marketing.css';
 
 // Сверка карточек врачей сети с медицинскими площадками.
 //
-// Дерево: клиника → врач → площадка → сравнение сайта и площадки. Оценка —
-// процент совпадения (100% — всё сходится), её считает парсер: среднее по
-// полям карточки, по площадкам врача и по врачам клиники. Сверку раз в месяц
-// запускает таймер на сервере парсера; кнопка «Обновить» — внеочередная.
+// Медцентр выбирается в строке инструментов; ниже — его врачи, у врача —
+// площадки, у площадки — сравнение с сайтом клиники. Оценка — процент
+// совпадения (100% — всё сходится), её считает парсер: среднее по полям
+// карточки, по площадкам врача и по врачам клиники. Сверку раз в месяц
+// запускает таймер на сервере парсера; «Обновить» — внеочередная.
 
-// Яндекс первым: остальные площадки находятся по ссылкам из его карточки.
+// Яндекс первым: остальные площадки находятся и по ссылкам из его карточки.
 const PLATFORMS = ['Яндекс', 'ПроДокторов', 'НаПоправку', 'СберЗдоровье', 'ДокТу'];
+const PLATFORM_LOGO = {
+  'Яндекс': '/platform-logos/yandex.png',
+  'ПроДокторов': '/platform-logos/prodoctorov.png',
+  'НаПоправку': '/platform-logos/napopravku.png',
+  'СберЗдоровье': '/platform-logos/docdoc.png',
+  'ДокТу': '/platform-logos/doctu.png'
+};
 
 const FIELDS = [
   ['identity', 'ФИО'],
@@ -24,13 +33,6 @@ const FIELDS = [
   ['services', 'Услуги и цены']
 ];
 
-const TONE_LABEL = {
-  match: 'совпадает',
-  conflict: 'расходится',
-  partial: 'есть только с одной стороны или частично',
-  empty: 'нет данных'
-};
-
 // Разные исходы поиска — разные действия человека: «нет на площадке» значит
 // завести карточку, «не пустила» — открыть ссылку руками.
 const PLATFORM_STATUS = {
@@ -42,17 +44,27 @@ const PLATFORM_STATUS = {
   searching: 'Не проверено'
 };
 
+const CLINIC_KEY = 'marketingDoctorsClinic';
+const remembered = () => { try { return localStorage.getItem(CLINIC_KEY) || ''; } catch { return ''; } };
+const remember = value => { try { localStorage.setItem(CLINIC_KEY, value); } catch { /* приватный режим */ } };
+
 const scoreKind = score => score == null ? 'none' : score >= 90 ? 'good' : score >= 70 ? 'mid' : 'bad';
 
-function Score({ value, title }) {
-  return <span className={'mk-score ' + scoreKind(value)} title={title}>
-    {value == null ? '—' : value + '%'}
+// Процент в круге: дуга — доля совпадения, цвет — как у подсветки полей.
+function ScoreRing({ value, size = 36, title }) {
+  const stroke = size >= 40 ? 4 : 3;
+  const radius = (size - stroke) / 2;
+  const length = 2 * Math.PI * radius;
+  const filled = value == null ? 0 : Math.max(0, Math.min(100, value)) / 100 * length;
+  return <span className={'mk-ring ' + scoreKind(value)} style={{ width: size, height: size }} title={title}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle className="mk-ring-track" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}/>
+      {value != null && <circle className="mk-ring-arc" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
+        strokeDasharray={`${filled} ${length}`} transform={`rotate(-90 ${size / 2} ${size / 2})`}/>}
+    </svg>
+    <b style={{ fontSize: Math.round(size * 0.3) }}>{value == null ? '—' : value}</b>
   </span>;
 }
-
-const formatDate = iso => iso ? new Date(iso).toLocaleString('ru-RU', {
-  day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
-}) : '';
 
 const plain = value => Array.isArray(value) ? value.filter(Boolean).join(', ') : value;
 
@@ -86,7 +98,7 @@ function Diff({ fields }) {
         const field = fields[key];
         const tone = field.tone || 'empty';
         return <React.Fragment key={key}>
-          <tr className={'mk-diff-row ' + tone} title={TONE_LABEL[tone]}>
+          <tr className={'mk-diff-row ' + tone}>
             <th>{label}</th>
             <td><Cell field={field} side="source"/></td>
             <td><Cell field={field} side="external"/></td>
@@ -98,6 +110,9 @@ function Diff({ fields }) {
   </table>;
 }
 
+// Клик по названию или ФИО ведёт на карточку и не должен раскрывать строку.
+const stop = event => event.stopPropagation();
+
 function PlatformRow({ platform, entry }) {
   const [open, setOpen] = useState(false);
   const status = entry?.status || 'searching';
@@ -105,11 +120,12 @@ function PlatformRow({ platform, entry }) {
   return <div className={'mk-tree-platform ' + status}>
     <div className="mk-tree-line" onClick={() => comparable && setOpen(!open)} role={comparable ? 'button' : undefined}>
       {comparable ? (open ? <ChevronDown size={15}/> : <ChevronRight size={15}/>) : <span className="mk-tree-spacer"/>}
-      <b>{platform}</b>
-      {comparable ? <Score value={entry.score}/> : <span className={'mk-status ' + status}>{PLATFORM_STATUS[status]}</span>}
-      {entry?.url && <a href={entry.url} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>
-        карточка <ExternalLink size={12}/>
-      </a>}
+      <img className="mk-platform-logo" src={PLATFORM_LOGO[platform]} alt=""/>
+      {entry?.url
+        ? <a className="mk-platform-name" href={entry.url} target="_blank" rel="noreferrer" onClick={stop}>{platform}</a>
+        : <b className="mk-platform-name">{platform}</b>}
+      {!comparable && <span className={'mk-status ' + status}>{PLATFORM_STATUS[status]}</span>}
+      {comparable && <ScoreRing value={entry.score} size={32}/>}
     </div>
     {(entry?.review_note || entry?.error) && <div className="mk-tree-note">{entry.review_note || entry.error}</div>}
     {open && comparable && <Diff fields={entry.fields}/>}
@@ -135,31 +151,32 @@ function useDoctorDetails(scanId, sourceIndex, doctorIndex, open) {
   return state;
 }
 
+function Photo({ doctor }) {
+  const [broken, setBroken] = useState(false);
+  if (!doctor.photo || broken) {
+    const initials = doctor.name.split(/\s+/).slice(0, 2).map(word => word.charAt(0)).join('');
+    return <span className="mk-doctor-photo empty">{initials}</span>;
+  }
+  return <img className="mk-doctor-photo" src={doctor.photo} alt="" loading="lazy" onError={() => setBroken(true)}/>;
+}
+
 function DoctorRow({ doctor, scanId, sourceIndex, open, onToggle }) {
   const loaded = useDoctorDetails(scanId, sourceIndex, doctor.index, open);
   const full = loaded?.doctor || doctor;
   return <div className="mk-tree-doctor">
-    <div className="mk-tree-line" onClick={onToggle} role="button">
+    <div className="mk-tree-line mk-doctor-line" onClick={onToggle} role="button">
       {open ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
-      <span className="mk-tree-name">{doctor.name}</span>
-      <span className="mk-tree-meta">{(doctor.specialties || []).join(', ')}</span>
-      <span className="mk-tree-dots">
-        {PLATFORMS.map(platform => {
-          const entry = doctor.comparisons?.[platform];
-          const kind = entry?.score != null ? scoreKind(entry.score) : 'absent';
-          return <i key={platform} className={'mk-dot ' + kind}
-            title={platform + ': ' + (entry?.score != null ? entry.score + '%' : PLATFORM_STATUS[entry?.status || 'searching'])}/>;
-        })}
-      </span>
-      <Score value={doctor.score} title="Среднее по площадкам, где есть карточка врача"/>
+      <Photo doctor={doctor}/>
+      <div className="mk-doctor-title">
+        <a href={doctor.profile_url} target="_blank" rel="noreferrer" onClick={stop}>{doctor.name}</a>
+        <span>{(doctor.specialties || []).join(', ')}</span>
+      </div>
+      <ScoreRing value={doctor.score} size={36} title="Среднее по площадкам, где есть карточка врача"/>
     </div>
     {open && <div className="mk-tree-children">
-      <div className="mk-tree-source">
-        <a href={doctor.profile_url} target="_blank" rel="noreferrer">Страница врача на сайте клиники <ExternalLink size={12}/></a>
-        {doctor.site_conflicts?.length > 0 && <div className="mk-doctor-conflicts">
-          Сайт противоречит сам себе: {doctor.site_conflicts.join('; ')}
-        </div>}
-      </div>
+      {doctor.site_conflicts?.length > 0 && <div className="mk-doctor-conflicts">
+        Сайт противоречит сам себе: {doctor.site_conflicts.join('; ')}
+      </div>}
       {loaded?.loading && <div className="mk-tree-note"><Loader2 className="mk-spin" size={13}/> Загрузка сравнения…</div>}
       {loaded?.error && <div className="mk-doctor-error">{loaded.error}</div>}
       {PLATFORMS.map(platform => <PlatformRow key={platform} platform={platform} entry={full.comparisons?.[platform]}/>)}
@@ -167,21 +184,28 @@ function DoctorRow({ doctor, scanId, sourceIndex, open, onToggle }) {
   </div>;
 }
 
-function ClinicSection({ source, sourceIndex, scanId, doctors, forceOpen }) {
-  const [open, setOpen] = useState(false);
+const clinicName = source => source.center?.name || source.clinic;
+
+// Шапка медцентра — как полка во вкладке «Акции»: логотип и название на
+// градиенте фирменного цвета.
+function ClinicHeader({ source }) {
+  const name = clinicName(source);
+  return <header className="mk-doctors-clinic" style={{ '--mk-tone': source.center?.color || 'var(--accent-500)' }}>
+    {source.center?.logo
+      ? <img className="mk-shelf-logo" src={source.center.logo} alt=""/>
+      : <span className="mk-shelf-logo letter">{name.charAt(0)}</span>}
+    <h3>{name}</h3>
+    <ScoreRing value={source.score} size={44} title="Среднее по врачам медцентра"/>
+  </header>;
+}
+
+function ClinicDoctors({ source, sourceIndex, scanId, doctors }) {
   const [openDoctor, setOpenDoctor] = useState(null);
-  const expanded = open || forceOpen;
-  return <section className="mk-tree-clinic">
-    <div className="mk-tree-line mk-tree-clinic-line" onClick={() => setOpen(!expanded)} role="button">
-      {expanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
-      <span className="mk-tree-name">{source.clinic}</span>
-      <span className="mk-tree-meta">врачей {source.doctors?.length || 0}</span>
-      <a href={source.url} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}><ExternalLink size={13}/></a>
-      <Score value={source.score} title="Среднее по врачам клиники"/>
-    </div>
-    {expanded && <div className="mk-tree-children">
-      {source.error && <div className="mk-doctor-error">{source.error}</div>}
-      {!source.error && !doctors.length && <div className="mk-doctor-empty">Врачей не найдено.</div>}
+  return <section className="mk-doctors-section">
+    <ClinicHeader source={source}/>
+    {source.error && <div className="mk-doctor-error">{source.error}</div>}
+    {!source.error && !doctors.length && <div className="mk-doctor-empty">Врачей не найдено.</div>}
+    {doctors.length > 0 && <div className="mk-tree-clinic">
       {doctors.map(doctor => <DoctorRow key={doctor.index} doctor={doctor} scanId={scanId} sourceIndex={sourceIndex}
         open={openDoctor === doctor.index}
         onToggle={() => setOpenDoctor(openDoctor === doctor.index ? null : doctor.index)}/>)}
@@ -196,6 +220,7 @@ export default function DoctorsTab() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [clinic, setClinic] = useState(remembered);
 
   const load = useCallback(async () => {
     try {
@@ -239,29 +264,41 @@ export default function DoctorsTab() {
     } finally { setStarting(false); }
   };
 
+  const results = useMemo(() => last?.results || [], [last]);
+  // Выбранный медцентр держится по названию в сверке: номер в списке может
+  // сдвинуться, если в следующей сверке сайтов станет больше.
+  const selected = Math.max(0, results.findIndex(source => source.clinic === clinic));
+  const choose = value => { setClinic(value); remember(value); };
+
   const needle = query.trim().toLowerCase();
-  const sources = useMemo(() => (last?.results || []).map(source => {
+  const sections = useMemo(() => results.map((source, sourceIndex) => {
     // Номер врача в сверке нужен для запроса подробностей — до сортировки.
     const doctors = (source.doctors || []).map((doctor, index) => ({ ...doctor, index }))
       .filter(doctor => !needle || doctor.name.toLowerCase().includes(needle))
       // Сначала те, у кого расхождений больше: с них и начинают правку.
       .sort((a, b) => (a.score ?? 101) - (b.score ?? 101) || a.name.localeCompare(b.name, 'ru'));
-    return { source, doctors };
-  }), [last, needle]);
+    return { source, sourceIndex, doctors };
+  })
+    // Поиск идёт по всей сети: врача ищут, не всегда зная, где он принимает.
+    .filter(section => needle ? section.doctors.length > 0 : section.sourceIndex === selected),
+  [results, needle, selected]);
 
   return <section className="mk-doctors">
-    <div className="mk-doctors-heading">
-      <div>
-        <h1><Stethoscope size={21}/> Врачи на площадках</h1>
-        <p>{last
-          ? <>Сверка от {formatDate(last.finished_at || last.started_at)} · обновляется автоматически раз в месяц</>
-          : 'Сверка карточек врачей на сайтах клиник с медицинскими площадками.'}</p>
+    <MarketingTools>
+      <div className="ola-log-search mk-search">
+        <Search size={15}/>
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Найти врача во всех медцентрах"/>
+        {query && <button className="ola-icon-btn" onClick={() => setQuery('')}><X size={14}/></button>}
       </div>
+      {results.length > 0 && <select className="ola-select mk-filter" value={results[selected]?.clinic || ''}
+        onChange={event => choose(event.target.value)} aria-label="Медцентр" disabled={Boolean(needle)}>
+        {results.map(source => <option key={source.clinic} value={source.clinic}>{clinicName(source)}</option>)}
+      </select>}
       <button className="ola-btn primary" onClick={start} disabled={starting || Boolean(running)}>
-        {starting || running ? <Loader2 className="mk-spin" size={16}/> : <RefreshCw size={16}/>}
+        {starting || running ? <Loader2 className="mk-spin" size={15}/> : <RefreshCw size={15}/>}
         {running ? 'Сверка идёт…' : 'Обновить сейчас'}
       </button>
-    </div>
+    </MarketingTools>
 
     {error && <div className="mk-doctor-error">{error}</div>}
     {running && <div className="mk-doctor-stage">
@@ -272,25 +309,9 @@ export default function DoctorsTab() {
     {!loading && !last && !running && !error && <div className="mk-doctor-empty">
       Сверок ещё не было. Нажмите «Обновить сейчас» — парсер соберёт врачей с сайтов клиник и найдёт их карточки на площадках.
     </div>}
+    {last && needle && !sections.length && <div className="mk-doctor-empty">Врачей с таким ФИО не нашлось.</div>}
 
-    {last && <>
-      <div className="mk-tree-toolbar">
-        <label className="mk-tree-search">
-          <Search size={15}/>
-          <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Найти врача"/>
-        </label>
-        <div className="mk-diff-legend">
-          <span className="mk-diff-item match">совпадает</span>
-          <span className="mk-diff-item conflict">расходится</span>
-          <span className="mk-diff-item partial">есть только с одной стороны</span>
-          <span className="mk-diff-item neutral">к сравнению не относится</span>
-        </div>
-      </div>
-      <div className="mk-tree">
-        {sources.map(({ source, doctors }, index) => (!needle || doctors.length > 0) &&
-          <ClinicSection key={source.clinic + index} source={source} sourceIndex={index} scanId={last.id}
-            doctors={doctors} forceOpen={Boolean(needle)}/>)}
-      </div>
-    </>}
+    {last && sections.map(({ source, sourceIndex, doctors }) =>
+      <ClinicDoctors key={source.clinic} source={source} sourceIndex={sourceIndex} scanId={last.id} doctors={doctors}/>)}
   </section>;
 }
