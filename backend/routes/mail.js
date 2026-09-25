@@ -983,9 +983,12 @@ router.post('/drafts/:id/attachments', authenticate, uploadAttachment.single('fi
     await fsp.mkdir(path.dirname(abs), { recursive: true });
     await fsp.writeFile(abs, req.file.buffer);
 
+    // Multer отдаёт имя файла в latin1, и без перекодировки получатель видит
+    // во вложении «Ð¢ÐµÐ»ÐµÐ¼...pdf» вместо «Телемедицина...pdf». Тот же приём,
+    // что в открытой линии и аккредитациях.
     const attachment = {
       id,
-      filename: req.file.originalname,
+      filename: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
       mimeType: req.file.mimetype,
       size: req.file.size,
       storagePath,

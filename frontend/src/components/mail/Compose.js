@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { mail as mailApi } from '../../services/api';
 import toast from 'react-hot-toast';
+import { useStoredSize, startDrag } from './resize';
 import './Compose.css';
 
 /**
@@ -24,6 +25,12 @@ import './Compose.css';
  */
 
 const AUTOSAVE_MS = 1500;
+
+// Окно прижато к правому нижнему углу, поэтому тянется оно за левый и верхний
+// край: правый и нижний упираются в экран. Меньше этих размеров в окне уже не
+// помещаются поля и хоть несколько строк текста.
+const COMPOSE_MIN_W = 480;
+const COMPOSE_MIN_H = 360;
 
 /** Разбирает строку адресов: через запятую, точку с запятой или перевод строки. */
 function parseAddresses(value) {
@@ -64,6 +71,12 @@ export default function Compose({ draft: initialDraft, accountEmail, onClose, on
   const [saving, setSaving] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [quota, setQuota] = useState(null);
+
+  // Размер окна, подобранный человеком (ver. 8.78). null — размер из CSS.
+  const [size, setSize, saveSize] = useStoredSize('mail.composeSize');
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const boxRef = useRef(null);
 
   const bodyRef = useRef(null);
   const fileRef = useRef(null);
@@ -113,6 +126,28 @@ export default function Compose({ draft: initialDraft, accountEmail, onClose, on
   }, [save]);
 
   useEffect(() => () => clearTimeout(saveTimer.current), []);
+
+  // ── Размер окна ─────────────────────────────────────────────────────────
+
+  const resize = (event, edges) => {
+    const rect = boxRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cursor = edges === 'both' ? 'nwse-resize' : edges === 'x' ? 'ew-resize' : 'ns-resize';
+    startDrag(event, cursor, (dx, dy) => {
+      const maxW = window.innerWidth - 40;
+      const maxH = window.innerHeight - 20;
+      setSize({
+        w: edges === 'y' ? Math.round(rect.width) : Math.round(Math.min(maxW, Math.max(COMPOSE_MIN_W, rect.width - dx))),
+        h: edges === 'x' ? Math.round(rect.height) : Math.round(Math.min(maxH, Math.max(COMPOSE_MIN_H, rect.height - dy))),
+      });
+    }, () => saveSize(sizeRef.current));
+  };
+
+  // Двойной щелчок по краю — обратно к размеру по умолчанию.
+  const resetSize = () => {
+    setSize(null);
+    saveSize(null);
+  };
 
   // ── Действия ────────────────────────────────────────────────────────────
 
@@ -186,7 +221,23 @@ export default function Compose({ draft: initialDraft, accountEmail, onClose, on
   };
 
   return (
-    <div className={`compose ${collapsed ? 'compose--collapsed' : ''}`}>
+    <div
+      ref={boxRef}
+      className={`compose ${collapsed ? 'compose--collapsed' : ''}`}
+      style={size ? { '--compose-w': `${size.w}px`, '--compose-h': `${size.h}px` } : undefined}
+    >
+      {!collapsed && (
+        <>
+          <div className="compose__grip compose__grip--x" onPointerDown={(e) => resize(e, 'x')} onDoubleClick={resetSize} />
+          <div className="compose__grip compose__grip--y" onPointerDown={(e) => resize(e, 'y')} onDoubleClick={resetSize} />
+          <div
+            className="compose__grip compose__grip--xy"
+            onPointerDown={(e) => resize(e, 'both')}
+            onDoubleClick={resetSize}
+            title="Потяните, чтобы изменить размер. Двойной щелчок — как было"
+          />
+        </>
+      )}
       <header className="compose__head">
         <span className="compose__title">
           {subject || (draft.kind === 'reply' ? 'Ответ' : draft.kind === 'forward' ? 'Пересылка' : 'Новое письмо')}

@@ -12,6 +12,7 @@ import { mail as mailApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import Compose from '../components/mail/Compose';
+import { useStoredSize, startDrag } from '../components/mail/resize';
 import DatePickerInput from '../components/DatePickerInput';
 import { fileUrl } from '../utils/fileUrl';
 import './Mail.css';
@@ -430,6 +431,11 @@ const SYNTAX_HINT = [
 
 // Горячие клавиши. Их немного намеренно: набор, который надо заучивать,
 // не использует никто, а эти пять повторяют привычки любого почтового клиента.
+// Пределы ручки между списком и письмом, в пикселях. READER_MIN согласован
+// с верхним пределом --mail-list-w в Mail.css.
+const LIST_MIN = 480;
+const READER_MIN = 380;
+
 const HOTKEYS = [
   ['J / K', 'следующее и предыдущее письмо'],
   ['R', 'ответить'],
@@ -482,8 +488,55 @@ export default function Mail() {
 
   const [mobilePane, setMobilePane] = useState('list');
   const listRef = useRef(null);
+  const pageRef = useRef(null);
+  const workspaceRef = useRef(null);
   const accountPickerRef = useRef(null);
   const movePickerRef = useRef(null);
+
+  // Ширина левой части (папки + список) подобрана человеком — ver. 8.78.
+  // Пока ручку не трогали, работает раскладка из CSS: она подстраивается под
+  // экран, а число в пикселях подстраиваться не умеет.
+  const [listWidth, setListWidth, saveListWidth] = useStoredSize('mail.listWidth');
+  const listWidthRef = useRef(listWidth);
+  listWidthRef.current = listWidth;
+
+  // Пределы считаем от страницы в момент перетаскивания: письму справа
+  // оставляем не меньше READER_MIN, иначе его строки ломаются через слово.
+  const listWidthBounds = useCallback(() => {
+    const page = pageRef.current;
+    if (!page) return [LIST_MIN, LIST_MIN];
+    const cs = getComputedStyle(page);
+    const inner = page.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const resizer = page.querySelector('.mail-resizer')?.offsetWidth || 0;
+    return [LIST_MIN, Math.max(LIST_MIN, inner - resizer - READER_MIN)];
+  }, []);
+
+  const resizeList = (event) => {
+    const startW = workspaceRef.current?.getBoundingClientRect().width || 0;
+    const [min, max] = listWidthBounds();
+    startDrag(event, 'col-resize',
+      (dx) => setListWidth(Math.round(Math.min(max, Math.max(min, startW + dx)))),
+      () => saveListWidth(listWidthRef.current));
+  };
+
+  const nudgeList = (event) => {
+    const step = event.shiftKey ? 64 : 16;
+    const delta = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+    if (!delta) return;
+    event.preventDefault();
+    const [min, max] = listWidthBounds();
+    const startW = workspaceRef.current?.getBoundingClientRect().width || 0;
+    const next = Math.round(Math.min(max, Math.max(min, startW + delta)));
+    setListWidth(next);
+    saveListWidth(next);
+  };
+
+  // Двойной щелчок по ручке — назад к раскладке по умолчанию. Без этого,
+  // перетащив неудачно, вернуть «как было» можно было бы только на глаз.
+  const resetListWidth = () => {
+    setListWidth(null);
+    saveListWidth(null);
+  };
 
   const LIMIT = 50;
   const searching = activeQuery.trim().length > 0;
@@ -1051,8 +1104,12 @@ export default function Mail() {
   }
 
   return (
-    <div className={`mail-page mail-pane-${mobilePane}`}>
-      <div className="mail-workspace">
+    <div
+      ref={pageRef}
+      className={`mail-page mail-pane-${mobilePane}${listWidth ? ' mail-page--sized' : ''}`}
+      style={listWidth ? { '--mail-list-w': `${listWidth}px` } : undefined}
+    >
+      <div className="mail-workspace" ref={workspaceRef}>
 
       {/* ── Ящик, папки и сохранённые подборки ── */}
       <aside className="mail-sidebar">
@@ -1356,6 +1413,18 @@ export default function Mail() {
         </div>
       </section>
       </div>
+
+      <div
+        className="mail-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Ширина списка писем"
+        tabIndex={0}
+        title="Потяните, чтобы изменить ширину. Двойной щелчок — как было"
+        onPointerDown={resizeList}
+        onKeyDown={nudgeList}
+        onDoubleClick={resetListWidth}
+      />
 
       {/* ── Чтение ── */}
       <section className="mail-reader">

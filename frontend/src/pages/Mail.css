@@ -1,9 +1,9 @@
 /* Почта: единый визуальный язык с модулем вакансий. */
 .mail-page {
   display: grid;
-  grid-template-columns: minmax(620px, 47%) minmax(0, 1fr);
+  grid-template-columns: minmax(620px, 47%) 12px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  gap: 12px;
+  gap: 0;
   width: 100%;
   height: calc(100vh - var(--header-height, 64px));
   box-sizing: border-box;
@@ -30,6 +30,25 @@
   box-shadow: 0 18px 44px rgba(19,28,45,.08), 0 2px 8px rgba(19,28,45,.05), inset 0 1px 0 rgba(255,255,255,.58);
 }
 .mail-workspace { display: grid; grid-template-columns: 280px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+
+/* Ширину левой части человек подбирает сам (ver. 8.78). Промежуток между
+   половинами стал колонкой с ручкой, поэтому gap обнулён. Сохранённая ширина
+   ограничена сверху от текущей страницы: подобранная на большом мониторе, на
+   ноутбуке она иначе вытеснила бы письмо за край. Два класса в селекторе —
+   чтобы перебить раскладку из @media ниже. */
+.mail-page.mail-page--sized { grid-template-columns: min(var(--mail-list-w), calc(100% - 392px)) 12px minmax(0, 1fr); }
+
+.mail-resizer { position: relative; cursor: col-resize; touch-action: none; outline: none; }
+.mail-resizer::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 44px; border-radius: 999px; background: var(--border-light); transform: translate(-50%, -50%); transition: background 160ms ease, height 160ms ease; }
+.mail-resizer:hover::after,
+.mail-resizer:focus-visible::after,
+.mail-resizing .mail-resizer::after { height: 88px; background: color-mix(in srgb, var(--primary) 55%, var(--border-light)); }
+
+/* Пока тянут любую ручку почты: курсор не мигает при соскальзывании с ручки,
+   а текст под мышью не выделяется. Класс ставит startDrag из resize.js. */
+body.mail-resizing,
+body.mail-resizing * { cursor: var(--mail-resize-cursor) !important; user-select: none !important; }
+body.mail-resizing iframe { pointer-events: none; }
 
 .mail-page--empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 32px; color: var(--text-secondary); background: var(--bg-primary); }
 .mail-page--empty h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
@@ -281,7 +300,8 @@
 @keyframes mail-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1180px) {
-  .mail-page { grid-template-columns: minmax(500px, 48%) minmax(0, 1fr); gap: 8px; }
+  .mail-page { grid-template-columns: minmax(500px, 48%) 8px minmax(0, 1fr); }
+  .mail-page.mail-page--sized { grid-template-columns: min(var(--mail-list-w), calc(100% - 388px)) 8px minmax(0, 1fr); }
   .mail-workspace { grid-template-columns: 240px minmax(0, 1fr); }
 }
 
@@ -296,6 +316,7 @@
   .mail-folder-settings { opacity: 1; }
   .mail-pane-read .mail-workspace { display: none; }
   .mail-pane-list .mail-reader { display: none; }
+  .mail-resizer { display: none; }
   .mail-back { display: inline-flex; }
   .mail-reader__head { padding: 12px 14px 10px; }
   .mail-reader__head h1 { font-size: 16px; }
