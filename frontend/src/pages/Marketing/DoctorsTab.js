@@ -20,7 +20,8 @@ const FIELDS = [
   ['category', 'Категория'],
   ['price', 'Стоимость приёма'],
   ['workplace', 'Место приёма'],
-  ['education', 'Образование']
+  ['education', 'Образование'],
+  ['services', 'Услуги и цены']
 ];
 
 const TONE_LABEL = {
@@ -55,12 +56,21 @@ const formatDate = iso => iso ? new Date(iso).toLocaleString('ru-RU', {
 
 const plain = value => Array.isArray(value) ? value.filter(Boolean).join(', ') : value;
 
+// Прайс врача на сайте бывает в сотню позиций; сравнённые идут первыми,
+// серый хвост раскрывается по кнопке.
+const ITEMS_SHOWN = 12;
+
 function Cell({ field, side }) {
+  const [all, setAll] = useState(false);
   const items = field.items?.[side];
   if (items) {
     if (!items.length) return <span className="mk-diff-empty">не указано</span>;
-    return <div className="mk-diff-items">
-      {items.map((item, index) => <span key={index} className={'mk-diff-item ' + item.tone}>{item.text}</span>)}
+    const shown = all ? items : items.slice(0, ITEMS_SHOWN);
+    return <div className={'mk-diff-items' + (items.length > 4 ? ' column' : '')}>
+      {shown.map((item, index) => <span key={index} className={'mk-diff-item ' + item.tone}>{item.text}</span>)}
+      {items.length > ITEMS_SHOWN && <button type="button" className="mk-diff-more" onClick={() => setAll(!all)}>
+        {all ? 'свернуть' : 'показать все ' + items.length}
+      </button>}
     </div>;
   }
   const value = plain(field[side]);
