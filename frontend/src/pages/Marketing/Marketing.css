@@ -575,7 +575,8 @@
 
 
 /* Сверка карточек врачей в модуле «Маркетинг». */
-.mk-doctors { display:flex; flex-direction:column; gap:14px; }
+.mk-doctors { display:flex; flex-direction:column; gap:14px; --mk-ring-light:40%; }
+:root[data-theme='dark'] .mk-doctors { --mk-ring-light:58%; }
 .mk-doctor-stage, .mk-doctor-empty, .mk-doctor-error { padding:12px 14px; border:1px solid var(--border); border-radius:10px; color:var(--text-secondary); font-size:13px; }
 .mk-doctor-error { color:var(--danger, #b42318); border-color:var(--danger, #b42318); }
 .mk-doctor-notice { padding:10px 14px; border:1px solid var(--warning); border-radius:10px; color:var(--text-primary); background:color-mix(in srgb, var(--warning) 10%, transparent); font-size:13px; }
@@ -594,10 +595,10 @@
 
 
 /* Врач: фото высотой в две строки — ФИО и специальности */
-.mk-doctor-photo { width:40px; height:40px; flex-shrink:0; border-radius:10px; object-fit:cover; object-position:top; background:var(--bg-tertiary); }
+.mk-doctor-photo { width:56px; height:56px; flex-shrink:0; border-radius:12px; object-fit:cover; object-position:top; background:var(--bg-tertiary); }
 .mk-doctor-photo.empty { display:grid; place-items:center; color:var(--text-secondary); font-size:13px; font-weight:650; }
 .mk-doctor-title { display:flex; flex-direction:column; flex:1; min-width:0; line-height:1.3; }
-.mk-doctor-title a { color:var(--text-primary); font-weight:600; text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mk-doctor-title a { color:var(--text-primary); font-weight:600; font-size:15px; text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mk-doctor-title a:hover { color:var(--primary); text-decoration:underline; }
 .mk-doctor-title span { color:var(--text-secondary); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
@@ -608,14 +609,27 @@
 .mk-doctors-list { border:1px solid var(--border); border-radius:var(--radius-lg, 14px); background:var(--bg-primary); overflow:hidden; }
 .mk-doctor + .mk-doctor { border-top:1px solid var(--border-light); }
 .mk-doctor.open { background:color-mix(in srgb, var(--bg-hover) 60%, transparent); }
-.mk-doctor-line { display:flex; align-items:center; gap:12px; padding:10px 14px; min-width:0; }
+.mk-doctor-line { display:flex; align-items:center; gap:14px; padding:12px 16px; min-width:0; }
 .mk-doctor-platforms { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
 .mk-platform-btn {
-  display:inline-flex; align-items:center; gap:7px; height:38px; padding:0 6px 0 9px;
+  display:inline-flex; align-items:center; gap:7px; width:176px; height:40px; padding:0 6px 0 9px;
   border:1px solid var(--border-light); border-radius:10px; background:var(--bg-primary);
   color:var(--text-primary); font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap;
 }
+.mk-platform-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; text-align:left; }
 .mk-platform-btn:hover { border-color:var(--border); background:var(--bg-hover); }
+/* Площадка без оценки должна читаться издалека, а не только по значку */
+.mk-platform-btn.warn { background:color-mix(in srgb, var(--warning) 13%, var(--bg-primary)); border-color:color-mix(in srgb, var(--warning) 40%, transparent); }
+.mk-platform-btn.bad { background:color-mix(in srgb, var(--danger) 9%, var(--bg-primary)); border-color:color-mix(in srgb, var(--danger) 32%, transparent); }
+.mk-platform-btn.warn:hover { background:color-mix(in srgb, var(--warning) 20%, var(--bg-primary)); }
+.mk-platform-btn.bad:hover { background:color-mix(in srgb, var(--danger) 14%, var(--bg-primary)); }
+
+/* Кнопка сверки: пока идёт обход — заливка по проценту, этап в подсказке */
+.mk-scan-btn { position:relative; overflow:hidden; }
+.mk-scan-btn.running:disabled { opacity:1; }
+.mk-scan-btn > :not(.mk-scan-progress) { position:relative; }
+.mk-scan-progress { position:absolute; left:0; top:0; bottom:0; background:rgba(255, 255, 255, .22); transition:width .6s ease; }
+.mk-scan-warning { display:inline-flex; align-items:center; color:var(--warning); cursor:help; flex-shrink:0; }
 .mk-platform-btn.active { border-color:var(--primary); box-shadow:0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent); }
 .mk-status-icon { flex-shrink:0; margin:0 5px 0 2px; }
 .mk-status-icon.warn { color:var(--warning); }
@@ -635,9 +649,6 @@
 .mk-ring-track { fill:none; stroke:var(--bg-tertiary); }
 .mk-ring-arc { fill:none; stroke-linecap:round; stroke:currentColor; }
 .mk-ring b { position:relative; font-weight:700; letter-spacing:-0.02em; }
-.mk-ring.good { color:var(--success); }
-.mk-ring.mid { color:color-mix(in srgb, var(--warning) 80%, var(--text-primary)); }
-.mk-ring.bad { color:var(--danger); }
 .mk-ring.none { color:var(--text-tertiary); }
 
 /* Сравнение сайта и площадки: строка — по тону поля, пункт списка — по своему */
@@ -672,6 +683,7 @@
   .mk-doctor-photo { width:36px; height:36px; }
   .mk-doctor-line { flex-wrap:wrap; }
   .mk-doctor-platforms { order:3; width:100%; justify-content:flex-start; }
-  .mk-platform-btn span { display:none; }
+  .mk-platform-btn { width:auto; }
+  .mk-platform-label { display:none; }
   .mk-diff col.mk-diff-label { width:96px; }
 }

@@ -48,7 +48,6 @@ const CLINIC_KEY = 'marketingDoctorsClinic';
 const remembered = () => { try { return localStorage.getItem(CLINIC_KEY) || ''; } catch { return ''; } };
 const remember = value => { try { localStorage.setItem(CLINIC_KEY, value); } catch { /* приватный режим */ } };
 
-const scoreKind = score => score == null ? 'none' : score >= 90 ? 'good' : score >= 70 ? 'mid' : 'bad';
 
 // Процент в круге: дуга — доля совпадения, цвет — как у подсветки полей.
 function ScoreRing({ value, size = 36, title }) {
@@ -56,7 +55,10 @@ function ScoreRing({ value, size = 36, title }) {
   const radius = (size - stroke) / 2;
   const length = 2 * Math.PI * radius;
   const filled = value == null ? 0 : Math.max(0, Math.min(100, value)) / 100 * length;
-  return <span className={'mk-ring ' + scoreKind(value)} style={{ width: size, height: size }} title={title}>
+  // Цвет — по самому значению: оттенок от красного (0) к зелёному (100),
+  // а не три ступени, между которыми 69 и 71 выглядели разными мирами.
+  const color = value == null ? undefined : `hsl(${Math.round(Math.max(0, Math.min(100, value)) * 1.2)}, 72%, var(--mk-ring-light))`;
+  return <span className={'mk-ring' + (value == null ? ' none' : '')} style={{ width: size, height: size, color }} title={title}>
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
       <circle className="mk-ring-track" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}/>
       {value != null && <circle className="mk-ring-arc" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
@@ -136,9 +138,10 @@ function PlatformButton({ platform, entry, active, onClick }) {
   const scored = entry?.score != null;
   const [Icon, kind] = STATUS_ICON[status] || STATUS_ICON.error;
   const hint = [PLATFORM_STATUS[status], entry?.review_note || entry?.error].filter(Boolean).join('. ');
-  return <button type="button" className={'mk-platform-btn' + (active ? ' active' : '')} onClick={onClick} title={hint}>
+  return <button type="button" className={'mk-platform-btn' + (scored ? '' : ' ' + kind) + (active ? ' active' : '')}
+    onClick={onClick} title={hint}>
     <img className="mk-platform-logo" src={PLATFORM_LOGO[platform]} alt=""/>
-    <span>{platform}</span>
+    <span className="mk-platform-label">{platform}</span>
     {scored ? <ScoreRing value={entry.score} size={30}/> : <Icon size={18} className={'mk-status-icon ' + kind}/>}
   </button>;
 }
@@ -208,7 +211,7 @@ function DoctorRow({ doctor, photo, scanId, sourceIndex, platform, onPlatform })
 // Фото клиники приходят одним запросом миниатюрами; парсер докачивает их в
 // фоне, поэтому, пока pending > 0, переспрашиваем.
 function useClinicPhotos(scanId, sourceIndex) {
-  const [photos, setPhotos] = useState({});
+  const [state, setState] = useState({ photos: {}, pending: 0, error: '' });
   useEffect(() => {
     let cancelled = false;
     let timer;
@@ -217,15 +220,21 @@ function useClinicPhotos(scanId, sourceIndex) {
       try {
         const { data } = await marketing.getDoctorScanPhotos(scanId, sourceIndex);
         if (cancelled) return;
-        setPhotos(data.photos || {});
-        if (data.pending > 0 && ++rounds < 40) timer = setTimeout(poll, 3000);
-      } catch { /* без фото — инициалы, страница работает */ }
+        const pending = data.pending || 0;
+        setState({ photos: data.photos || {}, pending, error: '' });
+        if (pending > 0 && ++rounds < 60) timer = setTimeout(poll, 3000);
+      } catch (err) {
+        // Без фото страница работает на инициалах, но причину видно — иначе
+        // «фото нет» не отличить от «фото ещё качаются».
+        if (!cancelled) setState(current => ({ ...current, pending: 0,
+          error: err.response?.data?.message || err.response?.data?.error || err.message || 'ошибка запроса' }));
+      }
     };
-    setPhotos({});
+    setState({ photos: {}, pending: 0, error: '' });
     poll();
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scanId, sourceIndex]);
-  return photos;
+  return state;
 }
 
 const clinicName = source => source.center?.name || source.clinic;
@@ -246,9 +255,11 @@ function ClinicHeader({ source }) {
 function ClinicDoctors({ source, sourceIndex, scanId, doctors }) {
   // Открыта одна площадка одного врача: {doctor, platform}.
   const [open, setOpen] = useState(null);
-  const photos = useClinicPhotos(scanId, sourceIndex);
+  const { photos, pending, error } = useClinicPhotos(scanId, sourceIndex);
   return <section className="mk-doctors-section">
     <ClinicHeader source={source}/>
+    {pending > 0 && <div className="mk-doctor-hint"><Loader2 className="mk-spin" size={13}/> Загружаются фото врачей: осталось {pending}</div>}
+    {error && <div className="mk-doctor-hint">Фото врачей не загрузились: {error}</div>}
     {source.error && <div className="mk-doctor-error">{source.error}</div>}
     {!source.error && !doctors.length && <div className="mk-doctor-empty">Врачей не найдено.</div>}
     {doctors.length > 0 && <div className="mk-doctors-list">
@@ -293,7 +304,7 @@ export default function DoctorsTab() {
         const { data } = await marketing.getDoctorScan(running.id);
         if (cancelled) return;
         if (data.finished) { clearInterval(timer); load(); }
-        else setRunning(current => ({ ...current, stage: data.stage }));
+        else setRunning(current => ({ ...current, stage: data.stage, progress: data.progress }));
       } catch (err) {
         if (err.response?.status === 404) { clearInterval(timer); load(); }
       }
@@ -341,17 +352,20 @@ export default function DoctorsTab() {
         onChange={event => choose(event.target.value)} aria-label="Медцентр" disabled={Boolean(needle)}>
         {results.map(source => <option key={source.clinic} value={source.clinic}>{clinicName(source)}</option>)}
       </select>}
-      <button className="ola-btn primary" onClick={start} disabled={starting || Boolean(running)}>
+      {last?.platform_notice && <span className="mk-scan-warning" title={last.platform_notice}>
+        <AlertTriangle size={18}/>
+      </span>}
+      {/* Пока идёт сверка, кнопка сама показывает прогресс; этап — в подсказке. */}
+      <button className={'ola-btn primary mk-scan-btn' + (running ? ' running' : '')} onClick={start}
+        disabled={starting || Boolean(running)}
+        title={running ? `Идёт сверка: ${running.stage}. Пока показаны результаты предыдущей.` : undefined}>
+        {running && <span className="mk-scan-progress" style={{ width: (running.progress || 0) + '%' }}/>}
         {starting || running ? <Loader2 className="mk-spin" size={15}/> : <RefreshCw size={15}/>}
-        {running ? 'Сверка идёт…' : 'Обновить сейчас'}
+        {running ? `Сверка ${running.progress || 0}%` : 'Обновить сейчас'}
       </button>
     </MarketingTools>
 
     {error && <div className="mk-doctor-error">{error}</div>}
-    {running && <div className="mk-doctor-stage">
-      Идёт сверка (около часа): {running.stage}. {last && 'Пока показаны результаты предыдущей.'}
-    </div>}
-    {last?.platform_notice && <div className="mk-doctor-notice">{last.platform_notice}</div>}
     {loading && <div className="mk-doctor-empty"><Loader2 className="mk-spin" size={14}/> Загрузка…</div>}
     {!loading && !last && !running && !error && <div className="mk-doctor-empty">
       Сверок ещё не было. Нажмите «Обновить сейчас» — парсер соберёт врачей с сайтов клиник и найдёт их карточки на площадках.
