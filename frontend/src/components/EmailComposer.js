@@ -117,6 +117,9 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
   const [allUsers, setAllUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [selectedRoles, setSelectedRoles] = useState([]);
+  // Почтовые клубы медцентров (ver. 8.79) — готовые списки подписчиков с сайтов.
+  const [clubs, setClubs] = useState([]);
+  const [loadingClub, setLoadingClub] = useState(null);
   const [sending, setSending] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
   /**
@@ -323,6 +326,11 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
       console.error('Error loading data:', error);
       toast.error('Ошибка загрузки данных');
     }
+    // Клубы отдельно от остального: без них письмо собрать можно, и их сбой
+    // не должен показывать «ошибку загрузки» поверх рабочего конструктора.
+    email.getClub()
+      .then(({ data }) => setClubs(data.clubs || []))
+      .catch(err => console.error('Error loading mail club:', err));
   };
 
   const applyTemplate = (template) => {
@@ -589,6 +597,44 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
       await removeFavoriteRecipient(favId, e);
     } else {
       await addFavoriteRecipient(recipientEmail, displayName);
+    }
+  };
+
+  /**
+   * Клуб как получатель. Отметка выводится из самого списка — клуб отмечен,
+   * пока в списке есть его адреса, — а не хранится отдельно: иначе черновик и
+   * «Повторить» из истории открывались бы с адресами клуба, но снятой галочкой.
+   *
+   * Каждый адрес несёт club: по нему сервер соберёт в письме ссылку отписки
+   * именно от этого клуба. Адрес, уже стоящий в списке (вручную, из файла или
+   * из другого клуба), второй раз не добавляется.
+   */
+  const clubPicked = (id) => recipients.some(r => r.club === id);
+
+  const toggleClub = async (club) => {
+    if (clubPicked(club.medCenterId)) {
+      setRecipients(prev => prev.filter(r => r.club !== club.medCenterId));
+      return;
+    }
+    setLoadingClub(club.medCenterId);
+    try {
+      const { data } = await email.getClubRecipients([club.medCenterId]);
+      const list = data.recipients || [];
+      // Счёт — по списку на момент нажатия; внутри setRecipients он был бы
+      // готов только после отрисовки, и уведомление успело бы сказать «0».
+      const have = new Set(recipients.map(r => r.email));
+      const fresh = list.filter(r => !have.has(r.email));
+      setRecipients(prev => {
+        const now = new Set(prev.map(r => r.email));
+        return [...prev, ...fresh.filter(r => !now.has(r.email))];
+      });
+      if (!list.length) toast(`В клубе «${club.name}» пока никого`);
+      else toast.success(`Клуб «${club.name}»: добавлено ${fresh.length} из ${list.length}`);
+    } catch (error) {
+      console.error('Error loading club recipients:', error);
+      toast.error('Не удалось загрузить подписчиков клуба');
+    } finally {
+      setLoadingClub(null);
     }
   };
 
@@ -1243,6 +1289,29 @@ const EmailComposer = ({ onClose, initialDraft = null }) => {
                       <X size={15} />
                     </button>
                   </div>
+
+                  {clubs.length > 0 && (
+                    <>
+                      <div className="email-picker-section-label">Почтовый клуб</div>
+                      <div className="email-role-filters">
+                        {clubs.map(club => (
+                          <div key={club.medCenterId} className="email-role-filter-item">
+                            <input
+                              type="checkbox"
+                              id={`club-${club.medCenterId}`}
+                              checked={clubPicked(club.medCenterId)}
+                              disabled={loadingClub === club.medCenterId || (!club.active && !clubPicked(club.medCenterId))}
+                              onChange={() => toggleClub(club)}
+                            />
+                            <label htmlFor={`club-${club.medCenterId}`}>
+                              {club.name} <span className="email-club-count">{club.active.toLocaleString('ru-RU')}</span>
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                      {roles.length > 0 && <div className="email-picker-section-label">Роли</div>}
+                    </>
+                  )}
 
                   {/* Role Filters */}
                   {roles.length > 0 && (

@@ -67,3 +67,46 @@ test('смена секрета обесценивает старые токен
   process.env.EMAIL_OPTOUT_SECRET = 'тестовый-секрет-для-подписи-отписок';
   assert.equal(optout.readToken(token), 'ivan@mail.ru');
 });
+
+// ── Почтовый клуб (ver. 8.79) ────────────────────────────────────────────────
+// В письме клуба ссылка несёт ещё и медцентр: отписка из письма Альфы должна
+// убирать человека только из Альфы. При этом ссылки из писем, ушедших до
+// клуба, обязаны читаться как раньше — общей отпиской.
+
+const CLUB = '3f2b8c1e-5d4a-4b7e-9c61-0a2f4e8d7b10';
+
+test('токен клуба несёт адрес и медцентр', () => {
+  const token = optout.makeToken('Ivan@Mail.ru', CLUB);
+  assert.deepEqual(optout.readTokenFull(token), { email: 'ivan@mail.ru', club: CLUB });
+  assert.equal(optout.readToken(token), 'ivan@mail.ru');
+});
+
+test('старый токен без клуба читается общей отпиской', () => {
+  const token = optout.makeToken('ivan@mail.ru');
+  assert.deepEqual(optout.readTokenFull(token), { email: 'ivan@mail.ru', club: null });
+});
+
+test('токены одного адреса в разных клубах различаются', () => {
+  const other = '9a1c4e2f-7b3d-4c8a-b5e6-1f0d2c3b4a59';
+  assert.notEqual(optout.makeToken('ivan@mail.ru', CLUB), optout.makeToken('ivan@mail.ru', other));
+  assert.notEqual(optout.makeToken('ivan@mail.ru', CLUB), optout.makeToken('ivan@mail.ru'));
+});
+
+test('клуб не из UUID в токен не попадает', () => {
+  // Отписка от «клуба» с произвольной строкой была бы подписанным мусором.
+  assert.equal(optout.makeToken('ivan@mail.ru', 'alfa'), optout.makeToken('ivan@mail.ru'));
+});
+
+test('клуб в токене нельзя подменить, не зная секрета', () => {
+  const [, signature] = optout.makeToken('ivan@mail.ru', CLUB).split('.');
+  const other = '9a1c4e2f-7b3d-4c8a-b5e6-1f0d2c3b4a59';
+  const forged = Buffer.from(`ivan@mail.ru\n${other}`).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  assert.equal(optout.readTokenFull(`${forged}.${signature}`), null);
+});
+
+test('ссылка отписки клуба ведёт на ту же страницу', () => {
+  const url = optout.unsubscribeUrl('ivan@mail.ru', CLUB);
+  assert.match(url, /^https:\/\/wiki\.example\.ru\/api\/email-optout\/[A-Za-z0-9_.-]+$/);
+  assert.equal(optout.readTokenFull(url.split('/').pop()).club, CLUB);
+});

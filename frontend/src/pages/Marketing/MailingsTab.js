@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Clock, Copy, Mail, MailX, Plus, RefreshCw, ChevronDown, ChevronRight, Undo2, Gauge, CalendarRange } from 'lucide-react';
+import { Clock, Copy, Mail, MailX, Plus, RefreshCw, ChevronDown, ChevronRight, Undo2, Gauge, CalendarRange, Users, UserMinus, Trash2 } from 'lucide-react';
 import EmailComposer from '../../components/EmailComposer';
 import { email } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -144,6 +144,227 @@ function EmailOptouts({ canEdit }) {
 }
 
 const nfmt = (n) => Number(n || 0).toLocaleString('ru-RU');
+
+const CLUB_SOURCE = { site: 'с сайта', manual: 'вручную' };
+const CLUB_UNSUB = { link: 'по ссылке в письме', oneclick: 'в один клик из почты', manual: 'вручную' };
+
+// Адрес страницы подписки — только хост и путь: полная ссылка с utm-хвостом
+// в строке списка ничего не добавляет, а место съедает.
+const pageOf = (url) => {
+  try {
+    const u = new URL(url);
+    return `${u.host}${u.pathname === '/' ? '' : u.pathname}`;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Почтовый клуб (ver. 8.79) — подписчики, которых присылают сайты медцентров.
+ *
+ * Список у каждой клиники свой, поэтому экран начинается с выбора клуба, а не
+ * с общего списка: «сколько набралось у Альфы» — первый вопрос, с которым сюда
+ * приходят. Отписавшиеся лежат в том же клубе отдельным отбором: их строка —
+ * это ещё и память о том, что человек просил ему не писать.
+ */
+function EmailMailClub({ canEdit }) {
+  const [open, setOpen] = useState(false);
+  const [clubs, setClubs] = useState(null);
+  const [clubId, setClubId] = useState(null);
+  const [status, setStatus] = useState('active');
+  const [query, setQuery] = useState('');
+  const [list, setList] = useState(null);
+
+  const loadClubs = useCallback(async () => {
+    try {
+      const { data } = await email.getClub();
+      setClubs(data.clubs || []);
+      setClubId(prev => prev || data.clubs?.[0]?.medCenterId || null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось загрузить почтовый клуб');
+      setClubs([]);
+    }
+  }, []);
+
+  // Итог в заголовке нужен и у свёрнутой карточки — ради него клубы
+  // загружаются сразу, а не по первому раскрытию.
+  useEffect(() => { loadClubs(); }, [loadClubs]);
+
+  const loadList = useCallback(async () => {
+    if (!clubId) return;
+    try {
+      const { data } = await email.getClubSubscribers({
+        medCenterId: clubId, status, q: query.trim() || undefined, limit: 500,
+      });
+      setList(data);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось загрузить подписчиков');
+      setList({ total: 0, items: [] });
+    }
+  }, [clubId, status, query]);
+
+  // Поиск идёт на сервере: клуб за год вырастает до тысяч адресов, и держать
+  // их все в браузере ради фильтра по подстроке незачем.
+  useEffect(() => {
+    if (!open) return undefined;
+    const t = setTimeout(loadList, query ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [open, loadList, query]);
+
+  const refresh = () => { loadClubs(); loadList(); };
+
+  const act = async (fn, ok, fail) => {
+    try {
+      await fn();
+      toast.success(ok);
+      refresh();
+    } catch (err) {
+      toast.error(err.response?.data?.errors?.[0]?.msg || err.response?.data?.error || fail);
+    }
+  };
+
+  const club = clubs?.find(c => c.medCenterId === clubId);
+  const total = (clubs || []).reduce((sum, c) => sum + c.active, 0);
+
+  const addManual = () => {
+    const address = window.prompt(`Какой адрес записать в клуб «${club?.name}»?`);
+    if (!address?.trim()) return;
+    act(() => email.addClubSubscriber({ email: address.trim(), medCenterId: clubId }),
+      'Адрес записан в клуб', 'Не удалось добавить адрес');
+  };
+
+  const unsubscribe = (row) => {
+    if (!window.confirm(`Отписать ${row.email} от клуба «${club?.name}»?`)) return;
+    act(() => email.unsubscribeClubSubscriber(row.id), 'Адрес отписан от клуба', 'Не удалось отписать');
+  };
+
+  const resubscribe = (row) => {
+    if (!window.confirm(`Вернуть ${row.email} в клуб «${club?.name}»?`)) return;
+    act(() => email.resubscribeClubSubscriber(row.id), 'Адрес вернулся в клуб', 'Не удалось вернуть адрес');
+  };
+
+  const remove = (row) => {
+    if (!window.confirm(`Удалить ${row.email} из клуба «${club?.name}» совсем, вместе с историей подписки?`)) return;
+    act(() => email.deleteClubSubscriber(row.id), 'Адрес удалён', 'Не удалось удалить адрес');
+  };
+
+  const meta = (row) => {
+    const parts = [];
+    if (row.status === 'unsubscribed') {
+      parts.push(`отписался ${CLUB_UNSUB[row.unsubscribeSource] || ''} · ${fmt(row.unsubscribedAt)}`.replace('  ', ' '));
+    } else {
+      parts.push(`${CLUB_SOURCE[row.source] || row.source} · ${fmt(row.subscribedAt)}`);
+    }
+    const page = row.consent?.pageUrl && pageOf(row.consent.pageUrl);
+    if (page) parts.push(page);
+    if (row.source === 'manual' && row.consent?.by) parts.push(row.consent.by);
+    return parts.join(' · ');
+  };
+
+  return (
+    <div className="ola-card ann-optouts ann-club">
+      <header onClick={() => setOpen(v => !v)} style={{ cursor: 'pointer' }}>
+        <span className="ola-card-icon"><Users size={17} /></span>
+        <h3>Почтовый клуб{clubs ? ` · ${nfmt(total)}` : ''}</h3>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </header>
+      {open && (
+        <div className="ola-card-body">
+          {clubs === null && <div className="ola-loading">Загрузка…</div>}
+          {clubs?.length === 0 && (
+            <div className="ola-empty"><Users size={26} /><span>Нет клиник, у которых может быть клуб</span></div>
+          )}
+          {clubs?.length > 0 && (
+            <>
+              <div className="ann-club-picker">
+                <nav className="ola-tabs">
+                  {clubs.map(c => (
+                    <button
+                      key={c.medCenterId}
+                      className={`ola-tab ${c.medCenterId === clubId ? 'active' : ''}`}
+                      onClick={() => { setClubId(c.medCenterId); setList(null); }}
+                      title={c.clinicIds.length ? `clinic_id ${c.clinicIds.join(', ')}` : 'В справочнике не указан clinic_id — сайт не сможет прислать подписчика'}
+                    >
+                      {c.name}
+                      <span className="ann-club-count">{nfmt(c.active)}</span>
+                    </button>
+                  ))}
+                </nav>
+              </div>
+
+              <div className="ann-optouts-bar">
+                <nav className="ola-tabs ann-club-status">
+                  <button className={`ola-tab ${status === 'active' ? 'active' : ''}`} onClick={() => setStatus('active')}>
+                    Подписаны · {nfmt(club?.active)}
+                  </button>
+                  <button className={`ola-tab ${status === 'unsubscribed' ? 'active' : ''}`} onClick={() => setStatus('unsubscribed')}>
+                    Отписались · {nfmt(club?.unsubscribed)}
+                  </button>
+                </nav>
+                <input
+                  className="ann-optouts-search"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Найти адрес"
+                />
+                {canEdit && <button className="ola-btn" onClick={addManual}><Plus size={14} /> Добавить</button>}
+                <button className="ola-btn" onClick={refresh} title="Обновить"><RefreshCw size={14} /></button>
+              </div>
+
+              {list === null && <div className="ola-loading">Загрузка…</div>}
+              {list && list.items.length === 0 && (
+                <div className="ola-empty">
+                  <Users size={26} />
+                  <span>
+                    {query.trim()
+                      ? 'Такого адреса в клубе нет'
+                      : status === 'active' ? 'В клубе пока никого' : 'От клуба никто не отписывался'}
+                  </span>
+                </div>
+              )}
+              {list?.items.map(row => (
+                <div className="ann-optout-row" key={row.id}>
+                  <div>
+                    <strong>
+                      {row.email}
+                      {/* В клубе, но в общем чёрном списке: письмо ему не уйдёт,
+                          хотя в число подписанных он входит. */}
+                      {row.blocked && row.status === 'active' && (
+                        <span className="ola-badge bad ann-club-blocked">отписан от всех рассылок</span>
+                      )}
+                    </strong>
+                    <span>{meta(row)}</span>
+                  </div>
+                  {canEdit && (
+                    <div className="ann-club-actions">
+                      {row.status === 'active' ? (
+                        <button className="ola-btn" onClick={() => unsubscribe(row)} title="Отписать от клуба">
+                          <UserMinus size={13} /> Отписать
+                        </button>
+                      ) : (
+                        <button className="ola-btn" onClick={() => resubscribe(row)} title="Вернуть в клуб">
+                          <Undo2 size={13} /> Вернуть
+                        </button>
+                      )}
+                      <button className="ola-btn danger" onClick={() => remove(row)} title="Удалить совсем">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {list && list.total > list.items.length && (
+                <p className="ann-optouts-note">
+                  Показаны последние {list.items.length} из {nfmt(list.total)}. Остальных ищите поиском по адресу.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const shortDay = (key) => {
   const [, m, d] = String(key || '').split('-');
@@ -353,6 +574,7 @@ function EmailAnnouncements({ canEdit }) {
         </div>
       </div>
 
+      <EmailMailClub canEdit={canEdit} />
       <EmailDailyLimit canEdit={canEdit} />
       <EmailOptouts canEdit={canEdit} />
     </section>

@@ -33,6 +33,7 @@ const formRegistry = require('../services/public/formRegistry');
 const submissionService = require('../services/public/submissionService');
 
 const BOOKING_DURATION_SCOPE = 'booking:duration:read';
+const MAIL_CLUB_SCOPE = 'mail-club:subscribe';
 
 const router = express.Router();
 
@@ -55,7 +56,8 @@ function generateKey() {
 function sanitizeScopes(scopes) {
   const known = new Set([
     ...formRegistry.listFormTypes().map(t => formRegistry.scopeFor(t)),
-    BOOKING_DURATION_SCOPE
+    BOOKING_DURATION_SCOPE,
+    MAIL_CLUB_SCOPE
   ]);
   return [...new Set((scopes || []).filter(s => known.has(s)))];
 }
@@ -85,6 +87,11 @@ router.get('/meta', authenticate, requireAdmin, async (req, res) => {
           formType: 'booking-duration',
           title: 'Чтение длительности онлайн-записи',
           scope: BOOKING_DURATION_SCOPE
+        },
+        {
+          formType: 'mail-club',
+          title: 'Почтовый клуб: запись подписчиков',
+          scope: MAIL_CLUB_SCOPE
         }
       ],
       // Реестр подписок: конфигурация размазана по чатам, и без общего списка

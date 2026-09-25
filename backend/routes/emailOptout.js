@@ -31,6 +31,27 @@
 
 const express = require('express');
 const optout = require('../services/emailOptout');
+const mailClub = require('../services/mailClub');
+
+/**
+ * Название клуба для страницы. Медцентр могли удалить из справочника, пока
+ * письмо лежало в ящике, — тогда страница говорит просто «рассылки», а
+ * отписка всё равно проходит: отписать от несуществующего клуба безвредно.
+ */
+async function clubName(club) {
+  if (!club) return null;
+  try {
+    const mc = await require('../models').MedCenter.findByPk(club, { attributes: ['name', 'displayName'] });
+    return mc ? (mc.displayName || mc.name) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Что именно человек перестанет получать — одной фразой для обеих страниц.
+const whatText = (name) => (name
+  ? `письма почтового клуба «${esc(name)}»`
+  : 'новости и акции');
 
 const router = express.Router();
 
@@ -78,8 +99,9 @@ const page = ({ title, text, action = null, note = null }) => `<!DOCTYPE html>
 </html>`;
 
 /** Страница с кнопкой. Сама по себе ничего не меняет. */
-router.get('/:token', (req, res) => {
-  const email = optout.readToken(req.params.token);
+router.get('/:token', async (req, res) => {
+  const parsed = optout.readTokenFull(req.params.token);
+  const email = parsed?.email;
   res.set('Cache-Control', 'no-store');
 
   if (!email) {
@@ -91,7 +113,7 @@ router.get('/:token', (req, res) => {
 
   res.send(page({
     title: 'Отписаться от рассылки?',
-    text: `Мы перестанем присылать новости и акции на адрес <b>${esc(email)}</b>. Письма о ваших записях и результатах это не затронет.`,
+    text: `Мы перестанем присылать ${whatText(await clubName(parsed.club))} на адрес <b>${esc(email)}</b>. Письма о ваших записях и результатах это не затронет.`,
     action: `<form method="POST" action=""><button type="submit">Отписаться</button></form>`,
     note: 'Передумаете — напишите нам, и мы вернём адрес в рассылку.',
   }));
@@ -103,7 +125,8 @@ router.get('/:token', (req, res) => {
  * что клиенту нужен короткий ответ, а человеку — страница.
  */
 router.post('/:token', async (req, res) => {
-  const email = optout.readToken(req.params.token);
+  const parsed = optout.readTokenFull(req.params.token);
+  const email = parsed?.email;
   res.set('Cache-Control', 'no-store');
 
   if (!email) {
@@ -118,7 +141,11 @@ router.post('/:token', async (req, res) => {
   const oneClick = String(req.body?.['List-Unsubscribe'] || '') === 'One-Click';
 
   try {
-    await optout.optOut(email, { source: oneClick ? 'oneclick' : 'link' });
+    const source = oneClick ? 'oneclick' : 'link';
+    // Письмо клуба отписывает от клуба, письмо по списку CSV — от всего
+    // сразу, как было до ver. 8.79.
+    if (parsed.club) await mailClub.unsubscribe(email, parsed.club, { source });
+    else await optout.optOut(email, { source });
   } catch (error) {
     console.error('Не удалось записать отписку:', error.message);
     return res.status(500).send(oneClick ? 'error' : page({
@@ -131,7 +158,9 @@ router.post('/:token', async (req, res) => {
 
   res.send(page({
     title: 'Готово',
-    text: `Адрес <b>${esc(email)}</b> больше не получит рассылок. Записи, напоминания и результаты приходить не перестанут — это другая почта.`,
+    text: parsed.club
+      ? `Адрес <b>${esc(email)}</b> больше не получит ${whatText(await clubName(parsed.club))}. Записи, напоминания и результаты приходить не перестанут — это другая почта.`
+      : `Адрес <b>${esc(email)}</b> больше не получит рассылок. Записи, напоминания и результаты приходить не перестанут — это другая почта.`,
     note: 'Передумаете — напишите нам, и мы вернём адрес в рассылку.',
   }));
 });

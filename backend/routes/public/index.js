@@ -15,6 +15,7 @@ const { auditLog, rateLimitByIp, limitBodySize } = require('../../middleware/pub
 const formsRoutes = require('./v1/forms');
 const bookingRoutes = require('./v1/booking');
 const vacancyRoutes = require('./v1/vacancies');
+const mailClubRoutes = require('./v1/mailClub');
 
 // Порядок важен: сначала лог и грубые лимиты, потом разбор тела, потом маршруты
 router.use(auditLog());
@@ -47,6 +48,8 @@ router.get('/v1/ping', (req, res) => {
 
 router.use('/v1/forms', formsRoutes);
 router.use('/v1/booking', bookingRoutes);
+// Почтовый клуб (ver. 8.79): сайты медцентров присылают подписчиков рассылок.
+router.use('/v1/mail-club', mailClubRoutes);
 
 // Вакансии. В отличие от форм выше, ключа не требует: анкету заполняет человек
 // с улицы, у которого нет и не будет аккаунта в портале. Право предъявляется

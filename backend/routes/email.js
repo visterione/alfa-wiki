@@ -1,7 +1,7 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const { body, validationResult } = require('express-validator');
-const { EmailTemplate, EmailLog, EmailOptOut, EmailModule, EmailFavoriteRecipient, EmailFavoriteTemplate, User, Role } = require('../models');
+const { EmailTemplate, EmailLog, EmailOptOut, MailClubSubscriber, MedCenter, EmailModule, EmailFavoriteRecipient, EmailFavoriteTemplate, User, Role } = require('../models');
 const { authenticate, requireMarketing } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
 const emailRenderer = require('../services/emailRenderer');
@@ -9,6 +9,7 @@ const emailIcons = require('../services/emailIconImage');
 const darkMode = require('../services/emailDarkMode');
 const quota = require('../services/emailQuota');
 const optout = require('../services/emailOptout');
+const mailClub = require('../services/mailClub');
 const { Op } = require('sequelize');
 const multer = require('multer');
 const XLSX = require('xlsx-js-style');
@@ -472,6 +473,174 @@ router.post('/optouts', authenticate, requireAnnouncementsEdit, [
   }
 });
 
+// === ПОЧТОВЫЙ КЛУБ (ver. 8.79) ===
+//
+// Подписчики приходят с сайтов через /api/public/v1/mail-club; здесь — то, что
+// с ними делает маркетинг: смотрит, сколько набралось, выбирает клуб
+// получателем рассылки и разбирает просьбы «запишите / уберите меня».
+
+// Идентификаторы медцентров приходят строкой запроса; без проверки мусор в
+// них ронял бы запрос к базе ошибкой приведения к uuid, то есть пятисотой.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const clubSubscriberJson = (row, blocked) => ({
+  id: row.id,
+  email: row.email,
+  medCenterId: row.medCenterId,
+  status: row.status,
+  source: row.source,
+  consent: row.consent || {},
+  subscribedAt: row.subscribedAt,
+  unsubscribedAt: row.unsubscribedAt,
+  unsubscribeSource: row.unsubscribeSource,
+  // Активный в клубе, но в общем чёрном списке — письма ему не уйдут. Без
+  // этой пометки число «активных» обещало бы больше писем, чем уйдёт.
+  blocked: blocked.has(row.email),
+});
+
+// GET /api/email/club — клубы всех клиник, куда ходят пациенты, с числами
+router.get('/club', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const [centers, counts] = await Promise.all([
+      mailClub.clubCenters(),
+      MailClubSubscriber.findAll({
+        attributes: ['medCenterId', 'status', [MailClubSubscriber.sequelize.fn('COUNT', '*'), 'n']],
+        group: ['medCenterId', 'status'],
+        raw: true,
+      }),
+    ]);
+    const by = new Map();
+    for (const c of counts) {
+      const slot = by.get(c.medCenterId) || { active: 0, unsubscribed: 0 };
+      slot[c.status] = Number(c.n);
+      by.set(c.medCenterId, slot);
+    }
+    res.json({
+      clubs: centers.map(mc => ({
+        medCenterId: mc.id,
+        name: mc.displayName || mc.name,
+        color: mc.color,
+        clinicIds: mc.misClinicIds || [],
+        active: by.get(mc.id)?.active || 0,
+        unsubscribed: by.get(mc.id)?.unsubscribed || 0,
+      })),
+    });
+  } catch (error) {
+    console.error('❌ Error loading mail club:', error);
+    res.status(500).json({ error: 'Не удалось загрузить почтовый клуб' });
+  }
+});
+
+// GET /api/email/club/subscribers?medCenterId=&status=&q= — подписчики одного клуба
+router.get('/club/subscribers', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    if (!UUID_RE.test(String(req.query.medCenterId || ''))) return res.status(400).json({ error: 'Не выбран медцентр' });
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 200, maxLimit: 1000 });
+    const where = { medCenterId: req.query.medCenterId };
+    if (['active', 'unsubscribed'].includes(req.query.status)) where.status = req.query.status;
+    const q = String(req.query.q || '').trim().toLowerCase();
+    if (q) where.email = { [Op.iLike]: `%${q.replace(/[%_\\]/g, '\\$&')}%` };
+
+    const { count, rows } = await MailClubSubscriber.findAndCountAll({
+      where,
+      order: [['subscribedAt', 'DESC']],
+      limit,
+      offset,
+    });
+    const blockedRows = rows.length
+      ? await EmailOptOut.findAll({ where: { email: rows.map(r => r.email) }, attributes: ['email'] })
+      : [];
+    const blocked = new Set(blockedRows.map(r => r.email));
+    res.json({ total: count, items: rows.map(r => clubSubscriberJson(r, blocked)) });
+  } catch (error) {
+    console.error('❌ Error loading club subscribers:', error);
+    res.status(500).json({ error: 'Не удалось загрузить подписчиков' });
+  }
+});
+
+// POST /api/email/club/subscribers — записать адрес в клуб руками («запишите меня» по телефону)
+router.post('/club/subscribers', authenticate, requireAnnouncementsEdit, [
+  body('email').trim().isEmail().withMessage('Нужен корректный адрес'),
+  body('medCenterId').isUUID().withMessage('Не выбран медцентр'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const mc = await MedCenter.findByPk(req.body.medCenterId, { attributes: ['id'] });
+    if (!mc) return res.status(404).json({ error: 'Медцентр не найден' });
+    const { status } = await mailClub.subscribe({
+      email: req.body.email,
+      medCenterId: mc.id,
+      source: 'manual',
+      createdBy: req.user.id,
+      consent: { by: req.user.displayName || req.user.username, at: new Date().toISOString() },
+    });
+    res.json({ ok: true, status });
+  } catch (error) {
+    console.error('❌ Error adding club subscriber:', error);
+    res.status(500).json({ error: 'Не удалось добавить адрес' });
+  }
+});
+
+// POST /api/email/club/subscribers/:id/unsubscribe — отписать по просьбе, пришедшей не по ссылке
+router.post('/club/subscribers/:id/unsubscribe', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    const row = await MailClubSubscriber.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Подписчик не найден' });
+    await mailClub.unsubscribe(row.email, row.medCenterId, { source: 'manual' });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Error unsubscribing club member:', error);
+    res.status(500).json({ error: 'Не удалось отписать' });
+  }
+});
+
+// POST /api/email/club/subscribers/:id/resubscribe — вернуть отписавшегося по ошибке
+router.post('/club/subscribers/:id/resubscribe', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    const row = await MailClubSubscriber.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Подписчик не найден' });
+    await mailClub.subscribe({
+      email: row.email,
+      medCenterId: row.medCenterId,
+      source: 'manual',
+      createdBy: req.user.id,
+      consent: { by: req.user.displayName || req.user.username, at: new Date().toISOString(), returned: true },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Error resubscribing club member:', error);
+    res.status(500).json({ error: 'Не удалось вернуть адрес' });
+  }
+});
+
+/**
+ * Удалить строку совсем. Не то же самое, что отписка: отписанный остаётся в
+ * списке и не вернётся молча, удалённый исчезает вместе с историей согласия.
+ * Нужно по требованию человека удалить его данные, а не как обычная уборка.
+ */
+router.delete('/club/subscribers/:id', authenticate, requireAnnouncementsEdit, async (req, res) => {
+  try {
+    const count = await MailClubSubscriber.destroy({ where: { id: req.params.id } });
+    if (!count) return res.status(404).json({ error: 'Подписчик не найден' });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ Error deleting club member:', error);
+    res.status(500).json({ error: 'Не удалось удалить адрес' });
+  }
+});
+
+// GET /api/email/club/recipients?medCenterIds=a,b — клубы как получатели рассылки
+router.get('/club/recipients', authenticate, requireAnnouncements, async (req, res) => {
+  try {
+    const ids = String(req.query.medCenterIds || '').split(',').map(s => s.trim()).filter(id => UUID_RE.test(id));
+    res.json({ recipients: await mailClub.recipientsOf(ids) });
+  } catch (error) {
+    console.error('❌ Error loading club recipients:', error);
+    res.status(500).json({ error: 'Не удалось собрать получателей из клуба' });
+  }
+});
+
 // === EMAIL SENDING ===
 
 // POST /api/email/send - Запустить рассылку (возвращает jobId сразу, отправка идёт в фоне)
@@ -511,7 +680,14 @@ router.post('/send', authenticate, requireAnnouncementsEdit, [
   }
 
   const startAt = scheduledAt ? new Date(scheduledAt) : new Date();
-  const slim = (r) => ({ email: r.email, userId: r.userId, displayName: r.displayName });
+  // club — медцентр почтового клуба, из которого пришёл адрес (ver. 8.79). Без
+  // него отложенная рассылка потеряла бы, от какого клуба отписывать человека.
+  const slim = (r) => ({
+    email: r.email,
+    userId: r.userId,
+    displayName: r.displayName,
+    ...(r.club ? { club: r.club } : {}),
+  });
   const slimAttachments = attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType }));
 
   /**

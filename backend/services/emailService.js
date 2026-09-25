@@ -556,7 +556,9 @@ const sendBulkEmail = async ({ subject, htmlContent, design = null, recipients, 
         // Второй шаг рендера: общая разметка + адрес отписки этого получателя.
         // Больше в письме ничего не персонализируется — обращение по имени и
         // подстановка медцентра убраны как неиспользуемые.
-        const unsubscribeUrl = optout.unsubscribeUrl(recipient.email);
+        // У получателя из почтового клуба в ссылке едет и клуб: отписка из
+        // письма Альфы убирает его только из Альфы (ver. 8.79).
+        const unsubscribeUrl = optout.unsubscribeUrl(recipient.email, recipient.club || null);
         const personalHtml = emailRenderer.personalize(processedHtml, {
           unsubscribe_url: unsubscribeUrl,
         });

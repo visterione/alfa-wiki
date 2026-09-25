@@ -1055,8 +1055,10 @@ const MedCenter = sequelize.define('MedCenter', {
   botOrganization: { type: DataTypes.STRING(50), allowNull: true },
   organizationId: { type: DataTypes.UUID, allowNull: true, comment: 'Юрлицо, которому принадлежит медцентр' },
   // Мост между справочником и всем МИС-блоком (расписание, зарплата, бонусы,
-  // платежи). Массив, потому что у Сукко исторически два id (11 и 12) — раньше это
-  // лечилось картой CLINIC_ID_ALIASES в clinicUtils.js. Строки, а не числа: портал
+  // платежи). Массив, потому что одной клинике портала в МИС может отвечать
+  // несколько id — раньше такие случаи лечились картой CLINIC_ID_ALIASES в
+  // clinicUtils.js. Какой id чей, знает только справочник на бою: в копиях базы
+  // для разработки он бывает устаревшим. Строки, а не числа: портал
   // использует псевдо-id «ip» и «aup» в том же пространстве, да и большинство
   // таблиц хранят clinicId как varchar.
   misClinicIds: {
@@ -2475,6 +2477,62 @@ const EmailOptOut = sequelize.define('EmailOptOut', {
   timestamps: true,
   updatedAt: false
 });
+
+/**
+ * Почтовый клуб (ver. 8.79) — подписчики рассылок, пришедшие с сайтов.
+ *
+ * До клуба список получателей каждый раз собирался заново: выгрузка CSV,
+ * импорт в конструктор. Теперь человек сам оставляет адрес в блоке «Почтовый
+ * клуб» на сайте медцентра, и сайт присылает его сюда через публичный API.
+ *
+ * Список у каждого медцентра свой. Подписчик Альфы — не подписчик 3К: человек
+ * соглашался на письма конкретной клиники, и отписка из письма Альфы убирает
+ * его только из Альфы. Поэтому ключ строки — пара «адрес × медцентр», а не
+ * адрес.
+ *
+ * Отписавшийся не удаляется, а получает статус: строка хранит, когда и откуда
+ * пришло согласие и когда его отозвали. Общий чёрный список email_optouts живёт
+ * рядом и важнее клуба — адрес оттуда не получит письма, даже числясь активным.
+ */
+const MailClubSubscriber = sequelize.define('MailClubSubscriber', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  email: { type: DataTypes.STRING(320), allowNull: false, comment: 'Адрес в нижнем регистре' },
+  medCenterId: { type: DataTypes.UUID, allowNull: false, comment: 'Чей это клуб' },
+  status: {
+    type: DataTypes.STRING(16),
+    allowNull: false,
+    defaultValue: 'active',
+    comment: 'active — получает рассылки клуба; unsubscribed — отписался от этого медцентра'
+  },
+  source: {
+    type: DataTypes.STRING(16),
+    allowNull: false,
+    defaultValue: 'site',
+    comment: 'site — форма на сайте; manual — добавлен руками в портале'
+  },
+  // С какой страницы, с какого адреса и каким ключом пришла подписка. Это
+  // единственное, чем можно ответить на вопрос «откуда у вас мой адрес»:
+  // подтверждения по почте у клуба нет по решению заказчика.
+  consent: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  apiClientId: { type: DataTypes.UUID, allowNull: true },
+  subscribedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  unsubscribedAt: { type: DataTypes.DATE, allowNull: true },
+  unsubscribeSource: {
+    type: DataTypes.STRING(16),
+    allowNull: true,
+    comment: 'link / oneclick / manual — как и в email_optouts'
+  },
+  createdBy: { type: DataTypes.UUID, allowNull: true, comment: 'Кто добавил руками (source = manual)' }
+}, {
+  tableName: 'mail_club_subscribers',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['email', 'medCenterId'] },
+    { fields: ['medCenterId', 'status'] }
+  ]
+});
+
+MailClubSubscriber.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 
 /**
  * Сохранённый модуль конструктора писем (ver. 8.43).
@@ -5378,6 +5436,7 @@ module.exports = {
   EmailTemplate,
   EmailLog,
   EmailOptOut,
+  MailClubSubscriber,
   EmailModule,
   EmailFavoriteRecipient,
   EmailFavoriteTemplate,

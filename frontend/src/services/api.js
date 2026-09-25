@@ -726,6 +726,16 @@ export const email = {
   addOptout: (data) => api.post('/email/optouts', data),
   removeOptout: (mail) => api.delete(`/email/optouts/${encodeURIComponent(mail)}`),
 
+  // === ПОЧТОВЫЙ КЛУБ (ver. 8.79) ===
+  // Подписчики приходят с сайтов медцентров; список у каждого медцентра свой.
+  getClub: () => api.get('/email/club'),
+  getClubSubscribers: (params) => api.get('/email/club/subscribers', { params }),
+  addClubSubscriber: (data) => api.post('/email/club/subscribers', data),
+  unsubscribeClubSubscriber: (id) => api.post(`/email/club/subscribers/${id}/unsubscribe`),
+  resubscribeClubSubscriber: (id) => api.post(`/email/club/subscribers/${id}/resubscribe`),
+  deleteClubSubscriber: (id) => api.delete(`/email/club/subscribers/${id}`),
+  getClubRecipients: (medCenterIds) => api.get('/email/club/recipients', { params: { medCenterIds: medCenterIds.join(',') } }),
+
   // === SENDING ===
   send: (data) => api.post('/email/send', data),
   getJobStatus: (jobId) => api.get(`/email/send/status/${jobId}`),

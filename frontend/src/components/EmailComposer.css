@@ -1115,3 +1115,9 @@
 /* День, забитый под завязку: следующая рассылка с него начаться не сможет, и
    это надо видеть, не считая числа глазами. */
 .ann-limit-days li.full { border-left: 3px solid var(--warning); }
+
+/* Число подписчиков у клуба в окне получателей (ver. 8.79). */
+.email-club-count {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
