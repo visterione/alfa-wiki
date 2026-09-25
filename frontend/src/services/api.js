@@ -425,6 +425,8 @@ export const marketing = {
   startDoctorScan:()      => api.post('/marketing/doctors/scans'),
   getDoctorScan:  id      => api.get('/marketing/doctors/scans/' + encodeURIComponent(id)),
   getLatestDoctorScan: () => api.get('/marketing/doctors/scans/latest'),
+  getDoctorScanPhotos: (id, sourceIndex) => api.get('/marketing/doctors/scans/'
+    + encodeURIComponent(id) + '/sources/' + sourceIndex + '/photos'),
   getDoctorScanDoctor: (id, sourceIndex, doctorIndex) => api.get('/marketing/doctors/scans/'
     + encodeURIComponent(id) + '/sources/' + sourceIndex + '/doctors/' + doctorIndex)
 };

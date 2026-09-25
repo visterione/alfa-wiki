@@ -79,6 +79,9 @@ const ping = () => get('/api/ping');
 const startDoctorScan = () => post('/api/doctors/scans');
 const getDoctorScan = scanId => get('/api/doctors/scans/' + encodeURIComponent(scanId));
 const getLatestDoctorScan = () => get('/api/doctors/scans/latest');
+const getDoctorScanPhotos = (scanId, sourceIndex) => get(
+  '/api/doctors/scans/' + encodeURIComponent(scanId) + '/sources/' + encodeURIComponent(sourceIndex) + '/photos'
+);
 const getDoctorScanDoctor = (scanId, sourceIndex, doctorIndex) => get(
   '/api/doctors/scans/' + encodeURIComponent(scanId)
   + '/sources/' + encodeURIComponent(sourceIndex) + '/doctors/' + encodeURIComponent(doctorIndex)
@@ -189,6 +192,7 @@ module.exports = {
   getDoctorScan,
   getLatestDoctorScan,
   getDoctorScanDoctor,
+  getDoctorScanPhotos,
   getSource,
   listServices,
   fetchCatalog,

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Ban, Clock, Globe, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { marketing } from '../../services/api';
 import { MarketingTools } from './toolsSlot';
 import './Marketing.css';
@@ -62,7 +62,7 @@ function ScoreRing({ value, size = 36, title }) {
       {value != null && <circle className="mk-ring-arc" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
         strokeDasharray={`${filled} ${length}`} transform={`rotate(-90 ${size / 2} ${size / 2})`}/>}
     </svg>
-    <b style={{ fontSize: Math.round(size * 0.3) }}>{value == null ? '—' : value}</b>
+    <b style={{ fontSize: Math.max(10, Math.round(size * 0.32)) }}>{value == null ? '—' : value}</b>
   </span>;
 }
 
@@ -89,10 +89,21 @@ function Cell({ field, side }) {
   return value ? <span>{value}</span> : <span className="mk-diff-empty">не указано</span>;
 }
 
-function Diff({ fields }) {
+const siteHost = url => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } };
+
+// Шапка таблицы — откуда какая колонка: сайт клиники и площадка, обе ссылками.
+function Diff({ fields, platform, entry, doctor }) {
   return <table className="mk-diff">
     <colgroup><col className="mk-diff-label"/><col/><col/></colgroup>
-    <thead><tr><th/><th>На сайте клиники</th><th>На площадке</th></tr></thead>
+    <thead><tr>
+      <th/>
+      <th><a className="mk-diff-source" href={doctor.profile_url} target="_blank" rel="noreferrer">
+        <Globe size={15}/>{siteHost(doctor.profile_url || doctor.source_url)}
+      </a></th>
+      <th><a className="mk-diff-source" href={entry.url} target="_blank" rel="noreferrer">
+        <img className="mk-platform-logo" src={PLATFORM_LOGO[platform]} alt=""/>{platform}
+      </a></th>
+    </tr></thead>
     <tbody>
       {FIELDS.filter(([key]) => fields[key]).map(([key, label]) => {
         const field = fields[key];
@@ -110,30 +121,30 @@ function Diff({ fields }) {
   </table>;
 }
 
-// Клик по названию или ФИО ведёт на карточку и не должен раскрывать строку.
-const stop = event => event.stopPropagation();
+// Площадка без оценки — значок вместо текста; пояснение во всплывающей подсказке.
+const STATUS_ICON = {
+  blocked: [AlertTriangle, 'warn'],
+  review: [AlertTriangle, 'warn'],
+  not_found: [Ban, 'bad'],
+  error: [AlertCircle, 'muted'],
+  searching: [Clock, 'muted']
+};
 
-function PlatformRow({ platform, entry }) {
-  const [open, setOpen] = useState(false);
+// Площадка — кнопка: логотип, название и оценка (или значок, если оценить нельзя).
+function PlatformButton({ platform, entry, active, onClick }) {
   const status = entry?.status || 'searching';
-  const comparable = entry?.fields && Object.keys(entry.fields).length > 0;
-  return <div className={'mk-tree-platform ' + status}>
-    <div className="mk-tree-line" onClick={() => comparable && setOpen(!open)} role={comparable ? 'button' : undefined}>
-      {comparable ? (open ? <ChevronDown size={15}/> : <ChevronRight size={15}/>) : <span className="mk-tree-spacer"/>}
-      <img className="mk-platform-logo" src={PLATFORM_LOGO[platform]} alt=""/>
-      {entry?.url
-        ? <a className="mk-platform-name" href={entry.url} target="_blank" rel="noreferrer" onClick={stop}>{platform}</a>
-        : <b className="mk-platform-name">{platform}</b>}
-      {!comparable && <span className={'mk-status ' + status}>{PLATFORM_STATUS[status]}</span>}
-      {comparable && <ScoreRing value={entry.score} size={32}/>}
-    </div>
-    {(entry?.review_note || entry?.error) && <div className="mk-tree-note">{entry.review_note || entry.error}</div>}
-    {open && comparable && <Diff fields={entry.fields}/>}
-  </div>;
+  const scored = entry?.score != null;
+  const [Icon, kind] = STATUS_ICON[status] || STATUS_ICON.error;
+  const hint = [PLATFORM_STATUS[status], entry?.review_note || entry?.error].filter(Boolean).join('. ');
+  return <button type="button" className={'mk-platform-btn' + (active ? ' active' : '')} onClick={onClick} title={hint}>
+    <img className="mk-platform-logo" src={PLATFORM_LOGO[platform]} alt=""/>
+    <span>{platform}</span>
+    {scored ? <ScoreRing value={entry.score} size={30}/> : <Icon size={18} className={'mk-status-icon ' + kind}/>}
+  </button>;
 }
 
 // Дерево приходит без таблиц сравнения — они весят в десять раз больше
-// всего остального. Подробности врача грузятся, когда его раскрыли.
+// всего остального. Подробности врача грузятся, когда открыли площадку.
 const details = new Map();
 
 function useDoctorDetails(scanId, sourceIndex, doctorIndex, open) {
@@ -151,37 +162,70 @@ function useDoctorDetails(scanId, sourceIndex, doctorIndex, open) {
   return state;
 }
 
-function Photo({ doctor }) {
-  const [broken, setBroken] = useState(false);
-  if (!doctor.photo || broken) {
+function Photo({ doctor, src }) {
+  if (!src) {
     const initials = doctor.name.split(/\s+/).slice(0, 2).map(word => word.charAt(0)).join('');
     return <span className="mk-doctor-photo empty">{initials}</span>;
   }
-  return <img className="mk-doctor-photo" src={doctor.photo} alt="" loading="lazy" onError={() => setBroken(true)}/>;
+  return <img className="mk-doctor-photo" src={src} alt=""/>;
 }
 
-function DoctorRow({ doctor, scanId, sourceIndex, open, onToggle }) {
-  const loaded = useDoctorDetails(scanId, sourceIndex, doctor.index, open);
+function DoctorRow({ doctor, photo, scanId, sourceIndex, platform, onPlatform }) {
+  const loaded = useDoctorDetails(scanId, sourceIndex, doctor.index, Boolean(platform));
   const full = loaded?.doctor || doctor;
-  return <div className="mk-tree-doctor">
-    <div className="mk-tree-line mk-doctor-line" onClick={onToggle} role="button">
-      {open ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
-      <Photo doctor={doctor}/>
+  const entry = platform ? full.comparisons?.[platform] : null;
+  const comparable = entry?.fields && Object.keys(entry.fields).length > 0;
+  return <div className={'mk-doctor' + (platform ? ' open' : '')}>
+    <div className="mk-doctor-line">
+      <Photo doctor={doctor} src={photo}/>
       <div className="mk-doctor-title">
-        <a href={doctor.profile_url} target="_blank" rel="noreferrer" onClick={stop}>{doctor.name}</a>
+        <a href={doctor.profile_url} target="_blank" rel="noreferrer">{doctor.name}</a>
         <span>{(doctor.specialties || []).join(', ')}</span>
       </div>
-      <ScoreRing value={doctor.score} size={36} title="Среднее по площадкам, где есть карточка врача"/>
+      <div className="mk-doctor-platforms">
+        {PLATFORMS.map(name => <PlatformButton key={name} platform={name} entry={doctor.comparisons?.[name]}
+          active={platform === name} onClick={() => onPlatform(platform === name ? null : name)}/>)}
+      </div>
+      <span className="mk-doctor-divider"/>
+      <ScoreRing value={doctor.score} size={40} title="Среднее по площадкам, где есть карточка врача"/>
     </div>
-    {open && <div className="mk-tree-children">
+    {platform && <div className="mk-doctor-details">
       {doctor.site_conflicts?.length > 0 && <div className="mk-doctor-conflicts">
         Сайт противоречит сам себе: {doctor.site_conflicts.join('; ')}
       </div>}
-      {loaded?.loading && <div className="mk-tree-note"><Loader2 className="mk-spin" size={13}/> Загрузка сравнения…</div>}
+      {loaded?.loading && <div className="mk-doctor-hint"><Loader2 className="mk-spin" size={13}/> Загрузка сравнения…</div>}
       {loaded?.error && <div className="mk-doctor-error">{loaded.error}</div>}
-      {PLATFORMS.map(platform => <PlatformRow key={platform} platform={platform} entry={full.comparisons?.[platform]}/>)}
+      {entry?.review_note && <div className="mk-doctor-hint">{entry.review_note}</div>}
+      {entry && !comparable && !loaded?.loading && <div className="mk-doctor-hint">
+        {PLATFORM_STATUS[entry.status] || 'Сравнить не с чем'}{entry.error ? '. ' + entry.error : '.'}
+        {entry.url && <> <a href={entry.url} target="_blank" rel="noreferrer">Открыть карточку</a></>}
+      </div>}
+      {comparable && <Diff fields={entry.fields} platform={platform} entry={entry} doctor={full}/>}
     </div>}
   </div>;
+}
+
+// Фото клиники приходят одним запросом миниатюрами; парсер докачивает их в
+// фоне, поэтому, пока pending > 0, переспрашиваем.
+function useClinicPhotos(scanId, sourceIndex) {
+  const [photos, setPhotos] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    let timer;
+    let rounds = 0;
+    const poll = async () => {
+      try {
+        const { data } = await marketing.getDoctorScanPhotos(scanId, sourceIndex);
+        if (cancelled) return;
+        setPhotos(data.photos || {});
+        if (data.pending > 0 && ++rounds < 40) timer = setTimeout(poll, 3000);
+      } catch { /* без фото — инициалы, страница работает */ }
+    };
+    setPhotos({});
+    poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [scanId, sourceIndex]);
+  return photos;
 }
 
 const clinicName = source => source.center?.name || source.clinic;
@@ -200,15 +244,18 @@ function ClinicHeader({ source }) {
 }
 
 function ClinicDoctors({ source, sourceIndex, scanId, doctors }) {
-  const [openDoctor, setOpenDoctor] = useState(null);
+  // Открыта одна площадка одного врача: {doctor, platform}.
+  const [open, setOpen] = useState(null);
+  const photos = useClinicPhotos(scanId, sourceIndex);
   return <section className="mk-doctors-section">
     <ClinicHeader source={source}/>
     {source.error && <div className="mk-doctor-error">{source.error}</div>}
     {!source.error && !doctors.length && <div className="mk-doctor-empty">Врачей не найдено.</div>}
-    {doctors.length > 0 && <div className="mk-tree-clinic">
-      {doctors.map(doctor => <DoctorRow key={doctor.index} doctor={doctor} scanId={scanId} sourceIndex={sourceIndex}
-        open={openDoctor === doctor.index}
-        onToggle={() => setOpenDoctor(openDoctor === doctor.index ? null : doctor.index)}/>)}
+    {doctors.length > 0 && <div className="mk-doctors-list">
+      {doctors.map(doctor => <DoctorRow key={doctor.index} doctor={doctor} photo={photos[doctor.index]}
+        scanId={scanId} sourceIndex={sourceIndex}
+        platform={open?.doctor === doctor.index ? open.platform : null}
+        onPlatform={platform => setOpen(platform ? { doctor: doctor.index, platform } : null)}/>)}
     </div>}
   </section>;
 }

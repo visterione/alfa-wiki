@@ -85,6 +85,22 @@ router.get('/doctors/scans/latest', ...doctorsAccess, async (req, res) => {
   }
 });
 
+// Фото врачей одной клиники — data:-адресами, как значки источников: тег <img>
+// не передаёт токен. Парсер ужимает их до миниатюр и докачивает в фоне;
+// pending > 0 значит «переспросите чуть позже».
+router.get('/doctors/scans/:scanId/sources/:sourceIndex/photos', ...doctorsAccess, async (req, res) => {
+  try {
+    const { scanId, sourceIndex } = req.params;
+    if (!/^\d+$/.test(sourceIndex)) return res.status(400).json({ error: 'Неверный номер клиники' });
+    res.set('Cache-Control', 'private, no-store');
+    res.json(await parser.getDoctorScanPhotos(scanId, sourceIndex));
+  } catch (err) {
+    const described = parser.describeError(err);
+    console.error('GET /api/marketing/doctors/scans/:id/photos error:', err.message);
+    res.status(described.status).json({ error: described.error, message: described.message });
+  }
+});
+
 // Сравнения по площадкам — только для раскрытого врача: целиком сверка весит
 // мегабайты, а дерево без них — сотни килобайт.
 router.get('/doctors/scans/:scanId/sources/:sourceIndex/doctors/:doctorIndex', ...doctorsAccess, async (req, res) => {
