@@ -626,3 +626,11 @@
     transform: none;
   }
 }
+
+/* На площадках что-то требует внимания (ver. 8.87): жёлтый треугольник вместо
+   обычного значка и жёлтая рамка — заметно, но не тревожно, как ошибка */
+.reviews-boards-header .btn-platforms--alert {
+  color: var(--amber-800);
+  border-color: var(--amber-500);
+  background: var(--amber-100);
+}

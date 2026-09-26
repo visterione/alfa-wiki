@@ -5,6 +5,7 @@
  * Альфа Парсера и привязка мест к доскам.
  *
  *   GET    /api/review-collector                   всё для страницы одним запросом
+ *   GET    /api/review-collector/health            какие учётки требуют внимания
  *   POST   /api/review-collector/accounts          завести учётку (сразу уходит на проверку)
  *   PATCH  /api/review-collector/accounts/:id      изменить; новый пароль — новая проверка
  *   DELETE /api/review-collector/accounts/:id      удалить вместе с местами
@@ -25,6 +26,7 @@ const {
 const { authenticate } = require('../middleware/auth');
 const collector = require('../services/reviewCollector/jobs');
 const platforms = require('../services/reviewCollector/platforms');
+const { accountProblem } = require('../services/reviewCollector/health');
 
 const router = express.Router();
 
@@ -64,13 +66,40 @@ router.get('/', async (req, res) => {
 
     res.json({
       platforms: platforms.list(),
-      accounts: accounts.map(a => ({ ...a.toJSON(), checking: checking.has(a.id) })),
+      accounts: accounts.map(a => {
+        const json = a.toJSON();
+        return { ...json, checking: checking.has(a.id), problem: accountProblem(json) };
+      }),
       boards: boards
         .map(b => ({ id: b.id, name: b.medCenter?.name || '—' }))
         .sort((x, y) => x.name.localeCompare(y.name, 'ru')),
     });
   } catch (err) {
     fail(res, err, 'Не удалось загрузить площадки');
+  }
+});
+
+// Сколько учёток требуют внимания — для треугольника на кнопке «Площадки»
+// (ver. 8.87). Лёгкий запрос: его делает каждый заход в раздел отзывов.
+router.get('/health', async (req, res) => {
+  try {
+    const accounts = await ReviewPlatformAccount.findAll({
+      where: { isEnabled: true },
+      attributes: ['id', 'platform', 'label', 'login', 'status', 'statusAt', 'createdAt', 'isEnabled'],
+      include: [{ model: ReviewPlatformPlace, as: 'places', attributes: ['mode', 'boardId'] }],
+    });
+    const problems = accounts
+      .map(a => ({ account: a.toJSON(), problem: accountProblem(a.toJSON()) }))
+      .filter(x => x.problem)
+      .map(({ account, problem }) => ({
+        id: account.id,
+        platform: account.platform,
+        name: account.label || account.login,
+        problem,
+      }));
+    res.json({ count: problems.length, problems });
+  } catch (err) {
+    fail(res, err, 'Не удалось проверить площадки');
   }
 });
 

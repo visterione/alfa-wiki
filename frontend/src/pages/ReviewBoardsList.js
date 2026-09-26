@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  MessageSquare, Star, Settings, Archive, UserCheck, PlugZap
+  MessageSquare, Star, Settings, Archive, UserCheck, PlugZap, AlertTriangle
 } from 'lucide-react';
-import { reviews } from '../services/api';
+import { reviews, reviewCollector } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { fileUrl } from '../utils/fileUrl';
@@ -40,9 +40,21 @@ const ReviewBoardsList = () => {
   // тут же открыли бы снова, и список (а с ним и архив) стал бы недостижим.
   const showAllBoards = searchParams.has('all');
 
+  // Учётки площадок, требующие внимания (ver. 8.87): закончилась сессия,
+  // неверный пароль, парсер замолчал. Без этого отзывы переставали бы
+  // приходить молча, и заметили бы это через неделю.
+  const [platformProblems, setPlatformProblems] = useState(0);
+
   useEffect(() => {
     loadBoards();
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    reviewCollector.health()
+      .then(res => setPlatformProblems(res.data.count || 0))
+      .catch(() => {});
+  }, [isAdmin]);
 
   const loadBoards = async () => {
     try {
@@ -94,11 +106,13 @@ const ReviewBoardsList = () => {
               пароли всех площадок сети — только администраторам */}
           {isAdmin && (
             <button
-              className="btn-archive"
+              className={`btn-archive${platformProblems ? ' btn-platforms--alert' : ''}`}
               onClick={() => navigate('/reviews/platforms')}
-              title="Учётные записи площадок"
+              title={platformProblems
+                ? `Требуют внимания учётных записей: ${platformProblems}`
+                : 'Учётные записи площадок'}
             >
-              <PlugZap size={18} />
+              {platformProblems ? <AlertTriangle size={18} /> : <PlugZap size={18} />}
               Площадки
             </button>
           )}

@@ -689,6 +689,8 @@ export const reviews = {
 // Площадки для Альфа Парсера (ver. 8.80): учётки и места
 export const reviewCollector = {
   load: () => api.get('/review-collector'),
+  // Сколько учёток требуют внимания — треугольник на кнопке «Площадки» (ver. 8.87)
+  health: () => api.get('/review-collector/health'),
   createAccount: (data) => api.post('/review-collector/accounts', data),
   updateAccount: (id, data) => api.patch(`/review-collector/accounts/${id}`, data),
   deleteAccount: (id) => api.delete(`/review-collector/accounts/${id}`),

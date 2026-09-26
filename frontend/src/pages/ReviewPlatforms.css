@@ -95,6 +95,19 @@
   opacity: 0.5;
 }
 
+/* Учётка требует внимания (ver. 8.87): сессия кончилась, пароль сменили,
+   парсер замолчал. Рамка слева, чтобы её было видно в длинном списке мест. */
+.rp-account--problem {
+  margin-left: -1.5rem;
+  padding-left: calc(1.5rem - 3px);
+  border-left: 3px solid var(--amber-500);
+}
+
+.rp-problem-icon {
+  color: var(--amber-500);
+  flex-shrink: 0;
+}
+
 .rp-account-head {
   display: flex;
   align-items: center;
@@ -505,6 +518,11 @@
 
   .rp-section {
     padding: 1rem;
+  }
+
+  .rp-account--problem {
+    margin-left: -1rem;
+    padding-left: calc(1rem - 3px);
   }
 
   .rp-place-board {

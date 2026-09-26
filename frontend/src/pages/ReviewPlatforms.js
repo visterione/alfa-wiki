@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Plus, RefreshCw, Pencil, Trash2, X, ChevronDown, ChevronRight, KeyRound
+  ArrowLeft, Plus, RefreshCw, Pencil, Trash2, X, ChevronDown, ChevronRight, KeyRound, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reviewCollector } from '../services/api';
@@ -272,7 +272,12 @@ function RemoteLogin({ account, challenge }) {
 }
 
 function AccountCard({ account, boards, onEdit, onChange }) {
-  const status = STATUS[account.status] || STATUS.new;
+  // «Нет связи с парсером» статусом учётки не бывает — это вывод сервера из
+  // того, что парсер давно не отчитывался (ver. 8.87). Показываем его вместо
+  // застывшего «Работает».
+  const status = account.problem === 'silent'
+    ? { label: 'Нет связи с парсером', tone: 'warn' }
+    : (STATUS[account.status] || STATUS.new);
   const challenge = account.challenge;
 
   const check = async () => {
@@ -304,7 +309,7 @@ function AccountCard({ account, boards, onEdit, onChange }) {
   };
 
   return (
-    <div className={`rp-account${account.isEnabled ? '' : ' rp-account--disabled'}`}>
+    <div className={`rp-account${account.isEnabled ? '' : ' rp-account--disabled'}${account.problem ? ' rp-account--problem' : ''}`}>
       <div className="rp-account-head">
         <div className="rp-account-title">
           <span className="rp-account-name">{account.label || account.login}</span>
@@ -422,7 +427,10 @@ const ReviewPlatforms = () => {
             <div className="rp-section-head">
               <PlatformLogo name={platform.reviewPlatform} size={20} />
               <h2>{platform.label}</h2>
-              {!platform.canReply && <span className="rp-muted">только чтение</span>}
+              {accounts.some(a => a.problem) && (
+                <AlertTriangle size={18} className="rp-problem-icon" aria-label="Требует внимания" />
+              )}
+              {!platform.canReply && <span className="rp-muted">без ответов</span>}
             </div>
             {accounts.length === 0 ? (
               <div className="rp-muted rp-empty">Учётных записей нет</div>
