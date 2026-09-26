@@ -693,6 +693,17 @@ export const reviews = {
   backfillSync: (boardId) => api.post(`/reviews/sync/backfill/${boardId}`)
 };
 
+// Площадки для Альфа Парсера (ver. 8.80): учётки, места, отключение GetLoyalty
+export const reviewCollector = {
+  load: () => api.get('/review-collector'),
+  createAccount: (data) => api.post('/review-collector/accounts', data),
+  updateAccount: (id, data) => api.patch(`/review-collector/accounts/${id}`, data),
+  deleteAccount: (id) => api.delete(`/review-collector/accounts/${id}`),
+  checkAccount: (id) => api.post(`/review-collector/accounts/${id}/check`),
+  updatePlace: (id, data) => api.patch(`/review-collector/places/${id}`, data),
+  setGetLoyaltyExcluded: (excluded) => api.put('/review-collector/getloyalty', { excluded })
+};
+
 // === EMAIL API ===
 export const email = {
   // === TEMPLATES ===
