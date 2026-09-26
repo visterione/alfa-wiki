@@ -193,7 +193,7 @@ c:\alfa-wiki\
 │   │   ├── pdfService.js
 │   │   ├── botWebhookService.js
 │   │   ├── workflowEngine.js
-│   │   └── reviewSync/   Синхронизация отзывов с агрегаторами
+│   │   └── reviewCollector/  Отзывы от Альфа Парсера: приём, сопоставление, очередь ответов
 │   ├── uploads/          Загруженные файлы (структурировано по типу/дате)
 │   ├── utils/
 │   │   └── xlsxConverter.js
@@ -428,7 +428,7 @@ Role.belongsToMany(User, { through: 'user_roles' });
 - `ReviewBoardRole` — специализированные роли (создатель, обработчик, ревьюер, публикатор)
 - `Review` — сам отзыв (paranoid = мягкое удаление!)
 - `ReviewHistory` — история изменений отзыва
-- `ReviewSyncConfig` — конфиги синхронизации с агрегаторами
+- `ReviewPlatformAccount`, `ReviewPlatformPlace`, `ReviewCollectorJob` — учётки площадок, места в них и очередь задач Альфа Парсера
 
 **Почта:**
 - `EmailTemplate` — шаблоны писем
@@ -581,11 +581,14 @@ optionalAuth           // Как authenticate, но не блокирует пр
 
 В ReviewBoard хранится граф (React Flow nodes+edges) в поле `workflowConfig`. При срабатывании события engine обходит граф и выполняет действия.
 
-#### reviewSync/
+#### reviewCollector/
 
-Синхронизирует отзывы с платформами через агрегатор GetLoyalty (покрывает: Яндекс, Google, ПроДокторов, 2ГИС, НаПоправку, DocDoc, Докту).
+Принимает отзывы, которые собирает с площадок Альфа Парсер (ver. 8.80), и
+ставит ему в очередь ответы. GetLoyalty, через который отзывы шли раньше,
+отключён в ver. 8.84. Подробно — docs/bible/08-modules.md.
 
-Дедупликация по полю `externalId + boardId` — один и тот же отзыв не импортируется дважды.
+Дедупликация по `sourceKey` («площадка:номер»), а с архивом GetLoyalty — по
+содержимому: доска, площадка, дата ±3 дня, совпадение текста.
 
 ### 5.7 Cron-задачи (фоновые задания)
 
@@ -597,7 +600,6 @@ optionalAuth           // Как authenticate, но не блокирует пр
 | `servicesCron.js` | `0 3 * * *` (03:00 ежедневно) | Обновляет цены услуг из МИС |
 | `calendarRemindersCron.js` | `* * * * *` (каждую минуту!) | Отправляет напоминания о событиях |
 | `accreditationsVehiclesCron.js` | `0 9 * * *` (09:00 ежедневно) | Telegram-уведомления об истекающих аккредитациях и ТО |
-| `reviewSyncCron.js` | `0 9,12,15,18 * * *` (4 раза в день) | Синхронизирует отзывы с агрегаторами |
 | `reviewArchiveCron.js` | `0 4 * * *` (04:00 ежедневно) | Архивирует финальные отзывы |
 | `missedCallsCron.js` | `* * * * *` (каждую минуту!) | Опрашивает Nextcloud AТС, маршрутизирует пропущенные в чат |
 | `partnerServicesCacheCron.js` | `0 2 * * *` (02:00 ежедневно) | Пересобирает кэш услуг партнёров |
@@ -660,7 +662,7 @@ review_board_permissions  -- Права доступа к доске
 review_board_roles        -- Специальные роли (creator, reviewer и т.д.)
 reviews                   -- Отзывы (paranoid = soft delete!)
 review_history            -- Лог изменений отзыва
-review_sync_configs       -- Конфиги синхронизации с агрегаторами
+review_platform_accounts  -- Учётки площадок для Альфа Парсера (пароли зашифрованы)
 ```
 
 ### 6.2 Миграции
@@ -1153,13 +1155,10 @@ reviewer         — проверяет выполненную работу
 publisher        — публикует ответ
 ```
 
-#### Синхронизация с агрегаторами
-`ReviewSyncConfig` хранит настройки для каждого провайдера:
-- `provider`: getloyalty, google, yandex, prodoctorov, docdoc, napopravku, 2gis, doctu
-- `credentials` — JSONB с ключами API
-- `lastSyncAt`, `lastSyncCount` — статистика
-
-Запуск: 4 раза в день через `reviewSyncCron.js` или вручную через `POST /api/reviews/sync/:configId/run`.
+#### Сбор с площадок
+Отзывы собирает Альфа Парсер (ver. 8.80): учётки площадок заводятся в разделе
+«Отзывы → Площадки», парсер раз в минуту забирает их и очередь ответов через
+`/api/public/v1/review-collector`. GetLoyalty отключён в ver. 8.84.
 
 #### PDF-отчёт
 Каждый финализированный отзыв можно скачать как PDF (`GET /api/reviews/:id/pdf`). Генерируется через `pdfService.js`.

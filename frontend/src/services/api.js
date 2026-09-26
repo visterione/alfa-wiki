@@ -680,28 +680,17 @@ export const reviews = {
   deleteFile: (fileId, reviewId) => api.delete(`/reviews/files/${fileId}?reviewId=${reviewId}`),
 
   // === DOCTORS AUTOCOMPLETE ===
-  suggestDoctors: (query) => api.get('/reviews/doctors/suggest', { params: { q: query } }),
-
-  // === SYNC ===
-  getSyncProviders: () => api.get('/reviews/sync/providers'),
-  getSyncConfigs: (boardId) => api.get(`/reviews/sync/configs/${boardId}`),
-  saveSyncConfig: (boardId, provider, data) => api.put(`/reviews/sync/configs/${boardId}/${provider}`, data),
-  testSyncConnection: (boardId, provider, credentials) =>
-    api.post(`/reviews/sync/test/${boardId}/${provider}`, { credentials }),
-  runSync: (boardId) => api.post(`/reviews/sync/run/${boardId}`),
-  runSyncProvider: (boardId, provider) => api.post(`/reviews/sync/run/${boardId}/${provider}`),
-  backfillSync: (boardId) => api.post(`/reviews/sync/backfill/${boardId}`)
+  suggestDoctors: (query) => api.get('/reviews/doctors/suggest', { params: { q: query } })
 };
 
-// Площадки для Альфа Парсера (ver. 8.80): учётки, места, отключение GetLoyalty
+// Площадки для Альфа Парсера (ver. 8.80): учётки и места
 export const reviewCollector = {
   load: () => api.get('/review-collector'),
   createAccount: (data) => api.post('/review-collector/accounts', data),
   updateAccount: (id, data) => api.patch(`/review-collector/accounts/${id}`, data),
   deleteAccount: (id) => api.delete(`/review-collector/accounts/${id}`),
   checkAccount: (id) => api.post(`/review-collector/accounts/${id}/check`),
-  updatePlace: (id, data) => api.patch(`/review-collector/places/${id}`, data),
-  setGetLoyaltyExcluded: (excluded) => api.put('/review-collector/getloyalty', { excluded })
+  updatePlace: (id, data) => api.patch(`/review-collector/places/${id}`, data)
 };
 
 // === EMAIL API ===

@@ -19,13 +19,9 @@ const PLATFORMS = {
   yandex:      { key: 'yandex',      label: 'Яндекс',       reviewPlatform: 'Яндекс Карты', canReply: true, passwordless: true },
   '2gis':      { key: '2gis',        label: '2ГИС',         reviewPlatform: '2ГИС',         canReply: true },
   napopravku:  { key: 'napopravku',  label: 'НаПоправку',   reviewPlatform: 'НаПоправку',   canReply: true },
-  sberhealth:  { key: 'sberhealth',  label: 'СберЗдоровье', reviewPlatform: 'DocDoc',       canReply: true,  collected: false },
-  doctu:       { key: 'doctu',       label: 'ДокТу',        reviewPlatform: 'Докту',        canReply: false, collected: false },
+  sberhealth:  { key: 'sberhealth',  label: 'СберЗдоровье', reviewPlatform: 'DocDoc',       canReply: true },
+  doctu:       { key: 'doctu',       label: 'ДокТу',        reviewPlatform: 'Докту',        canReply: false },
 };
-
-// collected: false — адаптера в парсере ещё нет (вход с капчей ждёт
-// удалённого входа). Такую площадку нельзя отключить в GetLoyalty: её
-// отзывы перестали бы приходить совсем. Флаг снимается, когда адаптер готов.
 
 // Отзыв может прийти из «соседнего» каталога той же площадки: в ленте 2ГИС
 // лежат и отзывы Флямпа. GetLoyalty держал их отдельной площадкой — держим и мы.
@@ -47,16 +43,10 @@ function reviewPlatformName(platformKey, subPlatform) {
 }
 
 /** Все имена справочника, под которыми могут лежать отзывы этой площадки. */
-/** Имена справочника, которые уже собирает парсер — их можно снимать с GetLoyalty. */
-function collectedPlatformNames() {
-  const names = list().filter(p => p.collected !== false).map(p => p.reviewPlatform);
-  return [...new Set([...names, ...Object.values(SUB_PLATFORMS)])];
-}
-
 function reviewPlatformNames(platformKey) {
   const base = PLATFORMS[platformKey]?.reviewPlatform;
   if (!base) return [];
   return platformKey === '2gis' ? [base, ...Object.values(SUB_PLATFORMS)] : [base];
 }
 
-module.exports = { PLATFORMS, get, list, reviewPlatformName, reviewPlatformNames, collectedPlatformNames };
+module.exports = { PLATFORMS, get, list, reviewPlatformName, reviewPlatformNames };

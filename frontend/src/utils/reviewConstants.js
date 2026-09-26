@@ -28,43 +28,18 @@ export const REVIEW_ROLES = [
   { id: 'publisher', label: 'Публикатор', description: 'Финализирует и публикует решения' }
 ];
 
-// Площадки, для которых GetLoyalty не поддерживает отправку ответов
-export const PLATFORMS_REPLY_UNSUPPORTED = [
-  'Докту',
-  'Google Maps',
-  'DocDoc',
-  'Plaso.pro',
-  'НаПоправку'
-];
-
 // Площадки, где Альфа Парсер отвечает сам (ver. 8.80) — имена справочника.
-// Шире списка GetLoyalty: парсер отвечает и на НаПоправку, и в СберЗдоровье
-// (в справочнике оно «DocDoc»). У ДокТу ответ платный и у сети отключён.
+// СберЗдоровье в справочнике «DocDoc». У ДокТу ответ платный и у сети
+// отключён.
 const COLLECTOR_REPLY_PLATFORMS = ['ПроДокторов', 'Яндекс Карты', '2ГИС', 'Фламп', 'НаПоправку', 'DocDoc'];
 
 /**
- * Можно ли предложить ответ на площадке. Окончательно решает сервер: если
- * место у парсера ещё в режиме сверки, ответ уйдёт через GetLoyalty, а если
- * и там нельзя — сервер объяснит почему.
+ * Можно ли предложить ответ на площадке. Отвечает только парсер (GetLoyalty
+ * отключён в ver. 8.84), поэтому нужен его ключ отзыва. Окончательно решает
+ * сервер: если место ещё в режиме сверки, он объяснит, почему нельзя.
  */
 export function canReplyOnPlatform(review) {
-  const name = review?.platform?.name;
-  if (review?.sourceKey && COLLECTOR_REPLY_PLATFORMS.includes(name)) return true;
-  return !!review?.externalId?.startsWith('gl_') && !PLATFORMS_REPLY_UNSUPPORTED.includes(name);
-}
-
-/**
- * Откуда пришёл отзыв — на время перехода с GetLoyalty на Альфа Парсер
- * (ver. 8.80). Отзыв, найденный обоими, помнит оба ключа; по нему видно, что
- * сопоставление сработало и дубля нет.
- */
-export function reviewSource(review) {
-  const gl = !!review?.externalId?.startsWith('gl_');
-  const direct = !!review?.sourceKey;
-  if (gl && direct) return { key: 'both', short: 'GL+', label: 'GetLoyalty и напрямую с площадки' };
-  if (direct) return { key: 'direct', short: 'П', label: 'Напрямую с площадки (Альфа Парсер)' };
-  if (gl) return { key: 'gl', short: 'GL', label: 'Через GetLoyalty' };
-  return null;
+  return !!review?.sourceKey && COLLECTOR_REPLY_PLATFORMS.includes(review?.platform?.name);
 }
 
 // ─── Логотипы площадок ────────────────────────────────────────────────────────

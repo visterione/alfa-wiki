@@ -3528,58 +3528,6 @@ Review.hasMany(ReviewHistory, { foreignKey: 'reviewId', as: 'history', onDelete:
 ReviewHistory.belongsTo(Review, { foreignKey: 'reviewId', as: 'review' });
 ReviewHistory.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-// ReviewSyncConfig model - настройки синхронизации отзывов (одна запись = одна площадка на доску)
-const ReviewSyncConfig = sequelize.define('ReviewSyncConfig', {
-  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  boardId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    comment: 'ID доски'
-  },
-  provider: {
-    type: DataTypes.STRING(50),
-    allowNull: false,
-    comment: 'Провайдер: google | yandex | prodoctorov | docdoc | napopravku | 2gis | doctu'
-  },
-  isEnabled: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    comment: 'Синхронизация включена'
-  },
-  credentials: {
-    type: DataTypes.JSONB,
-    defaultValue: {},
-    comment: 'Credentials площадки (API-ключи, токены, ID объекта)'
-  },
-  lastSyncAt: {
-    type: DataTypes.DATE,
-    comment: 'Время последней синхронизации'
-  },
-  lastSyncStatus: {
-    type: DataTypes.STRING(20),
-    comment: 'Статус: success | error | running'
-  },
-  lastSyncError: {
-    type: DataTypes.TEXT,
-    comment: 'Текст ошибки последней синхронизации'
-  },
-  lastSyncCount: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    comment: 'Кол-во импортированных отзывов при последней синхронизации'
-  }
-}, {
-  tableName: 'review_sync_configs',
-  timestamps: true,
-  indexes: [
-    { fields: ['boardId'] },
-    { fields: ['isEnabled'] },
-    { unique: true, fields: ['boardId', 'provider'] }
-  ]
-});
-
-ReviewSyncConfig.belongsTo(ReviewBoard, { foreignKey: 'boardId', as: 'board' });
-ReviewBoard.hasMany(ReviewSyncConfig, { foreignKey: 'boardId', as: 'syncConfigs', onDelete: 'CASCADE' });
 
 // === INT ID MAP MODEL (UUID → stable integer ID для Telegram Bot API) ===
 // BIGSERIAL гарантирует уникальные монотонно растущие ID без коллизий
@@ -5448,7 +5396,6 @@ module.exports = {
   ReviewBoardRole,
   Review,
   ReviewHistory,
-  ReviewSyncConfig,
   // Email module
   EmailTemplate,
   EmailLog,

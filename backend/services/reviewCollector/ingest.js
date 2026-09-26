@@ -11,8 +11,9 @@
  *   3. иначе в режиме live заводим карточку, а в shadow только считаем
  *      отзыв несовпавшим и кладём образец в отчёт места.
  *
- * Обратная сторона — отзыв от GetLoyalty, который парсер уже завёл, — в
- * reviewSync/index.js: там перед созданием ищется карточка парсера.
+ * Пункт 2 нужен и после отключения GetLoyalty (ver. 8.84): его архив остаётся
+ * на досках, и отзыв, который он когда-то завёл, парсер не должен завести
+ * второй раз — он только дописывает карточке свой ключ.
  */
 
 const { Op } = require('sequelize');
@@ -164,7 +165,10 @@ async function createCard(board, place, raw, key) {
     patientName: raw.author || 'Аноним',
     reviewDate: String(raw.date).slice(0, 10),
     rating: clampRating(raw.rating) || 3,
-    reviewText: raw.text || '(текст отсутствует)',
+    // Отзыв из одной оценки (частый на ПроДокторов и НаПоправку) остаётся
+    // без текста: заглушка «(текст отсутствует)» читалась как текст отзыва
+    // и попадала в отчёты и уведомления (ver. 8.84).
+    reviewText: raw.text || '',
     doctorName: raw.doctor || null,
     status: 'new',
     externalUrl: raw.url || null,

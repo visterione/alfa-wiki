@@ -2358,27 +2358,3 @@
     animation: none;
   }
 }
-
-/* Источник отзыва на время перехода с GetLoyalty на Альфа Парсер (ver. 8.80).
-   Приглушённый, чтобы не спорить с оценкой и площадкой: смотрят на него только
-   когда проверяют, что сопоставление сработало. «Напрямую» выделен акцентом —
-   это то, к чему идём; GetLoyalty серый — то, от чего уходим. */
-.review-source-badge {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.4;
-  border-radius: 4px;
-  padding: 0 5px;
-  margin-left: 2px;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-}
-
-.review-source-badge--direct,
-.review-source-badge--both {
-  color: var(--accent-700);
-  background: var(--accent-50);
-}

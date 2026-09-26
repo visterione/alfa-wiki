@@ -66,7 +66,7 @@ export default function ReviewsAssignedScreen({navigation}) {
             <Text style={styles.cardWhen}>{dateText(item.reviewDate)}</Text>
           </View>
           <Text style={styles.cardName} numberOfLines={1}>{item.patientName}</Text>
-          <Text style={styles.cardText} numberOfLines={2}>{item.reviewText}</Text>
+          {!!item.reviewText && <Text style={styles.cardText} numberOfLines={2}>{item.reviewText}</Text>}
           <View style={styles.cardFoot}>
             <View style={[styles.chip, {backgroundColor: `${statusColor(item.status)}22`}]}>
               <Text style={[styles.chipText, {color: statusColor(item.status)}]}>

@@ -15,7 +15,8 @@ import './ReviewPlatforms.css';
  * и всё, что для этого нужно, — здесь. Учётка после сохранения сразу уходит
  * на проверку; парсер входит, сообщает итог и присылает места из выпадающего
  * списка кабинета. Место привязывается к медцентру и проходит два режима:
- * сверку (отзывы только связываются с карточками GetLoyalty) и работу.
+ * сверку (отзывы только связываются с уже заведёнными карточками — в том
+ * числе с архивом GetLoyalty) и работу.
  */
 
 const STATUS = {
@@ -28,7 +29,7 @@ const STATUS = {
 
 const MODES = [
   { key: 'off',    label: 'Выкл.',    title: 'Отзывы с этого места не берутся' },
-  { key: 'shadow', label: 'Сверка',   title: 'Отзывы только связываются с карточками GetLoyalty, новые карточки не создаются' },
+  { key: 'shadow', label: 'Сверка',   title: 'Отзывы только связываются с уже заведёнными карточками, новые не создаются' },
   { key: 'live',   label: 'Работает', title: 'Новые отзывы становятся карточками, ответы уходят напрямую' },
 ];
 
@@ -180,7 +181,7 @@ function PlaceRow({ place, boards, onChange }) {
           {stats.unmatched > 0 && (
             <button type="button" className="rp-link" onClick={() => setOpen(v => !v)}>
               {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              не нашлось у GetLoyalty: {stats.unmatched}
+              без карточки: {stats.unmatched}
             </button>
           )}
           <span className="rp-muted">{formatDateTime(stats.at)}</span>
@@ -319,17 +320,6 @@ const ReviewPlatforms = () => {
     return () => clearInterval(pollRef.current);
   }, [waiting, load]);
 
-  const toggleExcluded = async (name) => {
-    const current = data.getloyalty.excluded;
-    const next = current.includes(name) ? current.filter(n => n !== name) : [...current, name];
-    try {
-      const res = await reviewCollector.setGetLoyaltyExcluded(next);
-      setData(prev => ({ ...prev, getloyalty: { ...prev.getloyalty, excluded: res.data.excluded } }));
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Не удалось сохранить');
-    }
-  };
-
   if (!data) {
     return (
       <div className="rp-page rp-loading">
@@ -337,8 +327,6 @@ const ReviewPlatforms = () => {
       </div>
     );
   }
-
-  const glAll = data.getloyalty.platformNames.every(n => data.getloyalty.excluded.includes(n));
 
   return (
     <div className="rp-page">
@@ -379,28 +367,6 @@ const ReviewPlatforms = () => {
         );
       })}
 
-      <section className="rp-section">
-        <div className="rp-section-head">
-          <h2>GetLoyalty</h2>
-        </div>
-        <p className="rp-muted rp-gl-note">
-          Отмеченные площадки больше не берутся из GetLoyalty — их отзывы собирает парсер.
-          {glAll && ' Отмечены все: GetLoyalty можно отключать.'}
-        </p>
-        <div className="rp-gl-list">
-          {data.getloyalty.platformNames.map(name => (
-            <label key={name} className="rp-gl-item">
-              <input
-                type="checkbox"
-                checked={data.getloyalty.excluded.includes(name)}
-                onChange={() => toggleExcluded(name)}
-              />
-              <PlatformLogo name={name} size={16} />
-              <span>{name}</span>
-            </label>
-          ))}
-        </div>
-      </section>
 
       {modal && (
         <AccountModal

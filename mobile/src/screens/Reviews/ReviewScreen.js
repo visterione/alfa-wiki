@@ -111,7 +111,7 @@ export default function ReviewScreen({route, navigation}) {
           </View>
         </View>
 
-        <Text style={styles.text}>{review.reviewText}</Text>
+        {!!review.reviewText && <Text style={styles.text}>{review.reviewText}</Text>}
 
         {Boolean(review.additionalInfo) && (
           <Text style={styles.extra}>{review.additionalInfo}</Text>

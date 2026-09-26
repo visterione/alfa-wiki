@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Save, Users, UserPlus, X, Search, Trash2,
-  RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff, Play, User,
+  ArrowLeft, Save, Users, UserPlus, X, Search, Trash2, User,
   Columns, GitBranch
 } from 'lucide-react';
 import { reviews, users } from '../services/api';
@@ -19,10 +18,6 @@ const ReviewBoardSettings = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Ссылку на справочник показываем тем, кого он пустит: правом на раздел, а не
-  // одним isAdmin — доступ к медцентрам выдаётся и отдельно.
-  const canEditMedCenters = user?.isAdmin || user?.adminAccess?.medCenters === true;
-
   const [board, setBoard] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -34,16 +29,10 @@ const ReviewBoardSettings = () => {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedRole, setSelectedRole] = useState('editor');
 
-  // Sync state
-  const [syncConfigs, setSyncConfigs] = useState([]);
-  const [syncEdits, setSyncEdits] = useState({});       // { provider: { credentials, isEnabled } }
-  const [syncVisible, setSyncVisible] = useState({});   // { provider: { fieldKey: bool } }
-  const [syncTesting, setSyncTesting] = useState({});   // { provider: bool }
-  const [syncRunning, setSyncRunning] = useState(false);
-  const [syncFilials, setSyncFilials] = useState(null); // список филиалов после тестирования
-
   // Active tab
-  const [activeTab, setActiveTab] = useState('general');
+  // «Основные» и «Синхронизация» убраны (ver. 8.84): название и адрес доски
+  // живут в карточке медцентра, а GetLoyalty отключён — открываем «Доступ».
+  const [activeTab, setActiveTab] = useState('permissions');
 
   // Workflow config (visual node editor)
   const [workflowConfig, setWorkflowConfig] = useState({ nodes: [], edges: [] });
@@ -61,11 +50,10 @@ const ReviewBoardSettings = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [boardRes, permissionsRes, usersRes, syncRes, settingsRes] = await Promise.all([
+      const [boardRes, permissionsRes, usersRes, settingsRes] = await Promise.all([
         reviews.getBoard(boardId),
         reviews.getBoardPermissions(boardId),
         users.listBasic({ access: 'reviews' }),
-        reviews.getSyncConfigs(boardId).catch(() => ({ data: [] })),
         reviews.getBoardSettings(boardId).catch(() => ({ data: {} }))
       ]);
 
@@ -73,7 +61,6 @@ const ReviewBoardSettings = () => {
       setBoard(boardData);
       setPermissions(permissionsRes.data);
       setUsersList(usersRes.data);
-      setSyncConfigs(syncRes.data || []);
       const wf = settingsRes.data?.workflowConfig;
       if (wf) setWorkflowConfig(wf);
 
@@ -198,140 +185,6 @@ const ReviewBoardSettings = () => {
     }));
   };
 
-  // ── Sync handlers ─────────────────────────────────────────────────────────
-
-  const getSyncEdit = (provider) => syncEdits[provider] || {};
-
-  const setSyncField = (provider, field, value) => {
-    setSyncEdits(prev => ({
-      ...prev,
-      [provider]: { ...prev[provider], [field]: value }
-    }));
-  };
-
-  const setSyncCredField = (provider, key, value) => {
-    setSyncEdits(prev => ({
-      ...prev,
-      [provider]: {
-        ...prev[provider],
-        credentials: { ...(prev[provider]?.credentials || {}), [key]: value }
-      }
-    }));
-  };
-
-  const toggleFieldVisibility = (provider, fieldKey) => {
-    setSyncVisible(prev => ({
-      ...prev,
-      [provider]: { ...(prev[provider] || {}), [fieldKey]: !(prev[provider]?.[fieldKey]) }
-    }));
-  };
-
-  const getSyncCredentials = (config) => {
-    const edited = syncEdits[config.provider]?.credentials;
-    if (edited) {
-      // Мержим: берём то что пользователь не менял из конфига, изменённое — из edits
-      const merged = { ...config.credentials };
-      Object.entries(edited).forEach(([k, v]) => { if (v !== undefined) merged[k] = v; });
-      return merged;
-    }
-    return config.credentials;
-  };
-
-  const handleSaveSyncConfig = async (config) => {
-    try {
-      const edit = getSyncEdit(config.provider);
-      const credentials = getSyncCredentials(config);
-      const isEnabled = edit.isEnabled !== undefined ? edit.isEnabled : config.isEnabled;
-
-      await reviews.saveSyncConfig(boardId, config.provider, { isEnabled, credentials });
-
-      // Обновляем локальный стейт
-      setSyncConfigs(prev => prev.map(c =>
-        c.provider === config.provider ? { ...c, isEnabled, credentials: { ...c.credentials, ...credentials } } : c
-      ));
-      setSyncEdits(prev => { const next = { ...prev }; delete next[config.provider]; return next; });
-      toast.success(`Настройки ${config.label} сохранены`);
-    } catch (err) {
-      toast.error('Ошибка при сохранении');
-    }
-  };
-
-  const handleTestSync = async (config) => {
-    setSyncTesting(prev => ({ ...prev, [config.provider]: true }));
-    setSyncFilials(null);
-    try {
-      const credentials = getSyncCredentials(config);
-      const res = await reviews.testSyncConnection(boardId, config.provider, credentials);
-      if (res.data.success) {
-        toast.success(`${config.label}: ${res.data.message}`);
-        if (res.data.filials?.length) setSyncFilials(res.data.filials);
-      } else {
-        toast.error(`${config.label}: ${res.data.message}`);
-      }
-    } catch (err) {
-      toast.error('Ошибка проверки подключения');
-    } finally {
-      setSyncTesting(prev => ({ ...prev, [config.provider]: false }));
-    }
-  };
-
-  const handleRunSyncProvider = async (config) => {
-    setSyncRunning(true);
-    try {
-      await reviews.runSyncProvider(boardId, config.provider);
-      toast.success(`Синхронизация ${config.label} запущена — результат появится через несколько секунд`);
-      // Обновим статус через 5 сек
-      setTimeout(async () => {
-        try {
-          const res = await reviews.getSyncConfigs(boardId);
-          setSyncConfigs(res.data || []);
-        } catch (_) {}
-        setSyncRunning(false);
-      }, 5000);
-    } catch (err) {
-      toast.error('Ошибка запуска синхронизации');
-      setSyncRunning(false);
-    }
-  };
-
-  const handleRunAllSync = async () => {
-    setSyncRunning(true);
-    try {
-      await reviews.runSync(boardId);
-      toast.success('Синхронизация всех площадок запущена');
-      setTimeout(async () => {
-        try {
-          const res = await reviews.getSyncConfigs(boardId);
-          setSyncConfigs(res.data || []);
-        } catch (_) {}
-        setSyncRunning(false);
-      }, 8000);
-    } catch (err) {
-      toast.error('Ошибка запуска синхронизации');
-      setSyncRunning(false);
-    }
-  };
-
-  const handleBackfillSync = async () => {
-    setSyncRunning(true);
-    try {
-      await reviews.backfillSync(boardId);
-      toast.success('Полная синхронизация запущена — ответы на старые отзывы появятся через несколько минут');
-      setTimeout(async () => {
-        try {
-          const res = await reviews.getSyncConfigs(boardId);
-          setSyncConfigs(res.data || []);
-        } catch (_) {}
-        setSyncRunning(false);
-      }, 15000);
-    } catch (err) {
-      toast.error('Ошибка запуска полной синхронизации');
-      setSyncRunning(false);
-    }
-  };
-
-  // ── End sync handlers ──────────────────────────────────────────────────────
-
   const getAvatarUrl = (avatarPath) => {
     if (!avatarPath) return null;
     if (avatarPath.startsWith('http://localhost') || avatarPath.startsWith('https://localhost')) {
@@ -376,24 +229,11 @@ const ReviewBoardSettings = () => {
 
       <div className="settings-tabs">
         <button
-          className={`tab ${activeTab === 'general' ? 'active' : ''}`}
-          onClick={() => setActiveTab('general')}
-        >
-          Основные
-        </button>
-        <button
           className={`tab ${activeTab === 'permissions' ? 'active' : ''}`}
           onClick={() => setActiveTab('permissions')}
         >
           <Users size={16} />
           Доступ
-        </button>
-        <button
-          className={`tab ${activeTab === 'sync' ? 'active' : ''}`}
-          onClick={() => setActiveTab('sync')}
-        >
-          <RefreshCw size={16} />
-          Синхронизация
         </button>
         <button
           className={`tab ${activeTab === 'columns' ? 'active' : ''}`}
@@ -412,35 +252,6 @@ const ReviewBoardSettings = () => {
       </div>
 
       <div className="settings-content">
-        {/* General Tab */}
-        {activeTab === 'general' && (
-          <div className="settings-section">
-            <h2>Основные настройки</h2>
-
-            {/* Править здесь нечего: доска — это медцентр (ver. 8.56). Название
-                и адрес живут в справочнике филиалов, и раньше их дублировали
-                сюда руками — адрес доски «3К» успел разойтись с настоящим.
-                Показываем, откуда они берутся, и куда идти, чтобы поправить. */}
-            <div className="board-branch">
-              <div className="board-branch-info">
-                <strong>{board?.medCenter?.name || '—'}</strong>
-                {(board?.medCenter?.city || board?.medCenter?.address) && (
-                  <p>{[board.medCenter.city, board.medCenter.address].filter(Boolean).join(', ')}</p>
-                )}
-              </div>
-              <p className="board-branch-note">
-                Доска заводится вместе с медцентром — по одной на каждый. Название, адрес
-                и логотип берутся из его карточки.{' '}
-                {canEditMedCenters && (
-                  <button className="btn-link" onClick={() => navigate('/admin/med-centers')}>
-                    Открыть справочник медцентров
-                  </button>
-                )}
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Permissions Tab */}
         {activeTab === 'permissions' && (
           <div className="settings-section">
@@ -582,178 +393,6 @@ const ReviewBoardSettings = () => {
             )}
           </div>
         )}
-
-        {/* Sync Tab */}
-        {activeTab === 'sync' && (() => {
-          const config = syncConfigs[0];
-          if (!config) return (
-            <div className="settings-section">
-              <h2>Синхронизация отзывов</h2>
-              <p className="section-description">Загрузка...</p>
-            </div>
-          );
-
-          const edit = getSyncEdit(config.provider);
-          const isEnabled = edit.isEnabled !== undefined ? edit.isEnabled : config.isEnabled;
-          const hasEdits = Object.keys(edit).length > 0;
-
-          return (
-            <div className="settings-section">
-              <div className="section-header">
-                <h2>Синхронизация отзывов</h2>
-                {isEnabled && config.isConfigured && (
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      className="btn-add"
-                      onClick={() => handleRunSyncProvider(config)}
-                      disabled={syncRunning}
-                      title="Синхронизировать отзывы за последние сутки"
-                    >
-                      <RefreshCw size={16} className={syncRunning ? 'spinning' : ''} />
-                      {syncRunning ? 'Синхронизация...' : 'Синхронизировать'}
-                    </button>
-                    <button
-                      className="btn-add"
-                      onClick={handleBackfillSync}
-                      disabled={syncRunning}
-                      title="Обновить данные по всем отзывам (в том числе старым): подтянуть ответы с площадок"
-                    >
-                      <RefreshCw size={16} className={syncRunning ? 'spinning' : ''} />
-                      Обновить все
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="sync-config-card enabled-always">
-                {/* Заголовок */}
-                <div className="sync-card-header">
-                  <div className="sync-platform-info">
-                    <span className="sync-platform-name">{config.label}</span>
-                  </div>
-                  <div className="sync-card-controls">
-                    {/* Статус */}
-                    {config.lastSyncAt && (
-                      <div className={`sync-status-badge ${config.lastSyncStatus}`}>
-                        {config.lastSyncStatus === 'success' && (
-                          <><CheckCircle size={12} /> +{config.lastSyncCount} · {new Date(config.lastSyncAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
-                        )}
-                        {config.lastSyncStatus === 'error' && (
-                          <><AlertCircle size={12} /> Ошибка</>
-                        )}
-                        {config.lastSyncStatus === 'running' && (
-                          <><RefreshCw size={12} className="spinning" /> Выполняется...</>
-                        )}
-                      </div>
-                    )}
-                    {/* Тоггл */}
-                    <label className="sync-toggle">
-                      <input
-                        type="checkbox"
-                        checked={isEnabled}
-                        onChange={e => setSyncField(config.provider, 'isEnabled', e.target.checked)}
-                      />
-                      <span className="sync-toggle-slider" />
-                    </label>
-                  </div>
-                </div>
-
-                {/* Ошибка */}
-                {config.lastSyncStatus === 'error' && config.lastSyncError && (
-                  <div className="sync-error-text">{config.lastSyncError}</div>
-                )}
-
-                {/* Поля credentials */}
-                <div className="sync-credentials">
-                  {config.credentialsSchema.map(field => {
-                    const fromEdit = edit?.credentials?.[field.key];
-                    const currentVal = fromEdit !== undefined
-                      ? fromEdit
-                      : (config.credentials?.[field.key] || '');
-                    // Если пароль пришёл с сервера как "••••••••" и пользователь ещё не редактировал —
-                    // показываем поле пустым с placeholder, чтобы не сбивать с толку
-                    const isServerMasked = field.type === 'password' && currentVal === '••••••••' && fromEdit === undefined;
-                    const isVisible = syncVisible[config.provider]?.[field.key];
-                    const inputType = field.type === 'password'
-                      ? (isVisible ? 'text' : 'password')
-                      : 'text';
-
-                    return (
-                      <div key={field.key} className="form-group sync-field">
-                        <label>{field.label}</label>
-                        <div className="sync-input-wrap">
-                          <input
-                            type={inputType}
-                            value={isServerMasked ? '' : currentVal}
-                            placeholder={isServerMasked ? '(пароль сохранён)' : (field.placeholder || '')}
-                            onChange={e => setSyncCredField(config.provider, field.key, e.target.value)}
-                          />
-                          {field.type === 'password' && (
-                            <button
-                              type="button"
-                              className="btn-eye"
-                              onClick={() => toggleFieldVisibility(config.provider, field.key)}
-                            >
-                              {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Список филиалов (после тестирования) */}
-                {syncFilials && (
-                  <div className="sync-filials-list">
-                    <p className="sync-filials-title">Доступные филиалы в вашем аккаунте:</p>
-                    <table className="sync-filials-table">
-                      <thead>
-                        <tr><th>ID</th><th>Название</th><th>Площадки</th></tr>
-                      </thead>
-                      <tbody>
-                        {syncFilials.map(f => (
-                          <tr key={f.id}>
-                            <td>
-                              <code
-                                className="sync-filial-id"
-                                onClick={() => setSyncCredField(config.provider, 'filialId', f.id)}
-                                title="Нажмите, чтобы выбрать"
-                              >{f.id}</code>
-                            </td>
-                            <td>{f.name}</td>
-                            <td className="sync-filial-platforms">{(f.platforms || []).join(', ') || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="field-hint">Нажмите на ID, чтобы скопировать его в поле «ID филиала»</p>
-                  </div>
-                )}
-
-                {/* Кнопки */}
-                <div className="sync-card-actions">
-                  <button
-                    className="btn-secondary"
-                    onClick={() => handleTestSync(config)}
-                    disabled={syncTesting[config.provider]}
-                  >
-                    {syncTesting[config.provider] ? 'Проверяем...' : 'Проверить подключение'}
-                  </button>
-                  {hasEdits && (
-                    <button
-                      className="btn-save"
-                      onClick={() => handleSaveSyncConfig(config)}
-                    >
-                      <Save size={14} />
-                      Сохранить
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Columns Tab */}
         {activeTab === 'columns' && (() => {

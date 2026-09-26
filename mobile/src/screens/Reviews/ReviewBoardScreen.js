@@ -159,7 +159,7 @@ export default function ReviewBoardScreen({route, navigation}) {
                       <Text style={styles.cardWhen}>{dateText(review.reviewDate)}</Text>
                     </View>
                     <Text style={styles.cardName} numberOfLines={1}>{review.patientName}</Text>
-                    <Text style={styles.cardText} numberOfLines={3}>{review.reviewText}</Text>
+                    {!!review.reviewText && <Text style={styles.cardText} numberOfLines={3}>{review.reviewText}</Text>}
                     {/* Знак площадки перед подписью: карточки на доске
                         проглядывают, а не читают, и цветной кружок находится
                         взглядом раньше названия. У площадок без своего файла

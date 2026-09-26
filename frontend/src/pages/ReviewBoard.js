@@ -18,7 +18,6 @@ import {
   getCategoryLabel,
   HISTORY_ACTION_LABELS,
   canReplyOnPlatform,
-  reviewSource,
   formatDuration,
   getStageUrgency
 } from '../utils/reviewConstants';
@@ -55,22 +54,6 @@ const isTransitionAllowedByWorkflow = (workflowConfig, fromStatus, toStatus, rev
   }
   return null;
 };
-
-/**
- * Откуда пришёл отзыв: GetLoyalty, напрямую от Альфа Парсера или оба
- * (ver. 8.80). Нужен на время перехода — по нему видно, что сопоставление
- * сработало. Когда GetLoyalty отключат, значок останется только у «напрямую»
- * и его можно будет убрать.
- */
-function ReviewSourceBadge({ review, withLabel = false }) {
-  const source = reviewSource(review);
-  if (!source) return null;
-  return (
-    <span className={`review-source-badge review-source-badge--${source.key}`} title={source.label}>
-      {withLabel ? source.label : source.short}
-    </span>
-  );
-}
 
 const ReviewBoard = () => {
   const { id: boardId } = useParams();
@@ -459,7 +442,11 @@ const ReviewBoard = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.patientName.trim() || !formData.reviewText.trim()) {
+    // Отзыв с площадки бывает одной оценкой без текста (ver. 8.84) — такой
+    // должен сохраняться при правке. Текст обязателен только новому отзыву,
+    // который заводят руками.
+    const textRequired = !editingReview?.isAutoImported;
+    if (!formData.patientName.trim() || (textRequired && !formData.reviewText.trim())) {
       toast.error('Заполните обязательные поля');
       return;
     }
@@ -660,8 +647,7 @@ const ReviewBoard = () => {
     const lines = [
       `${selectedReview.patientName} | ${date} | ${selectedReview.rating}/5 ${getRatingStars(selectedReview.rating)}`,
       '',
-      selectedReview.reviewText,
-      '',
+      ...(selectedReview.reviewText ? [selectedReview.reviewText, ''] : []),
     ];
     if (selectedReview.doctorName) {
       lines.push(`Лечащий врач: ${selectedReview.doctorName}`);
@@ -715,9 +701,9 @@ const ReviewBoard = () => {
 
   const copyBubbleText = () => {
     if (!selectedReview) return;
-    const lines = [selectedReview.reviewText];
+    const lines = selectedReview.reviewText ? [selectedReview.reviewText] : [];
     if (selectedReview.doctorName) {
-      lines.push('');
+      if (lines.length) lines.push('');
       lines.push(`Лечащий врач: ${selectedReview.doctorName}`);
     }
     const text = lines.join('\n');
@@ -1036,7 +1022,6 @@ const ReviewBoard = () => {
                         <span className="platform">
                           <PlatformLogo name={review.platform?.name} />
                           {review.platform?.name}
-                          <ReviewSourceBadge review={review} />
                         </span>
                         <span className="date">
                           <Calendar size={12} />
@@ -1052,7 +1037,7 @@ const ReviewBoard = () => {
                       </div>
                     )}
 
-                    <p className="card-text">{review.reviewText}</p>
+                    {review.reviewText && <p className="card-text">{review.reviewText}</p>}
 
                     <div className="card-footer">
                       {review.status !== 'final' && review.stageEnteredAt && (() => {
@@ -1389,13 +1374,13 @@ const ReviewBoard = () => {
               </div>
 
               <div className="form-group">
-                <label>Текст отзыва *</label>
+                <label>{editingReview?.isAutoImported ? 'Текст отзыва' : 'Текст отзыва *'}</label>
                 <textarea
                   value={formData.reviewText}
                   onChange={(e) => setFormData(prev => ({ ...prev, reviewText: e.target.value }))}
                   placeholder="Текст отзыва пациента"
                   rows={4}
-                  required
+                  required={!editingReview?.isAutoImported}
                 />
               </div>
 
@@ -1484,9 +1469,11 @@ const ReviewBoard = () => {
                         {selectedReview.rating}/5 {getRatingStars(selectedReview.rating)}
                       </span>
                     </div>
-                    <div className="review-bubble" onClick={copyBubbleText} title="Копировать текст отзыва">
-                      {selectedReview.reviewText}
-                    </div>
+                    {selectedReview.reviewText && (
+                      <div className="review-bubble" onClick={copyBubbleText} title="Копировать текст отзыва">
+                        {selectedReview.reviewText}
+                      </div>
+                    )}
                     <div className="review-message-footer">
                       <div className="footer-info">
                         {selectedReview.doctorName && (
@@ -1495,7 +1482,6 @@ const ReviewBoard = () => {
                         <span className="source-line">
                           <PlatformLogo name={selectedReview.platform?.name} size={16} />
                           {selectedReview.platform?.name} | {board?.name}
-                          <ReviewSourceBadge review={selectedReview} withLabel />
                         </span>
                       </div>
                       <button className="btn-copy-inline" onClick={copyReviewText} title="Копировать текст отзыва">
@@ -1662,8 +1648,10 @@ const ReviewBoard = () => {
                     })}
                 </div>
 
-                {/* Официальный ответ на площадке — через GetLoyalty или Альфа Парсер */}
-                {canReplyOnPlatform(selectedReview) && (() => {
+                {/* Официальный ответ на площадке. Показываем у любого
+                    автоимпортированного отзыва, где он есть: и у архива
+                    GetLoyalty, и у пришедших от парсера */}
+                {selectedReview.isAutoImported && (() => {
                   const meta = selectedReview.syncMeta || {};
                   const platformReply = meta.replyText || null;
                   const historyReply = !platformReply

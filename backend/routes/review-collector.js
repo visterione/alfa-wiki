@@ -2,7 +2,7 @@
 
 /**
  * Раздел «Площадки» модуля отзывов (ver. 8.80): учётные записи площадок для
- * Альфа Парсера, привязка мест к доскам и отключение GetLoyalty по площадкам.
+ * Альфа Парсера и привязка мест к доскам.
  *
  *   GET    /api/review-collector                   всё для страницы одним запросом
  *   POST   /api/review-collector/accounts          завести учётку (сразу уходит на проверку)
@@ -10,7 +10,6 @@
  *   DELETE /api/review-collector/accounts/:id      удалить вместе с местами
  *   POST   /api/review-collector/accounts/:id/check  проверить вход
  *   PATCH  /api/review-collector/places/:id        доска и режим места
- *   PUT    /api/review-collector/getloyalty        какие площадки больше не брать из GetLoyalty
  *
  * Только администраторам: здесь пароли всех площадок сети. Пароль в ответах
  * не возвращается никогда — модель прячет его по умолчанию.
@@ -25,7 +24,6 @@ const {
 const { authenticate } = require('../middleware/auth');
 const collector = require('../services/reviewCollector/jobs');
 const platforms = require('../services/reviewCollector/platforms');
-const transition = require('../services/reviewCollector/getloyalty');
 
 const router = express.Router();
 
@@ -44,7 +42,7 @@ function fail(res, err, fallback) {
 
 router.get('/', async (req, res) => {
   try {
-    const [accounts, boards, excluded, lastChecks] = await Promise.all([
+    const [accounts, boards, lastChecks] = await Promise.all([
       ReviewPlatformAccount.findAll({
         include: [{ model: ReviewPlatformPlace, as: 'places' }],
         order: [['platform', 'ASC'], ['createdAt', 'ASC'], [{ model: ReviewPlatformPlace, as: 'places' }, 'name', 'ASC']],
@@ -53,7 +51,6 @@ router.get('/', async (req, res) => {
         where: { archived: false },
         include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }],
       }),
-      transition.excludedPlatforms(),
       // Незакрытая проверка у учётки — чтобы кнопка показывала «проверяется»,
       // а не предлагала нажать ещё раз.
       ReviewCollectorJob.findAll({
@@ -70,13 +67,6 @@ router.get('/', async (req, res) => {
       boards: boards
         .map(b => ({ id: b.id, name: b.medCenter?.name || '—' }))
         .sort((x, y) => x.name.localeCompare(y.name, 'ru')),
-      getloyalty: {
-        excluded,
-        // Имена так, как их видит GetLoyalty и фильтр доски.
-        // Только то, что парсер уже собирает: снять с GetLoyalty площадку
-        // без адаптера — значит остаться без её отзывов совсем.
-        platformNames: platforms.collectedPlatformNames(),
-      },
     });
   } catch (err) {
     fail(res, err, 'Не удалось загрузить площадки');
@@ -160,15 +150,6 @@ router.patch('/places/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     fail(res, err, 'Не удалось сохранить место');
-  }
-});
-
-router.put('/getloyalty', async (req, res) => {
-  try {
-    const excluded = await transition.setExcludedPlatforms(req.body?.excluded);
-    res.json({ excluded });
-  } catch (err) {
-    fail(res, err, 'Не удалось сохранить настройку GetLoyalty');
   }
 });
 

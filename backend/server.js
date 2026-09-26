@@ -652,7 +652,6 @@ async function startServer() {
       require('./cron/rbEmployeeArchiveCron');
       require('./cron/calendarRemindersCron');
       require('./cron/accreditationsVehiclesCron');
-      require('./cron/reviewSyncCron');
       require('./cron/reviewArchiveCron');
       require('./cron/missedCallsCron');
       require('./cron/misScheduleAutoImportCron');

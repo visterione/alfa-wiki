@@ -480,66 +480,33 @@ const executeAction = async (action, review, board, notificationService) => {
 };
 ```
 
-### Синхронизация с агрегаторами
+### Сбор отзывов с площадок (Альфа Парсер)
 
-`reviewSync/index.js` + `reviewSync/adapters/getloyalty.js` — поддерживается синхронизация отзывов с внешними платформами.
+С ver. 8.80 отзывы с площадок собирает соседний проект — Альфа Парсер
+(`~/alfa-parser`, пакет `app/reviews`). Платный агрегатор GetLoyalty, через
+который это шло раньше, отключён в ver. 8.84; отзывы, пришедшие через него,
+остались на досках с `externalId` вида `gl_…`.
 
-GetLoyalty — агрегатор, через который можно получить отзывы с нескольких платформ через один API:
+Вики хранит учётные записи площадок и показывает отзывы, парсер делает
+остальное. Соединения открывает только парсер:
 
-```js
-// reviewSync/adapters/getloyalty.js
-const syncFromGetloyalty = async (config) => {
-  const { credentials, boardId } = config;
-  
-  const response = await axios.get('https://panel.getloyalty.io/api/reviews', {
-    headers: { Authorization: `Bearer ${credentials.apiKey}` },
-    params: { dateFrom: config.lastSyncAt || '2020-01-01' }
-  });
-  
-  const reviews = response.data.reviews;
-  let importedCount = 0;
-  
-  for (const review of reviews) {
-    // Найти или создать платформу
-    const [platform] = await ReviewPlatform.findOrCreate({
-      where: { name: review.source },
-      defaults: { isActive: true }
-    });
-    
-    // Дедупликация: не импортировать повторно
-    const existing = await Review.findOne({
-      where: { externalId: review.id, boardId },
-      paranoid: false  // Включая мягко-удалённые
-    });
-    
-    if (existing) continue;
-    
-    await Review.create({
-      boardId,
-      platformId: platform.id,
-      patientName: review.authorName || 'Аноним',
-      reviewDate: review.date,
-      rating: review.rating,
-      reviewText: review.text,
-      externalId: review.id,
-      externalUrl: review.url,
-      isAutoImported: true,
-      importSource: 'getloyalty',
-      syncedAt: new Date(),
-      status: 'new'
-    });
-    
-    importedCount++;
-  }
-  
-  // Обновить статус синхронизации
-  await config.update({
-    lastSyncAt: new Date(),
-    lastSyncStatus: 'success',
-    lastSyncCount: importedCount
-  });
-};
-```
+| Что | Где в вики |
+|---|---|
+| Учётки площадок и места в них (раздел «Отзывы → Площадки», только админы) | `routes/review-collector.js`, модели `models/reviewCollector.js` |
+| Обмен с парсером по ключу с правом `reviews:collector` | `routes/public/v1/reviewCollector.js` |
+| Приём отзывов, сопоставление с уже заведёнными карточками | `services/reviewCollector/ingest.js`, `match.js` |
+| Очередь ответов и проверок учёток | `services/reviewCollector/jobs.js` |
+
+Пароли площадок шифруются тем же ключом, что почтовые ящики
+(`MAIL_SECRET_KEY`). Место на площадке (клиника, организация, филиал)
+привязывается к доске и живёт в одном из режимов: `off`, `shadow` (отзывы
+только связываются с существующими карточками) и `live` (новые отзывы не
+старше 14 дней становятся карточками, ответы уходят напрямую).
+
+Ответ из карточки ставится в очередь, парсер отправляет его учётной записью
+сети и сообщает, как его видит площадка (у ПроДокторов ответ проходит
+модерацию). Отвечать можно на ПроДокторов, Яндексе, 2ГИС, НаПоправку;
+СберЗдоровье и ДокТу ждут входа с капчей, у ДокТу ответ ещё и платный.
 
 ### PDF-отчёт по отзыву
 

@@ -11,11 +11,9 @@ const {
   ReviewBoardRole,
   ReviewPlatform,
   ReviewHistory,
-  ReviewSyncConfig,
   MedCenter,
   User
 } = require('../models');
-const reviewSyncService = require('../services/reviewSync');
 const collectorJobs = require('../services/reviewCollector/jobs');
 const { authenticate } = require('../middleware/auth');
 const { Op, Sequelize } = require('sequelize');
@@ -1899,16 +1897,14 @@ router.post('/:id/assign', authenticate, async (req, res) => {
 
 /**
  * POST /api/reviews/:id/reply
- * Отправка ответа на отзыв площадки.
+ * Ответ на отзыв площадки.
  *
- * Два пути (ver. 8.80). Отзыв, связанный с Альфа Парсером, место которого уже
- * работает (live), — ответ ставится в очередь парсера, и тот отправляет его
- * нашей учётной записью прямо на площадку. Остальные — по-старому, через
- * GetLoyalty. Парсер в приоритете: он отвечает на площадках, которых
- * GetLoyalty не умел (НаПоправку, СберЗдоровье), и видит модерацию ответа.
+ * Ответ ставится в очередь Альфа Парсера, и тот отправляет его учётной
+ * записью сети прямо на площадку (ver. 8.80). Отвечать можно на отзывы,
+ * связанные с парсером, место которых работает; старые карточки GetLoyalty,
+ * которые парсер не нашёл, ответа больше не принимают — GetLoyalty
+ * отключён (ver. 8.84).
  */
-const PLATFORMS_REPLY_UNSUPPORTED = ['Докту', 'Google Maps', 'DocDoc', 'Plaso.pro', 'НаПоправку'];
-
 router.post('/:id/reply', authenticate, async (req, res) => {
   try {
     const review = await Review.findByPk(req.params.id, {
@@ -1936,31 +1932,11 @@ router.post('/:id/reply', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Текст ответа обязателен' });
     }
 
-    const viaCollector = review.sourceKey
-      ? await collectorJobs.replyTarget(review)
-      : { ok: false };
-
-    if (viaCollector.ok) {
-      await collectorJobs.enqueueReply(review, text.trim(), req.user.id);
-    } else {
-      if (!review.externalId || !review.externalId.startsWith('gl_')) {
-        return res.status(400).json({
-          error: viaCollector.reason || 'Ответ на площадке доступен только для автоимпортированных отзывов'
-        });
-      }
-
-      if (review.platform && PLATFORMS_REPLY_UNSUPPORTED.includes(review.platform.name)) {
-        return res.status(400).json({ error: `Площадка «${review.platform.name}» не поддерживает отправку ответов через GetLoyalty` });
-      }
-
-      await reviewSyncService.replyToReview(review.boardId, {
-        id: review.id,
-        externalId: review.externalId,
-        reviewDate: review.reviewDate,
-        syncMeta: review.syncMeta,
-        replyText: text.trim()
-      });
+    const target = await collectorJobs.replyTarget(review);
+    if (!target.ok) {
+      return res.status(400).json({ error: target.reason });
     }
+    await collectorJobs.enqueueReply(review, text.trim(), req.user.id);
 
     // Записываем ответ в историю
     const historyEntry = await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.REPLIED, {
@@ -2382,231 +2358,6 @@ router.delete('/files/:fileId', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error deleting file:', error);
     res.status(500).json({ error: 'Ошибка при удалении файла' });
-  }
-});
-
-// ============================================================================
-// SYNC CONFIGURATION
-// ============================================================================
-
-/**
- * Проверка прав на управление доской (owner или admin)
- */
-async function requireBoardOwner(req, res, boardId) {
-  const board = await ReviewBoard.findByPk(boardId);
-  if (!board) { res.status(404).json({ error: 'Доска не найдена' }); return null; }
-  if (board.ownerId !== req.user.id && !req.user.isAdmin) {
-    res.status(403).json({ error: 'Только владелец может управлять синхронизацией' }); return null;
-  }
-  return board;
-}
-
-// GET /api/reviews/sync/providers — список всех провайдеров с их схемой credentials
-router.get('/sync/providers', authenticate, (req, res) => {
-  const providers = reviewSyncService.PROVIDERS.map(p => ({
-    ...p,
-    credentialsSchema: reviewSyncService.getCredentialsSchema(p.key)
-  }));
-  res.json(providers);
-});
-
-// GET /api/reviews/sync/configs/:boardId — конфигурации синхронизации для доски
-router.get('/sync/configs/:boardId', authenticate, async (req, res) => {
-  try {
-    const { boardId } = req.params;
-    const board = await requireBoardOwner(req, res, boardId);
-    if (!board) return;
-
-    const configs = await ReviewSyncConfig.findAll({ where: { boardId } });
-
-    // Возвращаем конфиги для всех провайдеров (включая ненастроенные)
-    const result = reviewSyncService.PROVIDERS.map(provider => {
-      const config = configs.find(c => c.provider === provider.key);
-      const credentials = config ? { ...config.credentials } : {};
-
-      // Маскируем чувствительные поля (пароли/токены) — возвращаем только факт наличия
-      const schema = reviewSyncService.getCredentialsSchema(provider.key);
-      const maskedCredentials = {};
-      for (const field of schema) {
-        if (field.type === 'password' && credentials[field.key]) {
-          maskedCredentials[field.key] = '••••••••';
-        } else {
-          maskedCredentials[field.key] = credentials[field.key] || '';
-        }
-      }
-
-      return {
-        provider: provider.key,
-        label: provider.label,
-        icon: provider.icon,
-        hasOfficialApi: provider.hasOfficialApi,
-        credentialsSchema: schema,
-        isEnabled: config?.isEnabled || false,
-        credentials: maskedCredentials,
-        lastSyncAt: config?.lastSyncAt || null,
-        lastSyncStatus: config?.lastSyncStatus || null,
-        lastSyncError: config?.lastSyncError || null,
-        lastSyncCount: config?.lastSyncCount || 0,
-        isConfigured: !!config && Object.keys(config.credentials || {}).length > 0
-      };
-    });
-
-    res.json(result);
-  } catch (err) {
-    console.error('Error getting sync configs:', err);
-    res.status(500).json({ error: 'Ошибка при получении конфигураций синхронизации' });
-  }
-});
-
-// PUT /api/reviews/sync/configs/:boardId/:provider — сохранить конфигурацию
-router.put('/sync/configs/:boardId/:provider', authenticate, async (req, res) => {
-  try {
-    const { boardId, provider } = req.params;
-    const board = await requireBoardOwner(req, res, boardId);
-    if (!board) return;
-
-    const validProviders = reviewSyncService.PROVIDERS.map(p => p.key);
-    if (!validProviders.includes(provider)) {
-      return res.status(400).json({ error: 'Неизвестный провайдер' });
-    }
-
-    const { isEnabled, credentials } = req.body;
-
-    // Получаем существующую конфигурацию, чтобы не затирать токены, если пришли маски
-    const existing = await ReviewSyncConfig.findOne({ where: { boardId, provider } });
-    const existingCreds = existing?.credentials || {};
-
-    // Мержим: если пришло '••••••••', сохраняем старое значение
-    const schema = reviewSyncService.getCredentialsSchema(provider);
-    const mergedCredentials = { ...existingCreds };
-    if (credentials) {
-      for (const field of schema) {
-        const val = credentials[field.key];
-        if (val !== undefined && val !== '••••••••') {
-          mergedCredentials[field.key] = val;
-        }
-      }
-    }
-
-    const [config, created] = await ReviewSyncConfig.findOrCreate({
-      where: { boardId, provider },
-      defaults: { boardId, provider, isEnabled: false, credentials: {} }
-    });
-
-    await config.update({
-      isEnabled: isEnabled !== undefined ? isEnabled : config.isEnabled,
-      credentials: mergedCredentials
-    });
-
-    res.json({
-      provider,
-      isEnabled: config.isEnabled,
-      lastSyncAt: config.lastSyncAt,
-      lastSyncStatus: config.lastSyncStatus,
-      message: created ? 'Конфигурация создана' : 'Конфигурация обновлена'
-    });
-  } catch (err) {
-    console.error('Error saving sync config:', err);
-    res.status(500).json({ error: 'Ошибка при сохранении конфигурации' });
-  }
-});
-
-// POST /api/reviews/sync/test/:boardId/:provider — проверить подключение
-router.post('/sync/test/:boardId/:provider', authenticate, async (req, res) => {
-  try {
-    const { boardId, provider } = req.params;
-    const board = await requireBoardOwner(req, res, boardId);
-    if (!board) return;
-
-    // Берём credentials из тела запроса или из БД
-    let credentials = req.body.credentials || {};
-
-    const existing = await ReviewSyncConfig.findOne({ where: { boardId, provider } });
-    if (existing) {
-      // Мержим: маскированные значения берём из БД
-      const schema = reviewSyncService.getCredentialsSchema(provider);
-      const merged = { ...existing.credentials };
-      for (const field of schema) {
-        const val = credentials[field.key];
-        if (val && val !== '••••••••') merged[field.key] = val;
-      }
-      credentials = merged;
-    }
-
-    const result = await reviewSyncService.testConnection(provider, credentials);
-    res.json(result);
-  } catch (err) {
-    console.error('Error testing sync connection:', err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// POST /api/reviews/sync/backfill/:boardId — полная синхронизация для обновления syncMeta старых отзывов
-router.post('/sync/backfill/:boardId', authenticate, async (req, res) => {
-  try {
-    const { boardId } = req.params;
-    const board = await requireBoardOwner(req, res, boardId);
-    if (!board) return;
-
-    res.status(202).json({ message: 'Полная синхронизация запущена — это может занять несколько минут' });
-
-    try {
-      const result = await reviewSyncService.backfillBoard(boardId);
-      console.log(`[ReviewSync] Backfill завершён для доски ${boardId}:`, result);
-    } catch (err) {
-      console.error('[ReviewSync] Ошибка backfill:', err);
-    }
-  } catch (err) {
-    console.error('Error starting backfill:', err);
-    res.status(500).json({ error: 'Ошибка при запуске полной синхронизации' });
-  }
-});
-
-// POST /api/reviews/sync/run/:boardId — запустить синхронизацию вручную
-router.post('/sync/run/:boardId', authenticate, async (req, res) => {
-  try {
-    const { boardId } = req.params;
-    const board = await requireBoardOwner(req, res, boardId);
-    if (!board) return;
-
-    // Запускаем асинхронно, сразу возвращаем 202
-    res.status(202).json({ message: 'Синхронизация запущена' });
-
-    try {
-      const results = await reviewSyncService.syncBoard(boardId);
-      console.log(`[ReviewSync] Ручной запуск для доски ${boardId}:`, results);
-    } catch (syncErr) {
-      console.error('[ReviewSync] Ошибка ручного запуска:', syncErr);
-    }
-  } catch (err) {
-    console.error('Error starting sync:', err);
-    res.status(500).json({ error: 'Ошибка при запуске синхронизации' });
-  }
-});
-
-// POST /api/reviews/sync/run/:boardId/:provider — запустить синхронизацию одной площадки
-router.post('/sync/run/:boardId/:provider', authenticate, async (req, res) => {
-  try {
-    const { boardId, provider } = req.params;
-    const board = await requireBoardOwner(req, res, boardId);
-    if (!board) return;
-
-    const config = await ReviewSyncConfig.findOne({ where: { boardId, provider } });
-    if (!config) return res.status(404).json({ error: 'Конфигурация не найдена' });
-    if (!config.isEnabled) return res.status(400).json({ error: 'Синхронизация отключена для этой площадки' });
-
-    res.status(202).json({ message: `Синхронизация ${provider} запущена` });
-
-    try {
-      await reviewSyncService.syncConfig(config);
-      const count = await ReviewSyncConfig.findByPk(config.id);
-      console.log(`[ReviewSync] Ручной запуск ${provider} для доски ${boardId}: импортировано ${count.lastSyncCount}`);
-    } catch (syncErr) {
-      console.error(`[ReviewSync] Ошибка ручного запуска ${provider}:`, syncErr);
-    }
-  } catch (err) {
-    console.error('Error starting sync for provider:', err);
-    res.status(500).json({ error: 'Ошибка при запуске синхронизации' });
   }
 });
 
