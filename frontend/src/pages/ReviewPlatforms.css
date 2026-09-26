@@ -1,0 +1,489 @@
+/* «Площадки» модуля отзывов (ver. 8.80). Свои классы с приставкой rp-:
+   страница открывается напрямую, и стили настроек доски, на которые она
+   похожа, к этому моменту могут быть ещё не загружены. */
+
+.rp-page {
+  padding: 2rem;
+  max-width: 1100px;
+}
+
+.rp-loading {
+  display: flex;
+  justify-content: center;
+  padding-top: 6rem;
+}
+
+.rp-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.rp-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.rp-header-add {
+  margin-left: auto;
+}
+
+.rp-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.rp-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.rp-section {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.rp-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.rp-section-head h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.rp-muted {
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+}
+
+.rp-empty {
+  padding: 0.25rem 0;
+}
+
+/* ── Учётная запись ───────────────────────────────────────────────── */
+
+.rp-account {
+  border-top: 1px solid var(--border-light);
+  padding: 0.875rem 0;
+}
+
+.rp-account:first-of-type {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
+.rp-account--disabled .rp-account-title,
+.rp-account--disabled .rp-places {
+  opacity: 0.5;
+}
+
+.rp-account-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.rp-account-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rp-account-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rp-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.rp-account-message {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.rp-account-collected {
+  margin-top: 0.25rem;
+}
+
+.rp-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.rp-status--ok    { color: var(--green-700); background: var(--green-100); }
+.rp-status--warn  { color: var(--amber-800); background: var(--amber-100); }
+.rp-status--bad   { color: var(--red-700);   background: var(--red-100); }
+.rp-status--muted { color: var(--text-secondary); background: var(--bg-tertiary); }
+
+.rp-challenge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 8px;
+  color: var(--amber-800);
+  background: var(--amber-100);
+  font-size: 0.875rem;
+}
+
+.rp-digits {
+  font-size: 1.1rem;
+  letter-spacing: 0.35em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Места ───────────────────────────────────────────────────────── */
+
+.rp-places {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rp-place {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 0.625rem 0.75rem;
+}
+
+.rp-place-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.rp-place-name {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.rp-place-name small {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.rp-place-board {
+  flex: 0 1 220px;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.rp-modes {
+  display: inline-flex;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rp-mode {
+  padding: 0.3rem 0.625rem;
+  border: none;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.rp-mode + .rp-mode {
+  border-left: 1px solid var(--border-light);
+}
+
+.rp-mode:disabled {
+  cursor: not-allowed;
+  color: var(--text-disabled);
+}
+
+.rp-mode--active.rp-mode--off    { color: var(--text-primary); background: var(--bg-tertiary); }
+.rp-mode--active.rp-mode--shadow { color: var(--amber-800);    background: var(--amber-100); }
+.rp-mode--active.rp-mode--live   { color: var(--green-700);    background: var(--green-100); }
+
+.rp-place-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.rp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-600);
+  font: inherit;
+  cursor: pointer;
+}
+
+.rp-samples {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+.rp-samples li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.625rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 6px;
+  background: var(--bg-primary);
+}
+
+.rp-sample-text {
+  flex-basis: 100%;
+  color: var(--text-primary);
+}
+
+/* ── GetLoyalty ──────────────────────────────────────────────────── */
+
+.rp-gl-note {
+  margin: 0 0 0.75rem;
+}
+
+.rp-gl-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+.rp-gl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+/* ── Кнопки и переключатель ──────────────────────────────────────── */
+
+.rp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.rp-btn--primary {
+  border: none;
+  background: var(--accent-500);
+  color: var(--text-on-inverse);
+}
+
+.rp-btn--primary:hover { background: var(--accent-600); }
+.rp-btn--primary:disabled { opacity: 0.6; cursor: default; }
+
+.rp-btn--ghost {
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.rp-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.rp-icon-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.rp-icon-btn--danger:hover:not(:disabled) {
+  color: var(--red-700);
+}
+
+.rp-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.rp-spin {
+  animation: rp-spin 1s linear infinite;
+}
+
+@keyframes rp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.rp-switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  margin: 0 0.25rem;
+  cursor: pointer;
+}
+
+.rp-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.rp-switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  transition: background 0.15s;
+}
+
+.rp-switch span::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s;
+}
+
+.rp-switch input:checked + span {
+  background: var(--accent-500);
+}
+
+.rp-switch input:checked + span::before {
+  transform: translateX(14px);
+}
+
+/* ── Окно учётной записи ─────────────────────────────────────────── */
+
+.rp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.rp-modal {
+  width: 100%;
+  max-width: 420px;
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+
+.rp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.rp-modal-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.rp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-bottom: 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.rp-field input,
+.rp-field select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}
+
+.rp-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .rp-page {
+    padding: 1rem;
+  }
+
+  .rp-section {
+    padding: 1rem;
+  }
+
+  .rp-place-board {
+    flex: 1 1 100%;
+  }
+}

@@ -18,6 +18,7 @@ const { replyToReview: adapterReplyToReview, verifyReplyPublished } = adapter;
 const REPLY_VERIFY_GRACE_HOURS = 6;
 const workflowEngine = require('../workflowEngine');
 const notificationService = require('../notificationService');
+const collectorTransition = require('../reviewCollector/getloyalty');
 
 const PROVIDER = 'getloyalty';
 
@@ -60,7 +61,14 @@ async function syncConfig(config, options = {}) {
   const now = new Date();
   let imported = 0;
 
+  // Площадки, переехавшие к Альфа Парсеру (ver. 8.80), из GetLoyalty больше
+  // не берутся совсем — ни новые отзывы, ни обновления ответов: источник
+  // правды по ним теперь парсер.
+  const excluded = new Set(await collectorTransition.excludedPlatforms());
+
   for (const raw of rawReviews) {
+    if (excluded.has(raw.platformName || 'Другая площадка')) continue;
+
     // Дедупликация: сначала по externalId, затем по содержимому (защита от дублей GL)
     // paranoid: false — находим в т.ч. мягко-удалённые, чтобы не реимпортировать
     let existing = await Review.findOne({
@@ -99,8 +107,13 @@ async function syncConfig(config, options = {}) {
         newMeta.sourceHashKey = raw.sourceHashKey;
         metaChanged = true;
       }
-      // Обновляем данные ответа при каждой синхронизации
-      if (raw.firstComment) {
+      // Обновляем данные ответа при каждой синхронизации. Кроме карточек,
+      // связанных с Альфа Парсером (ver. 8.80): по ним ответ знает парсер, а
+      // GetLoyalty видит его с опозданием и стёр бы «отправляется» у ответа,
+      // который ещё в пути.
+      if (existing.sourceKey) {
+        // ответ не трогаем
+      } else if (raw.firstComment) {
         if (newMeta.replyText !== raw.firstComment.text ||
             newMeta.isAnswered !== raw.isAnswered ||
             newMeta.replyPending !== raw.firstComment.isPending) {
@@ -129,6 +142,29 @@ async function syncConfig(config, options = {}) {
     const rating = raw.rating != null
       ? Math.max(1, Math.min(5, Math.round(raw.rating)))
       : 3;
+
+    // Парсер мог завести этот отзыв раньше GetLoyalty (ver. 8.80). Тогда
+    // карточка уже есть — дописываем ей наш номер, и при следующей
+    // синхронизации она найдётся по externalId выше, а не заведётся заново.
+    const collectorCard = await collectorTransition.findCollectorCounterpart({
+      boardId: config.boardId,
+      platformId,
+      date: (raw.date || now).toISOString().slice(0, 10),
+      text: raw.text,
+      rating: raw.rating != null ? rating : null,
+      doctorName: raw.doctorName,
+      externalUrl: raw.externalUrl,
+    });
+    if (collectorCard) {
+      await Review.update({
+        externalId: raw.externalId,
+        syncMeta: {
+          ...(collectorCard.syncMeta || {}),
+          ...(raw.sourceHashKey ? { sourceHashKey: raw.sourceHashKey } : {}),
+        },
+      }, { where: { id: collectorCard.id }, paranoid: false });
+      continue;
+    }
 
     const review = await Review.create({
       id:             uuidv4(),

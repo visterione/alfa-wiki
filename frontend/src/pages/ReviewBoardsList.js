@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  MessageSquare, Star, Settings, Archive, UserCheck
+  MessageSquare, Star, Settings, Archive, UserCheck, PlugZap
 } from 'lucide-react';
 import { reviews } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { fileUrl } from '../utils/fileUrl';
 import './ReviewBoardsList.css';
@@ -29,6 +30,7 @@ function BoardBrand({ board }) {
 
 const ReviewBoardsList = () => {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +90,18 @@ const ReviewBoardsList = () => {
           <h1>Отзывы</h1>
         </div>
         <div className="header-actions">
+          {/* Учётные записи площадок для Альфа Парсера (ver. 8.80). В них
+              пароли всех площадок сети — только администраторам */}
+          {isAdmin && (
+            <button
+              className="btn-archive"
+              onClick={() => navigate('/reviews/platforms')}
+              title="Учётные записи площадок"
+            >
+              <PlugZap size={18} />
+              Площадки
+            </button>
+          )}
           <button
             className="btn-archive"
             onClick={() => navigate('/reviews/archive')}

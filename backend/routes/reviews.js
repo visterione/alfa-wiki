@@ -16,6 +16,7 @@ const {
   User
 } = require('../models');
 const reviewSyncService = require('../services/reviewSync');
+const collectorJobs = require('../services/reviewCollector/jobs');
 const { authenticate } = require('../middleware/auth');
 const { Op, Sequelize } = require('sequelize');
 const { sequelize } = require('../models');
@@ -1898,7 +1899,13 @@ router.post('/:id/assign', authenticate, async (req, res) => {
 
 /**
  * POST /api/reviews/:id/reply
- * Отправка ответа на отзыв через GetLoyalty
+ * Отправка ответа на отзыв площадки.
+ *
+ * Два пути (ver. 8.80). Отзыв, связанный с Альфа Парсером, место которого уже
+ * работает (live), — ответ ставится в очередь парсера, и тот отправляет его
+ * нашей учётной записью прямо на площадку. Остальные — по-старому, через
+ * GetLoyalty. Парсер в приоритете: он отвечает на площадках, которых
+ * GetLoyalty не умел (НаПоправку, СберЗдоровье), и видит модерацию ответа.
  */
 const PLATFORMS_REPLY_UNSUPPORTED = ['Докту', 'Google Maps', 'DocDoc', 'Plaso.pro', 'НаПоправку'];
 
@@ -1929,21 +1936,31 @@ router.post('/:id/reply', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Текст ответа обязателен' });
     }
 
-    if (!review.externalId || review.importSource !== 'getloyalty') {
-      return res.status(400).json({ error: 'Ответ через GetLoyalty доступен только для автоимпортированных отзывов' });
-    }
+    const viaCollector = review.sourceKey
+      ? await collectorJobs.replyTarget(review)
+      : { ok: false };
 
-    if (review.platform && PLATFORMS_REPLY_UNSUPPORTED.includes(review.platform.name)) {
-      return res.status(400).json({ error: `Площадка «${review.platform.name}» не поддерживает отправку ответов через GetLoyalty` });
-    }
+    if (viaCollector.ok) {
+      await collectorJobs.enqueueReply(review, text.trim(), req.user.id);
+    } else {
+      if (!review.externalId || !review.externalId.startsWith('gl_')) {
+        return res.status(400).json({
+          error: viaCollector.reason || 'Ответ на площадке доступен только для автоимпортированных отзывов'
+        });
+      }
 
-    await reviewSyncService.replyToReview(review.boardId, {
-      id: review.id,
-      externalId: review.externalId,
-      reviewDate: review.reviewDate,
-      syncMeta: review.syncMeta,
-      replyText: text.trim()
-    });
+      if (review.platform && PLATFORMS_REPLY_UNSUPPORTED.includes(review.platform.name)) {
+        return res.status(400).json({ error: `Площадка «${review.platform.name}» не поддерживает отправку ответов через GetLoyalty` });
+      }
+
+      await reviewSyncService.replyToReview(review.boardId, {
+        id: review.id,
+        externalId: review.externalId,
+        reviewDate: review.reviewDate,
+        syncMeta: review.syncMeta,
+        replyText: text.trim()
+      });
+    }
 
     // Записываем ответ в историю
     const historyEntry = await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.REPLIED, {
@@ -1959,7 +1976,9 @@ router.post('/:id/reply', authenticate, async (req, res) => {
     res.status(201).json(result);
   } catch (error) {
     console.error('Error sending reply:', error);
-    res.status(500).json({ error: error.message || 'Ошибка при отправке ответа' });
+    // У очереди парсера свои понятные отказы («предыдущий ответ ещё не
+    // отправлен») — это не сбой сервера, и человек должен увидеть причину.
+    res.status(error.status || 500).json({ error: error.message || 'Ошибка при отправке ответа' });
   }
 });
 

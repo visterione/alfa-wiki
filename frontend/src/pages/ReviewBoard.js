@@ -17,7 +17,8 @@ import {
   getRatingStars,
   getCategoryLabel,
   HISTORY_ACTION_LABELS,
-  PLATFORMS_REPLY_UNSUPPORTED,
+  canReplyOnPlatform,
+  reviewSource,
   formatDuration,
   getStageUrgency
 } from '../utils/reviewConstants';
@@ -54,6 +55,22 @@ const isTransitionAllowedByWorkflow = (workflowConfig, fromStatus, toStatus, rev
   }
   return null;
 };
+
+/**
+ * Откуда пришёл отзыв: GetLoyalty, напрямую от Альфа Парсера или оба
+ * (ver. 8.80). Нужен на время перехода — по нему видно, что сопоставление
+ * сработало. Когда GetLoyalty отключат, значок останется только у «напрямую»
+ * и его можно будет убрать.
+ */
+function ReviewSourceBadge({ review, withLabel = false }) {
+  const source = reviewSource(review);
+  if (!source) return null;
+  return (
+    <span className={`review-source-badge review-source-badge--${source.key}`} title={source.label}>
+      {withLabel ? source.label : source.short}
+    </span>
+  );
+}
 
 const ReviewBoard = () => {
   const { id: boardId } = useParams();
@@ -1019,6 +1036,7 @@ const ReviewBoard = () => {
                         <span className="platform">
                           <PlatformLogo name={review.platform?.name} />
                           {review.platform?.name}
+                          <ReviewSourceBadge review={review} />
                         </span>
                         <span className="date">
                           <Calendar size={12} />
@@ -1477,6 +1495,7 @@ const ReviewBoard = () => {
                         <span className="source-line">
                           <PlatformLogo name={selectedReview.platform?.name} size={16} />
                           {selectedReview.platform?.name} | {board?.name}
+                          <ReviewSourceBadge review={selectedReview} withLabel />
                         </span>
                       </div>
                       <button className="btn-copy-inline" onClick={copyReviewText} title="Копировать текст отзыва">
@@ -1643,8 +1662,8 @@ const ReviewBoard = () => {
                     })}
                 </div>
 
-                {/* Reply to review on platform (GetLoyalty) — display only */}
-                {selectedReview.externalId?.startsWith('gl_') && !PLATFORMS_REPLY_UNSUPPORTED.includes(selectedReview.platform?.name) && (() => {
+                {/* Официальный ответ на площадке — через GetLoyalty или Альфа Парсер */}
+                {canReplyOnPlatform(selectedReview) && (() => {
                   const meta = selectedReview.syncMeta || {};
                   const platformReply = meta.replyText || null;
                   const historyReply = !platformReply
@@ -1657,6 +1676,8 @@ const ReviewBoard = () => {
                     ? (meta.replyDate ? new Date(meta.replyDate).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null)
                     : (historyReply ? new Date(historyReply.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null);
                   const isFailed = meta.replyFailed;
+                  const isSending = meta.replySending && !isFailed;
+                  const isRejected = meta.replyRejected && !isFailed;
                   const isUnverified = meta.replyUnverified && !isFailed;
                   const isPending = meta.replyPending && !isUnverified && !isFailed;
                   return (
@@ -1665,6 +1686,8 @@ const ReviewBoard = () => {
                         <Reply size={14} />
                         <span>Официальный ответ</span>
                         {isFailed && <span className="reply-failed-badge">Не опубликовано</span>}
+                        {isRejected && <span className="reply-failed-badge">Отклонён модерацией</span>}
+                        {isSending && <span className="reply-pending-badge">Отправляется</span>}
                         {isUnverified && <span className="reply-pending-badge">Проверяется публикация</span>}
                         {isPending && <span className="reply-pending-badge">На модерации</span>}
                         {replyDate_ && <span className="reply-header-date">{replyDate_}</span>}
@@ -1672,7 +1695,16 @@ const ReviewBoard = () => {
                       <div className="reply-sent">{replyText_}</div>
                       {isFailed && (
                         <div className="reply-failed-note">
-                          Ответ не зафиксирован на площадке. Отправьте его повторно.
+                          {meta.replyError
+                            ? `Площадка не приняла ответ: ${meta.replyError}. Отправьте его повторно.`
+                            : 'Ответ не зафиксирован на площадке. Отправьте его повторно.'}
+                        </div>
+                      )}
+                      {isRejected && (
+                        <div className="reply-failed-note">
+                          {meta.replyRejectReason
+                            ? `Причина: ${meta.replyRejectReason}`
+                            : 'Площадка не пропустила ответ. Исправьте текст и отправьте заново.'}
                         </div>
                       )}
                     </div>
@@ -1722,7 +1754,7 @@ const ReviewBoard = () => {
                       >
                         <Send size={16} />
                       </button>
-                      {isAdmin && selectedReview.externalId?.startsWith('gl_') && !PLATFORMS_REPLY_UNSUPPORTED.includes(selectedReview.platform?.name) && (
+                      {isAdmin && canReplyOnPlatform(selectedReview) && (
                         <button
                           onClick={handleSendReply}
                           disabled={!commentText.trim() || submittingReply}

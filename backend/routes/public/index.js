@@ -16,6 +16,7 @@ const formsRoutes = require('./v1/forms');
 const bookingRoutes = require('./v1/booking');
 const vacancyRoutes = require('./v1/vacancies');
 const mailClubRoutes = require('./v1/mailClub');
+const reviewCollectorRoutes = require('./v1/reviewCollector');
 
 // Порядок важен: сначала лог и грубые лимиты, потом разбор тела, потом маршруты
 router.use(auditLog());
@@ -50,6 +51,8 @@ router.use('/v1/forms', formsRoutes);
 router.use('/v1/booking', bookingRoutes);
 // Почтовый клуб (ver. 8.79): сайты медцентров присылают подписчиков рассылок.
 router.use('/v1/mail-club', mailClubRoutes);
+// Альфа Парсер (ver. 8.80): отзывы с площадок и ответы на них вместо GetLoyalty.
+router.use('/v1/review-collector', reviewCollectorRoutes);
 
 // Вакансии. В отличие от форм выше, ключа не требует: анкету заполняет человек
 // с улицы, у которого нет и не будет аккаунта в портале. Право предъявляется

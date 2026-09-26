@@ -37,6 +37,36 @@ export const PLATFORMS_REPLY_UNSUPPORTED = [
   'НаПоправку'
 ];
 
+// Площадки, где Альфа Парсер отвечает сам (ver. 8.80) — имена справочника.
+// Шире списка GetLoyalty: парсер отвечает и на НаПоправку, и в СберЗдоровье
+// (в справочнике оно «DocDoc»). У ДокТу ответ платный и у сети отключён.
+const COLLECTOR_REPLY_PLATFORMS = ['ПроДокторов', 'Яндекс Карты', '2ГИС', 'Фламп', 'НаПоправку', 'DocDoc'];
+
+/**
+ * Можно ли предложить ответ на площадке. Окончательно решает сервер: если
+ * место у парсера ещё в режиме сверки, ответ уйдёт через GetLoyalty, а если
+ * и там нельзя — сервер объяснит почему.
+ */
+export function canReplyOnPlatform(review) {
+  const name = review?.platform?.name;
+  if (review?.sourceKey && COLLECTOR_REPLY_PLATFORMS.includes(name)) return true;
+  return !!review?.externalId?.startsWith('gl_') && !PLATFORMS_REPLY_UNSUPPORTED.includes(name);
+}
+
+/**
+ * Откуда пришёл отзыв — на время перехода с GetLoyalty на Альфа Парсер
+ * (ver. 8.80). Отзыв, найденный обоими, помнит оба ключа; по нему видно, что
+ * сопоставление сработало и дубля нет.
+ */
+export function reviewSource(review) {
+  const gl = !!review?.externalId?.startsWith('gl_');
+  const direct = !!review?.sourceKey;
+  if (gl && direct) return { key: 'both', short: 'GL+', label: 'GetLoyalty и напрямую с площадки' };
+  if (direct) return { key: 'direct', short: 'П', label: 'Напрямую с площадки (Альфа Парсер)' };
+  if (gl) return { key: 'gl', short: 'GL', label: 'Через GetLoyalty' };
+  return null;
+}
+
 // ─── Логотипы площадок ────────────────────────────────────────────────────────
 //
 // Файлы лежат в frontend/public/platform-logos/ и отдаются как статика — так же,

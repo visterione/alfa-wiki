@@ -50,6 +50,7 @@ const ReviewBoardsList = lazy(() => import('./pages/ReviewBoardsList'));
 const ReviewBoard = lazy(() => import('./pages/ReviewBoard'));
 const ReviewBoardSettings = lazy(() => import('./pages/ReviewBoardSettings'));
 const ReviewArchive = lazy(() => import('./pages/ReviewArchive'));
+const ReviewPlatforms = lazy(() => import('./pages/ReviewPlatforms'));
 const ReviewStatistics = lazy(() => import('./pages/ReviewStatistics'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const WhatsNew = lazy(() => import('./pages/WhatsNew'));
@@ -256,6 +257,10 @@ function AppRoutes() {
         } />
         <Route path="reviews/archive" element={
           <ProtectedRoute requireAdminAccess="reviews"><ReviewArchive /></ProtectedRoute>
+        } />
+        {/* Учётные записи площадок для Альфа Парсера (ver. 8.80); сервер пускает только администраторов */}
+        <Route path="reviews/platforms" element={
+          <ProtectedRoute adminOnly><ReviewPlatforms /></ProtectedRoute>
         } />
 
         {/* КУРСЫ - добавьте эти строки */}

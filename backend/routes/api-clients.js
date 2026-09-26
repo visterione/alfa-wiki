@@ -34,6 +34,7 @@ const submissionService = require('../services/public/submissionService');
 
 const BOOKING_DURATION_SCOPE = 'booking:duration:read';
 const MAIL_CLUB_SCOPE = 'mail-club:subscribe';
+const REVIEW_COLLECTOR_SCOPE = 'reviews:collector';
 
 const router = express.Router();
 
@@ -57,7 +58,8 @@ function sanitizeScopes(scopes) {
   const known = new Set([
     ...formRegistry.listFormTypes().map(t => formRegistry.scopeFor(t)),
     BOOKING_DURATION_SCOPE,
-    MAIL_CLUB_SCOPE
+    MAIL_CLUB_SCOPE,
+    REVIEW_COLLECTOR_SCOPE
   ]);
   return [...new Set((scopes || []).filter(s => known.has(s)))];
 }
@@ -92,6 +94,12 @@ router.get('/meta', authenticate, requireAdmin, async (req, res) => {
           formType: 'mail-club',
           title: 'Почтовый клуб: запись подписчиков',
           scope: MAIL_CLUB_SCOPE
+        },
+        {
+          // Ключ открывает пароли всех площадок — ему нужен белый список IP
+          formType: 'review-collector',
+          title: 'Альфа Парсер: сбор отзывов и пароли площадок',
+          scope: REVIEW_COLLECTOR_SCOPE
         }
       ],
       // Реестр подписок: конфигурация размазана по чатам, и без общего списка

@@ -3409,6 +3409,12 @@ const Review = sequelize.define('Review', {
     type: DataTypes.JSONB,
     defaultValue: {},
     comment: 'Метаданные синхронизации: sourceHashKey для ответа через GetLoyalty'
+  },
+  // Ключ отзыва у Альфа Парсера, «площадка:номер» (ver. 8.80). Живёт рядом с
+  // externalId от GetLoyalty: карточка, найденная обоими, помнит оба ключа.
+  sourceKey: {
+    type: DataTypes.STRING(200),
+    comment: 'Ключ отзыва у Альфа Парсера: «площадка:номер»'
   }
 }, {
   tableName: 'reviews',
@@ -5291,6 +5297,16 @@ const {
 
 associateMail({ User, MedCenter, Role });
 
+// === СБОР ОТЗЫВОВ АЛЬФА ПАРСЕРОМ (ver. 8.80) ===
+// Учётные записи площадок, места в них и очередь задач для парсера. Замена
+// GetLoyalty; причины решений — в миграции «ver. 8.80 review-collector.sql».
+const {
+  models: reviewCollectorModels,
+  associateReviewCollector,
+} = require('./reviewCollector')(sequelize, DataTypes);
+
+associateReviewCollector({ ReviewBoard, Review });
+
 // === КОЛЛ-ЦЕНТР: БЫСТРЫЕ ДАННЫЕ (ver. 8.32) ===
 // Набор для страницы backend/bot/call-center.html: подготовки к исследованиям,
 // почты, ссылки, заготовки ответов. До этой версии он лежал в localStorage
@@ -5344,6 +5360,7 @@ module.exports = {
   ...warehouseModels,
   ...vacancyModels,
   ...mailModels,
+  ...reviewCollectorModels,
   Role,
   User,
   Folder,
