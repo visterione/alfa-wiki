@@ -54,6 +54,8 @@ function AccountModal({ platforms, account, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
 
   const set = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+  // Учётка сети в Яндексе входит без пароля — ссылкой из письма (ver. 8.81)
+  const passwordless = !!platforms.find(p => p.key === form.platform)?.passwordless;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -106,8 +108,10 @@ function AccountModal({ platforms, account, onClose, onSaved }) {
             value={form.password}
             onChange={set('password')}
             autoComplete="new-password"
-            placeholder={isEdit ? 'Оставьте пустым, чтобы не менять' : ''}
-            required={!isEdit}
+            placeholder={isEdit
+              ? 'Оставьте пустым, чтобы не менять'
+              : (passwordless ? 'Не нужен, если вход по письму' : '')}
+            required={!isEdit && !passwordless}
           />
         </label>
 
@@ -264,7 +268,7 @@ function AccountCard({ account, boards, onEdit, onChange }) {
         <div className="rp-challenge">
           <KeyRound size={16} />
           <span>
-            Подтвердите вход на телефоне
+            Подтвердите вход по ссылке из письма
             {challenge.digits && <> — цифры <b className="rp-digits">{challenge.digits}</b></>}
           </span>
         </div>

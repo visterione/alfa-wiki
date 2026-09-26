@@ -15,7 +15,8 @@
 
 const PLATFORMS = {
   prodoctorov: { key: 'prodoctorov', label: 'ПроДокторов',  reviewPlatform: 'ПроДокторов',  canReply: true },
-  yandex:      { key: 'yandex',      label: 'Яндекс',       reviewPlatform: 'Яндекс Карты', canReply: true },
+  // Пароля у учётки сети нет: в Яндекс ID входят ссылкой из письма (ver. 8.81)
+  yandex:      { key: 'yandex',      label: 'Яндекс',       reviewPlatform: 'Яндекс Карты', canReply: true, passwordless: true },
   '2gis':      { key: '2gis',        label: '2ГИС',         reviewPlatform: '2ГИС',         canReply: true },
   napopravku:  { key: 'napopravku',  label: 'НаПоправку',   reviewPlatform: 'НаПоправку',   canReply: true },
   sberhealth:  { key: 'sberhealth',  label: 'СберЗдоровье', reviewPlatform: 'DocDoc',       canReply: true },

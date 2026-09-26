@@ -40,13 +40,13 @@ class CollectorError extends Error {
 async function createAccount({ platform, label, login, password }, userId) {
   if (!platforms.get(platform)) throw new CollectorError('Неизвестная площадка');
   if (!login?.trim()) throw new CollectorError('Логин обязателен');
-  if (!password) throw new CollectorError('Пароль обязателен');
+  if (!password && !platforms.get(platform).passwordless) throw new CollectorError('Пароль обязателен');
 
   const account = await ReviewPlatformAccount.create({
     platform,
     label: label?.trim() || null,
     login: login.trim(),
-    ...encryptPassword(password),
+    ...(password ? encryptPassword(password) : {}),
     createdBy: userId,
   });
   await enqueueCheck(account.id, userId);
@@ -95,7 +95,9 @@ async function accountsForCollector() {
     id: a.id,
     platform: a.platform,
     login: a.login,
-    password: decryptPassword(a),
+    // Учётка без пароля (Яндекс, вход по письму) получает пустую строку —
+    // адаптер по ней понимает, что надо выбирать вход по ссылке.
+    password: a.passwordEnc ? decryptPassword(a) : '',
     credentialsVersion: a.credentialsVersion,
     status: a.status,
     places: (a.places || []).map(p => ({

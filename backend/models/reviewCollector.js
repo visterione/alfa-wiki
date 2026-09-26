@@ -13,9 +13,10 @@ module.exports = function defineReviewCollectorModels(sequelize, DataTypes) {
     platform:           { type: DataTypes.STRING(20), allowNull: false },
     label:              { type: DataTypes.STRING(200) },
     login:              { type: DataTypes.STRING(320), allowNull: false },
-    passwordEnc:        { type: DataTypes.TEXT, allowNull: false },
-    passwordIv:         { type: DataTypes.STRING(64), allowNull: false },
-    passwordTag:        { type: DataTypes.STRING(64), allowNull: false },
+    // Пусты у учётки без пароля: в Яндекс ID сеть входит ссылкой из письма (ver. 8.81)
+    passwordEnc:        { type: DataTypes.TEXT },
+    passwordIv:         { type: DataTypes.STRING(64) },
+    passwordTag:        { type: DataTypes.STRING(64) },
     keyVersion:         { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     credentialsVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     isEnabled:          { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
