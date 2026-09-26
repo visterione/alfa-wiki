@@ -42,14 +42,24 @@ export function canReplyOnPlatform(review) {
   return !!review?.sourceKey && COLLECTOR_REPLY_PLATFORMS.includes(review?.platform?.name);
 }
 
-// Жалобу из вики принимают ПроДокторов, Яндекс и 2ГИС (ver. 8.85). У
-// НаПоправку кнопки жалобы нет вовсе, СберЗдоровье и ДокТу — после разведки.
-// Причины окно берёт у сервера, здесь только — показывать ли кнопку.
-const COMPLAINT_PLATFORMS = ['ПроДокторов', 'Яндекс Карты', '2ГИС', 'Фламп'];
+// Жалобу из вики принимают ПроДокторов, Яндекс, 2ГИС и ДокТу (ver. 8.85).
+// У НаПоправку и СберЗдоровья кнопки жалобы нет даже в их кабинетах. Причины
+// окно берёт у сервера, здесь только — активна ли кнопка.
+const COMPLAINT_PLATFORMS = ['ПроДокторов', 'Яндекс Карты', '2ГИС', 'Фламп', 'Докту'];
 
+/** Показывать ли кнопку «Пожаловаться» — у любого отзыва, связанного с площадкой. */
+export function hasPlatformLink(review) {
+  return !!review?.sourceKey;
+}
+
+/**
+ * Можно ли сейчас пожаловаться. Где нельзя — кнопка остаётся на месте, но
+ * неактивна: по просьбе заказчика без окон с объяснениями.
+ */
 export function canComplainOnPlatform(review) {
-  return !!review?.sourceKey
+  return hasPlatformLink(review)
     && !review?.platformRemovedAt
+    && review?.syncMeta?.complaint?.state !== 'sending'
     && COMPLAINT_PLATFORMS.includes(review?.platform?.name);
 }
 

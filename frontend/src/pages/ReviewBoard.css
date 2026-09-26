@@ -831,8 +831,15 @@
   transition: all 0.2s;
 }
 
-.modal-footer .btn-edit:hover {
+.modal-footer .btn-edit:hover:not(:disabled) {
   background: var(--bg-tertiary);
+}
+
+/* «Пожаловаться» там, где площадка жалоб не принимает (ver. 8.85): кнопка
+   на месте, но неактивна — объяснений в интерфейсе заказчик не хочет */
+.modal-footer .btn-edit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .modal-header .btn-finalize {

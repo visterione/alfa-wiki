@@ -20,6 +20,7 @@ import {
   HISTORY_ACTION_LABELS,
   canReplyOnPlatform,
   canComplainOnPlatform,
+  hasPlatformLink,
   reviewPublicUrl,
   platformRemovedLabel,
   formatDuration,
@@ -1821,12 +1822,11 @@ const ReviewBoard = () => {
                   Архивировать
                 </button>
               )}
-              {isAdmin && canComplainOnPlatform(selectedReview) && (
+              {isAdmin && hasPlatformLink(selectedReview) && (
                 <button
                   className="btn-edit"
                   onClick={() => setShowComplaint(true)}
-                  disabled={selectedReview.syncMeta?.complaint?.state === 'sending'}
-                  title="Пожаловаться на отзыв площадке"
+                  disabled={!canComplainOnPlatform(selectedReview)}
                 >
                   <Flag size={16} />
                   Пожаловаться
