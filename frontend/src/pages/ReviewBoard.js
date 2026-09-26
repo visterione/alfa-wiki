@@ -34,6 +34,23 @@ import toast from 'react-hot-toast';
 import './ReviewBoard.css';
 
 /**
+ * Текст из блока «Официальный ответ» карточки: опубликованный ответ, а пока
+ * его нет (отправляется, проверяется) — последний отправленный из истории.
+ * Та же логика, что у самого блока.
+ */
+const officialReplyText = (review) => {
+  if (!review?.isAutoImported) return '';
+  if (review.syncMeta?.replyText) return review.syncMeta.replyText;
+  const last = (review.history || [])
+    .filter(e => e.action === 'replied')
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  return last?.comment || '';
+};
+
+// Площадки при публикации меняют пробелы и переводы строк — сравниваем по словам.
+const sameText = (a, b) => !!b && a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
+
+/**
  * Проверяет, разрешён ли переход между статусами согласно workflow-сценарию.
  * Возвращает:
  *   null  — в сценарии нет ни одного triggerStatusChange нода → ограничений нет
@@ -1688,6 +1705,15 @@ const ReviewBoard = () => {
                           systemContent = <>Отзыв финализирован: <strong>{entry.newValue}</strong> | {userName} | {date}</>;
                           break;
                         case 'replied':
+                          // Тот же текст стоит ниже в «Официальном ответе» —
+                          // второй раз подряд он только сбивает. В истории
+                          // остаётся кто и когда ответил; текст показываем,
+                          // лишь если он разошёлся с опубликованным (ответ
+                          // переписали и отправили заново).
+                          if (entry.comment && sameText(entry.comment, officialReplyText(selectedReview))) {
+                            systemContent = <>Ответ на площадке | {userName} | {date}</>;
+                            break;
+                          }
                           return (
                             <div key={entry.id} className="history-comment history-reply">
                               <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>

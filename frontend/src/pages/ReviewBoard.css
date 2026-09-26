@@ -2512,3 +2512,17 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/* Тексты отзывов и ответов — по ширине, как в письме. Без переносов по
+   слогам длинные русские слова раздвигают строку дырами, поэтому hyphens
+   вместе с justify (язык страницы — ru, браузер переносит по-русски). */
+.card-text,
+.review-bubble,
+.reply-drafts__text,
+.add-comment-row textarea,
+.comment-bubble--reply,
+.reply-sent {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
