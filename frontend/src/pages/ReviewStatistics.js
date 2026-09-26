@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, Star, MessageSquare,
   TrendingUp, Users, Clock, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown,
-  Timer, Gauge, Zap, Snail
+  Timer, Gauge, Zap, Snail, ShieldCheck
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -245,6 +245,28 @@ const ReviewStatistics = () => {
           <div className="card-content">
             <span className="card-value">{stats?.avgRating?.toFixed(1) || '—'}</span>
             <span className="card-label">Средняя оценка</span>
+          </div>
+        </div>
+
+        {/* Итог работы с негативом (ver. 8.85): отзыв удалён автором или
+            снят площадкой по жалобе. Доля — от негатива, который парсер
+            умеет отслеживать; архив GetLoyalty в неё не входит. */}
+        <div className="summary-card">
+          <div className="card-icon red">
+            <ShieldCheck size={24} />
+          </div>
+          <div className="card-content">
+            <span className="card-value">
+              {stats?.negativeTracked
+                ? `${Math.round((stats.negativeRemoved / stats.negativeTracked) * 100)}%`
+                : '—'}
+            </span>
+            <span
+              className="card-label"
+              title="Доля негативных отзывов периода, которых больше нет на площадке: удалены автором или сняты по жалобе"
+            >
+              Удалено негативных{stats?.negativeTracked ? ` · ${stats.negativeRemoved} из ${stats.negativeTracked}` : ''}
+            </span>
           </div>
         </div>
 

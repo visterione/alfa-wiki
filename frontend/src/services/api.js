@@ -658,6 +658,9 @@ export const reviews = {
   assignReview: (id, assigneeId, comment) => api.post(`/reviews/${id}/assign`, { assigneeId, comment }),
   addComment: (id, data) => api.post(`/reviews/${id}/comment`, data),
   replyReview: (id, text) => api.post(`/reviews/${id}/reply`, { text }),
+  // Жалоба на отзыв площадке через Альфа Парсер (ver. 8.85)
+  getComplaintOptions: (id) => api.get(`/reviews/${id}/complaint`),
+  sendComplaint: (id, data) => api.post(`/reviews/${id}/complaint`, data),
   finalizeReview: (id, data) => api.post(`/reviews/${id}/finalize`, data),
   getReviewPdf: (id) => api.get(`/reviews/${id}/pdf`, { responseType: 'blob' }),
 
@@ -690,7 +693,9 @@ export const reviewCollector = {
   updateAccount: (id, data) => api.patch(`/review-collector/accounts/${id}`, data),
   deleteAccount: (id) => api.delete(`/review-collector/accounts/${id}`),
   checkAccount: (id) => api.post(`/review-collector/accounts/${id}/check`),
-  updatePlace: (id, data) => api.patch(`/review-collector/places/${id}`, data)
+  updatePlace: (id, data) => api.patch(`/review-collector/places/${id}`, data),
+  // Клик или текст в удалённый вход с капчей (ver. 8.85)
+  sendInput: (id, input) => api.post(`/review-collector/accounts/${id}/input`, input)
 };
 
 // === EMAIL API ===

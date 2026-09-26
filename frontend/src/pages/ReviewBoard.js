@@ -4,7 +4,8 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
   Plus, Settings, ArrowLeft, Star, Calendar, User, Paperclip,
   X, Search, Filter, Download, MessageSquare, BarChart2, Archive,
-  Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send, Trash2, Reply
+  Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send, Trash2, Reply,
+  ExternalLink, Flag
 } from 'lucide-react';
 import { reviews, users, BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -18,10 +19,14 @@ import {
   getCategoryLabel,
   HISTORY_ACTION_LABELS,
   canReplyOnPlatform,
+  canComplainOnPlatform,
+  reviewPublicUrl,
+  platformRemovedLabel,
   formatDuration,
   getStageUrgency
 } from '../utils/reviewConstants';
 import PlatformLogo from '../components/PlatformLogo';
+import ReviewComplaintModal from '../components/ReviewComplaintModal';
 import { fileUrl } from '../utils/fileUrl';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
@@ -110,6 +115,8 @@ const ReviewBoard = () => {
 
   // Reply to review on platform (GetLoyalty)
   const [submittingReply, setSubmittingReply] = useState(false);
+  // Жалоба на отзыв площадке (ver. 8.85)
+  const [showComplaint, setShowComplaint] = useState(false);
   const openedReviewIdRef = useRef(null);
 
   // Общий «тик» для таймеров на карточках — одно обновление на всю доску раз в минуту,
@@ -1027,6 +1034,11 @@ const ReviewBoard = () => {
                           <Calendar size={12} />
                           {new Date(review.reviewDate).toLocaleDateString('ru-RU')}
                         </span>
+                        {review.platformRemovedAt && (
+                          <span className="removed-badge" title={platformRemovedLabel(review)}>
+                            Удалён
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1468,6 +1480,13 @@ const ReviewBoard = () => {
                       <span className={`rating ${selectedReview.rating <= 3 ? 'negative' : 'positive'}`}>
                         {selectedReview.rating}/5 {getRatingStars(selectedReview.rating)}
                       </span>
+                      {/* Отзыва больше нет на площадке (ver. 8.85) — итог
+                          работы с негативом, поэтому на виду, а не в истории */}
+                      {selectedReview.platformRemovedAt && (
+                        <span className="removed-badge removed-badge--wide">
+                          {platformRemovedLabel(selectedReview)}
+                        </span>
+                      )}
                     </div>
                     {selectedReview.reviewText && (
                       <div className="review-bubble" onClick={copyBubbleText} title="Копировать текст отзыва">
@@ -1482,6 +1501,18 @@ const ReviewBoard = () => {
                         <span className="source-line">
                           <PlatformLogo name={selectedReview.platform?.name} size={16} />
                           {selectedReview.platform?.name} | {board?.name}
+                          {reviewPublicUrl(selectedReview) && (
+                            <a
+                              className="review-public-link"
+                              href={reviewPublicUrl(selectedReview)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Отзыв на площадке — так, как его видит пациент"
+                            >
+                              <ExternalLink size={13} />
+                              на площадке
+                            </a>
+                          )}
                         </span>
                       </div>
                       <button className="btn-copy-inline" onClick={copyReviewText} title="Копировать текст отзыва">
@@ -1490,6 +1521,25 @@ const ReviewBoard = () => {
                     </div>
                   </div>
                 </div>
+
+                {selectedReview.syncMeta?.complaint && (() => {
+                  const c = selectedReview.syncMeta.complaint;
+                  const when = new Date(c.sentAt || c.at).toLocaleDateString('ru-RU');
+                  const title = c.state === 'failed'
+                    ? `Жалоба не принята площадкой: ${c.error || 'причина неизвестна'}`
+                    : c.state === 'sending'
+                      ? 'Жалоба отправляется'
+                      : `Жалоба отправлена ${when}`;
+                  return (
+                    <div className={`complaint-status complaint-status--${c.state}`}>
+                      <Flag size={14} />
+                      <span>
+                        {title}
+                        {c.reason && <> · {c.reason}</>}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {selectedReview.additionalInfo && (
                   <div className="detail-section">
@@ -1771,6 +1821,17 @@ const ReviewBoard = () => {
                   Архивировать
                 </button>
               )}
+              {isAdmin && canComplainOnPlatform(selectedReview) && (
+                <button
+                  className="btn-edit"
+                  onClick={() => setShowComplaint(true)}
+                  disabled={selectedReview.syncMeta?.complaint?.state === 'sending'}
+                  title="Пожаловаться на отзыв площадке"
+                >
+                  <Flag size={16} />
+                  Пожаловаться
+                </button>
+              )}
               {selectedReview.reportPdfPath && (
                 <button className="btn-download-pdf" onClick={() => handleDownloadPdf(selectedReview)}>
                   <Download size={16} />
@@ -1786,6 +1847,18 @@ const ReviewBoard = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showComplaint && selectedReview && (
+        <ReviewComplaintModal
+          review={selectedReview}
+          onClose={() => setShowComplaint(false)}
+          onSent={(syncMeta) => {
+            setShowComplaint(false);
+            setSelectedReview(prev => (prev ? { ...prev, syncMeta } : prev));
+            setReviewsList(prev => prev.map(r => (r.id === selectedReview.id ? { ...r, syncMeta } : r)));
+          }}
+        />
       )}
 
       {/* Finalize Modal */}

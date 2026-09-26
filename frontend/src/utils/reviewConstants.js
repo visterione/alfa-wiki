@@ -42,6 +42,41 @@ export function canReplyOnPlatform(review) {
   return !!review?.sourceKey && COLLECTOR_REPLY_PLATFORMS.includes(review?.platform?.name);
 }
 
+// Жалобу из вики принимают ПроДокторов, Яндекс и 2ГИС (ver. 8.85). У
+// НаПоправку кнопки жалобы нет вовсе, СберЗдоровье и ДокТу — после разведки.
+// Причины окно берёт у сервера, здесь только — показывать ли кнопку.
+const COMPLAINT_PLATFORMS = ['ПроДокторов', 'Яндекс Карты', '2ГИС', 'Фламп'];
+
+export function canComplainOnPlatform(review) {
+  return !!review?.sourceKey
+    && !review?.platformRemovedAt
+    && COMPLAINT_PLATFORMS.includes(review?.platform?.name);
+}
+
+/**
+ * Отзыв на самой площадке — как его видит пациент. Парсер кладёт ссылку в
+ * syncMeta.direct.url: у ПроДокторов и НаПоправку это сам отзыв, у Яндекса
+ * и 2ГИС — отзывы организации (на отдельный отзыв они ссылаться не дают).
+ * У архива GetLoyalty — то, что он оставил в externalUrl.
+ */
+export function reviewPublicUrl(review) {
+  const url = review?.syncMeta?.direct?.url || review?.externalUrl;
+  return url && /^https?:\/\//.test(url) ? url : null;
+}
+
+const REMOVED_REASONS = {
+  moderation: 'снят модерацией площадки',
+  hidden: 'скрыт площадкой',
+  missing: 'удалён с площадки',
+};
+
+/** Подпись для отзыва, которого больше нет на площадке, или null. */
+export function platformRemovedLabel(review) {
+  if (!review?.platformRemovedAt) return null;
+  const date = new Date(review.platformRemovedAt).toLocaleDateString('ru-RU');
+  return `${REMOVED_REASONS[review.platformRemovedReason] || 'удалён с площадки'} ${date}`;
+}
+
 // ─── Логотипы площадок ────────────────────────────────────────────────────────
 //
 // Файлы лежат в frontend/public/platform-logos/ и отдаются как статика — так же,
@@ -80,7 +115,10 @@ export const HISTORY_ACTION_LABELS = {
   'file_upload': 'Загружен файл',
   'assignment': 'Назначение',
   'finalized': 'Финализирован',
-  'replied': 'Ответ на площадке'
+  'replied': 'Ответ на площадке',
+  'complained': 'Жалоба на площадку',
+  'platform_removed': 'Удалён с площадки',
+  'platform_restored': 'Снова на площадке'
 };
 
 // Хелперы

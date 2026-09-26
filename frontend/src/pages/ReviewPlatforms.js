@@ -36,6 +36,7 @@ const MODES = [
 // Пока парсер проверяет учётку или ждёт подтверждения входа, страница сама
 // перечитывает состояние: иначе цифры Яндекса пришлось бы ловить кнопкой F5.
 const POLL_MS = 5000;
+const REMOTE_POLL_MS = 1500;
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -204,6 +205,72 @@ function PlaceRow({ place, boards, onChange }) {
   );
 }
 
+/**
+ * Удалённый вход (ver. 8.85): СберЗдоровье и ДокТу пускают только после
+ * Яндекс SmartCaptcha, а робот её картинки не решит. Парсер держит страницу
+ * входа открытой и присылает её снимок; клик по снимку уходит обратно и
+ * нажимается в той же точке страницы. Текст — в поле, где сейчас курсор.
+ *
+ * Координаты пересчитываются из размера картинки на экране в размер
+ * страницы у парсера (снимок может быть ужат вёрсткой).
+ */
+function RemoteLogin({ account, challenge }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const send = async (input) => {
+    try {
+      setBusy(true);
+      await reviewCollector.sendInput(account.id, input);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось передать нажатие');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const click = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * (challenge.width || rect.width);
+    const y = ((e.clientY - rect.top) / rect.height) * (challenge.height || rect.height);
+    send({ type: 'click', x: Math.round(x), y: Math.round(y) });
+  };
+
+  const typeText = (e) => {
+    e.preventDefault();
+    if (!text) return;
+    send({ type: 'text', text });
+    setText('');
+  };
+
+  return (
+    <div className="rp-remote">
+      <div className="rp-remote-hint">
+        Нажимайте на снимок так же, как на экране: галочку «Я не робот», картинки капчи, поля формы.
+        Снимок обновляется сам через пару секунд после каждого нажатия.
+      </div>
+      <img
+        className={`rp-remote-shot${busy ? ' rp-remote-shot--busy' : ''}`}
+        src={challenge.image}
+        alt="Страница входа площадки"
+        onClick={click}
+        draggable={false}
+      />
+      <form className="rp-remote-input" onSubmit={typeText}>
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Текст в выбранное поле"
+          autoComplete="off"
+        />
+        <button type="submit" className="rp-btn rp-btn--ghost" disabled={!text || busy}>Ввести</button>
+        <button type="button" className="rp-btn rp-btn--ghost" onClick={() => send({ type: 'key', key: 'Tab' })}>Tab</button>
+        <button type="button" className="rp-btn rp-btn--ghost" onClick={() => send({ type: 'key', key: 'Enter' })}>Enter</button>
+      </form>
+    </div>
+  );
+}
+
 function AccountCard({ account, boards, onEdit, onChange }) {
   const status = STATUS[account.status] || STATUS.new;
   const challenge = account.challenge;
@@ -265,6 +332,10 @@ function AccountCard({ account, boards, onEdit, onChange }) {
         </div>
       </div>
 
+      {challenge?.kind === 'screen' && challenge.image && (
+        <RemoteLogin account={account} challenge={challenge} />
+      )}
+
       {challenge?.kind === 'confirm' && (
         <div className="rp-challenge">
           <KeyRound size={16} />
@@ -314,11 +385,14 @@ const ReviewPlatforms = () => {
   useEffect(() => { load(); }, [load]);
 
   const waiting = !!data?.accounts?.some(a => a.checking || a.status === 'needs_login');
+  // Во время удалённого входа снимок должен меняться вслед за кликами, иначе
+  // капчу не решить — опрашиваем чаще.
+  const remote = !!data?.accounts?.some(a => a.challenge?.kind === 'screen');
   useEffect(() => {
     if (!waiting) return undefined;
-    pollRef.current = setInterval(load, POLL_MS);
+    pollRef.current = setInterval(load, remote ? REMOTE_POLL_MS : POLL_MS);
     return () => clearInterval(pollRef.current);
-  }, [waiting, load]);
+  }, [waiting, remote, load]);
 
   if (!data) {
     return (

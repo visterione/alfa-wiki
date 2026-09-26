@@ -46,7 +46,11 @@ const HISTORY_ACTIONS = {
   FILE_UPLOAD: 'file_upload',
   ASSIGNMENT: 'assignment',
   FINALIZED: 'finalized',
-  REPLIED: 'replied'
+  REPLIED: 'replied',
+  // Ver. 8.85: жалоба на площадку и судьба отзыва на ней
+  COMPLAINED: 'complained',
+  PLATFORM_REMOVED: 'platform_removed',
+  PLATFORM_RESTORED: 'platform_restored'
 };
 
 // Получить статус по ID

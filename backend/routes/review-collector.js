@@ -9,6 +9,7 @@
  *   PATCH  /api/review-collector/accounts/:id      изменить; новый пароль — новая проверка
  *   DELETE /api/review-collector/accounts/:id      удалить вместе с местами
  *   POST   /api/review-collector/accounts/:id/check  проверить вход
+ *   POST   /api/review-collector/accounts/:id/input  клик или текст в удалённый вход
  *   PATCH  /api/review-collector/places/:id        доска и режим места
  *
  * Только администраторам: здесь пароли всех площадок сети. Пароль в ответах
@@ -115,6 +116,17 @@ router.post('/accounts/:id/check', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     fail(res, err, 'Не удалось поставить проверку');
+  }
+});
+
+// Ввод человека в удалённый вход (ver. 8.85): клик по снимку капчи в
+// координатах снимка, текст в активное поле или клавиша.
+router.post('/accounts/:id/input', async (req, res) => {
+  try {
+    await collector.enqueueInput(req.params.id, req.body || {}, req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err, 'Не удалось передать ввод');
   }
 });
 

@@ -3415,6 +3415,16 @@ const Review = sequelize.define('Review', {
   sourceKey: {
     type: DataTypes.STRING(200),
     comment: 'Ключ отзыва у Альфа Парсера: «площадка:номер»'
+  },
+  // Отзыва больше нет на площадке (ver. 8.85): удалён автором, снят по
+  // жалобе или модерацией. Карточка остаётся — это история работы с ним.
+  platformRemovedAt: {
+    type: DataTypes.DATE,
+    comment: 'Когда парсер перестал видеть отзыв на площадке'
+  },
+  platformRemovedReason: {
+    type: DataTypes.STRING(20),
+    comment: 'moderation | hidden | missing'
   }
 }, {
   tableName: 'reviews',

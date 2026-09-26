@@ -15,7 +15,7 @@
 
 const { Op, QueryTypes } = require('sequelize');
 const {
-  sequelize, Review, ReviewPlatformAccount, ReviewPlatformPlace, ReviewCollectorJob, ReviewBoard, MedCenter,
+  sequelize, Review, ReviewHistory, ReviewPlatformAccount, ReviewPlatformPlace, ReviewCollectorJob, ReviewBoard, MedCenter,
 } = require('../../models');
 const { encryptPassword, decryptPassword } = require('../mail/crypto');
 const platforms = require('./platforms');
@@ -134,6 +134,15 @@ async function reportAccountStatus(accountId, { status, message, challenge, plac
   if (collectedAt) patch.lastCollectedAt = new Date(collectedAt);
   await account.update(patch);
 
+  // Вход больше не ждёт человека — невзятые клики по старому снимку капчи
+  // гасим, чтобы следующий удалённый вход не начал с чужих нажатий.
+  if (status && status !== 'needs_login') {
+    await ReviewCollectorJob.update(
+      { status: 'failed', error: 'вход уже завершён', finishedAt: new Date() },
+      { where: { accountId, kind: 'input', status: { [Op.in]: ['queued', 'taken'] } } },
+    );
+  }
+
   for (const p of places || []) {
     if (!p?.externalId) continue;
     const [place] = await ReviewPlatformPlace.findOrCreate({
@@ -163,19 +172,36 @@ async function enqueueCheck(accountId, userId) {
  * Можно ли ответить на отзыв через парсер. Возвращает место или объясняет,
  * почему нет, — объяснение уходит человеку в интерфейс.
  */
-async function replyTarget(review) {
+async function linkedPlace(review) {
   const placeId = review.syncMeta?.direct?.placeId;
   if (!review.sourceKey || !placeId) return { ok: false, reason: 'Отзыв не связан с площадкой напрямую' };
 
   const place = await ReviewPlatformPlace.findByPk(placeId, { include: ['account'] });
   if (!place?.account) return { ok: false, reason: 'Место на площадке больше не найдено' };
-
-  const platform = platforms.get(place.account.platform);
-  if (!platform?.canReply) return { ok: false, reason: `${platform?.label || 'Площадка'} не принимает ответы` };
   if (place.mode !== 'live') return { ok: false, reason: 'Место на площадке ещё в режиме сверки' };
   if (!place.account.isEnabled) return { ok: false, reason: 'Учётная запись площадки выключена' };
+  if (review.platformRemovedAt) return { ok: false, reason: 'Отзыва уже нет на площадке' };
+  return { ok: true, place, platform: platforms.get(place.account.platform) };
+}
 
-  return { ok: true, place };
+async function replyTarget(review) {
+  const target = await linkedPlace(review);
+  if (!target.ok) return target;
+  if (!target.platform?.canReply) {
+    return { ok: false, reason: `${target.platform?.label || 'Площадка'} не принимает ответы` };
+  }
+  return target;
+}
+
+/** Куда и с какими причинами можно пожаловаться на отзыв (ver. 8.85). */
+async function complaintTarget(review) {
+  const target = await linkedPlace(review);
+  if (!target.ok) return target;
+  const config = platforms.complaintConfig(target.place.account.platform);
+  if (!config) {
+    return { ok: false, reason: `На ${target.platform?.label || 'этой площадке'} жалобу из вики пока не отправить` };
+  }
+  return { ...target, config };
 }
 
 async function enqueueReply(review, text, userId) {
@@ -219,24 +245,90 @@ async function enqueueReply(review, text, userId) {
   return job;
 }
 
+async function enqueueComplaint(review, { reason, text }, userId) {
+  const target = await complaintTarget(review);
+  if (!target.ok) throw new CollectorError(target.reason);
+
+  const cause = target.config.reasons.find(r => r.id === reason) || null;
+  if (target.config.reasons.length && !cause) throw new CollectorError('Выберите причину жалобы');
+  if (!text?.trim()) throw new CollectorError('Опишите, почему отзыв нарушает правила');
+
+  const busy = await ReviewCollectorJob.findOne({
+    where: { reviewId: review.id, kind: 'complaint', status: { [Op.in]: ['queued', 'taken'] } },
+  });
+  if (busy) throw new CollectorError('Предыдущая жалоба ещё не отправлена');
+
+  const externalId = review.sourceKey.slice(review.sourceKey.indexOf(':') + 1);
+  const job = await ReviewCollectorJob.create({
+    kind: 'complaint',
+    accountId: target.place.accountId,
+    placeId: target.place.id,
+    reviewId: review.id,
+    payload: {
+      externalId,
+      placeExternalId: target.place.externalId,
+      reason: cause?.id || null,
+      reasonLabel: cause?.label || null,
+      text: text.trim(),
+    },
+    createdBy: userId,
+  });
+
+  await Review.update({
+    syncMeta: {
+      ...(review.syncMeta || {}),
+      complaint: {
+        state: 'sending',
+        reason: cause?.label || null,
+        text: text.trim(),
+        at: new Date().toISOString(),
+        by: userId,
+        jobId: job.id,
+      },
+    },
+  }, { where: { id: review.id } });
+  return job;
+}
+
+/**
+ * Ввод человека в удалённый вход: клик по снимку капчи, текст, клавиша.
+ * Парсер во время входа опрашивает такие задачи раз в секунду.
+ */
+async function enqueueInput(accountId, input, userId) {
+  const account = await ReviewPlatformAccount.findByPk(accountId);
+  if (!account) throw new CollectorError('Учётная запись не найдена', 404);
+  if (account.challenge?.kind !== 'screen') throw new CollectorError('Вход уже не ждёт ввода');
+  const allowed = ['click', 'text', 'key'];
+  if (!allowed.includes(input?.type)) throw new CollectorError('Неизвестный ввод');
+  return ReviewCollectorJob.create({
+    kind: 'input', accountId, payload: { input, seq: account.challenge.seq || 0 }, createdBy: userId,
+  });
+}
+
 /**
  * Выдать парсеру задачи. Строки блокируются с SKIP LOCKED: даже если когда-
  * нибудь парсеров станет два, одну задачу они не возьмут вдвоём.
  */
-async function takeJobs(limit = 20) {
+async function takeJobs(limit = 20, { kind = null, accountId = null } = {}) {
+  // Удалённый вход забирает только ввод своей учётки и раз в секунду; общий
+  // цикл — всё, кроме ввода: клики, пришедшие после входа, никому не нужны.
+  const filter = kind === 'input'
+    ? `AND kind = 'input' AND "accountId" = :accountId`
+    : `AND kind <> 'input'`;
   const rows = await sequelize.query(`
     UPDATE review_collector_jobs
        SET status = 'taken', "takenAt" = NOW(), attempts = attempts + 1, "updatedAt" = NOW()
      WHERE id IN (
        SELECT id FROM review_collector_jobs
-        WHERE status = 'queued'
-           OR (status = 'taken' AND "takenAt" < NOW() - INTERVAL '${TAKEN_TIMEOUT_MIN} minutes')
+        WHERE (status = 'queued'
+           OR (status = 'taken' AND "takenAt" < NOW() - INTERVAL '${TAKEN_TIMEOUT_MIN} minutes'))
+          ${filter}
         ORDER BY "createdAt"
         LIMIT :limit
         FOR UPDATE SKIP LOCKED
      )
      RETURNING id, kind, "accountId", "placeId", "reviewId", payload, attempts`,
-  { replacements: { limit }, type: QueryTypes.SELECT });
+  { replacements: { limit, accountId }, type: QueryTypes.SELECT });
 
   return rows.map(r => ({
     id: r.id,
@@ -278,6 +370,32 @@ async function finishJob(jobId, body) {
     finishedAt: new Date(),
   });
 
+  if (job.kind === 'complaint' && job.reviewId) {
+    const review = await Review.findByPk(job.reviewId, { paranoid: false });
+    if (review) {
+      const meta = review.syncMeta || {};
+      await review.update({
+        syncMeta: {
+          ...meta,
+          complaint: {
+            ...(meta.complaint || {}),
+            state: ok ? 'sent' : 'failed',
+            error: ok ? null : (body.message || 'Площадка не приняла жалобу'),
+            sentAt: ok ? new Date().toISOString() : null,
+          },
+        },
+      });
+      if (ok) {
+        await ReviewHistory.create({
+          reviewId: review.id,
+          userId: job.createdBy || '00000000-0000-0000-0000-000000000002',
+          action: 'complained',
+          comment: [job.payload.reasonLabel, job.payload.text].filter(Boolean).join('. '),
+        });
+      }
+    }
+  }
+
   if (job.kind === 'reply' && job.reviewId) {
     const review = await Review.findByPk(job.reviewId, { paranoid: false });
     if (review) {
@@ -307,6 +425,9 @@ module.exports = {
   enqueueCheck,
   enqueueReply,
   replyTarget,
+  complaintTarget,
+  enqueueComplaint,
+  enqueueInput,
   takeJobs,
   finishJob,
 };

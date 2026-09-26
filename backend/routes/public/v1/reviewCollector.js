@@ -6,7 +6,9 @@
  *   GET  /api/public/v1/review-collector/accounts             учётки с паролями и местами
  *   POST /api/public/v1/review-collector/accounts/:id/status  итог входа и найденные места
  *   POST /api/public/v1/review-collector/places/:id/reviews   пачка отзывов места
- *   GET  /api/public/v1/review-collector/jobs                 забрать задачи
+ *   POST /api/public/v1/review-collector/places/:id/pass      итог прохода: что видели (ver. 8.85)
+ *   GET  /api/public/v1/review-collector/jobs                 забрать задачи;
+ *        ?kind=input&accountId=… — только ввод удалённого входа этой учётки
  *   POST /api/public/v1/review-collector/jobs/:id             итог задачи
  *
  * Ключ — из «Интеграций», право reviews:collector. Этот ключ открывает пароли
@@ -22,6 +24,7 @@ const router = express.Router();
 const { apiKeyAuth, rateLimitByClient } = require('../../../middleware/publicApi');
 const collector = require('../../../services/reviewCollector/jobs');
 const { ingestPlace } = require('../../../services/reviewCollector/ingest');
+const { applyPass } = require('../../../services/reviewCollector/removal');
 
 const SCOPE = 'reviews:collector';
 
@@ -67,9 +70,24 @@ router.post('/places/:id/reviews', handle(async (req) => {
   return { counts: await ingestPlace(req.params.id, reviews, { passId }) };
 }));
 
-router.get('/jobs', handle(async (req) => ({
-  jobs: await collector.takeJobs(Math.min(parseInt(req.query.limit, 10) || 20, 100)),
-})));
+router.post('/places/:id/pass', handle(async (req) => {
+  const { seen, removed, coveredFrom } = req.body || {};
+  if (!Array.isArray(seen)) {
+    throw Object.assign(new Error('Ожидается массив seen'), { status: 400 });
+  }
+  return { result: await applyPass(req.params.id, { seen, removed, coveredFrom }) };
+}));
+
+router.get('/jobs', handle(async (req) => {
+  const kind = req.query.kind === 'input' ? 'input' : null;
+  const accountId = kind && UUID_RE.test(String(req.query.accountId || '')) ? req.query.accountId : null;
+  if (kind && !accountId) {
+    throw Object.assign(new Error('Для ввода нужен accountId'), { status: 400 });
+  }
+  return {
+    jobs: await collector.takeJobs(Math.min(parseInt(req.query.limit, 10) || 20, 100), { kind, accountId }),
+  };
+}));
 
 router.post('/jobs/:id', handle(async (req) => {
   await collector.finishJob(req.params.id, req.body || {});

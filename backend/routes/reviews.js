@@ -1026,6 +1026,18 @@ router.get('/stats', authenticate, async (req, res) => {
       ? parseFloat(avgRatingResult.dataValues.avgRating)
       : null;
 
+    // Негатив, которого больше нет на площадке (ver. 8.85): удалён автором
+    // после урегулирования или снят по жалобе. Главный итог работы с
+    // негативом, поэтому считаем долю, а не только число. Знаменатель —
+    // только отзывы, которые парсер умеет отслеживать (связанные с ним):
+    // про архив GetLoyalty без sourceKey мы не узнаем, удалён он или нет.
+    const negativeTracked = await Review.count({
+      where: { ...whereBase, rating: { [Op.lte]: 3 }, sourceKey: { [Op.ne]: null } }
+    });
+    const negativeRemoved = await Review.count({
+      where: { ...whereBase, rating: { [Op.lte]: 3 }, platformRemovedAt: { [Op.ne]: null } }
+    });
+
     // Финализированные
     const finalized = await Review.count({
       where: { ...whereBase, status: 'final' }
@@ -1239,6 +1251,8 @@ router.get('/stats', authenticate, async (req, res) => {
     res.json({
       total,
       avgRating,
+      negativeTracked,
+      negativeRemoved,
       finalized,
       pending,
       avgHandlingMs,
@@ -1955,6 +1969,54 @@ router.post('/:id/reply', authenticate, async (req, res) => {
     // У очереди парсера свои понятные отказы («предыдущий ответ ещё не
     // отправлен») — это не сбой сервера, и человек должен увидеть причину.
     res.status(error.status || 500).json({ error: error.message || 'Ошибка при отправке ответа' });
+  }
+});
+
+/**
+ * GET  /api/reviews/:id/complaint — можно ли пожаловаться и какие причины
+ * POST /api/reviews/:id/complaint — отправить жалобу площадке через парсер
+ *
+ * Жалоба (ver. 8.85) идёт тем же путём, что ответ: в очередь Альфа Парсера,
+ * а он отправляет её учётной записью сети из кабинета площадки. Права те же,
+ * что у ответа: жалоба уходит от имени клиники.
+ */
+async function loadReviewForPlatformAction(req, res) {
+  const review = await Review.findByPk(req.params.id, { include: [boardInclude()] });
+  if (!review) {
+    res.status(404).json({ error: 'Отзыв не найден' });
+    return null;
+  }
+  const access = await checkReviewBoardAccess(review.board, req.user.id, 'editor');
+  if (!access || !access.hasAccess || !req.user.isAdmin) {
+    res.status(403).json({ error: 'Действия на площадке доступны только администраторам' });
+    return null;
+  }
+  return review;
+}
+
+router.get('/:id/complaint', authenticate, async (req, res) => {
+  try {
+    const review = await loadReviewForPlatformAction(req, res);
+    if (!review) return;
+    const target = await collectorJobs.complaintTarget(review);
+    if (!target.ok) return res.json({ available: false, reason: target.reason });
+    res.json({ available: true, reasons: target.config.reasons, note: target.config.note || null });
+  } catch (error) {
+    console.error('Error loading complaint options:', error);
+    res.status(500).json({ error: 'Не удалось узнать, можно ли пожаловаться' });
+  }
+});
+
+router.post('/:id/complaint', authenticate, async (req, res) => {
+  try {
+    const review = await loadReviewForPlatformAction(req, res);
+    if (!review) return;
+    await collectorJobs.enqueueComplaint(review, req.body || {}, req.user.id);
+    const fresh = await Review.findByPk(review.id);
+    res.status(201).json({ syncMeta: fresh.syncMeta });
+  } catch (error) {
+    if (!error.status || error.status >= 500) console.error('Error sending complaint:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Не удалось отправить жалобу' });
   }
 });
 

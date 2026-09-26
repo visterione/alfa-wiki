@@ -23,6 +23,44 @@ const PLATFORMS = {
   doctu:       { key: 'doctu',       label: 'ДокТу',        reviewPlatform: 'Докту',        canReply: false },
 };
 
+// Жалоба на отзыв (ver. 8.85). Причины — ровно те, что предлагает кабинет
+// площадки (подсмотрены в его скриптах в сентябре 2026). Отдельным полем
+// причину принимает только 2ГИС и только «не наш клиент»; остальные
+// площадки получают причину первой фразой текста — так делает и сам кабинет
+// ПроДокторов. Файлов не принимает ни одна из площадок.
+//
+// НаПоправку кнопки жалобы не имеет ни в кабинете, ни на странице отзыва.
+// СберЗдоровье и ДокТу — после разведки их кабинетов.
+const COMPLAINTS = {
+  prodoctorov: {
+    reasons: [
+      { id: 'untrue', label: 'Пациент написал неправду' },
+      { id: 'not_patient', label: 'Это не наш пациент' },
+      { id: 'other', label: 'Другое' },
+    ],
+    note: 'ПроДокторов запросит у пациента подтверждающие документы. Пациент не узнает ни причины, ни комментария.',
+  },
+  yandex: {
+    reasons: [],
+    note: 'Яндекс принимает жалобу одним текстом — опишите, какое правило нарушено.',
+  },
+  '2gis': {
+    reasons: [
+      { id: 'not_client', label: 'Такого клиента у нас не было' },
+      { id: 'stop_words', label: 'В отзыве оскорбления или мат' },
+      { id: 'others_opinion', label: 'Отзыв написан с чужих слов' },
+      { id: 'ex_staff', label: 'Отзыв бывшего работника' },
+      { id: 'no_buy', label: 'Клиент сам отказался от услуги' },
+      { id: 'other', label: 'Нарушены другие правила' },
+    ],
+    note: 'Для «такого клиента не было» 2ГИС советует сначала попросить в официальном ответе дату визита: у автора 4 дня, чтобы её назвать.',
+  },
+};
+
+function complaintConfig(platformKey) {
+  return COMPLAINTS[platformKey] || null;
+}
+
 // Отзыв может прийти из «соседнего» каталога той же площадки: в ленте 2ГИС
 // лежат и отзывы Флямпа. GetLoyalty держал их отдельной площадкой — держим и мы.
 const SUB_PLATFORMS = {
@@ -49,4 +87,4 @@ function reviewPlatformNames(platformKey) {
   return platformKey === '2gis' ? [base, ...Object.values(SUB_PLATFORMS)] : [base];
 }
 
-module.exports = { PLATFORMS, get, list, reviewPlatformName, reviewPlatformNames };
+module.exports = { PLATFORMS, get, list, reviewPlatformName, reviewPlatformNames, complaintConfig };
