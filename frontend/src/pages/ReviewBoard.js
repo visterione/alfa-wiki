@@ -5,7 +5,7 @@ import {
   Plus, Settings, ArrowLeft, Star, Calendar, User, Paperclip,
   X, Search, Filter, Download, MessageSquare, BarChart2, Archive,
   Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send, Trash2, Reply,
-  ExternalLink, Flag
+  ExternalLink, Flag, Sparkles
 } from 'lucide-react';
 import { reviews, users, BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +28,7 @@ import {
 } from '../utils/reviewConstants';
 import PlatformLogo from '../components/PlatformLogo';
 import ReviewComplaintModal from '../components/ReviewComplaintModal';
-import ReviewReplyDrafts from '../components/ReviewReplyDrafts';
+import ReviewReplyDrafts, { useReplyDraftsPolling } from '../components/ReviewReplyDrafts';
 import { fileUrl } from '../utils/fileUrl';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
@@ -137,6 +137,8 @@ const ReviewBoard = () => {
   const [submittingReply, setSubmittingReply] = useState(false);
   // Жалоба на отзыв площадке (ver. 8.85)
   const [showComplaint, setShowComplaint] = useState(false);
+  const [showDrafts, setShowDrafts] = useState(false);
+  const addCommentRef = useRef(null);
   const openedReviewIdRef = useRef(null);
 
   // Общий «тик» для таймеров на карточках — одно обновление на всю доску раз в минуту,
@@ -644,6 +646,13 @@ const ReviewBoard = () => {
     setReviewsList(prev => prev.map(r => (r.id === updated.id ? { ...r, syncMeta: updated.syncMeta } : r)));
   }, []);
 
+  // Варианты ответа пишутся минуту-две — ждём их, пока открыта карточка,
+  // а не только всплывашка: к её открытию варианты уже на месте.
+  useReplyDraftsPolling(showDetailsModal ? selectedReview : null, applyReviewUpdate);
+
+  // Другой отзыв или закрытое окно — варианты прежнего не показываем
+  useEffect(() => { setShowDrafts(false); }, [selectedReview?.id, showDetailsModal]);
+
   const handleSendReply = async () => {
     if (!commentText.trim()) return;
     const reviewId = selectedReview.id;
@@ -877,6 +886,10 @@ const ReviewBoard = () => {
       </div>
     );
   }
+
+  // Варианты ответа — пока на отзыв можно и ещё не ответили
+  const canDraftReply = !!selectedReview && isAdmin && canReplyOnPlatform(selectedReview)
+    && !selectedReview.syncMeta?.replyText && selectedReview.status !== 'final';
 
   if (!board) {
     return (
@@ -1552,9 +1565,43 @@ const ReviewBoard = () => {
                           )}
                         </span>
                       </div>
-                      <button className="btn-copy-inline" onClick={copyReviewText} title="Копировать текст отзыва">
-                        <Copy size={14} />
-                      </button>
+                      {/* Действия с отзывом — значками под ним, вместо нижней
+                          панели окна (ver. 8.92) */}
+                      <div className="review-actions">
+                        <button className="btn-copy-inline" onClick={copyReviewText} title="Копировать текст отзыва">
+                          <Copy size={14} />
+                        </button>
+                        {isAdmin && hasPlatformLink(selectedReview) && (
+                          <button
+                            className="btn-copy-inline"
+                            onClick={() => setShowComplaint(true)}
+                            disabled={!canComplainOnPlatform(selectedReview)}
+                            title="Пожаловаться на площадке"
+                          >
+                            <Flag size={14} />
+                          </button>
+                        )}
+                        {selectedReview.reportPdfPath && (
+                          <button className="btn-copy-inline" onClick={() => handleDownloadPdf(selectedReview)} title="Скачать PDF">
+                            <Download size={14} />
+                          </button>
+                        )}
+                        {access.canWrite && selectedReview.status === 'final' && (
+                          <button className="btn-copy-inline" onClick={() => { handleArchive(selectedReview.id); setShowDetailsModal(false); }} title="Архивировать">
+                            <Archive size={14} />
+                          </button>
+                        )}
+                        {access.canWrite && selectedReview.status !== 'final' && (
+                          <button className="btn-copy-inline" onClick={() => { setShowDetailsModal(false); openCreateModal(selectedReview); }} title="Редактировать отзыв">
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {access.canWrite && (
+                          <button className="btn-copy-inline btn-copy-inline--danger" onClick={() => handleDeleteReview(selectedReview.id)} title="Удалить отзыв">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1795,21 +1842,9 @@ const ReviewBoard = () => {
                   );
                 })()}
 
-                {/* Варианты ответа от модели парсера (ver. 8.90) — пока отзыв
-                    ждёт ответа. После ответа вики их удаляет сама. */}
-                {isAdmin && canReplyOnPlatform(selectedReview)
-                  && !selectedReview.syncMeta?.replyText
-                  && selectedReview.status !== 'final' && (
-                  <ReviewReplyDrafts
-                    review={selectedReview}
-                    onPick={pickDraft}
-                    onReviewUpdate={applyReviewUpdate}
-                  />
-                )}
-
                 {/* Add comment */}
                 {access.canWrite && selectedReview.status !== 'final' && (
-                  <div className="add-comment">
+                  <div className="add-comment" ref={addCommentRef}>
                     {commentAttachments.length > 0 && (
                       <div className="comment-attachments-preview">
                         {commentAttachments.map(file => (
@@ -1861,47 +1896,35 @@ const ReviewBoard = () => {
                           {submittingReply ? <Clock size={16} /> : <User size={16} />}
                         </button>
                       )}
+                      {/* Варианты ответа от модели парсера (ver. 8.90) — пока
+                          отзыв ждёт ответа; после ответа вики их удаляет сама.
+                          Точка — варианты готовы и ещё не открывались. */}
+                      {canDraftReply && (
+                        <button
+                          type="button"
+                          onClick={() => setShowDrafts(v => !v)}
+                          title="Варианты ответа"
+                          className={`btn-reply-drafts${showDrafts ? ' is-open' : ''}`}
+                        >
+                          <Sparkles size={16} />
+                          {!showDrafts && selectedReview.syncMeta?.drafts?.items?.length > 0 && (
+                            <span className="btn-reply-drafts__dot" />
+                          )}
+                        </button>
+                      )}
                     </div>
+                    {showDrafts && canDraftReply && (
+                      <ReviewReplyDrafts
+                        review={selectedReview}
+                        anchorRef={addCommentRef}
+                        onPick={pickDraft}
+                        onReviewUpdate={applyReviewUpdate}
+                        onClose={() => setShowDrafts(false)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
-            </div>
-
-            <div className="modal-footer">
-              {access.canWrite && selectedReview.status !== 'final' && (
-                <button className="btn-edit" onClick={() => { setShowDetailsModal(false); openCreateModal(selectedReview); }}>
-                  <Pencil size={16} />
-                  Редактировать отзыв
-                </button>
-              )}
-              {access.canWrite && selectedReview.status === 'final' && (
-                <button className="btn-archive" onClick={() => { handleArchive(selectedReview.id); setShowDetailsModal(false); }}>
-                  <Archive size={16} />
-                  Архивировать
-                </button>
-              )}
-              {isAdmin && hasPlatformLink(selectedReview) && (
-                <button
-                  className="btn-edit"
-                  onClick={() => setShowComplaint(true)}
-                  disabled={!canComplainOnPlatform(selectedReview)}
-                >
-                  <Flag size={16} />
-                  Пожаловаться
-                </button>
-              )}
-              {selectedReview.reportPdfPath && (
-                <button className="btn-download-pdf" onClick={() => handleDownloadPdf(selectedReview)}>
-                  <Download size={16} />
-                  Скачать PDF
-                </button>
-              )}
-              {access.canWrite && (
-                <button className="btn-delete-review" onClick={() => handleDeleteReview(selectedReview.id)}>
-                  <Trash2 size={16} />
-                  Удалить
-                </button>
-              )}
             </div>
           </div>
         </div>

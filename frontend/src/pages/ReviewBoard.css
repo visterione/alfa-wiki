@@ -1483,7 +1483,7 @@
   min-height: 0;
 }
 
-.add-comment button:not(.btn-send-reply) {
+.add-comment button:not(.btn-send-reply):not(.btn-reply-drafts) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1572,7 +1572,7 @@
   background: rgba(var(--primary-rgb), 0.15);
 }
 
-.add-comment button:hover:not(:disabled) {
+.add-comment button:not(.btn-reply-drafts):hover:not(:disabled) {
   background: var(--accent-600);
 }
 
@@ -2431,21 +2431,35 @@
 }
 
 /* Варианты ответа от модели парсера (ver. 8.90) */
+/* Варианты ответа — всплывашка над полем ответа (ver. 8.92). Рисуется в
+   body, место и ширину задаёт компонент по полю ответа. */
 .reply-drafts {
-  margin: 12px 0 8px;
-  padding: 10px 12px;
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
   border: 1px solid var(--accent-100);
-  border-radius: 10px;
-  background: var(--accent-50);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
 }
 
 .reply-drafts__header {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--accent-700);
+}
+
+.reply-drafts__counter {
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .reply-drafts__more {
@@ -2468,49 +2482,139 @@
   opacity: 0.7;
 }
 
+.reply-drafts__close {
+  display: flex;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.reply-drafts__close:hover {
+  color: var(--text-primary);
+}
+
 .reply-drafts__spin {
   animation: spin 1s linear infinite;
 }
 
-.reply-drafts__list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.reply-drafts__item {
-  display: block;
-  padding: 8px 10px;
+/* Текст варианта целиком: не влез по высоте — прокручивается сам, а кнопки
+   остаются на месте */
+.reply-drafts__text {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.reply-drafts__nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.reply-drafts__arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.45;
-  text-align: left;
-  white-space: pre-line;
   cursor: pointer;
 }
 
-/* Обрезка по строкам — на внутреннем элементе: на кнопке с отступами из-под
-   нижнего поля выглядывала половина следующей строки */
-.reply-drafts__text {
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.reply-drafts__arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
-.reply-drafts__item:hover {
-  border-color: var(--accent-400);
+.reply-drafts__pick {
+  margin-left: auto;
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-500);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.reply-drafts__pick:hover {
+  background: var(--accent-600);
 }
 
 .reply-drafts__empty {
-  margin-top: 6px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* Кнопка вариантов в строке ответа */
+.btn-reply-drafts {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: var(--accent-50);
+  border: 1px solid var(--accent-100);
+  border-radius: 6px;
+  color: var(--accent-700);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-reply-drafts:hover,
+.btn-reply-drafts.is-open {
+  background: var(--accent-100);
+}
+
+.btn-reply-drafts__dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-500);
+}
+
+/* Действия с отзывом под текстом — значками в ряд */
+.review-actions {
+  display: flex;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.btn-copy-inline:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn-copy-inline:disabled:hover {
+  background: none;
+  color: var(--text-secondary);
+}
+
+.btn-copy-inline--danger:hover {
+  color: var(--red-600, #dc2626);
+  border-color: var(--red-300, #fca5a5);
 }
 
 /* Тексты отзывов и ответов — по ширине, как в письме. Без переносов по
