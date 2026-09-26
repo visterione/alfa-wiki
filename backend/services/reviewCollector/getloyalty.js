@@ -17,16 +17,22 @@
 const { Op } = require('sequelize');
 const { Review, Setting } = require('../../models');
 const { pickCounterpart, DATE_WINDOW_DAYS } = require('./match');
+const platforms = require('./platforms');
 
 const SETTING_KEY = 'reviews.getloyalty.excludedPlatforms';
 
+// Отключить в GetLoyalty можно только то, что уже собирает парсер. Фильтр
+// стоит и на чтении: отметка, сохранённая раньше (или поставленная до того,
+// как площадку пометили несобираемой), не должна оставить её без отзывов.
 async function excludedPlatforms() {
   const row = await Setting.findByPk(SETTING_KEY);
-  return Array.isArray(row?.value) ? row.value : [];
+  const allowed = new Set(platforms.collectedPlatformNames());
+  return (Array.isArray(row?.value) ? row.value : []).filter(n => allowed.has(n));
 }
 
 async function setExcludedPlatforms(names) {
-  const value = [...new Set((names || []).map(String).filter(Boolean))];
+  const allowed = new Set(platforms.collectedPlatformNames());
+  const value = [...new Set((names || []).map(String).filter(n => allowed.has(n)))];
   await Setting.upsert({
     key: SETTING_KEY,
     value,

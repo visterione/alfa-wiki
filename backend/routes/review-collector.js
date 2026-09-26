@@ -73,7 +73,9 @@ router.get('/', async (req, res) => {
       getloyalty: {
         excluded,
         // Имена так, как их видит GetLoyalty и фильтр доски.
-        platformNames: [...new Set(platforms.list().map(p => p.reviewPlatform)), 'Фламп'],
+        // Только то, что парсер уже собирает: снять с GetLoyalty площадку
+        // без адаптера — значит остаться без её отзывов совсем.
+        platformNames: platforms.collectedPlatformNames(),
       },
     });
   } catch (err) {

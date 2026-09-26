@@ -28,6 +28,19 @@ const { pickCounterpart, DATE_WINDOW_DAYS } = require('./match');
 // а не чтобы хранить их — сами отзывы придут снова при следующем сборе.
 const UNMATCHED_SAMPLES = 20;
 
+// Карточку парсер заводит только свежему отзыву. Первый проход по месту
+// забирает всю историю (у одной Альфы на ПроДокторов почти две тысячи), и
+// без этого предела каждый старый отзыв, которого не оказалось в архиве
+// GetLoyalty, стал бы новой карточкой со сценарием доски — назначением и
+// уведомлением. Старое остаётся в отчёте места, а связывание с уже
+// существующими карточками работает на любой глубине.
+const LIVE_MAX_AGE_DAYS = 14;
+
+function isFresh(date) {
+  const cutoff = Date.now() - LIVE_MAX_AGE_DAYS * 86400000;
+  return new Date(`${String(date).slice(0, 10)}T00:00:00Z`).getTime() >= cutoff;
+}
+
 const platformIdCache = new Map();
 
 async function platformId(name) {
@@ -229,7 +242,7 @@ async function ingestPlace(placeId, rawReviews, opts = {}) {
       continue;
     }
 
-    if (place.mode === 'live') {
+    if (place.mode === 'live' && isFresh(raw.date)) {
       await createCard(board, place, raw, key);
       counts.created++;
     } else {
@@ -277,4 +290,4 @@ async function ingestPlace(placeId, rawReviews, opts = {}) {
   return counts;
 }
 
-module.exports = { ingestPlace, sourceKeyOf, replyMeta, mergeReply, platformId };
+module.exports = { ingestPlace, sourceKeyOf, replyMeta, mergeReply, platformId, isFresh, LIVE_MAX_AGE_DAYS };
