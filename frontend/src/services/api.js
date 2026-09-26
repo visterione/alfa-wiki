@@ -661,6 +661,8 @@ export const reviews = {
   // Жалоба на отзыв площадке через Альфа Парсер (ver. 8.85)
   getComplaintOptions: (id) => api.get(`/reviews/${id}/complaint`),
   sendComplaint: (id, data) => api.post(`/reviews/${id}/complaint`, data),
+  // Варианты ответа от модели парсера (ver. 8.90)
+  requestDrafts: (id) => api.post(`/reviews/${id}/drafts`),
   finalizeReview: (id, data) => api.post(`/reviews/${id}/finalize`, data),
   getReviewPdf: (id) => api.get(`/reviews/${id}/pdf`, { responseType: 'blob' }),
 

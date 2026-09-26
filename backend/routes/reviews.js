@@ -15,6 +15,7 @@ const {
   User
 } = require('../models');
 const collectorJobs = require('../services/reviewCollector/jobs');
+const { enqueueDraft } = require('../services/reviewCollector/drafts');
 const { authenticate } = require('../middleware/auth');
 const { Op, Sequelize } = require('sequelize');
 const { sequelize } = require('../models');
@@ -2017,6 +2018,26 @@ router.post('/:id/complaint', authenticate, async (req, res) => {
   } catch (error) {
     if (!error.status || error.status >= 500) console.error('Error sending complaint:', error);
     res.status(error.status || 500).json({ error: error.message || 'Не удалось отправить жалобу' });
+  }
+});
+
+/**
+ * POST /api/reviews/:id/drafts — попросить у парсера (ещё) варианты ответа.
+ *
+ * Черновики пишет локальная модель Альфа Парсера (ver. 8.90); на свежие
+ * отзывы — сама, по кнопке — на любой неотвеченный. Прежние варианты
+ * заменяются новыми, когда модель закончит.
+ */
+router.post('/:id/drafts', authenticate, async (req, res) => {
+  try {
+    const review = await loadReviewForPlatformAction(req, res);
+    if (!review) return;
+    await enqueueDraft(review, req.user.id);
+    const fresh = await Review.findByPk(review.id);
+    res.status(202).json({ syncMeta: fresh.syncMeta });
+  } catch (error) {
+    if (!error.status || error.status >= 500) console.error('Error requesting drafts:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Не удалось запросить варианты' });
   }
 });
 

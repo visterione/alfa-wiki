@@ -9,6 +9,7 @@
 
 const cron = require('node-cron');
 const { archiveFinalReviews } = require('../jobs/archiveReviews');
+const { cleanupDrafts } = require('../services/reviewCollector/drafts');
 
 // 04:00 по Москве
 cron.schedule('0 4 * * *', async () => {
@@ -22,6 +23,15 @@ cron.schedule('0 4 * * *', async () => {
     }
   } else {
     console.error(`❌ [ReviewArchive CRON] Ошибка: ${result.error}`);
+  }
+
+  // Черновики ответов, которые уже не понадобятся (ver. 8.90): после архива —
+  // заодно и у архивных.
+  try {
+    const cleared = await cleanupDrafts();
+    if (cleared) console.log(`🧹 [ReviewArchive CRON] Убраны черновики ответов у ${cleared} отзыв(ов)`);
+  } catch (err) {
+    console.error('❌ [ReviewArchive CRON] Уборка черновиков:', err.message);
   }
 }, {
   scheduled: true,

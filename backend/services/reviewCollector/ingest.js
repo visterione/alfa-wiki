@@ -23,6 +23,7 @@ const {
 } = require('../../models');
 const platforms = require('./platforms');
 const { pickCounterpart, DATE_WINDOW_DAYS } = require('./match');
+const { enqueueDraft, clearDrafts } = require('./drafts');
 
 // Сколько несовпавших отзывов держать в отчёте места. Отчёт нужен, чтобы
 // глазами понять, чего GetLoyalty не видел (или что сопоставление упустило),
@@ -101,7 +102,9 @@ function mergeReply(meta, answer) {
   const next = { ...meta };
   if (answer?.text) {
     Object.assign(next, replyMeta(answer), { replySending: false });
-    return next;
+    // Ответили — хоть из вики, хоть прямо на площадке: черновики больше не
+    // нужны (ver. 8.90).
+    return clearDrafts(next);
   }
   if (meta.replySending) return next;
   if (meta.isAnswered || meta.replyText) {
@@ -182,6 +185,16 @@ async function createCard(board, place, raw, key) {
     assigneeIds: [],
     syncMeta: { ...replyMeta(raw.answer), direct: directMeta(place, raw) },
   });
+
+  // Свежему неотвеченному отзыву — сразу черновики ответа (ver. 8.90):
+  // к тому, как человек откроет карточку, варианты обычно уже готовы.
+  if (!raw.answer?.text) {
+    try {
+      await enqueueDraft(review, null, { auto: true });
+    } catch (err) {
+      console.error('[ReviewCollector] черновики не поставлены:', err.message);
+    }
+  }
 
   // Карточка, пришедшая от парсера, проходит тот же сценарий доски, что и
   // заведённая GetLoyalty: уведомления, назначения, негатив.

@@ -28,6 +28,7 @@ import {
 } from '../utils/reviewConstants';
 import PlatformLogo from '../components/PlatformLogo';
 import ReviewComplaintModal from '../components/ReviewComplaintModal';
+import ReviewReplyDrafts from '../components/ReviewReplyDrafts';
 import { fileUrl } from '../utils/fileUrl';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
@@ -110,6 +111,7 @@ const ReviewBoard = () => {
 
   // Comment form
   const [commentText, setCommentText] = useState('');
+  const commentInputRef = useRef(null);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentAttachments, setCommentAttachments] = useState([]);
   const [uploadingCommentFile, setUploadingCommentFile] = useState(false);
@@ -607,6 +609,23 @@ const ReviewBoard = () => {
       setSubmittingComment(false);
     }
   };
+
+  // Вариант ответа — в поле, где его можно поправить перед отправкой
+  const pickDraft = useCallback((text) => {
+    setCommentText(text);
+    requestAnimationFrame(() => {
+      const el = commentInputRef.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+      el.focus();
+    });
+  }, []);
+
+  const applyReviewUpdate = useCallback((updated) => {
+    setSelectedReview(current => (current?.id === updated.id ? { ...current, ...updated } : current));
+    setReviewsList(prev => prev.map(r => (r.id === updated.id ? { ...r, syncMeta: updated.syncMeta } : r)));
+  }, []);
 
   const handleSendReply = async () => {
     if (!commentText.trim()) return;
@@ -1750,6 +1769,18 @@ const ReviewBoard = () => {
                   );
                 })()}
 
+                {/* Варианты ответа от модели парсера (ver. 8.90) — пока отзыв
+                    ждёт ответа. После ответа вики их удаляет сама. */}
+                {isAdmin && canReplyOnPlatform(selectedReview)
+                  && !selectedReview.syncMeta?.replyText
+                  && selectedReview.status !== 'final' && (
+                  <ReviewReplyDrafts
+                    review={selectedReview}
+                    onPick={pickDraft}
+                    onReviewUpdate={applyReviewUpdate}
+                  />
+                )}
+
                 {/* Add comment */}
                 {access.canWrite && selectedReview.status !== 'final' && (
                   <div className="add-comment">
@@ -1777,6 +1808,7 @@ const ReviewBoard = () => {
                         <Paperclip size={16} />
                       </label>
                       <textarea
+                        ref={commentInputRef}
                         value={commentText}
                         onChange={(e) => {
                           setCommentText(e.target.value);

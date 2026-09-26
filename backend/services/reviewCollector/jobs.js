@@ -20,6 +20,7 @@ const {
 const { encryptPassword, decryptPassword } = require('../mail/crypto');
 const platforms = require('./platforms');
 const { replyMeta } = require('./ingest');
+const { storeDrafts, clearDrafts } = require('./drafts');
 
 // Задача, взятая парсером и не закрытая за это время, считается потерянной
 // (парсер перезапустился на середине) и выдаётся снова.
@@ -230,7 +231,8 @@ async function enqueueReply(review, text, userId) {
   // означает, что его удалили (см. mergeReply).
   await Review.update({
     syncMeta: {
-      ...(review.syncMeta || {}),
+      // Ответ ушёл — черновики своё отслужили (ver. 8.90)
+      ...clearDrafts(review.syncMeta || {}),
       replyText: text,
       replyDate: new Date().toISOString(),
       replyAttemptAt: new Date().toISOString(),
@@ -314,9 +316,15 @@ async function enqueueInput(accountId, input, userId) {
 async function takeJobs(limit = 20, { kind = null, accountId = null } = {}) {
   // Удалённый вход забирает только ввод своей учётки и раз в секунду; общий
   // цикл — всё, кроме ввода: клики, пришедшие после входа, никому не нужны.
+  // Черновик — не больше одного за раз: модель пишет его минуту-две, и пачка
+  // из двадцати, взятая разом, досидела бы до таймаута «взятой» задачи и
+  // была бы выдана повторно, пока первая ещё пишется (ver. 8.90).
   const filter = kind === 'input'
     ? `AND kind = 'input' AND "accountId" = :accountId`
-    : `AND kind <> 'input'`;
+    : `AND kind <> 'input' AND (kind <> 'draft' OR id = (
+         SELECT id FROM review_collector_jobs
+          WHERE kind = 'draft' AND status = 'queued'
+          ORDER BY "createdAt" LIMIT 1))`;
   const rows = await sequelize.query(`
     UPDATE review_collector_jobs
        SET status = 'taken', "takenAt" = NOW(), attempts = attempts + 1, "updatedAt" = NOW()
@@ -325,7 +333,9 @@ async function takeJobs(limit = 20, { kind = null, accountId = null } = {}) {
         WHERE (status = 'queued'
            OR (status = 'taken' AND "takenAt" < NOW() - INTERVAL '${TAKEN_TIMEOUT_MIN} minutes'))
           ${filter}
-        ORDER BY "createdAt"
+        -- Черновики — последними: модель одна на весь парсер, и ответ или
+        -- жалоба, поставленные человеком, не должны ждать её (ver. 8.90).
+        ORDER BY (kind = 'draft'), "createdAt"
         LIMIT :limit
         FOR UPDATE SKIP LOCKED
      )
@@ -371,6 +381,10 @@ async function finishJob(jobId, body) {
     error: ok ? null : (body.message || 'Неизвестная ошибка'),
     finishedAt: new Date(),
   });
+
+  if (job.kind === 'draft' && job.reviewId) {
+    await storeDrafts(job, ok, body.data);
+  }
 
   if (job.kind === 'complaint' && job.reviewId) {
     const review = await Review.findByPk(job.reviewId, { paranoid: false });
