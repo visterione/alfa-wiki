@@ -10,6 +10,9 @@
  *   GET  /api/public/v1/review-collector/jobs                 забрать задачи;
  *        ?kind=input&accountId=… — только ввод удалённого входа этой учётки
  *   POST /api/public/v1/review-collector/jobs/:id             итог задачи
+ *   GET  /api/public/v1/review-collector/reply-context        образцы ответов, подпись и контакты
+ *        ?boardId=…&platform=…&negative=0|1&exclude=… — для черновиков ответа (ver. 8.88)
+ *   GET  /api/public/v1/review-collector/reply-sample?n=30    выборка для проверки качества
  *
  * Ключ — из «Интеграций», право reviews:collector. Этот ключ открывает пароли
  * всех площадок, поэтому в «Интеграциях» у него стоит задать IP сервера
@@ -25,6 +28,7 @@ const { apiKeyAuth, rateLimitByClient } = require('../../../middleware/publicApi
 const collector = require('../../../services/reviewCollector/jobs');
 const { ingestPlace } = require('../../../services/reviewCollector/ingest');
 const { applyPass } = require('../../../services/reviewCollector/removal');
+const { replyContext, replySample } = require('../../../services/reviewCollector/replyContext');
 
 const SCOPE = 'reviews:collector';
 
@@ -88,6 +92,25 @@ router.get('/jobs', handle(async (req) => {
     jobs: await collector.takeJobs(Math.min(parseInt(req.query.limit, 10) || 20, 100), { kind, accountId }),
   };
 }));
+
+router.get('/reply-context', handle(async (req) => {
+  const { boardId, platform, negative, exclude } = req.query;
+  if (!UUID_RE.test(String(boardId || ''))) {
+    throw Object.assign(new Error('Нужен boardId'), { status: 400 });
+  }
+  return {
+    context: await replyContext({
+      boardId,
+      platform: String(platform || ''),
+      negative: negative === '1',
+      exclude: UUID_RE.test(String(exclude || '')) ? exclude : null,
+    }),
+  };
+}));
+
+router.get('/reply-sample', handle(async (req) => ({
+  reviews: await replySample(Math.min(parseInt(req.query.n, 10) || 30, 60)),
+})));
 
 router.post('/jobs/:id', handle(async (req) => {
   await collector.finishJob(req.params.id, req.body || {});

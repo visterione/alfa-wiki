@@ -108,6 +108,8 @@ async function accountsForCollector() {
       // Парсеру не нужно знать про доски; ему достаточно понять, собирать ли
       // отзывы места. Имя медцентра — для его собственных логов.
       collect: p.mode !== 'off' && !!p.boardId,
+      // Доска — для черновиков ответа: по ней вики отдаёт подпись и контакты
+      boardId: p.boardId || null,
       medCenter: p.board?.medCenter?.name || null,
     })),
   }));
