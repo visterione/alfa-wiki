@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Plus, RefreshCw, Pencil, Trash2, X, ChevronDown, ChevronRight, KeyRound, AlertTriangle
+  ArrowLeft, Plus, RefreshCw, Pencil, Trash2, X, ChevronDown, Check, KeyRound, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reviewCollector } from '../services/api';
 import PlatformLogo from '../components/PlatformLogo';
+import { fileUrl } from '../utils/fileUrl';
 import './ReviewPlatforms.css';
 
 /**
@@ -14,9 +15,8 @@ import './ReviewPlatforms.css';
  * Страница рассчитана на маркетолога без доступа к серверу: пароли меняются,
  * и всё, что для этого нужно, — здесь. Учётка после сохранения сразу уходит
  * на проверку; парсер входит, сообщает итог и присылает места из выпадающего
- * списка кабинета. Место привязывается к медцентру и проходит два режима:
- * сверку (отзывы только связываются с уже заведёнными карточками — в том
- * числе с архивом GetLoyalty) и работу.
+ * списка кабинета. Место привязывается к медцентру — с этого момента его
+ * отзывы собираются (до 8.93 была ещё «Сверка» с архивом GetLoyalty).
  */
 
 const STATUS = {
@@ -26,12 +26,6 @@ const STATUS = {
   bad_password: { label: 'Неверный пароль', tone: 'bad' },
   error:        { label: 'Ошибка',          tone: 'bad' },
 };
-
-const MODES = [
-  { key: 'off',    label: 'Выкл.',    title: 'Отзывы с этого места не берутся' },
-  { key: 'shadow', label: 'Сверка',   title: 'Отзывы только связываются с уже заведёнными карточками, новые не создаются' },
-  { key: 'live',   label: 'Работает', title: 'Новые отзывы становятся карточками, ответы уходят напрямую' },
-];
 
 // Пока парсер проверяет учётку или ждёт подтверждения входа, страница сама
 // перечитывает состояние: иначе цифры Яндекса пришлось бы ловить кнопкой F5.
@@ -128,14 +122,108 @@ function AccountModal({ platforms, account, onClose, onSaved }) {
   );
 }
 
-function PlaceRow({ place, boards, onChange }) {
-  const [open, setOpen] = useState(false);
-  const stats = place.stats || {};
-  const samples = stats.unmatchedSamples || [];
+/**
+ * Знак медцентра: квадратный логотип филиала, а без него — кружок его
+ * фирменного цвета. Логотип, который не загрузился, тоже сменяется кружком.
+ */
+function BoardMark({ board }) {
+  const [broken, setBroken] = useState(false);
+  const src = board?.logo && !broken ? fileUrl(board.logo) : null;
+  if (src) {
+    return <img className="rp-mark" src={src} alt="" draggable={false} onError={() => setBroken(true)} />;
+  }
+  return (
+    <span
+      className={`rp-mark rp-mark--dot${board ? '' : ' rp-mark--none'}`}
+      style={board ? { background: board.color || 'var(--accent-500)' } : undefined}
+    />
+  );
+}
 
-  const update = async (patch) => {
+/**
+ * Выбор медцентра для места. Свой список вместо <select>: в системном нет
+ * места знаку филиала, а по одному названию «Альфа» и «Альфа Дети» в длинном
+ * списке путаются.
+ */
+function BoardSelect({ boards, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const current = boards.find(b => b.id === value) || null;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => {
+      if (e.type === 'keydown' ? e.key === 'Escape' : !rootRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [open]);
+
+  const pick = (id) => {
+    setOpen(false);
+    if (id !== value) onChange(id);
+  };
+
+  return (
+    <div className="rp-board" ref={rootRef}>
+      <button
+        type="button"
+        className={`rp-board-btn${open ? ' is-open' : ''}`}
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <BoardMark board={current} />
+        <span className={`rp-board-name${current ? '' : ' rp-muted'}`}>
+          {current ? current.name : 'Не собирать'}
+        </span>
+        <ChevronDown size={15} className="rp-board-chevron" />
+      </button>
+      {open && (
+        <ul className="rp-board-list" role="listbox">
+          <li
+            role="option"
+            aria-selected={!current}
+            className={`rp-board-option${!current ? ' is-selected' : ''}`}
+            onClick={() => pick(null)}
+          >
+            <BoardMark board={null} />
+            <span className="rp-muted">Не собирать</span>
+          </li>
+          {boards.map(b => (
+            <li
+              key={b.id}
+              role="option"
+              aria-selected={b.id === value}
+              className={`rp-board-option${b.id === value ? ' is-selected' : ''}`}
+              onClick={() => pick(b.id)}
+            >
+              <BoardMark board={b} />
+              <span>{b.name}</span>
+              {b.id === value && <Check size={15} className="rp-board-check" />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Место на площадке — медцентр в кабинете. С 8.93 выбор медцентра и есть
+ * включение: выбран — отзывы собираются и становятся карточками, «Не
+ * собирать» — место выключено. Режим «Сверка» нужен был, пока отзывы шли
+ * ещё и от GetLoyalty; его больше нет, а новые карточки и так заводятся
+ * только отзывам не старше двух недель.
+ */
+function PlaceRow({ place, boards, onChange }) {
+  const update = async (boardId) => {
     try {
-      await reviewCollector.updatePlace(place.id, patch);
+      await reviewCollector.updatePlace(place.id, boardId ? { boardId, mode: 'live' } : { boardId: null, mode: 'off' });
       onChange();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Не удалось сохранить');
@@ -144,63 +232,15 @@ function PlaceRow({ place, boards, onChange }) {
 
   return (
     <div className="rp-place">
-      <div className="rp-place-main">
-        <div className="rp-place-name">
-          <span>{place.name || place.externalId}</span>
-          {place.address && <small>{place.address}</small>}
-        </div>
-
-        <select
-          className="rp-place-board"
-          value={place.boardId || ''}
-          onChange={e => update({ boardId: e.target.value || null, ...(e.target.value ? {} : { mode: 'off' }) })}
-        >
-          <option value="">Медцентр не выбран</option>
-          {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-
-        <div className="rp-modes" role="group">
-          {MODES.map(m => (
-            <button
-              key={m.key}
-              type="button"
-              title={m.title}
-              className={`rp-mode${place.mode === m.key ? ' rp-mode--active' : ''} rp-mode--${m.key}`}
-              disabled={m.key !== 'off' && !place.boardId}
-              onClick={() => place.mode !== m.key && update({ mode: m.key })}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+      <div className="rp-place-name">
+        <span>{place.name || place.externalId}</span>
+        {place.address && <small>{place.address}</small>}
       </div>
-
-      {stats.at && (
-        <div className="rp-place-stats">
-          <span>Связано с карточками: <b>{stats.linked || 0}</b></span>
-          <span>За последний проход — совпало {stats.matched || 0}, новых {stats.created || 0}</span>
-          {stats.unmatched > 0 && (
-            <button type="button" className="rp-link" onClick={() => setOpen(v => !v)}>
-              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              без карточки: {stats.unmatched}
-            </button>
-          )}
-          <span className="rp-muted">{formatDateTime(stats.at)}</span>
-        </div>
-      )}
-
-      {open && samples.length > 0 && (
-        <ul className="rp-samples">
-          {samples.map(s => (
-            <li key={s.id}>
-              <span className="rp-muted">{new Date(s.date).toLocaleDateString('ru-RU')}</span>
-              {s.rating && <span>★ {s.rating}</span>}
-              {s.doctor && <span className="rp-muted">{s.doctor}</span>}
-              <span className="rp-sample-text">{s.text || 'без текста'}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <BoardSelect
+        boards={boards}
+        value={place.mode !== 'off' ? place.boardId : null}
+        onChange={update}
+      />
     </div>
   );
 }
@@ -280,6 +320,15 @@ function AccountCard({ account, boards, onEdit, onChange }) {
     : (STATUS[account.status] || STATUS.new);
   const challenge = account.challenge;
 
+  // Лампочка вместо бейджа (ver. 8.93): цвет — состояние, подсказка — оно же
+  // словами и время последнего сбора, которое раньше стояло отдельной строкой.
+  const lampTone = account.checking ? 'muted' : (account.isEnabled ? status.tone : 'off');
+  const collected = formatDateTime(account.lastCollectedAt);
+  const lampTitle = [
+    account.checking ? 'Проверяется…' : (account.isEnabled ? status.label : 'Сбор выключен'),
+    collected ? `отзывы собраны ${collected}` : 'отзывы ещё не собирались',
+  ].join(' · ');
+
   const check = async () => {
     try {
       await reviewCollector.checkAccount(account.id);
@@ -311,14 +360,15 @@ function AccountCard({ account, boards, onEdit, onChange }) {
   return (
     <div className={`rp-account${account.isEnabled ? '' : ' rp-account--disabled'}${account.problem ? ' rp-account--problem' : ''}`}>
       <div className="rp-account-head">
+        <span
+          className={`rp-lamp rp-lamp--${lampTone}`}
+          title={lampTitle}
+          aria-label={lampTitle}
+        />
         <div className="rp-account-title">
           <span className="rp-account-name">{account.label || account.login}</span>
           {account.label && <span className="rp-muted">{account.login}</span>}
         </div>
-
-        <span className={`rp-status rp-status--${account.checking ? 'muted' : status.tone}`}>
-          {account.checking ? 'Проверяется…' : status.label}
-        </span>
 
         <div className="rp-account-actions">
           <button type="button" className="rp-icon-btn" title="Проверить вход" onClick={check} disabled={account.checking}>
@@ -327,13 +377,13 @@ function AccountCard({ account, boards, onEdit, onChange }) {
           <button type="button" className="rp-icon-btn" title="Изменить логин или пароль" onClick={onEdit}>
             <Pencil size={16} />
           </button>
+          <button type="button" className="rp-icon-btn rp-icon-btn--danger" title="Удалить" onClick={remove}>
+            <Trash2 size={16} />
+          </button>
           <label className="rp-switch" title={account.isEnabled ? 'Выключить сбор' : 'Включить сбор'}>
             <input type="checkbox" checked={account.isEnabled} onChange={toggle} />
             <span />
           </label>
-          <button type="button" className="rp-icon-btn rp-icon-btn--danger" title="Удалить" onClick={remove}>
-            <Trash2 size={16} />
-          </button>
         </div>
       </div>
 
@@ -353,10 +403,6 @@ function AccountCard({ account, boards, onEdit, onChange }) {
 
       {account.statusMessage && account.status !== 'ok' && !account.checking && (
         <div className="rp-account-message">{account.statusMessage}</div>
-      )}
-
-      {account.lastCollectedAt && (
-        <div className="rp-muted rp-account-collected">Отзывы собраны {formatDateTime(account.lastCollectedAt)}</div>
       )}
 
       {account.places?.length > 0 ? (

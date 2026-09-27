@@ -52,7 +52,10 @@ router.get('/', async (req, res) => {
       }),
       ReviewBoard.findAll({
         where: { archived: false },
-        include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }],
+        include: [{
+          model: MedCenter, as: 'medCenter',
+          attributes: ['id', 'name', 'color', 'logoUrl', 'logoSquareUrl'],
+        }],
       }),
       // Незакрытая проверка у учётки — чтобы кнопка показывала «проверяется»,
       // а не предлагала нажать ещё раз.
@@ -71,7 +74,13 @@ router.get('/', async (req, res) => {
         return { ...json, checking: checking.has(a.id), problem: accountProblem(json) };
       }),
       boards: boards
-        .map(b => ({ id: b.id, name: b.medCenter?.name || '—' }))
+        // Знак филиала — для выпадающего списка медцентров (ver. 8.93)
+        .map(b => ({
+          id: b.id,
+          name: b.medCenter?.name || '—',
+          logo: b.medCenter?.logoSquareUrl || b.medCenter?.logoUrl || null,
+          color: b.medCenter?.color || null,
+        }))
         .sort((x, y) => x.name.localeCompare(y.name, 'ru')),
     });
   } catch (err) {

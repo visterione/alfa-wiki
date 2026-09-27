@@ -2,9 +2,10 @@
    страница открывается напрямую, и стили настроек доски, на которые она
    похожа, к этому моменту могут быть ещё не загружены. */
 
+/* На всю ширину рабочей области (ver. 8.93): при 1100px справа оставалась
+   пустая половина экрана */
 .rp-page {
   padding: 2rem;
-  max-width: 1100px;
 }
 
 .rp-loading {
@@ -139,22 +140,20 @@
   color: var(--text-secondary);
 }
 
-.rp-account-collected {
-  margin-top: 0.25rem;
+/* Лампочка состояния учётки вместо бейджа (ver. 8.93); словами — в подсказке */
+.rp-lamp {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: help;
 }
 
-.rp-status {
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 6px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-
-.rp-status--ok    { color: var(--green-700); background: var(--green-100); }
-.rp-status--warn  { color: var(--amber-800); background: var(--amber-100); }
-.rp-status--bad   { color: var(--red-700);   background: var(--red-100); }
-.rp-status--muted { color: var(--text-secondary); background: var(--bg-tertiary); }
+.rp-lamp--ok    { background: var(--green-500); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-500) 20%, transparent); }
+.rp-lamp--warn  { background: var(--amber-500); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber-500) 20%, transparent); }
+.rp-lamp--bad   { background: var(--red-500);   box-shadow: 0 0 0 3px color-mix(in srgb, var(--red-500) 20%, transparent); }
+.rp-lamp--muted { background: var(--text-tertiary); }
+.rp-lamp--off   { background: var(--border-color); }
 
 .rp-challenge {
   display: flex;
@@ -228,22 +227,18 @@
 }
 
 .rp-place {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   background: var(--bg-secondary);
   border-radius: 8px;
   padding: 0.625rem 0.75rem;
 }
 
-.rp-place-main {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
 .rp-place-name {
   display: flex;
   flex-direction: column;
-  flex: 1 1 220px;
+  flex: 1 1 auto;
   min-width: 0;
   font-size: 0.875rem;
   color: var(--text-primary);
@@ -254,92 +249,113 @@
   font-size: 0.75rem;
 }
 
-.rp-place-board {
-  flex: 0 1 220px;
+/* ── Выбор медцентра ─────────────────────────────────────────────── */
+
+.rp-board {
+  position: relative;
+  flex: 0 0 260px;
+}
+
+.rp-board-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.rp-board-btn:hover,
+.rp-board-btn.is-open {
+  border-color: var(--accent-400);
+}
+
+.rp-board-name {
+  flex: 1;
   min-width: 0;
-  padding: 0.375rem 0.5rem;
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 0.8125rem;
-}
-
-.rp-modes {
-  display: inline-flex;
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.rp-mode {
-  padding: 0.3rem 0.625rem;
-  border: none;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 0.8125rem;
-  cursor: pointer;
+.rp-board-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 0.15s;
 }
 
-.rp-mode + .rp-mode {
-  border-left: 1px solid var(--border-light);
+.rp-board-btn.is-open .rp-board-chevron {
+  transform: rotate(180deg);
 }
 
-.rp-mode:disabled {
-  cursor: not-allowed;
-  color: var(--text-disabled);
-}
-
-.rp-mode--active.rp-mode--off    { color: var(--text-primary); background: var(--bg-tertiary); }
-.rp-mode--active.rp-mode--shadow { color: var(--amber-800);    background: var(--amber-100); }
-.rp-mode--active.rp-mode--live   { color: var(--green-700);    background: var(--green-100); }
-
-.rp-place-stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 1rem;
-  margin-top: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
-
-.rp-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.125rem;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent-600);
-  font: inherit;
-  cursor: pointer;
-}
-
-.rp-samples {
+.rp-board-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
   list-style: none;
-  margin: 0.5rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
-}
-
-.rp-samples li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.625rem;
-  padding: 0.375rem 0.5rem;
-  border-radius: 6px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
   background: var(--bg-primary);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
 }
 
-.rp-sample-text {
-  flex-basis: 100%;
+.rp-board-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4375rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
   color: var(--text-primary);
+  cursor: pointer;
+}
+
+.rp-board-option:hover {
+  background: var(--bg-secondary);
+}
+
+.rp-board-option.is-selected {
+  background: var(--accent-50);
+}
+
+.rp-board-check {
+  margin-left: auto;
+  color: var(--accent-600);
+  flex-shrink: 0;
+}
+
+/* Знак медцентра: логотип или кружок фирменного цвета */
+.rp-mark {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.rp-mark--dot {
+  width: 12px;
+  height: 12px;
+  margin: 0 4px;
+}
+
+.rp-mark--none {
+  border: 1.5px dashed var(--border-color);
+  background: none;
 }
 
 /* ── Кнопки и переключатель ──────────────────────────────────────── */
@@ -525,7 +541,11 @@
     padding-left: calc(1rem - 3px);
   }
 
-  .rp-place-board {
+  .rp-place {
+    flex-wrap: wrap;
+  }
+
+  .rp-board {
     flex: 1 1 100%;
   }
 }
