@@ -24,6 +24,10 @@ const sender = require('../services/notifications/sender');
 const safety = require('../services/notifications/safety');
 const notifSettings = require('../services/notifications/settings');
 const doctorBlocklist = require('../services/notifications/doctorBlocklist');
+// ИИ-звонки: состав лида и словарь исходов — в aiCall, доступ к API партнёра — в
+// lptracker (ver. 8.95).
+const aiCall = require('../services/notifications/aiCall');
+const lptracker = require('../services/notifications/lptracker');
 const imobis = require('../services/messengers/imobis');
 const { NotifOutbox: Outbox } = require('../models');
 
@@ -59,17 +63,18 @@ const PROVIDER_EFFECT = {
 const DEFAULT_EFFECT = 'сообщения уходят пациентам';
 
 /**
- * Настройка CRM филиала в том виде, в каком её можно показать (ver. 8.52).
- * Ключ наружу не отдаётся — только признак «задан» и хвост, по той же причине,
- * по какой так показан токен Имобиса: два филиала легко получают один ключ
- * вставкой из буфера, и увидеть это можно только так.
+ * Настройка ИИ-звонков филиала в том виде, в каком её можно показать (ver. 8.95).
+ *
+ * Доступ к CRM здесь не фигурирует: с 8.95 он общий на сеть и живёт отдельным
+ * маршрутом /ai-call. У филиала остались включатель и необязательные свои проект
+ * и шаг воронки; ownProject говорит экрану, чей проект он видит — иначе одно и то
+ * же число в двух карточках выглядит как две разные настройки.
  */
 const aiCallView = (config) => ({
-  url: config.url || '',
-  header: config.header,
   enabled: !!config.enabled,
-  tokenSet: !!config.token,
-  tokenTail: config.token ? `…${String(config.token).slice(-6)}` : ''
+  projectId: config.projectId || null,
+  funnelId: config.funnelId || null,
+  ownProject: !!config.ownProject
 });
 
 async function safetyState() {
@@ -244,6 +249,10 @@ router.put('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
 
 // ── Шаблоны ───────────────────────────────────────────────────────────────
 
+// Правило сроков звонка живёт в services/notifications/templates.js: это
+// бизнес-правило, а не дело маршрута, и покрыто тестом там же (ver. 8.95).
+const { callRangeError } = templates;
+
 /**
  * Настройка догоняющего звонка, приведённая к допустимому виду (ver. 8.52).
  *
@@ -251,6 +260,7 @@ router.put('/blocked-doctors', authenticate, requireAdmin, async (req, res) => {
  * должно быть отсутствием настройки, а не нулём, который в интерфейсе
  * неотличим от «сразу же».
  */
+
 function callPatch(event, withConfirm, { callAfterMinutes, callMinLeadMinutes }) {
   if (event !== 'reminder' || !withConfirm) {
     return { callAfterMinutes: null, callMinLeadMinutes: null };
@@ -325,6 +335,15 @@ router.post('/templates', authenticate, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Пустой текст' });
     }
 
+    // Сроки звонка — те же правила, что и при правке (ver. 8.95). Умолчание
+    // напоминания здесь то же, что и в create ниже: иначе проверка считала бы
+    // одно, а в базу легло бы другое.
+    if (event === 'reminder' && withConfirm) {
+      const badRange = callRangeError(Number(beforeMinutes) || 1440,
+        { callAfterMinutes, callMinLeadMinutes });
+      if (badRange) return res.status(400).json({ error: badRange });
+    }
+
     const row = await NotifTemplate.create({
       event,
       text: String(text || '').trim() || null,
@@ -374,6 +393,19 @@ router.put('/templates/:id', authenticate, requireAdmin, async (req, res) => {
     }
 
     const nextConfirm = withConfirm !== undefined ? !!withConfirm : row.withConfirm;
+
+    // Сроки звонка сторожим здесь, а не только в интерфейсе: шаблон правится и
+    // запросом, а последствие — звонок живому человеку после приёма (ver. 8.95).
+    if (row.event === 'reminder' && nextConfirm) {
+      const badRange = callRangeError(
+        beforeMinutes !== undefined ? beforeMinutes : row.beforeMinutes,
+        {
+          callAfterMinutes: callAfterMinutes !== undefined ? callAfterMinutes : row.callAfterMinutes,
+          callMinLeadMinutes: callMinLeadMinutes !== undefined ? callMinLeadMinutes : row.callMinLeadMinutes
+        }
+      );
+      if (badRange) return res.status(400).json({ error: badRange });
+    }
 
     await row.update({
       text: text !== undefined ? String(text).trim() : row.text,
@@ -815,6 +847,11 @@ router.get('/branches', authenticate, requireAdmin, async (req, res) => {
     const rows = await NotifBranchSettings.findAll();
     const byId = new Map(rows.map(r => [r.medCenterId, r.toJSON()]));
 
+    // Общий доступ к CRM читаем один раз на весь список: он одинаков для всех
+    // филиалов, и спрашивать его в каждой карточке значило бы девять чтений
+    // настройки ради одного и того же значения (ver. 8.95).
+    const aiCallAccess = await notifSettings.aiCallAccess();
+
     const bots = await MessengerBot.findAll({
       order: [['platform', 'ASC']]
     });
@@ -873,10 +910,9 @@ router.get('/branches', authenticate, requireAdmin, async (req, res) => {
         // полную карту, а не только отличия: интерфейсу нужно показать выбор
         // по каждому событию, а умолчания он повторять не должен.
         eventSources: await notifSettings.eventSourcesFor(mc.id),
-        // CRM для догоняющих ИИ-звонков (ver. 8.52). Ключ наружу не отдаём по
-        // той же причине, что и токен Имобиса выше, и так же показываем хвост:
-        // два филиала легко получают один ключ вставкой из буфера.
-        aiCall: aiCallView(notifSettings.resolveAiCall(own)),
+        // ИИ-звонки филиала (ver. 8.95): включатель и, если заведены, свои
+        // проект и шаг воронки. Доступ к CRM общий на сеть — маршрут /ai-call.
+        aiCall: aiCallView(notifSettings.resolveAiCall(aiCallAccess, own)),
         configured: !!own
       };
     }));
@@ -961,23 +997,16 @@ router.put('/branches/:medCenterId', authenticate, requireAdmin, async (req, res
       });
       const next = { ...(existing.aiCall || {}) };
 
-      // Адрес обязателен только на деле: пустой означает «стереть», и филиал
-      // просто перестаёт звонить. Запрещать сохранение без него незачем —
-      // настройку заполняют в два приёма, сначала адрес, потом ключ.
-      if (aiCall.url !== undefined) {
-        const value = String(aiCall.url || '').trim().slice(0, 500);
-        if (value) next.url = value; else delete next.url;
+      // Свой проект и шаг воронки — необязательные (ver. 8.95). Пусто означает
+      // «как у сети», и это единственная настройка модуля, где пустота означает
+      // наследование: доступ у партнёра один, наследовать нечего и не от кого.
+      if (aiCall.projectId !== undefined) {
+        const value = String(aiCall.projectId ?? '').replace(/\D/g, '').slice(0, 12);
+        if (value) next.projectId = value; else delete next.projectId;
       }
-      // Ключ, как и у Имобиса, стирается только явно переданной пустотой: поле
-      // в форме пустое всегда, и если бы пустая строка ехала на каждое
-      // сохранение, правка адреса уносила бы с собой доступ.
-      if (aiCall.token !== undefined) {
-        const value = String(aiCall.token || '').trim();
-        if (value) next.token = value; else delete next.token;
-      }
-      if (aiCall.header !== undefined) {
-        const value = String(aiCall.header || '').trim().slice(0, 100);
-        if (value) next.header = value; else delete next.header;
+      if (aiCall.funnelId !== undefined) {
+        const value = String(aiCall.funnelId ?? '').replace(/\D/g, '').slice(0, 12);
+        if (value) next.funnelId = value; else delete next.funnelId;
       }
       if (aiCall.enabled !== undefined) {
         if (aiCall.enabled) next.enabled = true; else delete next.enabled;
@@ -1093,6 +1122,140 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
  * Полезная нагрузка наружу не отдаётся: в ней карточка пациента, и в списке,
  * который открывают, чтобы посмотреть статусы, ей делать нечего.
  */
+// ── Доступ к CRM партнёра ─────────────────────────────────────────────────
+//
+// Один на сеть (ver. 8.95): проект у партнёра один, и шесть копий одного логина
+// в карточках филиалов означали бы шесть мест, где править пароль. Почему это
+// правка решения 8.52 — в шапке settings.js и в миграции.
+
+/**
+ * Пароль наружу не отдаётся — только признак «задан», как у токенов ботов и
+ * ключей Имобиса. Логин отдаём: по нему администратор узнаёт, тот ли это
+ * аккаунт, а секретом он не является.
+ */
+router.get('/ai-call', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const access = await notifSettings.aiCallAccess();
+    res.json({
+      login: access.login || '',
+      passwordSet: !!access.password,
+      projectId: access.projectId || null,
+      funnelId: access.funnelId || null,
+      // Что мы кладём в лид. Экрану нужно, чтобы показать, какие поля проверка
+      // ищет в проекте, — иначе список «чего нет» непонятно с чем сравнивать.
+      fields: aiCall.FIELD_NAMES,
+      requiredFields: aiCall.REQUIRED_FIELDS
+    });
+  } catch (err) {
+    console.error('[notifications] GET /ai-call:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/ai-call', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { login, password, projectId, funnelId } = req.body || {};
+    const next = { ...(await notifSettings.aiCallAccess()) };
+
+    if (login !== undefined) {
+      const value = String(login || '').trim().slice(0, 200);
+      if (value) next.login = value; else delete next.login;
+    }
+    // Пароль стирается только явно переданной пустотой: поле в форме пустое
+    // всегда, и если бы пустая строка ехала на каждое сохранение, правка проекта
+    // уносила бы с собой доступ.
+    if (password !== undefined) {
+      const value = String(password || '').trim();
+      if (value) next.password = value; else delete next.password;
+    }
+    if (projectId !== undefined) {
+      const value = String(projectId ?? '').replace(/\D/g, '').slice(0, 12);
+      if (value) next.projectId = value; else delete next.projectId;
+    }
+    if (funnelId !== undefined) {
+      const value = String(funnelId ?? '').replace(/\D/g, '').slice(0, 12);
+      if (value) next.funnelId = value; else delete next.funnelId;
+    }
+
+    await notifSettings.write(notifSettings.AI_CALL_KEY, next,
+      'Доступ к CRM партнёра для ИИ-звонков: { login, password, projectId, funnelId }');
+
+    // Токен и список полей держатся в памяти клиента — после смены доступа или
+    // проекта они относятся уже к другому аккаунту.
+    lptracker.forget();
+    lptracker.forgetFields();
+    notifSettings.forgetBranch();
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[notifications] PUT /ai-call:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Проверка подключения: входим, спрашиваем проекты, а для выбранного — шаги
+ * воронки и поля.
+ *
+ * Зачем кнопка. Проект и шаг воронки задаются числами, и ошибка в них не видна
+ * никак: заявка уедет, лид ляжет не туда, автоворонка не запустится, и выяснится
+ * это по отсутствию звонков. Проверка отвечает на три вопроса сразу — пускают ли
+ * нас, тот ли это проект и найдутся ли в нём поля, которые мы заполняем.
+ *
+ * Пароль можно прислать в теле: проверяют обычно до сохранения.
+ */
+router.post('/ai-call/check', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const stored = await notifSettings.aiCallAccess();
+    const config = {
+      login: String((req.body && req.body.login) || stored.login || '').trim(),
+      password: String((req.body && req.body.password) || stored.password || '')
+    };
+    if (!config.login || !config.password) {
+      return res.status(400).json({ error: 'Нужны логин и пароль от CRM' });
+    }
+
+    // Входим заново, а не берём запомненный токен: проверяют обычно после смены
+    // пароля, и ответ «всё хорошо» от старой сессии был бы ответом не на тот
+    // вопрос, который задавали.
+    lptracker.forget(config.login);
+
+    const projects = await lptracker.projects(config);
+    const projectId = String((req.body && req.body.projectId) || stored.projectId || '').replace(/\D/g, '')
+      || (Array.isArray(projects) && projects.length === 1 ? String(projects[0].id) : '');
+
+    let funnel = null;
+    let fields = null;
+    if (projectId) {
+      funnel = await lptracker.funnel(config, projectId);
+
+      const map = await lptracker.fieldMap(config, projectId, { fresh: true });
+      const found = aiCall.FIELD_NAMES.filter(name => map.has(name));
+      fields = {
+        found,
+        missing: aiCall.FIELD_NAMES.filter(name => !map.has(name)),
+        // Отдельно про четыре обязательных: без них робот не назовёт ни визита,
+        // ни времени, и это не «поле не нашлось», а «звонить нельзя».
+        missingRequired: aiCall.REQUIRED_FIELDS.filter(name => !map.has(name))
+      };
+    }
+
+    res.json({
+      ok: true,
+      projects: (Array.isArray(projects) ? projects : []).map(p => ({ id: p.id, name: p.name })),
+      projectId: projectId || null,
+      funnel: (Array.isArray(funnel) ? funnel : []).map(f => ({ id: f.id, name: f.name })),
+      fields
+    });
+  } catch (err) {
+    // Отказ партнёра — это ответ, а не поломка: неверный пароль и незнакомый
+    // проект администратор должен прочитать словами, а не увидеть «500».
+    const known = err && err.name === 'LpError';
+    if (!known) console.error('[notifications] POST /ai-call/check:', err);
+    res.status(known ? 400 : 500).json({ error: known ? err.message : 'Internal server error' });
+  }
+});
+
 router.get('/call-requests', authenticate, requireAdmin, async (req, res) => {
   try {
     const where = {};
@@ -1109,7 +1272,9 @@ router.get('/call-requests', authenticate, requireAdmin, async (req, res) => {
 
     const { rows, count } = await NotifCallRequest.findAndCountAll({
       where,
-      attributes: { exclude: ['payload', 'response'] },
+      // payload и resultRaw — карточка пациента и тело, присланное партнёром. В
+      // списке, который открывают ради статусов, им делать нечего.
+      attributes: { exclude: ['payload', 'response', 'resultRaw'] },
       order: [['createdAt', 'DESC']],
       limit,
       offset

@@ -1564,6 +1564,16 @@ export const notifications = {
   // позвонили», и причин не звонить больше, чем причин позвонить.
   callRequests: (params) => api.get('/notifications/call-requests', { params }),
 
+  // Доступ к CRM партнёра для ИИ-звонков (ver. 8.95). Общий на сеть: проект у
+  // партнёра один, и держать шесть копий одного пароля по карточкам филиалов
+  // значило бы шесть мест, где его забудут поменять.
+  aiCall: () => api.get('/notifications/ai-call'),
+  saveAiCall: (data) => api.put('/notifications/ai-call', data),
+  // Проверка отвечает сразу на три вопроса: пускают ли нас, тот ли это проект и
+  // найдутся ли в нём поля, которые мы заполняем. Без неё ошибка в номере
+  // проекта видна только отсутствием звонков.
+  checkAiCall: (data) => api.post('/notifications/ai-call/check', data),
+
   settings: () => api.get('/notifications/settings'),
   saveSettings: (data) => api.put('/notifications/settings', data),
 

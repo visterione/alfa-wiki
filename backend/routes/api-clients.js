@@ -35,6 +35,9 @@ const submissionService = require('../services/public/submissionService');
 const BOOKING_DURATION_SCOPE = 'booking:duration:read';
 const MAIL_CLUB_SCOPE = 'mail-club:subscribe';
 const REVIEW_COLLECTOR_SCOPE = 'reviews:collector';
+// Итог ИИ-звонка от CRM партнёра (ver. 8.95). Ключ узкий, но сильный: по нему
+// отменяются визиты в МИС, поэтому право отдельное, а не в составе чужого.
+const AI_CALL_SCOPE = 'ai-call:result';
 
 const router = express.Router();
 
@@ -59,7 +62,8 @@ function sanitizeScopes(scopes) {
     ...formRegistry.listFormTypes().map(t => formRegistry.scopeFor(t)),
     BOOKING_DURATION_SCOPE,
     MAIL_CLUB_SCOPE,
-    REVIEW_COLLECTOR_SCOPE
+    REVIEW_COLLECTOR_SCOPE,
+    AI_CALL_SCOPE
   ]);
   return [...new Set((scopes || []).filter(s => known.has(s)))];
 }
@@ -100,6 +104,12 @@ router.get('/meta', authenticate, requireAdmin, async (req, res) => {
           formType: 'review-collector',
           title: 'Альфа Парсер: сбор отзывов и пароли площадок',
           scope: REVIEW_COLLECTOR_SCOPE
+        }
+        ,{
+          // Этим ключом визит отменяют в МИС — ему тоже стоит задать IP
+          formType: 'ai-call',
+          title: 'CRM партнёра: итоги ИИ-звонков пациентам',
+          scope: AI_CALL_SCOPE
         }
       ],
       // Реестр подписок: конфигурация размазана по чатам, и без общего списка

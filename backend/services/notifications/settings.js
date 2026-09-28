@@ -44,14 +44,21 @@ const BOT_STEPS = ['telegram', 'max'];
 // нам нечем.
 const EMPTY_IMOBIS = { token: '', sender: '', vkGroup: null, sandbox: false };
 
-// Счёт филиала в CRM партнёра, которая делает ИИ-звонки (ver. 8.52). Живёт там
-// же, где счёт Имобиса, и по той же причине: у партнёра лиды разведены по
-// клиникам, общего адреса на сеть нет, и наследовать «как в общих» не от чего.
+// ── ИИ-звонки: доступ к CRM партнёра (ver. 8.95) ──────────────────────────
 //
-// header — имя заголовка, в котором уезжает token. По умолчанию Authorization,
-// но у партнёра он вполне может называться X-Api-Key, а узнаем мы это уже после
-// релиза; поле избавляет от миграции ради одной строки.
-const EMPTY_AI_CALL = { url: '', token: '', header: 'Authorization', enabled: false };
+// Доступ общий на сеть, и это правка прежнего решения, а не забывчивость. В 8.52
+// счёт CRM лёг на филиал — вслед за счётом Имобиса, у которого на каждое юрлицо
+// свой лицевой. Живой аккаунт партнёра устроен иначе: проект там один на всю
+// сеть («Медцентр Альфа»), клиника визита уезжает полем clinic_title, и шесть
+// копий одного логина в шести карточках филиалов означали бы шесть мест, где
+// править пароль после его смены.
+//
+// У филиала остались включатель и необязательные свои проект и шаг воронки — на
+// случай, если партнёр когда-нибудь разведёт клиники по проектам. Пусто там
+// означает «как у сети», и это единственное наследование в модуле: у Имобиса его
+// нет намеренно, потому что там пустота означала бы отправку с чужого счёта.
+const AI_CALL_KEY = 'notif_ai_call';
+const EMPTY_AI_CALL = { login: '', password: '', projectId: null, funnelId: null };
 
 // ── Источник события (ver. 8.25) ──────────────────────────────────────────
 //
@@ -185,14 +192,31 @@ function resolveImobis(own) {
   return { ...EMPTY_IMOBIS, ...((own && own.imobis) || {}) };
 }
 
+/** Общий доступ к CRM партнёра. Пустой объект — значит не настроен. */
+const aiCallAccess = () => read(AI_CALL_KEY, {});
+
 /**
- * Настройка ИИ-звонков филиала. Возвращается всегда объект — по той же причине,
- * что и у Имобиса: заявке нужно отличать «филиал не настроен» от «филиала нет»,
- * и обе эти беды выглядят одинаково пустым url.
+ * Настройка ИИ-звонков для филиала: общий доступ плюс то, что филиал переопределил.
+ *
+ * Возвращается всегда объект — по той же причине, что и у Имобиса: заявке нужно
+ * отличать «доступа нет» от «филиал выключен», и причина в журнале у этих двух
+ * случаев разная.
  */
-function resolveAiCall(own) {
+function resolveAiCall(access, own) {
+  const shared = { ...EMPTY_AI_CALL, ...(access || {}) };
   const stored = (own && own.aiCall) || {};
-  return { ...EMPTY_AI_CALL, ...stored, header: String(stored.header || EMPTY_AI_CALL.header) };
+
+  return {
+    ...shared,
+    // Свой проект и шаг — только если вписаны. Пустая строка в настройке филиала
+    // означает «как у сети», а не «никуда».
+    projectId: stored.projectId || shared.projectId || null,
+    funnelId: stored.funnelId || shared.funnelId || null,
+    enabled: !!stored.enabled,
+    // Видно, чей проект используется: свой у филиала или общий. Нужно экрану —
+    // иначе «проект 139814» в двух карточках выглядит как две разные настройки.
+    ownProject: !!stored.projectId
+  };
 }
 
 /**
@@ -213,7 +237,7 @@ function resolveEventSources(own) {
 }
 
 const imobisFor = async (medCenterId) => resolveImobis(await branch(medCenterId));
-const aiCallFor = async (medCenterId) => resolveAiCall(await branch(medCenterId));
+const aiCallFor = async (medCenterId) => resolveAiCall(await aiCallAccess(), await branch(medCenterId));
 const eventSourcesFor = async (medCenterId) => resolveEventSources(await branch(medCenterId));
 
 /**
@@ -314,7 +338,7 @@ function quietFor(quiet, channel) {
 }
 
 module.exports = {
-  CASCADE_KEY, QUIET_KEY,
+  CASCADE_KEY, QUIET_KEY, AI_CALL_KEY, aiCallAccess,
   DEFAULT_CASCADE, DEFAULT_QUIET, EMPTY_IMOBIS, EMPTY_AI_CALL, BOT_STEPS,
   SOURCES, DEFAULT_EVENT_SOURCES,
   cascade, quietHours, groupSteps, read, write,

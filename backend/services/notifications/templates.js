@@ -199,6 +199,53 @@ function templatesForEvent(all, event, medCenterId) {
  * человек минуту назад говорил с администратором, и звонок с вопросом «придёте
  * ли вы» выглядел бы так, будто мы его не услышали.
  */
+/** «120» → «2 ч», «1440» → «1 сут.». Для сообщений об ошибке: сравнивать минуты
+ *  глазами неудобно, а сравнивать придётся. */
+function humanMinutes(minutes) {
+  const n = Number(minutes) || 0;
+  if (n % 1440 === 0) return `${n / 1440} сут.`;
+  if (n % 60 === 0) return `${n / 60} ч`;
+  return `${n} мин`;
+}
+
+/**
+ * Согласованы ли сроки догоняющего звонка со сроком самого напоминания (ver. 8.95).
+ *
+ * ЗАЧЕМ. «Позвонить через» отсчитывается от отправки напоминания, а напоминание
+ * уходит за «напомнить за» до приёма. Срок больше этого времени означает звонок
+ * после приёма — настройку, которая выглядит заполненной и не звонит никогда. Тот
+ * же случай у порога: порог больше времени напоминания гасит заявку в тот же миг,
+ * как её заводят.
+ *
+ * ПОЧЕМУ ОТКАЗ, А НЕ ПОДГОНКА. Молча уменьшить введённое значило бы не исполнить
+ * настройку, о которой человек думал. Он должен увидеть противоречие и решить сам,
+ * что менять — срок звонка или само напоминание.
+ *
+ * Сумму «срок + порог» здесь не сторожим намеренно: она тоже может съесть окно
+ * звонка целиком, но это уже не противоречие, а осознанный выбор — «звони только
+ * в эти два часа». Интерфейс о такой настройке предупреждает, не запрещая.
+ *
+ * @returns {string|null} что не так, либо null — сроки согласованы
+ */
+function callRangeError(beforeMinutes, { callAfterMinutes, callMinLeadMinutes } = {}) {
+  const before = Number(beforeMinutes) || 0;
+  const after = Number(callAfterMinutes) || 0;
+  const lead = Number(callMinLeadMinutes) || 0;
+
+  // Без напоминания или без срока сравнивать нечего: звонок выключен.
+  if (!before || !after) return null;
+
+  if (after >= before) {
+    return `«Позвонить через» (${humanMinutes(after)}) не может быть больше, чем «Напомнить за» ` +
+      `(${humanMinutes(before)}): звонок пришёлся бы на время после приёма`;
+  }
+  if (lead >= before) {
+    return `«Не звонить позже чем за» (${humanMinutes(lead)}) не может быть больше, чем «Напомнить за» ` +
+      `(${humanMinutes(before)}): заявка погасла бы сразу, не дождавшись срока`;
+  }
+  return null;
+}
+
 function callFields(template) {
   if (template.event !== 'reminder' || !template.withConfirm) {
     return { callAfterMinutes: null, callMinLeadMinutes: null };
@@ -319,6 +366,7 @@ async function build(event, snap, found = {}, { allow = () => true } = {}) {
 }
 
 module.exports = {
+  callRangeError, humanMinutes,
   build, render, valuesFor, firstName, nameParts, shortDoctor, callFields,
   numericDate, numericDateTime, formattedDateTime, templatesForEvent
 };

@@ -219,7 +219,18 @@ async function showCalls(limit = 15) {
     console.log(`${row.status.toUpperCase().padEnd(8)} визит ${row.apptId || '—'}   приём ${visit}`);
     console.log(`   пациент: ${row.patientName || '—'}   ${row.phone || '—'}`);
     console.log(`   звонить: ${when}   порог ${row.minLeadMinutes ?? '—'} мин   попыток ${row.attempts}`);
-    if (row.sentAt) console.log(`   передано: ${new Date(row.sentAt).toLocaleString('ru-RU')}`);
+    if (row.sentAt) {
+      console.log(`   передано: ${new Date(row.sentAt).toLocaleString('ru-RU')}` +
+        (row.leadId ? `   лид ${row.leadId}` : ''));
+    }
+    // Итог разговора и что из него вышло в МИС (ver. 8.95). Печатаем рядом с
+    // передачей: вопрос «позвонили ли» и вопрос «что человек ответил» задают
+    // подряд, и лазить за вторым в базу после первого — лишний шаг.
+    if (row.result) {
+      console.log(`   итог:    ${row.result}   в МИС: ${row.misStatus || '—'}` +
+        (row.resultAt ? `   ${new Date(row.resultAt).toLocaleString('ru-RU')}` : ''));
+      if (row.misError) console.log(`   в МИС не вышло: ${row.misError}`);
+    }
     if (row.error) console.log(`   причина: ${row.error}`);
     console.log('');
   }

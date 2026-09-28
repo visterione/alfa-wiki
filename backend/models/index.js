@@ -4206,7 +4206,22 @@ const NotifCallRequest = sequelize.define('NotifCallRequest', {
   // Что ответила CRM. Нужен, пока формат их ответа не устоялся: без него
   // разбирать отказ можно только по коду состояния.
   response: { type: DataTypes.JSONB, allowNull: true },
-  sentAt: { type: DataTypes.DATE, allowNull: true, field: 'sent_at' }
+  sentAt: { type: DataTypes.DATE, allowNull: true, field: 'sent_at' },
+  // Лид и контакт у партнёра (ver. 8.95). Строками, а не числами: это чужие
+  // идентификаторы, считать и складывать их мы не будем, а тип на их стороне
+  // однажды поменяется.
+  leadId: { type: DataTypes.STRING(32), allowNull: true, field: 'lead_id' },
+  contactId: { type: DataTypes.STRING(32), allowNull: true, field: 'contact_id' },
+  // Чем кончился разговор — словарь в services/notifications/aiCall.js.
+  result: { type: DataTypes.STRING(20), allowNull: true },
+  resultAt: { type: DataTypes.DATE, allowNull: true, field: 'result_at' },
+  // Присланное целиком: словарь исходов у партнёра будет расти, и «other» без
+  // исходного тела означало бы итог, о котором известно только то, что он был.
+  resultRaw: { type: DataTypes.JSONB, allowNull: true, field: 'result_raw' },
+  // Что из итога получилось сделать в МИС: confirmed, cancelled, none (итог
+  // визита не меняет), failed (МИС отказала — видно на экране, а не в логах).
+  misStatus: { type: DataTypes.STRING(12), allowNull: true, field: 'mis_status' },
+  misError: { type: DataTypes.TEXT, allowNull: true, field: 'mis_error' }
 }, {
   tableName: 'notif_call_requests',
   timestamps: true,
