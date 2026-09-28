@@ -298,6 +298,9 @@ const Page = sequelize.define('Page', {
   // а раньше автор сохранял страницу и не понимал, почему её никто не видит.
   isPublished: { type: DataTypes.BOOLEAN, defaultValue: true },
   isFavorite: { type: DataTypes.BOOLEAN, defaultValue: false },
+  // Попадает ли страница в выгрузку для печати (ver. 8.99). Решает автор:
+  // только он знает, осталось ли от html-страницы что-то без её скриптов.
+  isPrintable: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
   customCss: { type: DataTypes.TEXT },
   customJs: { type: DataTypes.TEXT },

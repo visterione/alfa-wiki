@@ -277,7 +277,7 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
     }
 
     const { title, content, contentType = 'wysiwyg', description, keywords, icon,
-            isPublished, allowedRoles, customCss, customJs, metadata, folderId, mediaId } = req.body;
+            isPublished, isPrintable, allowedRoles, customCss, customJs, metadata, folderId, mediaId } = req.body;
 
     let slug = req.body.slug || generateSlug(title);
 
@@ -319,6 +319,7 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       sortOrder: (maxOrder || 0) + 1,
       // Флаг приходит с формы; если клиент его не прислал — публикуем (см. дефолт модели Page)
       isPublished: isPublished !== undefined ? isPublished : true,
+      isPrintable: !!isPrintable,
       allowedRoles: allowedRoles || [],
       customCss,
       customJs,
@@ -373,7 +374,7 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
     }
 
     const { title, content, contentType, description, keywords, icon,
-            isPublished, allowedRoles, customCss, customJs, metadata, slug, folderId, sortOrder, mediaId } = req.body;
+            isPublished, isPrintable, allowedRoles, customCss, customJs, metadata, slug, folderId, sortOrder, mediaId } = req.body;
 
     if (slug && slug !== page.slug) {
       const existing = await Page.findOne({ where: { slug } });
@@ -390,6 +391,7 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       ...(keywords && { keywords }),
       ...(icon !== undefined && { icon }),
       ...(isPublished !== undefined && { isPublished }),
+      ...(isPrintable !== undefined && { isPrintable: !!isPrintable }),
       ...(allowedRoles && { allowedRoles }),
       ...(customCss !== undefined && { customCss }),
       ...(customJs !== undefined && { customJs }),

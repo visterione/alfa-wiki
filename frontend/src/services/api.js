@@ -189,6 +189,12 @@ export const rbActivityLog = {
   users: ()       => api.get('/rb-activity-log/users'),
 };
 
+// Выгрузка вики для печати (ver. 8.99)
+export const printExport = {
+  tree: () => api.get('/print-export/tree'),
+  docx: (pageIds) => api.post('/print-export/docx', { pageIds }, { responseType: 'blob', timeout: 300000 }),
+};
+
 // Folders
 export const folders = {
   browse: (parentId) => api.get('/folders/browse', { params: { parentId } }),

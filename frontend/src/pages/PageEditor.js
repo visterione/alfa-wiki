@@ -52,6 +52,7 @@ export default function PageEditor() {
     keywords: '',
     // Новая страница создаётся опубликованной; для старых флаг приходит из loadPage
     isPublished: true,
+    isPrintable: false,
     allowedRoles: [],
     customCss: '',
     customJs: '',
@@ -91,6 +92,7 @@ export default function PageEditor() {
         description: data.description || '',
         keywords: (data.keywords || []).join(', '),
         isPublished: data.isPublished || false,
+        isPrintable: !!data.isPrintable,
         allowedRoles: data.allowedRoles || [],
         customCss: data.customCss || '',
         customJs: data.customJs || '',
@@ -421,6 +423,26 @@ export default function PageEditor() {
                       Опубликовать
                     </label>
                   </div>
+
+                  {(form.contentType === 'wysiwyg' || form.contentType === 'html') && (
+                    <div className="form-group">
+                      <label className="checkbox-item">
+                        <input
+                          type="checkbox"
+                          checked={form.isPrintable}
+                          onChange={(e) => setForm({ ...form, isPrintable: e.target.checked })}
+                        />
+                        <span className={`toggle-track${form.isPrintable ? ' on' : ''}`} />
+                        Доступна для печати
+                      </label>
+                      {/* Предупреждение только для html: именно у неё на бумаге
+                          может не остаться ничего, и автор должен знать это,
+                          когда включает флаг, а не когда увидит пустой лист. */}
+                      {form.contentType === 'html' && (
+                        <small className="text-muted">В документ попадут текст, таблицы и картинки — без скриптов и встроенных приложений</small>
+                      )}
+                    </div>
+                  )}
 
                   {form.contentType === 'html' && (
                     <>

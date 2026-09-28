@@ -7,7 +7,7 @@ import {
   ChevronDown, ArrowUp, ArrowDown,
   FileCode, Table, FolderPlus,
   Upload, Image, Film, Music, Archive, Package, File, Download,
-  Scroll, BookOpen
+  Scroll, BookOpen, Printer
 } from 'lucide-react';
 
 const getFileIconInfo = (mimeType) => {
@@ -91,6 +91,7 @@ import { BASE_URL } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import PageView from '../PageView';
+import PrintExportModal from './PrintExportModal';
 import { ExplorerGlyphDefs, FolderGlyph, DocGlyph } from './ExplorerGlyphs';
 import '../Admin.css';
 import './Explorer.css';
@@ -140,6 +141,7 @@ export default function AdminPages() {
   const [folderModal, setFolderModal] = useState({ open: false, folder: null });
   const [deleteModal, setDeleteModal] = useState({ open: false, type: null, item: null });
   const [fileUploadModal, setFileUploadModal] = useState({ open: false });
+  const [printModalOpen, setPrintModalOpen] = useState(false);
   const [fileUploadForm, setFileUploadForm] = useState({ title: '', description: '', isPublished: false, allowedRoles: [] });
   const [fileUploadFile, setFileUploadFile] = useState(null);
   const [fileUploadProgress, setFileUploadProgress] = useState(0);
@@ -558,6 +560,18 @@ export default function AdminPages() {
             </button>
           </div>
 
+          {/* Печать доступна всем, а не только редакторам: документ собирается
+              из того, что человек и так может открыть. */}
+          <div className="explorer-view-toggle">
+            <button
+              className="btn-icon"
+              onClick={() => setPrintModalOpen(true)}
+              title="Документ для печати"
+            >
+              <Printer size={18} />
+            </button>
+          </div>
+
           {canEdit && (
             <div className="explorer-page-create" ref={createDropdownRef}>
               <button
@@ -864,6 +878,14 @@ export default function AdminPages() {
           </div>
         )}
       </div>
+
+      {printModalOpen && (
+        <PrintExportModal
+          currentFolderId={currentFolderId}
+          canEdit={canEdit}
+          onClose={() => setPrintModalOpen(false)}
+        />
+      )}
 
       {/* Folder Modal */}
       {folderModal.open && (

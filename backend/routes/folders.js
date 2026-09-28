@@ -2,29 +2,9 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Folder, Page, User, Media } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { canAccessPage, canAccessFolder } = require('../utils/pageAccess');
 
 const router = express.Router();
-
-// Вспомогательная функция для проверки доступа к странице
-function canAccessPage(page, userRoleIds, isAdmin) {
-  // Админы видят всё
-  if (isAdmin) return true;
-
-  // Если у страницы пустой allowedRoles, она доступна всем
-  if (!page.allowedRoles || page.allowedRoles.length === 0) {
-    return true;
-  }
-
-  // Проверяем, есть ли у пользователя нужная роль
-  return userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
-}
-
-// Та же проверка доступа, но для папок
-function canAccessFolder(folder, userRoleIds, isAdmin) {
-  if (isAdmin) return true;
-  if (!folder.allowedRoles || folder.allowedRoles.length === 0) return true;
-  return userRoleIds.some(roleId => folder.allowedRoles.includes(roleId));
-}
 
 // Транслитерация названия в slug (как у страниц)
 function generateSlug(title) {
