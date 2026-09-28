@@ -21,10 +21,16 @@ import './PageView.css';
 // равен true, и страница может показать всё сразу (раскрыть вкладки, спрятать
 // поиск). Если она сама знает, когда готова, достаточно отправить
 // window.dispatchEvent(new Event('alfa:print-ready')) — иначе ждём тишины.
+// Параметры документа страница кладёт в window.__ALFA_PRINT_OPTIONS__:
+// { hideMeta: true } — не печатать под заголовком дату правки и снимка.
+// В разметке понимаются data-print-layout="grid" (таблица только для
+// раскладки, без рамок), ширина ячейки в style и break-before: page.
 
 const QUIET_MS = 1200;
 const MIN_WAIT_MS = 800;
-const MAX_WAIT_MS = 30000;
+// Страница врачей грузит полные списки услуг по каждому врачу из МИС и на
+// больших разделах собирается дольше полуминуты.
+const MAX_WAIT_MS = 60000;
 const MAX_IMAGE_SIDE = 1400;
 
 // ── Ожидание готовности ──────────────────────────────────
@@ -198,6 +204,8 @@ function snapshot(root) {
     if (deco.includes('line-through')) out.push('text-decoration:line-through');
     const size = parseFloat(cs.fontSize);
     if (size) out.push(`font-size:${Math.round(size)}px`);
+    if (!inline && (cs.breakBefore === 'page' || cs.breakBefore === 'always')) out.push('page-break-before:always');
+    if (cell && el.style.width) out.push(`width:${el.style.width}`);
     if (!inline && ['center', 'right', 'justify'].includes(cs.textAlign)) out.push(`text-align:${cs.textAlign}`);
     return out.join(';');
   };
@@ -228,6 +236,7 @@ function snapshot(root) {
     if (outTag === 'a' && el.href) attrs.push(`href="${escapeAttr(el.href)}"`);
     if (cell && el.colSpan > 1) attrs.push(`colspan="${el.colSpan}"`);
     if (cell && el.rowSpan > 1) attrs.push(`rowspan="${el.rowSpan}"`);
+    if (outTag === 'table' && el.dataset.printLayout) attrs.push(`data-print-layout="${escapeAttr(el.dataset.printLayout)}"`);
 
     // Сетка карточек (grid или flex с переносом) в Word превратилась бы в
     // столбик: кладём её таблицей без рамок, по строкам как на экране.
@@ -282,7 +291,8 @@ export default async function runPrintRender(rootEl) {
     }
     mountPage(page, container);
     await waitForQuiet(container);
-    post({ html: snapshot(container) });
+    const options = window.__ALFA_PRINT_OPTIONS__ || {};
+    post({ html: snapshot(container), hideMeta: options.hideMeta === true });
   } catch (error) {
     post({ error: error?.response?.status ? `http-${error.response.status}` : 'failed' });
   }

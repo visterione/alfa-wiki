@@ -218,6 +218,8 @@
     "migrate:8.99": "node scripts/runSqlMigration.js 8.99",
     "migrate:8.99:check": "node scripts/runSqlMigration.js 8.99 --check",
     "migrate:9.03": "node scripts/runSqlMigration.js 9.03",
+    "migrate:9.05": "node scripts/syncDoctorCardPages.js",
+    "migrate:9.05:check": "node scripts/syncDoctorCardPages.js --check",
     "mail:sync": "node scripts/mailSync.js",
     "mail:account": "node scripts/mailAccount.js"
   },

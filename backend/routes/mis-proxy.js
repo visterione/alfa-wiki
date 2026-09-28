@@ -10,6 +10,7 @@ const { authenticate } = require('../middleware/auth');
 const { syncAndAnnotate } = require('../services/rbEmployeeRegistry');
 const medCenters = require('../services/medCenters');
 const { resolveBookingDuration, addMinutesToMisDateTime } = require('../services/bookingDurationService');
+const { createDoctorPhotos } = require('../services/misDoctorPhotos');
 
 const router = express.Router();
 
@@ -131,6 +132,25 @@ router.post('/doctor-info', authenticate, async (req, res) => {
   } catch (err) {
     console.error('❌ Ошибка /mis/doctor-info:', err.message);
     res.status(500).json({ success: false, error: 'Ошибка при запросе данных врача' });
+  }
+});
+
+// Фото врача из МИС, ужатое и со своего адреса (ver. 9.05) — см.
+// services/misDoctorPhotos.js. 404 значит «фото в МИС нет», и карточка рисует
+// серого человечка.
+const doctorPhotos = createDoctorPhotos({ misRequest, misBaseUrl: MIS_BASE_URL });
+
+router.get('/doctor-photo/:userId', authenticate, async (req, res) => {
+  const { userId } = req.params;
+  if (!/^\d+$/.test(userId)) return res.status(400).json({ error: 'Некорректный id врача' });
+  try {
+    const photo = await doctorPhotos.getPhoto(userId);
+    if (!photo) return res.status(404).json({ error: 'Фото нет' });
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.type('image/jpeg').send(photo);
+  } catch (err) {
+    console.error('❌ Ошибка /mis/doctor-photo:', err.message);
+    res.status(502).json({ error: 'МИС не отдала фото' });
   }
 });
 

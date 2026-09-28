@@ -9,9 +9,9 @@
 // не захлёбываются от десятка одновременно грузящихся приложений.
 
 const CONCURRENCY = 2;
-// Сама страница ждёт тишины не дольше 30 секунд; сверху запас на загрузку
-// бандла в окно. Не дождались — страница уйдёт в документ без данных.
-const PAGE_TIMEOUT_MS = 45000;
+// Сама страница ждёт не дольше 60 секунд; сверху запас на загрузку бандла в
+// окно. Не дождались — страница уйдёт в документ без данных.
+const PAGE_TIMEOUT_MS = 80000;
 // Ширина окна — настольная: на ней приложения показывают сетки карточек,
 // которые снимок перекладывает в таблицы. На узкой они сложились бы в столбик.
 const FRAME_WIDTH = 1100;
@@ -29,19 +29,19 @@ function snapshotOne({ id: pageId, slug }, signal) {
     });
 
     let settled = false;
-    const finish = (html) => {
+    const finish = (snap) => {
       if (settled) return;
       settled = true;
       window.removeEventListener('message', onMessage);
       signal?.removeEventListener('abort', onAbort);
       clearTimeout(timer);
       frame.remove();
-      resolve(html || null);
+      resolve(snap && snap.html ? snap : null);
     };
     const onMessage = (event) => {
       if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       if (event.data?.type !== 'alfa-print-snapshot' || event.data.pageId !== pageId) return;
-      finish(event.data.html);
+      finish({ html: event.data.html, hideMeta: event.data.hideMeta === true });
     };
     const onAbort = () => finish(null);
     const timer = setTimeout(() => finish(null), PAGE_TIMEOUT_MS);
@@ -55,8 +55,8 @@ function snapshotOne({ id: pageId, slug }, signal) {
 
 /**
  * Снять html-страницы по очереди: pages — [{ id, slug }]. Возвращает
- * { [pageId]: html } — только удавшиеся; остальные сервер соберёт из
- * сохранённой разметки.
+ * { [pageId]: { html, hideMeta } } — только удавшиеся; остальные сервер
+ * соберёт из сохранённой разметки.
  */
 export async function snapshotPages(pages, { onProgress, signal } = {}) {
   const result = {};
@@ -65,8 +65,8 @@ export async function snapshotPages(pages, { onProgress, signal } = {}) {
   const worker = async () => {
     while (next < pages.length && !signal?.aborted) {
       const page = pages[next++];
-      const html = await snapshotOne(page, signal);
-      if (html) result[page.id] = html;
+      const snap = await snapshotOne(page, signal);
+      if (snap) result[page.id] = snap;
       done += 1;
       onProgress?.(done, pages.length);
     }

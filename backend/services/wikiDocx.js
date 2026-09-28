@@ -249,6 +249,7 @@ class Converter {
     this.images = images;
     this.baseUrl = baseUrl;
     this.listInstance = 0;
+    this.pendingBreak = false;
   }
 
   convert(html) {
@@ -285,6 +286,9 @@ class Converter {
 
   block(node, tag, fmt, ctx, out) {
     const style = parseStyle(node.attribs?.style);
+    // Разрыв страницы перед блоком (снимок html-страницы переносит его из
+    // break-before: page) достаётся первому абзацу, который блок создаст.
+    if (/always|page/.test(style['page-break-before'] || style['break-before'] || '')) this.pendingBreak = true;
     const align = parseAlign(style['text-align'] || node.attribs?.align) || ctx.align;
     const nextFmt = this.formatFor(tag, style, fmt);
     const c = { ...ctx, align };
@@ -446,6 +450,10 @@ class Converter {
 
     const opts = { children };
     if (style) opts.style = style;
+    if (this.pendingBreak) {
+      opts.pageBreakBefore = true;
+      this.pendingBreak = false;
+    }
     if (ctx.align) opts.alignment = ctx.align;
 
     let left = 0;
@@ -562,6 +570,12 @@ class Converter {
   }
 
   table(node, fmt, ctx, out) {
+    // pageBreakBefore у абзаца внутри ячейки Word соблюдает не всегда,
+    // поэтому разрыв перед таблицей — отдельным пустым абзацем.
+    if (this.pendingBreak) {
+      this.pendingBreak = false;
+      out.push(new Paragraph({ pageBreakBefore: true, spacing: { before: 0, after: 0 }, children: [new TextRun({ text: '', size: 2 })] }));
+    }
     const rows = [];
     const collectRows = (n) => {
       for (const child of n.children || []) {
@@ -600,6 +614,10 @@ class Converter {
         const colspan = parseInt(td.attribs?.colspan, 10);
         const rowspan = parseInt(td.attribs?.rowspan, 10);
         if (colspan > 1) opts.columnSpan = colspan;
+        // Ширина из style ячейки — для раскладочных таблиц снимка: колонка
+        // с фото врача должна остаться узкой, а текст забрать остальное.
+        const widthPx = String(style.width || '').match(/^([\d.]+)px$/);
+        if (widthPx) opts.width = { size: Math.round(parseFloat(widthPx[1]) * 15), type: WidthType.DXA };
         if (rowspan > 1) opts.rowSpan = rowspan;
         if (background && background !== 'FFFFFF') opts.shading = { type: ShadingType.CLEAR, fill: background, color: 'auto' };
         else if (isHeader) opts.shading = { type: ShadingType.CLEAR, fill: 'F3F4F6', color: 'auto' };
@@ -733,11 +751,16 @@ async function buildPrintDocument({ entries, siteName, generatedBy, generatedAt 
     // У html-страницы со снимком данные живые — расписания и цены из МИС на
     // бумаге устаревают, поэтому время снимка печатаем рядом с датой правки.
     const meta = `Обновлено ${formatDate(entry.updatedAt)}` + (entry.dataAt ? ` · данные на ${formatDate(entry.dataAt)} ${formatTime(entry.dataAt)}` : '');
-    children.push(new Paragraph({
-      spacing: { after: 240 },
-      children: [new TextRun({ text: meta, size: 18, color: MUTED_COLOR })],
-    }));
+    if (!entry.hideMeta) {
+      children.push(new Paragraph({
+        spacing: { after: 240 },
+        children: [new TextRun({ text: meta, size: 18, color: MUTED_COLOR })],
+      }));
+    }
     const blocks = [];
+    // Каждая страница вики и так начинается с нового листа — несработавший
+    // разрыв из прошлой страницы сюда не переносим.
+    converter.pendingBreak = false;
     converter.nodes(doms.get(entry).children, {}, { maxWidth: CONTENT_WIDTH_PX, lists: [] }, blocks);
     if (blocks.length) children.push(...blocks);
     else children.push(new Paragraph({ children: [new TextRun({ text: 'На странице нет содержимого для печати.', italics: true, color: MUTED_COLOR })] }));

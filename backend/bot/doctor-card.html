@@ -116,7 +116,13 @@ input, select, textarea, button { font-family: inherit; }
 .dc-tag { padding: 4px 10px; background: #e0f2fe; color: #0369a1; border-radius: 12px; font-size: 11px; font-weight: 500; }
 
 .dc-card-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px; gap: 12px; }
+/* Сведения и фото — одна строка и на узком экране: там шапка карточки
+   складывается в столбик, и без обёртки фото уезжало бы под текст (ver. 9.05). */
+.dc-card-main { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; }
 .dc-card-info { flex: 1; min-width: 0; }
+.dc-card-photo { width: 64px; height: 80px; flex-shrink: 0; border-radius: 10px; overflow: hidden; background: #f3f4f6; }
+.dc-card-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dc-cards.compact .dc-card-photo { width: 48px; height: 60px; border-radius: 8px; }
 .dc-card-name { font-size: 17px; font-weight: 600; color: var(--dc-text); margin: 0 0 4px 0; }
 .dc-card-name a { color: inherit; text-decoration: none; }
 .dc-card-name a:hover { color: var(--dc-primary); }
@@ -454,7 +460,8 @@ input, select, textarea, button { font-family: inherit; }
   .dc-tag { font-size: 10px; padding: 3px 8px; }
   
   .dc-card-header { flex-direction: column; padding: 12px; gap: 10px; }
-  .dc-card-info { width: 100%; }
+  .dc-card-main { width: 100%; }
+  .dc-card-photo { width: 52px; height: 64px; }
   .dc-card-name { font-size: 15px; }
   .dc-card-specialty { font-size: 12px; }
   .dc-card-details { gap: 8px; font-size: 11px; }
@@ -509,6 +516,27 @@ input, select, textarea, button { font-family: inherit; }
   .dc-tabs { gap: 2px; }
   .dc-tab { padding: 6px; }
 }
+
+/* ── Печатная версия (ver. 9.05) ─────────────────────────────────────────
+   Включается, когда страницу снимает выгрузка вики в Word
+   (window.__ALFA_PRINT_MODE__). Экранная карточка на бумаге не работает:
+   вкладки, всплывающие подсказки и значки всех клиник подряд превращались в
+   полстраницы непонятного списка. Здесь своя разметка — из тех элементов,
+   которые конвертер переносит в Word без потерь: таблицы, абзацы, плашки. */
+.dc-print .dc-header, .dc-print .dc-filters { display: none; }
+.dc-print-card + .dc-print-card { break-before: page; }
+.dc-print-name { font-size: 20px; font-weight: 700; margin: 0 0 2px; color: var(--dc-text); }
+.dc-print-specialty { font-size: 14px; font-weight: 600; color: var(--dc-primary); margin: 0 0 8px; }
+.dc-print-clinics { margin: 0 0 8px; }
+.dc-print-clinic { display: inline; padding: 2px 6px; border-radius: 4px; color: #fff; font-size: 12px; font-weight: 600; }
+.dc-print-facts { font-size: 13px; color: var(--dc-text); margin: 0 0 4px; }
+.dc-print-fact-label { color: var(--dc-text-secondary); font-weight: 600; }
+.dc-print-tags { font-size: 12px; color: #0369a1; margin: 0; }
+.dc-print-photo-cell { width: 120px; vertical-align: top; text-align: right; }
+.dc-print-photo { width: 110px; height: auto; border-radius: 8px; }
+.dc-print-section { font-size: 15px; font-weight: 700; margin: 16px 0 6px; color: var(--dc-text); }
+.dc-print-block:has(> .dc-print-favorites:empty) { display: none; }
+.dc-print .dc-services-container { max-height: none; overflow: visible; }
 </style>
 </head>
 <body>
@@ -691,6 +719,21 @@ window.dcApp = (function() {
     ? window.location.protocol + '//' + window.location.hostname + ':9001/api'
     : window.location.origin + '/api';
   var PAGE_SLUG = getPageSlug();
+  // Печатная версия для выгрузки вики в Word (ver. 9.05). Дату правки и
+  // время снимка под заголовком страницы в документе не печатаем: на листах
+  // врачей это шум, данные врача от этого не устаревают.
+  var PRINT_MODE = window.__ALFA_PRINT_MODE__ === true;
+  if (PRINT_MODE) window.__ALFA_PRINT_OPTIONS__ = { hideMeta: true };
+  // Серый человечек вместо фото — как аватар без фото везде в портале.
+  // Картинкой, а не встроенным svg: svg снимок для Word пропускает, а
+  // заглушка на листе врача нужна так же, как на экране.
+  var PHOTO_PLACEHOLDER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">' +
+    '<rect width="64" height="80" fill="#f3f4f6"/>' +
+    '<circle cx="32" cy="29" r="11" fill="none" stroke="#9ca3af" stroke-width="3"/>' +
+    '<path d="M14 62c0-10 8-17 18-17s18 7 18 17" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round"/>' +
+    '</svg>'
+  );
   var cards = [];
   var filteredCards = [];
   var allTags = [];
@@ -1001,12 +1044,145 @@ window.dcApp = (function() {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // ФОТО ВРАЧЕЙ (ver. 9.05)
+  // ═══════════════════════════════════════════════════════════════
+
+  // Фото идёт через наш бэкенд (/mis/doctor-photo): в МИС оно лежит на чужом
+  // домене без CORS и весит под мегабайт. Загружаем с токеном как blob — тег
+  // img токен не передаёт. Ссылки на blob храним по врачу, чтобы фильтр и
+  // перерисовка карточек не качали фото заново; null — «в МИС фото нет».
+  var photoUrls = {};
+
+  function fetchPhoto(misUserId) {
+    if (photoUrls[misUserId] !== undefined) return Promise.resolve(photoUrls[misUserId]);
+    return fetch(API_BASE + '/mis/doctor-photo/' + encodeURIComponent(misUserId), {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(function(r) {
+      if (!r.ok) return null;
+      return r.blob().then(function(blob) { return URL.createObjectURL(blob); });
+    }).catch(function() { return null; }).then(function(url) {
+      photoUrls[misUserId] = url;
+      return url;
+    });
+  }
+
+  // Подставляет фото во все img[data-photo-for] в контейнере. Пока фото
+  // грузится или если его нет, остаётся серый человечек из разметки.
+  function loadPhotos() {
+    var imgs = document.querySelectorAll('#dc-cards-container img[data-photo-for]');
+    var ids = {};
+    imgs.forEach(function(img) { if (img.dataset.photoFor) ids[img.dataset.photoFor] = true; });
+    return Promise.all(Object.keys(ids).map(function(id) {
+      return fetchPhoto(id).then(function(url) {
+        if (!url) return;
+        document.querySelectorAll('#dc-cards-container img[data-photo-for="' + id + '"]').forEach(function(img) {
+          img.src = url;
+        });
+      });
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ПЕЧАТНАЯ ВЕРСИЯ (ver. 9.05)
+  // ═══════════════════════════════════════════════════════════════
+
+  // Одна карточка на лист: шапка таблицей без рамок (сведения слева, фото
+  // справа), под ней основные услуги и полный список. Медцентры — только те,
+  // где врач принимает, плашками в одну строку; сведения — одной строкой с
+  // подписями, а не столбиком значков, которые в Word теряются.
+  function renderPrintCards(container) {
+    if (!filteredCards.length) {
+      container.innerHTML = '<p>Список врачей пуст</p>';
+      window.dispatchEvent(new Event('alfa:print-ready'));
+      return;
+    }
+
+    container.innerHTML = filteredCards.map(function(card) {
+      var meta = card.metadata || {};
+      var cardClinics = convertOldClinicIds(meta.clinics || []);
+      var clinics = CLINICS_DISPLAY_ORDER.filter(function(id) { return cardClinics.indexOf(id) !== -1; })
+        .map(function(id) { return CLINICS.find(function(c) { return c.id === id; }); })
+        .filter(Boolean);
+      // Неразрывные пробелы внутри плашки — поля: в Word заливка ложится
+      // только под текст, и без них название упиралось бы в край плашки.
+      var clinicsHtml = clinics.length
+        ? '<p class="dc-print-clinics">' + clinics.map(function(c) {
+            return '<span class="dc-print-clinic" style="background:' + escapeHtml(c.color || '#64748b') + '">\u00a0' + escapeHtml(c.name) + '\u00a0</span>';
+          }).join(' ') + '</p>'
+        : '';
+
+      var facts = [
+        meta.ageRange ? ['Возраст пациентов', meta.ageRange] : null,
+        card.experience ? ['Стаж', card.experience] : null,
+        meta.internalNumber ? ['Внутренний', meta.internalNumber] : null,
+        meta.mobileNumber ? ['Мобильный', meta.mobileNumber] : null
+      ].filter(Boolean);
+      var factsHtml = facts.length
+        ? '<p class="dc-print-facts">' + facts.map(function(f) {
+            return '<span class="dc-print-fact-label">' + f[0] + ':</span> ' + escapeHtml(f[1]);
+          }).join('\u00a0\u00a0·\u00a0\u00a0') + '</p>'
+        : '';
+
+      var tags = meta.tags || [];
+      var tagsHtml = tags.length
+        ? '<p class="dc-print-tags">' + tags.map(function(t) { return '#' + escapeHtml(t); }).join('\u00a0\u00a0') + '</p>'
+        : '';
+
+      var servicesTable = '<table class="dc-services-table"><thead><tr><th>Артикул</th><th>Услуга</th><th>Длит.</th><th>Цена</th></tr></thead>' +
+        '<tbody id="services-' + card.id + '">' +
+          (meta.misUserId ? '' : '<tr><td colspan="4">Врач не связан с МИС</td></tr>') +
+        '</tbody></table>';
+
+      return '<div class="dc-print-card">' +
+        '<table data-print-layout="grid"><tbody><tr>' +
+          '<td>' +
+            '<h2 class="dc-print-name">' + escapeHtml(card.fullName) + '</h2>' +
+            (card.specialty ? '<p class="dc-print-specialty">' + escapeHtml(card.specialty) + '</p>' : '') +
+            clinicsHtml + factsHtml + tagsHtml +
+          '</td>' +
+          '<td class="dc-print-photo-cell" style="width:120px">' +
+            '<img class="dc-print-photo" data-photo-for="' + escapeHtml(String(meta.misUserId || '')) + '" src="' + PHOTO_PLACEHOLDER + '" alt="">' +
+          '</td>' +
+        '</tr></tbody></table>' +
+        (card.description ? '<h3 class="dc-print-section">Заметки</h3><div class="dc-notes">' + card.description + '</div>' : '') +
+        '<div class="dc-print-block">' +
+          '<h3 class="dc-print-section">Основные услуги</h3>' +
+          '<div class="dc-print-favorites" id="favorites-' + card.id + '"></div>' +
+        '</div>' +
+        '<div class="dc-print-block">' +
+          '<h3 class="dc-print-section">Полный список услуг</h3>' +
+          servicesTable +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    // Полные списки — очередью по три врача: у каждого запрос в МИС на
+    // каждую клинику, и три десятка врачей разом — это сотни запросов за
+    // секунду к МИС, которая обслуживает ещё и регистратуру.
+    var queue = filteredCards.filter(function(c) { return c.metadata && c.metadata.misUserId; });
+    var next = 0;
+    function worker() {
+      if (next >= queue.length) return Promise.resolve();
+      var card = queue[next++];
+      return Promise.resolve(loadServices(card.id, card.metadata.misUserId)).catch(function() {}).then(worker);
+    }
+    var services = Promise.all([worker(), worker(), worker()]);
+
+    // Снимок ждёт не тишины в сети, а явного сигнала: так он не сработает в
+    // паузе между очередными врачами.
+    Promise.all([loadAllFavorites(), services, loadPhotos()]).catch(function() {}).then(function() {
+      window.dispatchEvent(new Event('alfa:print-ready'));
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // RENDERING
   // ═══════════════════════════════════════════════════════════════
 
   function renderCards() {
     var container = document.getElementById('dc-cards-container');
     if (!container) return;
+    if (PRINT_MODE) return renderPrintCards(container);
     
     if (!filteredCards.length) {
       container.innerHTML = '<div class="dc-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg><h3>Список врачей пуст</h3><p>Нажмите "Добавить врача"</p></div>';
@@ -1044,6 +1220,7 @@ window.dcApp = (function() {
           tagBadges +
         '</div>' +
         '<div class="dc-card-header">' +
+          '<div class="dc-card-main">' +
           '<div class="dc-card-info">' +
             '<h3 class="dc-card-name">' + nameHtml + '</h3>' +
             (card.specialty ? '<div class="dc-card-specialty">' + escapeHtml(card.specialty) + '</div>' : '') +
@@ -1053,6 +1230,8 @@ window.dcApp = (function() {
               (meta.internalNumber ? '<div>' + ICONS.phone + ' вн. ' + escapeHtml(meta.internalNumber) + '</div>' : '') +
               (meta.mobileNumber ? '<div>' + ICONS.mobile + ' ' + escapeHtml(meta.mobileNumber) + '</div>' : '') +
             '</div>' +
+          '</div>' +
+          '<div class="dc-card-photo"><img data-photo-for="' + escapeHtml(String(meta.misUserId || '')) + '" src="' + PHOTO_PLACEHOLDER + '" alt=""></div>' +
           '</div>' +
           '<div class="dc-tabs">' +
             '<button type="button" class="dc-tab active" data-card="' + card.id + '" data-tab="info" onclick="dcApp.switchTab(this)">' + ICONS.info + '</button>' +
@@ -1121,6 +1300,7 @@ window.dcApp = (function() {
 
     checkNotesOverflow();
     loadAllFavorites();
+    loadPhotos();
 
     if (reorderMode) {
       setupDragAndDrop();
@@ -1240,12 +1420,10 @@ window.dcApp = (function() {
   }
 
   function loadAllFavorites() {
-    filteredCards.forEach(function(card) {
+    return Promise.all(filteredCards.map(function(card) {
       var misUserId = card.metadata && card.metadata.misUserId;
-      if (misUserId) {
-        loadFavorites(card.id, misUserId);
-      }
-    });
+      return misUserId ? loadFavorites(card.id, misUserId) : null;
+    }));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -2206,7 +2384,7 @@ window.dcApp = (function() {
     // поэтому должна жить в области видимости всей функции loadServices.
     var cardDurationMap = {};
 
-    Promise.all([
+    return Promise.all([
       fetchAPI(API_BASE + '/mis/doctor-info', {
         method: 'POST',
         body: JSON.stringify({ userId: misUserId })
@@ -2456,7 +2634,7 @@ window.dcApp = (function() {
 
     // Если МИС недоступен — рендерим с сохранёнными ценами, но настроенные
     // длительности при этом терять не должны, поэтому цены гасят свою ошибку сами.
-    Promise.all([
+    return Promise.all([
       fetchLivePrices.catch(function() { return []; }),
       fetchDurations
     ]).then(function(results) {
@@ -3328,6 +3506,10 @@ window.dcApp = (function() {
   }
 
   function init() {
+    if (PRINT_MODE) {
+      var app = document.getElementById('doctors-app');
+      if (app) app.classList.add('dc-print');
+    }
     var params = new URLSearchParams(window.location.search);
     highlightId = params.get('highlight');
     initViewMode();

@@ -77,11 +77,15 @@ function orderEntries(pages, folders, snapshots = {}) {
     for (const page of (folderPages.get(folderId) || []).sort(byTitle)) {
       // Снимок из браузера сотрудника — только для html-страниц: у страниц
       // редактора в базе и так всё содержимое, подменять его незачем.
-      const snapshot = page.contentType === 'html' && typeof snapshots[page.id] === 'string' ? snapshots[page.id] : null;
+      // Снимок — строка или { html, hideMeta }: вторую форму шлёт окно
+      // выбора с 9.05, когда страница просит не печатать дату под заголовком.
+      const raw = page.contentType === 'html' ? snapshots[page.id] : null;
+      const snapshot = typeof raw === 'string' ? { html: raw } : (raw && typeof raw.html === 'string' ? raw : null);
       entries.push({
         kind: 'page', title: page.title, level, updatedAt: page.updatedAt,
-        contentHtml: snapshot ?? page.content,
+        contentHtml: snapshot ? snapshot.html : page.content,
         dataAt: snapshot ? snapshotsAt : null,
+        hideMeta: snapshot?.hideMeta === true,
       });
     }
     for (const folder of (childFolders.get(folderId) || []).sort(byTitle)) {

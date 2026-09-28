@@ -150,3 +150,21 @@ test('сетка карточек из снимка ложится таблиц�
   // SVG, закодированный в адрес, — картинка, а не пометка «[Изображение]».
   assert.doesNotMatch(xml, /\[Изображение/);
 });
+
+test('разрыв страницы, ширина ячейки и hideMeta из снимка доходят до Word', async () => {
+  const buffer = await buildPrintDocument({
+    siteName: 'Альфа',
+    entries: [{
+      kind: 'page', title: 'Терапевты', level: 0, updatedAt: new Date(), dataAt: new Date(), hideMeta: true,
+      contentHtml: '<div><table data-print-layout="grid"><tbody><tr><td>Иванов</td><td style="width:120px">фото</td></tr></tbody></table></div>'
+        + '<div style="page-break-before:always"><p>Петров</p></div>',
+    }],
+  });
+  const JSZip = require('jszip');
+  const xml = await (await JSZip.loadAsync(buffer)).file('word/document.xml').async('string');
+  assert.doesNotMatch(xml, /Обновлено|данные на/);
+  assert.match(xml, /<w:tcW w:type="dxa" w:w="1800"\/>/);
+  const petrov = xml.indexOf('Петров');
+  const paragraphStart = xml.lastIndexOf('<w:p>', petrov);
+  assert.match(xml.slice(paragraphStart, petrov), /<w:pageBreakBefore\/>/);
+});
