@@ -192,7 +192,7 @@ export const rbActivityLog = {
 // Выгрузка вики для печати (ver. 8.99)
 export const printExport = {
   tree: () => api.get('/print-export/tree'),
-  docx: (pageIds) => api.post('/print-export/docx', { pageIds }, { responseType: 'blob', timeout: 300000 }),
+  docx: (pageIds, snapshots = {}) => api.post('/print-export/docx', { pageIds, snapshots }, { responseType: 'blob', timeout: 300000 }),
 };
 
 // Folders

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Download, FileText, Folder, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { printExport } from '../../services/api';
+import { snapshotPages } from './printSnapshots';
 import './PrintExportModal.css';
 
 // Окно выбора страниц для документа Word (ver. 8.99).
@@ -10,6 +11,11 @@ import './PrintExportModal.css';
 // отмеченные для печати и доступные этому пользователю страницы, и только
 // папки на пути к ним. Сервер при выгрузке проверяет каждую страницу заново,
 // так что выбор здесь — удобство, а не граница доступа.
+//
+// html-страницы перед сборкой запускаются здесь же, в браузере сотрудника,
+// чтобы в документ попали их данные, а не пустая заготовка (ver. 9.04, см.
+// printSnapshots.js). Это самая долгая часть, поэтому у неё свой счётчик и
+// отмена.
 
 const byTitle = (a, b) => a.title.localeCompare(b.title, 'ru', { numeric: true, sensitivity: 'base' });
 
@@ -65,6 +71,10 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
   const [selected, setSelected] = useState(() => new Set());
   const [expanded, setExpanded] = useState(() => new Set());
   const [building, setBuilding] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const abortRef = useRef(null);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const index = useMemo(() => {
     const childFolders = new Map();
@@ -138,16 +148,37 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
   };
 
   const handleDownload = async () => {
+    const controller = new AbortController();
+    abortRef.current = controller;
     setBuilding(true);
     try {
-      const response = await printExport.docx([...selected]);
+      const htmlPages = tree.pages.filter(p => p.contentType === 'html' && selected.has(p.id));
+      let snapshots = {};
+      if (htmlPages.length) {
+        setProgress({ done: 0, total: htmlPages.length });
+        snapshots = await snapshotPages(htmlPages, {
+          signal: controller.signal,
+          onProgress: (done, total) => setProgress({ done, total }),
+        });
+        if (controller.signal.aborted) return;
+      }
+      setProgress(null);
+      const response = await printExport.docx([...selected], snapshots);
+      if (controller.signal.aborted) return;
       downloadBlob(response.data, filenameFrom(response.headers));
       onClose();
     } catch (error) {
-      toast.error((await errorText(error)) || 'Не удалось собрать документ');
+      if (!controller.signal.aborted) toast.error((await errorText(error)) || 'Не удалось собрать документ');
     } finally {
+      abortRef.current = null;
       setBuilding(false);
+      setProgress(null);
     }
+  };
+
+  const handleCancel = () => {
+    if (building) abortRef.current?.abort();
+    else onClose();
   };
 
   const renderFolder = (folderId, depth) => (
@@ -207,11 +238,20 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
                 <button type="button" className="btn-link" onClick={() => setSelected(new Set())}>Никакие</button>
               </div>
               <div className="print-tree">{renderFolder(null, 0)}</div>
+              {progress && (
+                <div className="print-export-progress">
+                  <span>Загружаю данные html-страниц: {progress.done} из {progress.total}</span>
+                  <div className="print-export-progress-track">
+                    <div style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} />
+                  </div>
+                  <small className="text-muted">Не закрывайте вкладку, пока идёт сборка</small>
+                </div>
+              )}
             </>
           )}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose} disabled={building}>Отмена</button>
+          <button className="btn btn-secondary" onClick={handleCancel}>{building ? 'Прервать' : 'Отмена'}</button>
           <button className="btn btn-primary" onClick={handleDownload} disabled={building || selected.size === 0}>
             {building ? <div className="loading-spinner" style={{ width: 16, height: 16 }} /> : <Download size={16} />}
             {building ? 'Собираю документ…' : 'Скачать .docx'}

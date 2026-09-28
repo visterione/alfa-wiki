@@ -117,3 +117,36 @@ test('документ собирается и это zip с document.xml', asyn
   assert.equal(buffer.subarray(0, 2).toString(), 'PK');
   assert.ok(buffer.includes(Buffer.from('word/document.xml')));
 });
+
+test('снимок из браузера подменяет разметку только html-страницы', () => {
+  const entries = orderEntries(
+    [
+      { id: 'h', title: 'Услуги', folderId: null, contentType: 'html', content: '<div id="app"></div>' },
+      { id: 'w', title: 'Правила', folderId: null, contentType: 'wysiwyg', content: '<p>из базы</p>' },
+    ],
+    [],
+    { h: '<table><tr><td>КТ</td></tr></table>', w: '<p>подмена</p>' },
+  );
+  const byTitle = Object.fromEntries(entries.map(e => [e.title, e]));
+  assert.match(byTitle['Услуги'].contentHtml, /КТ/);
+  assert.ok(byTitle['Услуги'].dataAt instanceof Date);
+  assert.equal(byTitle['Правила'].contentHtml, '<p>из базы</p>');
+  assert.equal(byTitle['Правила'].dataAt, null);
+});
+
+test('сетка карточек из снимка ложится таблицей без рамок', async () => {
+  const buffer = await buildPrintDocument({
+    siteName: 'Альфа',
+    entries: [{
+      kind: 'page', title: 'Врачи', level: 0, updatedAt: new Date(), dataAt: new Date(),
+      contentHtml: '<table data-print-layout="grid"><tbody><tr><td>Иванов</td><td>Петров</td></tr></tbody></table>'
+        + '<img src="data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%2210%22/%3E">',
+    }],
+  });
+  const JSZip = require('jszip');
+  const xml = await (await JSZip.loadAsync(buffer)).file('word/document.xml').async('string');
+  assert.match(xml, /<w:tblBorders><w:top w:val="none"/);
+  assert.match(xml, /данные на/);
+  // SVG, закодированный в адрес, — картинка, а не пометка «[Изображение]».
+  assert.doesNotMatch(xml, /\[Изображение/);
+});

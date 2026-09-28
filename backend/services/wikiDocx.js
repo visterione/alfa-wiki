@@ -146,8 +146,13 @@ function resolveUploadPath(src) {
 }
 
 async function readImageSource(src) {
-  const data = String(src).match(/^data:image\/[a-z0-9.+-]+;base64,(.+)$/i);
-  if (data) return Buffer.from(data[1], 'base64');
+  // data: бывает и без base64 — так снимок html-страницы приносит SVG-иконки
+  // (data:image/svg+xml;charset=UTF-8,%3Csvg…), закодированные в адрес.
+  const data = String(src).match(/^data:image\/[a-z0-9.+-]+((?:;[^,;]+)*),(.*)$/is);
+  if (data) {
+    if (/;base64/i.test(data[1])) return Buffer.from(data[2], 'base64');
+    try { return Buffer.from(decodeURIComponent(data[2]), 'utf8'); } catch { return null; }
+  }
   const file = resolveUploadPath(src);
   if (!file) return null;
   const stat = await fs.promises.stat(file).catch(() => null);
@@ -604,7 +609,15 @@ class Converter {
       return new TableRow({ children: cells.length ? cells : [new TableCell({ children: [new Paragraph({})] })], tableHeader: isHeaderRow });
     });
 
-    out.push(new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }));
+    // Сетка карточек из снимка html-страницы (data-print-layout="grid") —
+    // таблица только для раскладки, рамки на бумаге превратили бы её в бланк.
+    const layoutOnly = node.attribs?.['data-print-layout'] === 'grid';
+    const none = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+    out.push(new Table({
+      rows: tableRows,
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      ...(layoutOnly && { borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none } }),
+    }));
     // Две таблицы подряд без абзаца между ними Word склеивает в одну.
     out.push(new Paragraph({ spacing: { after: 0 } }));
   }
@@ -619,6 +632,11 @@ function formatDate(date) {
   const d = new Date(date);
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+}
+
+function formatTime(date) {
+  const d = new Date(date);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 // По определению на каждую глубину (по кругу из трёх): вид маркера и формат
@@ -712,9 +730,12 @@ async function buildPrintDocument({ entries, siteName, generatedBy, generatedAt 
     sheetHasContent = false;
     if (entry.kind !== 'page') continue;
 
+    // У html-страницы со снимком данные живые — расписания и цены из МИС на
+    // бумаге устаревают, поэтому время снимка печатаем рядом с датой правки.
+    const meta = `Обновлено ${formatDate(entry.updatedAt)}` + (entry.dataAt ? ` · данные на ${formatDate(entry.dataAt)} ${formatTime(entry.dataAt)}` : '');
     children.push(new Paragraph({
       spacing: { after: 240 },
-      children: [new TextRun({ text: `Обновлено ${formatDate(entry.updatedAt)}`, size: 18, color: MUTED_COLOR })],
+      children: [new TextRun({ text: meta, size: 18, color: MUTED_COLOR })],
     }));
     const blocks = [];
     converter.nodes(doms.get(entry).children, {}, { maxWidth: CONTENT_WIDTH_PX, lists: [] }, blocks);

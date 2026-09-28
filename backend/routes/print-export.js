@@ -34,7 +34,7 @@ async function loadPrintable(req, { withContent = false, ids = null } = {}) {
 
   const where = { isPrintable: true, isPublished: true, contentType: { [Op.in]: PRINTABLE_TYPES } };
   if (ids) where.id = { [Op.in]: ids };
-  const attributes = ['id', 'title', 'folderId', 'contentType', 'allowedRoles', 'updatedAt'];
+  const attributes = ['id', 'slug', 'title', 'folderId', 'contentType', 'allowedRoles', 'updatedAt'];
   if (withContent) attributes.push('content');
 
   const pages = (await Page.findAll({ where, attributes }))
@@ -57,7 +57,7 @@ async function loadPrintable(req, { withContent = false, ids = null } = {}) {
 // Обход в порядке проводника: по названию. Внутри папки сначала её страницы,
 // потом подпапки — в проводнике наоборот, но в книге вводные страницы раздела
 // должны идти до его подразделов, а не после них.
-function orderEntries(pages, folders) {
+function orderEntries(pages, folders, snapshots = {}) {
   const childFolders = new Map();
   const folderPages = new Map();
   for (const f of folders) {
@@ -71,10 +71,18 @@ function orderEntries(pages, folders) {
     folderPages.get(key).push(p);
   }
 
+  const snapshotsAt = new Date();
   const entries = [];
   const walk = (folderId, level) => {
     for (const page of (folderPages.get(folderId) || []).sort(byTitle)) {
-      entries.push({ kind: 'page', title: page.title, level, contentHtml: page.content, updatedAt: page.updatedAt });
+      // Снимок из браузера сотрудника — только для html-страниц: у страниц
+      // редактора в базе и так всё содержимое, подменять его незачем.
+      const snapshot = page.contentType === 'html' && typeof snapshots[page.id] === 'string' ? snapshots[page.id] : null;
+      entries.push({
+        kind: 'page', title: page.title, level, updatedAt: page.updatedAt,
+        contentHtml: snapshot ?? page.content,
+        dataAt: snapshot ? snapshotsAt : null,
+      });
     }
     for (const folder of (childFolders.get(folderId) || []).sort(byTitle)) {
       entries.push({ kind: 'folder', title: folder.title, level });
@@ -96,7 +104,7 @@ router.get('/tree', authenticate, async (req, res) => {
     const { pages, folders } = await loadPrintable(req);
     res.json({
       folders: folders.map(f => ({ id: f.id, title: f.title, parentId: f.parentId || null })),
-      pages: pages.map(p => ({ id: p.id, title: p.title, folderId: p.folderId || null, contentType: p.contentType })),
+      pages: pages.map(p => ({ id: p.id, slug: p.slug, title: p.title, folderId: p.folderId || null, contentType: p.contentType })),
     });
   } catch (error) {
     console.error('Print export tree error:', error);
@@ -114,9 +122,15 @@ router.post('/docx', authenticate, async (req, res) => {
     const { pages, folders } = await loadPrintable(req, { withContent: true, ids });
     if (!pages.length) return res.status(404).json({ error: 'Нет доступных страниц для печати' });
 
+    // Снимки html-страниц, снятые в браузере сотрудника (ver. 9.04). Это его
+    // собственный HTML для его же документа, прав он не расширяет: берём
+    // снимки только тех страниц, что прошли проверку выше, а картинки из
+    // закрытых частей uploads конвертер отсекает и здесь.
+    const snapshots = req.body?.snapshots && typeof req.body.snapshots === 'object' ? req.body.snapshots : {};
+
     const generatedAt = new Date();
     const buffer = await buildPrintDocument({
-      entries: orderEntries(pages, folders),
+      entries: orderEntries(pages, folders, snapshots),
       siteName: await siteName(),
       generatedBy: req.user.displayName || req.user.username,
       generatedAt,
