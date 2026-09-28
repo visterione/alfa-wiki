@@ -22,3 +22,14 @@ test('без ответа черновики остаются', () => {
   const next = mergeReply(withDrafts, null);
   assert.deepEqual(next.drafts, withDrafts.drafts);
 });
+
+test('варианты с пометками (парсер 0.50) и старые строки приводятся к одному виду', () => {
+  const { normalizeDraft } = require('../services/reviewCollector/drafts');
+  assert.deepEqual(normalizeDraft('Текст'), { text: 'Текст', notes: [] });
+  assert.deepEqual(
+    normalizeDraft({ text: 'Текст', notes: ['обещает скидку', 42, ''] }),
+    { text: 'Текст', notes: ['обещает скидку'] },
+  );
+  assert.equal(normalizeDraft({ text: '  ' }), null);
+  assert.equal(normalizeDraft(null), null);
+});

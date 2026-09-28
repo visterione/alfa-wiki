@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, RefreshCw, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Sparkles, RefreshCw, ChevronLeft, ChevronRight, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reviews } from '../services/api';
 
@@ -46,7 +46,11 @@ function ReviewReplyDrafts({ review, anchorRef, onPick, onReviewUpdate, onClose 
   const [requesting, setRequesting] = useState(false);
   const [index, setIndex] = useState(0);
   const [box, setBox] = useState(null);
-  const drafts = review.syncMeta?.drafts?.items || [];
+  // До парсера 0.50 вариант — строка, с 0.50 — { text, notes }: notes — что
+  // проверить перед отправкой. Вариант с пометкой парсер больше не выбрасывает.
+  const drafts = (review.syncMeta?.drafts?.items || [])
+    .map(d => (typeof d === 'string' ? { text: d, notes: [] } : d))
+    .filter(d => d?.text);
   const pending = !!review.syncMeta?.draftsPending;
   const current = Math.min(index, Math.max(drafts.length - 1, 0));
 
@@ -120,7 +124,13 @@ function ReviewReplyDrafts({ review, anchorRef, onPick, onReviewUpdate, onClose 
 
       {drafts.length > 0 && (
         <>
-          <div className="reply-drafts__text">{drafts[current]}</div>
+          <div className="reply-drafts__text">{drafts[current].text}</div>
+          {drafts[current].notes?.length > 0 && (
+            <div className="reply-drafts__notes">
+              <AlertTriangle size={13} />
+              <span>Проверьте: {drafts[current].notes.join('; ')}</span>
+            </div>
+          )}
           <div className="reply-drafts__nav">
             {drafts.length > 1 && (<>
             <button
@@ -145,7 +155,7 @@ function ReviewReplyDrafts({ review, anchorRef, onPick, onReviewUpdate, onClose 
             <button
               type="button"
               className="reply-drafts__pick"
-              onClick={() => { onPick(drafts[current]); onClose(); }}
+              onClick={() => { onPick(drafts[current].text); onClose(); }}
             >
               Подставить в ответ
             </button>

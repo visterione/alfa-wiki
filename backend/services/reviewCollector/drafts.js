@@ -31,6 +31,21 @@ function clearDrafts(meta) {
   return next;
 }
 
+/**
+ * Вариант от парсера: до 0.50 — строка, с 0.50 — { text, notes }, где notes —
+ * что проверить перед отправкой («обещает скидку», «нет контактов
+ * медцентра»). Вариант с пометками парсер больше не выбрасывает: человек его
+ * всё равно читает, а поправить готовый быстрее, чем писать с нуля.
+ */
+function normalizeDraft(item) {
+  if (typeof item === 'string') return item.trim() ? { text: item, notes: [] } : null;
+  if (!item || typeof item.text !== 'string' || !item.text.trim()) return null;
+  const notes = Array.isArray(item.notes)
+    ? item.notes.filter(n => typeof n === 'string' && n.trim()).slice(0, 8).map(n => n.slice(0, 200))
+    : [];
+  return { text: item.text, notes };
+}
+
 function isAnswered(meta) {
   return !!(meta?.replyText || meta?.isAnswered || meta?.replySending);
 }
@@ -90,7 +105,7 @@ async function storeDrafts(job, ok, result) {
   delete meta.draftsPending;
 
   const items = ok && Array.isArray(result?.drafts)
-    ? result.drafts.filter(t => typeof t === 'string' && t.trim()).slice(0, 3)
+    ? result.drafts.map(normalizeDraft).filter(Boolean).slice(0, 3)
     : [];
   // Пока модель писала, на отзыв могли ответить — тогда черновики лишние.
   if (items.length && !isAnswered(meta)) {
@@ -125,4 +140,4 @@ async function cleanupDrafts() {
   return rows.length;
 }
 
-module.exports = { enqueueDraft, storeDrafts, cleanupDrafts, clearDrafts, DRAFT_TTL_DAYS };
+module.exports = { enqueueDraft, storeDrafts, cleanupDrafts, clearDrafts, normalizeDraft, DRAFT_TTL_DAYS };

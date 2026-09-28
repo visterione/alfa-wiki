@@ -2515,6 +2515,25 @@
   white-space: pre-line;
 }
 
+/* Что проверить в варианте перед отправкой (пометки проверки парсера) */
+.reply-drafts__notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--amber-50, #fffbeb);
+  color: var(--amber-800, #92400e);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.reply-drafts__notes svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 .reply-drafts__nav {
   display: flex;
   align-items: center;
