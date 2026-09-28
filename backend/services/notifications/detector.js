@@ -322,10 +322,16 @@ async function enqueue(found, snap, allow = () => true) {
         }
       }
 
+      // Событие берём у строки, а не у повода (ver. 8.95). Запись ставит
+      // попутно напоминания, и метка повода делала их «записями»: журнал
+      // подписывал их чужим именем, каскад брался от записи, а догоняющий
+      // звонок не заводился вовсе — он спрашивает ровно про 'reminder'.
+      const rowEvent = item.event || found.event;
+
       await NotifOutbox.create({
         apptId: snap.apptId,
-        event: found.event,
-        dedupKey: item.dedupKey || dedupKey(found.event, snap),
+        event: rowEvent,
+        dedupKey: item.dedupKey || dedupKey(rowEvent, snap),
         patientId: snap.patientId,
         phone: snap.phone,
         text: item.text,

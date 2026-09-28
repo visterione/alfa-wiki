@@ -282,3 +282,99 @@ test('уже завершённый визит второй раз отзыв н
   const now = { statusId: 4, timeStart: at('2026-09-10T10:00:00') };
   assert.equal(eventFor(before, now), null);
 });
+
+// ── Своё событие у каждой строки очереди (ver. 8.95) ──────────────────────
+//
+// Запись ставит попутно напоминания, и до 8.95 строка получала событие повода:
+// напоминание оказывалось помеченным как «запись». Последствия были тихими —
+// журнал подписывал его чужим именем, фильтр по событию не находил, каскад
+// брался от записи, — а самое дорогое невидимым: догоняющий звонок спрашивает
+// ровно про 'reminder' и потому не заводился вовсе.
+//
+// Шаблоны и справочник подменяем: проверяем разметку, а не базу.
+
+const templatesService = require('../services/notifications/templates');
+const { NotifTemplate } = require('../models');
+const medCenters = require('../services/medCenters');
+
+function withStubs(templates, fn) {
+  const realFindAll = NotifTemplate.findAll;
+  const realByMisId = medCenters.byMisId;
+  const realByName = medCenters.byName;
+
+  NotifTemplate.findAll = async () => templates;
+  medCenters.byMisId = async () => ({ id: 'mc-1', name: 'Альфа', phones: [], address: '' });
+  medCenters.byName = async () => null;
+
+  return fn().finally(() => {
+    NotifTemplate.findAll = realFindAll;
+    medCenters.byMisId = realByMisId;
+    medCenters.byName = realByName;
+  });
+}
+
+const reminderTemplate = {
+  event: 'reminder', medCenterId: 'mc-1', isActive: true, beforeMinutes: 30,
+  withConfirm: true, withCancel: true, withRating: false,
+  text: 'напоминание', smsText: 'напоминание SMS',
+  channelTexts: { telegram: 'напоминание в телеграм' },
+  callAfterMinutes: 15, callMinLeadMinutes: 10, cascade: null
+};
+
+const createdTemplate = {
+  event: 'created', medCenterId: 'mc-1', isActive: true, beforeMinutes: null,
+  withConfirm: true, withCancel: false, withRating: false,
+  text: 'вы записаны', smsText: 'вы записаны SMS',
+  channelTexts: { telegram: 'вы записаны в телеграм' },
+  callAfterMinutes: null, callMinLeadMinutes: null, cascade: null
+};
+
+const futureVisit = () => ({
+  apptId: 555, clinicId: 4, clinicName: 'Альфа', patientId: 42,
+  phone: '79001234567', patientName: 'Иванов Иван Иванович', doctorName: 'Петрова М. С.',
+  timeStart: new Date(Date.now() + 2 * 3600 * 1000), room: '12'
+});
+
+test('запись и поставленное ею напоминание — строки с разными событиями', async () => {
+  await withStubs([createdTemplate, reminderTemplate], async () => {
+    const items = await templatesService.build('created', futureVisit(), {});
+
+    assert.equal(items.length, 2);
+    assert.deepEqual(items.map(i => i.event).sort(), ['created', 'reminder']);
+  });
+});
+
+test('у напоминания сохраняются сроки звонка, у записи их нет', async () => {
+  await withStubs([createdTemplate, reminderTemplate], async () => {
+    const items = await templatesService.build('created', futureVisit(), {});
+
+    const reminder = items.find(i => i.event === 'reminder');
+    const created = items.find(i => i.event === 'created');
+
+    // Без этой пары чисел заявка на звонок не заведётся: отправщик читает их из
+    // строки очереди, а не из шаблона.
+    assert.equal(reminder.callAfterMinutes, 15);
+    assert.equal(reminder.callMinLeadMinutes, 10);
+    assert.equal(created.callAfterMinutes, null);
+  });
+});
+
+test('напоминание встаёт на «визит минус срок», а не на сейчас', async () => {
+  await withStubs([createdTemplate, reminderTemplate], async () => {
+    const snap = futureVisit();
+    const items = await templatesService.build('created', snap, {});
+    const reminder = items.find(i => i.event === 'reminder');
+
+    assert.equal(
+      new Date(reminder.plannedAt).toISOString(),
+      new Date(snap.timeStart.getTime() - 30 * 60000).toISOString()
+    );
+  });
+});
+
+test('перенос тоже ставит напоминание, и оно остаётся напоминанием', async () => {
+  await withStubs([{ ...createdTemplate, event: 'moved' }, reminderTemplate], async () => {
+    const items = await templatesService.build('moved', futureVisit(), {});
+    assert.deepEqual(items.map(i => i.event).sort(), ['moved', 'reminder']);
+  });
+});
