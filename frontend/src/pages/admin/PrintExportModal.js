@@ -116,7 +116,6 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
     const open = new Set((index.childFolders.get(null) || []).map(f => f.id));
     for (let id = root; id; id = index.parentOf.get(id)) open.add(id);
     setExpanded(open);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
   const total = tree.pages.length;
