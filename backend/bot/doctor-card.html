@@ -116,13 +116,15 @@ input, select, textarea, button { font-family: inherit; }
 .dc-tag { padding: 4px 10px; background: #e0f2fe; color: #0369a1; border-radius: 12px; font-size: 11px; font-weight: 500; }
 
 .dc-card-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px; gap: 12px; }
-/* Сведения и фото — одна строка и на узком экране: там шапка карточки
-   складывается в столбик, и без обёртки фото уезжало бы под текст (ver. 9.05). */
+/* Фото и сведения — одна строка и на узком экране: там шапка карточки
+   складывается в столбик, и без обёртки фото уезжало бы над текстом (ver. 9.05).
+   Рамка квадратная, как и сами фото в МИС: в прямоугольной над квадратным
+   фото оставалась серая полоса фона. */
 .dc-card-main { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; }
 .dc-card-info { flex: 1; min-width: 0; }
-.dc-card-photo { width: 64px; height: 80px; flex-shrink: 0; border-radius: 10px; overflow: hidden; background: #f3f4f6; }
+.dc-card-photo { width: 64px; height: 64px; flex-shrink: 0; border-radius: 10px; overflow: hidden; background: #f3f4f6; }
 .dc-card-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.dc-cards.compact .dc-card-photo { width: 48px; height: 60px; border-radius: 8px; }
+.dc-cards.compact .dc-card-photo { width: 48px; height: 48px; border-radius: 8px; }
 .dc-card-name { font-size: 17px; font-weight: 600; color: var(--dc-text); margin: 0 0 4px 0; }
 .dc-card-name a { color: inherit; text-decoration: none; }
 .dc-card-name a:hover { color: var(--dc-primary); }
@@ -461,7 +463,7 @@ input, select, textarea, button { font-family: inherit; }
   
   .dc-card-header { flex-direction: column; padding: 12px; gap: 10px; }
   .dc-card-main { width: 100%; }
-  .dc-card-photo { width: 52px; height: 64px; }
+  .dc-card-photo { width: 52px; height: 52px; }
   .dc-card-name { font-size: 15px; }
   .dc-card-specialty { font-size: 12px; }
   .dc-card-details { gap: 8px; font-size: 11px; }
@@ -532,8 +534,8 @@ input, select, textarea, button { font-family: inherit; }
 .dc-print-facts { font-size: 13px; color: var(--dc-text); margin: 0 0 4px; }
 .dc-print-fact-label { color: var(--dc-text-secondary); font-weight: 600; }
 .dc-print-tags { font-size: 12px; color: #0369a1; margin: 0; }
-.dc-print-photo-cell { width: 120px; vertical-align: top; text-align: right; }
-.dc-print-photo { width: 110px; height: auto; border-radius: 8px; }
+.dc-print-photo-cell { width: 120px; vertical-align: top; }
+.dc-print-photo { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; }
 .dc-print-section { font-size: 15px; font-weight: 700; margin: 16px 0 6px; color: var(--dc-text); }
 .dc-print-block:has(> .dc-print-favorites:empty) { display: none; }
 .dc-print .dc-services-container { max-height: none; overflow: visible; }
@@ -728,10 +730,10 @@ window.dcApp = (function() {
   // Картинкой, а не встроенным svg: svg снимок для Word пропускает, а
   // заглушка на листе врача нужна так же, как на экране.
   var PHOTO_PLACEHOLDER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80">' +
-    '<rect width="64" height="80" fill="#f3f4f6"/>' +
-    '<circle cx="32" cy="29" r="11" fill="none" stroke="#9ca3af" stroke-width="3"/>' +
-    '<path d="M14 62c0-10 8-17 18-17s18 7 18 17" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">' +
+    '<rect width="64" height="64" fill="#f3f4f6"/>' +
+    '<circle cx="32" cy="24" r="10" fill="none" stroke="#9ca3af" stroke-width="3"/>' +
+    '<path d="M15 53c0-9 8-15 17-15s17 6 17 15" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round"/>' +
     '</svg>'
   );
   var cards = [];
@@ -1086,7 +1088,7 @@ window.dcApp = (function() {
   // ПЕЧАТНАЯ ВЕРСИЯ (ver. 9.05)
   // ═══════════════════════════════════════════════════════════════
 
-  // Одна карточка на лист: шапка таблицей без рамок (сведения слева, фото
+  // Одна карточка на лист: шапка таблицей без рамок (фото слева, сведения
   // справа), под ней основные услуги и полный список. Медцентры — только те,
   // где врач принимает, плашками в одну строку; сведения — одной строкой с
   // подписями, а не столбиком значков, которые в Word теряются.
@@ -1135,13 +1137,13 @@ window.dcApp = (function() {
 
       return '<div class="dc-print-card">' +
         '<table data-print-layout="grid"><tbody><tr>' +
+          '<td class="dc-print-photo-cell" style="width:120px">' +
+            '<img class="dc-print-photo" data-photo-for="' + escapeHtml(String(meta.misUserId || '')) + '" src="' + PHOTO_PLACEHOLDER + '" alt="">' +
+          '</td>' +
           '<td>' +
             '<h2 class="dc-print-name">' + escapeHtml(card.fullName) + '</h2>' +
             (card.specialty ? '<p class="dc-print-specialty">' + escapeHtml(card.specialty) + '</p>' : '') +
             clinicsHtml + factsHtml + tagsHtml +
-          '</td>' +
-          '<td class="dc-print-photo-cell" style="width:120px">' +
-            '<img class="dc-print-photo" data-photo-for="' + escapeHtml(String(meta.misUserId || '')) + '" src="' + PHOTO_PLACEHOLDER + '" alt="">' +
           '</td>' +
         '</tr></tbody></table>' +
         (card.description ? '<h3 class="dc-print-section">Заметки</h3><div class="dc-notes">' + card.description + '</div>' : '') +
@@ -1221,6 +1223,7 @@ window.dcApp = (function() {
         '</div>' +
         '<div class="dc-card-header">' +
           '<div class="dc-card-main">' +
+          '<div class="dc-card-photo"><img data-photo-for="' + escapeHtml(String(meta.misUserId || '')) + '" src="' + PHOTO_PLACEHOLDER + '" alt=""></div>' +
           '<div class="dc-card-info">' +
             '<h3 class="dc-card-name">' + nameHtml + '</h3>' +
             (card.specialty ? '<div class="dc-card-specialty">' + escapeHtml(card.specialty) + '</div>' : '') +
@@ -1231,7 +1234,6 @@ window.dcApp = (function() {
               (meta.mobileNumber ? '<div>' + ICONS.mobile + ' ' + escapeHtml(meta.mobileNumber) + '</div>' : '') +
             '</div>' +
           '</div>' +
-          '<div class="dc-card-photo"><img data-photo-for="' + escapeHtml(String(meta.misUserId || '')) + '" src="' + PHOTO_PLACEHOLDER + '" alt=""></div>' +
           '</div>' +
           '<div class="dc-tabs">' +
             '<button type="button" class="dc-tab active" data-card="' + card.id + '" data-tab="info" onclick="dcApp.switchTab(this)">' + ICONS.info + '</button>' +

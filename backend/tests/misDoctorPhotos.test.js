@@ -38,7 +38,9 @@ test('фото ужимается, а повторный запрос отдаё
   const first = await photos.getPhoto('942');
   const meta = await sharp(first).metadata();
   assert.equal(meta.format, 'jpeg');
-  assert.ok(meta.width <= 480 && meta.height <= 600);
+  // Исходник 900×1200 — на выходе квадрат: рамка в карточке и в Word квадратная.
+  assert.equal(meta.width, 480);
+  assert.equal(meta.height, 480);
   await photos.getPhoto(942);
   assert.equal(calls.getUsers, 1);
   assert.equal(calls.images.length, 1);

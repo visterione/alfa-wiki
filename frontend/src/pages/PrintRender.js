@@ -173,14 +173,23 @@ function inlineImage(img) {
   if (src.startsWith('data:')) return src;
   if (!img.complete || !img.naturalWidth) return null;
   try {
-    const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    // object-fit: cover на экране обрезает картинку под рамку (квадратное
+    // фото врача из прямоугольного снимка). Снимок берёт ту же область, иначе
+    // в Word картинка легла бы своими исходными пропорциями.
+    let sx = 0; let sy = 0; let sw = img.naturalWidth; let sh = img.naturalHeight;
+    const box = img.getBoundingClientRect();
+    if (getComputedStyle(img).objectFit === 'cover' && box.width && box.height) {
+      const target = box.width / box.height;
+      if (sw / sh > target) { const w = sh * target; sx = (sw - w) / 2; sw = w; } else { const h = sw / target; sy = (sh - h) / 2; sh = h; }
+    }
+    const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(sw, sh));
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(img.naturalWidth * scale);
-    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.width = Math.round(sw * scale);
+    canvas.height = Math.round(sh * scale);
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/jpeg', 0.85);
   } catch {
     return null;

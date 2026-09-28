@@ -22,8 +22,10 @@ const PHOTO_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHED_PHOTOS = 600;
 const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
 // Карточка показывает фото размером с палец, документ — около 3 см по
-// ширине. 480 пикселей хватает на то и другое с запасом для печати.
-const PHOTO_BOX = { width: 480, height: 600 };
+// ширине. 480 пикселей хватает на то и другое с запасом для печати. Квадрат:
+// рамка в карточке и в документе квадратная, а прямоугольное фото в Word
+// легло бы своими пропорциями. Обрезаем от верха кадра — там лицо.
+const PHOTO_SIDE = 480;
 
 function createDoctorPhotos({ misRequest, misBaseUrl, fetchImage = defaultFetchImage, now = () => Date.now() }) {
   const allowedHost = new URL(misBaseUrl).host;
@@ -81,7 +83,7 @@ function createDoctorPhotos({ misRequest, misBaseUrl, fetchImage = defaultFetchI
     const source = await fetchImage(parsed.href);
     const photo = await sharp(source)
       .rotate()
-      .resize({ ...PHOTO_BOX, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: PHOTO_SIDE, height: PHOTO_SIDE, fit: 'cover', position: 'top', withoutEnlargement: true })
       .flatten({ background: '#ffffff' })
       .jpeg({ quality: 82 })
       .toBuffer();
