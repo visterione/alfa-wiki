@@ -217,6 +217,7 @@
     "migrate:8.95:check": "node scripts/runSqlMigration.js 8.95 --check",
     "migrate:8.99": "node scripts/runSqlMigration.js 8.99",
     "migrate:8.99:check": "node scripts/runSqlMigration.js 8.99 --check",
+    "migrate:9.03": "node scripts/runSqlMigration.js 9.03",
     "mail:sync": "node scripts/mailSync.js",
     "mail:account": "node scripts/mailAccount.js"
   },
