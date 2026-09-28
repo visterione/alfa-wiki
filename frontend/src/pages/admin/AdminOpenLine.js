@@ -554,6 +554,65 @@ function splitMinutes(total) {
   return { amount: value, unit: 'minutes' };
 }
 
+/** «120» → «2 ч», «1440» → «1 сут.». Сравнивать минуты глазами неудобно. */
+function humanMinutes(minutes) {
+  const n = Number(minutes) || 0;
+  if (n % 1440 === 0) return `${n / 1440} сут.`;
+  if (n % 60 === 0) return `${n / 60} ч`;
+  return `${n} мин`;
+}
+
+/**
+ * Согласованы ли сроки догоняющего звонка со сроком напоминания (ver. 8.95).
+ *
+ * Повторяет правило сервера (callRangeError в routes/notifications.js) — там оно
+ * и главное, потому что шаблон правится и запросом. Здесь оно нужно затем, чтобы
+ * противоречие было видно до нажатия «Сохранить», а не приезжало ошибкой после.
+ *
+ * Возвращает два разных вида беды, и они не равны: error запрещает сохранение,
+ * warn только предупреждает. Срок больше времени напоминания — звонок после
+ * приёма, то есть настройка, которая не звонит никогда. А вот «срок плюс порог»,
+ * съедающие окно целиком, бывают и осознанным выбором: «звони только в эти два
+ * часа». Запрещать выбор нельзя, промолчать о нём — тоже.
+ */
+function callRangeIssue({ beforeMinutes, callAfterMinutes, callMinLeadMinutes }) {
+  const before = Number(beforeMinutes) || 0;
+  const after = Number(callAfterMinutes) || 0;
+  const lead = Number(callMinLeadMinutes) || 0;
+
+  if (!before || !after) return null;
+
+  if (after >= before) {
+    return { error: `«Позвонить через» (${humanMinutes(after)}) больше, чем «Напомнить за» ` +
+      `(${humanMinutes(before)}): звонок пришёлся бы на время после приёма` };
+  }
+  if (lead >= before) {
+    return { error: `«Не звонить позже чем за» (${humanMinutes(lead)}) больше, чем «Напомнить за» ` +
+      `(${humanMinutes(before)}): заявка погаснет сразу, не дождавшись срока` };
+  }
+  if (after + lead >= before) {
+    return { warn: `звонок успеет уйти только в первые ${humanMinutes(before - after - lead)} после ` +
+      `напоминания — дальше заявка погаснет по порогу` };
+  }
+  return null;
+}
+
+/**
+ * Сроки, которыми включается звонок. Обычно 3 часа и порог в 2, но у короткого
+ * напоминания они не влезают — «позвонить через 3 часа» под напоминанием за 2 часа
+ * означает звонок после приёма. Поэтому у тесного окна берём его половину и
+ * четверть: включение галки не должно сразу давать настройку, которую нельзя
+ * сохранить (ver. 8.95).
+ */
+function callDefaults(beforeMinutes) {
+  const before = Number(beforeMinutes) || 0;
+  if (!before || 180 + 120 < before) return { callAfterMinutes: 180, callMinLeadMinutes: 120 };
+  return {
+    callAfterMinutes: Math.max(15, Math.round(before / 2)),
+    callMinLeadMinutes: Math.max(10, Math.round(before / 4))
+  };
+}
+
 function TimingField({ label, minutes, onChange }) {
   const { amount, unit } = splitMinutes(minutes);
 
@@ -671,6 +730,12 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
     callAfterMinutes: template.callAfterMinutes, callMinLeadMinutes: template.callMinLeadMinutes
   });
 
+  // Сроки звонка против срока напоминания (ver. 8.95). Считаем по черновику, а
+  // не по сохранённому: запретить надо то, что человек набрал сейчас.
+  const rangeIssue = template.event === 'reminder' && current.callAfterMinutes
+    ? callRangeIssue(current)
+    : null;
+
   const save = async () => {
     await onSave(template, {
       channelTexts: current.channelTexts,
@@ -750,10 +815,15 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
           {template.event === 'reminder' && template.withConfirm && (
             <Check1
               checked={!!current.callAfterMinutes}
-              onChange={v => patch({
-                callAfterMinutes: v ? (template.callAfterMinutes || 180) : null,
-                callMinLeadMinutes: v ? (current.callMinLeadMinutes || 120) : null
-              })}
+              onChange={v => patch(v
+                ? {
+                  ...callDefaults(current.beforeMinutes),
+                  // Уже настроенное не перетираем: галку снимают и возвращают,
+                  // проверяя, как ведёт себя событие без звонка.
+                  ...(template.callAfterMinutes ? { callAfterMinutes: template.callAfterMinutes } : {}),
+                  ...(current.callMinLeadMinutes ? { callMinLeadMinutes: current.callMinLeadMinutes } : {})
+                }
+                : { callAfterMinutes: null, callMinLeadMinutes: null })}
             >
               Позвонить, если не ответил
             </Check1>
@@ -804,6 +874,11 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
                   minutes={current.callMinLeadMinutes}
                   onChange={v => patch({ callMinLeadMinutes: v || null })}
                 />
+                {rangeIssue && (
+                  <span className={`ola-bot-state ${rangeIssue.error ? 'bad' : 'warn'}`}>
+                    {rangeIssue.error || rangeIssue.warn}
+                  </span>
+                )}
               </>
             )}
             {template.event === 'review' && (
@@ -926,7 +1001,10 @@ function TemplateCard({ template, steps, placeholders, source, webhook, onSource
         </div>
 
         <div className="ola-actions end">
-          <button className="ola-btn primary" disabled={!dirty} onClick={save}>
+          {/* Противоречие в сроках запирает сохранение (ver. 8.95). Кнопка,
+              которая молча отдаёт на сервер то, что он отвергнет, заставляет
+              читать ошибку вместо того, что видно на экране рядом с полями. */}
+          <button className="ola-btn primary" disabled={!dirty || !!rangeIssue?.error} onClick={save}>
             Сохранить
           </button>
         </div>
@@ -1379,28 +1457,25 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
   const [account, setAccount] = useState(null);
   const [checking, setChecking] = useState(false);
 
-  // CRM для догоняющих звонков (ver. 8.52). Ключ, как и у Имобиса, в состоянии
-  // не живёт: наружу он не отдаётся, и поле пустое до тех пор, пока его не
-  // впишут заново.
-  const [crmUrl, setCrmUrl] = useState(branch.aiCall?.url || '');
-  const [crmHeader, setCrmHeader] = useState(branch.aiCall?.header || 'Authorization');
-  const [crmToken, setCrmToken] = useState('');
+  // ИИ-звонки филиала (ver. 8.95). Доступ к CRM переехал наверх, общий на сеть;
+  // здесь остался свой проект и шаг воронки — на случай, если партнёр когда-
+  // нибудь разведёт клиники по проектам. Пусто означает «как у сети».
+  const [crmProject, setCrmProject] = useState(branch.aiCall?.ownProject ? String(branch.aiCall.projectId) : '');
+  const [crmFunnel, setCrmFunnel] = useState(
+    branch.aiCall?.ownProject && branch.aiCall?.funnelId ? String(branch.aiCall.funnelId) : ''
+  );
 
   const senderDirty = sender !== (branch.imobis.sender || '');
   const groupDirty = String(vkGroup) !== String(branch.imobis.vkGroup ?? '');
   const dirty = senderDirty || groupDirty || !!token.trim();
 
-  const crmUrlDirty = crmUrl !== (branch.aiCall?.url || '');
-  const crmHeaderDirty = crmHeader !== (branch.aiCall?.header || 'Authorization');
-  const crmDirty = crmUrlDirty || crmHeaderDirty || !!crmToken.trim();
+  const crmDirty = crmProject !== (branch.aiCall?.ownProject ? String(branch.aiCall.projectId) : '')
+    || crmFunnel !== (branch.aiCall?.ownProject && branch.aiCall?.funnelId ? String(branch.aiCall.funnelId) : '');
 
   const saveCrm = async () => {
-    const patch = { aiCall: {} };
-    if (crmUrlDirty) patch.aiCall.url = crmUrl.trim();
-    if (crmHeaderDirty) patch.aiCall.header = crmHeader.trim();
-    if (crmToken.trim()) patch.aiCall.token = crmToken.trim();
-    await onSave(branch.medCenterId, patch);
-    setCrmToken('');
+    await onSave(branch.medCenterId, {
+      aiCall: { projectId: crmProject.trim(), funnelId: crmFunnel.trim() }
+    });
   };
 
   const save = async () => {
@@ -1562,60 +1637,44 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
             )}
           </div>
 
-          {/* CRM для догоняющих ИИ-звонков (ver. 8.52). Стоит рядом со счётом
-              Имобиса и по той же причине, по какой тот лежит у филиала: у
-              партнёра лиды разведены по клиникам, общего адреса на сеть нет.
+          {/* Догоняющие ИИ-звонки у филиала (ver. 8.95). Доступ к CRM переехал
+              наверх, общий на сеть: проект у партнёра один, и держать шесть копий
+              одного пароля по карточкам значило бы шесть мест, где его забудут
+              поменять. Здесь остался вопрос, который и правда свой у каждого
+              филиала: звонит он или нет.
 
-              Передача включается отдельным тумблером, а не одним наличием
-              адреса: адрес вписывают заранее, проверяют, и между «вписан» и
-              «работает» должен быть осознанный шаг — наружу уходит карточка
-              пациента, а не наш текст. */}
+              Передача включается отдельным тумблером, а не наличием настройки:
+              между «настроено» и «работает» должен быть осознанный шаг — наружу
+              уходит карточка пациента, а не наш текст. */}
           <div className="ola-block">
-            <h4><PhoneCall size={13} /> CRM для ИИ-звонков</h4>
+            <h4><PhoneCall size={13} /> ИИ-звонки молчунам</h4>
             <div className="ola-row">
-              <div className="ola-field">
-                <label>Адрес</label>
-                <input
-                  className="ola-input" autoComplete="off"
-                  placeholder="https://crm.example.ru/api/leads"
-                  value={crmUrl}
-                  onChange={e => setCrmUrl(e.target.value)}
-                />
-              </div>
-              <div className="ola-field">
-                <label>
-                  Ключ
-                  {branch.aiCall?.tokenSet
-                    ? <span className="ola-badge">{branch.aiCall.tokenTail}</span>
-                    : <span className="ola-badge warn">не задан</span>}
-                </label>
-                <input
-                  className="ola-input" type="password" autoComplete="off"
-                  placeholder={branch.aiCall?.tokenSet
-                    ? 'задан — впишите новый, чтобы заменить'
-                    : 'выдаёт партнёр'}
-                  value={crmToken}
-                  onChange={e => setCrmToken(e.target.value)}
-                />
-              </div>
-              {/* Имя заголовка настраивается, потому что узнаём мы его от
-                  партнёра уже после выката: Authorization у большинства, но
-                  X-Api-Key встречается не реже, и миграция ради одной строки
-                  была бы лишней. */}
-              <div className="ola-field">
-                <label>Заголовок</label>
-                <input
-                  className="ola-input" autoComplete="off"
-                  placeholder="Authorization"
-                  value={crmHeader}
-                  onChange={e => setCrmHeader(e.target.value)}
-                />
-              </div>
               <div className="ola-field narrow">
                 <Switch
                   checked={!!branch.aiCall?.enabled}
                   onChange={v => onSave(branch.medCenterId, { aiCall: { enabled: v } })}
                 >передавать заявки</Switch>
+              </div>
+              {/* Свой проект — поле на вырост, и пустым оно должно оставаться у
+                  всех, пока у партнёра один проект на сеть. Поэтому подпись
+                  говорит, что значит пустота: иначе заполнят «чтобы было». */}
+              <div className="ola-field">
+                <label>Свой проект в CRM</label>
+                <input
+                  className="ola-input" autoComplete="off" inputMode="numeric"
+                  placeholder="пусто — общий проект сети"
+                  value={crmProject}
+                  onChange={e => setCrmProject(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+              <div className="ola-field">
+                <label>Свой шаг воронки</label>
+                <input
+                  className="ola-input" autoComplete="off" inputMode="numeric"
+                  placeholder="пусто — общий шаг сети"
+                  value={crmFunnel}
+                  onChange={e => setCrmFunnel(e.target.value.replace(/\D/g, ''))}
+                />
               </div>
             </div>
 
@@ -1623,13 +1682,211 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
               <button className="ola-btn primary" disabled={!crmDirty} onClick={saveCrm}>
                 <Save size={14} /> Сохранить
               </button>
-              {branch.aiCall?.enabled && !branch.aiCall?.url && (
-                <span className="ola-bot-state bad">адрес не указан — заявки будут пропускаться</span>
+              {branch.aiCall?.enabled && !branch.aiCall?.projectId && (
+                <span className="ola-bot-state bad">
+                  проект не выбран ни у сети, ни у филиала — заявки будут пропускаться
+                </span>
               )}
             </div>
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * Доступ к CRM партнёра для догоняющих ИИ-звонков (ver. 8.95).
+ *
+ * Один на сеть: проект у партнёра один, и шесть копий одного пароля по карточкам
+ * филиалов означали бы шесть мест, где его забудут поменять. В карточке филиала
+ * остался включатель — он отвечает на другой вопрос: звонит ли этот филиал.
+ *
+ * Кнопка «Проверить» здесь не украшение. Проект и шаг воронки — числа, и ошибка
+ * в них не видна ничем: заявка уедет, лид ляжет не туда, автоворонка не
+ * запустится, и выяснится это по отсутствию звонков через неделю. Проверка
+ * отвечает сразу на три вопроса: пускают ли нас, тот ли это проект и найдутся ли
+ * в нём поля, которые мы заполняем.
+ */
+function AiCallPanel() {
+  const [state, setState] = useState(null);
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [funnelId, setFunnelId] = useState('');
+  const [check, setCheck] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const load = useCallback(() => {
+    notifApi.aiCall()
+      .then(({ data }) => {
+        setState(data);
+        setLogin(data.login || '');
+        setProjectId(data.projectId ? String(data.projectId) : '');
+        setFunnelId(data.funnelId ? String(data.funnelId) : '');
+      })
+      .catch(() => toast.error('Не удалось загрузить доступ к CRM'));
+  }, []);
+
+  useEffect(load, [load]);
+
+  if (!state) return null;
+
+  const dirty = login !== (state.login || '')
+    || projectId !== (state.projectId ? String(state.projectId) : '')
+    || funnelId !== (state.funnelId ? String(state.funnelId) : '')
+    || !!password.trim();
+
+  const save = async () => {
+    try {
+      const patch = { login: login.trim(), projectId: projectId.trim(), funnelId: funnelId.trim() };
+      // Пароль отправляем только когда его вписали заново: поле секрета пустое
+      // всегда, и пустая строка на каждом сохранении уносила бы доступ вместе с
+      // правкой номера проекта.
+      if (password.trim()) patch.password = password.trim();
+      await notifApi.saveAiCall(patch);
+      setPassword('');
+      load();
+      toast.success('Доступ сохранён');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось сохранить');
+    }
+  };
+
+  const runCheck = async () => {
+    setChecking(true);
+    try {
+      const { data } = await notifApi.checkAiCall({
+        login: login.trim(),
+        // Пароль из поля, если его вписали: проверяют обычно до сохранения.
+        password: password.trim() || undefined,
+        projectId: projectId.trim() || undefined
+      });
+      setCheck(data);
+      // Единственный проект подставляем сами: выбирать не из чего, а лишний шаг
+      // «скопируйте число в поле» — ровно то место, где ошибаются.
+      if (!projectId && data.projectId) setProjectId(String(data.projectId));
+    } catch (err) {
+      setCheck(null);
+      toast.error(err.response?.data?.error || 'CRM не ответила');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <section className="ola-card">
+      <header>
+        <span className="ola-card-icon"><PhoneCall size={17} /></span>
+        <h3>CRM для ИИ-звонков</h3>
+        {state.passwordSet
+          ? <span className="ola-badge">доступ задан</span>
+          : <span className="ola-badge warn">доступ не задан</span>}
+      </header>
+
+      <div className="ola-card-body">
+        <div className="ola-row">
+          <div className="ola-field">
+            <label>Логин</label>
+            <input
+              className="ola-input" autoComplete="off"
+              placeholder="учётная запись в CRM"
+              value={login}
+              onChange={e => setLogin(e.target.value)}
+            />
+          </div>
+          <div className="ola-field">
+            <label>
+              Пароль
+              {state.passwordSet
+                ? <span className="ola-badge">задан</span>
+                : <span className="ola-badge warn">не задан</span>}
+            </label>
+            <input
+              className="ola-input" type="password" autoComplete="new-password"
+              placeholder={state.passwordSet ? 'задан — впишите новый, чтобы заменить' : 'выдаёт партнёр'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="ola-row">
+          <div className="ola-field">
+            <label>Проект</label>
+            {check?.projects?.length
+              ? (
+                <select className="ola-input" value={projectId} onChange={e => setProjectId(e.target.value)}>
+                  <option value="">— выберите —</option>
+                  {check.projects.map(p => (
+                    <option key={p.id} value={String(p.id)}>{p.name} · {p.id}</option>
+                  ))}
+                </select>
+              )
+              : (
+                <input
+                  className="ola-input" autoComplete="off" inputMode="numeric"
+                  placeholder="нажмите «Проверить», чтобы выбрать"
+                  value={projectId}
+                  onChange={e => setProjectId(e.target.value.replace(/\D/g, ''))}
+                />
+              )}
+          </div>
+          <div className="ola-field">
+            <label>Шаг воронки для лида</label>
+            {check?.funnel?.length
+              ? (
+                <select className="ola-input" value={funnelId} onChange={e => setFunnelId(e.target.value)}>
+                  <option value="">— не указывать —</option>
+                  {check.funnel.map(f => (
+                    <option key={f.id} value={String(f.id)}>{f.name}</option>
+                  ))}
+                </select>
+              )
+              : (
+                <input
+                  className="ola-input" autoComplete="off" inputMode="numeric"
+                  placeholder="нажмите «Проверить», чтобы выбрать"
+                  value={funnelId}
+                  onChange={e => setFunnelId(e.target.value.replace(/\D/g, ''))}
+                />
+              )}
+          </div>
+        </div>
+
+        <div className="ola-row">
+          <button className="ola-btn primary" disabled={!dirty} onClick={save}>
+            <Save size={14} /> Сохранить
+          </button>
+          <button className="ola-btn" onClick={runCheck} disabled={checking || !login.trim()}>
+            {checking ? 'Спрашиваю…' : 'Проверить'}
+          </button>
+          {state.passwordSet && !state.funnelId && (
+            <span className="ola-bot-state bad">
+              шаг воронки не выбран — лид ляжет на первый шаг, и обзвон не запустится
+            </span>
+          )}
+        </div>
+
+        {/* Отчёт проверки. Отдельно про четыре поля, без которых робот не назовёт
+            ни визита, ни времени: это не «поля не нашлось», а «звонить нельзя». */}
+        {check?.fields && (
+          <div className="ola-row">
+            {check.fields.missingRequired.length > 0
+              ? (
+                <span className="ola-bot-state bad">
+                  в проекте нет обязательных полей: {check.fields.missingRequired.join(', ')}
+                </span>
+              )
+              : (
+                <span className="ola-bot-state ok">
+                  поля визита в проекте есть: {check.fields.found.length} из {state.fields.length}
+                  {check.fields.missing.length > 0 && ` · не нашлось: ${check.fields.missing.join(', ')}`}
+                </span>
+              )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -1727,6 +1984,11 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
       {/* Предохранители первыми: пока они закрыты, всё остальное на этой
           вкладке настраивается вхолостую, и знать об этом надо до, а не после. */}
       {safety && <SafetyPanel safety={safety} onChange={saveSafety} />}
+
+      {/* Доступ к CRM партнёра — один на сеть (ver. 8.95). Стоит выше филиалов,
+          потому что без него включатель в карточке филиала ничего не делает, и
+          порядок на экране должен повторять порядок настройки. */}
+      <AiCallPanel />
 
       <h2 className="ola-section">Филиалы</h2>
 
@@ -2155,6 +2417,20 @@ const CALL_STATUS_VIEW = {
   skipped: { label: 'не понадобилось', icon: Ban,           cls: 'muted' }
 };
 
+// Чем кончился разговор (ver. 8.95). Словами, а не кодами партнёра: журнал
+// открывает администратор, а не программист, и «hangup» ему ни о чём не говорит.
+const CALL_RESULT_VIEW = {
+  confirmed: 'пациент подтвердил визит',
+  cancelled: 'пациент отказался от визита',
+  no_answer: 'не дозвонились',
+  voicemail: 'автоответчик',
+  hangup: 'сбросил звонок',
+  callback: 'просил перезвонить',
+  operator: 'передан колл-центру',
+  unclear: 'поговорили без результата',
+  other: 'исход, которого мы не знаем'
+};
+
 function CallsLog() {
   const [log, setLog] = useState(null);
   const [status, setStatus] = useState('');
@@ -2248,6 +2524,18 @@ function CallsLog() {
               {row.visitAt ? ` · приём ${new Date(row.visitAt).toLocaleString('ru-RU')}` : ''}
               {row.doctorName ? ` · ${row.doctorName}` : ''}
             </div>
+            {/* Итог разговора (ver. 8.95). Показываем вместе с тем, что из него
+                вышло в МИС: «пациент отказался» и «отказ записан в МИС» — разные
+                утверждения, и журнал должен отвечать на второе тоже. */}
+            {row.result && (
+              <div className="ola-row-text">
+                Итог звонка: {CALL_RESULT_VIEW[row.result] || row.result}
+                {row.misStatus === 'confirmed' && ' · визит подтверждён в МИС'}
+                {row.misStatus === 'cancelled' && ' · визит отменён в МИС'}
+                {row.resultAt ? ` · ${new Date(row.resultAt).toLocaleString('ru-RU')}` : ''}
+              </div>
+            )}
+            {row.misError && <div className="ola-row-error">{row.misError}</div>}
             {row.error && <div className="ola-row-error">{row.error}</div>}
           </article>
         );
