@@ -193,7 +193,13 @@ function Check1({ checked, onChange, children }) {
  * Enter добавляет. После добавления окно не закрывается — следующего набирают
  * сразу, не открывая список заново.
  */
-function StaffPicker({ candidates, onPick }) {
+/*
+ * Добавление всех найденных разом (ver. 9.09): строка поиска отбирает
+ * «колл», «альфа» — и отобранных заводят одним нажатием, а не по одному.
+ * Кнопка появляется только при непустой строке: весь список людей с доступом к
+ * разделу одним щелчком в линию не заводят — для этого есть правило.
+ */
+function StaffPicker({ candidates, onPick, onPickMany }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -249,6 +255,13 @@ function StaffPicker({ candidates, onPick }) {
     if (inputRef.current) inputRef.current.focus();
   };
 
+  const pickAll = () => {
+    if (!found.length) return;
+    onPickMany(found.map(u => u.id));
+    setQuery('');
+    if (inputRef.current) inputRef.current.focus();
+  };
+
   const onKeyDown = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, found.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
@@ -299,6 +312,63 @@ function StaffPicker({ candidates, onPick }) {
               : 'Ни у кого больше нет доступа к разделу — он выдаётся в «Пользователях»'}
           </div>
         )}
+      </div>
+
+      {query.trim() && found.length > 1 && (
+        <button type="button" className="ola-add ola-add-all" onClick={pickAll}>
+          <UserPlus size={13} /> добавить всех найденных ({found.length})
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Правила состава линии (ver. 9.09): роль, медцентр или оба сразу — тогда это
+ * «И». Правило само заводит подходящих в линию и убирает переставших подходить,
+ * см. backend/services/openLineAccess.js. Число у правила — сколько людей под
+ * него сейчас подходит: пустое пересечение видно сразу.
+ */
+function AccessRules({ line, roles, medCenters, onAdd, onRemove }) {
+  const [roleId, setRoleId] = useState('');
+  const [medCenterId, setMedCenterId] = useState('');
+
+  const add = async () => {
+    if (await onAdd(line, { roleId: roleId || null, medCenterId: medCenterId || null })) {
+      setRoleId('');
+      setMedCenterId('');
+    }
+  };
+
+  return (
+    <div className="ola-rules">
+      {(line.accessRules || []).length > 0 && (
+        <div className="ola-chips">
+          {line.accessRules.map(r => (
+            <span key={r.id} className="ola-chip">
+              {r.role && <strong>{r.role.name}</strong>}
+              {r.role && r.medCenter && <span className="ola-rule-and">и</span>}
+              {r.medCenter && <span>{r.medCenter.name}</span>}
+              <span className={`ola-rule-count ${r.matchedUsers ? '' : 'empty'}`} title="Сейчас подходят">
+                {r.matchedUsers}
+              </span>
+              <button title="Удалить правило" onClick={() => onRemove(line, r)}><X size={12} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="ola-rule-form">
+        <select className="ola-select" value={roleId} onChange={e => setRoleId(e.target.value)}>
+          <option value="">любая роль</option>
+          {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+        <select className="ola-select" value={medCenterId} onChange={e => setMedCenterId(e.target.value)}>
+          <option value="">любой медцентр</option>
+          {medCenters.map(mc => <option key={mc.id} value={mc.id}>{mc.name}</option>)}
+        </select>
+        <button className="ola-btn" disabled={!roleId && !medCenterId} onClick={add}>
+          <Plus size={14} /> Добавить правило
+        </button>
       </div>
     </div>
   );
@@ -371,7 +441,43 @@ function LinesTab({ creating, setCreating }) {
     }
   };
   const addOperator = guard((line, userId) => lineApi.addOperator(line.id, userId), 'Не удалось добавить сотрудника');
-  const removeOperator = guard((line, userId) => lineApi.removeOperator(line.id, userId), 'Не удалось убрать сотрудника');
+  const addOperators = guard((line, userIds) => lineApi.addOperators(line.id, userIds), 'Не удалось добавить сотрудников');
+
+  // Подходящего под правило сервер не убирает, а переводит на правило: иначе
+  // правило вернуло бы его при первой синхронизации. Об этом и говорим.
+  const removeOperator = async (line, userId) => {
+    try {
+      const { data } = await lineApi.removeOperator(line.id, userId);
+      if (data && data.keptByRule) toast('Сотрудник подходит под правило линии и остаётся в составе');
+      load();
+    } catch {
+      toast.error('Не удалось убрать сотрудника');
+    }
+  };
+
+  const addRule = async (line, rule) => {
+    try {
+      const { data } = await lineApi.addAccessRule(line.id, rule);
+      toast.success(data.added ? `Правило добавлено, в линию вошло: ${data.added}` : 'Правило добавлено');
+      load();
+      return true;
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Не удалось добавить правило');
+      return false;
+    }
+  };
+
+  const removeRule = async (line, rule) => {
+    const name = [rule.role && rule.role.name, rule.medCenter && rule.medCenter.name].filter(Boolean).join(' и ');
+    if (!window.confirm(`Удалить правило «${name}»? Сотрудники, которых в линию завело только оно, уйдут из состава.`)) return;
+    try {
+      const { data } = await lineApi.removeAccessRule(line.id, rule.id);
+      toast.success(data.removed ? `Правило удалено, из линии ушло: ${data.removed}` : 'Правило удалено');
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Не удалось удалить правило');
+    }
+  };
   const setSenior = guard((line, o) => lineApi.setSenior(line.id, o.userId, !o.isSenior), 'Не удалось изменить');
   const bindBot = guard((lineId, botId) => lineApi.bindBot(lineId, botId), 'Не удалось привязать бота');
 
@@ -492,14 +598,31 @@ function LinesTab({ creating, setCreating }) {
                           : 'Сделать старшим — откроется архив обращений линии'}
                         onClick={() => setSenior(line, o)}
                       ><Star size={12} /></button>
-                      <button title="Убрать из состава" onClick={() => removeOperator(line, o.userId)}><X size={12} /></button>
+                      {/* Заведённого правилом руками не убирают: вернётся при
+                          первой синхронизации. Уходит он вместе с правилом или
+                          со сменой роли и медцентра (ver. 9.09). */}
+                      {o.viaRule
+                        ? <span className="ola-chip-rule" title="В составе по правилу"><ShieldCheck size={12} /></span>
+                        : <button title="Убрать из состава" onClick={() => removeOperator(line, o.userId)}><X size={12} /></button>}
                     </span>
                   ))}
                   <StaffPicker
                     candidates={staff.filter(u => !inLine.has(u.id))}
                     onPick={userId => addOperator(line, userId)}
+                    onPickMany={userIds => addOperators(line, userIds)}
                   />
                 </div>
+              </div>
+
+              <div className="ola-block">
+                <h4><ShieldCheck size={13} /> Правила состава</h4>
+                <AccessRules
+                  line={line}
+                  roles={data.roles || []}
+                  medCenters={data.medCenters || []}
+                  onAdd={addRule}
+                  onRemove={removeRule}
+                />
               </div>
 
               <div className="ola-block">
