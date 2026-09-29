@@ -1525,6 +1525,9 @@ export const openLine = {
   updateLine: (id, data) => api.put(`/open-line/lines/${id}`, data),
   deleteLine: (id) => api.delete(`/open-line/lines/${id}`),
   addOperator: (lineId, userId) => api.post(`/open-line/lines/${lineId}/operators`, { userId }),
+  addOperators: (lineId, userIds) => api.post(`/open-line/lines/${lineId}/operators`, { userIds }),
+  addAccessRule: (lineId, rule) => api.post(`/open-line/lines/${lineId}/access-rules`, rule),
+  removeAccessRule: (lineId, ruleId) => api.delete(`/open-line/lines/${lineId}/access-rules/${ruleId}`),
   removeOperator: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/operators/${userId}`),
   // Старший оператор линии: единственное отличие — ему виден архив обращений.
   setSenior: (lineId, userId, isSenior) =>

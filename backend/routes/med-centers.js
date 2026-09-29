@@ -3,6 +3,7 @@ const { MedCenter, UserMedCenter, CourseMedCenter, ReviewBoard, Review } = requi
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { isValidBadgeColor } = require('../utils/chatBadgeIcons');
 const userChatBadge = require('../services/userChatBadge');
+const openLineAccess = require('../services/openLineAccess');
 const medCentersService = require('../services/medCenters');
 const reviewBoards = require('../services/reviewBoards');
 
@@ -248,6 +249,8 @@ router.delete('/:id', authenticate, requireAdminAccess('medCenters'), async (req
 
     if (board) await board.destroy();
     await medCenter.destroy();
+    // Правила открытой линии по этому медцентру ушли каскадом (ver. 9.09).
+    await openLineAccess.syncQuietly(null, 'удалён медцентр');
     medCentersService.invalidate();
     res.json({ success: true });
   } catch (error) {

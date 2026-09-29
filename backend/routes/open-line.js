@@ -11,8 +11,9 @@ const express = require('express');
 const multer = require('multer');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { sequelize, OmniLine, OmniLineOperator, OmniConversation, OmniShift, MessengerBot, MedCenter, User, OmniQuickReply } = require('../models');
+const { sequelize, OmniLine, OmniLineOperator, OmniLineAccessRule, OmniConversation, OmniShift, MessengerBot, MedCenter, Role, User, OmniQuickReply } = require('../models');
 const openLine = require('../services/openLine');
+const openLineAccess = require('../services/openLineAccess');
 const fileAccess = require('../services/fileAccess');
 const openLineFiles = require('../services/openLineFiles');
 const { getChannel } = require('../services/messengers');
@@ -390,6 +391,14 @@ router.get('/lines', authenticate, requireAdmin, async (req, res) => {
           model: OmniLineOperator,
           as: 'operators',
           include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+        },
+        {
+          model: OmniLineAccessRule,
+          as: 'accessRules',
+          include: [
+            { model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] },
+            { model: Role, as: 'role', attributes: ['id', 'name'] }
+          ]
         }
       ],
       order: [['name', 'ASC']]
@@ -398,6 +407,9 @@ router.get('/lines', authenticate, requireAdmin, async (req, res) => {
     const bots = await MessengerBot.findAll({ attributes: ['id', 'platform', 'username', 'organization', 'lineId'] });
     // Справочник медцентров — для выбора при создании линии.
     const medCenters = await MedCenter.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] });
+    // Роли — для правил состава (ver. 9.09).
+    const roles = await Role.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] });
+    const ruleCounts = await openLineAccess.matchedCounts();
 
     // Кто из состава вообще видит раздел (ver. 8.33). Состав линии даёт право
     // отвечать, но не открывает сам модуль: это отдельный флаг, и человек,
@@ -414,10 +426,12 @@ router.get('/lines', authenticate, requireAdmin, async (req, res) => {
       lines: lines.map(line => {
         const plain = line.toJSON();
         plain.operators = (plain.operators || []).map(o => ({ ...o, hasAccess: canOpen.has(o.userId) }));
+        plain.accessRules = (plain.accessRules || []).map(r => ({ ...r, matchedUsers: ruleCounts.get(r.id) || 0 }));
         return plain;
       }),
       bots,
-      medCenters
+      medCenters,
+      roles
     });
   } catch (err) {
     fail(res, err, 'GET /lines');
@@ -497,17 +511,31 @@ router.delete('/lines/:id', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// Состав линии
+// Состав линии. Принимает одного (userId) или сразу несколько (userIds, ver.
+// 9.09): колл-центр заводят десятком людей подряд, и перезагружать список после
+// каждого незачем.
 router.post('/lines/:id/operators', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { userId } = req.body || {};
-    if (!userId) return res.status(400).json({ error: 'Нужен userId' });
+    const { userId, userIds } = req.body || {};
+    const ids = [...new Set((Array.isArray(userIds) ? userIds : [userId]).filter(Boolean))];
+    if (!ids.length) return res.status(400).json({ error: 'Не выбран ни один сотрудник' });
 
-    const [row] = await OmniLineOperator.findOrCreate({
-      where: { lineId: req.params.id, userId },
-      defaults: { lineId: req.params.id, userId }
+    const line = await OmniLine.findByPk(req.params.id, { attributes: ['id'] });
+    if (!line) return res.status(404).json({ error: 'Линия не найдена' });
+
+    await sequelize.transaction(async (transaction) => {
+      await OmniLineOperator.bulkCreate(
+        ids.map(id => ({ lineId: line.id, userId: id })),
+        { ignoreDuplicates: true, transaction }
+      );
+      // Кто уже был в линии по правилу, теперь заведён и руками: правило его
+      // больше не уберёт, даже если он перестанет под него подходить.
+      await OmniLineOperator.update(
+        { viaRule: false },
+        { where: { lineId: line.id, userId: ids, viaRule: true }, transaction }
+      );
     });
-    res.status(201).json(row);
+    res.status(201).json({ ok: true, added: ids.length });
   } catch (err) {
     fail(res, err, 'POST /operators');
   }
@@ -529,12 +557,74 @@ router.put('/lines/:id/operators/:userId', authenticate, requireAdmin, async (re
   }
 });
 
+// Сотрудника, который подходит под правило линии, убрать руками нельзя — правило
+// вернуло бы его при первой же синхронизации, и снятие выглядело бы как сбой.
+// Ручная строка такого человека переходит на правило; убрать его совсем можно,
+// только поменяв правило или его роль и медцентр.
 router.delete('/lines/:id/operators/:userId', authenticate, requireAdmin, async (req, res) => {
   try {
-    await OmniLineOperator.destroy({ where: { lineId: req.params.id, userId: req.params.userId } });
+    const where = { lineId: req.params.id, userId: req.params.userId };
+    if (await openLineAccess.matchesLine(req.params.id, req.params.userId)) {
+      await OmniLineOperator.update({ viaRule: true }, { where });
+      return res.json({ ok: true, keptByRule: true });
+    }
+    await OmniLineOperator.destroy({ where });
     res.json({ ok: true });
   } catch (err) {
     fail(res, err, 'DELETE /operators');
+  }
+});
+
+// ── Правила состава (ver. 9.09) ──────────────────────────────────────────────
+//
+// { roleId?, medCenterId? }; оба сразу — это «И». Сразу после записи правила
+// состав линии пересчитывается, поэтому ответ несёт, сколько людей добавилось.
+router.post('/lines/:id/access-rules', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const line = await OmniLine.findByPk(req.params.id, { attributes: ['id', 'name'] });
+    if (!line) return res.status(404).json({ error: 'Линия не найдена' });
+
+    const roleId = (req.body && req.body.roleId) || null;
+    const medCenterId = (req.body && req.body.medCenterId) || null;
+    if (!roleId && !medCenterId) {
+      return res.status(400).json({ error: 'Выберите роль, медцентр или оба условия' });
+    }
+
+    const [role, medCenter] = await Promise.all([
+      roleId ? Role.findByPk(roleId, { attributes: ['id', 'name'] }) : null,
+      medCenterId ? MedCenter.findByPk(medCenterId, { attributes: ['id', 'name'] }) : null
+    ]);
+    if (roleId && !role) return res.status(404).json({ error: 'Роль не найдена' });
+    if (medCenterId && !medCenter) return res.status(404).json({ error: 'Медцентр не найден' });
+
+    const [, created] = await OmniLineAccessRule.findOrCreate({
+      where: { lineId: line.id, roleId, medCenterId },
+      defaults: { lineId: line.id, roleId, medCenterId, createdBy: req.user.id }
+    });
+    if (!created) return res.status(409).json({ error: 'Такое правило у линии уже есть' });
+
+    const result = await openLineAccess.syncLine(line.id);
+    console.log(`[open-line] правило состава «${line.name}»: ${role ? role.name : '—'} × ` +
+      `${medCenter ? medCenter.name : '—'}, добавлено ${result.added} (${req.user.username})`);
+    res.status(201).json({ ok: true, ...result });
+  } catch (err) {
+    fail(res, err, 'POST /access-rules');
+  }
+});
+
+// Вместе с правилом уходят те, кого в линию завело только оно. Заведённые руками
+// и подходящие под другое правило этой линии остаются.
+router.delete('/lines/:id/access-rules/:ruleId', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const removed = await OmniLineAccessRule.destroy({
+      where: { id: req.params.ruleId, lineId: req.params.id }
+    });
+    if (!removed) return res.status(404).json({ error: 'Правило не найдено' });
+
+    const result = await openLineAccess.syncLine(req.params.id);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    fail(res, err, 'DELETE /access-rules');
   }
 });
 

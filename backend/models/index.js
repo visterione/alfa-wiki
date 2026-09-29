@@ -3632,7 +3632,10 @@ const OmniLineOperator = sequelize.define('OmniLineOperator', {
   // ситуаций, то есть для чтения чужих разговоров с пациентами задним числом, и
   // открывать это всей смене незачем. Признак на связи, а не на пользователе:
   // старший в своём филиале — рядовой оператор в соседнем.
-  isSenior: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }
+  isSenior: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Строка заведена правилом, а не руками (ver. 9.09). Такую строку правила
+  // и убирают, когда человек перестаёт подходить; ручную не трогают никогда.
+  viaRule: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }
 }, {
   tableName: 'omni_line_operators',
   timestamps: true,
@@ -3641,6 +3644,17 @@ const OmniLineOperator = sequelize.define('OmniLineOperator', {
     { fields: ['lineId', 'onShift'] }
   ]
 });
+
+// Правило состава линии (ver. 9.09): роль, медцентр или оба сразу — тогда это
+// «И». Разворачивается в строки OmniLineOperator с viaRule, см.
+// services/openLineAccess.js.
+const OmniLineAccessRule = sequelize.define('OmniLineAccessRule', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  lineId: { type: DataTypes.UUID, allowNull: false },
+  medCenterId: { type: DataTypes.UUID, allowNull: true },
+  roleId: { type: DataTypes.UUID, allowNull: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, { tableName: 'omni_line_access_rules', timestamps: true });
 
 const OmniConversation = sequelize.define('OmniConversation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -3826,6 +3840,9 @@ OmniLine.hasMany(OmniLineOperator, { foreignKey: 'lineId', as: 'operators' });
 OmniLineOperator.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 OmniLineOperator.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 OmniLine.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+OmniLine.hasMany(OmniLineAccessRule, { foreignKey: 'lineId', as: 'accessRules' });
+OmniLineAccessRule.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
+OmniLineAccessRule.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
 
 OmniConversation.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 OmniConversation.belongsTo(BotSubscriber, { foreignKey: 'subscriberId', as: 'subscriber' });
@@ -5361,6 +5378,7 @@ module.exports = {
   MessengerBot,
   OmniLine,
   OmniLineOperator,
+  OmniLineAccessRule,
   OmniConversation,
   OmniBroadcast,
   OmniBroadcastTarget,

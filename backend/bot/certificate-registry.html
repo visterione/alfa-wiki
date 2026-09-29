@@ -130,6 +130,19 @@ button, input, textarea, select { font-family: inherit; }
 /* Столбец «Печать документа» — только иконка, поэтому фиксируем минимальную ширину */
 .reg-table th.col-print, .reg-table td.col-print { width: 30px; min-width: 30px; text-align: center; }
 .reg-print-icon { color: var(--reg-primary); font-size: 13px; }
+/* «Статус» с коротким заголовком браузер сжимал сильнее всех: таблица широкая,
+   и ширину он отдаёт столбцам с длинной шапкой. Держим место под значение. */
+.reg-table th.col-status, .reg-table td.col-status { min-width: 120px; }
+/* Заголовок со справочником: сама подсказка появляется при наведении. */
+.reg-table th.has-info { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }
+.reg-info-pop {
+  position: fixed; z-index: 1500; width: 420px; max-width: calc(100vw - 16px);
+  background: #fff; border: 1px solid var(--reg-border); border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.18); padding: 8px 10px; pointer-events: none;
+}
+.reg-info-pop h4 { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--reg-primary); }
+.reg-info-pop .reg-codes-table { font-size: 11px; }
+.reg-info-pop .reg-codes-table td { padding: 2px 6px; }
 .reg-actions-cell { display: flex; gap: 5px; justify-content: center; }
 .reg-table th.col-actions,
 .reg-table td.col-actions { position: sticky; right: 0; box-shadow: -2px 0 5px rgba(0,0,0,.07); }
@@ -321,14 +334,14 @@ window.registryApp = (function() {
     { name: 'tpFio', label: 'Фамилия, имя, отчество', short: 'ФИО', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpInn', label: 'ИНН', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpBirthDate', label: 'Дата рождения', short: 'Д. р.', group: 'Налогоплательщик', type: 'date' },
-    { name: 'tpDocCode', label: 'Код документа', short: 'Код док.', group: 'Налогоплательщик', type: 'text', info: 'docCodes' },
+    { name: 'tpDocCode', label: 'Код документа', short: 'Код', group: 'Налогоплательщик', type: 'text', info: 'docCodes' },
     { name: 'tpDocSeries', label: 'Серия, номер', short: 'Серия, №', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpDocDate', label: 'Дата выдачи', short: 'Выдан', group: 'Налогоплательщик', type: 'date' },
 
     { name: 'ptFio', label: 'Фамилия, имя, отчество', short: 'ФИО', group: 'Пациент', type: 'text' },
     { name: 'ptInn', label: 'ИНН', group: 'Пациент', type: 'text' },
     { name: 'ptBirthDate', label: 'Дата рождения', short: 'Д. р.', group: 'Пациент', type: 'date' },
-    { name: 'ptDocCode', label: 'Код документа', short: 'Код док.', group: 'Пациент', type: 'text', info: 'docCodes' },
+    { name: 'ptDocCode', label: 'Код документа', short: 'Код', group: 'Пациент', type: 'text', info: 'docCodes' },
     { name: 'ptDocSeries', label: 'Серия, номер', short: 'Серия, №', group: 'Пациент', type: 'text' },
     { name: 'ptDocDate', label: 'Дата выдачи', short: 'Выдан', group: 'Пациент', type: 'date' },
 
@@ -337,7 +350,7 @@ window.registryApp = (function() {
 
     { name: 'issuerName', label: 'ФИО выдавшего справку', short: 'Кто выдал', type: 'text' },
     { name: 'formDate', label: 'Дата формирования', short: 'Дата форм.', type: 'date' },
-    { name: 'status', label: 'Статус', type: 'text' },
+    { name: 'status', label: 'Статус', type: 'text', col: 'col-status' },
     { name: 'clinics', label: 'Клиники', type: 'text', datalist: 'clinics' }
   ];
 
@@ -731,8 +744,18 @@ window.registryApp = (function() {
   function headLabel(field) { return field.short || field.label; }
 
   // У сокращённых заголовков полное название остаётся в подсказке.
+  // Если у столбца есть справочник, вместо подсказки с названием показываем
+  // сам справочник при наведении — отдельная кнопка «i» в узкой шапке мешала.
   function thAttrs(field) {
-    var cls = field.type === 'checkbox' ? ' class="col-print"' : '';
+    var classes = [];
+    if (field.type === 'checkbox') classes.push('col-print');
+    if (field.col) classes.push(field.col);
+    if (field.info) classes.push('has-info');
+    var cls = classes.length ? ' class="' + classes.join(' ') + '"' : '';
+    if (field.info) {
+      return cls + ' onmouseenter="registryApp.showInfoPop(this, \'' + field.info + '\')"' +
+        ' onmouseleave="registryApp.hideInfoPop()"';
+    }
     var title = field.short ? ' title="' + escapeHtml(field.label) + '"' : '';
     return cls + title;
   }
@@ -752,8 +775,7 @@ window.registryApp = (function() {
         while (i < fields.length && fields[i].group === g) { members.push(fields[i]); i++; }
         row1 += '<th class="reg-grp" colspan="' + members.length + '">' + escapeHtml(g) + '</th>';
         members.forEach(function(m) {
-          var info = m.info ? ' <button type="button" class="reg-info-btn" onclick="registryApp.showInfo(\'' + m.info + '\')" title="Справочная информация">i</button>' : '';
-          row2 += '<th' + thAttrs(m) + '>' + escapeHtml(headLabel(m)) + info + '</th>';
+          row2 += '<th' + thAttrs(m) + '>' + escapeHtml(headLabel(m)) + '</th>';
         });
       }
     }
@@ -786,7 +808,7 @@ window.registryApp = (function() {
               ? '<span class="reg-print-icon" title="Печать документа производилась">📄</span>' : '') + '</td>';
           }
           var val = field.name === 'seqNumber' ? row.seqNumber : (row.data || {})[field.name];
-          var tdCls = field.name === 'seqNumber' ? 'center' : '';
+          var tdCls = field.name === 'seqNumber' ? 'center' : (field.col || '');
           return '<td' + (tdCls ? ' class="' + tdCls + '"' : '') + '>' + formatValue(val) + '</td>';
         }).join('') +
         '<td class="center col-actions"><div class="reg-actions-cell">' +
@@ -903,6 +925,8 @@ window.registryApp = (function() {
     var draft = currentFormValues();
     delete draft.seqNumber;                        // номера свои у каждой вкладки — подставятся заново
     delete draft.certNumber;
+    delete draft.sumCode1;                         // суммы относятся к конкретной справке,
+    delete draft.sumCode2;                         // на другую вкладку их не переносим
     if (org !== activeOrg) delete draft.clinics;   // список клиник зависит от организации
 
     activeOrg = org;
@@ -1194,13 +1218,7 @@ window.registryApp = (function() {
           '<h3>' + escapeHtml(info.title) + '</h3>' +
           '<button type="button" class="reg-modal-close" aria-label="Закрыть">×</button>' +
         '</div>' +
-        '<div class="reg-modal-body"><table class="reg-codes-table"><thead><tr>' +
-          '<th>' + escapeHtml(info.columns[0]) + '</th><th>' + escapeHtml(info.columns[1]) + '</th>' +
-        '</tr></thead><tbody>' +
-          info.rows.map(function(r) {
-            return '<tr><td class="reg-code-num">' + escapeHtml(r[0]) + '</td><td>' + escapeHtml(r[1]) + '</td></tr>';
-          }).join('') +
-        '</tbody></table></div>' +
+        '<div class="reg-modal-body">' + infoTableHtml(info) + '</div>' +
       '</div>';
     document.body.appendChild(overlay);
 
@@ -1212,6 +1230,43 @@ window.registryApp = (function() {
     overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
     overlay.querySelector('.reg-modal-close').addEventListener('click', close);
     document.addEventListener('keydown', onKey);
+  }
+
+  function infoTableHtml(info) {
+    return '<table class="reg-codes-table"><thead><tr>' +
+        '<th>' + escapeHtml(info.columns[0]) + '</th><th>' + escapeHtml(info.columns[1]) + '</th>' +
+      '</tr></thead><tbody>' +
+        info.rows.map(function(r) {
+          return '<tr><td class="reg-code-num">' + escapeHtml(r[0]) + '</td><td>' + escapeHtml(r[1]) + '</td></tr>';
+        }).join('') +
+      '</tbody></table>';
+  }
+
+  // Справочник при наведении на заголовок столбца. Позиционируем fixed, потому что
+  // шапка липкая и таблица прокручивается сама по себе — абсолютное позиционирование
+  // внутри неё обрезалось бы рамкой прокрутки.
+  function showInfoPop(th, key) {
+    var info = INFO[key];
+    if (!info) return;
+    hideInfoPop();
+    var pop = document.createElement('div');
+    pop.id = 'reg-info-pop';
+    pop.className = 'reg-info-pop';
+    pop.innerHTML = '<h4>' + escapeHtml(info.title) + '</h4>' + infoTableHtml(info);
+    document.body.appendChild(pop);
+
+    var r = th.getBoundingClientRect();
+    var left = Math.min(Math.max(8, r.left), window.innerWidth - pop.offsetWidth - 8);
+    var top = r.bottom + 4;
+    // Не помещается снизу — показываем над заголовком
+    if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - pop.offsetHeight - 4);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+
+  function hideInfoPop() {
+    var pop = document.getElementById('reg-info-pop');
+    if (pop) pop.remove();
   }
 
   // Страница встраивается в wiki (тот же window, что и React). Layout слушает
@@ -1339,6 +1394,8 @@ window.registryApp = (function() {
     openImport: openImport,
     importExcel: importExcel,
     showInfo: showInfo,
+    showInfoPop: showInfoPop,
+    hideInfoPop: hideInfoPop,
     prevPage: prevPage,
     nextPage: nextPage,
     changePageSize: changePageSize

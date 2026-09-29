@@ -4,6 +4,7 @@ const { Role, User, UserRole } = require('../models');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { isValidBadgeIcon } = require('../utils/chatBadgeIcons');
 const userChatBadge = require('../services/userChatBadge');
+const openLineAccess = require('../services/openLineAccess');
 
 const router = express.Router();
 
@@ -176,6 +177,9 @@ router.delete('/:id', authenticate, requireAdminAccess('roles'), async (req, res
     await role.destroy();
 
     await userChatBadge.recomputeForUsers(affected.map(link => link.userId));
+    // Правила открытой линии по этой роли ушли каскадом — люди, которых они
+    // завели, должны уйти вместе с ними (ver. 9.09).
+    await openLineAccess.syncQuietly(null, 'удалена роль');
 
     res.json({ message: 'Role deleted' });
   } catch (error) {

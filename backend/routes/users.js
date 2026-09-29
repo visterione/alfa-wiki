@@ -8,6 +8,7 @@ const { send2FADisabledNotification, sendCredentials } = require('../services/em
 const notificationService = require('../services/notificationService');
 const presence = require('../services/presence');
 const userChatBadge = require('../services/userChatBadge');
+const openLineAccess = require('../services/openLineAccess');
 const axios = require('axios');
 const qs = require('qs');
 const fs = require('fs');
@@ -347,6 +348,9 @@ router.post('/', authenticate, requireAdminAccess('users'), [
 
     // Роли и клиники уже привязаны — можно посчитать метку в чатах.
     await userChatBadge.recomputeForUsers(user.id);
+    // И состав открытых линий: правило по роли и медцентру заводит нового
+    // сотрудника в линию сразу, без ручного добавления (ver. 9.09).
+    await openLineAccess.syncQuietly([user.id], 'новый сотрудник');
 
     const created = await User.findByPk(user.id, {
       include: [
@@ -539,6 +543,8 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
 
     // Метка зависит от ролей, клиник и override — пересчитываем после их записи.
     await userChatBadge.recomputeForUsers(user.id);
+    // Состав линий по правилам тоже зависит от ролей, медцентров и isActive.
+    await openLineAccess.syncQuietly([user.id], 'правка сотрудника');
 
     const updated = await User.findByPk(user.id, {
       include: [
@@ -571,6 +577,7 @@ router.delete('/:id', authenticate, requireAdminAccess('users'), async (req, res
     }
 
     await user.update({ deletedAt: new Date(), deletedBy: req.user.id, isActive: false });
+    await openLineAccess.syncQuietly([user.id], 'сотрудник в корзине');
     res.json({ message: 'Пользователь перемещён в корзину' });
   } catch (error) {
     console.error('Delete user error:', error);
@@ -589,6 +596,7 @@ router.post('/:id/restore', authenticate, requireAdminAccess('users'), async (re
     }
 
     await user.update({ deletedAt: null, deletedBy: null, isActive: true });
+    await openLineAccess.syncQuietly([user.id], 'сотрудник восстановлен');
     res.json({ message: 'Пользователь восстановлен' });
   } catch (error) {
     console.error('Restore user error:', error);

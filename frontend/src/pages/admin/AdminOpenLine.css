@@ -1350,6 +1350,44 @@ button.ola-add { display: inline-flex; align-items: center; gap: 6px; }
 .ola-chip.no-access { border-color: var(--amber-300); }
 .ola-chip .ola-chip-warn { color: var(--amber-500); flex-shrink: 0; }
 
+/* Состав по правилам (ver. 9.09). Щит на месте крестика: такого сотрудника
+   руками не убирают, и пустое место читалось бы как сбой. */
+.ola-chip .ola-chip-rule {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  color: var(--accent-500);
+  flex-shrink: 0;
+}
+
+.ola-picker .ola-add-all { margin-top: 6px; }
+
+.ola-rules { display: flex; flex-direction: column; gap: 10px; }
+.ola-rule-and { color: var(--text-tertiary); }
+
+/* Сколько людей сейчас под правилом. Ноль подсвечен: пустое пересечение —
+   почти всегда опечатка в выборе, а не намерение. */
+.ola-rule-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--n-100);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+}
+.ola-rule-count.empty { background: var(--amber-100); color: var(--amber-600); }
+
+.ola-rule-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ola-rule-form .ola-select { flex: 1 1 200px; min-width: 0; }
+
+@media (max-width: 768px) {
+  .ola-rule-form .ola-select, .ola-rule-form .ola-btn { flex: 1 1 100%; }
+}
+
 .ola-blocked-doctors { margin-top: 12px; }
 
 .ola-template-scope label {
