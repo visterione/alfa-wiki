@@ -222,6 +222,8 @@
     "migrate:9.05:check": "node scripts/syncDoctorCardPages.js --check",
     "migrate:9.06": "node scripts/syncDoctorCardPages.js",
     "migrate:9.06:check": "node scripts/syncDoctorCardPages.js --check",
+    "migrate:9.08": "node scripts/syncDoctorCardPages.js",
+    "migrate:9.08:check": "node scripts/syncDoctorCardPages.js --check",
     "mail:sync": "node scripts/mailSync.js",
     "mail:account": "node scripts/mailAccount.js"
   },

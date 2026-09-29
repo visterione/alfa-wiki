@@ -168,3 +168,21 @@ test('разрыв страницы, ширина ячейки и hideMeta из 
   const paragraphStart = xml.lastIndexOf('<w:p>', petrov);
   assert.match(xml.slice(paragraphStart, petrov), /<w:pageBreakBefore\/>/);
 });
+
+test('вместо титула плашка с датой, а подписи выгрузившего нет', async () => {
+  const buffer = await buildPrintDocument({
+    siteName: 'Альфа',
+    generatedBy: 'Иванов',
+    generatedAt: new Date(2026, 8, 29),
+    entries: [{ kind: 'folder', title: 'Кадры', level: 0 }],
+  });
+  const JSZip = require('jszip');
+  const zip = await JSZip.loadAsync(buffer);
+  const xml = await zip.file('word/document.xml').async('string');
+  const styles = await zip.file('word/styles.xml').async('string');
+  assert.match(xml, /Материалы для печати от 29\.09\.2026/);
+  assert.doesNotMatch(xml, /Выгрузил|Страниц:|Иванов/);
+  assert.doesNotMatch(xml, /<w:titlePg/);
+  // Папки первого уровня в оглавлении — жирные и акцентного цвета.
+  assert.match(styles, /w:styleId="TOC1"[\s\S]*?<w:b\/>[\s\S]*?<w:color w:val="007AFF"\/>/);
+});

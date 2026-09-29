@@ -1,6 +1,6 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { Folder, Page, Setting } = require('../models');
+const { Folder, Page, Setting, DoctorCard } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { canAccessPage, folderChainChecker } = require('../utils/pageAccess');
 const { buildPrintDocument } = require('../services/wikiDocx');
@@ -103,12 +103,32 @@ async function siteName() {
 }
 
 // Дерево для окна выбора: плоские списки, дерево собирает фронт.
+//
+// У страниц врачей (шаблон doctor-card.html) есть ещё уровень — сами врачи
+// (ver. 9.07): чтобы обновить бумаги одного врача в его папке, не печатая
+// раздел целиком. Врачи идут в том же порядке, что на странице.
 router.get('/tree', authenticate, async (req, res) => {
   try {
     const { pages, folders } = await loadPrintable(req);
+    const htmlSlugs = pages.filter(p => p.contentType === 'html').map(p => p.slug);
+    const cards = htmlSlugs.length
+      ? await DoctorCard.findAll({
+        where: { pageSlug: { [Op.in]: htmlSlugs } },
+        attributes: ['id', 'pageSlug', 'fullName'],
+        order: [['sortOrder', 'ASC'], ['createdAt', 'ASC']],
+      })
+      : [];
+    const doctorsBySlug = new Map();
+    for (const card of cards) {
+      if (!doctorsBySlug.has(card.pageSlug)) doctorsBySlug.set(card.pageSlug, []);
+      doctorsBySlug.get(card.pageSlug).push({ id: card.id, fullName: card.fullName });
+    }
     res.json({
       folders: folders.map(f => ({ id: f.id, title: f.title, parentId: f.parentId || null })),
-      pages: pages.map(p => ({ id: p.id, slug: p.slug, title: p.title, folderId: p.folderId || null, contentType: p.contentType })),
+      pages: pages.map(p => ({
+        id: p.id, slug: p.slug, title: p.title, folderId: p.folderId || null, contentType: p.contentType,
+        ...(doctorsBySlug.has(p.slug) && { doctors: doctorsBySlug.get(p.slug) }),
+      })),
     });
   } catch (error) {
     console.error('Print export tree error:', error);

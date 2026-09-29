@@ -18,7 +18,7 @@ const sharp = require('sharp');
 const {
   Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
   TableOfContents, ExternalHyperlink, HeadingLevel, AlignmentType, LevelFormat,
-  PageNumber, Footer, BorderStyle, WidthType, ShadingType,
+  PageNumber, Footer, BorderStyle, WidthType, ShadingType, VerticalAlign,
 } = require('docx');
 
 const UPLOADS_DIR = path.resolve(__dirname, '..', 'uploads');
@@ -40,6 +40,12 @@ const MONO_FONT = 'Consolas';
 const TEXT_COLOR = '1F2937';
 const MUTED_COLOR = '6B7280';
 const LINK_COLOR = '0563C1';
+// Акцент портала (--accent-500): плашка над содержанием и папки первого
+// уровня в оглавлении.
+const BRAND_COLOR = '007AFF';
+// Знак с экрана входа — белый на прозрачном, как раз для синей плашки. Тот
+// же файл уже кладут в письма (services/emailService.js).
+const LOGO_PATH = path.resolve(__dirname, '..', 'assets', 'logo.png');
 
 const BLOCK_TAGS = new Set([
   'address', 'article', 'aside', 'blockquote', 'body', 'center', 'dd', 'details',
@@ -700,13 +706,61 @@ function contentHeadingStyles() {
   }));
 }
 
+// Плашка вместо титула: логотип слева, рядом «Материалы для печати от …».
+// Таблица из одной строки — единственный способ в Word залить блок цветом с
+// картинкой и текстом рядом и не зависеть от обтекания.
+async function brandBanner(generatedAt) {
+  const none = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  const fill = { type: ShadingType.CLEAR, fill: BRAND_COLOR, color: 'auto' };
+  const logo = await fs.promises.readFile(LOGO_PATH).catch(() => null);
+  const cells = [];
+  if (logo) {
+    cells.push(new TableCell({
+      width: { size: 1200, type: WidthType.DXA },
+      shading: fill,
+      verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 200, bottom: 200, left: 280, right: 0 },
+      children: [new Paragraph({ spacing: { after: 0 }, children: [new ImageRun({ type: 'png', data: logo, transformation: { width: 48, height: 48 } })] })],
+    }));
+  }
+  cells.push(new TableCell({
+    shading: fill,
+    verticalAlign: VerticalAlign.CENTER,
+    margins: { top: 200, bottom: 200, left: 240, right: 280 },
+    children: [new Paragraph({
+      spacing: { after: 0 },
+      children: [new TextRun({ text: `Материалы для печати от ${formatDate(generatedAt)}`, size: 32, bold: true, color: 'FFFFFF' })],
+    })],
+  }));
+  return new Table({
+    rows: [new TableRow({ children: cells })],
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
+  });
+}
+
+// Стили строк оглавления. Word заполняет оглавление сам и берёт оформление
+// строк из стилей «toc 1»…«toc 6» — задать их здесь значит задать вид
+// оглавления после его обновления. Первый уровень — папки корня — жирным
+// акцентным цветом, чтобы разделы читались с листа.
+function tocStyles() {
+  return [{
+    id: 'TOC1',
+    name: 'toc 1',
+    basedOn: 'Normal',
+    next: 'Normal',
+    run: { bold: true, color: BRAND_COLOR },
+    paragraph: { spacing: { before: 160, after: 60 } },
+  }];
+}
+
 /**
  * Собрать документ.
  * @param {object} opts
  * @param {Array} opts.entries — по порядку: { kind: 'folder', title, level }
  *   или { kind: 'page', title, level, contentHtml, updatedAt }; level с нуля.
  * @param {string} opts.siteName
- * @param {string} opts.generatedBy — кто выгрузил, печатается на титуле
+ * @param {string} [opts.generatedBy] — кто выгрузил, только в свойствах файла
  * @param {Date} opts.generatedAt
  * @param {string} [opts.baseUrl] — адрес портала для внутренних ссылок
  * @returns {Promise<Buffer>}
@@ -723,16 +777,13 @@ async function buildPrintDocument({ entries, siteName, generatedBy, generatedAt 
   const images = await loadImages(sources);
   const converter = new Converter({ images, baseUrl });
 
-  const pageCount = entries.filter(e => e.kind === 'page').length;
+  // Отдельного титульного листа нет (ver. 9.07): на бумаге он был пустым
+  // листом ради трёх строк. Документ начинается сразу с содержания, а
+  // заменой титулу служит синяя плашка над ним.
   const children = [
-    new Paragraph({ spacing: { before: 3600, after: 240 }, children: [new TextRun({ text: siteName, size: 48, bold: true, color: '111827' })] }),
-    new Paragraph({ spacing: { after: 960 }, children: [new TextRun({ text: 'Материалы для печати', size: 32, color: MUTED_COLOR })] }),
-    new Paragraph({ children: [new TextRun({ text: `Страниц: ${pageCount}`, color: MUTED_COLOR })] }),
-    new Paragraph({ children: [new TextRun({ text: `Сформировано ${formatDate(generatedAt)}`, color: MUTED_COLOR })] }),
-    ...(generatedBy ? [new Paragraph({ children: [new TextRun({ text: `Выгрузил: ${generatedBy}`, color: MUTED_COLOR })] })] : []),
+    await brandBanner(generatedAt),
     new Paragraph({
-      pageBreakBefore: true,
-      spacing: { after: 240 },
+      spacing: { before: 360, after: 240 },
       children: [new TextRun({ text: 'Содержание', size: 32, bold: true, color: '111827' })],
     }),
     new TableOfContents('Содержание', { hyperlink: true, headingStyleRange: '1-6' }),
@@ -783,16 +834,14 @@ async function buildPrintDocument({ entries, siteName, generatedBy, generatedAt 
         heading5: headingStyle(24, 200),
         heading6: headingStyle(24, 200),
       },
-      paragraphStyles: contentHeadingStyles(),
+      paragraphStyles: [...contentHeadingStyles(), ...tocStyles()],
     },
     numbering: { config: numberingConfig() },
     sections: [{
       properties: {
-        titlePage: true,
         page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } },
       },
       footers: {
-        first: new Footer({ children: [new Paragraph({})] }),
         default: new Footer({
           children: [new Paragraph({
             alignment: AlignmentType.CENTER,

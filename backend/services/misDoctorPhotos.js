@@ -27,7 +27,20 @@ const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
 // легло бы своими пропорциями. Обрезаем от верха кадра — там лицо.
 const PHOTO_SIDE = 480;
 
-function createDoctorPhotos({ misRequest, misBaseUrl, fetchImage = defaultFetchImage, now = () => Date.now() }) {
+// МИС время от времени рвёт соединение (ECONNRESET) на ровном месте, и
+// одиночный сбой превращал фото врача в заглушку на весь документ. Один
+// повтор через полсекунды закрывает такие сбои; настоящую недоступность МИС
+// он не маскирует — второй отказ уходит наверх.
+async function withRetry(fn, delayMs) {
+  try {
+    return await fn();
+  } catch (err) {
+    await new Promise(r => setTimeout(r, delayMs));
+    return fn();
+  }
+}
+
+function createDoctorPhotos({ misRequest, misBaseUrl, fetchImage = defaultFetchImage, now = () => Date.now(), retryDelayMs = 500 }) {
   const allowedHost = new URL(misBaseUrl).host;
   let avatarMap = null;
   let avatarMapAt = 0;
@@ -35,7 +48,7 @@ function createDoctorPhotos({ misRequest, misBaseUrl, fetchImage = defaultFetchI
   const photos = new Map();
 
   async function loadAvatarMap() {
-    const data = await misRequest('getUsers', { show_all: true });
+    const data = await withRetry(() => misRequest('getUsers', { show_all: true }), retryDelayMs);
     if (Number(data?.error) !== 0 || !Array.isArray(data?.data)) throw new Error('МИС не отдала список сотрудников');
     const map = new Map();
     for (const user of data.data) {
@@ -80,7 +93,7 @@ function createDoctorPhotos({ misRequest, misBaseUrl, fetchImage = defaultFetchI
     try { parsed = new URL(url, misBaseUrl); } catch { return remember(key, null); }
     if (parsed.host !== allowedHost) return remember(key, null);
 
-    const source = await fetchImage(parsed.href);
+    const source = await withRetry(() => fetchImage(parsed.href), retryDelayMs);
     const photo = await sharp(source)
       .rotate()
       .resize({ width: PHOTO_SIDE, height: PHOTO_SIDE, fit: 'cover', position: 'top', withoutEnlargement: true })

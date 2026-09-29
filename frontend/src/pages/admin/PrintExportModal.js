@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Download, FileText, Folder, X } from 'lucide-react';
+import { ChevronRight, Download, FileText, Folder, User, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { printExport } from '../../services/api';
 import { snapshotPages } from './printSnapshots';
@@ -18,6 +18,13 @@ import './PrintExportModal.css';
 // отмена.
 
 const byTitle = (a, b) => a.title.localeCompare(b.title, 'ru', { numeric: true, sensitivity: 'base' });
+
+// Выбор хранится «листьями» дерева: обычная страница — её id, страница врачей
+// (ver. 9.07) — ключи её врачей. Так один и тот же механизм галочек отмечает
+// и раздел целиком, и одного врача, а страница врачей выбрана частично, если
+// отмечены не все.
+const doctorKey = (id) => `d:${id}`;
+const leavesOf = (page) => (page.doctors?.length ? page.doctors.map(d => doctorKey(d.id)) : [page.id]);
 
 function Checkbox({ checked, indeterminate, onChange }) {
   const ref = useRef(null);
@@ -95,7 +102,7 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
     const descendants = new Map();
     const collect = (folderId) => {
       if (descendants.has(folderId)) return descendants.get(folderId);
-      const ids = (folderPages.get(folderId) || []).map(p => p.id);
+      const ids = (folderPages.get(folderId) || []).flatMap(leavesOf);
       for (const f of childFolders.get(folderId) || []) ids.push(...collect(f.id));
       descendants.set(folderId, ids);
       return ids;
@@ -129,6 +136,7 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
   }, [loading]);
 
   const total = tree.pages.length;
+  const selectedPages = tree.pages.filter(p => leavesOf(p).some(k => selected.has(k)));
 
   const togglePages = (ids) => {
     setSelected(prev => {
@@ -152,7 +160,13 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
     abortRef.current = controller;
     setBuilding(true);
     try {
-      const htmlPages = tree.pages.filter(p => p.contentType === 'html' && selected.has(p.id));
+      // Страница врачей с частью отмеченных врачей уходит в снимок со списком
+      // этих врачей — остальных шаблон в печатной версии не рисует.
+      const htmlPages = selectedPages.filter(p => p.contentType === 'html').map(p => {
+        if (!p.doctors?.length) return p;
+        const doctorIds = p.doctors.filter(d => selected.has(doctorKey(d.id))).map(d => d.id);
+        return doctorIds.length === p.doctors.length ? p : { ...p, doctorIds };
+      });
       let snapshots = {};
       if (htmlPages.length) {
         setProgress({ done: 0, total: htmlPages.length });
@@ -163,7 +177,7 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
         if (controller.signal.aborted) return;
       }
       setProgress(null);
-      const response = await printExport.docx([...selected], snapshots);
+      const response = await printExport.docx(selectedPages.map(p => p.id), snapshots);
       if (controller.signal.aborted) return;
       downloadBlob(response.data, filenameFrom(response.headers));
       onClose();
@@ -183,17 +197,51 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
 
   const renderFolder = (folderId, depth) => (
     <>
-      {(index.folderPages.get(folderId) || []).map(page => (
-        <label key={page.id} className="print-tree-row" style={{ '--depth': depth }}>
-          <span className="print-tree-toggle" />
-          <Checkbox checked={selected.has(page.id)} onChange={() => togglePages([page.id])} />
-          <FileText size={15} className="print-tree-icon" />
-          <span className="print-tree-title">{page.title}</span>
-        </label>
-      ))}
+      {(index.folderPages.get(folderId) || []).map(page => {
+        if (!page.doctors?.length) {
+          return (
+            <label key={page.id} className="print-tree-row" style={{ '--depth': depth }}>
+              <span className="print-tree-toggle" />
+              <Checkbox checked={selected.has(page.id)} onChange={() => togglePages([page.id])} />
+              <FileText size={15} className="print-tree-icon" />
+              <span className="print-tree-title">{page.title}</span>
+            </label>
+          );
+        }
+        const keys = leavesOf(page);
+        const count = keys.filter(k => selected.has(k)).length;
+        const open = expanded.has(page.id);
+        return (
+          <React.Fragment key={page.id}>
+            <div className="print-tree-row" style={{ '--depth': depth }} onClick={() => toggleExpanded(page.id)}>
+              <span className={`print-tree-toggle${open ? ' open' : ''}`}><ChevronRight size={14} /></span>
+              <Checkbox
+                checked={count > 0 && count === keys.length}
+                indeterminate={count > 0 && count < keys.length}
+                onChange={() => togglePages(keys)}
+              />
+              <FileText size={15} className="print-tree-icon" />
+              <span className="print-tree-title">{page.title}</span>
+              <span className="print-tree-count">{count}/{keys.length}</span>
+            </div>
+            {open && page.doctors.map(doctor => (
+              <label key={doctor.id} className="print-tree-row" style={{ '--depth': depth + 1 }}>
+                <span className="print-tree-toggle" />
+                <Checkbox checked={selected.has(doctorKey(doctor.id))} onChange={() => togglePages([doctorKey(doctor.id)])} />
+                <User size={15} className="print-tree-icon" />
+                <span className="print-tree-title">{doctor.fullName}</span>
+              </label>
+            ))}
+          </React.Fragment>
+        );
+      })}
       {(index.childFolders.get(folderId) || []).map(folder => {
         const ids = index.descendants(folder.id);
         const count = ids.filter(id => selected.has(id)).length;
+        // Счётчик у папки — в страницах, а не во врачах: «3/12» врачей
+        // рядом с «3/5» страниц в соседней папке читалось бы как одно и то же.
+        const folderPagesAll = tree.pages.filter(p => leavesOf(p).some(k => ids.includes(k)));
+        const pagesPicked = folderPagesAll.filter(p => leavesOf(p).some(k => selected.has(k))).length;
         const open = expanded.has(folder.id);
         return (
           <React.Fragment key={folder.id}>
@@ -206,7 +254,7 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
               />
               <Folder size={15} className="print-tree-icon" />
               <span className="print-tree-title">{folder.title}</span>
-              <span className="print-tree-count">{count}/{ids.length}</span>
+              <span className="print-tree-count">{pagesPicked}/{folderPagesAll.length}</span>
             </div>
             {open && renderFolder(folder.id, depth + 1)}
           </React.Fragment>
@@ -233,8 +281,8 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
           ) : (
             <>
               <div className="print-export-bar">
-                <span className="text-muted">Выбрано {selected.size} из {total}</span>
-                <button type="button" className="btn-link" onClick={() => setSelected(new Set(tree.pages.map(p => p.id)))}>Все</button>
+                <span className="text-muted">Выбрано страниц: {selectedPages.length} из {total}</span>
+                <button type="button" className="btn-link" onClick={() => setSelected(new Set(tree.pages.flatMap(leavesOf)))}>Все</button>
                 <button type="button" className="btn-link" onClick={() => setSelected(new Set())}>Никакие</button>
               </div>
               <div className="print-tree">{renderFolder(null, 0)}</div>
@@ -252,7 +300,7 @@ export default function PrintExportModal({ currentFolderId, canEdit, onClose }) 
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={handleCancel}>{building ? 'Прервать' : 'Отмена'}</button>
-          <button className="btn btn-primary" onClick={handleDownload} disabled={building || selected.size === 0}>
+          <button className="btn btn-primary" onClick={handleDownload} disabled={building || selectedPages.length === 0}>
             {building ? <div className="loading-spinner" style={{ width: 16, height: 16 }} /> : <Download size={16} />}
             {building ? 'Собираю документ…' : 'Скачать .docx'}
           </button>

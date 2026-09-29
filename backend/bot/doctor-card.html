@@ -726,6 +726,9 @@ window.dcApp = (function() {
   // врачей это шум, данные врача от этого не устаревают.
   var PRINT_MODE = window.__ALFA_PRINT_MODE__ === true;
   if (PRINT_MODE) window.__ALFA_PRINT_OPTIONS__ = { hideMeta: true };
+  // В окне выбора печати можно отметить отдельных врачей (ver. 9.07) — тогда
+  // выгрузка передаёт их id, и печатаем только их, в порядке страницы.
+  var PRINT_DOCTORS = PRINT_MODE && Array.isArray(window.__ALFA_PRINT_DOCTORS__) ? window.__ALFA_PRINT_DOCTORS__ : null;
   // Серый человечек вместо фото — как аватар без фото везде в портале.
   // Картинкой, а не встроенным svg: svg снимок для Word пропускает, а
   // заглушка на листе врача нужна так же, как на экране.
@@ -1060,12 +1063,16 @@ window.dcApp = (function() {
     return fetch(API_BASE + '/mis/doctor-photo/' + encodeURIComponent(misUserId), {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(function(r) {
+      // Запоминаем только честный ответ «фото нет» (404). Сбой связи с МИС
+      // не запоминаем, иначе врач остался бы с заглушкой до перезагрузки.
+      if (r.status === 404) { photoUrls[misUserId] = null; return null; }
       if (!r.ok) return null;
-      return r.blob().then(function(blob) { return URL.createObjectURL(blob); });
-    }).catch(function() { return null; }).then(function(url) {
-      photoUrls[misUserId] = url;
-      return url;
-    });
+      return r.blob().then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        photoUrls[misUserId] = url;
+        return url;
+      });
+    }).catch(function() { return null; });
   }
 
   // Подставляет фото во все img[data-photo-for] в контейнере. Пока фото
@@ -1093,6 +1100,9 @@ window.dcApp = (function() {
   // где врач принимает, плашками в одну строку; сведения — одной строкой с
   // подписями, а не столбиком значков, которые в Word теряются.
   function renderPrintCards(container) {
+    if (PRINT_DOCTORS) {
+      filteredCards = filteredCards.filter(function(c) { return PRINT_DOCTORS.indexOf(c.id) !== -1; });
+    }
     if (!filteredCards.length) {
       container.innerHTML = '<p>Список врачей пуст</p>';
       window.dispatchEvent(new Event('alfa:print-ready'));

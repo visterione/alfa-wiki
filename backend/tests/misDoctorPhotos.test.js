@@ -63,3 +63,17 @@ test('ссылку не на сервер МИС не скачиваем', async
   assert.equal(await photos.getPhoto(5), null);
   assert.equal(calls.images.length, 0);
 });
+
+test('одиночный обрыв связи с МИС не превращает фото в заглушку', async () => {
+  let failures = 1;
+  const photos = createDoctorPhotos({
+    misBaseUrl: BASE,
+    retryDelayMs: 0,
+    misRequest: async () => {
+      if (failures-- > 0) throw new Error('read ECONNRESET');
+      return { error: 0, data: [{ id: 7, avatar: 'https://mis.example:3010/upload/7.jpg' }] };
+    },
+    fetchImage: async () => jpeg(),
+  });
+  assert.ok(await photos.getPhoto(7));
+});

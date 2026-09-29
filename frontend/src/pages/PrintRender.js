@@ -23,6 +23,8 @@ import './PageView.css';
 // window.dispatchEvent(new Event('alfa:print-ready')) — иначе ждём тишины.
 // Параметры документа страница кладёт в window.__ALFA_PRINT_OPTIONS__:
 // { hideMeta: true } — не печатать под заголовком дату правки и снимка.
+// window.__ALFA_PRINT_DOCTORS__ — id карточек врачей, если в документ нужны
+// не все врачи страницы; нет его — печатать всех.
 // В разметке понимаются data-print-layout="grid" (таблица только для
 // раскладки, без рамок), ширина ячейки в style и break-before: page.
 
@@ -283,7 +285,12 @@ function snapshot(root) {
 
 export default async function runPrintRender(rootEl) {
   // Читаем до запуска скриптов: шаблоны чистят search через replaceState.
-  const id = new URLSearchParams(window.location.search).get('alfa-print');
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('alfa-print');
+  // Какие врачи нужны со страницы врачей, если не все (ver. 9.07). Шаблон
+  // читает список из window: адрес он и сам разбирает, и чистить его может.
+  const doctors = params.get('alfa-print-doctors');
+  if (doctors) window.__ALFA_PRINT_DOCTORS__ = doctors.split(',').filter(Boolean);
   const post = (payload) => window.parent.postMessage({ type: 'alfa-print-snapshot', pageId: id, ...payload }, window.location.origin);
 
   window.__ALFA_PRINT_MODE__ = true;

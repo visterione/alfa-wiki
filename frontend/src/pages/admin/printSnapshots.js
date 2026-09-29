@@ -16,7 +16,7 @@ const PAGE_TIMEOUT_MS = 80000;
 // которые снимок перекладывает в таблицы. На узкой они сложились бы в столбик.
 const FRAME_WIDTH = 1100;
 
-function snapshotOne({ id: pageId, slug }, signal) {
+function snapshotOne({ id: pageId, slug, doctorIds }, signal) {
   return new Promise((resolve) => {
     const frame = document.createElement('iframe');
     frame.setAttribute('aria-hidden', 'true');
@@ -48,13 +48,15 @@ function snapshotOne({ id: pageId, slug }, signal) {
 
     window.addEventListener('message', onMessage);
     signal?.addEventListener('abort', onAbort);
-    frame.src = `/page/${encodeURIComponent(slug)}?alfa-print=${encodeURIComponent(pageId)}`;
+    // Выбраны не все врачи страницы — передаём, каких печатать (ver. 9.07).
+    const doctors = doctorIds?.length ? `&alfa-print-doctors=${encodeURIComponent(doctorIds.join(','))}` : '';
+    frame.src = `/page/${encodeURIComponent(slug)}?alfa-print=${encodeURIComponent(pageId)}${doctors}`;
     document.body.appendChild(frame);
   });
 }
 
 /**
- * Снять html-страницы по очереди: pages — [{ id, slug }]. Возвращает
+ * Снять html-страницы по очереди: pages — [{ id, slug, doctorIds? }]. Возвращает
  * { [pageId]: { html, hideMeta } } — только удавшиеся; остальные сервер
  * соберёт из сохранённой разметки.
  */
