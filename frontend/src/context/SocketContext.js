@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { useAuth } from './AuthContext';
-import { BASE_URL, chat as chatApi, releaseNotes as releaseNotesApi } from '../services/api';
+import { BASE_URL, chat as chatApi, releaseNotes as releaseNotesApi, isPublicPath } from '../services/api';
 
 // Tauri detection
 const isTauri = () => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
@@ -322,6 +322,9 @@ export function SocketProvider({ children }) {
     // это заметит первый же HTTP-запрос.
     const handleSessionEnd = () => {
       localStorage.removeItem('token');
+      // Сотрудник мог открыть анкету кандидата или карточку прибора в той же
+      // вкладке: публичную страницу сессия не держит, уводить с неё незачем.
+      if (isPublicPath()) return;
       // Куда человек смотрел — в sessionStorage, как и в перехватчике 401:
       // страница входа заберёт адрес оттуда и вернёт его на место, а не на
       // стартовый экран.
