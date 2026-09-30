@@ -31,6 +31,7 @@ import { X, UserPlus, ShieldAlert, BellRing } from 'lucide-react';
 
 import { vacancies as api, BASE_URL } from '../../services/api';
 import UserPicker from './UserPicker';
+import { MisAvatar } from '../../components/MisBadge';
 
 /**
  * Назначения вакансии: данные и сохранение.
@@ -320,10 +321,12 @@ function UserAvatar({ user }) {
   const src = avatarUrl(user?.avatar);
 
   return (
-    <span className="vac-avatar" aria-hidden="true">
-      <span>{initials}</span>
-      {src && <img src={src} alt="" onError={e => { e.currentTarget.style.display = 'none'; }} />}
-    </span>
+    <MisAvatar userId={user?.id} size={28}>
+      <span className="vac-avatar" aria-hidden="true">
+        <span>{initials}</span>
+        {src && <img src={src} alt="" onError={e => { e.currentTarget.style.display = 'none'; }} />}
+      </span>
+    </MisAvatar>
   );
 }
 
