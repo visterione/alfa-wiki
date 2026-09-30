@@ -1102,3 +1102,38 @@
 }
 
 @keyframes eb-loading { to { background-position: -200% 0; } }
+
+/* ── Картинка с кнопкой (ver. 9.18) ───────────────────────────────────────
+   Рамка видна и у невыбранного блока, но едва: по ней понятно, что это не
+   обычная картинка, и она не мешает смотреть на письмо. У выбранного блока
+   рамка становится рабочей — её тащат, тянут за углы, а по картинке рисуют
+   новую. */
+.eb-hotspot { position: relative; line-height: 0; user-select: none; touch-action: none; }
+.eb-hotspot img { display: block; width: 100%; height: auto; pointer-events: none; }
+.eb-hotspot.editing { cursor: crosshair; }
+
+.eb-hotspot-zone {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dashed color-mix(in srgb, var(--primary) 55%, transparent);
+  border-radius: 4px;
+}
+
+.eb-hotspot.editing .eb-hotspot-zone {
+  border: 2px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  cursor: move;
+}
+
+.eb-hotspot-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-primary);
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+}
+.eb-hotspot-handle.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.eb-hotspot-handle.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.eb-hotspot-handle.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.eb-hotspot-handle.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }

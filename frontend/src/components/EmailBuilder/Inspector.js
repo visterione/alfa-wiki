@@ -122,6 +122,45 @@ function ImageField({ value, onChange }) {
   );
 }
 
+/**
+ * Зона кнопки на картинке (ver. 9.18).
+ *
+ * Обводят её мышью на холсте, а здесь — числа для подгонки на полпроцента,
+ * которой рукой не добиться. В документе зона лежит долями от 0 до 1, а
+ * показывается процентами: «30% слева» читается, «0.3» — нет.
+ */
+function ZoneField({ value, onChange }) {
+  const zone = value || { x: 0.3, y: 0.76, w: 0.4, h: 0.12 };
+  const parts = [['x', 'слева'], ['y', 'сверху'], ['w', 'ширина'], ['h', 'высота']];
+  const set = (key, percent) => {
+    if (!Number.isFinite(percent)) return;
+    const next = { ...zone, [key]: Math.min(100, Math.max(0, percent)) / 100 };
+    // Зона не вылезает за картинку: рендерер всё равно обрежет её по краю, но
+    // числа в панели тогда разошлись бы с рамкой на холсте.
+    next.w = Math.min(next.w, 1 - next.x);
+    next.h = Math.min(next.h, 1 - next.y);
+    onChange(next);
+  };
+  return (
+    <div className="eb-padding">
+      {parts.map(([key, label]) => (
+        <label key={key}>
+          <input
+            type="number"
+            className="eb-input"
+            min={0}
+            max={100}
+            step={0.5}
+            value={Math.round((Number(zone[key]) || 0) * 1000) / 10}
+            onChange={(e) => set(key, Number(e.target.value))}
+          />
+          <span>{label}, %</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 /** Отступы блока. Четыре числа, потому что в письме они живут на ячейке. */
 function PaddingField({ value, onChange }) {
   const v = value || {};
@@ -764,6 +803,9 @@ function Field({ field, value, onChange, block }) {
 
     case 'padding':
       return <PaddingField value={value} onChange={onChange} />;
+
+    case 'zone':
+      return <ZoneField value={value} onChange={onChange} />;
 
     case 'list':
       return <ListField field={field} value={value} onChange={onChange} />;

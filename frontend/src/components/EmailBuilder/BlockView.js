@@ -13,7 +13,7 @@
  * обоих файлах одинаково и вынесены в константы.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -23,7 +23,8 @@ import Color from '@tiptap/extension-color';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
   Bold, Italic, Underline as UnderlineIcon, List, ListOrdered,
-  Link as LinkIcon, Heading2, Heading3, Image as ImageIcon, Code2
+  Link as LinkIcon, Heading2, Heading3, Image as ImageIcon, Code2,
+  MousePointerSquareDashed
 } from 'lucide-react';
 import { BASE_URL } from '../../services/api';
 import { fontStack, ensureWebFont } from './fonts';
@@ -314,6 +315,122 @@ function TextEditable({ block, settings, selected, onChange }) {
   );
 }
 
+/**
+ * Картинка с кнопкой на холсте (ver. 9.18): рамка зоны поверх макета.
+ *
+ * Рамку двигают, тянут за углы или рисуют заново с любой точки картинки. Всё
+ * это работает только у выбранного блока: у невыбранного первый же клик должен
+ * выбирать блок, а не сдвигать зону, которую человек и не собирался трогать.
+ *
+ * Пока рука на мыши, рамка живёт в своём состоянии и в документ уходит один
+ * раз, когда кнопку отпустили. Иначе каждый пиксель движения ложился бы
+ * отдельным шагом в историю, и отмена откатывала бы зону по пикселю.
+ *
+ * Координаты — доли картинки, как и в документе: холст в конструкторе уже
+ * письма, и в пикселях зона разъехалась бы с тем, что уйдёт получателю.
+ */
+const DEFAULT_ZONE = { x: 0.3, y: 0.76, w: 0.4, h: 0.12 };
+const MIN_ZONE = 0.02;
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const roundZone = (z) => Object.fromEntries(Object.entries(z).map(([k, v]) => [k, Math.round(v * 10000) / 10000]));
+
+function HotspotView({ block, selected, onChange }) {
+  const boxRef = useRef(null);
+  const [drag, setDrag] = useState(null);
+  const src = previewSrc(block.src);
+  const zone = drag?.zone || block.zone || DEFAULT_ZONE;
+
+  if (!src) {
+    return (
+      <div className="eb-image-empty">
+        <MousePointerSquareDashed size={22} />
+      </div>
+    );
+  }
+
+  const pointAt = (e) => {
+    const r = boxRef.current.getBoundingClientRect();
+    return { x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) };
+  };
+
+  const start = (mode, e) => {
+    if (!selected || e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const p = pointAt(e);
+    const orig = block.zone || DEFAULT_ZONE;
+    setDrag({ mode, from: p, orig, zone: mode === 'draw' ? { x: p.x, y: p.y, w: 0, h: 0 } : orig });
+  };
+
+  const move = (e) => {
+    if (!drag) return;
+    const p = pointAt(e);
+    const { orig, from, mode } = drag;
+    let next;
+    if (mode === 'move') {
+      const x = clamp01(orig.x + p.x - from.x);
+      const y = clamp01(orig.y + p.y - from.y);
+      next = { ...orig, x: Math.min(x, 1 - orig.w), y: Math.min(y, 1 - orig.h) };
+    } else {
+      // Рисование — это растягивание за угол от точки, где нажали. Угол,
+      // противоположный тому, за который тянут, стоит на месте.
+      const anchor = mode === 'draw'
+        ? from
+        : {
+          x: mode.includes('w') ? orig.x + orig.w : orig.x,
+          y: mode.includes('n') ? orig.y + orig.h : orig.y,
+        };
+      next = {
+        x: Math.min(anchor.x, p.x),
+        y: Math.min(anchor.y, p.y),
+        w: Math.abs(p.x - anchor.x),
+        h: Math.abs(p.y - anchor.y),
+      };
+    }
+    setDrag({ ...drag, zone: next });
+  };
+
+  const end = () => {
+    if (!drag) return;
+    const z = drag.zone;
+    setDrag(null);
+    // Щелчок без движения по картинке не стирает зону: зона меньше двух
+    // процентов — это промах, а не новая кнопка.
+    if (z.w < MIN_ZONE || z.h < MIN_ZONE) return;
+    onChange({ zone: roundZone(z) });
+  };
+
+  const pct = (v) => `${v * 100}%`;
+  // Движение и отпускание слушает только картинка: с рамки и уголков они
+  // всплывают сюда же. Повешенные и там, они срабатывали бы дважды, и зона
+  // уходила бы в историю двумя шагами.
+  return (
+    <div
+      ref={boxRef}
+      className={`eb-hotspot ${selected ? 'editing' : ''}`}
+      onPointerDown={(e) => start('draw', e)}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+    >
+      <img src={src} alt={block.alt || ''} draggable={false} />
+      <div
+        className="eb-hotspot-zone"
+        style={{ left: pct(zone.x), top: pct(zone.y), width: pct(zone.w), height: pct(zone.h) }}
+        onPointerDown={(e) => { e.stopPropagation(); start('move', e); }}
+      >
+        {selected && ['nw', 'ne', 'sw', 'se'].map(h => (
+          <span
+            key={h}
+            className={`eb-hotspot-handle ${h}`}
+            onPointerDown={(e) => { e.stopPropagation(); start(h, e); }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function BlockView({ block, settings, selected, onChange, renderColumn, renderColumnFooter }) {
   // Шрифт блока перекрывает шрифт письма — ровно как в рендерере. Подгружаем
   // веб-шрифт сразу: иначе холст покажет Montserrat системным.
@@ -369,6 +486,9 @@ export default function BlockView({ block, settings, selected, onChange, renderC
         </div>
       );
     }
+
+    case 'hotspot':
+      return <HotspotView block={block} selected={selected} onChange={onChange} />;
 
     case 'button': {
       const text = block.text || 'Кнопка';

@@ -6,6 +6,7 @@ const { authenticate, requireMarketing } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
 const emailRenderer = require('../services/emailRenderer');
 const emailIcons = require('../services/emailIconImage');
+const emailSlices = require('../services/emailSliceImage');
 const darkMode = require('../services/emailDarkMode');
 const quota = require('../services/emailQuota');
 const optout = require('../services/emailOptout');
@@ -295,6 +296,38 @@ router.get('/icon/:key([a-z0-9-]+).png', async (req, res) => {
     res.sendFile(file);
   } catch (error) {
     console.error('❌ Error rendering email icon:', error);
+    res.status(500).end();
+  }
+});
+
+/**
+ * Кусок «Картинки с кнопкой» (ver. 9.18).
+ *
+ * Открыт без входа по той же причине, что и иконки: за ним ходит прокси
+ * почтового клиента. Но, в отличие от иконки, прямоугольник здесь задаётся
+ * произвольными числами, и без проверки маршрут резал бы что угодно. Поэтому
+ * адрес подписан рендерером, и кусок без верной подписи — 404 (см.
+ * emailSliceImage.js).
+ */
+router.get('/slice/:month/:id/:rect.:ext(jpg|png)', async (req, res) => {
+  try {
+    const parsed = emailSlices.parseRequest({
+      month: req.params.month,
+      id: req.params.id,
+      rect: req.params.rect,
+      ext: req.params.ext,
+      signature: req.query.s,
+    });
+    if (!parsed) return res.status(404).end();
+
+    const file = await emailSlices.sliceFile(parsed);
+    if (!file) return res.status(404).end();
+
+    res.type(req.params.ext);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.sendFile(file);
+  } catch (error) {
+    console.error('❌ Error slicing email image:', error);
     res.status(500).end();
   }
 });

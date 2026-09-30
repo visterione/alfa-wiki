@@ -48,6 +48,7 @@
 const sanitizeHtml = require('sanitize-html');
 const fonts = require('./emailFonts');
 const icons = require('./emailIconImage');
+const slices = require('./emailSliceImage');
 
 const DOC_VERSION = 1;
 
@@ -605,6 +606,72 @@ const blockRenderers = {
     const href = safeUrl(withUtm(block.href, s));
     const body = href ? `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:block;border:0;">${img}</a>` : img;
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${align(block.align, 'center')}"><tr><td align="${align(block.align, 'center')}">${body}</td></tr></table>`;
+  },
+
+  /**
+   * Картинка с кнопкой (ver. 9.18): макет, на котором кнопка уже нарисована, и
+   * ссылка только на ней.
+   *
+   * Картинка режется на полосы и собирается обратно (зачем и почему именно
+   * так — в emailSliceImage.js). Каждая полоса — отдельная таблица, а не строка
+   * общей: с colspan в верхней строке table-layout:fixed делит колонки поровну
+   * и средний ряд разъезжается. Ширина ячеек задана дважды: числом в атрибуте
+   * для Outlook и долей в стиле для телефона, где письмо уже 600px и куски
+   * должны ужиматься одинаково.
+   *
+   * Без ссылки, без зоны или с чужой картинкой резать незачем или нечего —
+   * тогда это обычная картинка на всю ширину, со ссылкой целиком, если она есть.
+   */
+  hotspot(block, s, ctx) {
+    const src = absoluteUrl(block.src, ctx.baseUrl);
+    if (!src) return '';
+    const W = ctx.contentWidth;
+    const href = safeUrl(withUtm(block.href, s));
+    const source = slices.parseSource(block.src);
+    const zone = slices.normalizeZone(block.zone);
+    const imgStyle = 'display:block;border:0;outline:none;text-decoration:none;width:100%;height:auto;';
+
+    if (!href || !source || !zone) {
+      const img = `<img src="${esc(src)}" width="${W}" alt="${esc(block.alt || '')}" style="${imgStyle}max-width:${W}px;">`;
+      return href ? `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:block;border:0;">${img}</a>` : img;
+    }
+
+    const { SCALE } = slices;
+    const xPx = u => Math.round((u * W) / SCALE);
+    const pct = u => `${(u / 100).toFixed(2)}%`;
+    const piece = (rect, alt, extra = '') => `<img src="${esc(slices.sliceUrl(source, rect, ctx.baseUrl))}" width="__W__" alt="${esc(alt)}" style="${imgStyle}${extra}">`;
+    const strip = (cells) => `<tr><td style="padding:0;font-size:0;line-height:0;">`
+      + `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${W}" style="width:100%;table-layout:fixed;"><tr>${cells}</tr></table>`
+      + `</td></tr>`;
+    const cell = (units, width, body) => `<td width="${width}" valign="top" style="width:${pct(units)};padding:0;font-size:0;line-height:0;">${body.replace('__W__', width)}</td>`;
+
+    const { l, t, r, b } = zone;
+    const rows = [];
+    // Подпись всей картинки уходит на верхний кусок: если картинки не
+    // загрузились, человек прочитает её первой, а не посреди письма.
+    let altUsed = false;
+    const altOnce = () => { if (altUsed) return ''; altUsed = true; return block.alt || ''; };
+
+    if (t > 0) rows.push(strip(cell(SCALE, W, piece({ l: 0, t: 0, r: SCALE, b: t }, altOnce()))));
+
+    // Надпись кнопки в alt — не формальность: у кого картинки выключены, тот
+    // увидит на месте куска ссылку с этим текстом, и письмо останется рабочим.
+    // Стиль у <img> нужен ради неё же — им оформляется alt-текст.
+    const label = block.buttonAlt || 'Подробнее';
+    const button = `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:block;border:0;text-decoration:none;">`
+      + piece({ l, t, r, b }, label, `font-family:${fontOf(block, s, ctx)};font-size:15px;font-weight:bold;line-height:1.3;color:${linkOf(block, s)};text-align:center;`)
+      + '</a>';
+    const lw = xPx(l);
+    const bw = xPx(r) - lw;
+    const middle = [];
+    if (l > 0) middle.push(cell(l, lw, piece({ l: 0, t, r: l, b }, altOnce())));
+    middle.push(cell(r - l, bw, button));
+    if (r < SCALE) middle.push(cell(SCALE - r, W - lw - bw, piece({ l: r, t, r: SCALE, b }, altOnce())));
+    rows.push(strip(middle.join('')));
+
+    if (b < SCALE) rows.push(strip(cell(SCALE, W, piece({ l: 0, t: b, r: SCALE, b: SCALE }, altOnce()))));
+
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${W}" style="width:100%;max-width:${W}px;">${rows.join('')}</table>`;
   },
 
   button(block, s, ctx) {
@@ -1424,17 +1491,28 @@ function inspect(doc, html, s, options = {}) {
     warnings.push(`Веб-шрифты (${names}) не покажут Gmail и Outlook — там письмо будет набрано запасным шрифтом из того же стека.`);
   }
 
-  const noAlt = blocks.filter(b => ['image', 'textimage'].includes(b.type) && b.src && !String(b.alt || '').trim()).length;
+  const noAlt = blocks.filter(b => ['image', 'textimage', 'hotspot'].includes(b.type) && b.src && !String(b.alt || '').trim()).length;
   if (noAlt) {
     warnings.push(`Картинок без подписи (alt): ${noAlt}. Многие клиенты не грузят картинки по умолчанию, и вместо них человек увидит пустоту.`);
   }
 
-  const emptyLinks = blocks.filter(b => b.type === 'button' && !String(b.href || '').trim()).length
+  const emptyLinks = blocks.filter(b => ['button', 'hotspot'].includes(b.type) && !String(b.href || '').trim()).length
     + blocks.filter(b => ['promo', 'hero'].includes(b.type) && b.buttonText && !String(b.buttonHref || '').trim()).length;
   if (emptyLinks) warnings.push(`Кнопок без ссылки: ${emptyLinks}. Нажатие по такой кнопке никуда не ведёт.`);
 
-  const noSrc = blocks.filter(b => ['image', 'header', 'hero', 'textimage'].includes(b.type) && !String(b.src || '').trim()).length;
+  const noSrc = blocks.filter(b => ['image', 'header', 'hero', 'textimage', 'hotspot'].includes(b.type) && !String(b.src || '').trim()).length;
   if (noSrc) warnings.push(`Блоков с картинкой, в которые файл не загружен: ${noSrc}.`);
+
+  // Картинка с кнопкой, которую не удалось разрезать, всё равно уходит — но
+  // ссылкой становится вся картинка, а не кнопка. Узнать об этом лучше до
+  // отправки, чем от получателя, у которого «кнопка» открывается от любого
+  // нажатия.
+  const unsliced = blocks.filter(b => b.type === 'hotspot' && String(b.src || '').trim()
+    && String(b.href || '').trim()
+    && (!slices.parseSource(b.src) || !slices.normalizeZone(b.zone))).length;
+  if (unsliced) {
+    warnings.push(`Картинок с кнопкой, где ссылкой стала вся картинка: ${unsliced}. Резать можно только файл, загруженный в конструктор, и зону не меньше 2% по стороне.`);
+  }
 
   // http вместо https: почтовые клиенты и антивирусы помечают такие ссылки как
   // небезопасные, а часть корпоративных шлюзов режет письмо целиком.

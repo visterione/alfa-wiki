@@ -14,7 +14,8 @@
 import {
   Type, Image as ImageIcon, MousePointerClick, Minus,
   MoveVertical, Columns2, Code2, Flag, BadgePercent,
-  ListChecks, Share2, MapPin, PanelTop, WrapText, Sparkle, MailX
+  ListChecks, Share2, MapPin, PanelTop, WrapText, Sparkle, MailX,
+  MousePointerSquareDashed
 } from 'lucide-react';
 
 /** Отступы по умолчанию. Боковые 24px совпадают с полями карточки письма. */
@@ -125,6 +126,45 @@ export const BLOCK_TYPES = {
       { key: 'background', label: 'Фон блока', type: 'color', clearable: true },
       { key: 'padding', label: 'Отступы', type: 'padding' },
     ],
+  },
+
+  // Макет одной картинкой с уже нарисованной кнопкой (ver. 9.18). Зона кнопки
+  // обводится прямо на холсте, а рендерер режет картинку так, чтобы ссылкой
+  // стала только она, — см. backend/services/emailSliceImage.js. Зона рождается
+  // сразу, внизу по центру: там кнопка на макете стоит чаще всего, и пустой
+  // блок без зоны человек принял бы за обычную картинку.
+  hotspot: {
+    label: 'Картинка с кнопкой',
+    icon: MousePointerSquareDashed,
+    hint: 'Кнопка нарисована на макете',
+    create: () => ({
+      type: 'hotspot',
+      src: '',
+      alt: '',
+      href: '',
+      buttonAlt: 'Записаться',
+      zone: { x: 0.3, y: 0.76, w: 0.4, h: 0.12 },
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+    }),
+    fields: [
+      { key: 'src', label: 'Файл', type: 'image' },
+      { key: 'alt', label: 'Подпись (alt)', type: 'text', placeholder: 'Что на картинке' },
+      { key: 'zone', label: 'Зона кнопки', type: 'zone' },
+      { key: 'href', label: 'Ссылка кнопки', type: 'link', placeholder: 'https://…' },
+      {
+        key: 'buttonAlt',
+        label: 'Надпись кнопки (alt)',
+        type: 'text',
+        placeholder: 'Записаться',
+        // Её увидит тот, у кого картинки не загрузились: на месте куска с
+        // кнопкой останется ссылка с этим текстом.
+        hint: 'Видна вместо кнопки, пока картинки не загрузились',
+      },
+      { key: 'linkColor', label: 'Цвет надписи без картинок', type: 'color', clearable: true },
+      { key: 'background', label: 'Фон блока', type: 'color', clearable: true },
+      { key: 'padding', label: 'Отступы', type: 'padding' },
+    ],
+    note: 'Обведите кнопку на картинке прямо в письме: перетащите рамку или нарисуйте новую. Резать можно только файл, загруженный сюда, — картинка по чужому адресу уйдёт ссылкой целиком.',
   },
 
   button: {
@@ -650,7 +690,7 @@ export const toV2 = (design) => {
  * письма первой версии, где такой блок есть, должны открываться.
  */
 export const PALETTE = [
-  'header', 'hero', 'text', 'textimage', 'image', 'promo',
+  'header', 'hero', 'text', 'textimage', 'image', 'hotspot', 'promo',
   'iconlist', 'services', 'button', 'social', 'contacts',
   'divider', 'spacer', 'unsubscribe', 'html',
 ];
