@@ -3,6 +3,7 @@ import { Star, RefreshCw, User as UserIcon } from 'lucide-react';
 import { openLine as openLineApi, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './OpenLineStats.css';
+import { MisAvatar } from '../components/MisBadge';
 
 /**
  * Показатели открытой линии: рейтинг сотрудников и продуктивность (ver. 7.99).
@@ -335,11 +336,13 @@ export default function OpenLineStats() {
                 <tr key={o.user.id}>
                   <td>
                     <div className="ols-person">
-                      <div className="ols-avatar">
-                        {avatarUrl(o.user.avatar)
-                          ? <img src={avatarUrl(o.user.avatar)} alt="" />
-                          : <UserIcon size={18} />}
-                      </div>
+                      <MisAvatar userId={o.user.id} size={32}>
+                        <div className="ols-avatar">
+                          {avatarUrl(o.user.avatar)
+                            ? <img src={avatarUrl(o.user.avatar)} alt="" />
+                            : <UserIcon size={18} />}
+                        </div>
+                      </MisAvatar>
                       <span>{userName(o.user)}</span>
                     </div>
                   </td>

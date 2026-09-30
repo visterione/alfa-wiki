@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { users, BASE_URL } from '../services/api';
 import './UserProfile.css';
+import { MisAvatar } from '../components/MisBadge';
 
 const COURSE_COLORS = [
   { bg: '#eff6ff', icon: '#3b82f6', border: 'var(--accent-200)' },
@@ -101,12 +102,14 @@ export default function UserProfile() {
       {/* ── Hero ─────────────────────────────────────── */}
       <div className="up-hero">
         <div className="up-hero-left">
-          <div className="up-avatar">
-            {avatarUrl
-              ? <img src={avatarUrl} alt="" />
-              : <User size={40} className="up-avatar-icon" />
-            }
-          </div>
+          <MisAvatar userId={id} size={96}>
+            <div className="up-avatar">
+              {avatarUrl
+                ? <img src={avatarUrl} alt="" />
+                : <User size={40} className="up-avatar-icon" />
+              }
+            </div>
+          </MisAvatar>
           {lastSeen && (
             <div className="up-lastseen">
               <span className={`up-lastseen-dot ${profile.isOnline ? 'is-online' : ''}`} />

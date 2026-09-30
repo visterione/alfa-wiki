@@ -3,6 +3,7 @@ import { User, Users, X } from 'lucide-react';
 import { BASE_URL } from '../services/api';
 import { stripFormatting } from '../utils/richText';
 import './ChatNotification.css';
+import { MisAvatar } from './MisBadge';
 
 export default function ChatNotification({ notification, onClose, onClick }) {
   const [isExiting, setIsExiting] = useState(false);
@@ -71,13 +72,16 @@ export default function ChatNotification({ notification, onClose, onClick }) {
       className={`chat-notification ${isExiting ? 'exiting' : ''}`}
       onClick={onClick}
     >
-      <div className="chat-notification-avatar">
-        {getAvatarUrl(chat.avatar) ? (
-          <img src={getAvatarUrl(chat.avatar)} alt="" />
-        ) : (
-          chat.type === 'group' ? <Users size={24} /> : <User size={24} />
-        )}
-      </div>
+      {/* В личном чате аватарка чата — это аватарка отправителя */}
+      <MisAvatar userId={chat.type === 'private' ? (message.senderId ?? message.sender?.id) : null} size={48}>
+        <div className="chat-notification-avatar">
+          {getAvatarUrl(chat.avatar) ? (
+            <img src={getAvatarUrl(chat.avatar)} alt="" />
+          ) : (
+            chat.type === 'group' ? <Users size={24} /> : <User size={24} />
+          )}
+        </div>
+      </MisAvatar>
       <div className="chat-notification-content">
         <div className="chat-notification-header">
           <span className="chat-notification-name">{chat.displayName || 'Неизвестный чат'}</span>

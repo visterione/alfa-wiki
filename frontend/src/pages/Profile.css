@@ -17,6 +17,8 @@
 
 .profile-hero-avatar-wrap {
   flex-shrink: 0;
+  /* Опора для значка Renovatio: сама аватарка обрезает всё по кругу. */
+  position: relative;
 }
 
 .profile-hero-avatar {

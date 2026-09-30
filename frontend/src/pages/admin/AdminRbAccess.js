@@ -3,6 +3,7 @@ import { User, Users, ChevronDown, ChevronUp, Check, Pencil, Trash2, Plus, Calen
 import { referralBonusAccess, rbScheduleDicts, rbHolidays as rbHolidaysApi, doctorSchedules, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
+import { MisAvatar } from '../../components/MisBadge';
 
 const FONT = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
@@ -210,10 +211,12 @@ function UserRow({ user, onSaved }) {
   return (
     <div style={{ border: '1px solid var(--n-200)', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
       <div onClick={() => setOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: open ? '#f8fafc' : 'white', userSelect: 'none' }}>
-        {user.avatar
-          ? <img src={user.avatar.startsWith('http') ? user.avatar : `${BASE_URL}/${user.avatar}`} alt={user.displayName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-          : <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--n-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--n-500)', flexShrink: 0 }}><User size={18} /></div>
-        }
+        <MisAvatar userId={user.id} size={36}>
+          {user.avatar
+            ? <img src={user.avatar.startsWith('http') ? user.avatar : `${BASE_URL}/${user.avatar}`} alt={user.displayName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+            : <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--n-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--n-500)', flexShrink: 0 }}><User size={18} /></div>
+          }
+        </MisAvatar>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{user.displayName || user.username}</div>
           <div style={{ fontSize: 12, color: 'var(--n-600)', marginTop: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>

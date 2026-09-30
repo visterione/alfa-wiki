@@ -26,6 +26,7 @@ import VoiceMessage from '../components/chat/VoiceMessage';
 import UserBadge from '../components/chat/UserBadge';
 import PollMessage from '../components/chat/PollMessage';
 import AvatarCropper from '../components/AvatarCropper';
+import { MisBadge, MisAvatar } from '../components/MisBadge';
 import { renderRichHtml, stripFormatting, toggleMarkup } from '../utils/richText';
 import './Dashboard.css';
 
@@ -2294,6 +2295,7 @@ export default function Dashboard() {
                 >
                   <div className="chat-item-avatar-wrap">
                     <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
+                    <MisBadge userId={chatItem.type === 'private' ? chatItem.otherUser?.id : null} size={48} />
                     {chatItem.type === 'private' && (chatItem.otherUser?.isOnline || userStatuses[chatItem.otherUser?.id]?.isOnline) && (
                       <span className="chat-item-status-dot" />
                     )}
@@ -2353,7 +2355,7 @@ export default function Dashboard() {
             <>
               <div className="chat-main-header">
                 <button className="btn-icon-chat mobile-only" onClick={() => setActiveChat(null)}><ArrowLeft size={20} /></button>
-                <div className="chat-main-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={20} /> : <User size={20} />)}</div>
+                <MisAvatar userId={activeChat.type === 'private' ? activeChat.otherUser?.id : null} size={40}><div className="chat-main-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={20} /> : <User size={20} />)}</div></MisAvatar>
                 <div className="chat-main-info" style={{ cursor: 'pointer' }} onClick={() => showChatInfo ? setShowChatInfo(false) : openChatInfo()}>
                   <div className="chat-main-name">{activeChat.displayName}</div>
                   <div className="chat-main-status">
@@ -2466,7 +2468,7 @@ export default function Dashboard() {
                             className={`message ${isOwn ? 'own' : ''} ${highlightedMessageId === msg.id ? 'highlighted' : ''}`}
                             onContextMenu={(e) => !selectionMode && handleContextMenu(e, msg)}
                           >
-                            {!isOwn && showAvatar && <div className="message-avatar" style={msg.sender?.id ? { cursor: 'pointer' } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}>{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
+                            {!isOwn && showAvatar && <MisAvatar userId={msg.sender?.id} size={32} style={{ alignSelf: 'flex-end' }}><div className="message-avatar" style={msg.sender?.id ? { cursor: 'pointer' } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}>{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div></MisAvatar>}
                             <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
                               {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender" style={msg.sender?.id ? { cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}><span>{msg.sender?.displayName || msg.sender?.username}</span><UserBadge badge={msg.sender?.chatBadge} size={14} /></div>}
                               {msg.replyTo && (
@@ -2777,7 +2779,7 @@ export default function Dashboard() {
             <div className="chat-info-body">
               <div className="chat-info-profile">
                 <div className="chat-info-avatar-wrapper">
-                  <div className="chat-info-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={48} /> : <User size={48} />)}</div>
+                  <MisAvatar userId={activeChat.type === 'private' ? activeChat.otherUser?.id : null} size={100}><div className="chat-info-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={48} /> : <User size={48} />)}</div></MisAvatar>
                   {isGroupAdmin && (
                     <div className="chat-info-avatar-actions">
                       <input type="file" ref={avatarInputRef} hidden accept="image/*" onChange={handleAvatarChange} />
@@ -2853,7 +2855,7 @@ export default function Dashboard() {
                         const isAdminMember = m.role === 'admin';
                         return (
                           <div key={m.userId} className="chat-member-item">
-                            <div className="chat-member-avatar" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
+                            <MisAvatar userId={m.userId} size={40}><div className="chat-member-avatar" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div></MisAvatar>
                             <div className="chat-member-info">
                               <div className="chat-member-name" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{m.user?.displayName || m.user?.username}</div>
                               {isCreatorMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Создатель</div>}
@@ -3141,7 +3143,7 @@ export default function Dashboard() {
               <div className="user-list">
                 {filteredUsers.map(u => (
                   <div key={u.id} className="user-item" onClick={() => startPrivateChat(u.id)}>
-                    <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
+                    <MisAvatar userId={u.id} size={40}><div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div></MisAvatar>
                     <div className="user-item-info">
                       <div className="user-item-name" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span>{u.displayName || u.username}</span><UserBadge badge={u.chatBadge} /></div>
                       <div className="user-item-username">{u.role?.name || u.position || `@${u.username}`}</div>
@@ -3220,7 +3222,7 @@ export default function Dashboard() {
                 <div className="user-list">
                   {filteredUsers.map(u => (
                     <div key={u.id} className={`user-item ${selectedUsers.includes(u.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(u.id)}>
-                      <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
+                      <MisAvatar userId={u.id} size={40}><div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div></MisAvatar>
                       <div className="user-item-info">
                         <div className="user-item-name" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span>{u.displayName || u.username}</span><UserBadge badge={u.chatBadge} /></div>
                         <div className="user-item-username">
@@ -3304,7 +3306,7 @@ export default function Dashboard() {
               <div className="user-list">
                 {availableUsersToAdd.map(u => (
                   <div key={u.id} className="user-item" onClick={() => addMemberToGroup(u.id)}>
-                    <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
+                    <MisAvatar userId={u.id} size={40}><div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div></MisAvatar>
                     <div className="user-item-info">
                       <div className="user-item-name" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span>{u.displayName || u.username}</span><UserBadge badge={u.chatBadge} /></div>
                       <div className="user-item-username">
@@ -3500,11 +3502,13 @@ export default function Dashboard() {
                   .filter(c => c.displayName?.toLowerCase().includes(forwardSearchQuery.toLowerCase()))
                   .map(c => (
                     <div key={c.id} className="user-item" onClick={() => handleForwardSend(c.id)}>
-                      <div className="user-item-avatar">
-                        {getChatAvatar(c)
-                          ? <img src={getAvatarUrl(getChatAvatar(c))} alt="" />
-                          : (c.type === 'group' ? <Users size={24} /> : <User size={24} />)}
-                      </div>
+                      <MisAvatar userId={c.type === 'private' ? c.otherUser?.id : null} size={40}>
+                        <div className="user-item-avatar">
+                          {getChatAvatar(c)
+                            ? <img src={getAvatarUrl(getChatAvatar(c))} alt="" />
+                            : (c.type === 'group' ? <Users size={24} /> : <User size={24} />)}
+                        </div>
+                      </MisAvatar>
                       <div className="user-item-info">
                         <div className="user-item-name">{c.displayName}</div>
                         <div className="user-item-username">{c.type === 'group' ? `${c.members?.length || 0} участников` : 'Личный чат'}</div>

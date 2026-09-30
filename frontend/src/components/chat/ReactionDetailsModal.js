@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, User } from 'lucide-react';
 import { BASE_URL } from '../../services/api';
+import { MisAvatar } from '../MisBadge';
 
 const getAvatarUrl = (avatar) => {
   if (!avatar) return null;
@@ -13,23 +14,20 @@ const getAvatarUrl = (avatar) => {
   return `${BASE_URL}/${normalised}`;
 };
 
-const UserAvatar = ({ avatar, displayName }) => {
+const UserAvatar = ({ userId, avatar, displayName }) => {
   const [broken, setBroken] = useState(false);
   const url = getAvatarUrl(avatar);
 
-  if (!url || broken) {
-    return (
-      <div className="reaction-avatar-placeholder">
-        <User size={16} />
-      </div>
-    );
-  }
   return (
-    <img
-      src={url}
-      alt={displayName}
-      onError={() => setBroken(true)}
-    />
+    <MisAvatar userId={userId} size={32}>
+      {!url || broken ? (
+        <div className="reaction-avatar-placeholder">
+          <User size={16} />
+        </div>
+      ) : (
+        <img src={url} alt={displayName} onError={() => setBroken(true)} />
+      )}
+    </MisAvatar>
   );
 };
 
@@ -72,7 +70,7 @@ const ReactionDetailsModal = ({ reactions, onClose }) => {
                 <div className="users-list">
                   {users.map((user) => (
                     <div key={user.id} className="user-item">
-                      <UserAvatar avatar={user.avatar} displayName={user.displayName} />
+                      <UserAvatar userId={user.id} avatar={user.avatar} displayName={user.displayName} />
                       <span>{user.displayName}</span>
                     </div>
                   ))}

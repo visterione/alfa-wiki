@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { REVIEW_STATUSES } from '../utils/reviewConstants';
 import ReviewWorkflowEditor from '../components/ReviewWorkflowEditor';
 import './ReviewBoardSettings.css';
+import { MisAvatar } from '../components/MisBadge';
 
 const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:9001';
 
@@ -267,11 +268,13 @@ const ReviewBoardSettings = () => {
               {/* Owner */}
               <div className="permission-item">
                 <div className="perm-user-info">
-                  {getAvatarUrl(board?.owner?.avatar) ? (
-                    <img src={getAvatarUrl(board?.owner?.avatar)} alt="" className="perm-avatar-img" />
-                  ) : (
-                    <div className="perm-avatar"><User size={18} /></div>
-                  )}
+                  <MisAvatar userId={board?.owner?.id} size={34}>
+                    {getAvatarUrl(board?.owner?.avatar) ? (
+                      <img src={getAvatarUrl(board?.owner?.avatar)} alt="" className="perm-avatar-img" />
+                    ) : (
+                      <div className="perm-avatar"><User size={18} /></div>
+                    )}
+                  </MisAvatar>
                   <div className="perm-user-details">
                     <span className="name">{board?.owner?.displayName || board?.owner?.username}</span>
                     <span className="email">{board?.owner?.email}</span>
@@ -286,11 +289,13 @@ const ReviewBoardSettings = () => {
               {permissions.filter(p => p.role !== 'owner').map(perm => (
                 <div key={perm.id} className="permission-item">
                   <div className="perm-user-info">
-                    {getAvatarUrl(perm.user?.avatar) ? (
-                      <img src={getAvatarUrl(perm.user?.avatar)} alt="" className="perm-avatar-img" />
-                    ) : (
-                      <div className="perm-avatar"><User size={18} /></div>
-                    )}
+                    <MisAvatar userId={perm.user?.id ?? perm.userId} size={34}>
+                      {getAvatarUrl(perm.user?.avatar) ? (
+                        <img src={getAvatarUrl(perm.user?.avatar)} alt="" className="perm-avatar-img" />
+                      ) : (
+                        <div className="perm-avatar"><User size={18} /></div>
+                      )}
+                    </MisAvatar>
                     <div className="perm-user-details">
                       <span className="name">{perm.user?.displayName || perm.user?.username}</span>
                     </div>

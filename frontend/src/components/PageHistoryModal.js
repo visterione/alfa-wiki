@@ -3,6 +3,7 @@ import { X, Clock, User, FileText, Eye, EyeOff, Download, Plus, Pencil, Trash2, 
 import { pages, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './PageHistoryModal.css';
+import { MisAvatar } from './MisBadge';
 
 const extractText = (html) =>
   (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -249,23 +250,25 @@ export default function PageHistoryModal({ pageId, onClose }) {
                   <div className="history-content">
                     <div className="history-header">
                       <div className="history-user">
-                        {getAvatarUrl(entry.user) ? (
-                          <>
-                            <img
-                              src={getAvatarUrl(entry.user)}
-                              alt=""
-                              className="history-avatar"
-                              onError={handleImageError}
-                            />
-                            <div className="history-avatar-placeholder" style={{ display: 'none' }}>
+                        <MisAvatar userId={entry.user?.id} size={32}>
+                          {getAvatarUrl(entry.user) ? (
+                            <>
+                              <img
+                                src={getAvatarUrl(entry.user)}
+                                alt=""
+                                className="history-avatar"
+                                onError={handleImageError}
+                              />
+                              <div className="history-avatar-placeholder" style={{ display: 'none' }}>
+                                <User size={16} />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="history-avatar-placeholder">
                               <User size={16} />
                             </div>
-                          </>
-                        ) : (
-                          <div className="history-avatar-placeholder">
-                            <User size={16} />
-                          </div>
-                        )}
+                          )}
+                        </MisAvatar>
                         <span className="history-username">
                           {entry.user?.displayName || entry.user?.username || 'Неизвестный'}
                         </span>

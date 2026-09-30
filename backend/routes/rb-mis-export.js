@@ -32,6 +32,9 @@ router.get('/', async (req, res) => {
       pendingCode: !!session.getPending(req.user.id),
       job: exporter.state(),
       clinics: exporter.CLINICS,
+      // Полосы прогресса считают прошедшее время от startedAt, а часы у
+      // компьютера бухгалтера и у сервера расходятся — отдаём своё «сейчас».
+      serverNow: new Date().toISOString(),
     });
   } catch (err) {
     console.error('GET /api/rb-mis-export error:', err);

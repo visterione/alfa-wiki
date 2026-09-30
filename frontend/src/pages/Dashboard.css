@@ -198,6 +198,13 @@
   pointer-events: none;
 }
 
+/* Правый нижний угол у сотрудников из МИС занят значком Renovatio (ver. 9.12) —
+   онлайн-точка уходит наверх, чтобы не лечь поверх него. */
+.chat-item-avatar-wrap:has(.mis-badge) .chat-item-status-dot {
+  bottom: auto;
+  top: 0;
+}
+
 .chat-item.active .chat-item-status-dot {
   border-color: var(--primary-light, var(--accent-50));
 }

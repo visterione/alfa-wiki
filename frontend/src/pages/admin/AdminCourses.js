@@ -8,6 +8,7 @@ import { courses, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 import './AdminCourses.css';
+import { MisAvatar } from '../../components/MisBadge';
 
 export default function AdminCourses() {
   const navigate = useNavigate();
@@ -231,13 +232,15 @@ export default function AdminCourses() {
                               <tr key={stat.user.id}>
                                 <td>
                                   <div className="stats-user">
-                                    <div className="stats-avatar">
-                                      {getAvatarUrl(stat.user) ? (
-                                        <img src={getAvatarUrl(stat.user)} alt="" />
-                                      ) : (
-                                        <User size={16} />
-                                      )}
-                                    </div>
+                                    <MisAvatar userId={stat.user.id} size={32}>
+                                      <div className="stats-avatar">
+                                        {getAvatarUrl(stat.user) ? (
+                                          <img src={getAvatarUrl(stat.user)} alt="" />
+                                        ) : (
+                                          <User size={16} />
+                                        )}
+                                      </div>
+                                    </MisAvatar>
                                     <div>
                                       <div className="stats-user-name">
                                         {stat.user.displayName || stat.user.username}

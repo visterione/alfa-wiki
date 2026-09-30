@@ -83,6 +83,26 @@ router.get('/list', authenticate, async (req, res) => {
   }
 });
 
+// Кто из пользователей связан с сотрудником МИС (ver. 9.12) — для значка
+// Renovatio на аватарке. Отдельным списком, а не полем в каждом ответе:
+// аватарки рисуют чаты, реакции, задачи, отзывы, и в каждом из этих мест свой
+// набор полей пользователя. Дописать misUserId во все — десятки правок и
+// столько же шансов забыть одну. Список id на всю сеть — пара килобайт.
+// Неактивные тоже в списке: их сообщения в чатах остаются.
+router.get('/mis-linked', authenticate, async (req, res) => {
+  try {
+    const rows = await User.findAll({
+      attributes: ['id'],
+      where: { misUserId: { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }] } },
+      raw: true,
+    });
+    res.json(rows.map(r => r.id));
+  } catch (error) {
+    console.error('Get mis-linked users error:', error);
+    res.status(500).json({ error: 'Failed to fetch mis-linked users' });
+  }
+});
+
 // Get all users (admin only)
 router.get('/', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { structuralDivisions as divisionsApi, referralBonusAccess } from '../../../services/api';
 import { BASE_URL } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
+import { MisAvatar } from '../../../components/MisBadge';
 
 const PERM_OPTIONS = [
   { value: 'edit', label: 'Редактирование', color: '#16a34a' },
@@ -111,15 +112,19 @@ function Avatar({ user }) {
   const src = user?.avatar
     ? (user.avatar.startsWith('http') ? user.avatar : `${BASE_URL}/${user.avatar}`)
     : null;
-  return src ? (
-    <img src={src} alt={user.displayName} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-  ) : (
-    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--n-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" width="14" height="14">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-        <circle cx="12" cy="7" r="4"/>
-      </svg>
-    </div>
+  return (
+    <MisAvatar userId={user?.id} size={28}>
+      {src ? (
+        <img src={src} alt={user.displayName} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+      ) : (
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--n-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" width="14" height="14">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+        </div>
+      )}
+    </MisAvatar>
   );
 }
 

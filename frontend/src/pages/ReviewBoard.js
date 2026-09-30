@@ -32,6 +32,7 @@ import ReviewReplyDrafts, { useReplyDraftsPolling } from '../components/ReviewRe
 import { fileUrl } from '../utils/fileUrl';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
+import { MisAvatar } from '../components/MisBadge';
 
 /**
  * Текст из блока «Официальный ответ» карточки: опубликованный ответ, а пока
@@ -1291,12 +1292,14 @@ const ReviewBoard = () => {
                       }
                     }}
                   >
-                    <div className="assignee-picker-avatar">
-                      {fileUrl(candidate.avatar)
-                        ? <img src={fileUrl(candidate.avatar)} alt="" />
-                        : <User size={16} />
-                      }
-                    </div>
+                    <MisAvatar userId={candidate.id} size={30}>
+                      <div className="assignee-picker-avatar">
+                        {fileUrl(candidate.avatar)
+                          ? <img src={fileUrl(candidate.avatar)} alt="" />
+                          : <User size={16} />
+                        }
+                      </div>
+                    </MisAvatar>
                     <span>{candidate.displayName || candidate.username}</span>
                     {selectedPickerCandidate?.id === candidate.id && <Check size={14} className="assignee-picker-item__check" />}
                   </button>
@@ -1659,13 +1662,15 @@ const ReviewBoard = () => {
                       <div className="assignees-list">
                         {selectedReview.assignees.map(a => (
                           <div key={a.id} className="assignee-item">
-                            {fileUrl(a.avatar) ? (
-                              <img src={fileUrl(a.avatar)} alt="" />
-                            ) : (
-                              <div className="avatar-placeholder">
-                                <User size={14} />
-                              </div>
-                            )}
+                            <MisAvatar userId={a.id} size={32}>
+                              {fileUrl(a.avatar) ? (
+                                <img src={fileUrl(a.avatar)} alt="" />
+                              ) : (
+                                <div className="avatar-placeholder">
+                                  <User size={14} />
+                                </div>
+                              )}
+                            </MisAvatar>
                             <span>{a.displayName || a.username}</span>
                           </div>
                         ))}
@@ -1693,12 +1698,14 @@ const ReviewBoard = () => {
                         const avatarUrl = fileUrl(entry.user?.avatar);
                         return (
                           <div key={entry.id} className="history-comment">
-                            <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
-                              {avatarUrl
-                                ? <img src={avatarUrl} alt="" />
-                                : <div className="comment-avatar-placeholder"><User size={16} /></div>
-                              }
-                            </div>
+                            <MisAvatar userId={entry.user?.id} size={32}>
+                              <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
+                                {avatarUrl
+                                  ? <img src={avatarUrl} alt="" />
+                                  : <div className="comment-avatar-placeholder"><User size={16} /></div>
+                                }
+                              </div>
+                            </MisAvatar>
                             <div className="comment-body">
                               <div className="history-comment-header">
                                 <span className="comment-user" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>{userName}</span>
@@ -1763,12 +1770,14 @@ const ReviewBoard = () => {
                           }
                           return (
                             <div key={entry.id} className="history-comment history-reply">
-                              <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
-                                {entry.user?.avatar
-                                  ? <img src={fileUrl(entry.user.avatar)} alt="" />
-                                  : <div className="comment-avatar-placeholder"><Reply size={16} /></div>
-                                }
-                              </div>
+                              <MisAvatar userId={entry.user?.id} size={32}>
+                                <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
+                                  {entry.user?.avatar
+                                    ? <img src={fileUrl(entry.user.avatar)} alt="" />
+                                    : <div className="comment-avatar-placeholder"><Reply size={16} /></div>
+                                  }
+                                </div>
+                              </MisAvatar>
                               <div className="comment-body">
                                 <div className="history-comment-header">
                                   <span className="comment-user" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>{userName}</span>
@@ -2037,11 +2046,13 @@ const ReviewBoard = () => {
                       onClick={() => setSelectedAssignee(u.id)}
                     >
                       <div className="user-info">
-                        {fileUrl(u.avatar) ? (
-                          <img src={fileUrl(u.avatar)} alt="" />
-                        ) : (
-                          <div className="avatar-placeholder"><User size={14} /></div>
-                        )}
+                        <MisAvatar userId={u.id} size={36}>
+                          {fileUrl(u.avatar) ? (
+                            <img src={fileUrl(u.avatar)} alt="" />
+                          ) : (
+                            <div className="avatar-placeholder"><User size={14} /></div>
+                          )}
+                        </MisAvatar>
                         <span>{u.displayName || u.username}</span>
                       </div>
                       {selectedAssignee === u.id && <Check size={16} style={{ color: 'var(--primary-color, var(--accent-400))', flexShrink: 0 }} />}

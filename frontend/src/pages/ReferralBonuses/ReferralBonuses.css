@@ -1024,3 +1024,147 @@
 @media (prefers-reduced-motion: reduce) {
   .rb-aup-text { animation: none; }
 }
+
+/* ── Выгрузка из МИС Renovatio (ver. 9.12) ─────────────────────────────────
+   Экран входа повторяет страницу входа самой МИС: человек вводит здесь пароль
+   от Renovatio, и узнаваемый вид подсказывает, какой именно пароль нужен.
+   Зелёный — фирменный цвет кнопки МИС, в токены вики он не входит намеренно. */
+.rb-mis-btn {
+  position: relative; width: 32px; height: 32px; padding: 0; flex-shrink: 0;
+  border: 1px solid var(--rb-border-dark); border-radius: 7px; background: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.rb-mis-btn:hover { border-color: #81c326; box-shadow: 0 0 0 3px rgba(129,195,38,.18); }
+.rb-mis-btn img { width: 20px; height: 20px; display: block; }
+/* Точка на кнопке — выгрузка идёт, даже если модалку закрыли. */
+.rb-mis-btn-dot {
+  position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
+  background: #81c326; border: 2px solid var(--n-0); animation: rb-mis-pulse 1.4s ease-in-out infinite;
+}
+@keyframes rb-mis-pulse { 50% { transform: scale(.7); opacity: .6; } }
+
+/* Слой для порталов: даёт токены .rb-app, но сам места не занимает. */
+.rb-app.rb-mis-layer { padding: 0; margin: 0; }
+.rb-mis-modal { max-width: 440px; }
+.rb-mis-modal.wide { max-width: 520px; }
+
+.rb-mis-auth { padding: 28px 30px 30px; text-align: center; position: relative; }
+.rb-mis-auth-title { font-size: 14px; font-weight: 600; line-height: 1.5; color: var(--rb-text); }
+.rb-mis-brand { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 26px; }
+.rb-mis-brand img { width: 40px; height: 40px; }
+.rb-mis-brand span { font-size: 27px; font-weight: 600; letter-spacing: -.01em; color: var(--rb-text); }
+.rb-mis-field {
+  display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 12px; margin-bottom: 10px;
+  border: 1px solid var(--n-300); border-radius: 8px; background: var(--n-0); transition: border-color .15s;
+}
+.rb-mis-field:focus-within { border-color: #81c326; }
+.rb-mis-field svg { color: var(--n-500); flex-shrink: 0; }
+.rb-mis-field input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  font-size: 15px; font-family: inherit; color: var(--rb-text);
+}
+.rb-mis-field input::placeholder { color: var(--n-400); }
+.rb-mis-field.code input { letter-spacing: .3em; text-align: center; font-size: 20px; font-weight: 600; }
+.rb-mis-submit {
+  width: 100%; height: 44px; margin-top: 20px; border: none; border-radius: 8px;
+  background: #81c326; color: #fff; font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.rb-mis-submit:hover:not(:disabled) { background: #74b01f; }
+.rb-mis-submit:disabled { opacity: .6; cursor: default; }
+.rb-mis-hint { font-size: 13px; color: var(--rb-text-secondary); margin: -8px 0 18px; line-height: 1.5; }
+.rb-mis-links { display: flex; justify-content: space-between; margin-top: 14px; font-size: 13px; }
+.rb-mis-link { border: none; background: none; padding: 0; font: inherit; color: #5d9a14; cursor: pointer; }
+.rb-mis-link:disabled { color: var(--rb-text-secondary); cursor: default; }
+.rb-mis-error { margin-top: 12px; font-size: 13px; color: var(--red-500); }
+.rb-mis-close { position: absolute; top: 10px; right: 10px; }
+
+.rb-mis-head { display: flex; align-items: center; gap: 10px; }
+.rb-mis-head img { width: 26px; height: 26px; }
+.rb-mis-head-sub { font-size: 12px; color: var(--rb-text-secondary); margin-top: 1px; }
+.rb-mis-head-actions { display: flex; gap: 12px; font-size: 12px; }
+
+.rb-mis-form { display: flex; flex-direction: column; gap: 14px; }
+.rb-mis-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.rb-mis-row > * { flex: 1 1 180px; min-width: 0; }
+.rb-mis-label { display: block; font-size: 12px; color: var(--rb-text-secondary); margin-bottom: 5px; }
+.rb-mis-input {
+  width: 100%; height: 36px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--rb-border-dark);
+  border-radius: 8px; background: var(--n-0); color: var(--rb-text); font-size: 13px; font-family: inherit; outline: none;
+}
+.rb-mis-input:focus { border-color: var(--rb-primary); }
+
+/* Выпадающий список медцентров */
+.rb-mis-select {
+  width: 100%; height: 36px; padding: 0 10px; box-sizing: border-box; display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--rb-border-dark); border-radius: 8px; background: var(--n-0); color: var(--rb-text);
+  font-size: 13px; font-family: inherit; cursor: pointer; text-align: left;
+}
+.rb-mis-select.open, .rb-mis-select:focus-visible { border-color: var(--rb-primary); outline: none; }
+.rb-mis-select-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-mis-select-count {
+  flex-shrink: 0; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px;
+  background: var(--n-100); color: var(--rb-text-secondary); font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.rb-mis-select svg { flex-shrink: 0; color: var(--rb-text-secondary); transition: transform .15s; }
+.rb-mis-select.open svg { transform: rotate(180deg); }
+.rb-mis-menu {
+  position: fixed; z-index: 1100; padding: 6px; box-sizing: border-box; border-radius: 10px;
+  background: var(--n-0); border: 1px solid var(--rb-border); box-shadow: 0 10px 30px rgba(0,0,0,.16);
+  animation: rb-mis-menu-in .12s ease-out;
+}
+@keyframes rb-mis-menu-in { from { opacity: 0; transform: translateY(-4px); } }
+.rb-mis-menu-top { display: flex; justify-content: space-between; padding: 4px 8px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--rb-border); font-size: 12px; }
+.rb-mis-option {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: none; border-radius: 7px;
+  background: transparent; color: var(--rb-text); font-size: 13px; font-family: inherit; text-align: left; cursor: pointer;
+}
+.rb-mis-option:hover, .rb-mis-option:focus-visible { background: var(--n-50); outline: none; }
+.rb-mis-check {
+  width: 18px; height: 18px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--n-300);
+  display: flex; align-items: center; justify-content: center; color: #fff; transition: background .12s, border-color .12s;
+}
+.rb-mis-option.on .rb-mis-check { background: var(--rb-primary); border-color: var(--rb-primary); }
+
+/* Ход выгрузки */
+.rb-mis-overall { margin-bottom: 16px; }
+.rb-mis-overall-line { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; margin-bottom: 6px; color: var(--rb-text); }
+.rb-mis-clinics { display: flex; flex-direction: column; gap: 10px; }
+.rb-mis-clinic-line { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 5px; }
+.rb-mis-clinic-name { flex: 1; min-width: 0; color: var(--rb-text); font-weight: 500; }
+.rb-mis-clinic-note { font-size: 12px; color: var(--rb-text-secondary); white-space: nowrap; }
+.rb-mis-clinic.done .rb-mis-clinic-note { color: var(--green-600); }
+.rb-mis-clinic.failed .rb-mis-clinic-note { color: var(--red-500); }
+.rb-mis-clinic.waiting .rb-mis-clinic-name { color: var(--rb-text-secondary); }
+.rb-mis-state { width: 16px; height: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.rb-mis-state.waiting::before { content: ''; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--n-300); }
+.rb-mis-state.running::before {
+  content: ''; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--green-200);
+  border-top-color: #81c326; animation: rb-mis-spin .8s linear infinite;
+}
+.rb-mis-state.done { color: var(--green-600); }
+.rb-mis-state.failed { color: var(--red-500); }
+@keyframes rb-mis-spin { to { transform: rotate(360deg); } }
+
+.rb-mis-bar { position: relative; height: 6px; border-radius: 3px; background: var(--n-100); overflow: hidden; }
+.rb-mis-bar.thick { height: 8px; border-radius: 4px; }
+.rb-mis-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: #81c326; transition: width .9s linear; }
+.rb-mis-clinic.failed .rb-mis-bar-fill { background: var(--red-400); }
+/* Отблеск на заполненной части — живой, пока клиника в работе. */
+.rb-mis-bar.active .rb-mis-bar-fill::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+  animation: rb-mis-shine 1.4s ease-in-out infinite;
+}
+@keyframes rb-mis-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+/* Без оценки времени — «бегущая» полоса: честнее, чем выдуманные проценты. */
+.rb-mis-bar.indeterminate .rb-mis-bar-fill { width: 35% !important; animation: rb-mis-run 1.3s ease-in-out infinite; transition: none; }
+@keyframes rb-mis-run { from { left: -35%; } to { left: 100%; } }
+.rb-mis-log { margin-top: 12px; font-size: 11px; color: var(--rb-text-secondary); line-height: 1.6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-mis-btn-dot, .rb-mis-state.running::before, .rb-mis-bar.active .rb-mis-bar-fill::after,
+  .rb-mis-bar.indeterminate .rb-mis-bar-fill, .rb-mis-menu { animation: none; }
+}

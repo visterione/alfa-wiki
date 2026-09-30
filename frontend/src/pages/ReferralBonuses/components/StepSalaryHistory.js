@@ -1406,9 +1406,6 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
         {viewToggle}
 
-        {/* ── Выгрузка из МИС ── */}
-        {canEdit && <MisExportPanel onDone={onSourcesChange} />}
-
         {/* ── Add form ── */}
         {canEdit && (
           <div style={{ margin: '0 12px 8px', padding: '12px 16px', background: 'var(--n-50)', borderRadius: 10, border: '1px solid var(--rb-border)', flexShrink: 0 }}>
@@ -1437,6 +1434,8 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               <button onClick={handleAddSource} disabled={srcSaving} style={{ height: 32, padding: '0 16px', border: 'none', borderRadius: 7, background: 'var(--rb-primary)', color: '#fff', fontSize: 13, cursor: srcSaving ? 'default' : 'pointer', fontFamily: 'inherit', opacity: srcSaving ? 0.6 : 1, whiteSpace: 'nowrap', alignSelf: 'flex-end' }}>
                 {srcSaving ? 'Сохранение…' : 'Добавить'}
               </button>
+              {/* Выгрузка из МИС: вместо ручной выгрузки восьми файлов и склейки */}
+              <div style={{ alignSelf: 'flex-end' }}><MisExportPanel onDone={onSourcesChange} /></div>
             </div>
           </div>
         )}

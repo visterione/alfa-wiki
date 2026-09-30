@@ -21,6 +21,7 @@ import {
   SpreadsheetSearchResult
 } from './SearchResultComponents';
 import './Header.css';
+import { MisAvatar } from './MisBadge';
 
 const GROUP_ORDER = ['doctor', 'analysis', 'service', 'accreditation', 'vehicle', 'page', 'spreadsheet'];
 const GROUP_LABELS = {
@@ -402,13 +403,15 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
               className={`header-user-btn ${showDropdown ? 'active' : ''}`}
               onClick={() => setShowDropdown(!showDropdown)}
             >
-              {getAvatarUrl() ? (
-                <img src={getAvatarUrl()} alt={user.displayName || user.username} className="header-avatar" />
-              ) : (
-                <div className="header-avatar-placeholder">
-                  <User size={18} />
-                </div>
-              )}
+              <MisAvatar userId={user.id} size={32}>
+                {getAvatarUrl() ? (
+                  <img src={getAvatarUrl()} alt={user.displayName || user.username} className="header-avatar" />
+                ) : (
+                  <div className="header-avatar-placeholder">
+                    <User size={18} />
+                  </div>
+                )}
+              </MisAvatar>
               <span className="header-username">{abbreviateName(user.displayName) || user.username}</span>
               <ChevronDown size={16} className="header-chevron" />
             </button>
@@ -416,15 +419,17 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
             {showDropdown && (
               <div className="header-dropdown">
                 <div className="header-dropdown-user">
-                  <div className="header-dropdown-avatar">
-                    {getAvatarUrl() ? (
-                      <img src={getAvatarUrl()} alt={user.displayName || user.username} />
-                    ) : (
-                      <div className="header-dropdown-avatar-placeholder">
-                        <User size={24} />
-                      </div>
-                    )}
-                  </div>
+                  <MisAvatar userId={user.id} size={48}>
+                    <div className="header-dropdown-avatar">
+                      {getAvatarUrl() ? (
+                        <img src={getAvatarUrl()} alt={user.displayName || user.username} />
+                      ) : (
+                        <div className="header-dropdown-avatar-placeholder">
+                          <User size={24} />
+                        </div>
+                      )}
+                    </div>
+                  </MisAvatar>
                   <div className="header-dropdown-user-info">
                     <div className="header-dropdown-user-name">{user.displayName || user.username}</div>
                     <div className="header-dropdown-user-role">{getUserRole()}</div>

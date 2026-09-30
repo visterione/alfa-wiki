@@ -164,6 +164,38 @@ async function mergeXlsx(files, outPath) {
   return { rows, columns: header.length, perFile };
 }
 
+// ── Оценка времени ─────────────────────────────────────────────────────────
+//
+// Файл МИС собирает целиком и молча, так что прогресса «изнутри» нет. Зато
+// скорость у каждой клиники своя и от раза к разу похожая: запоминаем, сколько
+// секунд уходит на день периода, и по ней рисуем ожидаемое время. Среднее
+// скользящее, чтобы один медленный вечер не портил оценку надолго.
+
+const SPEED_KEY = 'mis_export_speed';
+
+async function loadSpeeds() {
+  try {
+    const { Setting } = require('../../models');
+    return (await Setting.findByPk(SPEED_KEY))?.value || {};
+  } catch {
+    return {};
+  }
+}
+
+async function rememberSpeed(clinicId, secPerDay) {
+  try {
+    const { Setting } = require('../../models');
+    const speeds = await loadSpeeds();
+    const prev = speeds[clinicId];
+    speeds[clinicId] = prev ? prev * 0.5 + secPerDay * 0.5 : secPerDay;
+    await Setting.upsert({ key: SPEED_KEY, value: speeds, description: 'Скорость выгрузки услуг из МИС, секунд на день периода по клиникам' });
+  } catch (err) {
+    // Оценка — удобство, а не часть выгрузки: без неё полоса просто станет
+    // «бегущей».
+    console.error('[mis-export] не удалось запомнить скорость:', err.message);
+  }
+}
+
 // ── Задача ─────────────────────────────────────────────────────────────────
 //
 // Одна на всю вики. Параллельные выгрузки удвоили бы нагрузку на МИС — ровно
@@ -224,10 +256,19 @@ async function run(jar, user) {
       part.status = 'running';
       part.startedAt = new Date().toISOString();
       const partFiles = [];
-      for (const range of planRanges(job.params.dateFrom, job.params.dateTo)) {
+      const ranges = planRanges(job.params.dateFrom, job.params.dateTo);
+      // МИС не сообщает, сколько осталось до готовности файла, поэтому честный
+      // прогресс внутри клиники — только по месяцам: сколько кусков уже
+      // скачано из скольких.
+      part.chunksTotal = ranges.length;
+      part.chunksDone = 0;
+      for (const range of ranges) {
         partFiles.push(...await fetchRange(jar, job, part, range, 0, signal, log));
+        part.chunksDone++;
       }
       files.push(...partFiles.map(file => ({ file, part })));
+      const secs = (Date.now() - new Date(part.startedAt)) / 1000;
+      await rememberSpeed(part.clinicId, secs / daysBetween(job.params.dateFrom, job.params.dateTo));
       part.bytes = 0;
       for (const f of partFiles) part.bytes += (await fs.promises.stat(f)).size;
       part.current = null;
@@ -301,6 +342,8 @@ async function start({ dateFrom, dateTo, dateType = 2, clinicIds, periodLabel },
 
   const wanted = new Set((clinicIds || []).map(Number));
   const clinics = CLINICS.filter(c => wanted.has(c.id));
+  const speeds = await loadSpeeds();
+  const days = daysBetween(dateFrom, dateTo);
 
   current = {
     id: crypto.randomUUID(),
@@ -309,7 +352,10 @@ async function start({ dateFrom, dateTo, dateType = 2, clinicIds, periodLabel },
       dateFrom, dateTo, dateType: Number(dateType) === 1 ? 1 : 2,
       periodLabel: (periodLabel || '').trim() || defaultLabel(dateFrom, dateTo),
     },
-    parts: clinics.map(c => ({ clinicId: c.id, name: c.name, status: 'waiting', rows: null })),
+    parts: clinics.map(c => ({
+      clinicId: c.id, name: c.name, status: 'waiting', rows: null, chunksTotal: 0, chunksDone: 0,
+      estimateSec: speeds[c.id] ? Math.round(speeds[c.id] * days) : null,
+    })),
     startedBy: user.displayName || user.username || null,
     startedAt: new Date().toISOString(),
     finishedAt: null,

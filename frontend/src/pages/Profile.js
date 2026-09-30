@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import './Profile.css';
 import DoctorProfileTab from './DoctorProfileTab';
 import AppearanceTab from './AppearanceTab';
+import { MisBadge } from '../components/MisBadge';
 
 function getPasswordStrength(password) {
   if (!password) return null;
@@ -216,6 +217,7 @@ export default function Profile() {
             </div>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
+          <MisBadge userId={user?.id} size={88} />
         </div>
 
         <div className="profile-hero-info">

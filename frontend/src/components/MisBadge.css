@@ -1,0 +1,66 @@
+/* Значок Renovatio на аватарке (ver. 9.12). Белая подложка — логотип сам без
+   фона, а на тёмной теме и на цветных аватарках без неё его не видно.
+   Кольцо цвета страницы отделяет значок от фото, как у онлайн-точки. */
+.mis-avatar {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+span.mis-badge {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px var(--bg-primary, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  padding: 1.5px;
+}
+
+/* Селектор с запасом: вокруг хватает правил вида «.user-item img { width: 32px }»,
+   и логотип внутри значка они растянули бы до размера аватарки. */
+span.mis-badge > img.mis-badge-logo {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  display: block;
+  object-fit: contain;
+}
+
+/* Квадратная кнопка с логотипом — всё, что обращается к МИС Renovatio
+   (поиск сотрудника в админке). Белая подложка по той же причине, что у значка. */
+.renovatio-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: var(--radius-md, 8px);
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.renovatio-btn:hover:not(:disabled) {
+  border-color: #81c326;
+  box-shadow: 0 0 0 3px rgba(129, 195, 38, .18);
+}
+.renovatio-btn:disabled { cursor: default; }
+.renovatio-btn > img.renovatio-btn-logo { width: 22px; height: 22px; display: block; margin: 0; }
+.renovatio-btn.busy > img.renovatio-btn-logo { animation: renovatio-spin 1s linear infinite; }
+@keyframes renovatio-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .renovatio-btn.busy > img.renovatio-btn-logo { animation: none; opacity: .5; }
+}

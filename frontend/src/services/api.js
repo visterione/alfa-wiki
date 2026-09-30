@@ -112,6 +112,7 @@ export const users = {
   bulkPermissions: (data) => api.post('/users/bulk-permissions', data),
   misSearch: (q) => api.get('/users/mis-search', { params: { q } }),
   misAvatar: (avatarUrl) => api.post('/users/mis-avatar', { avatarUrl }),
+  misLinked: () => api.get('/users/mis-linked'),
   uploadAvatar: (file) => {
     const formData = new FormData();
     formData.append('avatar', file);

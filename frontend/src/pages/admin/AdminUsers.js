@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, ShieldCheck, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown, Trash2, RotateCcw, Lock, Eye, PenLine } from 'lucide-react';
+import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, ShieldCheck, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Camera, Crown, Trash2, RotateCcw, Lock, Eye, PenLine } from 'lucide-react';
 import { users, roles, BASE_URL, referralBonusAccess, warehouseAccessApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import DatePickerInput from '../../components/DatePickerInput';
@@ -12,6 +12,8 @@ import {
 } from './permissionCatalogue';
 import toast from 'react-hot-toast';
 import '../Admin.css';
+import { MisAvatar, MisBadge, refreshMisLinked } from '../../components/MisBadge';
+import renovatioLogo from '../../assets/images/renovatio.png';
 
 // Компонент для множественного выбора
 function MultiSelect({ label, placeholder, value, onChange, options, optionKey = 'id', optionLabel = 'name', optionDescription = null }) {
@@ -187,6 +189,12 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('');
   const [filterMedCenter, setFilterMedCenter] = useState('');
+  // Отбор по связи с МИС: учётки, заведённые до интеграции, привязывают по
+  // одной, и без этого отбора их пришлось бы выискивать в общем списке.
+  const [filterMis, setFilterMis] = useState('');
+  // Имя сотрудника МИС, выбранного в этой форме, — чтобы было видно, к кому
+  // привязали. Для давно привязанных знаем только ID: имени МИС не храним.
+  const [misLinkedName, setMisLinkedName] = useState('');
   const [modal, setModal] = useState({ open: false, user: null });
   const [misDropdown, setMisDropdown] = useState({ open: false, results: [], searching: false });
   const [avatarHover, setAvatarHover] = useState(false);
@@ -293,6 +301,29 @@ export default function AdminUsers() {
     }
   };
 
+  // Пол и дата рождения приходят из МИС в разных записях — разбор общий для
+  // создания учётки и привязки существующей.
+  const parseMisEmployee = (emp) => {
+    const specialty = [].concat(emp.profession_titles || []).filter(Boolean).join(', ');
+    const gRaw = (emp.gender || '').toString().toLowerCase().trim();
+    const gender = (gRaw === 'male' || gRaw === 'm' || gRaw === 'м' || gRaw.startsWith('муж')) ? 'male'
+      : (gRaw === 'female' || gRaw === 'f' || gRaw === 'ж' || gRaw.startsWith('жен')) ? 'female'
+      : gRaw === '1' ? 'male'
+      : gRaw === '2' ? 'female'
+      : '';
+    // birth_date может прийти как YYYY-MM-DD или DD.MM.YYYY
+    let birthDate = '';
+    if (emp.birth_date) {
+      if (/^\d{2}\.\d{2}\.\d{4}$/.test(emp.birth_date)) {
+        const [d, m, y] = emp.birth_date.split('.');
+        birthDate = `${y}-${m}-${d}`;
+      } else {
+        birthDate = emp.birth_date.slice(0, 10);
+      }
+    }
+    return { specialty, gender, birthDate };
+  };
+
   const selectMisEmployee = async (emp) => {
     setMisDropdown({ open: false, results: [], searching: true });
     try {
@@ -304,23 +335,7 @@ export default function AdminUsers() {
         } catch { /* аватар не скачался — не блокируем */ }
       }
       const username = generateUniqueUsername(emp.name || '');
-      const specialty = [].concat(emp.profession_titles || []).filter(Boolean).join(', ');
-      const gRaw = (emp.gender || '').toString().toLowerCase().trim();
-      const gender = (gRaw === 'male' || gRaw === 'm' || gRaw === 'м' || gRaw.startsWith('муж')) ? 'male'
-        : (gRaw === 'female' || gRaw === 'f' || gRaw === 'ж' || gRaw.startsWith('жен')) ? 'female'
-        : gRaw === '1' ? 'male'
-        : gRaw === '2' ? 'female'
-        : '';
-      // birth_date может прийти как YYYY-MM-DD или DD.MM.YYYY
-      let birthDate = '';
-      if (emp.birth_date) {
-        if (/^\d{2}\.\d{2}\.\d{4}$/.test(emp.birth_date)) {
-          const [d, m, y] = emp.birth_date.split('.');
-          birthDate = `${y}-${m}-${d}`;
-        } else {
-          birthDate = emp.birth_date.slice(0, 10);
-        }
-      }
+      const { specialty, gender, birthDate } = parseMisEmployee(emp);
       setForm(prev => ({
         ...prev,
         misUserId: String(emp.id || ''),
@@ -333,11 +348,59 @@ export default function AdminUsers() {
         gender: gender || prev.gender,
         birthDate: birthDate || prev.birthDate,
       }));
+      setMisLinkedName(emp.name || '');
       setMisDropdown({ open: false, results: [], searching: false });
     } catch {
       toast.error('Ошибка импорта сотрудника');
       setMisDropdown({ open: false, results: [], searching: false });
     }
+  };
+
+  /**
+   * Привязка к МИС уже существующей учётки — тех, что заводили руками до
+   * интеграции. В отличие от создания, здесь ничего не перезаписывается: имя,
+   * логин и почту человек давно использует, а МИС хранит их по-своему
+   * («Иванова И.И.» против «Иванова Ирина»). Ставим ID и заполняем только
+   * пустые поля. Сохраняется всё обычной кнопкой «Сохранить».
+   */
+  const linkMisEmployee = async (emp) => {
+    const misId = String(emp.id || '');
+    const other = userList.find(u => String(u.misUserId || '') === misId && u.id !== modal.user?.id);
+    if (other && !window.confirm(
+      `Сотрудник МИС «${emp.name}» уже привязан к учётке «${other.displayName || other.username}».\n` +
+      'Обычно это значит, что учёток две на одного человека. Всё равно привязать?'
+    )) {
+      setMisDropdown({ open: false, results: [], searching: false });
+      return;
+    }
+
+    setMisDropdown({ open: false, results: [], searching: true });
+    const { specialty, gender, birthDate } = parseMisEmployee(emp);
+    const patch = { misUserId: misId };
+    const filled = [];
+    if (!form.phone && emp.phone) { patch.phone = emp.phone; filled.push('телефон'); }
+    if (!form.specialty && specialty) { patch.specialty = specialty; filled.push('специальность'); }
+    if (!form.gender && gender) { patch.gender = gender; filled.push('пол'); }
+    if (!form.birthDate && birthDate) { patch.birthDate = birthDate; filled.push('дата рождения'); }
+    if (!form.avatar && emp.avatar_small) {
+      try {
+        const res = await users.misAvatar(emp.avatar_small);
+        patch.avatar = res.data.avatarPath;
+        filled.push('фото');
+      } catch { /* фото не скачалось — привязке это не мешает */ }
+    }
+    setForm(prev => ({ ...prev, ...patch }));
+    setMisLinkedName(emp.name || '');
+    setMisDropdown({ open: false, results: [], searching: false });
+    toast.success(
+      `Привязано к «${emp.name}»${filled.length ? `, заполнено: ${filled.join(', ')}` : ''}. Не забудьте сохранить.`,
+      { duration: 5000 },
+    );
+  };
+
+  const unlinkMis = () => {
+    setForm(prev => ({ ...prev, misUserId: '' }));
+    setMisLinkedName('');
   };
 
   const load = async () => {
@@ -486,6 +549,8 @@ export default function AdminUsers() {
   };
 
   const openModal = async (user = null) => {
+    setMisLinkedName('');
+    setMisDropdown({ open: false, results: [], searching: false });
     if (user) {
       let salaryPerm = { ...SALARY_PERM_DEFAULT };
       try {
@@ -711,6 +776,9 @@ export default function AdminUsers() {
       }
       setModal({ open: false, user: null });
       load();
+      // Значки Renovatio на аватарках по всему порталу берутся из общего
+      // списка — обновляем его, раз связь с МИС могла появиться или пропасть.
+      refreshMisLinked();
     } catch (e) { toast.error(e.response?.data?.error || 'Ошибка'); }
   };
 
@@ -723,6 +791,55 @@ export default function AdminUsers() {
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Ошибка'); }
   };
+
+  // Результаты поиска в МИС — один список на обе формы: создания и правки.
+  const misResults = (
+    misDropdown.open && (
+      <div style={{
+        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 1000,
+        background: 'var(--bg-primary)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-md)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+        maxHeight: 260, overflowY: 'auto'
+      }}>
+        {misDropdown.results.length === 0 && (
+          <div style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: 13 }}>
+            Ничего не найдено
+          </div>
+        )}
+        {misDropdown.results.map(emp => (
+          <div
+            key={emp.id}
+            onClick={() => (modal.user ? linkMisEmployee(emp) : selectMisEmployee(emp))}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 12px', cursor: 'pointer', transition: 'background 0.12s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+            onMouseLeave={e => e.currentTarget.style.background = ''}
+          >
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+              background: 'var(--bg-secondary)', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              {emp.avatar_small
+                ? <img src={emp.avatar_small} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+                : <User size={16} style={{ color: 'var(--text-tertiary)' }} />
+              }
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 500, fontSize: 13 }}>{emp.name}</div>
+              {emp.profession_titles && [].concat(emp.profession_titles).length > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
+                  {[].concat(emp.profession_titles).join(', ')}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  );
 
   const filtered = userList.filter(u => {
     // Фильтрация по поиску
@@ -742,7 +859,10 @@ export default function AdminUsers() {
       matchesMedCenter = u.medCenters && u.medCenters.length > 0 && u.medCenters.some(mc => mc.id === filterMedCenter);
     }
 
-    return matchesSearch && matchesRole && matchesMedCenter;
+    const linked = !!String(u.misUserId || '').trim();
+    const matchesMis = !filterMis || (filterMis === 'linked' ? linked : !linked);
+
+    return matchesSearch && matchesRole && matchesMedCenter && matchesMis;
   }).sort((a, b) => (a.displayName || a.username).localeCompare(b.displayName || b.username, 'ru'));
 
   return (
@@ -823,6 +943,25 @@ export default function AdminUsers() {
               <option key={mc.id} value={mc.id}>{mc.name}</option>
             ))}
           </select>
+
+          <select
+            className="filter-select"
+            value={filterMis}
+            onChange={e => setFilterMis(e.target.value)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="">Renovatio: все</option>
+            <option value="linked">Привязаны к Renovatio</option>
+            <option value="unlinked">Без привязки к Renovatio ({userList.filter(u => !String(u.misUserId || '').trim()).length})</option>
+          </select>
         </div>
       )}
 
@@ -845,13 +984,15 @@ export default function AdminUsers() {
                   <tr key={user.id} onClick={() => openModal(user)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div className="user-cell">
-                        <div className="user-avatar">
-                          {getAvatarUrl(user) ? (
-                            <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
-                          ) : (
-                            <User size={20} strokeWidth={2} />
-                          )}
-                        </div>
+                        <MisAvatar userId={user.id} size={40}>
+                          <div className="user-avatar">
+                            {getAvatarUrl(user) ? (
+                              <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
+                            ) : (
+                              <User size={20} strokeWidth={2} />
+                            )}
+                          </div>
+                        </MisAvatar>
                         <div>
                           <div className="user-name">{user.displayName || user.username}</div>
                           <div className="user-login">@{user.username}</div>
@@ -938,13 +1079,15 @@ export default function AdminUsers() {
                   <tr key={user.id}>
                     <td>
                       <div className="user-cell">
-                        <div className="user-avatar">
-                          {getAvatarUrl(user) ? (
-                            <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
-                          ) : (
-                            <User size={20} strokeWidth={2} />
-                          )}
-                        </div>
+                        <MisAvatar userId={user.id} size={40}>
+                          <div className="user-avatar">
+                            {getAvatarUrl(user) ? (
+                              <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
+                            ) : (
+                              <User size={20} strokeWidth={2} />
+                            )}
+                          </div>
+                        </MisAvatar>
                         <div>
                           <div className="user-name">{user.displayName || user.username}</div>
                           <div className="user-login">@{user.username}</div>
@@ -1009,6 +1152,7 @@ export default function AdminUsers() {
                       : <User size={54} style={{ color: 'var(--text-tertiary)' }} />
                     }
                   </div>
+                  <MisBadge on={!!String(form.misUserId || '').trim()} size={148} />
                   {avatarHover && (
                     <div
                       onClick={() => avatarInputRef.current?.click()}
@@ -1056,67 +1200,17 @@ export default function AdminUsers() {
                             />
                             <button
                               type="button"
+                              className={`renovatio-btn${misDropdown.searching ? ' busy' : ''}`}
                               onClick={searchRenovatio}
                               disabled={misDropdown.searching}
-                              style={{
-                                background: 'var(--green-500)', color: '#fff', border: 'none',
-                                borderRadius: 'var(--radius-md)', padding: '0 14px',
-                                cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                                flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6
-                              }}
+                              title="Найти сотрудника в МИС Renovatio"
+                              aria-label="Найти сотрудника в МИС Renovatio"
                             >
-                              {misDropdown.searching
-                                ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                                : <><Search size={14} />Renovatio</>
-                              }
+                              <img className="renovatio-btn-logo" src={renovatioLogo} alt="" />
                             </button>
                           </div>
 
-                          {misDropdown.open && (
-                            <div style={{
-                              position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 1000,
-                              background: 'var(--bg-primary)', border: '1px solid var(--border)',
-                              borderRadius: 'var(--radius-md)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                              maxHeight: 260, overflowY: 'auto'
-                            }}>
-                              {misDropdown.results.length === 0 && (
-                                <div style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: 13 }}>
-                                  Ничего не найдено
-                                </div>
-                              )}
-                              {misDropdown.results.map(emp => (
-                                <div
-                                  key={emp.id}
-                                  onClick={() => selectMisEmployee(emp)}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', gap: 10,
-                                    padding: '8px 12px', cursor: 'pointer', transition: 'background 0.12s'
-                                  }}
-                                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                                  onMouseLeave={e => e.currentTarget.style.background = ''}
-                                >
-                                  <div style={{
-                                    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                                    background: 'var(--bg-secondary)', overflow: 'hidden',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                  }}>
-                                    {emp.avatar_small
-                                      ? <img src={emp.avatar_small} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
-                                      : <User size={16} style={{ color: 'var(--text-tertiary)' }} />
-                                    }
-                                  </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 500, fontSize: 13 }}>{emp.name}</div>
-                                    {emp.profession_titles && [].concat(emp.profession_titles).length > 0 && (
-                                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
-                                        {[].concat(emp.profession_titles).join(', ')}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          {misResults}
                         </div>
                       </div>
                       <div className="form-group" style={{ margin: 0 }}>
@@ -1143,7 +1237,22 @@ export default function AdminUsers() {
                     <>
                       <div className="form-group" style={{ margin: 0 }}>
                         <label className="form-label">Отображаемое имя</label>
-                        <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }} />
+                        <div style={{ position: 'relative' }} ref={misDropdownRef}>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }} />
+                            <button
+                              type="button"
+                              className={`renovatio-btn${misDropdown.searching ? ' busy' : ''}`}
+                              onClick={searchRenovatio}
+                              disabled={misDropdown.searching}
+                              title={form.misUserId ? 'Привязать к другому сотруднику МИС Renovatio' : 'Привязать к сотруднику МИС Renovatio'}
+                              aria-label="Привязать к сотруднику МИС Renovatio"
+                            >
+                              <img className="renovatio-btn-logo" src={renovatioLogo} alt="" />
+                            </button>
+                          </div>
+                          {misResults}
+                        </div>
                       </div>
                       <div className="form-group" style={{ margin: 0 }}>
                         <label className="form-label">Логин *</label>
@@ -1336,12 +1445,23 @@ export default function AdminUsers() {
                       className="input"
                       value={form.misUserId}
                       onChange={e => setForm({...form, misUserId: e.target.value.trim()})}
-                      placeholder="Заполняется при выборе сотрудника Renovatio"
+                      placeholder="Заполняется кнопкой Renovatio рядом с именем"
                       style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
                     />
-                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
-                      Используется для персональной карточки врача
-                    </small>
+                    {String(form.misUserId || '').trim() ? (
+                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <img src={renovatioLogo} alt="" style={{ width: 14, height: 14 }} />
+                        <span>Привязан к Renovatio{misLinkedName ? `: ${misLinkedName}` : ''}</span>
+                        <button type="button" onClick={unlinkMis}
+                          style={{ border: 'none', background: 'none', padding: 0, font: 'inherit', color: 'var(--error)', cursor: 'pointer', textDecoration: 'underline dotted' }}>
+                          Отвязать
+                        </button>
+                      </small>
+                    ) : (
+                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                        Используется для персональной карточки врача
+                      </small>
+                    )}
                   </div>
 
 

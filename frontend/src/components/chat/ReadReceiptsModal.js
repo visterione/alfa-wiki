@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { X, User, Check, Clock } from 'lucide-react';
 import { BASE_URL } from '../../services/api';
 import { readersOf, formatSeenAt } from '../../utils/readReceipts';
+import { MisAvatar } from '../MisBadge';
 
 // Кто и когда просмотрел сообщение (ver. 8.26).
 //
@@ -21,18 +22,21 @@ const getAvatarUrl = (avatar) => {
   return `${BASE_URL}/${normalised}`;
 };
 
-const ReaderAvatar = ({ avatar, displayName }) => {
+const ReaderAvatar = ({ userId, avatar, displayName }) => {
   const [broken, setBroken] = React.useState(false);
   const url = getAvatarUrl(avatar);
 
-  if (!url || broken) {
-    return (
-      <div className="read-receipt-avatar-placeholder">
-        <User size={16} />
-      </div>
-    );
-  }
-  return <img className="read-receipt-avatar" src={url} alt={displayName} onError={() => setBroken(true)} />;
+  return (
+    <MisAvatar userId={userId} size={32}>
+      {!url || broken ? (
+        <div className="read-receipt-avatar-placeholder">
+          <User size={16} />
+        </div>
+      ) : (
+        <img className="read-receipt-avatar" src={url} alt={displayName} onError={() => setBroken(true)} />
+      )}
+    </MisAvatar>
+  );
 };
 
 const ReadReceiptsModal = ({ message, members, onClose }) => {
@@ -73,7 +77,7 @@ const ReadReceiptsModal = ({ message, members, onClose }) => {
               </div>
               {readers.map(reader => (
                 <div key={reader.userId} className="read-receipt-item">
-                  <ReaderAvatar avatar={reader.avatar} displayName={reader.displayName} />
+                  <ReaderAvatar userId={reader.userId} avatar={reader.avatar} displayName={reader.displayName} />
                   <span className="read-receipt-name">{reader.displayName}</span>
                   <span className="read-receipt-time">{formatSeenAt(reader.at)}</span>
                 </div>
@@ -89,7 +93,7 @@ const ReadReceiptsModal = ({ message, members, onClose }) => {
               </div>
               {pending.map(member => (
                 <div key={member.userId} className="read-receipt-item read-receipt-item--pending">
-                  <ReaderAvatar avatar={member.avatar} displayName={member.displayName} />
+                  <ReaderAvatar userId={member.userId} avatar={member.avatar} displayName={member.displayName} />
                   <span className="read-receipt-name">{member.displayName}</span>
                 </div>
               ))}

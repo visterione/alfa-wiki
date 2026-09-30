@@ -12,6 +12,7 @@ import { User } from 'lucide-react';
 import { userName, loadColor, STATUS_LABEL, STATUS_ICON, STATUS_BADGE_COLOR } from '../utils/labels';
 import { hoursText } from '../utils/dates';
 import { BASE_URL } from '../../../services/api';
+import { MisAvatar } from '../../../components/MisBadge';
 
 function avatarUrl(value) {
   if (!value) return null;
@@ -23,7 +24,7 @@ function avatarUrl(value) {
   return `${BASE_URL}/${String(value).replace(/^\//, '')}`;
 }
 
-export function Avatar({ user, size = 26, title, percent = null }) {
+export function Avatar({ user, size = 26, title, percent = null, badge = true }) {
   const [failed, setFailed] = useState(false);
   const src = failed ? null : avatarUrl(user?.avatar);
   useEffect(() => setFailed(false), [user?.avatar]);
@@ -37,13 +38,16 @@ export function Avatar({ user, size = 26, title, percent = null }) {
     maxHeight: size,
     flexBasis: size,
   };
-  const face = (
+  const circle = (
     <span className={`tsk-av ${src ? 'has-image' : 'is-placeholder'}`} style={style} title={title || userName(user)}>
       {src
         ? <img src={src} alt="" onError={() => setFailed(true)} />
         : <User size={Math.max(12, Math.round(size * 0.52))} strokeWidth={1.8} />}
     </span>
   );
+  // Значок Renovatio — только у одиночной аватарки: в стопке обёртка сломала
+  // бы нахлёст соседей, а на её размере значок всё равно не виден.
+  const face = badge ? <MisAvatar userId={user.id} size={size}>{circle}</MisAvatar> : circle;
 
   return percent === null || percent === undefined
     ? face
@@ -97,7 +101,7 @@ export function AvatarStack({ users = [], size = 22, max = 4 }) {
   const rest = users.length - shown.length;
   return (
     <span className="tsk-avs">
-      {shown.map((u, index) => <Avatar key={u?.id || index} user={u} size={size} />)}
+      {shown.map((u, index) => <Avatar key={u?.id || index} user={u} size={size} badge={false} />)}
       {rest > 0 && <span className="tsk-av tsk-av-rest" style={{ width: size, height: size }}>+{rest}</span>}
     </span>
   );
