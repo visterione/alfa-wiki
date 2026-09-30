@@ -88,6 +88,12 @@ async function saveAttachment(content) {
 
   try {
     await fsp.access(abs, fs.constants.R_OK);
+    // Файл уже есть — освежаем время изменения. Уборка (cleanup.js) не трогает
+    // свежие файлы, а строка о вложении появится только с концом транзакции:
+    // без этого давно осиротевший файл мог уйти ровно в тот момент, когда на
+    // него снова сослалось новое письмо.
+    const now = new Date();
+    await fsp.utimes(abs, now, now).catch(() => {});
   } catch (e) {
     await ensureDir(path.dirname(abs));
     // Пишем через временное имя: прерванная на середине запись иначе оставила

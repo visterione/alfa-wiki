@@ -110,6 +110,9 @@ module.exports = function defineMailModels(sequelize, DataTypes) {
     unseenTotal:   { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     backfillUid:   { type: DataTypes.BIGINT },
     backfillDone:  { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    // Кругов подряд без этой папки в LIST (ver. 9.11). Пропавшая папка скрыта
+    // сразу, а удаляется из зеркала только после нескольких пропусков.
+    missingCount:  { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 0 },
     lastSyncAt:    { type: DataTypes.DATE },
     sortOrder:     { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
   }, { ...ts, tableName: 'mail_folders' });
@@ -141,6 +144,9 @@ module.exports = function defineMailModels(sequelize, DataTypes) {
     preview:          { type: DataTypes.STRING(300) },
     rawPath:          { type: DataTypes.STRING(500) },
     bodyState:        { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'pending' },
+    // Попытки разобрать тело (ver. 9.11): растёт до разбора, поэтому переживает
+    // и падение воркера на вредном вложении.
+    bodyAttempts:     { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 0 },
     modSeq:           { type: DataTypes.BIGINT },
     pendingDelete:    { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   }, { ...ts, tableName: 'mail_messages' });

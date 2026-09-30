@@ -22,6 +22,32 @@
 
 const { sequelize } = require('../../models');
 
+// Короче этого слово ищется целиком, а не как начало слова (ver. 9.11). Поиск
+// идёт по мере набора, и первая же пауза после «ив» превращалась в запрос
+// «ив:*», совпадающий с половиной архива: такой запрос считал релевантность
+// для сотен тысяч писем и держал соединение с базой секундами.
+const MIN_PREFIX_LENGTH = 3;
+
+// Сколько самых свежих совпадений ранжируется по релевантности. ts_rank читает
+// поисковый вектор каждого совпавшего письма целиком, и на общем слове вроде
+// «анализ» это сотни тысяч векторов на один запрос. Совпадения старше этого
+// окна в выдачу не попадают — на таком общем запросе человек уточняет его, а
+// не листает двадцатую страницу.
+const RANK_CANDIDATES = Math.max(100, parseInt(process.env.MAIL_SEARCH_CANDIDATES || '2000', 10));
+
+// Потолок одного поискового запроса. Пул соединений с базой один на весь
+// портал, и десяток зависших поисков иначе остановил бы и мессенджер.
+const SEARCH_TIMEOUT_MS = Math.max(1000, parseInt(process.env.MAIL_SEARCH_TIMEOUT_MS || '8000', 10));
+
+/**
+ * Несклоняемый запрос по слову: с префиксом, если слово достаточно длинное,
+ * иначе целиком. Решаем здесь, а не в SQL: длина слова известна заранее.
+ */
+function simpleWordSql(index, term) {
+  const prefix = String(term || '').trim().length >= MIN_PREFIX_LENGTH ? " || ':*'" : '';
+  return `to_tsquery('simple', quote_literal(lower(trim($${index})))${prefix})`;
+}
+
 // Приставки и их русские имена. Русские здесь не украшение: человек, которому
 // показали «тема:договор», повторит именно это, а не subject:.
 const FIELD_ALIASES = {
@@ -198,15 +224,10 @@ function hasAnything(parsed) {
  * Третье нужно для обратного случая: человек ищет фамилию в косвенном падеже, а
  * в письме она в именительном.
  */
-function termMatchSql(index) {
+function termMatchSql(index, term) {
   return `(
     plainto_tsquery('russian', $${index})
-    || to_tsquery('simple', quote_literal(lower(trim($${index}))) || ':*')
-    || CASE
-         WHEN length(mail_lexeme($${index})) >= 4
-         THEN to_tsquery('simple', quote_literal(mail_lexeme($${index})) || ':*')
-         ELSE to_tsquery('simple', quote_literal(lower(trim($${index}))) || ':*')
-       END
+    || ${termPreciseSql(index, term)}
   )`;
 }
 
@@ -223,13 +244,14 @@ function termMatchSql(index) {
  * весит вдвое больше. Письмо, где слово стоит как есть, всегда оказывается выше
  * письма, которое совпало только общим корнем.
  */
-function termPreciseSql(index) {
+function termPreciseSql(index, term) {
+  const word = simpleWordSql(index, term);
   return `(
-    to_tsquery('simple', quote_literal(lower(trim($${index}))) || ':*')
+    ${word}
     || CASE
          WHEN length(mail_lexeme($${index})) >= 4
          THEN to_tsquery('simple', quote_literal(mail_lexeme($${index})) || ':*')
-         ELSE to_tsquery('simple', quote_literal(lower(trim($${index}))) || ':*')
+         ELSE ${word}
        END
   )`;
 }
@@ -271,8 +293,8 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
 
   for (const term of parsed.terms) {
     const idx = p(term);
-    matchParts.push(termMatchSql(idx));
-    preciseParts.push(termPreciseSql(idx));
+    matchParts.push(termMatchSql(idx, term));
+    preciseParts.push(termPreciseSql(idx, term));
   }
   for (const phrase of parsed.phrases) {
     const idx = p(phrase);
@@ -296,7 +318,7 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
     ...parsed.phrases.map((ph) => `phraseto_tsquery('russian', $${p(ph)})`),
   ];
   const headlineSimple = [
-    ...parsed.terms.map((t) => `to_tsquery('simple', quote_literal(lower(trim($${p(t)}))) || ':*')`),
+    ...parsed.terms.map((t) => simpleWordSql(p(t), t)),
     ...parsed.phrases.map((ph) => `phraseto_tsquery('simple', $${p(ph)})`),
   ];
 
@@ -330,12 +352,29 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
     }
   }
 
+  // Содержимое вложений ищем по поисковому вектору, а не ILIKE по тексту: у
+  // textContent нет и не может быть разумного индекса (до ста тысяч знаков на
+  // файл), и ILIKE перебирал текст всех вложений архива (ver. 9.11). Имена и
+  // текст файлов лежат в векторе под весом C — им и ограничиваем совпадение.
   for (const value of parsed.file) {
     const idx = p(value);
-    where.push(`EXISTS (
-      SELECT 1 FROM mail_attachments at2
-      WHERE at2."messageId" = m.id AND NOT at2."isInline"
-        AND (at2.filename ILIKE '%' || $${idx} || '%' OR at2."textContent" ILIKE '%' || $${idx} || '%')
+    const words = value.toLowerCase().split(/[^0-9a-zа-яё]+/i).filter(Boolean).slice(0, 8);
+    const inFiles = words.map((w) => {
+      const prefix = w.length >= MIN_PREFIX_LENGTH ? ':*C' : ':C';
+      return `to_tsquery('simple', quote_literal($${p(w)}) || '${prefix}')`;
+    });
+    // Две выборки подзапросами, а не EXISTS … OR вектор: через OR база не
+    // умеет взять GIN-индекс и читала бы вектор каждого письма. Подзапрос
+    // считается один раз и дальше проверяется по хэшу.
+    where.push(`(
+      m.id IN (
+        SELECT at2."messageId" FROM mail_attachments at2
+        WHERE NOT at2."isInline" AND at2.filename ILIKE '%' || $${idx} || '%'
+      )${inFiles.length ? `
+      OR m.id IN (
+        SELECT fb."messageId" FROM mail_message_bodies fb
+        WHERE fb."searchVector" @@ (${inFiles.join(' && ')})
+      )` : ''}
     )`);
   }
 
@@ -385,7 +424,7 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
   const limitIdx = p(limit);
   const offsetIdx = p(offset);
 
-  const sql = `
+  const select = `
     SELECT m.id, m."accountId", m."folderId", m.uid, m.subject, m."fromName", m."fromEmail",
            m."sentAt", m."receivedAt", m.size, m."isSeen", m."isFlagged", m."isAnswered",
            m."hasAttachments", m."attachmentsCount", m.preview, m."bodyState", m."threadKey",
@@ -408,7 +447,29 @@ function buildSearchSql(parsed, { accountIds, userId, limit, offset, folderId, a
       LIMIT 1
     ) sender ON true
     LEFT JOIN mail_message_bodies b ON b."messageId" = m.id
-    LEFT JOIN mail_user_message_state s ON s."messageId" = m.id AND s."userId" = $${userIdx}
+    LEFT JOIN mail_user_message_state s ON s."messageId" = m.id AND s."userId" = $${userIdx}`;
+
+  // С текстом сначала отбираем самые свежие совпадения, и только их
+  // ранжируем: отбор идёт по GIN-индексу и времени прихода, без чтения
+  // векторов целиком. Без текста ранжировать нечего — просто свежие сверху.
+  const sql = hasText
+    ? `
+    WITH candidates AS (
+      SELECT m.id
+      FROM mail_messages m
+      JOIN mail_folders f ON f.id = m."folderId"
+      LEFT JOIN mail_message_bodies b ON b."messageId" = m.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY m."receivedAt" DESC
+      LIMIT ${RANK_CANDIDATES}
+    )
+    ${select}
+    WHERE m.id IN (SELECT id FROM candidates)
+    ORDER BY ${order}
+    LIMIT $${limitIdx} OFFSET $${offsetIdx}
+  `
+    : `
+    ${select}
     WHERE ${where.join(' AND ')}
     ORDER BY ${order}
     LIMIT $${limitIdx} OFFSET $${offsetIdx}
@@ -446,7 +507,13 @@ async function searchMessages(options) {
   if (!hasAnything(parsed)) return { messages: [], parsed, empty: true };
 
   const { sql, bind } = buildSearchSql(parsed, options);
-  const [rows] = await sequelize.query(sql, { bind });
+  const rows = await sequelize.transaction(async (transaction) => {
+    // SET LOCAL действует до конца транзакции и не протекает в соединение,
+    // которое потом достанется другому запросу портала.
+    await sequelize.query(`SET LOCAL statement_timeout = ${SEARCH_TIMEOUT_MS}`, { transaction });
+    const [result] = await sequelize.query(sql, { bind, transaction });
+    return result;
+  });
 
   return { messages: rows, parsed, empty: false };
 }
@@ -463,4 +530,6 @@ module.exports = {
   FIELD_ALIASES,
   HAS_VALUES,
   IS_VALUES,
+  MIN_PREFIX_LENGTH,
+  RANK_CANDIDATES,
 };

@@ -170,6 +170,36 @@ function withSignature(html, text, signature) {
   };
 }
 
+/**
+ * Внешние картинки в процитированном или пересланном письме у нас лежат в
+ * data-mail-src — так мы защищаем от пикселей слежения самого сотрудника. Но
+ * получателю они нужны настоящими: иначе пересланная рассылка или письмо с
+ * логотипом приходят с пустыми рамками (ver. 9.11). Возвращаем src только в
+ * исходящем письме — в редакторе у нас картинки по-прежнему не грузятся.
+ */
+function restoreQuotedImages(html) {
+  if (!html) return html;
+  return String(html).replace(/\sdata-mail-src=(["'])(https?:[^"']*)\1/gi, ' src=$1$2$1');
+}
+
+/**
+ * Черновик, застрявший в «sending» — процесс упал посреди отправки. Ушло ли
+ * письмо, мы не знаем: SMTP мог принять его за миг до падения. Поэтому не
+ * отправляем сами, а возвращаем черновик человеку с просьбой проверить
+ * «Отправленные» — повторить или нет, решает он.
+ */
+const STUCK_SENDING_MS = 15 * 60 * 1000;
+
+async function releaseStuckDrafts(userId) {
+  await MailDraft.update(
+    {
+      status: 'error',
+      error: 'Отправка прервалась. Проверьте «Отправленные», прежде чем отправлять ещё раз: письмо могло уйти.',
+    },
+    { where: { userId, status: 'sending', updatedAt: { [Op.lt]: new Date(Date.now() - STUCK_SENDING_MS) } } }
+  );
+}
+
 // ── Отправка ──────────────────────────────────────────────────────────────
 
 function buildTransport(account, password) {
@@ -214,10 +244,23 @@ async function sendDraft(draftId, userId) {
 
   const recipients = validateRecipients(draft);
   await checkQuota(draft.accountId);
-
-  await draft.update({ status: 'sending', error: null });
-
+  // Всё, что может отказать до SMTP, делаем до захвата черновика: иначе
+  // потерянный файл оставлял бы письмо в «sending», из которого его не
+  // вернуть без пятнадцатиминутного ожидания.
+  const attachments = loadAttachments(draft);
+  const thread = await threadHeaders(draft);
   const password = decryptPassword(account);
+
+  // Захват черновика одним условным UPDATE (ver. 9.11). Проверка статуса выше
+  // и запись «sending» раньше были двумя шагами, и два запроса подряд — двойной
+  // щелчок, повтор сети, вторая вкладка — оба проходили проверку и отправляли
+  // письмо дважды. Теперь отправляет только тот, чей UPDATE изменил строку.
+  const [, claimed] = await MailDraft.update(
+    { status: 'sending', error: null },
+    { where: { id: draft.id, status: ['draft', 'error'] } }
+  );
+  if (!claimed) throw new Error('Письмо уже отправляется или отправлено');
+
   const transport = buildTransport(account, password);
 
   // Свой Message-ID: по нему мы узнаем это письмо, когда оно вернётся к нам из
@@ -225,7 +268,6 @@ async function sendDraft(draftId, userId) {
   const domain = String(account.email).split('@')[1] || 'localhost';
   const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2, 10)}@${domain}>`;
 
-  const thread = await threadHeaders(draft);
   const body = withSignature(draft.bodyHtml, draft.bodyText, account.signature);
 
   const message = {
@@ -236,8 +278,8 @@ async function sendDraft(draftId, userId) {
     bcc: recipients.bcc.length ? formatRecipients(recipients.bcc) : undefined,
     subject: draft.subject || '(без темы)',
     text: body.text || undefined,
-    html: body.html || undefined,
-    attachments: loadAttachments(draft),
+    html: restoreQuotedImages(body.html) || undefined,
+    attachments,
     inReplyTo: thread.inReplyTo,
     references: thread.references,
   };
@@ -309,6 +351,8 @@ async function appendToSent(account, builtMessage, messageId, draft) {
 
 module.exports = {
   sendDraft,
+  releaseStuckDrafts,
+  restoreQuotedImages,
   sentToday,
   checkQuota,
   normalizeRecipients,

@@ -10,6 +10,8 @@
  */
 
 const dns = require('dns').promises;
+const dnsCallback = require('dns');
+const https = require('https');
 const net = require('net');
 const axios = require('axios');
 const sharp = require('sharp');
@@ -17,8 +19,18 @@ const sharp = require('sharp');
 const HIT_TTL = 24 * 60 * 60 * 1000;
 const MISS_TTL = 4 * 60 * 60 * 1000;
 const MAX_SOURCE_BYTES = 512 * 1024;
+// Потолок кэша (ver. 9.11). Домен в запросе задаёт клиент, и без потолка кэш
+// рос бы на каждый придуманный домен до конца жизни процесса.
+const CACHE_LIMIT = 2000;
 const cache = new Map();
 const pending = new Map();
+
+function remember(domain, entry) {
+  cache.delete(domain);
+  cache.set(domain, entry);
+  // Map помнит порядок вставки: первый ключ — самый давний.
+  while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
+}
 
 function normalizeDomain(value) {
   const domain = String(value || '').trim().toLowerCase().replace(/\.$/, '');
@@ -101,9 +113,31 @@ async function assertPublicHost(hostname) {
   }
 }
 
+/**
+ * Проверка адреса в момент соединения (ver. 9.11). assertPublicHost смотрит
+ * DNS заранее, а axios потом разрешает имя ещё раз сам — между двумя ответами
+ * домен с коротким TTL успевал переехать на 127.0.0.1 (DNS rebinding). Здесь
+ * проверяется ровно тот адрес, к которому подключаемся.
+ */
+function publicOnlyLookup(hostname, options, callback) {
+  dnsCallback.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err);
+    if (!addresses.length || addresses.some(({ address }) => isPrivateIp(address))) {
+      return callback(new Error('BIMI logo host is not public'));
+    }
+    if (options && options.all) return callback(null, addresses);
+    return callback(null, addresses[0].address, addresses[0].family);
+  });
+}
+
+const publicAgent = new https.Agent({ lookup: publicOnlyLookup });
+
 async function downloadSource(url, redirectsLeft = 3) {
   await assertPublicHost(url.hostname);
   const response = await axios.get(url.toString(), {
+    httpsAgent: publicAgent,
+    // Прокси из окружения подключался бы сам и обходил проверку адреса.
+    proxy: false,
     responseType: 'arraybuffer',
     timeout: 5000,
     maxContentLength: MAX_SOURCE_BYTES,
@@ -190,7 +224,7 @@ async function loadSenderLogo(domainValue) {
     } catch (error) {
       value = null;
     }
-    cache.set(domain, { value, expiresAt: Date.now() + (value ? HIT_TTL : MISS_TTL) });
+    remember(domain, { value, expiresAt: Date.now() + (value ? HIT_TTL : MISS_TTL) });
     return value;
   })().finally(() => pending.delete(domain));
 
@@ -205,4 +239,5 @@ module.exports = {
   isPrivateIp,
   resolveBimiUrl,
   assertSafeSvg,
+  publicOnlyLookup,
 };

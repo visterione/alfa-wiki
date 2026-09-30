@@ -155,3 +155,17 @@ test('слишком короткий результат в индекс не и
   const text = await extractText(Buffer.from('ок', 'utf8'), 'text/plain', 'x.txt');
   assert.equal(text, null);
 });
+
+test('zip-бомба в DOCX не раздувается в память (ver. 9.11)', async () => {
+  // 80 МБ одинаковых символов сжимаются в сотню килобайт. Раньше разбор
+  // распаковывал document.xml целиком и ронял воркер синхронизации по памяти;
+  // теперь чтение обрывается на потолке, а вложение просто остаётся без текста.
+  const bomb = await makeZip({
+    'word/document.xml': Buffer.alloc(80 * 1024 * 1024, 0x61),
+    '[Content_Types].xml': '<Types/>',
+  });
+  assert.ok(bomb.length < 1024 * 1024, 'архив должен быть маленьким, иначе это не бомба');
+
+  const text = await extractText(bomb, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'бомба.docx');
+  assert.equal(text, null);
+});

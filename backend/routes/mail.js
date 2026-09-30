@@ -33,7 +33,7 @@ const { encryptPassword } = require('../services/mail/crypto');
 const { testAccount, withConnection } = require('../services/mail/imap');
 const { setFlag, setTaken, requestDelete } = require('../services/mail/flags');
 const { attachmentAbsPath, STORE_ROOT } = require('../services/mail/store');
-const { sendDraft, sentToday, DAILY_PER_ACCOUNT, MAX_RECIPIENTS } = require('../services/mail/send');
+const { sendDraft, sentToday, releaseStuckDrafts, DAILY_PER_ACCOUNT, MAX_RECIPIENTS } = require('../services/mail/send');
 const { htmlToPlain } = require('../services/mail/parse');
 const { syncAccount, syncFolders } = require('../services/mail/sync');
 const { searchMessages, parseQuery } = require('../services/mail/search');
@@ -62,8 +62,22 @@ function audit(req, { accountId, messageId, action, detail }) {
     messageId: messageId || null,
     action,
     detail: detail || {},
-    ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().slice(0, 64),
+    ip: auditIp(req),
   }).catch((err) => console.error('📬 Почта: не записался журнал —', err.message));
+}
+
+/**
+ * Адрес для журнала (ver. 9.11). X-Forwarded-For человек присылает какой
+ * угодно, а nginx лишь дописывает к нему свой — брать первое значение значит
+ * записать в журнал то, что подсунул сам удаливший письмо. X-Real-IP nginx
+ * ставит сам поверх присланного, поэтому верим ему, но только если запрос
+ * действительно пришёл от локального nginx.
+ */
+function auditIp(req) {
+  const peer = String(req.socket?.remoteAddress || req.ip || '');
+  const viaLocalProxy = /^(?:::1|127\.|::ffff:127\.)/.test(peer);
+  const real = viaLocalProxy ? req.headers['x-real-ip'] : null;
+  return String(real || peer).slice(0, 64);
 }
 
 /** SVG и HTML не бывают превью: даже в <img> им не место в почтовом клиенте. */
@@ -79,7 +93,9 @@ async function loadMessageForUser(req, messageId) {
   const message = await MailMessage.findByPk(messageId, {
     include: [{ model: MailFolder, as: 'folder' }],
   });
-  if (!message) return { error: 404 };
+  // Письмо, спрятанное на удаление, для человека уже удалено — открыть его по
+  // старой ссылке или из соседней вкладки не должно получаться.
+  if (!message || message.pendingDelete) return { error: 404 };
 
   const access = await accessTo(req.user.id, message.accountId);
   if (!access) return { error: 403 };
@@ -125,12 +141,19 @@ router.get('/accounts/:accountId/folders', authenticate, async (req, res) => {
       SELECT f.id, f.path, f.name, f."specialUse", f."sortOrder", f."messagesTotal",
              f."fromContains", f."subjectContains", f."requireAttachments",
              f."backfillDone", f."lastSyncAt",
-             COUNT(m.id) FILTER (WHERE NOT m."isSeen" AND NOT m."pendingDelete")::int AS unread,
-             COUNT(m.id) FILTER (WHERE NOT m."pendingDelete")::int AS "inMirror"
+             COALESCE(u.unread, 0)::int AS unread
       FROM mail_folders f
-      LEFT JOIN mail_messages m ON m."folderId" = f.id
-      WHERE f."accountId" = $1 AND f.selectable
-      GROUP BY f.id
+      -- Считаем только непрочитанное и по ящику целиком: так запрос идёт по
+      -- частичному индексу непрочитанного. Прежний счёт всех писем в каждой
+      -- папке на каждый показ списка перебирал весь ящик (убран в ver. 9.11),
+      -- а общее число писем интерфейсу даёт messagesTotal с сервера.
+      LEFT JOIN (
+        SELECT "folderId", COUNT(*) AS unread
+        FROM mail_messages
+        WHERE "accountId" = $1 AND NOT "isSeen" AND NOT "pendingDelete"
+        GROUP BY "folderId"
+      ) u ON u."folderId" = f.id
+      WHERE f."accountId" = $1 AND f.selectable AND f."missingCount" = 0
       ORDER BY f."sortOrder", f.name
     `, { bind: [req.params.accountId] });
 
@@ -278,6 +301,11 @@ router.get('/sender-logo', authenticate, async (req, res) => {
   if (!domain) return res.status(400).json({ error: 'Некорректный домен' });
 
   try {
+    // Маршрут заставляет сервер сходить на произвольный домен. Нужен он только
+    // тем, у кого есть почта, — остальным сотрудникам незачем иметь в руках
+    // такой инструмент (ver. 9.11).
+    if (!(await accessibleAccountIds(req.user.id)).length) return res.status(403).end();
+
     const logo = await loadSenderLogo(domain);
     if (!logo) return res.status(404).end();
     res.set({
@@ -291,7 +319,27 @@ router.get('/sender-logo', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/mail/messages?accountId=&folderId=&unread=&attachments=&limit=&offset=
+/**
+ * Курсор списка — время прихода и id последнего показанного письма. Листание
+ * по ключу вместо OFFSET (ver. 9.11): OFFSET на глубокой прокрутке заново
+ * перебирает все пропущенные строки, и тысячная страница ящика на сотню
+ * тысяч писем открывалась бы секундами.
+ */
+function encodeCursor(row) {
+  if (!row) return null;
+  const at = row.receivedAt instanceof Date ? row.receivedAt.toISOString() : String(row.receivedAt);
+  return Buffer.from(`${at}|${row.id}`, 'utf8').toString('base64url');
+}
+
+function decodeCursor(value) {
+  if (!value) return null;
+  const [at, id] = Buffer.from(String(value), 'base64url').toString('utf8').split('|');
+  const date = new Date(at);
+  if (Number.isNaN(date.valueOf()) || !/^[0-9a-f-]{36}$/i.test(id || '')) return null;
+  return { receivedAt: date, id };
+}
+
+// GET /api/mail/messages?accountId=&folderId=&unread=&attachments=&limit=&cursor=
 router.get('/messages', authenticate, async (req, res) => {
   try {
     const { accountId, folderId } = req.query;
@@ -322,7 +370,15 @@ router.get('/messages', authenticate, async (req, res) => {
     if (req.query.attachments === 'true') where.push('m."hasAttachments"');
     if (req.query.flagged === 'true') where.push('m."isFlagged"');
 
-    bind.push(limit, offset);
+    const cursor = decodeCursor(req.query.cursor);
+    if (cursor) {
+      bind.push(cursor.receivedAt, cursor.id);
+      where.push(`(m."receivedAt", m.id) < ($${bind.length - 1}, $${bind.length}::uuid)`);
+    }
+
+    // С курсором OFFSET не нужен; без него остаётся ради старых вкладок, где
+    // интерфейс ещё не обновился.
+    bind.push(limit, cursor ? 0 : offset);
     const limitParam = `$${bind.length - 1}`;
     const offsetParam = `$${bind.length}`;
 
@@ -343,14 +399,21 @@ router.get('/messages', authenticate, async (req, res) => {
       ) sender ON true
       LEFT JOIN mail_user_message_state s ON s."messageId" = m.id AND s."userId" = $${bind.length + 1}
       WHERE ${where.join(' AND ')}
-      ORDER BY m."receivedAt" DESC
+      ORDER BY m."receivedAt" DESC, m.id DESC
       LIMIT ${limitParam} OFFSET ${offsetParam}
     `, { bind: [...bind, req.user.id] });
 
     // Точное число писем на полумиллионе строк считается дольше, чем берётся
     // первая страница. Отдаём признак «есть ещё» — этого хватает для листания,
     // а точную цифру в почтовом списке никто не читает.
-    res.json({ messages, hasMore: messages.length === limit, limit, offset });
+    const hasMore = messages.length === limit;
+    res.json({
+      messages,
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(messages[messages.length - 1]) : null,
+      limit,
+      offset,
+    });
   } catch (error) {
     console.error('❌ Почта: не отдался список писем:', error);
     res.status(500).json({ error: 'Не удалось получить письма' });
@@ -411,6 +474,11 @@ router.get('/search', authenticate, async (req, res) => {
       },
     });
   } catch (error) {
+    // 57014 — запрос снят по statement_timeout. Это не сбой, а слишком общий
+    // запрос, и человеку полезнее совет, чем «ошибка».
+    if ((error.original || error.parent || error).code === '57014') {
+      return res.status(503).json({ error: 'Слишком общий запрос — добавьте слово или уточнение (от:, тема:, после:)' });
+    }
     console.error('❌ Почта: поиск не отработал:', error);
     res.status(500).json({ error: 'Поиск не отработал' });
   }
@@ -688,18 +756,31 @@ router.delete('/messages/:id', authenticate, async (req, res) => {
   }
 });
 
+/** Корзина и Спам: перенос туда равен удалению. Имя проверяем на случай сервера без SPECIAL-USE. */
+function isDisposalFolder(folder) {
+  if (folder.specialUse === '\\Trash' || folder.specialUse === '\\Junk') return true;
+  return /корзин|спам|trash|junk|spam|deleted/i.test(`${folder.path} ${folder.name}`);
+}
+
 // Переносим в папку на сервере: она сразу станет видна и в Roundcube.
 router.post('/messages/:id/move', authenticate, async (req, res) => {
   try {
-    const { message, error } = await loadMessageForUser(req, req.params.id);
+    const { message, access, error } = await loadMessageForUser(req, req.params.id);
     if (error === 404) return res.status(404).json({ error: 'Письмо не найдено' });
     if (error === 403) return res.status(403).json({ error: 'Нет доступа к этому ящику' });
     const target = await MailFolder.findOne({ where: {
-      id: req.body.folderId, accountId: message.accountId, selectable: true,
+      id: req.body.folderId, accountId: message.accountId, selectable: true, missingCount: 0,
     } });
     if (!target) return res.status(404).json({ error: 'Папка не найдена в этом ящике' });
     if (target.id === message.folderId) return res.json({ ok: true });
+    // Перенос в Корзину или Спам — это то же удаление, только в обход права на
+    // него (ver. 9.11): без этой проверки человек без canDelete убирал письмо
+    // из Входящих у всех, включая коллег в Roundcube.
+    if (!access.canDelete && isDisposalFolder(target)) {
+      return res.status(403).json({ error: 'Удаление писем вам не разрешено, а перенос в эту папку — то же удаление' });
+    }
     const account = await MailAccount.scope('withSecret').findByPk(message.accountId);
+    if (!account || !account.isActive) return res.status(404).json({ error: 'Ящик не найден' });
     const result = await withConnection(account, async (client) => {
       await client.mailboxOpen(message.folder.path, { readOnly: false });
       if (client.capabilities.has('MOVE')) {
@@ -826,9 +907,38 @@ function quoteOriginal(message, body) {
   };
 }
 
+async function copyForwardedAttachments(draftId, messageId) {
+  const originals = await MailAttachment.findAll({
+    where: { messageId, isInline: false },
+    order: [['filename', 'ASC']],
+  });
+  const out = [];
+  let total = 0;
+  for (const att of originals) {
+    if (!att.storagePath) continue;
+    // Тот же потолок, что при ручной загрузке: письмо тяжелее почтовые
+    // серверы всё равно не пропустят. Не влезшее просто не прикладываем —
+    // человек увидит состав вложений в форме до отправки.
+    if (total + Number(att.size || 0) > 25 * 1024 * 1024) continue;
+    const id = crypto.randomUUID();
+    const storagePath = path.join('outbox', draftId, id);
+    const abs = path.join(STORE_ROOT, storagePath);
+    try {
+      await fsp.mkdir(path.dirname(abs), { recursive: true });
+      await fsp.copyFile(attachmentAbsPath(att.storagePath), abs);
+    } catch (e) {
+      continue; // файл исходного письма потерян — пересылаем остальное
+    }
+    total += Number(att.size || 0);
+    out.push({ id, filename: att.filename, mimeType: att.mimeType, size: att.size, storagePath });
+  }
+  return out;
+}
+
 // GET /api/mail/drafts — мои незавершённые письма
 router.get('/drafts', authenticate, async (req, res) => {
   try {
+    await releaseStuckDrafts(req.user.id);
     const drafts = await MailDraft.findAll({
       where: { userId: req.user.id, status: { [Op.in]: ['draft', 'error'] } },
       order: [['updatedAt', 'DESC']],
@@ -907,6 +1017,15 @@ router.post('/drafts', authenticate, async (req, res) => {
     }
 
     const draft = await MailDraft.create(payload);
+
+    // Пересылка без вложений исходного письма — почти всегда не то, что
+    // человек имел в виду: пересылают как раз ради приложенного договора или
+    // скана (ver. 9.11). Файлы копируются в черновик, и лишние можно убрать
+    // крестиком, как любые другие.
+    if (kind === 'forward' && payload.replyToId) {
+      const attachments = await copyForwardedAttachments(draft.id, payload.replyToId);
+      if (attachments.length) await draft.update({ attachments });
+    }
     res.status(201).json({ draft });
   } catch (error) {
     console.error('❌ Почта: черновик не создался:', error);
@@ -1311,15 +1430,36 @@ router.delete('/admin/accounts/:id', authenticate, requireMailAdmin, async (req,
 
     const total = await MailMessage.count({ where: { accountId: account.id } });
     const email = account.email;
-    await account.destroy();
 
-    audit(req, { action: 'account-delete', detail: { email, messages: total } });
-    res.json({ ok: true, removed: total });
+    // Удаление идёт фоном и пачками (ver. 9.11). Одним каскадом сотни тысяч
+    // писем с телами и адресами — это минуты в одной транзакции внутри
+    // HTTP-запроса, с блокировками, которые чувствует весь модуль. Ящик сразу
+    // выключаем: синхронизатор его больше не трогает, а людям он не виден.
+    // Файлы на диске уберёт суточная уборка — они останутся без строк.
+    await account.update({ isActive: false });
+    audit(req, { accountId: account.id, action: 'account-delete', detail: { email, messages: total } });
+    res.json({ ok: true, removed: total, background: true });
+
+    removeAccountInBatches(account.id).catch((err) => {
+      console.error(`📬 Почта: ящик ${email} удалился не до конца — ${err.message}. Повторите удаление.`);
+    });
   } catch (error) {
     console.error('❌ Почта: ящик не удалился:', error);
     res.status(500).json({ error: 'Не удалось удалить ящик' });
   }
 });
+
+async function removeAccountInBatches(accountId) {
+  for (;;) {
+    const [rows] = await sequelize.query(`
+      DELETE FROM mail_messages WHERE id IN (
+        SELECT id FROM mail_messages WHERE "accountId" = $1 LIMIT 2000
+      ) RETURNING id
+    `, { bind: [accountId] });
+    if (!rows.length) break;
+  }
+  await MailAccount.destroy({ where: { id: accountId } });
+}
 
 // ── Доступы ───────────────────────────────────────────────────────────────
 

@@ -22,8 +22,10 @@
  *   npm run mail:sync -- --once           один проход и выход
  *   npm run mail:sync -- --account info@alfa.ru
  *   npm run mail:sync -- --bodies         только докачка тел
+ *   npm run mail:sync -- --sweep          только уборка хранилища и выход
  *
  * Интервал круга — MAIL_SYNC_INTERVAL в секундах, по умолчанию 180.
+ * Сколько ящиков обходится одновременно — MAIL_SYNC_CONCURRENCY, по умолчанию 3.
  */
 
 require('dotenv').config();
@@ -33,6 +35,7 @@ const { syncAccount, fetchBodies } = require('../services/mail/sync');
 const { drainFlagOps, cleanupFlagOps } = require('../services/mail/flags');
 const { assertKeyUsable } = require('../services/mail/crypto');
 const { poolStats } = require('../services/mail/imap');
+const { sweepStore } = require('../services/mail/cleanup');
 
 sequelize.options.logging = false;
 
@@ -50,7 +53,19 @@ const INTERVAL_MS = Math.max(30, parseInt(process.env.MAIL_SYNC_INTERVAL || '180
 // слишком надолго.
 const BODY_BATCH = Math.max(1, parseInt(process.env.MAIL_BODY_BATCH || '50', 10));
 
+// Сколько ящиков обходим одновременно (ver. 9.11). Раньше ящики шли строго по
+// одному, хотя пул разрешает несколько соединений: на сотне ящиков круг
+// растягивался дольше интервала, и новые письма, как и отметки для Roundcube,
+// опаздывали на несколько минут. Потолок соединений по-прежнему держит пул в
+// imap.js — лишние задачи просто ждут там свободного слота. Три, а не четыре:
+// веб-процесс держит собственный пул для переноса писем и «Отправленных».
+const CONCURRENCY = Math.max(1, parseInt(process.env.MAIL_SYNC_CONCURRENCY || '3', 10));
+// Уборка хранилища раз в сутки: обход сотен тысяч файлов дешёвый, но делать
+// его каждый круг незачем.
+const SWEEP_INTERVAL_MS = Math.max(1, parseInt(process.env.MAIL_SWEEP_HOURS || '24', 10)) * 3600 * 1000;
+
 let stopping = false;
+let lastSweepAt = 0;
 
 function log(message) {
   console.log(`[${new Date().toISOString()}] ${message}`);
@@ -78,13 +93,37 @@ async function activeAccounts() {
   return MailAccount.findAll({ where, order: [['sortOrder', 'ASC'], ['email', 'ASC']], attributes: ['id', 'email'] });
 }
 
+/**
+ * Выполняет задачи не больше чем по n одновременно. Порядок сохраняется в
+ * смысле «кто раньше в списке, тот раньше начнёт».
+ */
+async function runLimited(items, n, fn) {
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (next < items.length && !stopping) {
+      const item = items[next];
+      next += 1;
+      await fn(item);
+    }
+  });
+  await Promise.all(lanes);
+}
+
+async function drainFlags() {
+  try {
+    const { pushed } = await drainFlagOps();
+    if (pushed) log(`отметок доставлено на сервер: ${pushed}`);
+  } catch (err) {
+    log(`очередь отметок не разгреблась — ${err.message}`);
+  }
+}
+
 /** Проход за конвертами по всем ящикам. Ошибка одного не останавливает круг. */
 async function envelopePass(accounts) {
-  for (const account of accounts) {
-    if (stopping) return;
+  await runLimited(accounts, CONCURRENCY, async (account) => {
     try {
       const result = await syncAccount(account.id);
-      if (result.skipped) continue;
+      if (result.skipped) return;
       if (result.fetched) {
         log(`${account.email}: +${result.fetched} писем, состояние «${result.state}», без тела ${result.pendingBodies}`);
       }
@@ -93,21 +132,26 @@ async function envelopePass(accounts) {
       // в соединении. Остальные девяносто девять должны продолжать работать.
       log(`${account.email}: не синхронизировался — ${err.message}`);
     }
-  }
+  });
 }
 
 /**
  * Докачка тел по кругу, пока не истекло время до следующего прохода. Круг, а
  * не «добить один ящик до конца», — иначе свежие письма в остальных ящиках
  * остались бы без тела на всё время заливки архива.
+ *
+ * В начале каждого витка отдаём серверу накопившиеся отметки: заливка архива
+ * занимает весь интервал, и без этого «прочитано» доезжало бы до Roundcube
+ * только к следующему кругу.
  */
 async function bodyPass(accounts, deadline) {
   let working = accounts.map((a) => ({ id: a.id, email: a.email }));
 
   while (working.length && Date.now() < deadline && !stopping) {
+    await drainFlags();
     const next = [];
-    for (const account of working) {
-      if (stopping || Date.now() >= deadline) break;
+    await runLimited(working, CONCURRENCY, async (account) => {
+      if (Date.now() >= deadline) return;
       try {
         const { done, left } = await fetchBodies(account.id, BODY_BATCH);
         if (done) log(`${account.email}: тела +${done}, осталось ${left}`);
@@ -116,8 +160,28 @@ async function bodyPass(accounts, deadline) {
       } catch (err) {
         log(`${account.email}: тела не качаются — ${err.message}`);
       }
-    }
+    });
     working = next;
+  }
+}
+
+/**
+ * Уборка идёт внутри круга, а не параллельно ему: тела пишет только этот
+ * процесс, и пока идёт уборка, он не пишет, — так файл не уйдёт ровно в тот
+ * момент, когда на него сошлось новое письмо.
+ */
+async function sweep() {
+  try {
+    const started = Date.now();
+    const r = await sweepStore();
+    lastSweepAt = Date.now();
+    log(
+      `уборка за ${Math.round((Date.now() - started) / 1000)} с: писем ${r.raw.removed} из ${r.raw.checked}, ` +
+      `вложений ${r.attachments.removed} из ${r.attachments.checked}, черновиков ${r.outbox.removed}, ` +
+      `журнала синхронизации ${r.tables.syncRuns}, мёртвых отметок ${r.tables.deadFlagOps}`
+    );
+  } catch (err) {
+    log(`уборка не прошла — ${err.message}`);
   }
 }
 
@@ -134,15 +198,13 @@ async function cycle() {
   // Наоборот нельзя: синхронизация вернула бы прежний флаг и отменила действие
   // человека у него на глазах — он нажал «прочитано», а письмо через минуту
   // снова непрочитано.
-  try {
-    const { pushed } = await drainFlagOps();
-    if (pushed) log(`отметок доставлено на сервер: ${pushed}`);
-  } catch (err) {
-    log(`очередь отметок не разгреблась — ${err.message}`);
-  }
+  await drainFlags();
 
   if (!args.includes('--bodies')) await envelopePass(accounts);
+  await drainFlags();
   if (!args.includes('--envelopes')) await bodyPass(accounts, deadline);
+
+  if (Date.now() - lastSweepAt >= SWEEP_INTERVAL_MS) await sweep();
 
   // Выполненные операции старше недели очереди не нужны.
   await cleanupFlagOps().catch(() => {});
@@ -160,12 +222,17 @@ async function main() {
   // рабочего дня на живом ящике — худший момент из возможных.
   assertKeyUsable();
 
+  if (args.includes('--sweep')) {
+    await sweep();
+    return;
+  }
+
   if (args.includes('--once') || flagValue('account')) {
     await cycle();
     return;
   }
 
-  log(`Почта: цикл запущен, круг каждые ${INTERVAL_MS / 1000} с, порция тел ${BODY_BATCH}`);
+  log(`Почта: цикл запущен, круг каждые ${INTERVAL_MS / 1000} с, порция тел ${BODY_BATCH}, ящиков одновременно ${CONCURRENCY}`);
 
   while (!stopping) {
     let deadline;

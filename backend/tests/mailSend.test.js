@@ -67,3 +67,15 @@ test('пустая подпись ничего не добавляет', () => {
   assert.equal(html, '<p>Ответ</p>');
   assert.equal(text, 'Ответ');
 });
+
+test('в исходящем письме внешние картинки цитаты снова настоящие (ver. 9.11)', () => {
+  const { restoreQuotedImages } = require('../services/mail/send');
+  const html = '<img alt="лого" data-mail-src="https://x.ru/logo.png"><img src="cid:a1"><p>data-mail-src="https://y.ru" в тексте</p>';
+  const out = restoreQuotedImages(html);
+
+  assert.match(out, /<img alt="лого" src="https:\/\/x\.ru\/logo\.png">/);
+  assert.match(out, /src="cid:a1"/, 'cid-картинки не трогаем');
+  assert.match(out, /<p>data-mail-src=/, 'текст письма без пробела перед атрибутом не меняется');
+  assert.equal(restoreQuotedImages('<img data-mail-src="javascript:alert(1)">'), '<img data-mail-src="javascript:alert(1)">',
+    'возвращаем только http(s)');
+});

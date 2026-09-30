@@ -216,8 +216,12 @@ export default function AdminMail() {
     );
     if (!ok) return;
     try {
-      await mailApi.admin.remove(account.id);
-      toast.success('Ящик убран из портала');
+      const { data } = await mailApi.admin.remove(account.id);
+      // Письма большого ящика удаляются фоном пачками (ver. 9.11): ящик сразу
+      // выключен, а из списка пропадёт, когда уйдёт последнее письмо.
+      toast.success(data?.background
+        ? 'Ящик выключен, письма убираются из портала фоном'
+        : 'Ящик убран из портала');
       load();
     } catch (e) {
       toast.error('Не удалось удалить');

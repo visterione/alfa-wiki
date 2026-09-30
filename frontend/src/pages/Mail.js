@@ -455,6 +455,11 @@ export default function Mail() {
   const [loadingList, setLoadingList] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
+  // Курсор следующей страницы списка (ver. 9.11) и контроллер текущего
+  // запроса. Оба в ref: от них не должен пересоздаваться load, иначе смена
+  // курсора сама запускала бы перезагрузку списка.
+  const cursorRef = useRef(null);
+  const listAbortRef = useRef(null);
 
   const [showFilter, setShowFilter] = useState(false);
   const [busyFolders, setBusyFolders] = useState(false);
@@ -718,19 +723,32 @@ export default function Mail() {
       setHasMore(false);
       return;
     }
+    // Прежний запрос отменяем. Поиск идёт по мере набора, и без отмены ответ
+    // на «ив» мог прийти позже ответа на «иванов» и затереть выдачу — а база
+    // продолжала бы считать запрос, который уже никому не нужен.
+    listAbortRef.current?.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
+
     setLoadingList(true);
     try {
-      const params = { limit: LIMIT, offset: nextOffset, accountId };
+      const params = { limit: LIMIT, accountId };
       if (folderId) params.folderId = folderId;
 
       let data;
       if (activeQuery.trim()) {
         params.q = activeQuery.trim();
-        ({ data } = await mailApi.search(params));
+        params.offset = nextOffset;
+        ({ data } = await mailApi.search(params, { signal: controller.signal }));
         setSearchInfo({ parsed: data.parsed, ms: data.ms, empty: data.empty });
+        cursorRef.current = null;
       } else {
-        ({ data } = await mailApi.messages(params));
+        // Список листается по курсору, а не по смещению: глубокая страница
+        // большого ящика по смещению открывалась бы секундами.
+        if (append && cursorRef.current) params.cursor = cursorRef.current;
+        ({ data } = await mailApi.messages(params, { signal: controller.signal }));
         setSearchInfo(null);
+        cursorRef.current = data.nextCursor || null;
       }
 
       setMessages((prev) => (append ? [...prev, ...(data.messages || [])] : (data.messages || [])));
@@ -738,9 +756,12 @@ export default function Mail() {
       setOffset(nextOffset);
       if (!append && listRef.current) listRef.current.scrollTop = 0;
     } catch (e) {
-      toast.error(activeQuery ? 'Поиск не отработал' : 'Не удалось загрузить письма');
+      if (controller.signal.aborted) return;
+      // Сервер объясняет, почему поиск не прошёл: слишком общий запрос — это
+      // совет уточнить, а не поломка.
+      toast.error(e.response?.data?.error || (activeQuery ? 'Поиск не отработал' : 'Не удалось загрузить письма'));
     } finally {
-      setLoadingList(false);
+      if (listAbortRef.current === controller) setLoadingList(false);
     }
   }, [accountId, folderId, activeQuery]);
 

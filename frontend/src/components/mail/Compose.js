@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { mail as mailApi } from '../../services/api';
 import toast from 'react-hot-toast';
+import DOMPurify from 'dompurify';
 import { useStoredSize, startDrag } from './resize';
 import './Compose.css';
 
@@ -25,6 +26,33 @@ import './Compose.css';
  */
 
 const AUTOSAVE_MS = 1500;
+
+/**
+ * Второй рубеж для цитаты (ver. 9.11). В ответ и пересылку сервер кладёт HTML
+ * чужого письма, уже очищенный sanitize-html, — но здесь он вставляется прямо
+ * в страницу портала, а не в изолированный iframe, как при чтении. Обход
+ * серверной очистки, если его однажды найдут, дал бы постороннему отправителю
+ * исполнение кода с токеном сотрудника. DOMPurify разбирает разметку тем же
+ * движком, что будет её показывать, и закрывает этот путь независимо от сервера.
+ *
+ * Внешние картинки так и остаются в data-mail-src: пиксель слежения не должен
+ * срабатывать от того, что человек нажал «Ответить». Настоящий src им вернёт
+ * сервер уже в исходящем письме.
+ */
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName !== 'IMG') return;
+  const src = node.getAttribute('src') || '';
+  if (src && !/^(?:data:image\/|cid:|blob:)/i.test(src)) {
+    node.setAttribute('data-mail-src', src);
+    node.removeAttribute('src');
+  }
+});
+
+function purifyBody(html) {
+  return DOMPurify.sanitize(String(html || ''), {
+    FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed'],
+  });
+}
 
 // Окно прижато к правому нижнему углу, поэтому тянется оно за левый и верхний
 // край: правый и нижний упираются в экран. Меньше этих размеров в окне уже не
@@ -88,7 +116,7 @@ export default function Compose({ draft: initialDraft, accountEmail, onClose, on
   // Тело ставим один раз при открытии. Перерисовывать contentEditable из
   // состояния на каждый набранный символ нельзя — курсор прыгает в начало.
   useEffect(() => {
-    if (bodyRef.current) bodyRef.current.innerHTML = initialDraft.bodyHtml || '';
+    if (bodyRef.current) bodyRef.current.innerHTML = purifyBody(initialDraft.bodyHtml);
     // Курсор в начало, перед цитатой: отвечают сверху, а не под чужим текстом.
     if (bodyRef.current) bodyRef.current.focus();
   }, [initialDraft.bodyHtml]);

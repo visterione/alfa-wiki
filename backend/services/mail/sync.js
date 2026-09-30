@@ -36,6 +36,14 @@ const ENVELOPE_BATCH = 200;
 // нужно, чтобы один забитый ящик не держал единственное соединение часами,
 // пока остальные девяносто девять ждут.
 const BACKFILL_CHUNK = 2000;
+// Сколько раз подряд папки может не быть в LIST, прежде чем она уйдёт из
+// зеркала вместе с письмами (ver. 9.11). Один сбойный ответ сервера раньше
+// стирал папку целиком, и она заново качалась со всеми телами.
+const FOLDER_MISSING_LIMIT = 3;
+// Сколько раз воркер берётся за тело одного письма. Счётчик растёт до разбора,
+// поэтому письмо, которое роняет процесс, после третьего раза уходит в error,
+// а не встаёт первым в очередь после каждого перезапуска.
+const MAX_BODY_ATTEMPTS = 3;
 
 // ── Вспомогательное ───────────────────────────────────────────────────────
 
@@ -106,6 +114,7 @@ async function syncFolders(client, account) {
         "specialUse" = EXCLUDED."specialUse",
         flags = EXCLUDED.flags,
         selectable = EXCLUDED.selectable,
+        "missingCount" = 0,
         "updatedAt" = NOW()
     `, {
       replacements: {
@@ -121,15 +130,25 @@ async function syncFolders(client, account) {
     });
   }
 
-  // Папка, исчезнувшая на сервере, исчезает и у нас — вместе с письмами. Это
-  // то же удаление, просто оптом, а расходиться с сервером зеркало не должно.
-  const gone = await MailFolder.findAll({ where: { accountId: account.id, path: { [Op.notIn]: [...seen] } } });
-  for (const folder of gone) {
-    console.log(`📬 Почта: папка «${folder.name}» исчезла на сервере, убираем из зеркала`);
-    await folder.destroy();
+  // Папка, исчезнувшая на сервере, исчезает и у нас — вместе с письмами. Но не
+  // с первого раза: пустой или обрезанный ответ LIST при сбое сервера иначе
+  // стирал бы зеркало целиком. Пропавшую папку сразу прячем (missingCount > 0),
+  // а удаляем после нескольких кругов подряд. Пустой LIST за правду не
+  // принимаем вовсе: у живого ящика всегда есть хотя бы INBOX.
+  if (seen.size) {
+    const gone = await MailFolder.findAll({ where: { accountId: account.id, path: { [Op.notIn]: [...seen] } } });
+    for (const folder of gone) {
+      const missing = folder.missingCount + 1;
+      if (missing >= FOLDER_MISSING_LIMIT) {
+        console.log(`📬 Почта: папка «${folder.name}» исчезла на сервере, убираем из зеркала`);
+        await folder.destroy();
+      } else {
+        await folder.update({ missingCount: missing });
+      }
+    }
   }
 
-  return MailFolder.findAll({ where: { accountId: account.id, selectable: true }, order: [['sortOrder', 'ASC'], ['name', 'ASC']] });
+  return MailFolder.findAll({ where: { accountId: account.id, selectable: true, missingCount: 0 }, order: [['sortOrder', 'ASC'], ['name', 'ASC']] });
 }
 
 /** Порядок как в любом почтовом клиенте: Входящие, потом свои, потом служебные. */
@@ -527,6 +546,15 @@ async function fetchBodies(accountId, limit = 50) {
         await client.mailboxOpen(folder.path, { readOnly: true });
 
         for (const message of messages) {
+          if (message.bodyAttempts >= MAX_BODY_ATTEMPTS) {
+            console.warn(`📬 Почта: письмо uid=${message.uid} не разобралось за ${message.bodyAttempts} попытки, пропускаем`);
+            await message.update({ bodyState: 'error' });
+            continue;
+          }
+          // Попытку записываем до разбора: если процесс упадёт посреди него,
+          // счётчик уже будет в базе.
+          await message.increment('bodyAttempts');
+
           try {
             // BODY.PEEK[]: читаем, не выставляя \Seen. Иначе синхронизация
             // молча помечала бы прочитанным всё, до чего дотянулась.
@@ -540,7 +568,11 @@ async function fetchBodies(accountId, limit = 50) {
           } catch (err) {
             // Ошибка IMAP затрагивает соединение целиком, а не конкретное
             // письмо. Оставляем UID в очереди, чтобы повторить загрузку позже.
-            if (client.mailConnectionError) throw client.mailConnectionError;
+            if (client.mailConnectionError) {
+              // Обрыв соединения — не вина письма, попытку ему не засчитываем.
+              await message.decrement('bodyAttempts').catch(() => {});
+              throw client.mailConnectionError;
+            }
             // Одно битое письмо не должно останавливать проход по ящику:
             // кривая кодировка и обрезанное вложение — обычное дело в архиве.
             console.warn(`📬 Почта: не разобралось письмо uid=${message.uid} (${err.message})`);
@@ -599,4 +631,6 @@ module.exports = {
   folderOrder,
   ENVELOPE_BATCH,
   BACKFILL_CHUNK,
+  FOLDER_MISSING_LIMIT,
+  MAX_BODY_ATTEMPTS,
 };

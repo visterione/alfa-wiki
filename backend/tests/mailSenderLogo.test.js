@@ -33,3 +33,9 @@ test('SVG логотипа не может содержать скрипты и 
   assert.throws(() => assertSafeSvg(Buffer.from('<svg><script>alert(1)</script></svg>')));
   assert.throws(() => assertSafeSvg(Buffer.from('<svg><image href="http://127.0.0.1/a"/></svg>')));
 });
+
+test('соединение к внутреннему адресу отвергается в момент подключения (ver. 9.11)', async () => {
+  const { publicOnlyLookup } = require('../services/mail/senderLogo');
+  const err = await new Promise((resolve) => publicOnlyLookup('localhost', {}, (e) => resolve(e)));
+  assert.ok(err, 'localhost разрешается во внутренний адрес и должен быть отвергнут');
+});

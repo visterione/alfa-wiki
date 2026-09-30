@@ -1639,7 +1639,7 @@ export const mail = {
 
   // Без accountId ищет по всем доступным ящикам сразу — человеку с пятью
   // ящиками это главное удобство.
-  messages: (params) => api.get('/mail/messages', { params }),
+  messages: (params, config) => api.get('/mail/messages', { params, ...config }),
   message: (id) => api.get(`/mail/messages/${id}`),
   senderLogo: (domain) => api.get('/mail/sender-logo', {
     params: { domain },
@@ -1653,7 +1653,7 @@ export const mail = {
   // Настоящий поиск по зеркалу. Без accountId ищет сразу по всем доступным
   // ящикам — в IMAP такого запроса не существует в принципе, там поиск живёт
   // внутри одной папки одного ящика, и ровно ради этого модуль и затевался.
-  search: (params) => api.get('/mail/search', { params }),
+  search: (params, config) => api.get('/mail/search', { params, ...config }),
   // Только разбор строки, без обращения к письмам: подсказка под полем должна
   // показывать, что поиск понял, пока человек ещё печатает.
   parseQuery: (q) => api.get('/mail/search/parse', { params: { q } }),
