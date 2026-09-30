@@ -1,4 +1,5 @@
 import {useEffect, useState} from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {mail as mailApi} from '../services/api';
 
@@ -47,7 +48,22 @@ export function setMailUnread(accountId, unread) {
   publish(accounts.map(item => item.id === accountId ? {...item, unread: Math.max(0, unread)} : item));
 }
 
+// Последний открытый ящик. Раньше раздел всегда открывался на первом ящике
+// списка, а первым часто стоит тот, куда заглядывают реже всего. Помним на
+// устройстве и забываем при выходе из учётной записи (resetMail).
+const LAST_ACCOUNT_KEY = 'mail.lastAccountId';
+
+export async function readLastMailAccount() {
+  try { return await AsyncStorage.getItem(LAST_ACCOUNT_KEY); } catch (e) { return null; }
+}
+
+export function rememberMailAccount(id) {
+  if (!id) return;
+  AsyncStorage.setItem(LAST_ACCOUNT_KEY, String(id)).catch(() => {});
+}
+
 export function resetMail() {
+  AsyncStorage.removeItem(LAST_ACCOUNT_KEY).catch(() => {});
   accounts = null;
   pending = null;
   listeners.forEach(listener => listener(null));

@@ -255,6 +255,11 @@ function normalizeContentId(value) {
   return id.toLowerCase();
 }
 
+function readLastAccount(key) {
+  if (!key) return null;
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+
 function buildFrameDoc(html, showImages, cidSources = {}) {
   let body = String(html || '').replace(/\bsrc=(['"])cid:([^'"]+)\1/gi, (whole, quote, cid) => {
     const src = cidSources[normalizeContentId(cid)];
@@ -444,7 +449,11 @@ const HOTKEYS = [
 ];
 
 export default function Mail() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  // Ключ последнего открытого ящика — свой у каждого сотрудника: за одним
+  // компьютером регистратуры работают по очереди, и ящик коллеги открываться
+  // не должен.
+  const lastAccountKey = user?.id ? `mail.lastAccount.${user.id}` : null;
   const [accounts, setAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [accountId, setAccountId] = useState(null);
@@ -577,6 +586,11 @@ export default function Mail() {
       setAccounts(next);
       setAccountId((current) => {
         if (current && next.some((account) => account.id === current)) return current;
+        // Открываем ящик, с которым работали в прошлый раз: первым по списку
+        // часто стоит тот, куда заглядывают реже всего. Если к нему больше нет
+        // доступа — как раньше, ящик по умолчанию или первый.
+        const remembered = readLastAccount(lastAccountKey);
+        if (remembered && next.some((account) => account.id === remembered)) return remembered;
         return (next.find((account) => account.isDefault) || next[0])?.id || null;
       });
     } catch (e) {
@@ -584,7 +598,12 @@ export default function Mail() {
     } finally {
       setLoadingAccounts(false);
     }
-  }, []);
+  }, [lastAccountKey]);
+
+  useEffect(() => {
+    if (!accountId || !lastAccountKey) return;
+    try { localStorage.setItem(lastAccountKey, accountId); } catch (e) { /* приватный режим — просто не запомним */ }
+  }, [accountId, lastAccountKey]);
 
   useEffect(() => {
     const close = (event) => {

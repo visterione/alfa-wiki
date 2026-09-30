@@ -10,7 +10,9 @@ import {
 
 import BottomSheet from '../../components/BottomSheet';
 import {mail as mailApi} from '../../services/api';
-import {loadMailAccounts, setMailUnread, useMailAccounts} from '../../store/mailStore';
+import {
+  loadMailAccounts, readLastMailAccount, rememberMailAccount, setMailUnread, useMailAccounts,
+} from '../../store/mailStore';
 import {cardSurface, font, radius} from '../../theme';
 import {useTheme, useThemedStyles} from '../../store/settingsStore';
 import {useTabBarInset} from '../../navigation/tabBarLayout';
@@ -53,9 +55,21 @@ export default function MailScreen({navigation}) {
   );
   const folder = folders.find(item => item.id === folderId) || null;
 
+  // Первым открываем ящик, с которым работали в прошлый раз; если доступа к
+  // нему больше нет — ящик по умолчанию или первый, как раньше.
   useEffect(() => {
-    if (!accountId && accounts?.[0]) setAccountId(accounts[0].id);
+    if (accountId || !accounts?.length) return undefined;
+    let active = true;
+    readLastMailAccount().then(remembered => {
+      if (!active) return;
+      const pick = accounts.find(item => item.id === remembered)
+        || accounts.find(item => item.isDefault) || accounts[0];
+      setAccountId(current => current || pick.id);
+    });
+    return () => { active = false; };
   }, [accounts, accountId]);
+
+  useEffect(() => { rememberMailAccount(accountId); }, [accountId]);
 
   const loadFolders = useCallback(async id => {
     if (!id) return [];
