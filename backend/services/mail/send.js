@@ -183,6 +183,23 @@ function restoreQuotedImages(html) {
 }
 
 /**
+ * Захватывает черновик под отправку. true — захватили мы, false — его уже
+ * отправляет кто-то другой или он отправлен.
+ *
+ * Model.update в Sequelize возвращает [число изменённых строк] — одно число, а
+ * не пару. В 9.11 отсюда брался второй элемент, он всегда был undefined, и
+ * каждая отправка обрывалась, успев перевести черновик в «sending»: письма не
+ * уходили вовсе, а из списка черновиков пропадали, как отправленные.
+ */
+async function claimDraft(draftId) {
+  const [affected] = await MailDraft.update(
+    { status: 'sending', error: null },
+    { where: { id: draftId, status: ['draft', 'error'] } }
+  );
+  return affected > 0;
+}
+
+/**
  * Черновик, застрявший в «sending» — процесс упал посреди отправки. Ушло ли
  * письмо, мы не знаем: SMTP мог принять его за миг до падения. Поэтому не
  * отправляем сами, а возвращаем черновик человеку с просьбой проверить
@@ -255,11 +272,7 @@ async function sendDraft(draftId, userId) {
   // и запись «sending» раньше были двумя шагами, и два запроса подряд — двойной
   // щелчок, повтор сети, вторая вкладка — оба проходили проверку и отправляли
   // письмо дважды. Теперь отправляет только тот, чей UPDATE изменил строку.
-  const [, claimed] = await MailDraft.update(
-    { status: 'sending', error: null },
-    { where: { id: draft.id, status: ['draft', 'error'] } }
-  );
-  if (!claimed) throw new Error('Письмо уже отправляется или отправлено');
+  if (!(await claimDraft(draft.id))) throw new Error('Письмо уже отправляется или отправлено');
 
   const transport = buildTransport(account, password);
 
@@ -351,6 +364,7 @@ async function appendToSent(account, builtMessage, messageId, draft) {
 
 module.exports = {
   sendDraft,
+  claimDraft,
   releaseStuckDrafts,
   restoreQuotedImages,
   sentToday,

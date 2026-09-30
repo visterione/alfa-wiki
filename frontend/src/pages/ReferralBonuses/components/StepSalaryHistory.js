@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTabSlider } from '../utils/useTabSlider';
 import { addSource, updateSource, deleteSource, readFileAsBuffer } from '../utils/excelSources';
 import DateRangePicker from './DateRangePicker';
+import MisExportPanel from './MisExportPanel';
 import toast from 'react-hot-toast';
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1404,6 +1405,9 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
         {viewToggle}
+
+        {/* ── Выгрузка из МИС ── */}
+        {canEdit && <MisExportPanel onDone={onSourcesChange} />}
 
         {/* ── Add form ── */}
         {canEdit && (

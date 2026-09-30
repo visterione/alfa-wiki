@@ -21,21 +21,30 @@ export function fullDate(value) {
   }) : '';
 }
 
-// Почтовый HTML может быть любым. В приложении не исполняем его и не тянем
-// внешние картинки: для чтения в дороге безопаснее и понятнее текстовая версия.
+// Текст письма без вёрстки — только для писем, у которых HTML нет вовсе.
+// Письма с разметкой показывает MailBody в WebView.
 export function bodyText(body) {
-  if (body?.text) return String(body.text).trim();
-  return String(body?.html || '')
-    .replace(/<\/(p|div|br|li|tr|h[1-6])\s*>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return String(body?.text || '').trim();
+}
+
+/**
+ * Корзина и Спам: перенос туда равен удалению, и без права на удаление сервер
+ * его отвергнет (ver. 9.11). Имя проверяем на случай сервера без SPECIAL-USE —
+ * то же правило, что на сервере.
+ */
+export function isDisposalFolder(folder) {
+  if (folder?.specialUse === '\\Trash' || folder?.specialUse === '\\Junk') return true;
+  return /корзин|спам|trash|junk|spam|deleted/i.test(`${folder?.path || ''} ${folder?.name || ''}`);
+}
+
+export function isInbox(folder) {
+  return String(folder?.path || '').toUpperCase() === 'INBOX';
+}
+
+/** «INBOX» у сервера — «Входящие» у человека. */
+export function folderTitle(folder) {
+  if (!folder) return '';
+  return isInbox(folder) && /^inbox$/i.test(folder.name || '') ? 'Входящие' : (folder.name || folder.path);
 }
 
 export function sizeText(value) {

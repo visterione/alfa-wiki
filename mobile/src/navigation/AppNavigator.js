@@ -579,7 +579,9 @@ function MailStack() {
         ...STACK_ANIMATION,
       }}>
       <Stack.Screen name="MailHome" component={MailScreen} options={{title: 'Почта'}} />
-      <Stack.Screen name="MailMessage" component={MailMessageScreen} options={({route}) => ({title: route.params?.title || 'Письмо'})} />
+      {/* Тема письма в шапке не помещалась и дублировала заголовок на экране —
+          в шапке только «Письмо» и меню действий. */}
+      <Stack.Screen name="MailMessage" component={MailMessageScreen} options={{title: 'Письмо'}} />
       <Stack.Screen name="MailCompose" component={MailComposeScreen} options={{title: 'Новое письмо'}} />
     </Stack.Navigator>
   );

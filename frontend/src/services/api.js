@@ -1110,6 +1110,19 @@ export const rbExcelSources = {
   getFile:    (id)             => api.get(`/rb-excel-sources/${id}/file`, { responseType: 'blob' }),
 };
 
+// Выгрузка услуг из веб-МИС прямо в источники (ver. 9.12)
+export const rbMisExport = {
+  state:        ()                     => api.get('/rb-mis-export'),
+  checkSession: ()                     => api.post('/rb-mis-export/session/check'),
+  forget:       ()                     => api.delete('/rb-mis-export/session'),
+  login:        (username, password)   => api.post('/rb-mis-export/login', { username, password }),
+  code:         (code)                 => api.post('/rb-mis-export/login/code', { code }),
+  resend:       ()                     => api.post('/rb-mis-export/login/resend'),
+  cancelLogin:  ()                     => api.delete('/rb-mis-export/login'),
+  start:        (data)                 => api.post('/rb-mis-export/jobs', data),
+  cancel:       ()                     => api.post('/rb-mis-export/jobs/cancel'),
+};
+
 export const releaseNotes = {
   // Пользовательские
   list:            (params) => api.get('/release-notes', { params }),

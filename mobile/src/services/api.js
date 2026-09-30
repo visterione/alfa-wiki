@@ -123,6 +123,7 @@ export const mail = {
   message: id => api.get(`/mail/messages/${id}`),
   setFlag: (id, op) => api.post(`/mail/messages/${id}/flags`, {op}),
   removeMessage: id => api.delete(`/mail/messages/${id}`),
+  moveMessage: (id, folderId) => api.post(`/mail/messages/${id}/move`, {folderId}),
   createDraft: data => api.post('/mail/drafts', data),
   saveDraft: (id, data) => api.put(`/mail/drafts/${id}`, data),
   sendDraft: id => api.post(`/mail/drafts/${id}/send`),
@@ -141,6 +142,9 @@ export const mail = {
   detachFromDraft: (id, attachmentId) => api.delete(`/mail/drafts/${id}/attachments/${attachmentId}`),
   attachmentUrl: (messageId, attachmentId) =>
     `${CONFIG.API_URL}/mail/messages/${messageId}/attachments/${attachmentId}`,
+  // Логотип отправителя или почтовой площадки. Сервер сам ходит за BIMI или
+  // favicon и отдаёт PNG — телефон сотрудника к чужому домену не обращается.
+  senderLogoUrl: domain => `${CONFIG.API_URL}/mail/sender-logo?domain=${encodeURIComponent(domain)}`,
 };
 
 // ── Сотрудники ──────────────────────────────────────────────────────────────

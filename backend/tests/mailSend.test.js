@@ -79,3 +79,22 @@ test('в исходящем письме внешние картинки цит�
   assert.equal(restoreQuotedImages('<img data-mail-src="javascript:alert(1)">'), '<img data-mail-src="javascript:alert(1)">',
     'возвращаем только http(s)');
 });
+
+test('захват черновика понимает ответ Model.update — [число строк] (ver. 9.12)', async () => {
+  // В 9.11 здесь бралось второе значение массива, оно всегда undefined, и ни
+  // одно письмо не уходило. Проверяем на настоящей форме ответа Sequelize.
+  const { MailDraft } = require('../models');
+  const { claimDraft } = require('../services/mail/send');
+  const original = MailDraft.update;
+  try {
+    let where = null;
+    MailDraft.update = async (values, options) => { where = options.where; return [1]; };
+    assert.equal(await claimDraft('d1'), true, 'одна изменённая строка — захватили');
+    assert.deepEqual(where.status, ['draft', 'error'], 'захватываем только черновик или неудавшееся');
+
+    MailDraft.update = async () => [0];
+    assert.equal(await claimDraft('d1'), false, 'ноль строк — письмо уже отправляет кто-то другой');
+  } finally {
+    MailDraft.update = original;
+  }
+});

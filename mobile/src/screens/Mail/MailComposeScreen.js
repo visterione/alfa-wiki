@@ -31,6 +31,9 @@ export default function MailComposeScreen({navigation, route}) {
       setDraft(next);
       setTo((next.toList || []).map(item => item.address || item.email || item).join(', '));
       setSubject(next.subject || '');
+      // Пересылка приходит уже с файлами исходного письма (ver. 9.11) — их
+      // видно в списке вложений, и лишние можно убрать крестиком.
+      setAttachments(next.attachments || []);
       // У ответа сервер добавляет цитату; в поле даём написать свежий текст,
       // цитата останется в bodyHtml после сохранения только если не затереть её.
       setText('');

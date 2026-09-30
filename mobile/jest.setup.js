@@ -107,11 +107,19 @@ jest.mock('react-native-blob-util', () => ({
   __esModule: true,
   default: {
     config: jest.fn(() => ({fetch: jest.fn(() => Promise.resolve({path: () => '/tmp/file'}))})),
+    fetch: jest.fn(() => Promise.resolve({info: () => ({status: 200}), base64: () => ''})),
     fs: {dirs: {DocumentDir: '/tmp', DownloadDir: '/tmp'}},
     ios: {previewDocument: jest.fn(), openDocument: jest.fn()},
     android: {actionViewIntent: jest.fn()},
   },
 }));
+
+// Тело письма (ver. 9.11): модуль требует нативный RNCWebViewModule прямо на
+// импорте, а в jest нативной части нет.
+jest.mock('react-native-webview', () => {
+  const {View} = require('react-native');
+  return {__esModule: true, WebView: View, default: View};
+});
 
 jest.mock('socket.io-client', () => ({
   io: jest.fn(() => ({
