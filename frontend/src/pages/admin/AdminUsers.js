@@ -249,6 +249,7 @@ export default function AdminUsers() {
     statisticsTabs: {
       kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
       kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
+      kpiDebtors: true, kpiRefunds: true, kpiBots: true, kpiInpatient: true, kpiSchedules: true,
       dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
       dirUtilities: true, dirConsumables: true, dirMarketing: true,
       svcServices: true, svcPartnerServices: true,
@@ -610,6 +611,7 @@ export default function AdminUsers() {
         } : {
           kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
           kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
+      kpiDebtors: true, kpiRefunds: true, kpiBots: true, kpiInpatient: true, kpiSchedules: true,
           dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
           dirUtilities: true, dirConsumables: true, dirMarketing: true,
           svcServices: true, svcPartnerServices: true,
@@ -654,6 +656,7 @@ export default function AdminUsers() {
         statisticsTabs: {
           kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
           kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
+      kpiDebtors: true, kpiRefunds: true, kpiBots: true, kpiInpatient: true, kpiSchedules: true,
           dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
           dirUtilities: true, dirConsumables: true, dirMarketing: true,
           svcServices: true, svcPartnerServices: true,

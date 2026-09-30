@@ -141,7 +141,11 @@ export const SALARY_NODES = [
     label: 'АУП — секретная клиника', color: '#111111' },
 ];
 
-/** Вкладки статистики. Все булевы, все в statisticsTabs. */
+/**
+ * Вкладки статистики. Все булевы, все в statisticsTabs. Проверяются в
+ * pages/Statistics/statisticsAccess.js — новая вкладка страницы должна
+ * появиться и здесь, и там, иначе галочка ни на что не повлияет.
+ */
 export const STATISTICS_NODES = [
   { id: 'statKpi', label: 'Аналитика', isSubGroup: true, expandKey: 'statistics_kpi',
     items: [
@@ -154,6 +158,11 @@ export const STATISTICS_NODES = [
       { key: 'kpiUtilities',   label: 'Коммунальные' },
       { key: 'kpiConsumables', label: 'Расходники' },
       { key: 'kpiServiceCost', label: 'Себестоимость' },
+      { key: 'kpiDebtors',     label: 'Задолженности' },
+      { key: 'kpiRefunds',     label: 'Возвраты' },
+      { key: 'kpiBots',        label: 'Боты' },
+      { key: 'kpiInpatient',   label: 'Стационар' },
+      { key: 'kpiSchedules',   label: 'Расписания' },
     ] },
   { id: 'statDirectories', label: 'Справочники', isSubGroup: true, expandKey: 'statistics_directories',
     items: [

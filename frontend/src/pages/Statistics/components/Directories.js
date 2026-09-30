@@ -12,6 +12,8 @@ import { DEFAULT_CLINICS, rbMatchClinicId } from '../../ReferralBonuses/utils/cl
 import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark, Search } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../../context/AuthContext';
+import { DIR_TAB_PERM, visibleTabs } from '../statisticsAccess';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DIR_TABS = [
@@ -8506,6 +8508,11 @@ export function TabRefundsAnalytics({ periodStart, periodEnd }) {
 export default function Directories({ doctors = [], excelSources = [] }) {
   const [activeTab, setActiveTab] = useState('clinics');
   const [monthKey, setMonthKey] = useState(() => monthKeyFromDate(new Date()));
+  const { user } = useAuth();
+  const tabs = useMemo(() => visibleTabs(user, DIR_TABS, DIR_TAB_PERM), [user]);
+  useEffect(() => {
+    if (tabs.length && !tabs.some(t => t.key === activeTab)) setActiveTab(tabs[0].key);
+  }, [tabs, activeTab]);
   const { wrapRef, sliderEl } = useTabSlider(activeTab);
 
   const [appointments, setAppointments] = useState([]);
@@ -8536,7 +8543,7 @@ export default function Directories({ doctors = [], excelSources = [] }) {
     <div style={{ padding: '16px 20px', height: '100%', overflowY: 'auto' }}>
       <div className="rb-clinic-tab-wrap" ref={wrapRef} style={{ marginBottom: 20 }}>
         {sliderEl}
-        {DIR_TABS.map(t => (
+        {tabs.map(t => (
           <button key={t.key} className={`rb-clinic-tab${activeTab === t.key ? ' active' : ''}`} onClick={() => setActiveTab(t.key)}>{t.label}</button>
         ))}
       </div>

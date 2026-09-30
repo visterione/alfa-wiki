@@ -937,6 +937,14 @@ export const inpatientReport = {
   report: (params) => api.get('/inpatient-report/report', { params, timeout: 300000 }),
 };
 
+export const scheduleCoverage = {
+  // Расписание берётся из МИС на лету: месяц по специальности — секунды, но
+  // квартал по большой специальности может идти дольше общего таймаута.
+  professions: () => api.get('/schedule-coverage/professions'),
+  report: (params) => api.get('/schedule-coverage/report', { params, timeout: 120000 }),
+  setExclusions: (professionId, userIds) => api.put(`/schedule-coverage/exclusions/${professionId}`, { userIds }),
+};
+
 export const hourNorms = {
   get: (year, month) => api.get('/hour-norms', { params: { year, month } }),
   getPeriods: () => api.get('/hour-norms/periods'),

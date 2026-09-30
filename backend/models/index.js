@@ -216,6 +216,16 @@ const User = sequelize.define('User', {
     comment: 'Разрешение на доступ к разделу статистики'
   },
 
+  // Вкладки статистики: { kpiGeneral: false, dirDoctors: false, … }. Нет ключа —
+  // вкладка открыта; закрывают её только явным false (ver. 9.17). Каталог
+  // ключей — frontend/src/pages/admin/permissionCatalogue.js.
+  statisticsTabs: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: {},
+    comment: 'Доступ к вкладкам статистики; отсутствующий ключ = разрешено'
+  },
+
   // Доступ к секретной клинике «АУП» (зарплаты верхушки).
   // Ортогонален isAdmin — админ БЕЗ этого флага АУП не видит.
   canAccessTopSalary: {

@@ -2,6 +2,7 @@ import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { DEFAULT_CLINICS } from './clinicUtils';
 import { rbParseFullName, rbParseAbbrevName } from './nameMatching';
+import { WD_SHORT, wdOf, isWeekend, dayNum, dateLong, shortName, describeFinding } from '../../Statistics/components/scheduleCoverageText';
 
 pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts;
 
@@ -1194,6 +1195,115 @@ function buildBots(data, content, pageBreak) {
 //   reputationData: object — агрегат отзывов (для раздела Репутация)
 //   botsData:       object — { stats, overlap, prevTotal } (для раздела Боты)
 // }
+// ── Расписания (ver. 9.17): данные приходят готовыми в config.schedulesData ────
+//
+// В распечатку идут календарь покрытия и находки — то, по чему правят график.
+// Разбор дня по часам остаётся на экране: тридцать страниц полосок никто
+// читать не станет. Штриховку «из-за отмены» pdfMake не рисует, поэтому
+// такие ячейки помечены звёздочкой и отдельным цветом.
+const SC_FILL = {
+  none:      { fill: '#ef4444', color: '#ffffff' },
+  cancel:    { fill: '#fca5a5', color: '#7f1d1d' },
+  gap:       { fill: '#fde68a', color: '#92400e' },
+  single:    { fill: '#dcfce7', color: '#166534' },
+  ok:        { fill: '#bbf7d0', color: '#166534' },
+  closed:    { fill: '#f1f5f9', color: '#94a3b8' },
+  unplanned: { fill: '#ffffff', color: '#cbd5e1' },
+};
+
+function scCell(c) {
+  const cancel = (c.gaps || []).some(g => g.cause === 'cancel');
+  let key = c.status === 'ok' && c.single ? 'single' : c.status;
+  if (cancel && (key === 'none' || key === 'gap')) key = 'cancel';
+  const st = SC_FILL[key] || SC_FILL.ok;
+  const text = c.status === 'closed' ? '-' : c.status === 'unplanned' ? '' : `${c.doctors}${cancel ? '*' : ''}`;
+  return { text, fontSize: 7.5, bold: true, alignment: 'center', fillColor: st.fill, color: st.color };
+}
+
+function buildSchedules(data, content, pageBreak) {
+  const { report, professionName } = data;
+  content.push(pdfSection(`Расписания — ${professionName}`, pageBreak));
+
+  const notes = [];
+  if (!report.horizon) notes.push('На период у врачей специальности нет ни одной смены.');
+  else if (report.horizon < report.to) notes.push(`Смены заведены по ${dateLong(report.horizon)}; дальше дни не проверялись.`);
+  const fallback = report.clinics.filter(c => c.hoursSource === 'fallback').map(c => c.name);
+  if (fallback.length) notes.push(`Часы работы ${fallback.join(', ')} не заполнены в карточке медцентра — взяты типовые.`);
+  notes.push('Дырой считается час и больше без единого врача в часы работы медцентра.');
+  content.push({ text: safeStr(notes.join(' ')), fontSize: 8, color: '#64748b', margin: [0, 0, 0, 8] });
+
+  if (!report.clinics.length) {
+    content.push({ text: 'У врачей специальности нет ни одной смены за период.', fontSize: 9, color: '#64748b' });
+    return;
+  }
+
+  // Календарь: дни вниз, медцентры столбцами — как на экране
+  const cols = [
+    { name: 'Вся сеть', data: report.network },
+    ...report.clinics.map(c => ({ name: c.name, data: report.cells[c.key] })),
+  ];
+  const body = [
+    [{ text: '', fontSize: 7 }, ...cols.map(c => ({ text: safeStr(c.name), fontSize: 7, bold: true, alignment: 'center', color: '#374151' }))],
+    ...report.days.map(d => [
+      { text: `${dayNum(d)} ${WD_SHORT[wdOf(d)]}`, fontSize: 7.5, color: isWeekend(d) ? '#dc2626' : '#374151' },
+      ...cols.map(c => scCell(c.data[d])),
+    ]),
+  ];
+  const legend = [
+    ['none', 'никого весь день'], ['gap', 'есть часы без врача'], ['cancel', 'дыра из-за отмены (*)'],
+    ['single', 'одним врачом'], ['ok', 'покрыто'], ['closed', 'медцентр закрыт'],
+  ];
+  content.push({
+    columns: [
+      {
+        width: 'auto',
+        table: { headerRows: 1, widths: [34, ...cols.map(() => 44)], body },
+        layout: {
+          hLineWidth: () => 1.5, vLineWidth: () => 1.5,
+          hLineColor: () => '#ffffff', vLineColor: () => '#ffffff',
+          paddingTop: () => 1.5, paddingBottom: () => 1.5, paddingLeft: () => 2, paddingRight: () => 2,
+        },
+      },
+      {
+        width: '*',
+        margin: [14, 14, 0, 0],
+        stack: [
+          { text: 'Цифра — сколько врачей принимает в этот день', fontSize: 7.5, color: '#64748b', margin: [0, 0, 0, 6] },
+          ...legend.map(([k, label]) => ({
+            columns: [
+              { width: 10, canvas: [{ type: 'rect', x: 0, y: 1, w: 9, h: 9, r: 2, color: SC_FILL[k].fill, lineColor: '#e2e8f0' }] },
+              { width: '*', text: label, fontSize: 7.5, color: '#374151', margin: [4, 0, 0, 3] },
+            ],
+          })),
+        ],
+      },
+    ],
+    margin: [0, 0, 0, 10],
+  });
+
+  // Находки — с тем же текстом, что на экране
+  const names = Object.fromEntries(report.doctors.map(d => [d.id, d.name]));
+  const who = (ids) => ids.map(id => shortName(names[id] || `#${id}`)).join(', ');
+  content.push(pdfSubsection('Рекомендации'));
+  if (!report.findings.length) {
+    content.push({ text: 'Направление покрыто во все часы работы — дыр длиннее часа нет.', fontSize: 9, color: '#166534' });
+    return;
+  }
+  content.push(pdfTable(
+    ['Медцентр', 'Что', 'Подробности'],
+    report.findings.map(f => {
+      const { title, detail } = describeFinding(f, who);
+      const tone = f.severity >= 3 ? '#dc2626' : f.severity === 2 ? '#b45309' : '#374151';
+      return [
+        { text: safeStr(f.clinicName), fontSize: 8, bold: true, color: tone },
+        cell(title),
+        { text: safeStr(detail || ''), fontSize: 7.5, color: '#64748b' },
+      ];
+    }),
+    [70, 190, '*']
+  ));
+}
+
 export function buildKpiPdf(rows, periodLabel, config = {}) {
   const {
     sections     = {},
@@ -1206,6 +1316,7 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
     debtorsData    = null,
     reputationData = null,
     botsData       = null,
+    schedulesData  = null,
   } = config;
 
   const sec = key => sections[key] !== false; // default: all on
@@ -1253,6 +1364,11 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
   }
   if (sec('bots') && botsData && ((botsData.stats?.totals?.total || 0) > 0 || (botsData.overlap?.totalPeople || 0) > 0)) {
     buildBots(botsData, content, !isFirst);
+    isFirst = false;
+  }
+
+  if (sec('schedules') && schedulesData) {
+    buildSchedules(schedulesData, content, !isFirst);
     isFirst = false;
   }
 

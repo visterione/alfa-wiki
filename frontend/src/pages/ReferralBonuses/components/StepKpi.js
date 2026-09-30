@@ -7,10 +7,14 @@ import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
-import { mis, reviews, botSubscribers } from '../../../services/api';
+import { mis, reviews, botSubscribers, scheduleCoverage } from '../../../services/api';
+import { LS_PROFESSION, DEFAULT_PROFESSION_NAME, isoLocal } from '../../Statistics/components/scheduleCoverageText';
+import { useAuth } from '../../../context/AuthContext';
+import { KPI_TAB_PERM, PDF_SECTION_PERM, canSeeStatTab, visibleTabs } from '../../Statistics/statisticsAccess';
 import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics, TabRefundsAnalytics } from '../../Statistics/components/Directories';
 import BotSubscribers from '../../Statistics/components/BotSubscribers';
 import Inpatient from '../../Statistics/components/Inpatient';
+import ScheduleCoverage from '../../Statistics/components/ScheduleCoverage';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -82,6 +86,7 @@ const KPI_TABS = [
   { key: 'refunds',     label: 'Возвраты' },
   { key: 'bots',        label: 'Боты' },
   { key: 'inpatient',   label: 'Стационар' },
+  { key: 'schedules',   label: 'Расписания' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2181,7 +2186,23 @@ const PDF_SECTIONS = [
   { key: 'reputation', label: 'Репутация',              sub: 'отзывы, рейтинги, негатив (данные из отзывов)' },
   { key: 'debtors',    label: 'Задолженности',          sub: 'долги пациентов, по клиникам, возраст (из МИС)' },
   { key: 'bots',       label: 'Боты',                   sub: 'подписчики Telegram/MAX по медцентрам, экосистема' },
+  { key: 'schedules',  label: 'Расписания',             sub: 'дыры в приёме по специальности, открытой на вкладке последней (из МИС)' },
 ];
+
+// Сбор данных «Расписаний» для PDF: та специальность, что смотрели на вкладке
+// последней, иначе гинекология — как и сама вкладка по умолчанию. Больше трёх
+// месяцев сервер не считает, и на «Год» раздел просто не попадёт в отчёт.
+async function gatherSchedules(periodStart, periodEnd) {
+  const from = isoLocal(periodStart), to = isoLocal(periodEnd);
+  const { data } = await scheduleCoverage.professions();
+  const list = data?.professions || [];
+  let stored = '';
+  try { stored = localStorage.getItem(LS_PROFESSION) || ''; } catch { /* приватное окно */ }
+  const prof = list.find(p => p.id === stored) || list.find(p => p.name === DEFAULT_PROFESSION_NAME) || list[0];
+  if (!prof) return null;
+  const res = await scheduleCoverage.report({ from, to, professionId: prof.id, minGap: 60 });
+  return { report: res.data, professionName: prof.name };
+}
 
 // Сбор данных ботов для PDF: подписчики за период + экосистема + дельта к пред. периоду.
 async function gatherBots(periodStart, periodEnd) {
@@ -2253,7 +2274,9 @@ async function gatherReputation(periodStart, periodEnd) {
 }
 
 function PdfConfigModal({ rows, appointments, onClose, onExport }) {
-  const [sections,     setSections]     = useState(() => Object.fromEntries(PDF_SECTIONS.map(s => [s.key, true])));
+  const { user } = useAuth();
+  const allowedSections = PDF_SECTIONS.filter(s => canSeeStatTab(user, PDF_SECTION_PERM[s.key]));
+  const [sections,     setSections]     = useState(() => Object.fromEntries(PDF_SECTIONS.map(s => [s.key, canSeeStatTab(user, PDF_SECTION_PERM[s.key])])));
   const [clinicFilter, setClinicFilter] = useState('');
   const [specFilter,   setSpecFilter]   = useState('');
 
@@ -2261,7 +2284,7 @@ function PdfConfigModal({ rows, appointments, onClose, onExport }) {
   const specOptions    = useMemo(() => getUniqueSpecs(rows),   [rows]);
   const hasAppt        = appointments.length > 0;
 
-  const availSections = PDF_SECTIONS.filter(s => !s.requiresAppt || hasAppt);
+  const availSections = allowedSections.filter(s => !s.requiresAppt || hasAppt);
   const allOn         = availSections.every(s => sections[s.key]);
   const toggleAll     = () => setSections(prev => {
     const next = { ...prev };
@@ -2287,7 +2310,7 @@ function PdfConfigModal({ rows, appointments, onClose, onExport }) {
                 style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', background: 'var(--n-0)', color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}
               >{allOn ? 'Снять все' : 'Выбрать все'}</button>
             </div>
-            {PDF_SECTIONS.map(s => {
+            {allowedSections.map(s => {
               const disabled = s.requiresAppt && !hasAppt;
               return (
                 <label
@@ -2382,6 +2405,14 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
   const [pdfExporting,  setPdfExporting]  = useState(false);
 
 
+  const { user } = useAuth();
+  const tabs = useMemo(() => visibleTabs(user, KPI_TABS, KPI_TAB_PERM), [user]);
+  // Открытая по умолчанию «Общая» может быть закрыта правами — тогда первая
+  // доступная. Иначе человек видел бы содержимое вкладки, которой нет в ряду.
+  useEffect(() => {
+    if (tabs.length && !tabs.some(t => t.key === viewMode)) setViewMode(tabs[0].key);
+  }, [tabs, viewMode]);
+
   const { wrapRef: tabRef, sliderEl } = useTabSlider(viewMode);
 
   // Доступные годы из источников
@@ -2466,7 +2497,13 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
         catch (err) { console.warn('[KPI PDF] bots:', err?.message); }
       }
 
-      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd, doctors, debtorsData, reputationData, botsData });
+      let schedulesData = null;
+      if (sections.schedules && periodStart && periodEnd) {
+        try { schedulesData = await gatherSchedules(periodStart, periodEnd); }
+        catch (err) { console.warn('[KPI PDF] schedules:', err?.response?.data?.error || err?.message); }
+      }
+
+      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd, doctors, debtorsData, reputationData, botsData, schedulesData });
     } catch (e) {
       console.error('[KPI PDF]', e);
       toast.error('Ошибка экспорта PDF');
@@ -2574,7 +2611,7 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       {/* Под-вкладки — всегда видны */}
       <div className="rb-clinic-tab-wrap" ref={tabRef} style={{ marginBottom: 20 }}>
         {sliderEl}
-        {KPI_TABS.map(t => (
+        {tabs.map(t => (
           <button
             key={t.key}
             className={`rb-clinic-tab${viewMode === t.key ? ' active' : ''}`}
@@ -2584,19 +2621,19 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       </div>
 
       {/* Кабинеты — всегда смонтирован, не требует Excel-источников */}
-      <div style={{ display: viewMode === 'rooms' ? 'block' : 'none' }}>
+      {canSeeStatTab(user, KPI_TAB_PERM.rooms) && <div style={{ display: viewMode === 'rooms' ? 'block' : 'none' }}>
         <TabRooms periodStart={periodStart} periodEnd={periodEnd} onAppointmentsLoaded={setAppointments} rows={rows} doctors={doctors} />
-      </div>
+      </div>}
       {/* Оборудование — условный рендер, чтобы данные перезагружались при переходе на вкладку */}
       {viewMode === 'rooms' && <TabEquipmentAnalytics excelSources={excelSources} periodStart={periodStart} periodEnd={periodEnd} />}
 
       {/* Репутация — всегда смонтирована, не требует Excel-источников */}
-      <div style={{ display: viewMode === 'reputation' ? 'block' : 'none' }}>
+      {canSeeStatTab(user, KPI_TAB_PERM.reputation) && <div style={{ display: viewMode === 'reputation' ? 'block' : 'none' }}>
         <TabReputation
           dateFrom={periodStart.toISOString().split('T')[0]}
           dateTo={periodEnd.toISOString().split('T')[0]}
         />
-      </div>
+      </div>}
 
       {/* Коммунальные — монтируется при переходе на вкладку, чтобы всегда загружать свежие данные */}
       {viewMode === 'utilities' && <TabUtilitiesAnalytics appointments={appointments} periodStart={periodStart} periodEnd={periodEnd} />}
@@ -2620,8 +2657,12 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
           МИС; переехал сюда из встраиваемой страницы backend/bot */}
       {viewMode === 'inpatient' && <Inpatient periodStart={periodStart} periodEnd={periodEnd} />}
 
+      {/* Расписания — дыры в приёме по специальности из графика МИС; Excel не
+          нужен, период берётся из общего селектора */}
+      {viewMode === 'schedules' && <ScheduleCoverage periodStart={periodStart} periodEnd={periodEnd} />}
+
       {/* Остальные вкладки */}
-      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && viewMode !== 'refunds' && viewMode !== 'bots' && viewMode !== 'inpatient' && (
+      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && viewMode !== 'refunds' && viewMode !== 'bots' && viewMode !== 'inpatient' && viewMode !== 'schedules' && (
         <>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>

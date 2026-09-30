@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { TabServices } from './Directories';
 import { useTabSlider } from '../../ReferralBonuses/utils/useTabSlider';
 import { BASE_URL } from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
+import { SVC_TAB_PERM, visibleTabs } from '../statisticsAccess';
 
 const PS_API = BASE_URL + '/api/partner-services';
 
@@ -742,13 +744,18 @@ const SERVICES_TABS = [
 
 export default function ServicesPage() {
   const [activeTab, setActiveTab] = useState('services');
+  const { user } = useAuth();
+  const tabs = useMemo(() => visibleTabs(user, SERVICES_TABS, SVC_TAB_PERM), [user]);
+  useEffect(() => {
+    if (tabs.length && !tabs.some(t => t.key === activeTab)) setActiveTab(tabs[0].key);
+  }, [tabs, activeTab]);
   const { wrapRef, sliderEl } = useTabSlider(activeTab);
 
   return (
     <div style={{ padding: '16px 20px', height: '100%', overflowY: 'auto' }}>
       <div className="rb-clinic-tab-wrap" ref={wrapRef} style={{ marginBottom: 20 }}>
         {sliderEl}
-        {SERVICES_TABS.map(t => (
+        {tabs.map(t => (
           <button
             key={t.key}
             className={`rb-clinic-tab${activeTab === t.key ? ' active' : ''}`}

@@ -52,6 +52,20 @@ const misRequest = async (endpoint, params = {}) => {
 
 // Get basic list of users (for assignee selection, etc.) - available to all authenticated users
 // Optional query param: ?access=reviews — returns only users with adminAccess.reviews=true (or isAdmin)
+
+/**
+ * Вкладки статистики из формы: только булевы значения по строковым ключам.
+ * Форма шлёт весь набор галочек разом, и мусор в JSONB отсюда не пройдёт.
+ */
+function normalizeStatisticsTabs(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const out = {};
+  for (const [key, flag] of Object.entries(value)) {
+    if (/^[a-zA-Z]{1,40}$/.test(key)) out[key] = flag === true || flag === 'true';
+  }
+  return out;
+}
+
 router.get('/list', authenticate, async (req, res) => {
   try {
     const where = { isActive: true };
@@ -264,7 +278,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, avatar, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, avatar, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess, statisticsTabs } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -337,6 +351,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       canEditServices: canEditServices || false,
       canAccessSalary: canAccessSalary || false,
       canAccessStatistics: canAccessStatistics || false,
+      statisticsTabs: normalizeStatisticsTabs(statisticsTabs) || {},
       canAccessTopSalary: canAccessTopSalary || false,
       canManagePromotions: canManagePromotions || false,
       adminAccess: adminAccess || {
@@ -414,7 +429,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, avatar, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, avatar, chatBadgeOverride, phone, position, specialty, misUserId, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canAccessStatistics, canAccessTopSalary, canManagePromotions, adminAccess, statisticsTabs } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -494,6 +509,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       ...(canEditServices !== undefined && { canEditServices }),
       ...(canAccessSalary !== undefined && { canAccessSalary }),
       ...(canAccessStatistics !== undefined && { canAccessStatistics }),
+      ...(statisticsTabs !== undefined && { statisticsTabs: normalizeStatisticsTabs(statisticsTabs) || {} }),
       ...(canAccessTopSalary !== undefined && { canAccessTopSalary }),
       ...(canManagePromotions !== undefined && { canManagePromotions }),
       ...(adminAccess !== undefined && { adminAccess })

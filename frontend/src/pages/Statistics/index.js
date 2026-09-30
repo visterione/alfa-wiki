@@ -7,6 +7,8 @@ import Directories from './components/Directories';
 import ServicesPage from './components/Services';
 import OpenLineStats from '../OpenLineStats';
 import { useTabSlider } from '../ReferralBonuses/utils/useTabSlider';
+import { useAuth } from '../../context/AuthContext';
+import { KPI_TAB_PERM, DIR_TAB_PERM, canSeeStatTab } from './statisticsAccess';
 import '../ReferralBonuses/ReferralBonuses.css';
 
 const MAIN_TABS = [
@@ -21,8 +23,16 @@ const MAIN_TABS = [
   { key: 'openline',    label: 'Открытая линия' },
 ];
 
+// Верхняя вкладка видна, пока в ней осталась хоть одна доступная подвкладка.
+// «Услуги» не прячутся никогда: проверка по 804н правами не закрывается.
+const anyOpen = (user, permMap) => Object.values(permMap).some(k => canSeeStatTab(user, k));
+
 export default function StatisticsPage() {
-  const [mainTab, setMainTab] = useState('kpi');
+  const { user } = useAuth();
+  const mainTabs = MAIN_TABS.filter(t =>
+    (t.key !== 'kpi' || anyOpen(user, KPI_TAB_PERM)) &&
+    (t.key !== 'directories' || anyOpen(user, DIR_TAB_PERM)));
+  const [mainTab, setMainTab] = useState(() => mainTabs[0]?.key || 'services');
   const [excelSources, setExcelSources] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const { wrapRef, sliderEl } = useTabSlider(mainTab);
@@ -87,7 +97,7 @@ export default function StatisticsPage() {
       <div style={{ padding: '12px 20px 0' }}>
         <div className="rb-clinic-tab-wrap" ref={wrapRef} style={{ marginBottom: 0 }}>
           {sliderEl}
-          {MAIN_TABS.map(t => (
+          {mainTabs.map(t => (
             <button
               key={t.key}
               className={`rb-clinic-tab${mainTab === t.key ? ' active' : ''}`}
@@ -98,9 +108,9 @@ export default function StatisticsPage() {
       </div>
 
       {/* Tab content */}
-      <div style={{ display: mainTab === 'kpi' ? 'block' : 'none' }}>
+      {mainTabs.some(t => t.key === 'kpi') && <div style={{ display: mainTab === 'kpi' ? 'block' : 'none' }}>
         <StepKpi excelSources={excelSources} doctors={doctors} />
-      </div>
+      </div>}
       {mainTab === 'directories' && (
         <Directories doctors={doctors} excelSources={excelSources} />
       )}
