@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import toast from 'react-hot-toast';
+import { AlertOctagon, AlertTriangle, Info, ChevronRight } from 'lucide-react';
 import { scheduleCoverage } from '../../../services/api';
-import SearchableSelect from '../../ReferralBonuses/components/SearchableSelect';
 import {
-  LS_PROFESSION, DEFAULT_PROFESSION_NAME, WD_SHORT, isoLocal, wdOf, isWeekend, dayNum, dateLong,
-  range, hours, shortName, plural, describeFinding,
+  LS_PROFESSIONS, LS_EXCLUDED, readLs, writeLs, storedProfessions, excludedFor, WD_SHORT, isoLocal, wdOf, isWeekend, dayNum, dateLong,
+  range, hours, shortName, describeFinding,
 } from './scheduleCoverageText';
 
 // Статистика → Аналитика → Расписания (ver. 9.17): где по направлению не
@@ -20,6 +19,11 @@ import {
 // Порог дыры и часы проверки не настраиваются: заказчик убрал оба
 // переключателя. Считаем от часа, в часы работы медцентров — короче часа это
 // обеды и пересменки, а своё окно лишь подменяло бы вопрос «когда мы открыты».
+//
+// Сводный режим (ver. 9.19): специальностей можно выбрать несколько, и тогда
+// они считаются одной группой — так сравнивают смежные направления, между
+// которыми пациента передают из рук в руки (флеболог → УЗИ). Тем же списком
+// выбирают и отдельных врачей: вторым уровнем под специальностью.
 
 const MAX_DAYS = 92;
 const MIN_GAP = 60;
@@ -60,10 +64,9 @@ const mutedStyle = { color: 'var(--rb-text-secondary)' };
 const iconBtn = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: 'var(--n-0)', cursor: 'pointer', color: 'var(--rb-text-secondary)', flexShrink: 0, padding: 0 };
 
 export default function ScheduleCoverage({ periodStart, periodEnd }) {
-  const [professions, setProfessions] = useState([]);
-  const [professionId, setProfessionId] = useState(() => {
-    try { return localStorage.getItem(LS_PROFESSION) || ''; } catch { return ''; }
-  });
+  const [catalog, setCatalog] = useState(null); // { professions, clinics, savedExcluded }
+  const [professionIds, setProfessionIds] = useState([]);
+  const [ownExcluded, setOwnExcluded] = useState(() => readLs(LS_EXCLUDED, {}));
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -79,35 +82,48 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
     scheduleCoverage.professions()
       .then(res => {
         const list = res.data?.professions || [];
-        setProfessions(list);
-        setProfessionId(prev => {
-          if (prev && list.some(p => p.id === prev)) return prev;
-          return (list.find(p => p.name === DEFAULT_PROFESSION_NAME) || list[0])?.id || '';
+        setCatalog({
+          professions: list,
+          clinics: Object.fromEntries((res.data?.clinics || []).map(c => [c.key, c])),
+          savedExcluded: res.data?.savedExcluded || {},
         });
+        setProfessionIds(storedProfessions(list));
       })
       .catch(err => setError(err.response?.data?.error || 'Не удалось получить специальности из МИС'));
   }, []);
 
   useEffect(() => {
-    if (!professionId) return;
-    try { localStorage.setItem(LS_PROFESSION, professionId); } catch { /* приватное окно */ }
-  }, [professionId]);
+    if (professionIds.length) writeLs(LS_PROFESSIONS, professionIds);
+  }, [professionIds]);
+
+  const excluded = useMemo(
+    () => excludedFor(professionIds, ownExcluded, catalog?.savedExcluded),
+    [professionIds, ownExcluded, catalog],
+  );
+
+  const professionsKey = professionIds.join(',');
+  const excludedKey = [...excluded].sort().join(',');
 
   useEffect(() => {
-    if (!from || !to || tooLong || !professionId) return;
+    if (!from || !to || tooLong || !catalog || !professionsKey) return;
     let alive = true;
-    setLoading(true);
-    setError('');
-    scheduleCoverage.report({ from, to, professionId, minGap: MIN_GAP })
-      .then(res => { if (alive) setReport(res.data); })
-      .catch(err => {
-        if (!alive) return;
-        setReport(null);
-        setError(err.response?.data?.error || 'Не удалось построить отчёт');
-      })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [from, to, professionId, tooLong, reloadKey]);
+    // Галочки щёлкают подряд — запрос уходит, когда человек остановился.
+    // Расписание МИС при этом не перезапрашивается: сервер держит его в кэше,
+    // а исключения накладывает сверху.
+    const t = setTimeout(() => {
+      setLoading(true);
+      setError('');
+      scheduleCoverage.report({ from, to, professionIds: professionsKey, exclude: excludedKey, minGap: MIN_GAP })
+        .then(res => { if (alive) setReport(res.data); })
+        .catch(err => {
+          if (!alive) return;
+          setReport(null);
+          setError(err.response?.data?.error || 'Не удалось построить отчёт');
+        })
+        .finally(() => { if (alive) setLoading(false); });
+    }, 350);
+    return () => { alive = false; clearTimeout(t); };
+  }, [from, to, professionsKey, excludedKey, tooLong, reloadKey, catalog]);
 
   // Правая панель не должна стоять пустой: пока день не выбран, открываем
   // первую находку — это и есть то место, куда человек посмотрел бы первым.
@@ -122,15 +138,36 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
     });
   }, [report]);
 
-  const toggleExcluded = async (doctorId) => {
-    const next = report.doctors.filter(d => (d.id === doctorId ? !d.excluded : d.excluded)).map(d => d.id);
-    try {
-      await scheduleCoverage.setExclusions(professionId, next);
-      setReloadKey(k => k + 1);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Не удалось сохранить состав группы');
-    }
+  const updateExcluded = (fn) => setOwnExcluded(prev => {
+    const next = fn(prev);
+    writeLs(LS_EXCLUDED, next);
+    return next;
+  });
+
+  // Врач в двух выбранных специальностях — один человек: галочка снимается и
+  // ставится в обеих сразу, иначе в сводной группе он был бы «наполовину».
+  const toggleDoctor = (doctorId) => {
+    const drop = !excluded.has(doctorId);
+    updateExcluded(prev => {
+      const next = { ...prev };
+      for (const p of catalog.professions) {
+        if (!professionIds.includes(p.id) || !p.doctors.some(d => d.id === doctorId)) continue;
+        const cur = excludedFor([p.id], prev, catalog.savedExcluded);
+        if (drop) cur.add(doctorId); else cur.delete(doctorId);
+        next[p.id] = [...cur];
+      }
+      return next;
+    });
   };
+  const setProfessionAll = (pid, include) => {
+    const p = catalog.professions.find(x => x.id === pid);
+    updateExcluded(prev => ({ ...prev, [pid]: include ? [] : p.doctors.map(d => d.id) }));
+  };
+  const toggleProfession = (pid) => setProfessionIds(prev => {
+    if (!prev.includes(pid)) return [...prev, pid];
+    // Пустой выбор отчёту не задать — последняя специальность остаётся
+    return prev.length > 1 ? prev.filter(id => id !== pid) : prev;
+  });
 
   if (tooLong) {
     return (
@@ -141,13 +178,11 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
     );
   }
 
-  const professionOptions = professions.map(p => ({ value: p.id, label: p.name }));
-
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <SearchableSelect value={professionId} onChange={setProfessionId} options={professionOptions} style={{ width: 320, position: 'relative' }} />
-        {report && <GroupMenu report={report} onToggle={toggleExcluded} />}
+        <ProfessionPicker catalog={catalog} report={report} selectedIds={professionIds} excluded={excluded}
+          onProfession={toggleProfession} onDoctor={toggleDoctor} onAll={setProfessionAll} />
         {report && !error && <Notices report={report} to={to} />}
         <button onClick={() => setReloadKey(k => k + 1)} disabled={loading} title="Забрать расписание из МИС заново"
           style={{ ...iconBtn, marginLeft: 'auto', cursor: loading ? 'default' : 'pointer' }}>
@@ -172,7 +207,7 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
         <div style={{ display: 'grid', gap: 16, opacity: loading ? 0.55 : 1, transition: 'opacity .15s' }}>
           {report.clinics.length === 0 ? (
             <div style={{ ...panelStyle, textAlign: 'center', ...mutedStyle, fontSize: 14, padding: 40 }}>
-              У врачей этой специальности нет ни одной смены за период
+              У выбранных врачей нет ни одной смены за период
             </div>
           ) : (
             // Правая колонка по высоте равна календарю: её содержимое лежит
@@ -199,16 +234,25 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
   );
 }
 
-// ── Состав группы ────────────────────────────────────────────────────────────
+// ── Выбор специальностей и врачей ────────────────────────────────────────────
 
 // Специальность в МИС стоит не только у врачей: «КТГ Дневной стационар» — это
 // кабинет, заведённый пользователем, а у совместителя направление может быть
 // второй специальностью без права вести приём. Такие «врачи» закрывают дыры,
-// которых на деле никто не закрывает, поэтому их можно исключить. Выбор общий
-// для всех, кто смотрит отчёт, и хранится на сервере.
-function GroupMenu({ report, onToggle }) {
+// которых на деле никто не закрывает, поэтому у каждого есть галочка. Ею же
+// оставляют в отчёте нескольких конкретных врачей, чтобы сравнить их графики.
+//
+// Пояснений и числа смен в списке нет — заказчик убрал их как шум. Врач без
+// смен за период лишь приглушён: понять, почему он ничего не меняет в отчёте.
+function ProfessionPicker({ catalog, report, selectedIds, excluded, onProfession, onDoctor, onAll }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState(() => new Set());
+  // Порядок фиксируется при открытии: выбранные сверху, но строка не должна
+  // убегать из-под курсора в момент щелчка по ней
+  const [pinned, setPinned] = useState([]);
   const wrapRef = useRef(null);
+  const searchRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -216,43 +260,109 @@ function GroupMenu({ report, onToggle }) {
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    searchRef.current?.focus();
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
 
-  const withShifts = report.doctors.filter(d => d.shifts > 0);
-  const without = report.doctors.filter(d => d.shifts === 0);
-  const excluded = report.doctors.filter(d => d.excluded).length;
+  const professions = useMemo(() => catalog?.professions || [], [catalog]);
+  const names = selectedIds.map(id => professions.find(p => p.id === id)?.name).filter(Boolean);
+  const label = names.join(', ') || (catalog ? 'Выберите специальность' : 'Загружаю специальности…');
+
+  const reportDoctors = useMemo(() => new Map((report?.doctors || []).map(d => [d.id, d])), [report]);
+  const clinicOf = (key) => report?.clinics.find(c => c.key === key) || catalog?.clinics[key];
+
+  const q = search.trim().toLowerCase();
+  const rows = useMemo(() => {
+    const order = new Map(pinned.map((id, i) => [id, i]));
+    const list = [...professions].sort((a, b) =>
+      (order.has(a.id) ? order.get(a.id) : 1e6) - (order.has(b.id) ? order.get(b.id) : 1e6));
+    if (!q) return list.map(p => ({ p, doctors: p.doctors, byDoctor: false }));
+    // Поиск идёт и по фамилиям: «найти Иванову» — обычный путь к отдельному
+    // врачу, и специальность при этом раскрывается сама
+    return list.flatMap(p => {
+      if (p.name.toLowerCase().includes(q)) return [{ p, doctors: p.doctors, byDoctor: false }];
+      const doctors = p.doctors.filter(d => d.name.toLowerCase().includes(q));
+      return doctors.length ? [{ p, doctors, byDoctor: true }] : [];
+    });
+  }, [professions, pinned, q]);
+
+  const openPicker = () => {
+    if (!open) {
+      setPinned(selectedIds);
+      setSearch('');
+    }
+    setOpen(o => !o);
+  };
+  const toggleExpand = (pid) => setExpanded(prev => {
+    const next = new Set(prev);
+    if (next.has(pid)) next.delete(pid); else next.add(pid);
+    return next;
+  });
+
+  const sortDoctors = (list) => [...list].sort((a, b) => {
+    const sa = reportDoctors.get(a.id)?.shifts > 0, sb = reportDoctors.get(b.id)?.shifts > 0;
+    return (sb - sa) || a.name.localeCompare(b.name, 'ru');
+  });
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)} title="Состав группы"
-        style={{ ...iconBtn, position: 'relative', color: open ? 'var(--rb-primary)' : iconBtn.color, borderColor: open ? 'var(--rb-primary)' : 'var(--rb-border-dark)' }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-        {/* Точка — напоминание, что часть группы исключена и цифры это учитывают */}
-        {excluded > 0 && <span style={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: 3, background: 'var(--amber-500)' }} />}
+    <div ref={wrapRef} className={`rb-ss-wrap${open ? ' open' : ''}`} style={{ width: 360, flexShrink: 0 }}>
+      <button type="button" className="rb-ss-trigger has-value" onClick={openPicker} disabled={!catalog} title={names.join('\n')}>
+        <span className="rb-ss-value">{label}</span>
+        {names.length > 1 && (
+          <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 9, background: 'var(--accent-100)', color: 'var(--rb-primary)', flexShrink: 0 }}>{names.length}</span>
+        )}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {open && (
-        <div className="rb-ss-dropdown" style={{ right: 'auto', width: 380, maxHeight: 460, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)' }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Состав группы</div>
-            <div style={{ fontSize: 12, ...mutedStyle, marginTop: 2 }}>
-              {withShifts.length} со сменами{without.length ? `, ${without.length} без смен` : ''}{excluded ? ` · исключено ${excluded}` : ''}.
-              {' '}Снимите галочку у тех, кто не ведёт приём: служебные записи, кабинеты, совместители.
-            </div>
+        <div className="rb-ss-dropdown" style={{ width: 440, right: 'auto' }}>
+          <div className="rb-ss-search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <input ref={searchRef} className="rb-ss-search" type="text" placeholder="Специальность или фамилия врача"
+              value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button className="rb-ss-clear" type="button" onClick={() => setSearch('')}>×</button>}
           </div>
-          <div style={{ overflowY: 'auto', padding: '4px 0' }}>
-            {[...withShifts, ...without].map(d => (
-              <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '6px 12px', cursor: 'pointer', opacity: d.shifts ? 1 : 0.55 }}>
-                <input type="checkbox" checked={!d.excluded} onChange={() => onToggle(d.id)} />
-                <span style={{ textDecoration: d.excluded ? 'line-through' : 'none', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.name}>{d.name}</span>
-                <span style={{ fontSize: 11, ...mutedStyle, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-                  {d.secondary && 'доп. · '}{d.shifts ? `${d.shifts} ${plural(d.shifts, 'смена', 'смены', 'смен')}` : 'нет смен'}
-                </span>
-              </label>
-            ))}
+          <div style={{ maxHeight: 440, overflowY: 'auto', padding: '4px 0' }}>
+            {rows.map(({ p, doctors, byDoctor }) => {
+              const on = selectedIds.includes(p.id);
+              const isOpen = on && (expanded.has(p.id) || byDoctor);
+              return (
+                <div key={p.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px 0 4px', background: on ? 'var(--accent-50)' : 'none' }}>
+                    <button type="button" onClick={() => on && toggleExpand(p.id)} disabled={!on}
+                      title={on ? (isOpen ? 'Свернуть врачей' : 'Показать врачей') : ''}
+                      style={{ border: 'none', background: 'none', padding: 4, display: 'flex', cursor: on ? 'pointer' : 'default', color: 'var(--rb-text-secondary)', visibility: on ? 'visible' : 'hidden' }}>
+                      <ChevronRight size={14} style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+                    </button>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, fontSize: 13, padding: '7px 0', cursor: 'pointer', fontWeight: on ? 600 : 400 }}>
+                      <input type="checkbox" checked={on} onChange={() => onProfession(p.id)} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                    </label>
+                    {isOpen && !byDoctor && (
+                      <span style={{ display: 'flex', gap: 8, fontSize: 12, flexShrink: 0 }}>
+                        <button type="button" onClick={() => onAll(p.id, true)} style={linkBtn}>все</button>
+                        <button type="button" onClick={() => onAll(p.id, false)} style={linkBtn}>никого</button>
+                      </span>
+                    )}
+                  </div>
+                  {isOpen && sortDoctors(doctors).map(d => {
+                    const rd = reportDoctors.get(d.id);
+                    const keys = rd?.clinics?.length ? rd.clinics : d.clinics;
+                    const off = excluded.has(d.id);
+                    return (
+                      <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '5px 10px 5px 34px', cursor: 'pointer', opacity: rd && !rd.shifts ? 0.55 : 1 }}>
+                        <input type="checkbox" checked={!off} onChange={() => onDoctor(d.id)} />
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: off ? 'var(--rb-text-secondary)' : 'inherit' }} title={d.name}>{d.name}</span>
+                        <ClinicLogos clinics={keys.map(clinicOf).filter(Boolean)} />
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {catalog && rows.length === 0 && <div className="rb-ss-empty">Ничего не найдено</div>}
           </div>
         </div>
       )}
@@ -260,11 +370,26 @@ function GroupMenu({ report, onToggle }) {
   );
 }
 
+const linkBtn = { border: 'none', background: 'none', padding: 0, color: 'var(--rb-primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 };
+
+// Чей врач — логотипами медцентров. Больше трёх не помещается в строку, и
+// врач «во всех филиалах» читается по «+N» не хуже, чем по восьми значкам.
+function ClinicLogos({ clinics }) {
+  const shown = clinics.slice(0, 3);
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 3, marginLeft: 'auto', flexShrink: 0 }}
+      title={clinics.map(c => c.name).join(', ')}>
+      {shown.map(c => <ClinicLogo key={c.key} clinic={c} size={18} />)}
+      {clinics.length > 3 && <span style={{ fontSize: 11, ...mutedStyle }}>+{clinics.length - 3}</span>}
+    </span>
+  );
+}
+
 // Оговорки, без которых цифры читаются неверно
 function Notices({ report, to }) {
   const notes = [];
   if (!report.horizon) {
-    notes.push('На этот период у врачей специальности нет ни одной смены — похоже, график ещё не составлен.');
+    notes.push('На этот период у выбранных врачей нет ни одной смены — похоже, график ещё не составлен.');
   } else if (report.horizon < to) {
     notes.push(`Смены заведены по ${dateLong(report.horizon)}. Дальше дни не проверяются — отмечены пунктиром.`);
   }
@@ -542,6 +667,15 @@ function DayDetail({ report, clinic, date, onDate }) {
 
 // ── Находки ──────────────────────────────────────────────────────────────────
 
+// Уровень находки — значком. Цветная полоса слева читалась как цвет
+// медцентра: у филиалов свои фирменные цвета, и красная «Альфа» от красной
+// тревоги на глаз не отличалась.
+const SEVERITY = {
+  3: { Icon: AlertOctagon, color: 'var(--red-500)', label: 'Срочно: никого во всей сети' },
+  2: { Icon: AlertTriangle, color: 'var(--amber-500)', label: 'Важно' },
+  1: { Icon: Info, color: 'var(--rb-text-secondary)', label: 'К сведению' },
+};
+
 function Findings({ report, onSelect }) {
   const names = useMemo(() => Object.fromEntries(report.doctors.map(d => [d.id, d.name])), [report]);
   // null — все находки, вместе с находками по сети в целом; иначе ключ медцентра
@@ -571,13 +705,18 @@ function Findings({ report, onSelect }) {
       <div style={{ display: 'grid', alignContent: 'start', overflowY: 'auto', flex: '1 1 auto', minHeight: 0, marginRight: -8, paddingRight: 8 }}>
         {list.map((f, i) => {
           const { title, detail } = describeFinding(f, who);
-          const tone = f.severity >= 3 ? 'var(--red-500)' : f.severity === 2 ? 'var(--amber-500)' : 'var(--rb-border-dark)';
+          const sev = SEVERITY[Math.min(3, f.severity)] || SEVERITY[1];
+          const clinic = report.clinics.find(c => c.key === f.clinic);
           return (
             <button key={i} onClick={() => onSelect(f.clinic, f.dates[0])}
-              style={{ display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', border: 'none', borderTop: i ? '1px solid var(--rb-border)' : 'none', background: 'none', padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit' }}>
-              <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: tone, flexShrink: 0 }} />
-              {/* При отборе по медцентру его название в каждой строке — повтор */}
-              {!only && <span style={{ minWidth: 110, fontSize: 13, fontWeight: f.clinic === 'all' ? 700 : 600, flexShrink: 0 }}>{f.clinicName}</span>}
+              style={{ display: 'flex', gap: 10, alignItems: 'flex-start', textAlign: 'left', border: 'none', borderTop: i ? '1px solid var(--rb-border)' : 'none', background: 'none', padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit' }}>
+              <span title={sev.label} style={{ display: 'inline-flex', flexShrink: 0, marginTop: 3 }}><sev.Icon size={16} color={sev.color} /></span>
+              {/* При отборе по медцентру его логотип в каждой строке — повтор */}
+              {!only && (
+                <span title={f.clinicName} style={{ flexShrink: 0, display: 'inline-flex' }}>
+                  {clinic ? <ClinicLogo clinic={clinic} size={22} /> : <NetworkMark size={22} />}
+                </span>
+              )}
               <span style={{ display: 'grid', gap: 2 }}>
                 <span style={{ fontSize: 13 }}>{title}</span>
                 {detail && <span style={{ fontSize: 12, ...mutedStyle }}>{detail}</span>}

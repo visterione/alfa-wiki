@@ -3,7 +3,7 @@
 /**
  * Поиск дыр в расписании по направлению (ver. 9.17): Статистика → Аналитика →
  * Расписания. Арифметика — в utils/scheduleCoverage.js, здесь МИС, медцентры и
- * сохранённый состав групп.
+ * сохранённые до 9.19 исключения из групп.
  *
  * Считаем на лету, без синхронизации в базу. Смотрят это раз в месяц («в этом
  * месяце — на следующий»), а getSchedulePeriods отдаёт месяц всей сети за
@@ -62,14 +62,66 @@ async function getUsers() {
 const professionIdsOf = (u) =>
   [...(u.profession || []), ...(u.second_profession || [])].map(String);
 
+/**
+ * Медцентр портала по clinic_id МИС — в том виде, в каком его рисует отчёт.
+ * Клиники, которых нет в справочнике, остаются под своим номером: пропустить
+ * их молча значило бы спрятать дыру.
+ */
+async function clinicEntry(misId) {
+  const mc = await medCenters.byMisId(misId);
+  const canonical = mc?.misClinicIds?.[0] ?? misId;
+  return {
+    key: mc ? `mc:${mc.id}` : `mis:${misId}`,
+    name: mc?.name || `Клиника ${misId}`,
+    color: mc?.color || '#94a3b8',
+    logo: mc?.logoSquareUrl || mc?.logoUrl || null,
+    sortOrder: mc?.sortOrder ?? 999,
+    virtual: !mc || !!mc.isVirtual,
+    canonical,
+    mc,
+  };
+}
+
+/**
+ * Специальности вместе с их врачами — из них собирается выпадающий список, и
+ * врачей второго уровня он показывает сразу, не дожидаясь отчёта.
+ *
+ * Медцентры врача здесь — те, к которым он привязан в карточке МИС. Это лишь
+ * подсказка «чей он», пока у врача нет смен за период: как только смены есть,
+ * интерфейс показывает медцентры по ним — карточка нередко перечисляет все
+ * филиалы сразу. Служебные группировки вроде «Направителей» не показываем.
+ */
 async function listProfessions() {
-  const [professions, users] = await Promise.all([misList('getProfessions', {}), getUsers()]);
-  const counts = {};
-  for (const u of users) for (const p of new Set(professionIdsOf(u))) counts[p] = (counts[p] || 0) + 1;
-  return professions
-    .filter(p => !p.is_deleted && counts[String(p.id)])
-    .map(p => ({ id: String(p.id), name: p.name, doctors: counts[String(p.id)] }))
+  const [professions, users, settings] = await Promise.all([misList('getProfessions', {}), getUsers(), readSettings()]);
+  const byProfession = {};
+  const clinics = {};
+  const entries = new Map();
+  for (const u of users) {
+    const keys = [];
+    for (const misId of Array.isArray(u.clinic) ? u.clinic.map(String) : []) {
+      if (!entries.has(misId)) entries.set(misId, await clinicEntry(misId));
+      const c = entries.get(misId);
+      if (c.virtual || keys.includes(c.key)) continue;
+      keys.push(c.key);
+      clinics[c.key] = { key: c.key, name: c.name, color: c.color, logo: c.logo, sortOrder: c.sortOrder };
+    }
+    keys.sort((a, b) => clinics[a].sortOrder - clinics[b].sortOrder);
+    for (const p of new Set(professionIdsOf(u))) {
+      (byProfession[p] ||= []).push({ id: String(u.id), name: u.name, clinics: keys });
+    }
+  }
+  const list = professions
+    .filter(p => !p.is_deleted && byProfession[String(p.id)])
+    .map(p => ({
+      id: String(p.id),
+      name: p.name,
+      doctors: byProfession[String(p.id)].sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  // Исключения, сохранённые до 9.19 общими на всех, — теперь лишь начальная
+  // отметка: пока человек сам не тронул галочки специальности, у него сняты те
+  // же служебные записи, что были сняты для всех.
+  return { professions: list, clinics: Object.values(clinics).map(({ sortOrder, ...c }) => c), savedExcluded: settings.excluded };
 }
 
 async function fetchPeriods(from, to, userIds) {
@@ -93,17 +145,6 @@ async function readSettings() {
   const row = await Setting.findByPk(SETTINGS_KEY);
   const value = row?.value || {};
   return { excluded: value.excluded || {} };
-}
-
-async function setExcluded(professionId, userIds) {
-  const settings = await readSettings();
-  settings.excluded[String(professionId)] = [...new Set((userIds || []).map(String))];
-  await Setting.upsert({
-    key: SETTINGS_KEY,
-    value: settings,
-    description: 'Расписания: кого не считать врачом направления (служебные «сотрудники», совместители)',
-  });
-  return settings.excluded[String(professionId)];
 }
 
 /**
@@ -158,13 +199,17 @@ function checkPeriod(from, to) {
 /**
  * @param {object} q
  * @param {string} q.from, q.to       YYYY-MM-DD
- * @param {string} q.professionId     специальность МИС
+ * @param {string[]} q.professionIds  специальности МИС; несколько — одна
+ *                                    сводная группа (см. ниже)
+ * @param {string[]} [q.exclude]      кого из группы не считать; без него —
+ *                                    сохранённые исключения специальностей
  * @param {number} q.minGap           минимальная дыра, минут
  * @param {string} [q.window]         "08:00-20:00" — своё окно вместо часов медцентров
  */
-async function getReport({ from, to, professionId, minGap = 60, window }) {
+async function getReport({ from, to, professionIds, exclude, minGap = 60, window }) {
   const days = checkPeriod(from, to);
-  if (!professionId) throw new Error('Не выбрана специальность');
+  const selected = [...new Set((professionIds || []).map(String).filter(Boolean))];
+  if (!selected.length) throw new Error('Не выбрана специальность');
 
   let custom = null;
   if (window) {
@@ -176,31 +221,27 @@ async function getReport({ from, to, professionId, minGap = 60, window }) {
   }
 
   const [users, settings] = await Promise.all([getUsers(), readSettings()]);
-  const group = users.filter(u => professionIdsOf(u).includes(String(professionId)));
-  const excluded = new Set(settings.excluded[String(professionId)] || []);
+  // Сводный режим (ver. 9.19): несколько специальностей считаются одной
+  // группой. Сравнивают их, когда они смежные — флеболог отправляет пациента
+  // сразу на УЗИ, — и вопрос тогда не «есть ли флеболог», а «есть ли кто-то
+  // из цепочки». Поэтому никакой отдельной арифметики: врачи всех выбранных
+  // специальностей просто становятся одним списком, а правила находок
+  // работают над ним как над одной специальностью.
+  const group = users.filter(u => professionIdsOf(u).some(p => selected.includes(p)));
+  const excluded = new Set(exclude
+    ? exclude.map(String)
+    : selected.flatMap(p => settings.excluded[p] || []));
 
   const records = group.length
     ? await fetchPeriods(from, to, group.map(u => String(u.id)))
     : [];
 
-  // clinic_id МИС → медцентр портала. Клиники, которых нет в справочнике,
-  // остаются под своим номером: пропустить их молча значило бы спрятать дыру.
   const clinicsByKey = new Map();
   const keyByMisId = new Map();
   for (const misId of new Set(records.map(r => String(r.clinic_id)))) {
-    const mc = await medCenters.byMisId(misId);
-    const key = mc ? `mc:${mc.id}` : `mis:${misId}`;
-    keyByMisId.set(misId, key);
-    if (clinicsByKey.has(key)) continue;
-    const canonical = mc?.misClinicIds?.[0] ?? misId;
-    clinicsByKey.set(key, {
-      key,
-      name: mc?.name || `Клиника ${misId}`,
-      color: mc?.color || '#94a3b8',
-      logo: mc?.logoSquareUrl || mc?.logoUrl || null,
-      sortOrder: mc?.sortOrder ?? 999,
-      ...clinicHours(mc, canonical),
-    });
+    const { canonical, mc, virtual, ...entry } = await clinicEntry(misId);
+    keyByMisId.set(misId, entry.key);
+    if (!clinicsByKey.has(entry.key)) clinicsByKey.set(entry.key, { ...entry, ...clinicHours(mc, canonical) });
   }
   const clinics = [...clinicsByKey.values()].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ru'));
 
@@ -215,32 +256,37 @@ async function getReport({ from, to, professionId, minGap = 60, window }) {
     minGap: minGapSafe,
   });
 
-  // Состав группы: кто есть в МИС по этой специальности, и есть ли у него хоть
-  // одна смена за период. Без смен — либо уволен и не удалён, либо график ещё
-  // не составлен; интерфейс показывает таких отдельно.
+  // Врачи группы: сколько смен за период и в каких медцентрах. Медцентры по
+  // сменам, а не по карточке — рядом с фамилией логотип того филиала, где он
+  // на деле принимает. Без смен — либо уволен и не удалён, либо график ещё не
+  // составлен; интерфейс их приглушает.
   const shiftsByUser = {};
   for (const r of records) {
     if (Number(r.type) !== 1) continue;
     const id = String(r.user_id);
-    shiftsByUser[id] = (shiftsByUser[id] || 0) + 1;
+    const key = keyByMisId.get(String(r.clinic_id));
+    const u = (shiftsByUser[id] ||= { shifts: 0, byClinic: {} });
+    u.shifts++;
+    u.byClinic[key] = (u.byClinic[key] || 0) + 1;
   }
   const doctors = group
-    .map(u => ({
-      id: String(u.id),
-      name: u.name,
-      shifts: shiftsByUser[String(u.id)] || 0,
-      excluded: excluded.has(String(u.id)),
-      // Основная ли это специальность — врачу со второй специальностью приём по
-      // ней может быть не положен, и это первый кандидат в исключения.
-      secondary: !(u.profession || []).map(String).includes(String(professionId)),
-    }))
+    .map(u => {
+      const s = shiftsByUser[String(u.id)];
+      return {
+        id: String(u.id),
+        name: u.name,
+        shifts: s?.shifts || 0,
+        clinics: s ? Object.keys(s.byClinic).sort((a, b) => s.byClinic[b] - s.byClinic[a]) : [],
+        excluded: excluded.has(String(u.id)),
+      };
+    })
     .sort((a, b) => (b.shifts > 0) - (a.shifts > 0) || a.name.localeCompare(b.name, 'ru'));
 
   return {
     from,
     to,
     days,
-    professionId: String(professionId),
+    professionIds: selected,
     minGap: minGapSafe,
     window: custom ? { from: custom[0], to: custom[1] } : null,
     clinics: clinics.map(({ sortOrder, ...c }) => c),
@@ -249,4 +295,4 @@ async function getReport({ from, to, professionId, minGap = 60, window }) {
   };
 }
 
-module.exports = { listProfessions, getReport, setExcluded, MAX_DAYS };
+module.exports = { listProfessions, getReport, MAX_DAYS };

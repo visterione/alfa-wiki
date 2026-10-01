@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
 import { mis, reviews, botSubscribers, scheduleCoverage } from '../../../services/api';
-import { LS_PROFESSION, DEFAULT_PROFESSION_NAME, isoLocal } from '../../Statistics/components/scheduleCoverageText';
+import { LS_EXCLUDED, readLs, storedProfessions, excludedFor, isoLocal } from '../../Statistics/components/scheduleCoverageText';
 import { useAuth } from '../../../context/AuthContext';
 import { KPI_TAB_PERM, PDF_SECTION_PERM, canSeeStatTab, visibleTabs } from '../../Statistics/statisticsAccess';
 import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics, TabRefundsAnalytics } from '../../Statistics/components/Directories';
@@ -2186,22 +2186,21 @@ const PDF_SECTIONS = [
   { key: 'reputation', label: 'Репутация',              sub: 'отзывы, рейтинги, негатив (данные из отзывов)' },
   { key: 'debtors',    label: 'Задолженности',          sub: 'долги пациентов, по клиникам, возраст (из МИС)' },
   { key: 'bots',       label: 'Боты',                   sub: 'подписчики Telegram/MAX по медцентрам, экосистема' },
-  { key: 'schedules',  label: 'Расписания',             sub: 'дыры в приёме по специальности, открытой на вкладке последней (из МИС)' },
+  { key: 'schedules',  label: 'Расписания',             sub: 'дыры в приёме по специальностям и врачам, выбранным на вкладке последними (из МИС)' },
 ];
 
-// Сбор данных «Расписаний» для PDF: та специальность, что смотрели на вкладке
-// последней, иначе гинекология — как и сама вкладка по умолчанию. Больше трёх
-// месяцев сервер не считает, и на «Год» раздел просто не попадёт в отчёт.
+// Сбор данных «Расписаний» для PDF: те специальности и те врачи, что выбраны
+// на вкладке последними, иначе гинекология — как и сама вкладка по умолчанию.
+// Больше трёх месяцев сервер не считает, и на «Год» раздел просто не попадёт в отчёт.
 async function gatherSchedules(periodStart, periodEnd) {
   const from = isoLocal(periodStart), to = isoLocal(periodEnd);
   const { data } = await scheduleCoverage.professions();
   const list = data?.professions || [];
-  let stored = '';
-  try { stored = localStorage.getItem(LS_PROFESSION) || ''; } catch { /* приватное окно */ }
-  const prof = list.find(p => p.id === stored) || list.find(p => p.name === DEFAULT_PROFESSION_NAME) || list[0];
-  if (!prof) return null;
-  const res = await scheduleCoverage.report({ from, to, professionId: prof.id, minGap: 60 });
-  return { report: res.data, professionName: prof.name };
+  const ids = storedProfessions(list);
+  if (!ids.length) return null;
+  const exclude = [...excludedFor(ids, readLs(LS_EXCLUDED, {}), data?.savedExcluded)].join(',');
+  const res = await scheduleCoverage.report({ from, to, professionIds: ids.join(','), exclude, minGap: 60 });
+  return { report: res.data, professionName: ids.map(id => list.find(p => p.id === id)?.name).join(' + ') };
 }
 
 // Сбор данных ботов для PDF: подписчики за период + экосистема + дельта к пред. периоду.

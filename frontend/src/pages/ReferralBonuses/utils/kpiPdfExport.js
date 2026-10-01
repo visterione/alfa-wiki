@@ -1225,7 +1225,7 @@ function buildSchedules(data, content, pageBreak) {
   content.push(pdfSection(`Расписания — ${professionName}`, pageBreak));
 
   const notes = [];
-  if (!report.horizon) notes.push('На период у врачей специальности нет ни одной смены.');
+  if (!report.horizon) notes.push('На период у выбранных врачей нет ни одной смены.');
   else if (report.horizon < report.to) notes.push(`Смены заведены по ${dateLong(report.horizon)}; дальше дни не проверялись.`);
   const fallback = report.clinics.filter(c => c.hoursSource === 'fallback').map(c => c.name);
   if (fallback.length) notes.push(`Часы работы ${fallback.join(', ')} не заполнены в карточке медцентра — взяты типовые.`);
@@ -1233,7 +1233,7 @@ function buildSchedules(data, content, pageBreak) {
   content.push({ text: safeStr(notes.join(' ')), fontSize: 8, color: '#64748b', margin: [0, 0, 0, 8] });
 
   if (!report.clinics.length) {
-    content.push({ text: 'У врачей специальности нет ни одной смены за период.', fontSize: 9, color: '#64748b' });
+    content.push({ text: 'У выбранных врачей нет ни одной смены за период.', fontSize: 9, color: '#64748b' });
     return;
   }
 

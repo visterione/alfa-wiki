@@ -2,9 +2,43 @@
 // PDF-отчёт аналитики. Одна находка не должна звучать на экране одним образом,
 // а в распечатке другим — поэтому формулировки живут здесь, а не в компоненте.
 
-// Специальность, которую смотрели последней. PDF берёт её же: печатают обычно
-// то, что только что разглядывали на экране.
+// Специальности, которые смотрели последними. PDF берёт их же: печатают обычно
+// то, что только что разглядывали на экране. До 9.19 специальность была одна и
+// лежала строкой под LS_PROFESSION — её подхватываем как выбор из одной.
 export const LS_PROFESSION = 'alfa.scheduleCoverage.profession';
+export const LS_PROFESSIONS = 'alfa.scheduleCoverage.professions';
+// Снятые галочки у врачей: { [professionId]: [userId] }. Свои у каждого, см.
+// routes/schedule-coverage.js.
+export const LS_EXCLUDED = 'alfa.scheduleCoverage.excluded';
+
+export const readLs = (key, fallback) => {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+};
+export const writeLs = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* приватное окно */ }
+};
+
+/** Выбранные специальности из браузера: те, что есть в списке МИС, иначе гинекология. */
+export function storedProfessions(list) {
+  let ids = readLs(LS_PROFESSIONS, null);
+  if (!Array.isArray(ids) || !ids.length) {
+    try { const legacy = localStorage.getItem(LS_PROFESSION); ids = legacy ? [legacy] : []; } catch { ids = []; }
+  }
+  const kept = ids.map(String).filter(id => list.some(p => p.id === id));
+  if (kept.length) return kept;
+  const def = (list.find(p => p.name === DEFAULT_PROFESSION_NAME) || list[0])?.id;
+  return def ? [def] : [];
+}
+
+/**
+ * Кого не считать: свои снятые галочки по специальности, если человек их уже
+ * трогал, иначе общий список, сохранённый до 9.19 (служебные записи вроде КТГ).
+ */
+export function excludedFor(professionIds, own, saved) {
+  const set = new Set();
+  for (const pid of professionIds) for (const id of own[pid] ?? saved?.[pid] ?? []) set.add(String(id));
+  return set;
+}
 export const DEFAULT_PROFESSION_NAME = 'Акушерство и гинекология';
 
 export const WD_SHORT = { mon: 'пн', tue: 'вт', wed: 'ср', thu: 'чт', fri: 'пт', sat: 'сб', sun: 'вс' };
