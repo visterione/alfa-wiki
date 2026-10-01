@@ -343,8 +343,8 @@ async function runOne(request) {
   if (!await safety.allowedByPilot(request.phone)) {
     return request.update({ status: 'skipped', error: 'пилот: телефон вне списка проверочных номеров' });
   }
-  if (!await safety.allowsProvider(PROVIDER)) {
-    return request.update({ status: 'skipped', error: 'ИИ-звонки: передача наружу выключена предохранителем' });
+  if (!await safety.allowsProvider(PROVIDER, request.medCenterId)) {
+    return request.update({ status: 'skipped', error: 'ИИ-звонки: передача наружу выключена предохранителем филиала' });
   }
 
   const config = await settings.aiCallFor(request.medCenterId);

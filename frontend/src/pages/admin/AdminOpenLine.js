@@ -2014,7 +2014,7 @@ function AiCallPanel() {
   );
 }
 
-function DeliveryTab({ templates, safety, onSafetyChange }) {
+function DeliveryTab({ templates, safety, branchId, onSafetyChange }) {
   const [settings, setSettings] = useState(null);
   const [saved, setSaved] = useState(null);
   const [branches, setBranches] = useState(null);
@@ -2106,7 +2106,7 @@ function DeliveryTab({ templates, safety, onSafetyChange }) {
     <>
       {/* Предохранители первыми: пока они закрыты, всё остальное на этой
           вкладке настраивается вхолостую, и знать об этом надо до, а не после. */}
-      {safety && <SafetyPanel safety={safety} onChange={saveSafety} />}
+      {safety && <SafetyPanel safety={safety} branchId={branchId} onChange={saveSafety} />}
 
       {/* Доступ к CRM партнёра — один на сеть (ver. 8.95). Стоит выше филиалов,
           потому что без него включатель в карточке филиала ничего не делает, и
@@ -2701,20 +2701,30 @@ function CallsLog() {
  *   • замок на сервере (NOTIFIER_LOCK_EXTERNAL) делает переключатель
  *     неработающим — на время пилота снятие должно требовать доступа к серверу.
  */
-function SafetyPanel({ safety, onChange }) {
+function SafetyPanel({ safety, branchId, onChange }) {
   const [confirming, setConfirming] = useState(null);
   const [word, setWord] = useState('');
   const [pilot, setPilot] = useState((safety.pilotPhones || []).join(', '));
   const [busy, setBusy] = useState(false);
 
-  const open = (safety.providers || []).filter(p => p.allowed);
+  // Набор свой у каждого медцентра (ver. 9.21); панель показывает тот, что
+  // выбран в шапке страницы. Подтверждение, начатое на одном медцентре, при
+  // смене выбора закрываем — иначе «Включить» открыло бы не тот, который видно.
+  const branch = (safety.branches || []).find(b => b.id === branchId) || null;
+  useEffect(() => { setConfirming(null); setWord(''); }, [branchId]);
+
+  if (!branch) return null;
+
+  const allowed = branch.allowExternal || [];
+  const providers = (safety.providers || []).map(p => ({ ...p, allowed: allowed.includes(p.name) }));
+  const open = providers.filter(p => p.allowed);
   const piloted = (safety.pilotPhones || []).length > 0;
   const CONFIRM = 'ОТПРАВЛЯТЬ';
 
-  const apply = async (allowExternal, extra = {}) => {
+  const apply = async (patch) => {
     setBusy(true);
     try {
-      await onChange({ allowExternal, ...extra });
+      await onChange(patch);
       setConfirming(null);
       setWord('');
     } finally {
@@ -2723,18 +2733,18 @@ function SafetyPanel({ safety, onChange }) {
   };
 
   const toggle = (provider, on) => {
-    const names = (safety.providers || []).filter(p => p.allowed).map(p => p.name);
-    const next = on ? [...names, provider.name] : names.filter(n => n !== provider.name);
+    const next = on ? [...allowed, provider.name] : allowed.filter(n => n !== provider.name);
+    const patch = { branch: { medCenterId: branch.id, allowExternal: next } };
 
     // Выключение — сразу. Включение — через подтверждение.
-    if (!on) return apply(next);
-    setConfirming({ provider, next });
+    if (!on) return apply(patch);
+    setConfirming({ provider, patch });
     setWord('');
   };
 
   const savePilot = () => {
     const list = pilot.split(',').map(s => s.trim()).filter(Boolean);
-    apply(undefined, { pilotPhones: list });
+    apply({ pilotPhones: list });
   };
 
   const pilotDirty = pilot !== (safety.pilotPhones || []).join(', ');
@@ -2746,9 +2756,9 @@ function SafetyPanel({ safety, onChange }) {
           {open.length ? <AlertTriangle size={17} /> : <ShieldCheck size={17} />}
         </span>
         <h3>
-          {open.length
-            ? `Отправка наружу включена: ${open.map(p => p.title).join(', ')}`
-            : 'Наружу ничего не уходит'}
+          {branch.name}: {open.length
+            ? `отправка наружу включена — ${open.map(p => p.title).join(', ')}`
+            : 'наружу ничего не уходит'}
         </h3>
         {safety.locked && <span className="ola-badge warn">замок на сервере</span>}
         {safety.changedBy && (
@@ -2760,7 +2770,7 @@ function SafetyPanel({ safety, onChange }) {
 
       <div className="ola-card-body">
         <div className="ola-safety-rows">
-          {(safety.providers || []).map(p => (
+          {providers.map(p => (
             <div key={p.name} className={`ola-safety-row ${p.allowed ? 'on' : ''}`}>
               <span className="name">{p.title}</span>
               {/* Что именно уходит, зависит от провайдера: у ботов и SMS это
@@ -2802,13 +2812,13 @@ function SafetyPanel({ safety, onChange }) {
           <div className="ola-confirm">
             <AlertTriangle size={18} />
             <div className="ola-confirm-body">
-              <strong>Включить «{confirming.provider.title}»?</strong>
+              <strong>Включить «{confirming.provider.title}» для медцентра «{branch.name}»?</strong>
               <p>
-                После этого уведомления пойдут живым пациентам
+                После этого уведомления пойдут живым пациентам этого медцентра
                 {piloted
                   ? ` — пока только на ${safety.pilotPhones.length} проверочны${safety.pilotPhones.length === 1 ? 'й номер' : 'х номера'}.`
-                  : ' по всей сети: круг получателей не сужен.'}
-                {' '}Убедитесь, что в МИС у тех же организаций сняты галки «Отправлять
+                  : ': круг получателей не сужен.'}
+                {' '}Убедитесь, что в МИС у этой клиники сняты галки «Отправлять
                 сообщение», иначе пациент получит два уведомления об одном событии.
               </p>
               <div className="ola-row">
@@ -2822,7 +2832,7 @@ function SafetyPanel({ safety, onChange }) {
                 <button
                   className="ola-btn danger-solid"
                   disabled={word.trim().toUpperCase() !== CONFIRM || busy}
-                  onClick={() => apply(confirming.next)}
+                  onClick={() => apply(confirming.patch)}
                 >Включить отправку</button>
                 <button className="ola-btn" onClick={() => setConfirming(null)}>Отмена</button>
               </div>
@@ -2912,7 +2922,10 @@ export default function AdminOpenLine() {
             </button>
           )}
 
-          {tab === 'texts' && medCenters.length > 0 && (
+          {/* Тот же выбор филиала служит и «Рассылке» (ver. 9.21): предохранители
+              там свои у каждого медцентра, и переключать их удобнее тем же
+              органом, что и тексты, чем заводить второй. */}
+          {(tab === 'texts' || tab === 'delivery') && medCenters.length > 0 && (
             <div className="ola-bar-side ola-template-scope">
               <label htmlFor="ola-template-medcenter"><Building2 size={16} /> Филиал</label>
               <select
@@ -2940,7 +2953,9 @@ export default function AdminOpenLine() {
         {tab === 'texts' && (
           <TemplatesTab data={templates} steps={steps} reload={loadTemplates} selected={branch} />
         )}
-        {tab === 'delivery' && <DeliveryTab templates={templates} safety={safety} onSafetyChange={loadTemplates} />}
+        {tab === 'delivery' && (
+          <DeliveryTab templates={templates} safety={safety} branchId={branch} onSafetyChange={loadTemplates} />
+        )}
         {tab === 'log' && <LogTab />}
         {tab === 'widget' && <WidgetTab />}
       </div>

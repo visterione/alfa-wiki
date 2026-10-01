@@ -340,8 +340,8 @@ async function deliver(item, clinicId = null, medCenterId = null) {
 
     // Предохранитель — здесь, до любого внешнего провайдера. Внутри ветки он
     // защищал только её, а провайдеров стало два.
-    if (!await safety.allowsProvider(group.provider)) {
-      lastError = `${group.provider}: отправка наружу выключена предохранителем`;
+    if (!await safety.allowsProvider(group.provider, medCenterId)) {
+      lastError = `${group.provider}: отправка наружу выключена предохранителем филиала`;
       continue;
     }
 

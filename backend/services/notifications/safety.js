@@ -27,9 +27,29 @@
  * наружу можно только через сервер. Замок односторонний намеренно: он умеет
  * только запрещать. Переменная, которая умела бы разрешать, вернула бы ровно ту
  * беду, от которой уходим, — состояние в двух местах и расхождение между ними.
+ *
+ * ПО МЕДЦЕНТРАМ (ver. 9.21). До 9.21 переключатель был один на сеть, и запуск
+ * выглядел как «всё или ничего»: проверить отправку на одном медцентре, оставив
+ * остальные закрытыми, было нельзя. Теперь список открытых провайдеров свой у
+ * каждого филиала, а общего нет вовсе. Пробовали оставить общий рубильником
+ * «вся сеть» поверх филиальных — заказчик отклонил: два органа управления одним
+ * и тем же путают, какой из них сейчас решает.
+ *
+ * Перенос без миграции. Пока в настройке нет поля branches, действует прежний
+ * общий список — для каждого филиала, как и раньше. При первом сохранении он
+ * раскладывается по всем филиалам, и дальше они расходятся. Так релиз не
+ * меняет поведения на бою ни в одну сторону, а перенос не требует отдельного
+ * шага, который можно забыть.
+ *
+ * Филиал, заведённый после раскладки, начинает закрытым: открыть его наружу —
+ * решение, а не наследство. Сообщение без опознанного филиала тоже не уходит
+ * наружу — пускать его по чужому разрешению нельзя.
+ *
+ * Пилотные номера остались общими: это список проверочных телефонов, к филиалу
+ * он не привязан.
  */
 
-const { Setting } = require('../../models');
+const { Setting, MedCenter } = require('../../models');
 const misClient = require('../misClient');
 
 const SAFETY_KEY = 'notif_safety';
@@ -77,19 +97,36 @@ function fromEnv() {
 const TTL = 10000;
 let cache = { at: 0, value: null };
 
+const onlyKnown = (list) => (Array.isArray(list) ? list : []).filter(p => EXTERNAL_PROVIDERS.includes(p));
+
+/** Пустые списки не храним: филиал без записи и филиал с [] — одно и то же. */
+function cleanBranches(map) {
+  const out = {};
+  for (const [id, list] of Object.entries(map || {})) {
+    const known = [...new Set(onlyKnown(list))];
+    if (id && known.length) out[id] = known;
+  }
+  return out;
+}
+
 async function read() {
   if (cache.value && Date.now() - cache.at < TTL) return cache.value;
 
   const row = await Setting.findByPk(SAFETY_KEY);
   const stored = row && row.value ? row.value : null;
   const value = stored ? { ...fromEnv(), ...stored } : fromEnv();
+  const split = !!value.branches && typeof value.branches === 'object';
 
   // Замок действует поверх сохранённого: если он стоит, наружу не уходит ничто,
   // что бы ни было записано в настройке.
   const effective = {
-    ...value,
-    allowExternal: isLocked() ? [] : (value.allowExternal || []).filter(p => EXTERNAL_PROVIDERS.includes(p)),
+    // null — настройка ещё не разложена по филиалам, и для каждого действует
+    // прежний общий список (см. шапку).
+    branches: split ? (isLocked() ? {} : cleanBranches(value.branches)) : null,
+    legacy: isLocked() ? [] : onlyKnown(value.allowExternal),
     pilotPhones: (value.pilotPhones || []).map(p => misClient.normalizePhone(p)).filter(Boolean),
+    changedBy: value.changedBy || null,
+    changedAt: value.changedAt || null,
     locked: isLocked()
   };
 
@@ -97,18 +134,51 @@ async function read() {
   return effective;
 }
 
+/** Открытые провайдеры филиала по уже прочитанному состоянию. */
+function allowedFor(state, medCenterId) {
+  if (!medCenterId) return [];
+  if (!state.branches) return state.legacy;
+  return state.branches[String(medCenterId)] || [];
+}
+
+/**
+ * @param {Object} patch
+ * @param {{medCenterId:string, allowExternal:string[]}} [patch.branch] Правим по
+ *   одному филиалу, а не всей картой: два администратора, включающие разные
+ *   филиалы, не должны затирать друг друга.
+ * @param {string[]} [patch.pilotPhones]
+ */
 async function write(patch, user) {
-  if (isLocked() && (patch.allowExternal || []).length) {
+  if (isLocked() && patch.branch && (patch.branch.allowExternal || []).length) {
     const err = new Error('Снятие предохранителя запрещено на сервере (NOTIFIER_LOCK_EXTERNAL)');
     err.code = 'locked';
     throw err;
   }
 
+  // Перед записью читаем мимо кэша: десяти секунд достаточно, чтобы правка
+  // соседнего филиала, сделанная из другой вкладки, потерялась.
+  cache = { at: 0, value: null };
   const current = await read();
+
+  // Первая запись после 9.21 раскладывает прежний общий список по филиалам.
+  // Берём все филиалы, куда ходит пациент, — тот же круг, что видит экран.
+  let branches = current.branches;
+  if (!branches) {
+    branches = {};
+    if (current.legacy.length) {
+      const all = await MedCenter.findAll({ attributes: ['id'], where: { servesPatients: true } });
+      for (const mc of all) branches[String(mc.id)] = [...current.legacy];
+    }
+  } else {
+    branches = { ...branches };
+  }
+
+  if (patch.branch && patch.branch.medCenterId) {
+    branches[String(patch.branch.medCenterId)] = patch.branch.allowExternal || [];
+  }
+
   const value = {
-    allowExternal: patch.allowExternal !== undefined
-      ? (patch.allowExternal || []).filter(p => EXTERNAL_PROVIDERS.includes(p))
-      : current.allowExternal,
+    branches: cleanBranches(branches),
     pilotPhones: patch.pilotPhones !== undefined
       ? (patch.pilotPhones || []).map(p => misClient.normalizePhone(String(p).trim())).filter(Boolean)
       : current.pilotPhones,
@@ -122,14 +192,17 @@ async function write(patch, user) {
   await Setting.upsert({
     key: SAFETY_KEY,
     value,
-    description: 'Предохранители рассылки: кому разрешено отправлять наружу и на какие номера'
+    description: 'Предохранители рассылки: кому разрешено отправлять наружу и на какие номера, по филиалам'
   });
 
   cache = { at: 0, value: null };
   return read();
 }
 
-const allowsProvider = async (provider) => (await read()).allowExternal.includes(provider);
+/** Открыт ли провайдер для отправки по визиту этого филиала. */
+async function allowsProvider(provider, medCenterId) {
+  return allowedFor(await read(), medCenterId).includes(provider);
+}
 
 /** Пустой список пилотных номеров означает «без ограничения», а не «никому». */
 async function allowedByPilot(phone) {
@@ -144,5 +217,5 @@ function forget() {
 
 module.exports = {
   SAFETY_KEY, EXTERNAL_PROVIDERS,
-  read, write, forget, allowsProvider, allowedByPilot, isLocked
+  read, write, forget, allowsProvider, allowedFor, allowedByPilot, isLocked
 };

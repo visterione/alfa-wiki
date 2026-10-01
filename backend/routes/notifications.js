@@ -79,12 +79,23 @@ const aiCallView = (config) => ({
 
 async function safetyState() {
   const state = await safety.read();
+  const medCenters = await MedCenter.findAll({
+    attributes: ['id', 'name'],
+    where: { servesPatients: true, isActive: true },
+    order: [['name', 'ASC']]
+  });
   return {
     providers: safety.EXTERNAL_PROVIDERS.map(name => ({
       name,
       title: PROVIDER_TITLES[name] || name,
-      effect: PROVIDER_EFFECT[name] || DEFAULT_EFFECT,
-      allowed: state.allowExternal.includes(name)
+      effect: PROVIDER_EFFECT[name] || DEFAULT_EFFECT
+    })),
+    // Свой набор у каждого медцентра (ver. 9.21): запуск идёт по одному
+    // филиалу, а не всей сетью разом. Экран показывает набор выбранного.
+    branches: medCenters.map(mc => ({
+      id: mc.id,
+      name: mc.name,
+      allowExternal: safety.allowedFor(state, mc.id)
     })),
     // Ограничение круга получателей — вторая половина безопасного режима, и о
     // ней экран раньше не говорил вовсе.
@@ -797,18 +808,21 @@ router.get('/safety', authenticate, requireAdmin, async (req, res) => {
 
 router.put('/safety', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { allowExternal, pilotPhones } = req.body || {};
+    const { pilotPhones, branch } = req.body || {};
 
     const before = await safety.read();
-    await safety.write({ allowExternal, pilotPhones }, req.user);
+    await safety.write({ pilotPhones, branch }, req.user);
     const after = await safety.read();
 
     // Снятие пишем в журнал сервера отдельной строкой: по логам восстанавливают
     // порядок событий, когда выясняют, почему пациент получил два уведомления.
-    const opened = after.allowExternal.filter(p => !before.allowExternal.includes(p));
-    if (opened.length) {
-      console.warn(`[notifications] ОТПРАВКА НАРУЖУ ВКЛЮЧЕНА: ${opened.join(', ')} — ` +
-        `${req.user.displayName || req.user.username} (${req.user.id})`);
+    if (branch && branch.medCenterId) {
+      const was = safety.allowedFor(before, branch.medCenterId);
+      const opened = safety.allowedFor(after, branch.medCenterId).filter(p => !was.includes(p));
+      if (opened.length) {
+        console.warn(`[notifications] ОТПРАВКА НАРУЖУ ВКЛЮЧЕНА для филиала ${branch.medCenterId}: ` +
+          `${opened.join(', ')} — ${req.user.displayName || req.user.username} (${req.user.id})`);
+      }
     }
 
     res.json(await safetyState());

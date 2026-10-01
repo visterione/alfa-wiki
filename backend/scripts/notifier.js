@@ -168,7 +168,12 @@ const aiCall = require('../services/notifications/aiCall');
   // окружения. Печатаем поимённо: до 8.06 здесь сообщалось только о Fromni, и
   // запуск с открытым Имобисом выглядел безопасным.
   const state = await sender.safety.read();
-  const external = state.allowExternal.length ? state.allowExternal.join(', ') : 'НИКОМУ (только наши боты)';
+  // С 9.21 набор свой у каждого филиала; до первого сохранения после релиза
+  // действует прежний общий — его и печатаем как «все филиалы».
+  const external = !state.branches
+    ? (state.legacy.length ? `все филиалы: ${state.legacy.join(', ')}` : 'НИКОМУ (только наши боты)')
+    : (Object.entries(state.branches).map(([id, list]) => `${id}: ${list.join(', ')}`).join('; ')
+      || 'НИКОМУ (только наши боты)');
   console.log(`Отправка наружу разрешена: ${external}${state.locked ? '   ЗАМОК НА СЕРВЕРЕ' : ''}` +
     `   пилотных телефонов: ${state.pilotPhones.length || 'БЕЗ ОГРАНИЧЕНИЯ (вся сеть)'}\n`);
 
