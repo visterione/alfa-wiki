@@ -47,6 +47,11 @@ import './MyReviewsStrip.css';
 
 const REFRESH_MS = 60000;
 
+// Повторы после сбоя загрузки. Раньше неудачный первый запрос оставлял
+// ленту пустой до следующего планового — на минуту, и выглядело это как
+// «лента не отрисовалась, помогает только перезагрузка».
+const RETRY_DELAYS_MS = [3000, 10000, 30000];
+
 // Сколько карточек в ряду. Лента листается страницами ровно по столько —
 // так крайние карточки никогда не стоят наполовину за краем.
 // Пороги по ширине окна, а не секции: сайдбар забирает почти 300px, и на
@@ -98,7 +103,13 @@ function ClinicMark({ medCenter }) {
   );
 }
 
-const MyReviewsStrip = () => {
+/**
+ * @param {number} expected — сколько отзывов на мне по счётчикам досок. Список
+ *   досок приходит раньше ленты, и по нему уже видно, будет ли ей что
+ *   показать: если да, место под ленту держим заготовкой с первой секунды,
+ *   а не вставляем её потом, сдвигая доски вниз.
+ */
+const MyReviewsStrip = ({ expected = 0 }) => {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
@@ -121,15 +132,43 @@ const MyReviewsStrip = () => {
   const openIdRef = useRef(null);
   openIdRef.current = openId;
 
+  // 'loading' — первый ответ ещё не пришёл, 'ready' — список есть,
+  // 'error' — все повторы исчерпаны, а показать нечего
+  const [status, setStatus] = useState('loading');
+  const requestSeqRef = useRef(0);
+  const retryTimerRef = useRef(null);
+  const attemptRef = useRef(0);
+
   const loadList = useCallback(async () => {
+    // Плановый запрос, возврат на вкладку и повтор могут разминуться — в
+    // список попадает только ответ на последний из них
+    const seq = ++requestSeqRef.current;
+    clearTimeout(retryTimerRef.current);
     try {
       const { data } = await reviews.getAssigned();
+      if (seq !== requestSeqRef.current) return;
+      attemptRef.current = 0;
       setList(data);
+      setStatus('ready');
     } catch (err) {
-      // Лента — дополнение к списку досок; без неё раздел работает как прежде
+      if (seq !== requestSeqRef.current) return;
       console.error('Error loading assigned reviews:', err);
+      const delay = RETRY_DELAYS_MS[attemptRef.current];
+      if (delay) {
+        attemptRef.current += 1;
+        retryTimerRef.current = setTimeout(loadList, delay);
+      } else {
+        // Уже загруженный список при сбое обновления не стираем
+        setStatus(current => (current === 'ready' ? current : 'error'));
+      }
     }
   }, []);
+
+  const retryNow = () => {
+    attemptRef.current = 0;
+    setStatus('loading');
+    loadList();
+  };
 
   useEffect(() => {
     loadList();
@@ -138,6 +177,9 @@ const MyReviewsStrip = () => {
     window.addEventListener('focus', onFocus);
     return () => {
       clearInterval(timer);
+      clearTimeout(retryTimerRef.current);
+      // Ответ, пришедший после ухода со страницы, уже некуда класть
+      requestSeqRef.current += 1;
       window.removeEventListener('focus', onFocus);
     };
   }, [loadList]);
@@ -324,8 +366,35 @@ const MyReviewsStrip = () => {
     setStart(current => Math.min(Math.max(0, current + dir * perView), maxStart));
   };
 
-  // Пустая лента не показывается вовсе: место над досками ей не положено
-  if (list.length === 0) return null;
+  if (list.length === 0) {
+    // Пока грузится — заготовка того же размера, если по счётчикам досок
+    // на мне что-то есть. Нечего показывать — места над досками не занимаем.
+    if (status === 'loading' && expected > 0) {
+      return (
+        <section className="my-reviews my-reviews--skeleton" aria-busy="true">
+          <div className="my-reviews__head">
+            <span className="my-reviews__skeleton-bar" />
+          </div>
+          <div className="my-reviews__viewport">
+            <div className="my-reviews__track" style={{ '--per-view': perView, '--start': 0 }}>
+              {Array.from({ length: perView }, (_, i) => (
+                <div key={i} className="my-review-card my-reviews__skeleton-card" />
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    }
+    if (status === 'error') {
+      return (
+        <section className="my-reviews my-reviews--error">
+          <span>Не удалось загрузить ваши отзывы</span>
+          <button type="button" onClick={retryNow}>Повторить</button>
+        </section>
+      );
+    }
+    return null;
+  }
 
   const stillMine = detail && list.some(r => r.id === detail.id);
   const canReply = !!detail && isAdmin && canReplyOnPlatform(detail) && detail.status !== 'final'

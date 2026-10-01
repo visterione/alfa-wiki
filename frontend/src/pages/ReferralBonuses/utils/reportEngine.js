@@ -208,6 +208,29 @@ function rbBuildPatientDetails(rows) {
   return Object.values(_detailMap).sort((a, b) => a._dateSort - b._dateSort);
 }
 
+// Поля строки выгрузки, нужные детализации по пациентам. Вынесено отдельно для
+// разделов ассистента, медсестры и анестезиолога: у них одна строка — одно
+// оказание (count++), поэтому qty всегда 1, а сумма — оборот строки, как у врача.
+function rbRolePatientRow(r, colMap, cost) {
+  return {
+    patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
+    patientId: colMap.patientId ? String(r[colMap.patientId] || '').trim() : '',
+    patientName: colMap.patientName ? String(r[colMap.patientName] || '').trim() : '',
+    invoiceType: colMap.invoiceType ? String(r[colMap.invoiceType] || '').trim() : '',
+    legalCompany: colMap.legalCompanyName ? String(r[colMap.legalCompanyName] || '').trim() : '',
+    invoiceCreatedDate: colMap.invoiceCreatedDate ? r[colMap.invoiceCreatedDate] : '',
+    date: colMap.date ? r[colMap.date] : '',
+    qty: 1,
+    cost,
+  };
+}
+
+// _rows нужны только для сборки детализации; в итоговый отчёт (а с ним и в
+// сохранённую запись зарплаты) уходит уже свёрнутый patientDetails.
+function rbRoleServicesWithDetails(svcBreakdown) {
+  return Object.values(svcBreakdown).map(({ _rows, ...s }) => ({ ...s, patientDetails: rbBuildPatientDetails(_rows) }));
+}
+
 export async function buildReport({
   rows, colMap, doctor, referralBonuses, performedDbBonuses,
   execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
@@ -1086,15 +1109,16 @@ export async function buildReport({
               assistanceIncomeTotal += inc;
               const k2 = row2.svcCode || row2.svcName;
               if (!svcBreakdown2[k2])
-                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValueType, aValue };
+                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValueType, aValue, _rows: [] };
               svcBreakdown2[k2].cost   += row2.cost;
               svcBreakdown2[k2].count++;
               svcBreakdown2[k2].income += inc;
+              svcBreakdown2[k2]._rows.push(rbRolePatientRow(row2._raw, colMap, row2.cost));
             });
           }
 
           if (secTotal > 0) {
-            assistanceIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
+            assistanceIncomeSections.push({ execName, total: secTotal, services: rbRoleServicesWithDetails(svcBreakdown2) });
           }
         }
       }
@@ -1180,13 +1204,14 @@ export async function buildReport({
             anesthesiologistIncomeTotal += inc;
             const k2 = row2.svcCode || row2.svcName;
             if (!svcBreakdown2[k2])
-              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains, aValue, aValueType };
+              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains, aValue, aValueType, _rows: [] };
             svcBreakdown2[k2].cost   += row2.cost;
             svcBreakdown2[k2].count++;
             svcBreakdown2[k2].income += inc;
+            svcBreakdown2[k2]._rows.push(rbRolePatientRow(row2._raw, colMap, row2.cost));
           });
           if (secTotal !== 0) {
-            anesthesiologistIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
+            anesthesiologistIncomeSections.push({ execName, total: secTotal, services: rbRoleServicesWithDetails(svcBreakdown2) });
           }
         }
       }
@@ -1238,13 +1263,14 @@ export async function buildReport({
             nurseIncomeTotal += inc;
             const k2 = row2.svcCode || row2.svcName;
             if (!svcBreakdown2[k2])
-              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValue: match.value, aValueType: match.valueType };
+              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValue: match.value, aValueType: match.valueType, _rows: [] };
             svcBreakdown2[k2].cost   += row2.cost;
             svcBreakdown2[k2].count++;
             svcBreakdown2[k2].income += inc;
+            svcBreakdown2[k2]._rows.push(rbRolePatientRow(row2._raw, colMap, row2.cost));
           });
           if (secTotal > 0) {
-            nurseIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
+            nurseIncomeSections.push({ execName, total: secTotal, services: rbRoleServicesWithDetails(svcBreakdown2) });
           }
         }
       }

@@ -73,6 +73,38 @@ function PatientDetailTable({ details }) {
   );
 }
 
+// Раскрытие строки услуги до списка пациентов — тот же приём, что у врача в
+// ServiceTable, но для таблиц ассистента, медсестры и анестезиолога. Старые
+// сохранённые записи деталей не содержат, и тогда строка просто не раскрывается.
+function RoleServiceRows({ service, colSpan, children }) {
+  const [open, setOpen] = useState(false);
+  const hasDetails = Array.isArray(service.patientDetails) && service.patientDetails.length > 0;
+  return (
+    <>
+      <tr
+        className={hasDetails ? 'rb-service-row-expandable' : undefined}
+        onClick={hasDetails ? () => setOpen(o => !o) : undefined}
+        style={hasDetails ? { cursor: 'pointer' } : undefined}
+      >
+        {children(hasDetails && (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0, verticalAlign: 'middle', transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        ))}
+      </tr>
+      {hasDetails && open && (
+        <tr className="rb-service-detail-row">
+          <td colSpan={colSpan} style={{ padding: 0 }}>
+            <div className="rb-service-detail-wrap">
+              <PatientDetailTable details={service.patientDetails} />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function ServiceTable({ sections, columns, negative }) {
   const [showTip, setShowTip] = useState(false);
   const [expanded, setExpanded] = useState({});
@@ -171,14 +203,23 @@ function RoleServiceTable({ services, aValueRenderer }) {
         </thead>
         <tbody>
           {services.map((s, j) => (
-            <tr key={j}>
-              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-              <td>{s.name || '—'}</td>
-              <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-              <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-              <td style={{ textAlign: 'center' }}>{aValueRenderer(s)}</td>
-              <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
-            </tr>
+            <RoleServiceRows key={j} service={s} colSpan={6}>
+              {chevron => (
+                <>
+                  <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+                  <td>{s.name || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
+                  <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+                  <td style={{ textAlign: 'center' }}>{aValueRenderer(s)}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      +{(s.income || 0).toFixed(2)} ₽
+                      {chevron}
+                    </span>
+                  </td>
+                </>
+              )}
+            </RoleServiceRows>
           ))}
         </tbody>
       </table>
@@ -221,15 +262,22 @@ function AnesthTable({ services }) {
             const inc = s.income || 0;
             const incPos = inc >= 0;
             return (
-              <tr key={j}>
-                <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-                <td>{s.name || '—'}</td>
-                <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                <td style={{ textAlign: 'center' }}>{s.aValue != null ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
-                <td style={{ fontWeight: 600, color: incPos ? 'var(--rb-success)' : 'var(--rb-danger)', textAlign: 'right' }}>
-                  {incPos ? '+' : '−'}{Math.abs(inc).toFixed(2)} ₽
-                </td>
-              </tr>
+              <RoleServiceRows key={j} service={s} colSpan={5}>
+                {chevron => (
+                  <>
+                    <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+                    <td>{s.name || '—'}</td>
+                    <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+                    <td style={{ textAlign: 'center' }}>{s.aValue != null ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
+                    <td style={{ fontWeight: 600, color: incPos ? 'var(--rb-success)' : 'var(--rb-danger)', textAlign: 'right' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {incPos ? '+' : '−'}{Math.abs(inc).toFixed(2)} ₽
+                        {chevron}
+                      </span>
+                    </td>
+                  </>
+                )}
+              </RoleServiceRows>
             );
           })}
         </tbody>

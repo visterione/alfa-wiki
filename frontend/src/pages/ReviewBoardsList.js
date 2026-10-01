@@ -129,7 +129,7 @@ const ReviewBoardsList = () => {
       </div>
 
       {/* Свои отзывы со всех досок — первым делом при входе в раздел (ver. 9.18) */}
-      <MyReviewsStrip />
+      <MyReviewsStrip expected={boards.reduce((sum, b) => sum + (b.assignedToMeCount || 0), 0)} />
 
       {boards.length === 0 ? (
         <div className="reviews-boards-empty">

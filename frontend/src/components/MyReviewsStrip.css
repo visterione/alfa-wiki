@@ -512,6 +512,50 @@
   cursor: not-allowed;
 }
 
+/* ─── Загрузка и сбой ─── */
+
+.my-reviews__skeleton-bar {
+  width: 160px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.my-reviews__skeleton-card {
+  height: 236px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--bg-secondary) 0%, var(--bg-tertiary) 50%, var(--bg-secondary) 100%);
+  background-size: 200% 100%;
+  animation: my-reviews-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes my-reviews-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.my-reviews--error {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.my-reviews--error button {
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.my-reviews--error button:hover {
+  background: var(--bg-tertiary);
+}
+
 @media (max-width: 600px) {
   .my-reviews {
     padding: 0.875rem;
@@ -521,5 +565,9 @@
 @media (prefers-reduced-motion: reduce) {
   .my-reviews__track {
     transition: none;
+  }
+
+  .my-reviews__skeleton-card {
+    animation: none;
   }
 }
