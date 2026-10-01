@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Нарезка картинки под «Картинку с кнопкой» (ver. 9.18).
+ * Нарезка картинки под «Картинку с кнопкой» (ver. 9.12).
  *
  * ── Зачем резать ─────────────────────────────────────────────────────────────
  *
@@ -195,7 +195,93 @@ async function sliceFile({ source, rect }) {
   return file;
 }
 
+// ── Фон баннера под размер (ver. 9.13) ───────────────────────────────────────
+//
+// Баннер кладёт фото фоном ячейки и вписывает его свойством
+// background-size:cover. Часть почтовых клиентов этого свойства не знает и
+// рисует фон в натуральную величину. Файл у нас хранится шириной 1200px, вдвое
+// шире письма, — и в таком клиенте фото выходило вдвое крупнее баннера, с
+// обрезанными краями. Outlook тем временем растягивал его VML-рамкой под
+// прямоугольник баннера и искажал пропорции.
+//
+// Лечится тем, что фон режется на сервере ровно по размеру баннера, с той же
+// обрезкой по центру, что делает cover. Такой картинке вписываться не нужно:
+// в натуральную величину она и есть баннер. Живёт здесь, а не отдельно,
+// потому что устроена так же, как куски: лениво по подписанному адресу, с
+// кэшем на диске, только для картинок, загруженных в конструктор.
+
+// Потолок размера — двойная ширина письма и с запасом по высоте: вариант для
+// телефона делается вдвое крупнее, а баннер выше 700px никто не рисует.
+const COVER_MAX = 1400;
+const COVER_MIN = 20;
+
+const signCover = (source, w, h) => crypto
+  .createHmac('sha256', secret())
+  .update(`cover:${source.month}/${source.id}.${source.ext}:${w}x${h}`)
+  .digest('hex')
+  .slice(0, 20);
+
+function coverUrl(source, w, h, baseUrl = '') {
+  const base = String(baseUrl || '').replace(/\/+$/, '');
+  const W = Math.round(w);
+  const H = Math.round(h);
+  return `${base}/api/email/cover/${source.month}/${source.id}/${W}x${H}.${outExt(source.ext)}?s=${signCover(source, W, H)}`;
+}
+
+function parseCoverRequest({ month, id, size, ext, signature }) {
+  if (!/^\d{4}-\d{2}$/.test(String(month))) return null;
+  if (!/^[0-9a-f-]{36}$/.test(String(id))) return null;
+  const m = String(size || '').match(/^(\d{2,4})x(\d{2,4})$/);
+  if (!m) return null;
+  const [w, h] = [Number(m[1]), Number(m[2])];
+  if ([w, h].some(n => n < COVER_MIN || n > COVER_MAX)) return null;
+  const want = String(ext);
+  const candidates = want === 'jpg' ? ['jpg'] : want === 'png' ? ['png', 'gif'] : [];
+  for (const srcExt of candidates) {
+    const source = { month: String(month), id: String(id), ext: srcExt };
+    const expected = Buffer.from(signCover(source, w, h));
+    const given = Buffer.from(String(signature || ''));
+    if (given.length === expected.length && crypto.timingSafeEqual(given, expected)) return { source, w, h };
+  }
+  return null;
+}
+
+async function coverFile({ source, w, h }) {
+  const file = path.join(DIR, `${source.month}-${source.id}-cover-${w}x${h}.${outExt(source.ext)}`);
+  try {
+    await fsp.access(file, fs.constants.R_OK);
+    return file;
+  } catch {
+    // Не готовили — готовим.
+  }
+  const original = path.join(UPLOADS, source.month, `${source.id}.${source.ext}`);
+  try {
+    await fsp.access(original, fs.constants.R_OK);
+  } catch {
+    return null;
+  }
+
+  const sharp = require('sharp');
+  // fit: cover с центром — ровно то, что делает background-size:cover с
+  // background-position:center. Мелкую картинку растягиваем: иначе в баннере
+  // остались бы пустые поля, а cover в браузере её бы растянул точно так же.
+  let pipeline = sharp(original).resize({ width: w, height: h, fit: 'cover', position: 'centre' });
+  pipeline = outExt(source.ext) === 'jpg'
+    ? pipeline.jpeg({ quality: 84, mozjpeg: true, progressive: true })
+    : pipeline.png({ compressionLevel: 9 });
+  const out = await pipeline.toBuffer();
+
+  await fsp.mkdir(DIR, { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  await fsp.writeFile(tmp, out);
+  await fsp.rename(tmp, file);
+  return file;
+}
+
 module.exports = {
+  coverUrl,
+  parseCoverRequest,
+  coverFile,
   SCALE,
   parseSource,
   normalizeZone,

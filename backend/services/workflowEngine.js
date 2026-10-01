@@ -7,8 +7,12 @@
  *  - Старый: { nodes, edges } — обратная совместимость
  */
 
-const { ReviewBoardRole } = require('../models');
-const { getStatusById } = require('../config/reviewStatuses');
+const { Review, ReviewBoard, ReviewHistory } = require('../models');
+const { getStatusById, HISTORY_ACTIONS } = require('../config/reviewStatuses');
+
+// Действия сценария пишутся в историю от имени бота отзывов: человек, открыв
+// карточку, должен понять, что её передвинул не коллега, а настройка доски.
+const REVIEWS_BOT_ID = '00000000-0000-0000-0000-000000000002';
 
 // ─── Получить сценарии ─────────────────────────────────────────────────────
 
@@ -43,6 +47,17 @@ function matchesTrigger(node, event, review, extraData) {
     return true;
   }
 
+  // Ответ на площадке (ver. 9.18). Срабатывает, когда площадка ответ приняла,
+  // а не когда его поставили в очередь: если парсер не смог отправить, отзыв
+  // не должен уехать дальше по воронке с неотвеченным пациентом.
+  if (event === 'reply_published' && node.type === 'triggerReplied') {
+    const { onStatus = 'any', reviewCondition = 'any', ratingThreshold = RATING_THRESHOLD } = node.data || {};
+    if (onStatus !== 'any' && onStatus !== review.status) return false;
+    if (reviewCondition === 'positive' && review.rating < ratingThreshold) return false;
+    if (reviewCondition === 'negative' && review.rating >= ratingThreshold) return false;
+    return true;
+  }
+
   return false;
 }
 
@@ -55,18 +70,34 @@ async function executeAction(node, review, board, notificationService, chainCont
   // Назначить (один ответственный — заменяет предыдущего)
   if (type === 'actionAssign') {
     const userId = data.userIds?.[0] || null;
-    if (userId) {
+    if (userId && !(review.assigneeIds || []).includes(userId)) {
       await review.update({ assigneeIds: [userId] });
+      await ReviewHistory.create({
+        reviewId: review.id,
+        userId: REVIEWS_BOT_ID,
+        action: HISTORY_ACTIONS.ASSIGNMENT,
+        newValue: data.userNames?.[0] || null
+      });
       console.log(`[WorkflowEngine] actionAssign: review ${review.id} → user`, userId);
-      chainContext.assignedUserIds.add(userId);
     }
+    if (userId) chainContext.assignedUserIds.add(userId);
   }
 
   // Переместить
   if (type === 'actionMove') {
     const { targetStatus } = data;
     if (targetStatus && targetStatus !== review.status) {
+      const oldLabel = getStatusById(review.status)?.label || review.status;
       await review.update({ status: targetStatus });
+      // Без записи в истории таймер «сколько стоит на этапе» считал бы от
+      // прошлого ручного перемещения, а сам переход было бы не объяснить.
+      await ReviewHistory.create({
+        reviewId: review.id,
+        userId: REVIEWS_BOT_ID,
+        action: HISTORY_ACTIONS.STATUS_CHANGE,
+        oldValue: oldLabel,
+        newValue: getStatusById(targetStatus)?.label || targetStatus
+      });
       console.log(`[WorkflowEngine] actionMove: review ${review.id} → ${targetStatus}`);
     }
   }
@@ -116,8 +147,7 @@ async function executeScenario(scenario, event, review, board, notificationServi
   const { nodes = [], edges = [] } = scenario;
 
   const matchedTriggers = nodes.filter(n =>
-    (n.type === 'triggerNewReview' || n.type === 'triggerStatusChange') &&
-    matchesTrigger(n, event, review, extraData)
+    n.type.startsWith('trigger') && matchesTrigger(n, event, review, extraData)
   );
 
   for (const trigger of matchedTriggers) {
@@ -152,4 +182,41 @@ async function executeWorkflow(board, event, review, notificationService, extraD
   }
 }
 
-module.exports = { executeWorkflow };
+// ─── Ответ на площадке ─────────────────────────────────────────────────────
+
+/**
+ * Ответ виден на площадке (или ждёт её модерации — с нашей стороны всё
+ * сделано). В очереди, с ошибкой или отклонённый — ещё нет.
+ */
+function isReplyPublished(meta) {
+  if (!meta) return false;
+  if (!(meta.replyText || meta.isAnswered)) return false;
+  return !meta.replySending && !meta.replyFailed && !meta.replyRejected;
+}
+
+/**
+ * Запускает сценарии «Ответ на площадке», если ответ только что стал
+ * опубликованным. Сравниваем состояние до и после, а не просто «ответ есть»:
+ * иначе первая же синхронизация после настройки сценария прогнала бы по
+ * воронке все давно отвеченные отзывы доски. Сравнение же делает запуск
+ * однократным — подтверждение от очереди парсера и сбор с площадки приходят
+ * в любом порядке, но переход «не опубликован → опубликован» видит только
+ * тот, кто пришёл первым.
+ */
+async function onReplyMetaChanged(reviewId, beforeMeta, afterMeta) {
+  if (isReplyPublished(beforeMeta) || !isReplyPublished(afterMeta)) return;
+  try {
+    const review = await Review.findByPk(reviewId, {
+      include: [{ model: ReviewBoard, as: 'board' }]
+    });
+    // Закрытые и архивные отзывы воронка не трогает: ответ на старый отзыв,
+    // по которому решение уже принято, не повод возвращать его в работу.
+    if (!review || !review.board || review.archived || review.status === 'final') return;
+    const notificationService = require('./notificationService');
+    await executeWorkflow(review.board, 'reply_published', review, notificationService);
+  } catch (err) {
+    console.error('[WorkflowEngine] reply_published hook error:', err.message);
+  }
+}
+
+module.exports = { executeWorkflow, isReplyPublished, onReplyMetaChanged };

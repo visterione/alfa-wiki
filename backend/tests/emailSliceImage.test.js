@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Картинка с кнопкой (ver. 9.18).
+ * Картинка с кнопкой (ver. 9.12).
  *
  * Маршрут кусков открыт без входа, поэтому главное здесь — что он режет только
  * подписанное рендерером, и что куски сходятся без щелей: шов в пиксель на
@@ -118,4 +118,41 @@ test('куски режутся по одним краям и сходятся �
 test('кусок удалённой картинки — пустота, а не ошибка', async () => {
   const source = { month: '2000-02', id: ID, ext: 'jpg' };
   assert.equal(await slices.sliceFile({ source, rect: { l: 0, t: 0, r: 5000, b: 5000 } }), null);
+});
+
+test('фон баннера готовится ровно под его размер и подписан', async () => {
+  const hero = (src) => render({ version: 2, settings: {}, sections: [{ columns: [{ width: 100, blocks: [{ type: 'hero', src, height: 260, title: 'Баннер', padding: { top: 0, right: 0, bottom: 0, left: 0 } }] }] }] }, { baseUrl: 'https://w.ru' }).html;
+
+  // Свой файл: в фоне, в атрибуте и в VML — один и тот же подготовленный
+  // адрес размером с баннер, а не исходник вдвое шире письма.
+  const html = hero(SRC);
+  const covers = html.match(/\/api\/email\/cover\/2000-01\/[^/]+\/(\d+x\d+)\.png/g) || [];
+  assert.ok(covers.length >= 3);
+  assert.ok(covers.some(u => u.endsWith('/600x260.png')));
+  assert.ok(covers.some(u => u.endsWith('/1200x520.png')), 'для телефона — вдвое крупнее');
+  assert.doesNotMatch(html, new RegExp(`${ID}\\.png`));
+
+  // Чужой адрес идёт как раньше: подготовить его нечем.
+  assert.match(hero('https://cdn.example/b.jpg'), /background="https:\/\/cdn\.example\/b\.jpg"/);
+
+  const signature = html.match(/600x260\.png\?s=([0-9a-f]+)/)[1];
+  const ask = (over = {}) => slices.parseCoverRequest({ month: '2000-01', id: ID, size: '600x260', ext: 'png', signature, ...over });
+  assert.ok(ask());
+  assert.equal(ask({ size: '1400x1400' }), null);
+  assert.equal(ask({ signature: '0'.repeat(20) }), null);
+
+  const sharp = require('sharp');
+  const dir = path.join(__dirname, '..', 'uploads', 'email', '2000-01');
+  const original = path.join(dir, `${ID}.png`);
+  await fsp.mkdir(dir, { recursive: true });
+  await sharp({ create: { width: 1200, height: 900, channels: 3, background: '#336699' } }).png().toFile(original);
+  let file;
+  try {
+    file = await slices.coverFile(ask());
+    const m = await sharp(file).metadata();
+    assert.deepEqual([m.width, m.height], [600, 260]);
+  } finally {
+    await Promise.all([original, file].filter(Boolean).map(f => fsp.rm(f, { force: true })));
+    await fsp.rmdir(dir).catch(() => {});
+  }
 });

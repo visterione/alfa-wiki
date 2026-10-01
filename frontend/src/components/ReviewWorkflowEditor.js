@@ -42,6 +42,14 @@ const NODE_TYPES_META = [
     color: '#0284c7'
   },
   {
+    type: 'triggerReplied',
+    label: 'Ответ на площадке',
+    description: 'Когда площадка приняла ответ на отзыв',
+    icon: '💬',
+    category: 'trigger',
+    color: '#0d9488'
+  },
+  {
     type: 'actionAssign',
     label: 'Назначить',
     description: 'Назначить ответственного',
@@ -124,6 +132,30 @@ function TriggerStatusChangeNode({ data, selected }) {
   );
 }
 
+// Срабатывает, когда ответ опубликован на площадке — из вики или прямо там.
+// Этап нужен, чтобы одна доска могла вести ответы по-разному: ответили на
+// новом отзыве — одно продолжение, ответили в работе — другое.
+function TriggerRepliedNode({ data, selected }) {
+  const stageLabel = !data.onStatus || data.onStatus === 'any'
+    ? 'Любой'
+    : REVIEW_STATUSES.find(s => s.id === data.onStatus)?.label || data.onStatus;
+  const conditionLabels = { positive: 'Положительный', negative: 'Отрицательный' };
+  return (
+    <NodeWrapper color="#0d9488" selected={selected}>
+      <div className="wf-node__header wf-node__header--trigger">
+        <span>💬</span> Ответ на площадке
+      </div>
+      <div className="wf-node__body">
+        <div className="wf-node__prop">Этап: <strong>{stageLabel}</strong></div>
+        {data.reviewCondition && data.reviewCondition !== 'any' && (
+          <div className="wf-node__prop wf-node__prop--tag">{conditionLabels[data.reviewCondition]}</div>
+        )}
+      </div>
+      <Handle type="source" position={Position.Right} className="wf-handle" />
+    </NodeWrapper>
+  );
+}
+
 function ActionAssignNode({ data, selected }) {
   const label = data.userNames?.[0] || (data.userIds?.[0] ? '1 пользователь' : '—');
   return (
@@ -181,6 +213,7 @@ function ActionNotifyNode({ data, selected }) {
 const customNodeTypes = {
   triggerNewReview: TriggerNewReviewNode,
   triggerStatusChange: TriggerStatusChangeNode,
+  triggerReplied: TriggerRepliedNode,
   actionAssign: ActionAssignNode,
   actionMove: ActionMoveNode,
   actionNotify: ActionNotifyNode
@@ -263,6 +296,32 @@ function NodeConfigPanel({ node, boardMembers, onUpdate, onDelete, onClose }) {
                 <option value="">— выберите —</option>
                 {REVIEW_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
+            </div>
+            <div className="wf-config__field">
+              <label>Тип отзыва</label>
+              <select value={data.reviewCondition || 'any'} onChange={e => update('reviewCondition', e.target.value)}>
+                <option value="any">Любой</option>
+                <option value="positive">Только положительные</option>
+                <option value="negative">Только отрицательные</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        {node.type === 'triggerReplied' && (
+          <>
+            <div className="wf-config__field">
+              <label>Отзыв на этапе</label>
+              <select value={data.onStatus || 'any'} onChange={e => update('onStatus', e.target.value)}>
+                <option value="any">Любом</option>
+                {REVIEW_STATUSES.filter(s => s.id !== 'final').map(s => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+              <span className="wf-config__hint">
+                Срабатывает, когда площадка приняла ответ — отправленный из вики или
+                написанный прямо на площадке. Закрытые и архивные отзывы не трогает.
+              </span>
             </div>
             <div className="wf-config__field">
               <label>Тип отзыва</label>
@@ -425,6 +484,7 @@ function ScenarioCanvas({ scenario, boardMembers, onChange }) {
     const defaults = {
       triggerNewReview: { condition: 'any', ratingThreshold: 4 },
       triggerStatusChange: { fromStatus: 'any', toStatus: '', reviewCondition: 'any' },
+      triggerReplied: { onStatus: 'any', reviewCondition: 'any' },
       actionAssign: { userIds: [], userNames: [] },
       actionMove: { targetStatus: '' },
       actionNotify: { notificationType: 'statusChange', userIds: [], userNames: [] }

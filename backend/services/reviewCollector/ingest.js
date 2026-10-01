@@ -237,9 +237,12 @@ async function ingestPlace(placeId, rawReviews, opts = {}) {
 
     const existing = await Review.findOne({ where: { sourceKey: key }, paranoid: false });
     if (existing) {
-      const meta = mergeReply(existing.syncMeta || {}, raw.answer);
+      const before = existing.syncMeta || {};
+      const meta = mergeReply(before, raw.answer);
       meta.direct = { ...(meta.direct || {}), ...directMeta(place, raw) };
       await existing.update({ syncMeta: meta, syncedAt: new Date() });
+      // Ответили прямо на площадке, мимо вики, — для воронки это такой же ответ.
+      await require('../workflowEngine').onReplyMetaChanged(existing.id, before, meta);
       counts.updated++;
       continue;
     }
@@ -255,6 +258,7 @@ async function ingestPlace(placeId, rawReviews, opts = {}) {
         { sourceKey: key, syncMeta: meta, syncedAt: new Date() },
         { where: { id: counterpart.id }, paranoid: false },
       );
+      await require('../workflowEngine').onReplyMetaChanged(counterpart.id, counterpart.syncMeta || {}, meta);
       counts.matched++;
       continue;
     }

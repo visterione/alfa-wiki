@@ -609,7 +609,7 @@ const blockRenderers = {
   },
 
   /**
-   * Картинка с кнопкой (ver. 9.18): макет, на котором кнопка уже нарисована, и
+   * Картинка с кнопкой (ver. 9.12): макет, на котором кнопка уже нарисована, и
    * ссылка только на ней.
    *
    * Картинка режется на полосы и собирается обратно (зачем и почему именно
@@ -1009,17 +1009,39 @@ ${photo}
         top: `linear-gradient(to bottom, rgba(0,0,0,${a}) 0%, rgba(0,0,0,0) 100%)`,
       }[block.overlayStyle] || `linear-gradient(rgba(0,0,0,${a}), rgba(0,0,0,${a}))`)
       : '';
-    const layers = [shade, src ? `url('${esc(src)}')` : ''].filter(Boolean).join(', ');
+
+    // Фон ровно по размеру баннера (ver. 9.13). Клиенты, не знающие
+    // background-size, рисуют фон в натуральную величину, а исходник вдвое
+    // шире письма — фото выходило вдвое крупнее баннера с обрезанными краями.
+    // Картинке, нарезанной сервером под размер, вписываться не нужно (см.
+    // coverUrl в emailSliceImage.js). Она же уходит в VML: рамка Outlook больше
+    // не растягивает фото под чужие пропорции.
+    //
+    // Размер в один к одному намеренно: вдвое крупнее — и клиент без
+    // background-size снова покажет его увеличенным. Чёткость на телефоне
+    // возвращает медиазапрос ниже: там клиенты background-size понимают.
+    // Чужую картинку по адресу подготовить нечем — она идёт как раньше.
+    const own = slices.parseSource(block.src);
+    const bgSrc = own ? slices.coverUrl(own, width, height, ctx.baseUrl) : src;
+    const layersOf = (url) => [shade, url ? `url('${esc(url)}')` : ''].filter(Boolean).join(', ');
+    const layers = layersOf(bgSrc);
 
     // Высота на телефоне. Атрибут height и height в стиле держат десктопное
     // число, и на экране вдвое уже баннер оставался той же высоты — фотография
     // обрезалась до узкой полоски посередине, а текст в ней не помещался.
     const mobileHeight = Math.max(140, Math.round(height * 0.66));
     const shrink = mobileClass(ctx, `height:${mobileHeight}px !important;`);
+    // На телефоне — тот же фон вдвое крупнее, под экран с двойной плотностью.
+    // Упирается в потолок размера пропорционально, чтобы не менять кадр.
+    const k = Math.min(2, 1400 / Math.max(width, height));
+    const sharp2x = own
+      ? mobileClass(ctx, `background-image:${layersOf(slices.coverUrl(own, width * k, height * k, ctx.baseUrl))} !important;`)
+      : '';
+    const cls = [shrink, sharp2x].filter(Boolean).join(' ');
 
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
-<tr><td${shrink ? ` class="${shrink}"` : ''} align="center" height="${height}"${src ? ` background="${esc(src)}"` : ''} bgcolor="${bg}" valign="middle" style="height:${height}px;background-color:${bg};${layers ? `background-image:${layers};background-size:cover;background-position:center;` : ''}">
-<!--[if mso]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px;"><v:fill ${src ? `type="frame" src="${esc(src)}" ` : ''}color="${bg}"/><v:textbox inset="0,0,0,0"><![endif]-->
+<tr><td${cls ? ` class="${cls}"` : ''} align="center" height="${height}"${bgSrc ? ` background="${esc(bgSrc)}"` : ''} bgcolor="${bg}" valign="middle" style="height:${height}px;background-color:${bg};${layers ? `background-image:${layers};background-size:cover;background-position:center;` : ''}">
+<!--[if mso]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px;"><v:fill ${bgSrc ? `type="frame" src="${esc(bgSrc)}" ` : ''}color="${bg}"/><v:textbox inset="0,0,0,0"><![endif]-->
 ${content}
 <!--[if mso]></v:textbox></v:rect><![endif]-->
 </td></tr></table>`;

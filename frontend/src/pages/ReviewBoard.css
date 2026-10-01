@@ -2141,7 +2141,10 @@
    найденной карточки. На пурпурном акценте доска подсвечивалась синим.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.review-board-page {
+/* Лента «Мои отзывы» над списком досок (ver. 9.18) рисует те же карточки —
+   и берёт те же поверхности */
+.review-board-page,
+.my-reviews {
   --rb-lane: var(--bg-secondary);
   --rb-surface: var(--bg-primary);
   --rb-border: color-mix(in srgb, var(--border-light) 76%, rgba(255, 255, 255, .38));
@@ -2154,7 +2157,8 @@
 /* Тёмная тема переставляет подложки вручную: ступени рамп в ней перевёрнуты, и
    пара «колонка --bg-secondary + карточка --bg-primary» дала бы карточку темнее
    колонки — ровно наоборот тому, что нужно. Та же правка, что у ленты чата. */
-:root[data-theme='dark'] .review-board-page {
+:root[data-theme='dark'] .review-board-page,
+:root[data-theme='dark'] .my-reviews {
   --rb-lane: var(--n-0);
   --rb-surface: var(--n-100);
 }

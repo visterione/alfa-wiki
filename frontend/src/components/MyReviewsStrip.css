@@ -1,0 +1,525 @@
+/* «Мои отзывы» (ver. 9.18): лента над списком досок и окно отзыва.
+   Ленту истории и поле ввода берём из стилей доски (ReviewBoard.css), здесь
+   только раскладка и то, чего у доски нет. */
+
+.my-reviews {
+  margin-bottom: 2rem;
+  padding: 1rem 1.25rem 1.25rem;
+  /* Секция выделена как колонка доски: белая панель с цветной кромкой
+     сверху. Синий градиент подложки был отвергнут — тонированные карточки
+     на нём превращались в грязь */
+  border: 1px solid var(--border-color);
+  border-top: 3px solid var(--accent-500);
+  border-radius: 16px;
+  background: var(--bg-primary);
+  box-shadow: 0 1px 2px rgba(20, 29, 45, .05), 0 8px 24px rgba(20, 29, 45, .06);
+  /* Сотни карточек в ряд не должны распирать страницу: без этого
+     .main-content (элемент flex) растягивался до ширины всей ленты, и вместе
+     с ним — сетка досок. Ширину ленте задаёт страница, а не её содержимое. */
+  contain: inline-size;
+}
+
+/* Подложка карточек задана здесь явно, а не токенами доски (--rb-surface):
+   без токена color-mix недействителен, фон пропадает, и карточка остаётся
+   одной цветной рамкой. Тон тот же, что на доске. */
+.my-reviews .review-card.positive {
+  background: color-mix(in srgb, var(--green-500) 9%, var(--bg-primary));
+  border-color: color-mix(in srgb, var(--green-500) 26%, transparent);
+}
+
+.my-reviews .review-card.negative {
+  background: color-mix(in srgb, var(--red-500) 9%, var(--bg-primary));
+  border-color: color-mix(in srgb, var(--red-500) 26%, transparent);
+}
+
+.my-reviews button {
+  font-family: inherit;
+}
+
+.my-reviews__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+}
+
+.my-reviews__waiting {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--accent-700, var(--accent-600));
+}
+
+/* ─── Выбор медцентра ─── */
+
+.my-reviews__filter {
+  position: relative;
+}
+
+.my-reviews__filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.my-reviews__filter-btn svg {
+  color: var(--text-tertiary);
+  transition: transform 0.15s;
+}
+
+.my-reviews__filter-btn.is-open svg {
+  transform: rotate(180deg);
+}
+
+.my-reviews__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 250px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0.375rem;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+}
+
+.my-reviews__option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.my-reviews__option:hover {
+  background: var(--bg-secondary);
+}
+
+.my-reviews__option.is-active {
+  color: var(--accent-600);
+  font-weight: 500;
+}
+
+.my-reviews__option-check {
+  display: flex;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.my-reviews__option-name {
+  flex: 1;
+}
+
+/* Знак медцентра: та же плашка, что на карточке доски, только меньше */
+.my-reviews__mark {
+  --mc-accent: var(--accent-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 22px;
+  padding: 2px 3px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--mc-accent) 30%, transparent);
+}
+
+.my-reviews__mark img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.my-reviews__mark.is-empty {
+  background: none;
+  border-color: transparent;
+}
+
+.my-reviews__option-count {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Стрелки ─── */
+
+.my-reviews__pager {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.my-reviews__pager button {
+  display: flex;
+  padding: 0.375rem;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.my-reviews__pager button:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.my-reviews__pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ─── Карусель ───
+   Ширина карточки и сдвиг считаются от одного и того же: (ширина + зазор) /
+   число в ряду. Поэтому каждая страница встаёт ровно по краям, сколько ни листай. */
+
+.my-reviews__viewport {
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.my-reviews__track {
+  --gap: 1rem;
+  display: flex;
+  gap: var(--gap);
+  transform: translateX(calc(var(--start) * -1 * (100% + var(--gap)) / var(--per-view)));
+  transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.my-reviews__track > .my-review-card {
+  flex: 0 0 calc((100% - (var(--per-view) - 1) * var(--gap)) / var(--per-view));
+  min-width: 0;
+  margin: 0;
+  /* Карточки ряда одной высоты, низ с таймером и медцентром — по нижнему краю */
+  display: flex;
+  flex-direction: column;
+}
+
+.my-reviews__track > .my-review-card .card-footer {
+  margin-top: auto;
+  min-width: 0;
+}
+
+/* Сама карточка — доски (ReviewCard + ReviewBoard.css); здесь только то,
+   чего у доски нет: открытая сейчас и уже отвеченные */
+.my-review-card.is-active {
+  outline: 2px solid var(--accent-500);
+  outline-offset: -1px;
+}
+
+.my-review-card:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+}
+
+/* Отвеченные ждут не меня, а сценарий доски — видны, но не спорят с ждущими */
+.my-review-card.is-done {
+  opacity: 0.6;
+}
+
+.my-review-card__clinic {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.my-review-card__flag {
+  flex-shrink: 0;
+  padding: 0 0.375rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.my-review-card__flag.is-danger {
+  background: var(--red-50);
+  color: var(--red-600);
+}
+
+/* Флаг ответа уже прижат вправо — медцентр встаёт за ним */
+.my-review-card__flag + .my-review-card__clinic {
+  margin-left: 0;
+}
+
+.my-review-card__flag {
+  margin-left: auto;
+}
+
+/* ─── Окно отзыва ────────────────────────────────────────────────────── */
+
+.my-review-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+
+.my-review-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 2rem);
+  border-radius: 16px;
+  background: var(--bg-primary);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.my-review-modal button {
+  font-family: inherit;
+}
+
+.my-review-modal__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.my-review-modal__bar button {
+  display: flex;
+  padding: 0.25rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.my-review-modal__bar button:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.my-review-modal__bar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.my-review-modal__bar .my-review-modal__close {
+  margin-left: auto;
+}
+
+.my-review-modal__loading {
+  display: flex;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.my-review-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+.my-review-modal__gone {
+  padding: 0.625rem 0.875rem;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.my-review-modal__review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.my-review-modal__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.my-review-modal__name {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.my-review-modal__rating {
+  font-weight: 600;
+  color: var(--amber-500);
+}
+
+.my-review-modal__date {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+.my-review-modal__status {
+  margin-left: auto;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--status-color);
+  color: var(--status-color);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Текст отзыва здесь читают, а не копируют — без «кликни, чтобы скопировать» */
+.my-review-modal .review-bubble {
+  cursor: text;
+  white-space: pre-wrap;
+}
+
+.my-review-modal__source {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.my-review-modal__source a,
+.my-review-modal__source button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-600);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.my-review-modal__source a:hover,
+.my-review-modal__source button:hover {
+  text-decoration: underline;
+}
+
+.my-review-modal__extra {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+/* Лента истории растёт вместе с окном — прокручивается само окно */
+.my-review-modal__history .history-timeline {
+  max-height: none;
+  overflow: visible;
+}
+
+.my-review-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.my-review-modal .my-review-composer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 4.5rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.my-review-composer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* У доски кнопки ввода — квадратные значки; здесь ответ — главное действие
+   окна, и подписи у него словами. Селекторы с запасом специфичности:
+   правило доски «.add-comment button:not(...)» сильнее простого класса, а
+   порядок стилей между ленивыми чанками не гарантирован. */
+.my-review-modal .add-comment .my-review-composer__actions button.my-review-composer__comment,
+.my-review-modal .add-comment .my-review-composer__actions button.my-review-composer__reply {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 0.875rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.my-review-modal .add-comment .my-review-composer__actions button.my-review-composer__comment {
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+}
+
+.my-review-modal .add-comment .my-review-composer__actions button.my-review-composer__comment:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.my-review-modal .add-comment .my-review-composer__actions button.my-review-composer__reply {
+  border: none;
+  background: var(--accent-500);
+  color: white;
+}
+
+.my-review-modal .add-comment .my-review-composer__actions button.my-review-composer__reply:hover:not(:disabled) {
+  background: var(--accent-600);
+}
+
+.my-review-modal .add-comment .my-review-composer__actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .my-reviews {
+    padding: 0.875rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-reviews__track {
+    transition: none;
+  }
+}

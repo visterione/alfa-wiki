@@ -683,6 +683,8 @@ export const reviews = {
   updateReview: (id, data) => api.put(`/reviews/${id}`, data),
   deleteReview: (id) => api.delete(`/reviews/${id}`),
   getAssignedCount: () => api.get('/reviews/assigned-count'),
+  // Назначенные мне со всех досок — лента «Мои отзывы» над досками (ver. 9.18)
+  getAssigned: () => api.get('/reviews/assigned'),
   moveReview: (id, status, sortOrder, comment) => api.post(`/reviews/${id}/move`, { status, sortOrder, comment }),
   assignReview: (id, assigneeId, comment) => api.post(`/reviews/${id}/assign`, { assigneeId, comment }),
   addComment: (id, data) => api.post(`/reviews/${id}/comment`, data),

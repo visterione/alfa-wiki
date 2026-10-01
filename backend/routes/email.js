@@ -301,7 +301,7 @@ router.get('/icon/:key([a-z0-9-]+).png', async (req, res) => {
 });
 
 /**
- * Кусок «Картинки с кнопкой» (ver. 9.18).
+ * Кусок «Картинки с кнопкой» (ver. 9.12).
  *
  * Открыт без входа по той же причине, что и иконки: за ним ходит прокси
  * почтового клиента. Но, в отличие от иконки, прямоугольник здесь задаётся
@@ -328,6 +328,35 @@ router.get('/slice/:month/:id/:rect.:ext(jpg|png)', async (req, res) => {
     res.sendFile(file);
   } catch (error) {
     console.error('❌ Error slicing email image:', error);
+    res.status(500).end();
+  }
+});
+
+/**
+ * Фон баннера ровно по его размеру (ver. 9.13).
+ *
+ * Открыт и подписан по тем же причинам, что и куски картинки с кнопкой: за ним
+ * ходит почтовый прокси, а размер задаётся числами (см. emailSliceImage.js).
+ */
+router.get('/cover/:month/:id/:size.:ext(jpg|png)', async (req, res) => {
+  try {
+    const parsed = emailSlices.parseCoverRequest({
+      month: req.params.month,
+      id: req.params.id,
+      size: req.params.size,
+      ext: req.params.ext,
+      signature: req.query.s,
+    });
+    if (!parsed) return res.status(404).end();
+
+    const file = await emailSlices.coverFile(parsed);
+    if (!file) return res.status(404).end();
+
+    res.type(req.params.ext);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.sendFile(file);
+  } catch (error) {
+    console.error('❌ Error sizing email banner:', error);
     res.status(500).end();
   }
 });

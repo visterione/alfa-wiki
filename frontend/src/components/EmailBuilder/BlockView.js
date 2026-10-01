@@ -14,17 +14,19 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
+import { useEditor, EditorContent, BubbleMenu, Extension } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import TextStyle from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Placeholder from '@tiptap/extension-placeholder';
+import TextAlign from '@tiptap/extension-text-align';
 import {
   Bold, Italic, Underline as UnderlineIcon, List, ListOrdered,
   Link as LinkIcon, Heading2, Heading3, Image as ImageIcon, Code2,
-  MousePointerSquareDashed
+  MousePointerSquareDashed, Palette, ALargeSmall, AlignLeft, AlignCenter,
+  AlignRight, AlignJustify, RemoveFormatting
 } from 'lucide-react';
 import { BASE_URL } from '../../services/api';
 import { fontStack, ensureWebFont } from './fonts';
@@ -208,6 +210,37 @@ export const previewSrc = (src) => {
 };
 
 /**
+ * Размер шрифта у выделенного куска (ver. 9.13).
+ *
+ * В TipTap второй версии своего расширения для этого нет, а цвет уже живёт
+ * атрибутом отметки textStyle. Размер ложится туда же: получается тот же
+ * <span style="...">, который рендерер письма и так пропускает — font-size в
+ * пикселях есть в его белом списке (см. richText в emailRenderer.js).
+ */
+const FontSize = Extension.create({
+  name: 'fontSize',
+  addGlobalAttributes() {
+    return [{
+      types: ['textStyle'],
+      attributes: {
+        fontSize: {
+          default: null,
+          parseHTML: el => el.style.fontSize || null,
+          renderHTML: attrs => (attrs.fontSize ? { style: `font-size: ${attrs.fontSize}` } : {}),
+        },
+      },
+    }];
+  },
+});
+
+// Цвета под рукой. Первые три — из настроек письма, чтобы выделенное слово
+// можно было вернуть в фирменную гамму одним нажатием; остальные — то, чем
+// обычно выделяют в рассылке: скидку, срок, предупреждение.
+const EXTRA_COLORS = ['#FF3B30', '#FF9500', '#34C759', '#0A84FF', '#AF52DE', '#FFFFFF'];
+const SIZES = [12, 14, 16, 18, 20, 24, 28, 32];
+const ALIGNS = [['left', AlignLeft, 'Влево'], ['center', AlignCenter, 'По центру'], ['right', AlignRight, 'Вправо'], ['justify', AlignJustify, 'По ширине']];
+
+/**
  * Текст правится прямо на холсте, а не в панели справа.
  *
  * Редактор поднимается только у выбранного блока: TipTap на каждый абзац письма
@@ -229,6 +262,8 @@ function TextEditable({ block, settings, selected, onChange }) {
    */
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Какой второй ряд панели открыт: цвет, размер, выравнивание или никакой.
+  const [panel, setPanel] = useState(null);
 
   /**
    * Редактор создаётся ОДИН раз на блок и живёт, пока живёт блок.
@@ -252,6 +287,11 @@ function TextEditable({ block, settings, selected, onChange }) {
       Underline,
       TextStyle,
       Color,
+      FontSize,
+      // Выравнивание у абзаца, а не у всего блока (ver. 9.13). Выравнивание в
+      // панели свойств осталось и работает как умолчание: абзац без своего
+      // берёт его. Своё ложится на <p> стилем, и рендерер его пропускает.
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Link.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder: 'Текст письма…' }),
     ],
@@ -264,6 +304,15 @@ function TextEditable({ block, settings, selected, onChange }) {
     if (editor && editor.isEditable !== selected) editor.setEditable(selected);
   }, [editor, selected]);
 
+  // Второй ряд панели закрывается вместе с выделением: иначе при следующем
+  // выделении панель всплывала бы уже раскрытой, с палитрой от прошлого раза.
+  useEffect(() => {
+    if (!editor) return undefined;
+    const close = ({ editor: ed }) => { if (ed.state.selection.empty) setPanel(null); };
+    editor.on('selectionUpdate', close);
+    return () => { editor.off('selectionUpdate', close); };
+  }, [editor]);
+
   // Содержимое могло измениться снаружи — например, применили шаблон или
   // откатили действие. Сравнение с текущим HTML обязательно: без него setContent
   // сбрасывает курсор в начало при каждом нажатии клавиши.
@@ -274,6 +323,17 @@ function TextEditable({ block, settings, selected, onChange }) {
   }, [block.html, editor]);
 
   if (!editor) return null;
+
+  // Нажатие на кнопку панели не должно снимать выделение с текста: иначе цвет
+  // применялся бы к пустоте. Поэтому mousedown гасится, а команда идёт по клику.
+  const keep = (e) => e.preventDefault();
+  const run = (fn) => { fn(editor.chain().focus()).run(); };
+  const color = editor.getAttributes('textStyle').color || '';
+  const size = editor.getAttributes('textStyle').fontSize || '';
+  const alignNow = ALIGNS.find(([a]) => editor.isActive({ textAlign: a }))?.[0] || '';
+  const AlignNowIcon = (ALIGNS.find(([a]) => a === alignNow) || ALIGNS[0])[1];
+  const swatches = [...new Set([settings.textColor, settings.mutedColor, settings.linkColor, ...EXTRA_COLORS]
+    .filter(Boolean).map(c => String(c).toUpperCase()))];
 
   const addLink = () => {
     const prev = editor.getAttributes('link').href || '';
@@ -309,6 +369,45 @@ function TextEditable({ block, settings, selected, onChange }) {
           <button type="button" className={editor.isActive('orderedList') ? 'active' : ''} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Нумерованный список"><ListOrdered size={14} /></button>
           <span className="eb-bubble-sep" />
           <button type="button" className={editor.isActive('link') ? 'active' : ''} onClick={addLink} title="Ссылка"><LinkIcon size={14} /></button>
+          <span className="eb-bubble-sep" />
+          <button type="button" onMouseDown={keep} className={panel === 'color' ? 'active' : ''} onClick={() => setPanel(panel === 'color' ? null : 'color')} title="Цвет текста">
+            <Palette size={14} />
+            <i className="eb-bubble-dot" style={{ background: color || 'transparent' }} />
+          </button>
+          <button type="button" onMouseDown={keep} className={panel === 'size' ? 'active' : ''} onClick={() => setPanel(panel === 'size' ? null : 'size')} title="Размер текста"><ALargeSmall size={14} /></button>
+          <button type="button" onMouseDown={keep} className={panel === 'align' ? 'active' : ''} onClick={() => setPanel(panel === 'align' ? null : 'align')} title="Выравнивание абзаца"><AlignNowIcon size={14} /></button>
+          <button type="button" onMouseDown={keep} onClick={() => run(c => c.unsetColor().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().unsetTextAlign())} title="Сбросить цвет, размер и выравнивание"><RemoveFormatting size={14} /></button>
+
+          {/* Второй ряд — внутри той же панели, а не отдельным всплывающим
+              окном: второе окно TipTap считает уходом фокуса из редактора и
+              прячет панель вместе с ним. */}
+          {panel === 'color' && (
+            <div className="eb-bubble-row" onMouseDown={keep}>
+              {swatches.map(c => (
+                <button key={c} type="button" className={`eb-swatch ${color.toUpperCase() === c ? 'active' : ''}`} style={{ background: c }} title={c} onClick={() => run(ch => ch.setColor(c))} />
+              ))}
+              <label className="eb-swatch eb-swatch-custom" title="Свой цвет">
+                <input type="color" value={/^#[0-9a-f]{6}$/i.test(color) ? color : '#000000'} onChange={(e) => run(ch => ch.setColor(e.target.value))} />
+              </label>
+              <button type="button" className="eb-bubble-text" onClick={() => run(ch => ch.unsetColor())} title="Как у блока">как у блока</button>
+            </div>
+          )}
+          {panel === 'size' && (
+            <div className="eb-bubble-row" onMouseDown={keep}>
+              {SIZES.map(n => (
+                <button key={n} type="button" className={`eb-bubble-text ${size === `${n}px` ? 'active' : ''}`} onClick={() => run(ch => ch.setMark('textStyle', { fontSize: `${n}px` }))}>{n}</button>
+              ))}
+              <button type="button" className="eb-bubble-text" onClick={() => run(ch => ch.setMark('textStyle', { fontSize: null }).removeEmptyTextStyle())}>как у блока</button>
+            </div>
+          )}
+          {panel === 'align' && (
+            <div className="eb-bubble-row" onMouseDown={keep}>
+              {ALIGNS.map(([a, Icon, label]) => (
+                <button key={a} type="button" className={alignNow === a ? 'active' : ''} onClick={() => run(ch => ch.setTextAlign(a))} title={label}><Icon size={14} /></button>
+              ))}
+              <button type="button" className="eb-bubble-text" onClick={() => run(ch => ch.unsetTextAlign())}>как у блока</button>
+            </div>
+          )}
       </BubbleMenu>
       <EditorContent editor={editor} />
     </>
@@ -316,7 +415,7 @@ function TextEditable({ block, settings, selected, onChange }) {
 }
 
 /**
- * Картинка с кнопкой на холсте (ver. 9.18): рамка зоны поверх макета.
+ * Картинка с кнопкой на холсте (ver. 9.12): рамка зоны поверх макета.
  *
  * Рамку двигают, тянут за углы или рисуют заново с любой точки картинки. Всё
  * это работает только у выбранного блока: у невыбранного первый же клик должен

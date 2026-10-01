@@ -1525,10 +1525,10 @@ router.post('/', authenticate, async (req, res) => {
  * GET /api/reviews/assigned
  * Назначенные мне отзывы по всем доскам сразу.
  *
- * Веб-версия обходится без такой ручки: там открывают доску и видят свою
- * колонку. На телефоне доска целиком не помещается и открывать её ради двух
- * своих отзывов незачем — там первый экран это «что висит на мне», а висеть
- * может на разных досках. Отсюда и запрос без boardId.
+ * Сначала понадобилась телефону: доска там не помещается, и первый экран —
+ * «что висит на мне», а висеть может на разных досках. С 9.18 на ней же
+ * стоит лента «Мои отзывы» над списком досок в вебе — разобрать свои отзывы
+ * подряд, не открывая каждую доску.
  */
 router.get('/assigned', authenticate, async (req, res) => {
   try {
@@ -1543,19 +1543,41 @@ router.get('/assigned', authenticate, async (req, res) => {
         { model: ReviewPlatform, as: 'platform' }
       ],
       order: [['reviewDate', 'DESC']],
-      limit: 200
+      // Было 200, и у тех, на ком висят сотни отзывов, отрезались самые
+      // старые — то есть самые застоявшиеся, ради которых экран и открывают.
+      limit: 1000
     });
 
     // Доступ к доске проверяем и здесь: назначение могло остаться от прежней
     // роли, а права на доску с тех пор снять — показывать такой отзыв нельзя.
+    // Один раз на доску: досок единицы, отзывов сотни.
+    const accessByBoard = new Map();
     const allowed = [];
     for (const review of reviews) {
-      // eslint-disable-next-line no-await-in-loop
-      const access = await checkReviewBoardAccess(review.board, req.user.id);
-      if (access) allowed.push(review);
+      if (!review.board) continue;
+      if (!accessByBoard.has(review.boardId)) {
+        // eslint-disable-next-line no-await-in-loop
+        accessByBoard.set(review.boardId, !!(await checkReviewBoardAccess(review.board, req.user.id)));
+      }
+      if (accessByBoard.get(review.boardId)) allowed.push(review);
     }
 
-    res.json(allowed);
+    // Когда отзыв пришёл на текущий этап — тот же расчёт, что у доски: лента
+    // «Мои отзывы» сортирует по застою и показывает тот же таймер.
+    const ids = allowed.map(r => r.id);
+    const lastStatusRows = ids.length > 0 ? await ReviewHistory.findAll({
+      where: { reviewId: { [Op.in]: ids }, action: HISTORY_ACTIONS.STATUS_CHANGE },
+      attributes: ['reviewId', [Sequelize.fn('MAX', Sequelize.col('createdAt')), 'stageEnteredAt']],
+      group: ['reviewId'],
+      raw: true
+    }) : [];
+    const stageEnteredMap = {};
+    lastStatusRows.forEach(row => { stageEnteredMap[row.reviewId] = row.stageEnteredAt; });
+
+    res.json(allowed.map(r => ({
+      ...r.toJSON(),
+      stageEnteredAt: stageEnteredMap[r.id] || r.createdAt
+    })));
   } catch (error) {
     console.error('Error fetching assigned reviews:', error);
     res.status(500).json({ error: 'Ошибка при получении назначенных отзывов' });

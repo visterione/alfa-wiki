@@ -1022,3 +1022,14 @@ test('отступ иконки от текста по умолчанию счи
   const small = renderer.render(doc([{ type: 'iconlist', iconSize: 16, items: [{ icon: 'check', title: 'А' }] }])).html;
   assert.match(small, /width="28"/);
 });
+
+test('оформление выделенного доезжает до письма кусками, а не на весь блок (9.13)', () => {
+  // Цвет, размер и выравнивание ставятся в редакторе на выделение и на абзац.
+  // Белый список стилей чистит атрибут целиком, и забытое в нём свойство
+  // пропало бы молча — у одного абзаца, а соседи выглядели бы как надо.
+  const html = '<p style="text-align: center">Центр <span style="color: #FF3B30; font-size: 24px">скидка</span></p><p>обычный</p>';
+  const { html: out } = renderer.render({ version: 2, settings: {}, sections: [{ columns: [{ width: 100, blocks: [{ type: 'text', html }] }] }] });
+  assert.match(out, /<p style="text-align:center;margin:0 0 12px 0">/);
+  assert.match(out, /<span style="color:#FF3B30;font-size:24px">скидка<\/span>/);
+  assert.match(out, /<p style="margin:0 0 12px 0">обычный<\/p>/);
+});

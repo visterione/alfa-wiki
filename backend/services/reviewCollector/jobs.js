@@ -426,7 +426,9 @@ async function finishJob(jobId, body) {
         meta.replyFailed = true;
         meta.replyError = body.message || 'Площадка не приняла ответ';
       }
+      const before = review.syncMeta || {};
       await review.update({ syncMeta: meta });
+      await require('../workflowEngine').onReplyMetaChanged(review.id, before, meta);
     }
   }
   return job;
