@@ -128,7 +128,7 @@ test('ссылка в тексте получает фирменный цвет 
   assert.match(html, /color:#FF3B30;text-decoration:underline/);
 });
 
-test('колонки складываются в столбик на телефоне и делят ширину по долям', () => {
+test('колонки делят ширину по долям и остаются рядом на телефоне', () => {
   const { html } = renderer.render(doc([{
     type: 'columns',
     gap: 16,
@@ -143,7 +143,9 @@ test('колонки складываются в столбик на телеф�
 
   // 600 минус боковые поля секции (48), минус промежуток (16), пополам
   assert.match(html, /class="aw-col[^"]*" width="268"/);
-  assert.match(html, /\.aw-col \{ display:block !important/);
+  // В столбик больше ничего не складывается (ver. 9.18).
+  assert.doesNotMatch(html, /display:block !important/);
+  assert.match(html, /\.aw-card, \.aw-row \{ table-layout:fixed !important/);
   assert.match(html, /Слева/);
   assert.match(html, /Справа/);
 });
@@ -703,7 +705,7 @@ test('у секции два фона и они не мешают друг др�
   assert.match(html, /linear-gradient\(135deg, #FFFFFF 0%, #F2F2F7 100%\)/);
 });
 
-test('колонки секции делят ширину по долям и складываются на телефоне', () => {
+test('колонки секции делят ширину по долям', () => {
   const { html } = renderer.render(sectioned([{
     gap: 20,
     columns: [
@@ -715,7 +717,7 @@ test('колонки секции делят ширину по долям и с�
   // 600 минус промежуток 20 = 580; 33 и 67 от него.
   assert.match(html, /class="aw-col[^"]*" width="191"/);
   assert.match(html, /class="aw-col[^"]*" width="388"/);
-  assert.match(html, /class="aw-gap" width="20"/);
+  assert.match(html, /class="aw-gap[^"]*" width="20"/);
 });
 
 test('у колонки может быть свой фон и свои поля', () => {
@@ -912,25 +914,33 @@ test('баннер умеет ехать обычной картинкой, а �
   assert.match(html, /Открыли/);
 });
 
-test('промежуток между колонками на телефоне становится полем под колонкой', () => {
-  const { html } = renderer.render(doc([{
-    type: 'columns',
+test('на телефоне секция «1 : 2» остаётся в строку в тех же долях', () => {
+  const { html } = renderer.render(sectioned([{
     gap: 20,
     columns: [
-      { width: 50, blocks: [{ type: 'text', html: '<p>Л</p>' }] },
-      { width: 50, blocks: [{ type: 'text', html: '<p>П</p>' }] },
+      { width: 33, blocks: [{ type: 'text', html: '<p>Узкая</p>' }] },
+      { width: 67, blocks: [{ type: 'text', html: '<p>Широкая</p>' }] },
     ],
   }]));
 
   const mobile = html.match(/@media only screen and \(max-width:620px\) \{[\s\S]*?\n  \}/)[0];
-  assert.match(mobile, /padding-bottom:20px !important/);
-  assert.match(mobile, /\.aw-col-last \{ padding-bottom:0 !important/);
-  // У распорки больше нет высоты в правиле: display:none и height вместе не
-  // работают, и колонки слипались.
-  assert.doesNotMatch(mobile, /\.aw-gap \{[^}]*height:/);
-  // Последняя колонка поля не получает, первая — получает.
-  assert.match(html, /class="aw-col aw-m\d+" width="\d+"/);
-  assert.match(html, /class="aw-col aw-m\d+ aw-col-last"/);
+  const rule = (cls) => mobile.match(new RegExp(`\\.${cls}\\{([^}]*)\\}`))[1];
+  const classOf = (re) => html.match(re)[1];
+
+  // 191, 20 и 388 из 600 — доли, а не столбик на всю ширину.
+  assert.match(rule(classOf(/class="aw-col (aw-m\d+)" width="191"/)), /width:31\.83% !important/);
+  assert.match(rule(classOf(/class="aw-col (aw-m\d+)" width="388"/)), /width:64\.67% !important/);
+  assert.match(rule(classOf(/class="aw-gap (aw-m\d+)"/)), /width:3\.33% !important/);
+
+  // Боковые поля текста ужимаются вместе с колонкой, а не пропадают.
+  assert.match(mobile, /padding-left:14px !important;padding-right:14px !important/);
+});
+
+test('одна колонка на телефоне занимает всю ширину и полей блока не трогает', () => {
+  const { html } = renderer.render(doc([{ type: 'text', html: '<p>Один</p>' }]));
+  const mobile = html.match(/@media only screen and \(max-width:620px\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(mobile, /width:100% !important/);
+  assert.doesNotMatch(mobile, /padding-left:\d+px !important/);
 });
 
 test('картинка на телефоне держит свою долю, а не десктопное число пикселей', () => {

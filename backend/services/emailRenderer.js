@@ -350,6 +350,22 @@ const mobileClass = (ctx, declarations) => {
 };
 
 /**
+ * Боковые поля внутри колонки, стоящей рядом с соседкой, на телефоне.
+ *
+ * Колонка на телефоне сжимается примерно до 0,6 своей ширины (375 из 600), и
+ * поля сжимаются в той же пропорции — иначе на узком экране пропорции блока
+ * уезжают: поля те же, а места для текста вдвое меньше. Шрифт так не ужимается
+ * намеренно: текст в 9px на телефоне читать нельзя, пусть лучше переносится.
+ */
+const MOBILE_SHRINK = 0.6;
+const narrowPadding = (pad) => {
+  const left = px(pad?.left, 0);
+  const right = px(pad?.right, 0);
+  if (!left && !right) return '';
+  return `padding-left:${Math.round(left * MOBILE_SHRINK)}px !important;padding-right:${Math.round(right * MOBILE_SHRINK)}px !important;`;
+};
+
+/**
  * Фон: сплошной цвет или градиент.
  *
  * Сплошной цвет объявляется ПЕРЕД градиентом: клиент, не знающий второго
@@ -1173,18 +1189,21 @@ ${content}
     const rawWeights = cols.map(c => Math.max(1, Number(c.width) || Math.round(100 / count)));
     const weightSum = rawWeights.reduce((a, b) => a + b, 0);
 
+    // На телефоне доли сохраняются так же, как у колонок секции (см. renderSection).
+    const share = (part) => `${Math.round((part * 10000) / ctx.contentWidth) / 100}%`;
+    const gapClass = mobileClass(ctx, `width:${share(gap)} !important;`);
     const cells = cols.map((col, i) => {
       const w = Math.floor((usable * rawWeights[i]) / weightSum);
-      const inner = renderBlockList(col.blocks || [], s, { ...ctx, contentWidth: w });
+      const inner = renderBlockList(col.blocks || [], s, { ...ctx, narrow: true, contentWidth: w });
       const spacer = i < count - 1
-        ? `<td class="aw-gap" width="${gap}" style="width:${gap}px;font-size:0;line-height:0;">&nbsp;</td>`
+        ? `<td class="aw-gap ${gapClass}" width="${gap}" style="width:${gap}px;font-size:0;line-height:0;">&nbsp;</td>`
         : '';
-      return `<td class="aw-col" width="${w}" valign="${['top', 'middle', 'bottom'].includes(block.valign) ? block.valign : 'top'}" style="width:${w}px;">`
+      return `<td class="aw-col ${mobileClass(ctx, `width:${share(w)} !important;`)}" width="${w}" valign="${['top', 'middle', 'bottom'].includes(block.valign) ? block.valign : 'top'}" style="width:${w}px;">`
         + `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${inner}</table>`
         + `</td>${spacer}`;
     }).join('');
 
-    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;"><tr>${cells}</tr></table>`;
+    return `<table role="presentation" class="aw-row" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;"><tr>${cells}</tr></table>`;
   },
 };
 
@@ -1280,22 +1299,29 @@ function renderSection(section, s, ctx, { first, last } = {}) {
   const weights = cols.map(c => Math.max(1, Number(c.width) || Math.round(100 / cols.length)));
   const weightSum = weights.reduce((a, b) => a + b, 0);
 
-  // Промежуток между колонками на телефоне становится полем под колонкой:
-  // ячейки встают друг на друга, и ячейка-распорка сбоку от них исчезает
-  // вместе со своей шириной. Последняя колонка поле не получает — иначе внизу
-  // секции появляется лишний зазор, которого в замысле не было.
-  const stackGap = cols.length > 1 && gap > 0 ? mobileClass(ctx, `padding-bottom:${gap}px !important;`) : '';
-
+  // На телефоне колонки остаются рядом в тех же долях (ver. 9.18). До этого
+  // медиазапрос ставил их друг на друга, и секция «1 : 2», собранная как
+  // картинка слева и текст справа, на телефоне превращалась в две строки —
+  // а поля у блоков, которые на компьютере отделял промежуток, у края экрана
+  // оказывались нулевыми, и текст прилипал к нему. Заказчик выбирает
+  // раскладку ради вида, и вид должен доехать до телефона тем же.
+  //
+  // Ширины задаются долей от ширины содержимого, а не пикселями: письмо на
+  // телефоне уже десктопных 600px, и сумма пикселей в узкую карточку не
+  // влезет. Промежуток считается той же долей — сжимается вместе с колонками.
+  const multi = cols.length > 1;
+  const share = (part) => `${Math.round((part * 10000) / innerWidth) / 100}%`;
+  const gapClass = multi ? mobileClass(ctx, `width:${share(gap)} !important;`) : '';
   const cells = cols.map((col, i) => {
     const w = Math.floor((usable * weights[i]) / weightSum);
     const colBg = background(col);
     const colPad = col.padding ? `padding:${padding(col, [0, 0, 0, 0])};` : '';
-    const body = renderBlockList(col.blocks || [], s, { ...ctx, contentWidth: w - (px(col.padding?.left, 0) + px(col.padding?.right, 0)) });
+    const body = renderBlockList(col.blocks || [], s, { ...ctx, narrow: multi || ctx.narrow, contentWidth: w - (px(col.padding?.left, 0) + px(col.padding?.right, 0)) });
     const spacer = i < cols.length - 1
-      ? `<td class="aw-gap" width="${gap}" style="width:${gap}px;font-size:0;line-height:0;">&nbsp;</td>`
+      ? `<td class="aw-gap${gapClass ? ` ${gapClass}` : ''}" width="${gap}" style="width:${gap}px;font-size:0;line-height:0;">&nbsp;</td>`
       : '';
     const valign = ['top', 'middle', 'bottom'].includes(col.valign || section.valign) ? (col.valign || section.valign) : 'top';
-    const cls = ['aw-col', stackGap, i === cols.length - 1 ? 'aw-col-last' : ''].filter(Boolean).join(' ');
+    const cls = ['aw-col', mobileClass(ctx, `width:${multi ? share(w) : '100%'} !important;${multi ? narrowPadding(col.padding) : ''}`)].filter(Boolean).join(' ');
     return `<td class="${cls}" width="${w}" valign="${valign}"${colBg.bgcolor ? ` bgcolor="${colBg.bgcolor}"` : ''} style="width:${w}px;${colBg.css}${colPad}">`
       + `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${body}</table>`
       + `</td>${spacer}`;
@@ -1339,7 +1365,13 @@ function renderBlockList(blocks, s, ctx) {
     if (!body) return '';
     const bg = background(OWNS_GRADIENT.has(block.type) ? { background: block.background } : block);
     const pad = padding(block, block.type === 'spacer' ? [0, 0, 0, 0] : undefined);
-    return `<tr><td align="${align(block.align, 'left')}"${bg.bgcolor ? ` bgcolor="${bg.bgcolor}"` : ''} style="padding:${pad};${bg.css}">${body}</td></tr>`;
+    // В колонке рядом с соседкой боковые поля блока на телефоне ужимаются вместе
+    // с колонкой: 24px с каждой стороны в четверти узкого экрана съедают больше
+    // половины её ширины, и на текст остаётся полоска в одно слово.
+    const shrink = ctx.narrow && block.type !== 'spacer'
+      ? mobileClass(ctx, narrowPadding({ left: px(block.padding?.left, 24), right: px(block.padding?.right, 24) }))
+      : '';
+    return `<tr><td${shrink ? ` class="${shrink}"` : ''} align="${align(block.align, 'left')}"${bg.bgcolor ? ` bgcolor="${bg.bgcolor}"` : ''} style="padding:${pad};${bg.css}">${body}</td></tr>`;
   }).join('');
 }
 
@@ -1361,9 +1393,9 @@ function renderPreheader(text) {
 /**
  * Медиазапрос — единственное, ради чего в письме остался <style>.
  *
- * Складывает колонки в столбик на телефоне. Outlook на Windows его не прочитает
- * и покажет десктопную раскладку: это ожидаемо и приемлемо, Outlook на телефоне
- * не бывает узким настолько, чтобы это мешало.
+ * Растягивает письмо на ширину телефона, сохраняя доли колонок. Outlook на
+ * Windows его не прочитает и покажет десктопную раскладку: это ожидаемо и
+ * приемлемо, Outlook на телефоне не бывает узким настолько, чтобы это мешало.
  */
 function responsiveStyles(s, extra = [], mobile = []) {
   return `<style type="text/css">
@@ -1374,14 +1406,10 @@ ${extra.join('\n')}
   a { color:${s.linkColor}; }
   @media only screen and (max-width:620px) {
     .aw-card { width:100% !important; max-width:100% !important; border-radius:0 !important; }
-    .aw-col { display:block !important; width:100% !important; max-width:100% !important; }
-    /* Промежуток между колонками на телефоне — не пустая ячейка сбоку, а поле
-       под колонкой: столбик из ячеек, поставленных друг на друга, иначе слипается.
-       Сама ячейка-распорка при этом убирается: ширины у неё больше нет, а
-       display:none и height в одном правиле друг друга отменяют — height
-       ничего не значит для того, чего на странице нет. */
-    .aw-gap { display:none !important; width:0 !important; }
-    .aw-col-last { padding-bottom:0 !important; }
+    /* Колонки на телефоне остаются рядом (ver. 9.18): ширину каждой задаёт её
+       собственный класс долей, а фиксированная раскладка таблицы не даёт
+       длинному слову или кнопке растолкать соседей и сломать пропорции. */
+    .aw-card, .aw-row { table-layout:fixed !important; }
     .aw-wrap-img { float:none !important; width:100% !important; margin:0 0 12px 0 !important; }
     /* Баннер: поля внутри урезаются, иначе на узком экране от фотографии
        остаётся полоса по краям, а заголовок ломается по слогам. */
