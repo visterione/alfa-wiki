@@ -11,7 +11,8 @@
  *        ?kind=input&accountId=… — только ввод удалённого входа этой учётки
  *   POST /api/public/v1/review-collector/jobs/:id             итог задачи
  *   GET  /api/public/v1/review-collector/reply-context        образцы ответов, подпись и контакты
- *        ?boardId=…&platform=…&negative=0|1&exclude=… — для черновиков ответа (ver. 8.88)
+ *        ?boardId=…&platform=…&negative=0|1&exclude=… — для черновиков ответа (ver. 8.88);
+ *        &limit=… — пул образцов побольше, до 400 (ver. 9.22)
  *   GET  /api/public/v1/review-collector/reply-sample?n=30    выборка для проверки качества
  *
  * Ключ — из «Интеграций», право reviews:collector. Этот ключ открывает пароли
@@ -104,6 +105,7 @@ router.get('/reply-context', handle(async (req) => {
       platform: String(platform || ''),
       negative: negative === '1',
       exclude: UUID_RE.test(String(exclude || '')) ? exclude : null,
+      ...(req.query.limit ? { limit: parseInt(req.query.limit, 10) || 40 } : {}),
     }),
   };
 }));

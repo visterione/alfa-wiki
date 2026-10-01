@@ -23,7 +23,7 @@ const {
 } = require('../../models');
 const platforms = require('./platforms');
 const { pickCounterpart, DATE_WINDOW_DAYS } = require('./match');
-const { enqueueDraft, clearDrafts } = require('./drafts');
+const { enqueueDraft, clearDrafts, recordReply } = require('./drafts');
 
 // Сколько несовпавших отзывов держать в отчёте места. Отчёт нужен, чтобы
 // глазами понять, чего GetLoyalty не видел (или что сопоставление упустило),
@@ -243,6 +243,9 @@ async function ingestPlace(placeId, rawReviews, opts = {}) {
       await existing.update({ syncMeta: meta, syncedAt: new Date() });
       // Ответили прямо на площадке, мимо вики, — для воронки это такой же ответ.
       await require('../workflowEngine').onReplyMetaChanged(existing.id, before, meta);
+      // И для истории черновиков тоже: могли взять вариант и отправить его
+      // из кабинета площадки (ver. 9.22)
+      if (!before.replyText && meta.replyText) await recordReply(existing.id, meta.replyText, 'platform');
       counts.updated++;
       continue;
     }

@@ -15,12 +15,22 @@
  *
  * Отдельной таблицы нет: объём ничтожный (три варианта — пара килобайт),
  * живут недолго, и читаются всегда вместе с карточкой.
+ *
+ * С 9.22 копия каждого набора и отправленный ответ остаются в
+ * review_reply_drafts: карточке они после ответа не нужны, а для оценки
+ * черновиков и для отбора образцов — нужны (см. recordReply).
  */
 
 const { Op, literal } = require('sequelize');
-const { Review, ReviewCollectorJob, ReviewPlatformPlace } = require('../../models');
+const { Review, ReviewCollectorJob, ReviewPlatformPlace, ReviewReplyDraft } = require('../../models');
 
 const DRAFT_TTL_DAYS = 30;
+// Наборов на отзыв в истории: «Ещё варианты» жмут два-три раза, больше —
+// уже не про выбор, а про то, что модель не справилась
+const MAX_BATCHES = 10;
+// Ответ, взятый из черновика больше чем на эту долю, — текст модели, а не
+// человека: в образцы для неё он не идёт (см. replyContext.js)
+const DRAFT_ORIGIN_SHARE = 0.6;
 
 /** syncMeta без черновиков — после ответа они больше не нужны. */
 function clearDrafts(meta) {
@@ -110,8 +120,83 @@ async function storeDrafts(job, ok, result) {
   // Пока модель писала, на отзыв могли ответить — тогда черновики лишние.
   if (items.length && !isAnswered(meta)) {
     meta.drafts = { items, at: new Date().toISOString(), model: result.model || null };
+    await recordBatch(review.id, meta.drafts);
   }
   await review.update({ syncMeta: meta });
+}
+
+// ── История черновиков (ver. 9.22) ──────────────────────────────────────
+
+function trigrams(text) {
+  const words = String(text || '').toLowerCase().match(/[а-яёa-z0-9]+/g) || [];
+  const out = new Set();
+  for (let i = 0; i + 2 < words.length; i++) out.add(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
+  return out;
+}
+
+/**
+ * Какая доля ответа взята из черновика: доля трёхсловий ответа, которые
+ * есть в варианте. Мерим со стороны ответа, а не симметрично: короткий
+ * ответ, целиком вырезанный из длинного варианта, — это всё равно текст
+ * модели. Исправленный падеж рвёт два-три трёхсловия из сотни, переписанный
+ * своими словами ответ даёт около нуля.
+ */
+function draftShare(reply, draft) {
+  const r = trigrams(reply);
+  if (!r.size) return 0;
+  const d = trigrams(draft);
+  let common = 0;
+  for (const g of r) if (d.has(g)) common++;
+  return common / r.size;
+}
+
+/** Самый близкий к ответу вариант из всех показанных наборов. */
+function closestDraft(reply, batches) {
+  let best = { fromDraft: 0, bestBatch: null, bestIndex: null };
+  (batches || []).forEach((batch, b) => (batch.items || []).forEach((item, i) => {
+    const share = draftShare(reply, item.text);
+    if (share > best.fromDraft) best = { fromDraft: share, bestBatch: b, bestIndex: i };
+  }));
+  return best;
+}
+
+/*
+ * Обе записи — попутные: сбой здесь не должен ронять ни сохранение
+ * черновиков, ни отправку ответа. Поэтому ошибки только в лог.
+ */
+
+async function recordBatch(reviewId, drafts) {
+  try {
+    const row = await ReviewReplyDraft.findByPk(reviewId);
+    const batch = { at: drafts.at, model: drafts.model, items: drafts.items };
+    if (!row) {
+      await ReviewReplyDraft.create({ reviewId, batches: [batch] });
+    } else if (!row.replyText) {
+      await row.update({ batches: [...row.batches, batch].slice(-MAX_BATCHES) });
+    }
+  } catch (err) {
+    console.error('review_reply_drafts: набор не записан —', err.message);
+  }
+}
+
+/**
+ * Ответ на отзыв, к которому были черновики. source — wiki (отправили из
+ * карточки) или platform (ответили прямо на площадке, мимо вики). Без
+ * черновиков строки нет и не заводится: такой ответ целиком человеческий.
+ */
+async function recordReply(reviewId, text, source) {
+  try {
+    const row = await ReviewReplyDraft.findByPk(reviewId);
+    if (!row || !text) return;
+    await row.update({
+      replyText: text,
+      replySource: source,
+      repliedAt: new Date(),
+      ...closestDraft(text, row.batches),
+    });
+  } catch (err) {
+    console.error('review_reply_drafts: ответ не записан —', err.message);
+  }
 }
 
 /**
@@ -140,4 +225,7 @@ async function cleanupDrafts() {
   return rows.length;
 }
 
-module.exports = { enqueueDraft, storeDrafts, cleanupDrafts, clearDrafts, normalizeDraft, DRAFT_TTL_DAYS };
+module.exports = {
+  enqueueDraft, storeDrafts, cleanupDrafts, clearDrafts, normalizeDraft, DRAFT_TTL_DAYS,
+  recordReply, draftShare, closestDraft, DRAFT_ORIGIN_SHARE,
+};

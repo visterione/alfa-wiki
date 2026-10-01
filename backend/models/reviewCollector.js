@@ -69,7 +69,23 @@ module.exports = function defineReviewCollectorModels(sequelize, DataTypes) {
     timestamps: true,
   });
 
-  const models = { ReviewPlatformAccount, ReviewPlatformPlace, ReviewCollectorJob };
+  // Показанные черновики и отправленный ответ (ver. 9.22) — см. миграцию
+  // «ver. 9.22 review-reply-drafts.sql».
+  const ReviewReplyDraft = sequelize.define('ReviewReplyDraft', {
+    reviewId:    { type: DataTypes.UUID, primaryKey: true },
+    batches:     { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+    replyText:   { type: DataTypes.TEXT },
+    replySource: { type: DataTypes.STRING(10) },
+    fromDraft:   { type: DataTypes.REAL },
+    bestBatch:   { type: DataTypes.INTEGER },
+    bestIndex:   { type: DataTypes.INTEGER },
+    repliedAt:   { type: DataTypes.DATE },
+  }, {
+    tableName: 'review_reply_drafts',
+    timestamps: true,
+  });
+
+  const models = { ReviewPlatformAccount, ReviewPlatformPlace, ReviewCollectorJob, ReviewReplyDraft };
 
   function associateReviewCollector({ ReviewBoard, Review }) {
     ReviewPlatformAccount.hasMany(ReviewPlatformPlace, { foreignKey: 'accountId', as: 'places', onDelete: 'CASCADE' });

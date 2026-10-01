@@ -20,7 +20,7 @@ const {
 const { encryptPassword, decryptPassword } = require('../mail/crypto');
 const platforms = require('./platforms');
 const { replyMeta } = require('./ingest');
-const { storeDrafts, clearDrafts } = require('./drafts');
+const { storeDrafts, clearDrafts, recordReply } = require('./drafts');
 
 // Задача, взятая парсером и не закрытая за это время, считается потерянной
 // (парсер перезапустился на середине) и выдаётся снова.
@@ -245,6 +245,7 @@ async function enqueueReply(review, text, userId) {
       replyJobId: job.id,
     },
   }, { where: { id: review.id } });
+  await recordReply(review.id, text, 'wiki');
 
   return job;
 }

@@ -33,3 +33,27 @@ test('варианты с пометками (парсер 0.50) и старые
   assert.equal(normalizeDraft({ text: '  ' }), null);
   assert.equal(normalizeDraft(null), null);
 });
+
+test('доля ответа из черновика: дословно — 1, поправленный падеж — почти 1, своё — около 0', () => {
+  const { draftShare } = require('../services/reviewCollector/drafts');
+  const draft = 'Благодарим вас за подробный отзыв о приёме у Ольги Алексеевны. '
+    + 'Нам очень приятно, что вы остались довольны вниманием и подробными объяснениями врача.';
+  assert.equal(draftShare(draft, draft), 1);
+  const fixed = draft.replace('довольны вниманием', 'довольна вниманием');
+  assert.ok(draftShare(fixed, draft) > 0.8);
+  const own = 'Спасибо, что нашли время написать. Передадим Ольге Алексеевне ваши тёплые слова, '
+    + 'она будет рада узнать, что лечение помогло.';
+  assert.ok(draftShare(own, draft) < 0.1);
+  assert.equal(draftShare('', draft), 0);
+});
+
+test('ближайший вариант ищется во всех показанных наборах', () => {
+  const { closestDraft } = require('../services/reviewCollector/drafts');
+  const batches = [
+    { items: [{ text: 'Первый набор, первый вариант ответа клиники.' }] },
+    { items: [{ text: 'Совсем другой текст.' }, { text: 'Второй набор, второй вариант ответа клиники.' }] },
+  ];
+  const best = closestDraft('Второй набор, второй вариант ответа клиники.', batches);
+  assert.deepEqual([best.bestBatch, best.bestIndex, best.fromDraft], [1, 1, 1]);
+  assert.deepEqual(closestDraft('Своё', []), { fromDraft: 0, bestBatch: null, bestIndex: null });
+});

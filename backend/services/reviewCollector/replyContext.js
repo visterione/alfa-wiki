@@ -19,8 +19,19 @@
 const { Op, literal } = require('sequelize');
 const { Review, ReviewBoard, ReviewPlatform, MedCenter } = require('../../models');
 const platforms = require('./platforms');
+const { DRAFT_ORIGIN_SHARE } = require('./drafts');
 
 const MIN_REPLY_LENGTH = 200;
+// Сколько образцов можно попросить за раз. Парсер с 0.51 сам выбирает
+// похожие по смыслу и просит пул побольше; старому хватало сорока.
+const MAX_EXAMPLES = 400;
+
+// Ответы, которые ушли почти дословно из черновика (ver. 9.22), — это голос
+// модели, а не наш. В образцах они замыкают круг: модель подражает самой
+// себе, и ответы раз от раза сходятся к одним и тем же фразам.
+const HUMAN_REPLY = literal(
+  `"Review"."id" NOT IN (SELECT "reviewId" FROM review_reply_drafts WHERE "fromDraft" >= ${DRAFT_ORIGIN_SHARE})`,
+);
 // Подпись — одно-три слова и название в кавычках: «медицинский центр
 // «Альфа Проф»», «стоматология «Альфа Смайл»». Первый вариант разбора знал
 // только «медицинский/стоматологический/детский» и терял Смайл, который
@@ -83,6 +94,7 @@ function contactsOf(medCenter) {
  * @param {object} q { boardId, platform (ключ парсера), negative, exclude (id карточки) }
  */
 async function replyContext({ boardId, platform, negative, exclude, limit = 40 }) {
+  limit = Math.max(1, Math.min(limit, MAX_EXAMPLES));
   const board = await ReviewBoard.findByPk(boardId, { include: [{ model: MedCenter, as: 'medCenter' }] });
   if (!board) throw Object.assign(new Error('Доска не найдена'), { status: 404 });
 
@@ -97,7 +109,7 @@ async function replyContext({ boardId, platform, negative, exclude, limit = 40 }
   const where = {
     rating: negative ? { [Op.lte]: 3 } : { [Op.gte]: 4 },
     reviewText: { [Op.ne]: '' },
-    [Op.and]: [literal(`length("syncMeta"->>'replyText') >= ${MIN_REPLY_LENGTH}`)],
+    [Op.and]: [literal(`length("syncMeta"->>'replyText') >= ${MIN_REPLY_LENGTH}`), HUMAN_REPLY],
   };
   if (exclude) where.id = { [Op.ne]: exclude };
 
@@ -122,7 +134,7 @@ async function replyContext({ boardId, platform, negative, exclude, limit = 40 }
     signature: await signatureOf(board.id, board.medCenter),
     ...contactsOf(board.medCenter),
     examples: [...own, ...rest]
-      .map(r => ({ text: r.reviewText, rating: r.rating, doctor: r.doctorName || null, reply: replyOf(r) }))
+      .map(r => ({ id: r.id, text: r.reviewText, rating: r.rating, doctor: r.doctorName || null, reply: replyOf(r) }))
       .filter(e => e.reply),
   };
 }
@@ -137,7 +149,8 @@ async function replySample(n = 30) {
     where: {
       rating: negative ? { [Op.lte]: 3 } : { [Op.gte]: 4 },
       reviewText: { [Op.ne]: '' },
-      [Op.and]: [literal(`length("syncMeta"->>'replyText') >= ${MIN_REPLY_LENGTH}`)],
+      // Сравнивать черновик с ответом, который сам был черновиком, бессмысленно
+      [Op.and]: [literal(`length("syncMeta"->>'replyText') >= ${MIN_REPLY_LENGTH}`), HUMAN_REPLY],
     },
     include: [{ model: ReviewPlatform, as: 'platform', attributes: ['name'] }],
     attributes: ['id', 'boardId', 'reviewText', 'rating', 'doctorName', 'patientName', 'syncMeta'],
