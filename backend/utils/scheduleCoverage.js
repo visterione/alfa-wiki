@@ -153,21 +153,26 @@ function groupPeriods(records, clinicKeyOf = (id) => String(id)) {
  * Одна ячейка «медцентр × день»: кто работал, где дыры и почему.
  *
  * lanes — Map userId → lane из groupPeriods (для строки «Вся сеть» — слитые по
- * всем медцентрам). window — часы, в которые направление должно быть покрыто.
+ * всем медцентрам). window — часы, в которые направление должно быть покрыто:
+ * [from, to] или список таких интервалов. Списком оно приходит в режиме
+ * эталона — там «должно быть покрыто» не часы работы медцентра, а смены
+ * эталонного врача, и их за день бывает несколько.
  */
 function analyzeCell(lanes, window, minGap) {
-  const [wFrom, wTo] = window;
-  const windowLen = wTo - wFrom;
+  const windows = Array.isArray(window[0]) ? union(window) : [window];
+  const wFrom = windows[0][0];
+  const wTo = windows[windows.length - 1][1];
+  const windowLen = total(windows);
 
   const effectiveAll = [];
   const workAll = [];
   let doctors = 0;
   let cancelledDoctors = 0;
   for (const lane of lanes.values()) {
-    const eff = intersect(lane.effective, [window]);
-    const work = intersect(lane.work, [window]);
+    const eff = intersect(lane.effective, windows);
+    const work = intersect(lane.work, windows);
     if (eff.length) doctors++;
-    if (work.length && total(intersect(lane.cancelled, [window])) > 0) cancelledDoctors++;
+    if (work.length && total(intersect(lane.cancelled, windows)) > 0) cancelledDoctors++;
     effectiveAll.push(...eff);
     workAll.push(...work);
   }
@@ -177,7 +182,7 @@ function analyzeCell(lanes, window, minGap) {
 
   // Дыры короче порога — это обеды и пересменки, а не отсутствие направления:
   // отмены по 30 минут в середине дня МИС ставит почти каждому врачу.
-  const gaps = subtract([window], covered)
+  const gaps = subtract(windows, covered)
     .filter(([s, e]) => e - s >= minGap)
     .map(([s, e]) => {
       // Кто стоял в графике на это время, но был снят отменой. Если таких нет —
@@ -215,7 +220,7 @@ function analyzeCell(lanes, window, minGap) {
     single = maxDepth <= 1;
   }
 
-  return { status, doctors, cancelledDoctors, uncovered, gaps, single, window: { from: wFrom, to: wTo } };
+  return { status, doctors, cancelledDoctors, uncovered, gaps, single, window: { from: wFrom, to: wTo }, windows };
 }
 
 /**
@@ -226,24 +231,47 @@ function analyzeCell(lanes, window, minGap) {
  * @param {Array}    p.records         getSchedulePeriods только по врачам группы
  * @param {Set}      p.excluded        userId, которых не считаем (служебные
  *                                     «сотрудники» вроде КТГ, совместители)
+ * @param {object}   [p.anchor]        режим эталона: { lead: Set, cover: Set } —
+ *                                     чьи смены должны быть покрыты и кем
  * @param {Array}    p.clinics         [{ key, name, color }] — медцентры, по которым
  *                                     вообще ищем дыры
  * @param {Function} p.clinicKeyOf     clinic_id МИС → key медцентра
  * @param {Function} p.windowOf        (clinicKey, date) → [from, to] | null (выходной)
  * @param {number}   p.minGap          минимальная длина дыры, минут
+ *
+ * Режим эталона (ver. 9.20). Сводная группа «флеболог + УЗИ» без него считает
+ * дырой любой час, когда нет никого из двух специальностей, и хуже того —
+ * часы, когда флеболог не принимает, а УЗИ есть, тоже выглядят покрытыми,
+ * хотя вопрос был другой: «когда флеболог отправит пациента на УЗИ, будет ли
+ * кому его принять». Связь направленная: УЗИстов много, флеболог один, и
+ * обратный вопрос («почему флеболог не закрывает часы УЗИ») смысла не имеет.
+ * Поэтому в этом режиме окном служат смены эталонных врачей, а покрывают его
+ * только остальные врачи группы.
  */
-function buildReport({ days, records, excluded = new Set(), clinics, clinicKeyOf, windowOf, minGap = 60 }) {
+function buildReport({ days, records, excluded = new Set(), anchor = null, clinics, clinicKeyOf, windowOf, minGap = 60 }) {
   const byCell = groupPeriods(records, clinicKeyOf);
 
   // Горизонт: после последнего дня, на который у группы вообще заведены смены,
   // пустота значит «расписание ещё не составили», а не «никого нет». Считаем по
   // всей группе вместе с исключёнными — их смены тоже говорят, что график есть.
-  let horizon = null;
-  for (const [cellKey, users] of byCell) {
-    const date = cellKey.split('|')[1];
-    for (const lane of users.values()) {
-      if (lane.work.length && (!horizon || date > horizon)) horizon = date;
+  // С эталоном — по меньшему из двух горизонтов: если УЗИ на ноябрь ещё не
+  // расписано, а флеболог уже да, весь ноябрь иначе стал бы «флеболог один».
+  const horizonOf = (only) => {
+    let h = null;
+    for (const [cellKey, users] of byCell) {
+      const date = cellKey.split('|')[1];
+      for (const [userId, lane] of users) {
+        if (only && !only.has(userId)) continue;
+        if (lane.work.length && (!h || date > h)) h = date;
+      }
     }
+    return h;
+  };
+  let horizon = horizonOf(null);
+  if (anchor) {
+    const a = horizonOf(anchor.lead);
+    const b = horizonOf(anchor.cover);
+    horizon = a && b ? (a < b ? a : b) : null;
   }
 
   const clinicKeys = new Set(clinics.map(c => c.key));
@@ -256,6 +284,17 @@ function buildReport({ days, records, excluded = new Set(), clinics, clinicKeyOf
     for (const [userId, lane] of users) if (!excluded.has(userId)) kept.set(userId, lane);
     return kept;
   };
+  const pick = (lanes, set) => new Map([...lanes].filter(([userId]) => set.has(userId)));
+  // Кто закрывает дыры: в обычном режиме — вся группа, с эталоном — остальные
+  const coverOf = (lanes) => (anchor ? pick(lanes, anchor.cover) : lanes);
+  const leadWindows = (lanes) => union([...pick(lanes, anchor.lead).values()].flatMap(l => l.effective));
+
+  const analyze = (lanes, plainWindow) => {
+    if (!anchor) return analyzeCell(lanes, plainWindow, minGap);
+    const lead = leadWindows(lanes);
+    if (!lead.length) return { status: 'idle' };
+    return analyzeCell(coverOf(lanes), lead, minGap);
+  };
 
   for (const clinic of clinics) {
     cells[clinic.key] = {};
@@ -266,9 +305,10 @@ function buildReport({ days, records, excluded = new Set(), clinics, clinicKeyOf
         userId, work: l.work, cancel: l.cancelled,
       }));
       const window = windowOf(clinic.key, date);
-      if (!window) { cells[clinic.key][date] = { status: 'closed' }; continue; }
-      if (!horizon || date > horizon) { cells[clinic.key][date] = { status: 'unplanned', window: { from: window[0], to: window[1] } }; continue; }
-      cells[clinic.key][date] = analyzeCell(lanes, window, minGap);
+      // С эталоном часы медцентра не нужны: окно задают его смены
+      if (!window && !anchor) { cells[clinic.key][date] = { status: 'closed' }; continue; }
+      if (!horizon || date > horizon) { cells[clinic.key][date] = { status: 'unplanned', window: window ? { from: window[0], to: window[1] } : null }; continue; }
+      cells[clinic.key][date] = analyze(lanes, window);
     }
   }
 
@@ -279,9 +319,9 @@ function buildReport({ days, records, excluded = new Set(), clinics, clinicKeyOf
   const network = {};
   for (const date of days) {
     const windows = clinics.map(c => windowOf(c.key, date)).filter(Boolean);
-    if (!windows.length) { network[date] = { status: 'closed' }; continue; }
-    const window = [Math.min(...windows.map(w => w[0])), Math.max(...windows.map(w => w[1]))];
-    if (!horizon || date > horizon) { network[date] = { status: 'unplanned', window: { from: window[0], to: window[1] } }; continue; }
+    if (!windows.length && !anchor) { network[date] = { status: 'closed' }; continue; }
+    const window = windows.length ? [Math.min(...windows.map(w => w[0])), Math.max(...windows.map(w => w[1]))] : null;
+    if (!horizon || date > horizon) { network[date] = { status: 'unplanned', window: window ? { from: window[0], to: window[1] } : null }; continue; }
     const merged = new Map();
     for (const clinic of clinics) {
       for (const [userId, lane] of lanesFor(clinic.key, date)) {
@@ -293,7 +333,36 @@ function buildReport({ days, records, excluded = new Set(), clinics, clinicKeyOf
         prev.effective = union([...prev.effective, ...lane.effective]);
       }
     }
-    network[date] = analyzeCell(merged, window, minGap);
+    network[date] = analyze(merged, window);
+  }
+
+  // Своё здание важнее соседнего: до другого медцентра пациенту ещё нужно
+  // доехать. Поэтому дыра в медцентре остаётся дырой, но у неё помечено, где в
+  // эти часы принимают, — и если её целиком закрывают соседи, находка по ней
+  // становится на ступень мягче (см. buildFindings).
+  if (clinics.length > 1) {
+    const coverCache = new Map();
+    const coverUnion = (key, date) => {
+      const k = `${key}|${date}`;
+      if (!coverCache.has(k)) coverCache.set(k, union([...coverOf(lanesFor(key, date)).values()].flatMap(l => l.effective)));
+      return coverCache.get(k);
+    };
+    for (const clinic of clinics) {
+      for (const date of days) {
+        for (const g of cells[clinic.key][date].gaps || []) {
+          const others = [];
+          g.elsewhere = [];
+          for (const other of clinics) {
+            if (other.key === clinic.key) continue;
+            const ov = intersect(coverUnion(other.key, date), [[g.from, g.to]]);
+            if (!ov.length) continue;
+            others.push(...ov);
+            g.elsewhere.push({ clinic: other.key, minutes: total(ov) });
+          }
+          g.elsewhereFull = total(union(others)) >= g.minutes;
+        }
+      }
+    }
   }
 
   const findings = buildFindings({ days, clinics, cells, network });
@@ -314,7 +383,7 @@ function buildReport({ days, records, excluded = new Set(), clinics, clinicKeyOf
   }
   for (const date of days) if (network[date].status === 'none') summary.networkNoneDays++;
 
-  return { horizon, cells, network, lanes: lanesOut, findings, summary, clinicKeys: [...clinicKeys] };
+  return { horizon, mode: anchor ? 'anchor' : 'plain', cells, network, lanes: lanesOut, findings, summary, clinicKeys: [...clinicKeys] };
 }
 
 /**
@@ -348,7 +417,7 @@ function buildFindings({ days, clinics, cells, network }) {
     const byWeekday = {};
     for (const date of days) {
       const c = row.data[date];
-      if (c.status === 'closed' || c.status === 'unplanned') continue;
+      if (c.status === 'closed' || c.status === 'unplanned' || c.status === 'idle') continue;
       const wd = weekdayKey(date);
       if (!byWeekday[wd]) byWeekday[wd] = { open: 0, none: [] };
       byWeekday[wd].open++;
@@ -402,6 +471,24 @@ function buildFindings({ days, clinics, cells, network }) {
         gaps: gaps.map(g => ({ from: g.from, to: g.to, cause: g.cause })),
       });
     }
+  }
+
+  // Где в часы находки принимают в других медцентрах. Находка, которую
+  // целиком закрывают соседи, — на ступень мягче: пациента есть куда
+  // отправить, хоть и с дорогой. По сети такой поправки нет — соседей у неё нет.
+  for (const f of findings) {
+    if (f.clinic === 'all') continue;
+    const data = cells[f.clinic];
+    const gaps = f.dates.flatMap(d => (data[d].gaps || []).filter(g =>
+      f.kind === 'recurring' ? g.from === f.from && g.to === f.to
+        : f.kind === 'gaps' ? f.gaps.some(x => x.from === g.from && x.to === g.to)
+          : true));
+    if (!gaps.length || !gaps.every(g => g.elsewhere)) continue;
+    const minutes = {};
+    for (const g of gaps) for (const e of g.elsewhere) minutes[e.clinic] = (minutes[e.clinic] || 0) + e.minutes;
+    f.elsewhere = Object.keys(minutes).sort((a, b) => minutes[b] - minutes[a]);
+    f.elsewhereFull = gaps.every(g => g.elsewhereFull);
+    if (f.elsewhereFull) f.severity = Math.max(1, f.severity - 1);
   }
 
   const kindOrder = { weekday: 0, day: 1, recurring: 2, gaps: 3 };

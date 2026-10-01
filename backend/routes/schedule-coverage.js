@@ -37,6 +37,7 @@ router.get('/report', authenticate, async (req, res) => {
       to: String(req.query.to || ''),
       professionIds: list(req.query.professionIds ?? req.query.professionId),
       exclude: req.query.exclude === undefined ? undefined : list(req.query.exclude),
+      anchor: req.query.anchor ? String(req.query.anchor) : undefined,
       minGap: Number(req.query.minGap) || 60,
       window: req.query.window ? String(req.query.window) : undefined,
     });
@@ -44,6 +45,21 @@ router.get('/report', authenticate, async (req, res) => {
   } catch (err) {
     if (!clientError(err.message)) console.error('❌ Расписания: отчёт:', err.message);
     res.status(clientError(err.message) ? 400 : 502).json({ error: err.message });
+  }
+});
+
+// Шаблоны выбора — личные, у каждого свои (см. services/scheduleCoverage.js)
+router.get('/presets', authenticate, (req, res) => {
+  res.json({ presets: coverage.readPresets(req.user) });
+});
+
+router.put('/presets', authenticate, async (req, res) => {
+  try {
+    res.json({ presets: await coverage.savePresets(req.user, req.body?.presets) });
+  } catch (err) {
+    if (err instanceof TypeError) return res.status(400).json({ error: err.message });
+    console.error('❌ Расписания: шаблоны:', err.message);
+    res.status(500).json({ error: 'Не удалось сохранить шаблоны' });
   }
 });
 

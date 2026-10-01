@@ -156,3 +156,49 @@ test('одна и та же вечерняя дыра — одна находк�
   assert.equal(vacation.cause, 'cancel');
   assert.equal(linia.length, 2);
 });
+
+// ── Эталон и соседние медцентры (ver. 9.20) ─────────────────────────────────
+
+test('эталон: окно — смены эталонного врача, покрывают только остальные', () => {
+  // Флеболог (10) в Альфе 14–18, УЗИ (20) там же 08–16: без УЗИ остаются 16–18.
+  // Часы, когда УЗИ есть, а флеболога нет, дырой не считаются вовсе.
+  const day = '2026-10-05';
+  const report = cov.buildReport({
+    days: [day],
+    records: [rec(10, 2, day, '14:00', '18:00'), rec(20, 2, day, '08:00', '16:00')],
+    anchor: { lead: new Set(['10']), cover: new Set(['20']) },
+    clinics: [clinics[0]], clinicKeyOf: String, windowOf: allDay, minGap: 60,
+  });
+  const cell = report.cells['2'][day];
+  assert.equal(report.mode, 'anchor');
+  assert.equal(cell.status, 'gap');
+  assert.deepEqual(cell.gaps.map(g => [g.from, g.to]), [[H('16:00'), H('18:00')]]);
+});
+
+test('эталон не принимает — день не проверяется', () => {
+  const day = '2026-10-05';
+  const report = cov.buildReport({
+    days: [day],
+    records: [rec(10, 6, day, '09:00', '12:00'), rec(20, 2, day, '08:00', '20:00')],
+    anchor: { lead: new Set(['10']), cover: new Set(['20']) },
+    clinics, clinicKeyOf: String, windowOf: allDay, minGap: 60,
+  });
+  assert.equal(report.cells['2'][day].status, 'idle');
+  // В Линии флеболог один, но УЗИ есть в Альфе — сеть покрыта
+  assert.equal(report.cells['6'][day].status, 'none');
+  assert.equal(report.network[day].status, 'ok');
+});
+
+test('дыра, закрытая соседним медцентром, помечена и мягче на ступень', () => {
+  const day = '2026-10-05';
+  const base = { days: [day], clinics, clinicKeyOf: String, windowOf: allDay, minGap: 60 };
+  const alone = cov.buildReport({ ...base, records: [rec(1, 2, day, '08:00', '14:00')] });
+  const helped = cov.buildReport({ ...base, records: [rec(1, 2, day, '08:00', '14:00'), rec(2, 6, day, '12:00', '20:00')] });
+  const gap = helped.cells['2'][day].gaps[0];
+  assert.deepEqual(gap.elsewhere, [{ clinic: '6', minutes: 6 * 60 }]);
+  assert.equal(gap.elsewhereFull, true);
+  const fAlone = alone.findings.find(f => f.clinic === '2');
+  const fHelped = helped.findings.find(f => f.clinic === '2');
+  assert.equal(fHelped.severity, Math.max(1, fAlone.severity - 1));
+  assert.deepEqual(fHelped.elsewhere, ['6']);
+});

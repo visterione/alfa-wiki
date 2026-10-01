@@ -59,6 +59,16 @@ async function getUsers() {
   return usersCache;
 }
 
+let professionNamesCache = null;
+let professionNamesAt = 0;
+async function getProfessionNames() {
+  if (professionNamesCache && Date.now() - professionNamesAt < USERS_TTL) return professionNamesCache;
+  const list = await misList('getProfessions', {});
+  professionNamesCache = new Map(list.map(p => [String(p.id), p.name]));
+  professionNamesAt = Date.now();
+  return professionNamesCache;
+}
+
 const professionIdsOf = (u) =>
   [...(u.profession || []), ...(u.second_profession || [])].map(String);
 
@@ -203,10 +213,11 @@ function checkPeriod(from, to) {
  *                                    сводная группа (см. ниже)
  * @param {string[]} [q.exclude]      кого из группы не считать; без него —
  *                                    сохранённые исключения специальностей
+ * @param {string}   [q.anchor]       эталонная специальность из выбранных
  * @param {number} q.minGap           минимальная дыра, минут
  * @param {string} [q.window]         "08:00-20:00" — своё окно вместо часов медцентров
  */
-async function getReport({ from, to, professionIds, exclude, minGap = 60, window }) {
+async function getReport({ from, to, professionIds, exclude, anchor, minGap = 60, window }) {
   const days = checkPeriod(from, to);
   const selected = [...new Set((professionIds || []).map(String).filter(Boolean))];
   if (!selected.length) throw new Error('Не выбрана специальность');
@@ -220,7 +231,7 @@ async function getReport({ from, to, professionIds, exclude, minGap = 60, window
     custom = [s, e];
   }
 
-  const [users, settings] = await Promise.all([getUsers(), readSettings()]);
+  const [users, settings, professionNames] = await Promise.all([getUsers(), readSettings(), getProfessionNames()]);
   // Сводный режим (ver. 9.19): несколько специальностей считаются одной
   // группой. Сравнивают их, когда они смежные — флеболог отправляет пациента
   // сразу на УЗИ, — и вопрос тогда не «есть ли флеболог», а «есть ли кто-то
@@ -231,6 +242,22 @@ async function getReport({ from, to, professionIds, exclude, minGap = 60, window
   const excluded = new Set(exclude
     ? exclude.map(String)
     : selected.flatMap(p => settings.excluded[p] || []));
+
+  // Эталон имеет смысл, только когда есть кому его покрывать. Врач обеих
+  // специальностей (в МИС это обычно: у флеболога Кузина УЗИ стоит второй
+  // специальностью) считается только эталоном и себя не покрывает: вопрос
+  // режима — «будет ли кому отправить пациента», а сам врач в эти часы занят
+  // своим приёмом. Иначе любой такой врач гасил бы все находки разом.
+  let anchorSets = null;
+  const anchorId = anchor && selected.includes(String(anchor)) && selected.length > 1 ? String(anchor) : null;
+  if (anchorId) {
+    const active = group.filter(u => !excluded.has(String(u.id)));
+    const ids = (pred) => new Set(active.filter(pred).map(u => String(u.id)));
+    anchorSets = {
+      lead: ids(u => professionIdsOf(u).includes(anchorId)),
+      cover: ids(u => !professionIdsOf(u).includes(anchorId) && professionIdsOf(u).some(p => selected.includes(p))),
+    };
+  }
 
   const records = group.length
     ? await fetchPeriods(from, to, group.map(u => String(u.id)))
@@ -250,6 +277,7 @@ async function getReport({ from, to, professionIds, exclude, minGap = 60, window
     days,
     records,
     excluded,
+    anchor: anchorSets,
     clinics,
     clinicKeyOf: (id) => keyByMisId.get(String(id)) ?? null,
     windowOf: windowResolver(clinicsByKey, custom),
@@ -269,6 +297,7 @@ async function getReport({ from, to, professionIds, exclude, minGap = 60, window
     u.shifts++;
     u.byClinic[key] = (u.byClinic[key] || 0) + 1;
   }
+  const rank = (u, p) => (p === anchorId ? 2 : 0) + ((u.profession || []).map(String).includes(p) ? 1 : 0);
   const doctors = group
     .map(u => {
       const s = shiftsByUser[String(u.id)];
@@ -278,6 +307,11 @@ async function getReport({ from, to, professionIds, exclude, minGap = 60, window
         shifts: s?.shifts || 0,
         clinics: s ? Object.keys(s.byClinic).sort((a, b) => s.byClinic[b] - s.byClinic[a]) : [],
         excluded: excluded.has(String(u.id)),
+        // Выбранные специальности врача: эталонная первой (эталоном он и
+        // считается), затем основная — по первой подпись и цвет дорожки
+        professions: [...new Set(professionIdsOf(u))]
+          .filter(p => selected.includes(p))
+          .sort((a, b) => rank(u, b) - rank(u, a)),
       };
     })
     .sort((a, b) => (b.shifts > 0) - (a.shifts > 0) || a.name.localeCompare(b.name, 'ru'));
@@ -287,6 +321,8 @@ async function getReport({ from, to, professionIds, exclude, minGap = 60, window
     to,
     days,
     professionIds: selected,
+    anchor: anchorId,
+    professions: selected.map(id => ({ id, name: professionNames.get(id) || `#${id}` })),
     minGap: minGapSafe,
     window: custom ? { from: custom[0], to: custom[1] } : null,
     clinics: clinics.map(({ sortOrder, ...c }) => c),
@@ -295,4 +331,42 @@ async function getReport({ from, to, professionIds, exclude, minGap = 60, window
   };
 }
 
-module.exports = { listProfessions, getReport, MAX_DAYS };
+/**
+ * Шаблоны выбора (ver. 9.20): «флеболог Альфы + УЗИ», «гинекологи без
+ * совместителей». Личные, как и сами галочки, — лежат в settings пользователя,
+ * чтобы ехать за ним с компьютера на компьютер, а не жить в одном браузере.
+ */
+const MAX_PRESETS = 40;
+
+function readPresets(user) {
+  const list = user?.settings?.scheduleCoverage?.presets;
+  return Array.isArray(list) ? list : [];
+}
+
+function normalizePreset(p) {
+  const ids = (v) => [...new Set((Array.isArray(v) ? v : []).map(String).filter(Boolean))].slice(0, 500);
+  const professionIds = ids(p?.professionIds).slice(0, 30);
+  if (!professionIds.length) throw new TypeError('В шаблоне нет ни одной специальности');
+  const excluded = {};
+  for (const pid of professionIds) excluded[pid] = ids(p?.excluded?.[pid]);
+  const anchor = p?.anchor && professionIds.includes(String(p.anchor)) ? String(p.anchor) : null;
+  return {
+    id: String(p?.id || '').slice(0, 40) || `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    name: String(p?.name || '').trim().slice(0, 120) || 'Без названия',
+    professionIds,
+    excluded,
+    anchor,
+  };
+}
+
+async function savePresets(user, list) {
+  if (!Array.isArray(list)) throw new TypeError('Нужен список шаблонов');
+  if (list.length > MAX_PRESETS) throw new TypeError(`Шаблонов не больше ${MAX_PRESETS}`);
+  const presets = list.map(normalizePreset);
+  const settings = user.settings || {};
+  // Новый объект целиком: JSONB, изменённый на месте, Sequelize не замечает
+  await user.update({ settings: { ...settings, scheduleCoverage: { ...(settings.scheduleCoverage || {}), presets } } });
+  return presets;
+}
+
+module.exports = { listProfessions, getReport, readPresets, savePresets, MAX_DAYS };

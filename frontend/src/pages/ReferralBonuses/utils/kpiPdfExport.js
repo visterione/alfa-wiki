@@ -2,7 +2,7 @@ import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { DEFAULT_CLINICS } from './clinicUtils';
 import { rbParseFullName, rbParseAbbrevName } from './nameMatching';
-import { WD_SHORT, wdOf, isWeekend, dayNum, dateLong, shortName, describeFinding } from '../../Statistics/components/scheduleCoverageText';
+import { WD_SHORT, wdOf, isWeekend, dayNum, dateLong, shortName, describeFinding, describeElsewhere } from '../../Statistics/components/scheduleCoverageText';
 
 pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts;
 
@@ -1209,6 +1209,7 @@ const SC_FILL = {
   ok:        { fill: '#bbf7d0', color: '#166534' },
   closed:    { fill: '#f1f5f9', color: '#94a3b8' },
   unplanned: { fill: '#ffffff', color: '#cbd5e1' },
+  idle:      { fill: '#f1f5f9', color: '#94a3b8' },
 };
 
 function scCell(c) {
@@ -1216,12 +1217,13 @@ function scCell(c) {
   let key = c.status === 'ok' && c.single ? 'single' : c.status;
   if (cancel && (key === 'none' || key === 'gap')) key = 'cancel';
   const st = SC_FILL[key] || SC_FILL.ok;
-  const text = c.status === 'closed' ? '-' : c.status === 'unplanned' ? '' : `${c.doctors}${cancel ? '*' : ''}`;
+  const text = c.status === 'closed' || c.status === 'idle' ? '-' : c.status === 'unplanned' ? '' : `${c.doctors}${cancel ? '*' : ''}`;
   return { text, fontSize: 7.5, bold: true, alignment: 'center', fillColor: st.fill, color: st.color };
 }
 
 function buildSchedules(data, content, pageBreak) {
   const { report, professionName } = data;
+  const anchor = report.mode === 'anchor';
   content.push(pdfSection(`Расписания — ${professionName}`, pageBreak));
 
   const notes = [];
@@ -1229,7 +1231,9 @@ function buildSchedules(data, content, pageBreak) {
   else if (report.horizon < report.to) notes.push(`Смены заведены по ${dateLong(report.horizon)}; дальше дни не проверялись.`);
   const fallback = report.clinics.filter(c => c.hoursSource === 'fallback').map(c => c.name);
   if (fallback.length) notes.push(`Часы работы ${fallback.join(', ')} не заполнены в карточке медцентра — взяты типовые.`);
-  notes.push('Дырой считается час и больше без единого врача в часы работы медцентра.');
+  notes.push(anchor
+    ? 'Режим эталона: проверяются только часы приёма эталонной специальности (★) — есть ли в это время врачи остальных. Дырой считается час и больше.'
+    : 'Дырой считается час и больше без единого врача в часы работы медцентра.');
   content.push({ text: safeStr(notes.join(' ')), fontSize: 8, color: '#64748b', margin: [0, 0, 0, 8] });
 
   if (!report.clinics.length) {
@@ -1240,7 +1244,10 @@ function buildSchedules(data, content, pageBreak) {
   // Календарь: дни вниз, медцентры столбцами — как на экране
   const cols = [
     { name: 'Вся сеть', data: report.network },
-    ...report.clinics.map(c => ({ name: c.name, data: report.cells[c.key] })),
+    // С эталоном медцентры, где он ни разу не принимал, — пустые столбцы
+    ...report.clinics
+      .filter(c => !anchor || report.days.some(d => !['idle', 'unplanned'].includes(report.cells[c.key][d].status)))
+      .map(c => ({ name: c.name, data: report.cells[c.key] })),
   ];
   const body = [
     [{ text: '', fontSize: 7 }, ...cols.map(c => ({ text: safeStr(c.name), fontSize: 7, bold: true, alignment: 'center', color: '#374151' }))],
@@ -1268,7 +1275,7 @@ function buildSchedules(data, content, pageBreak) {
         width: '*',
         margin: [14, 14, 0, 0],
         stack: [
-          { text: 'Цифра — сколько врачей принимает в этот день', fontSize: 7.5, color: '#64748b', margin: [0, 0, 0, 6] },
+          { text: anchor ? 'Цифра — сколько смежных врачей принимает в часы эталона' : 'Цифра — сколько врачей принимает в этот день', fontSize: 7.5, color: '#64748b', margin: [0, 0, 0, 6] },
           ...legend.map(([k, label]) => ({
             columns: [
               { width: 10, canvas: [{ type: 'rect', x: 0, y: 1, w: 9, h: 9, r: 2, color: SC_FILL[k].fill, lineColor: '#e2e8f0' }] },
@@ -1286,13 +1293,14 @@ function buildSchedules(data, content, pageBreak) {
   const who = (ids) => ids.map(id => shortName(names[id] || `#${id}`)).join(', ');
   content.push(pdfSubsection('Рекомендации'));
   if (!report.findings.length) {
-    content.push({ text: 'Направление покрыто во все часы работы — дыр длиннее часа нет.', fontSize: 9, color: '#166534' });
+    content.push({ text: anchor ? 'Приём эталона прикрыт смежными — дыр длиннее часа нет.' : 'Направление покрыто во все часы работы — дыр длиннее часа нет.', fontSize: 9, color: '#166534' });
     return;
   }
   content.push(pdfTable(
     ['Медцентр', 'Что', 'Подробности'],
     report.findings.map(f => {
-      const { title, detail } = describeFinding(f, who);
+      const { title, detail: base } = describeFinding(f, who, { anchor });
+      const detail = [base, describeElsewhere(f, (k) => report.clinics.find(c => c.key === k)?.name)].filter(Boolean).join(' · ');
       const tone = f.severity >= 3 ? '#dc2626' : f.severity === 2 ? '#b45309' : '#374151';
       return [
         { text: safeStr(f.clinicName), fontSize: 8, bold: true, color: tone },

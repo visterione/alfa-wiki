@@ -72,34 +72,52 @@ export const plural = (n, one, few, many) => {
 
 export const dateLong = (iso) => `${WD_SHORT[wdOf(iso)]}, ${dayNum(iso)} ${MONTHS_GEN[Number(iso.slice(5, 7)) - 1]}`;
 
-/** Заголовок и пояснение находки. who(ids) превращает id врачей в фамилии. */
-export function describeFinding(f, who) {
-  const cause = (ids) => (ids.length ? `Отмена в графике: ${who(ids)}` : 'В графике на это время никого');
+// Последняя эталонная специальность — эталон сам по себе не сбрасывается при
+// перезагрузке, как и выбор специальностей
+export const LS_ANCHOR = 'alfa.scheduleCoverage.anchor';
+
+/**
+ * Заголовок и пояснение находки. who(ids) превращает id врачей в фамилии.
+ *
+ * С эталоном (ver. 9.20) находка говорит не «нет ни одного врача», а «эталон
+ * принимает, а смежных рядом нет»: часы без эталона в отчёт не попадают вовсе.
+ */
+export function describeFinding(f, who, { anchor = false } = {}) {
+  const nobody = anchor ? 'Смежных в графике на это время нет' : 'В графике на это время никого';
+  const cause = (ids) => (ids.length ? `Отмена в графике: ${who(ids)}` : nobody);
   switch (f.kind) {
     case 'weekday': {
       const all = f.weekdays.every(w => w.dates.length === w.open);
-      const title = f.weekdays.length === 1
-        ? `По ${WD_PLURAL[f.weekdays[0].weekday]} нет ни одного врача`
-        : `Нет ни одного врача по ${f.weekdays.map(w => WD_SHORT[w.weekday]).join(', ')}`;
+      const one = f.weekdays.length === 1;
+      const title = anchor
+        ? (one ? `По ${WD_PLURAL[f.weekdays[0].weekday]} эталон принимает без смежных` : `Эталон без смежных по ${f.weekdays.map(w => WD_SHORT[w.weekday]).join(', ')}`)
+        : (one ? `По ${WD_PLURAL[f.weekdays[0].weekday]} нет ни одного врача` : `Нет ни одного врача по ${f.weekdays.map(w => WD_SHORT[w.weekday]).join(', ')}`);
       const detail = all
         ? 'Так заложено графиком на весь период'
         : f.weekdays.map(w => `${WD_SHORT[w.weekday]} — ${w.dates.length} из ${w.open}`).join(', ') + ' · заложено графиком';
       return { title, detail };
     }
     case 'day':
-      return { title: `${dateLong(f.date)} — весь день без врача`, detail: cause(f.cancelledBy) };
+      return { title: `${dateLong(f.date)} — ${anchor ? 'весь приём эталона без смежных' : 'весь день без врача'}`, detail: cause(f.cancelledBy) };
     case 'recurring': {
       const n = f.dates.length;
       return {
-        title: `${range(f.from, f.to)} без врача — ${n} ${plural(n, 'день', 'дня', 'дней')}`,
+        title: `${range(f.from, f.to)} ${anchor ? 'эталон без смежных' : 'без врача'} — ${n} ${plural(n, 'день', 'дня', 'дней')}`,
         detail: `${f.dates.slice(0, 12).map(dateShort).join(', ')}${n > 12 ? ' …' : ''} · `
           + (f.cause === 'cancel' ? `отмена в графике: ${who(f.cancelledBy)}` : 'заложено графиком'),
       };
     }
     default:
       return {
-        title: `${dateLong(f.date)} — без врача ${f.gaps.map(g => range(g.from, g.to)).join(', ')}`,
+        title: `${dateLong(f.date)} — ${anchor ? 'эталон без смежных' : 'без врача'} ${f.gaps.map(g => range(g.from, g.to)).join(', ')}`,
         detail: cause(f.cancelledBy),
       };
   }
+}
+
+/** «Можно направить в Альфу, Кидс» — для распечатки; на экране это логотипы. */
+export function describeElsewhere(f, nameOf) {
+  if (!f.elsewhere?.length) return '';
+  const names = f.elsewhere.map(nameOf).filter(Boolean).join(', ');
+  return f.elsewhereFull ? `Можно направить: ${names}` : `Частично есть: ${names}`;
 }

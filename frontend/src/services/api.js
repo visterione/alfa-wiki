@@ -944,6 +944,8 @@ export const scheduleCoverage = {
   // квартал по большой специальности может идти дольше общего таймаута.
   professions: () => api.get('/schedule-coverage/professions'),
   report: (params) => api.get('/schedule-coverage/report', { params, timeout: 120000 }),
+  presets: () => api.get('/schedule-coverage/presets'),
+  savePresets: (presets) => api.put('/schedule-coverage/presets', { presets }),
 };
 
 export const hourNorms = {

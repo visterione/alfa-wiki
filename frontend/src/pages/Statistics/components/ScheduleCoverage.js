@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { AlertOctagon, AlertTriangle, Info, ChevronRight } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Info, ChevronRight, Star, Pencil, Trash2, Check } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { scheduleCoverage } from '../../../services/api';
 import {
-  LS_PROFESSIONS, LS_EXCLUDED, readLs, writeLs, storedProfessions, excludedFor, WD_SHORT, isoLocal, wdOf, isWeekend, dayNum, dateLong,
-  range, hours, shortName, describeFinding,
+  LS_PROFESSIONS, LS_EXCLUDED, LS_ANCHOR, readLs, writeLs, storedProfessions, excludedFor, WD_SHORT, isoLocal, wdOf, isWeekend, dayNum, dateLong,
+  range, hours, shortName, describeFinding, describeElsewhere,
 } from './scheduleCoverageText';
 
 // Статистика → Аналитика → Расписания (ver. 9.17): где по направлению не
@@ -24,6 +25,12 @@ import {
 // они считаются одной группой — так сравнивают смежные направления, между
 // которыми пациента передают из рук в руки (флеболог → УЗИ). Тем же списком
 // выбирают и отдельных врачей: вторым уровнем под специальностью.
+//
+// Ver. 9.20: эталон, свой медцентр прежде соседнего и шаблоны выбора.
+// Эталон — специальность, чьи смены должны быть прикрыты остальными (флеболог
+// и УЗИ: важно, чтобы УЗИ было, пока принимает флеболог, а не наоборот).
+// Дыра в своём медцентре остаётся дырой, даже если соседний её закрывает, —
+// пациенту туда ещё ехать; соседи только смягчают находку и видны логотипами.
 
 const MAX_DAYS = 92;
 const MIN_GAP = 60;
@@ -41,10 +48,22 @@ const STATUS = {
   ok:        { bg: 'var(--green-200)', fg: 'var(--green-800)',         label: 'Покрыто' },
   closed:    { bg: 'var(--n-100)',     fg: 'var(--rb-text-secondary)', label: 'Медцентр закрыт' },
   unplanned: { bg: 'transparent',      fg: 'var(--rb-text-secondary)', label: 'График не заведён' },
+  idle:      { bg: 'var(--n-100)',     fg: 'var(--rb-text-secondary)', label: 'Эталон не принимает' },
 };
+// С эталоном те же цвета говорят о другом: красное — эталон принимает, а
+// смежных рядом нет ни часа
+const ANCHOR_LABELS = { none: 'Эталон весь приём без смежных', gap: 'Есть часы эталона без смежных', single: 'Прикрыто одним врачом', ok: 'Прикрыто' };
+const statusLabel = (report, key) => (report.mode === 'anchor' && ANCHOR_LABELS[key]) || STATUS[key].label;
 const statusOf = (c) => (c.status === 'ok' && c.single ? 'single' : c.status);
 const hasCancelGap = (c) => (c.gaps || []).some(g => g.cause === 'cancel');
-const isClickable = (c) => c.status !== 'closed' && c.status !== 'unplanned';
+const isClickable = (c) => c.status !== 'closed' && c.status !== 'unplanned' && c.status !== 'idle';
+
+// С эталоном медцентр, где он за период ни разу не принимал, — пустой серый
+// столбец: проверять там нечего. Соседние медцентры при этом остаются в
+// отчёте — на них указывают находки («можно направить в Кидс»).
+const visibleClinics = (report) => (report.mode !== 'anchor'
+  ? report.clinics
+  : report.clinics.filter(c => report.days.some(d => !['idle', 'unplanned'].includes(report.cells[c.key][d].status))));
 
 // Инлайн-стилями медиазапрос не написать: на узком экране колонки встают друг
 // под друга, и правую уже не к чему равнять по высоте — она растёт сама.
@@ -67,6 +86,8 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
   const [catalog, setCatalog] = useState(null); // { professions, clinics, savedExcluded }
   const [professionIds, setProfessionIds] = useState([]);
   const [ownExcluded, setOwnExcluded] = useState(() => readLs(LS_EXCLUDED, {}));
+  const [anchor, setAnchor] = useState(() => readLs(LS_ANCHOR, '') || '');
+  const [presets, setPresets] = useState([]);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -93,8 +114,16 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
   }, []);
 
   useEffect(() => {
+    scheduleCoverage.presets().then(res => setPresets(res.data?.presets || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (professionIds.length) writeLs(LS_PROFESSIONS, professionIds);
   }, [professionIds]);
+  useEffect(() => writeLs(LS_ANCHOR, anchor), [anchor]);
+
+  // Эталон действует, только пока рядом есть кого с ним сравнивать
+  const anchorId = anchor && professionIds.includes(anchor) && professionIds.length > 1 ? anchor : '';
 
   const excluded = useMemo(
     () => excludedFor(professionIds, ownExcluded, catalog?.savedExcluded),
@@ -113,7 +142,7 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
     const t = setTimeout(() => {
       setLoading(true);
       setError('');
-      scheduleCoverage.report({ from, to, professionIds: professionsKey, exclude: excludedKey, minGap: MIN_GAP })
+      scheduleCoverage.report({ from, to, professionIds: professionsKey, exclude: excludedKey, anchor: anchorId || undefined, minGap: MIN_GAP })
         .then(res => { if (alive) setReport(res.data); })
         .catch(err => {
           if (!alive) return;
@@ -123,7 +152,7 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
         .finally(() => { if (alive) setLoading(false); });
     }, 350);
     return () => { alive = false; clearTimeout(t); };
-  }, [from, to, professionsKey, excludedKey, tooLong, reloadKey, catalog]);
+  }, [from, to, professionsKey, excludedKey, anchorId, tooLong, reloadKey, catalog]);
 
   // Правая панель не должна стоять пустой: пока день не выбран, открываем
   // первую находку — это и есть то место, куда человек посмотрел бы первым.
@@ -132,9 +161,13 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
   useEffect(() => {
     if (!report) return;
     setSelected(prev => {
-      if (prev && report.days.includes(prev.date) && (prev.clinic === 'all' || report.cells[prev.clinic])) return prev;
+      const cellOf = (sel) => (sel.clinic === 'all' ? report.network : report.cells[sel.clinic])?.[sel.date];
+      if (prev && report.days.includes(prev.date) && cellOf(prev) && isClickable(cellOf(prev))) return prev;
       const f = report.findings[0];
-      return f ? { clinic: f.clinic, date: f.dates[0] } : { clinic: 'all', date: report.days[0] };
+      if (f) return { clinic: f.clinic, date: f.dates[0] };
+      // Без находок — первый день, который вообще есть что показать
+      const day = report.days.find(d => isClickable(report.network[d])) || report.days[0];
+      return { clinic: 'all', date: day };
     });
   }, [report]);
 
@@ -163,10 +196,58 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
     const p = catalog.professions.find(x => x.id === pid);
     updateExcluded(prev => ({ ...prev, [pid]: include ? [] : p.doctors.map(d => d.id) }));
   };
+  // Только врачи одного медцентра: «УЗИ Альфы для флеболога Альфы». Медцентр
+  // врача — по сменам за период, а без смен — по карточке, как и логотипы.
+  const setProfessionClinic = (pid, clinicKey, clinicsOf) => {
+    const p = catalog.professions.find(x => x.id === pid);
+    updateExcluded(prev => ({ ...prev, [pid]: p.doctors.filter(d => !clinicsOf(d).includes(clinicKey)).map(d => d.id) }));
+  };
   const toggleProfession = (pid) => setProfessionIds(prev => {
     if (!prev.includes(pid)) return [...prev, pid];
     // Пустой выбор отчёту не задать — последняя специальность остаётся
     return prev.length > 1 ? prev.filter(id => id !== pid) : prev;
+  });
+  const toggleAnchor = (pid) => setAnchor(a => (a === pid ? '' : pid));
+
+  // ── Шаблоны ──
+  const currentSelection = () => ({
+    professionIds,
+    anchor: anchorId || null,
+    excluded: Object.fromEntries(professionIds.map(pid => [pid, [...excludedFor([pid], ownExcluded, catalog?.savedExcluded)]])),
+  });
+  const persistPresets = async (next) => {
+    const prev = presets;
+    setPresets(next);
+    try {
+      const res = await scheduleCoverage.savePresets(next);
+      setPresets(res.data?.presets || next);
+    } catch (err) {
+      setPresets(prev);
+      toast.error(err.response?.data?.error || 'Не удалось сохранить шаблон');
+    }
+  };
+  // id даём сразу: шаблон виден в списке до ответа сервера, и без id его
+  // нельзя было бы отличить от соседних
+  const savePreset = (name) => persistPresets([...presets, { id: `p${Date.now().toString(36)}`, name, ...currentSelection() }]);
+  const renamePreset = (id, name) => persistPresets(presets.map(p => (p.id === id ? { ...p, name } : p)));
+  const deletePreset = (id) => persistPresets(presets.filter(p => p.id !== id));
+  const applyPreset = (preset) => {
+    const known = preset.professionIds.filter(pid => catalog.professions.some(p => p.id === pid));
+    if (!known.length) { toast.error('Специальностей шаблона больше нет в МИС'); return; }
+    setProfessionIds(known);
+    setAnchor(preset.anchor || '');
+    updateExcluded(prev => {
+      const next = { ...prev };
+      for (const pid of known) next[pid] = preset.excluded?.[pid] || [];
+      return next;
+    });
+  };
+  const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+  const activePreset = catalog && presets.find(p => {
+    const cur = currentSelection();
+    return sameSet(p.professionIds, cur.professionIds)
+      && (p.anchor || null) === cur.anchor
+      && cur.professionIds.every(pid => sameSet(p.excluded?.[pid] || [], cur.excluded[pid]));
   });
 
   if (tooLong) {
@@ -181,8 +262,10 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <ProfessionPicker catalog={catalog} report={report} selectedIds={professionIds} excluded={excluded}
-          onProfession={toggleProfession} onDoctor={toggleDoctor} onAll={setProfessionAll} />
+        <ProfessionPicker catalog={catalog} report={report} selectedIds={professionIds} excluded={excluded} anchorId={anchorId}
+          onProfession={toggleProfession} onDoctor={toggleDoctor} onAll={setProfessionAll} onClinic={setProfessionClinic} onAnchor={toggleAnchor}
+          presets={presets} activePreset={activePreset} onApplyPreset={applyPreset} onSavePreset={savePreset}
+          onRenamePreset={renamePreset} onDeletePreset={deletePreset} />
         {report && !error && <Notices report={report} to={to} />}
         <button onClick={() => setReloadKey(k => k + 1)} disabled={loading} title="Забрать расписание из МИС заново"
           style={{ ...iconBtn, marginLeft: 'auto', cursor: loading ? 'default' : 'pointer' }}>
@@ -242,17 +325,13 @@ export default function ScheduleCoverage({ periodStart, periodEnd }) {
 // которых на деле никто не закрывает, поэтому у каждого есть галочка. Ею же
 // оставляют в отчёте нескольких конкретных врачей, чтобы сравнить их графики.
 //
-// Пояснений и числа смен в списке нет — заказчик убрал их как шум. Врач без
-// смен за период лишь приглушён: понять, почему он ничего не меняет в отчёте.
-function ProfessionPicker({ catalog, report, selectedIds, excluded, onProfession, onDoctor, onAll }) {
+// Вторая вкладка — шаблоны: настраивать «флеболог Альфы + УЗИ» из списка в
+// шестьдесят специальностей каждый раз никто не будет.
+function ProfessionPicker(props) {
+  const { catalog, selectedIds, activePreset, presets } = props;
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState(() => new Set());
-  // Порядок фиксируется при открытии: выбранные сверху, но строка не должна
-  // убегать из-под курсора в момент щелчка по ней
-  const [pinned, setPinned] = useState([]);
+  const [tab, setTab] = useState('select');
   const wrapRef = useRef(null);
-  const searchRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -260,19 +339,69 @@ function ProfessionPicker({ catalog, report, selectedIds, excluded, onProfession
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
-    searchRef.current?.focus();
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
 
-  const professions = useMemo(() => catalog?.professions || [], [catalog]);
+  const professions = catalog?.professions || [];
   const names = selectedIds.map(id => professions.find(p => p.id === id)?.name).filter(Boolean);
-  const label = names.join(', ') || (catalog ? 'Выберите специальность' : 'Загружаю специальности…');
+  // Совпал с шаблоном — показываем его имя: «Флебология → УЗИ» короче и
+  // понятнее двух длинных названий из справочника МИС
+  const label = activePreset?.name || names.join(', ') || (catalog ? 'Выберите специальность' : 'Загружаю специальности…');
 
+  const tabBtn = (key, text) => (
+    <button type="button" onClick={() => setTab(key)}
+      style={{ flex: 1, border: 'none', background: 'none', padding: '9px 0', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer', fontWeight: tab === key ? 600 : 400, color: tab === key ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', boxShadow: tab === key ? 'inset 0 -2px 0 var(--rb-primary)' : 'none' }}>
+      {text}
+    </button>
+  );
+
+  return (
+    <div ref={wrapRef} className={`rb-ss-wrap${open ? ' open' : ''}`} style={{ width: 360, flexShrink: 0 }}>
+      <button type="button" className="rb-ss-trigger has-value" onClick={() => setOpen(o => !o)} disabled={!catalog} title={names.join('\n')}>
+        {activePreset && <Star size={13} style={{ color: 'var(--amber-500)', fill: 'var(--amber-500)' }} />}
+        <span className="rb-ss-value">{label}</span>
+        {names.length > 1 && (
+          <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 9, background: 'var(--accent-100)', color: 'var(--rb-primary)', flexShrink: 0 }}>{names.length}</span>
+        )}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {open && (
+        <div className="rb-ss-dropdown" style={{ width: 460, right: 'auto' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--rb-border)', background: 'var(--n-50)' }}>
+            {tabBtn('select', 'Специальности и врачи')}
+            {tabBtn('presets', presets.length ? `Шаблоны · ${presets.length}` : 'Шаблоны')}
+          </div>
+          {tab === 'select'
+            ? <SelectTab {...props} />
+            : <PresetsTab {...props} onApplied={() => setOpen(false)} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Пояснений и числа смен в списке нет — заказчик убрал их как шум. Врач без
+// смен за период лишь приглушён: понять, почему он ничего не меняет в отчёте.
+function SelectTab({ catalog, report, selectedIds, excluded, anchorId, onProfession, onDoctor, onAll, onClinic, onAnchor }) {
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState(() => new Set());
+  // Порядок фиксируется при открытии: выбранные сверху, но строка не должна
+  // убегать из-под курсора в момент щелчка по ней
+  const [pinned] = useState(selectedIds);
+  const searchRef = useRef(null);
+  useEffect(() => { searchRef.current?.focus(); }, []);
+
+  const professions = useMemo(() => catalog?.professions || [], [catalog]);
   const reportDoctors = useMemo(() => new Map((report?.doctors || []).map(d => [d.id, d])), [report]);
   const clinicOf = (key) => report?.clinics.find(c => c.key === key) || catalog?.clinics[key];
+  // Медцентры врача: по сменам за период, без смен — по карточке МИС
+  const clinicsOfDoctor = (d) => {
+    const rd = reportDoctors.get(d.id);
+    return rd?.clinics?.length ? rd.clinics : d.clinics;
+  };
 
   const q = search.trim().toLowerCase();
   const rows = useMemo(() => {
@@ -289,13 +418,6 @@ function ProfessionPicker({ catalog, report, selectedIds, excluded, onProfession
     });
   }, [professions, pinned, q]);
 
-  const openPicker = () => {
-    if (!open) {
-      setPinned(selectedIds);
-      setSearch('');
-    }
-    setOpen(o => !o);
-  };
   const toggleExpand = (pid) => setExpanded(prev => {
     const next = new Set(prev);
     if (next.has(pid)) next.delete(pid); else next.add(pid);
@@ -306,70 +428,169 @@ function ProfessionPicker({ catalog, report, selectedIds, excluded, onProfession
     const sa = reportDoctors.get(a.id)?.shifts > 0, sb = reportDoctors.get(b.id)?.shifts > 0;
     return (sb - sa) || a.name.localeCompare(b.name, 'ru');
   });
+  const multi = selectedIds.length > 1;
 
   return (
-    <div ref={wrapRef} className={`rb-ss-wrap${open ? ' open' : ''}`} style={{ width: 360, flexShrink: 0 }}>
-      <button type="button" className="rb-ss-trigger has-value" onClick={openPicker} disabled={!catalog} title={names.join('\n')}>
-        <span className="rb-ss-value">{label}</span>
-        {names.length > 1 && (
-          <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 9, background: 'var(--accent-100)', color: 'var(--rb-primary)', flexShrink: 0 }}>{names.length}</span>
-        )}
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
-      </button>
-      {open && (
-        <div className="rb-ss-dropdown" style={{ width: 440, right: 'auto' }}>
-          <div className="rb-ss-search-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            <input ref={searchRef} className="rb-ss-search" type="text" placeholder="Специальность или фамилия врача"
-              value={search} onChange={e => setSearch(e.target.value)} />
-            {search && <button className="rb-ss-clear" type="button" onClick={() => setSearch('')}>×</button>}
-          </div>
-          <div style={{ maxHeight: 440, overflowY: 'auto', padding: '4px 0' }}>
-            {rows.map(({ p, doctors, byDoctor }) => {
-              const on = selectedIds.includes(p.id);
-              const isOpen = on && (expanded.has(p.id) || byDoctor);
-              return (
-                <div key={p.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px 0 4px', background: on ? 'var(--accent-50)' : 'none' }}>
-                    <button type="button" onClick={() => on && toggleExpand(p.id)} disabled={!on}
-                      title={on ? (isOpen ? 'Свернуть врачей' : 'Показать врачей') : ''}
-                      style={{ border: 'none', background: 'none', padding: 4, display: 'flex', cursor: on ? 'pointer' : 'default', color: 'var(--rb-text-secondary)', visibility: on ? 'visible' : 'hidden' }}>
-                      <ChevronRight size={14} style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
-                    </button>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, fontSize: 13, padding: '7px 0', cursor: 'pointer', fontWeight: on ? 600 : 400 }}>
-                      <input type="checkbox" checked={on} onChange={() => onProfession(p.id)} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                    </label>
-                    {isOpen && !byDoctor && (
-                      <span style={{ display: 'flex', gap: 8, fontSize: 12, flexShrink: 0 }}>
-                        <button type="button" onClick={() => onAll(p.id, true)} style={linkBtn}>все</button>
-                        <button type="button" onClick={() => onAll(p.id, false)} style={linkBtn}>никого</button>
-                      </span>
-                    )}
-                  </div>
-                  {isOpen && sortDoctors(doctors).map(d => {
-                    const rd = reportDoctors.get(d.id);
-                    const keys = rd?.clinics?.length ? rd.clinics : d.clinics;
-                    const off = excluded.has(d.id);
-                    return (
-                      <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '5px 10px 5px 34px', cursor: 'pointer', opacity: rd && !rd.shifts ? 0.55 : 1 }}>
-                        <input type="checkbox" checked={!off} onChange={() => onDoctor(d.id)} />
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: off ? 'var(--rb-text-secondary)' : 'inherit' }} title={d.name}>{d.name}</span>
-                        <ClinicLogos clinics={keys.map(clinicOf).filter(Boolean)} />
-                      </label>
-                    );
-                  })}
+    <>
+      <div className="rb-ss-search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+        <input ref={searchRef} className="rb-ss-search" type="text" placeholder="Специальность или фамилия врача"
+          value={search} onChange={e => setSearch(e.target.value)} />
+        {search && <button className="rb-ss-clear" type="button" onClick={() => setSearch('')}>×</button>}
+      </div>
+      <div style={{ maxHeight: 440, overflowY: 'auto', padding: '4px 0' }}>
+        {rows.map(({ p, doctors, byDoctor }) => {
+          const on = selectedIds.includes(p.id);
+          const isOpen = on && (expanded.has(p.id) || byDoctor);
+          const isAnchor = anchorId === p.id;
+          // Медцентры специальности — для «оставить только врачей Альфы»
+          const groupClinics = isOpen && !byDoctor
+            ? [...new Set(p.doctors.flatMap(clinicsOfDoctor))].map(clinicOf).filter(Boolean)
+            : [];
+          return (
+            <div key={p.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px 0 4px', background: on ? 'var(--accent-50)' : 'none' }}>
+                <button type="button" onClick={() => on && toggleExpand(p.id)} disabled={!on}
+                  title={on ? (isOpen ? 'Свернуть врачей' : 'Показать врачей') : ''}
+                  style={{ border: 'none', background: 'none', padding: 4, display: 'flex', cursor: on ? 'pointer' : 'default', color: 'var(--rb-text-secondary)', visibility: on ? 'visible' : 'hidden' }}>
+                  <ChevronRight size={14} style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+                </button>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, fontSize: 13, padding: '7px 0', cursor: 'pointer', fontWeight: on ? 600 : 400 }}>
+                  <input type="checkbox" checked={on} onChange={() => onProfession(p.id)} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                </label>
+                {/* Эталон — только когда выбрано несколько: сравнивать не с кем */}
+                {on && multi && (
+                  <button type="button" onClick={() => onAnchor(p.id)}
+                    title={isAnchor ? 'Эталон: остальные проверяются на часы его приёма. Нажмите, чтобы снять' : 'Сделать эталоном: проверять, есть ли остальные, пока принимает эта специальность'}
+                    style={{ border: 'none', background: isAnchor ? 'var(--amber-100)' : 'none', borderRadius: 6, padding: '3px 6px', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, color: isAnchor ? 'var(--amber-800)' : 'var(--rb-text-secondary)', flexShrink: 0 }}>
+                    <Star size={13} style={isAnchor ? { fill: 'var(--amber-500)', color: 'var(--amber-500)' } : undefined} />
+                    {isAnchor && 'эталон'}
+                  </button>
+                )}
+              </div>
+              {isOpen && !byDoctor && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 34px', fontSize: 12, ...mutedStyle }}>
+                  <button type="button" onClick={() => onAll(p.id, true)} style={linkBtn}>все</button>
+                  <button type="button" onClick={() => onAll(p.id, false)} style={linkBtn}>никого</button>
+                  {groupClinics.length > 1 && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                      только
+                      {groupClinics.map(c => (
+                        <button key={c.key} type="button" title={`Только врачи ${c.name}`}
+                          onClick={() => onClinic(p.id, c.key, clinicsOfDoctor)}
+                          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', display: 'flex' }}>
+                          <ClinicLogo clinic={c} size={18} />
+                        </button>
+                      ))}
+                    </span>
+                  )}
                 </div>
-              );
-            })}
-            {catalog && rows.length === 0 && <div className="rb-ss-empty">Ничего не найдено</div>}
-          </div>
+              )}
+              {isOpen && sortDoctors(doctors).map(d => {
+                const rd = reportDoctors.get(d.id);
+                const off = excluded.has(d.id);
+                return (
+                  <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '5px 10px 5px 34px', cursor: 'pointer', opacity: rd && !rd.shifts ? 0.55 : 1 }}>
+                    <input type="checkbox" checked={!off} onChange={() => onDoctor(d.id)} />
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: off ? 'var(--rb-text-secondary)' : 'inherit' }} title={d.name}>{d.name}</span>
+                    <ClinicLogos clinics={clinicsOfDoctor(d).map(clinicOf).filter(Boolean)} />
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })}
+        {catalog && rows.length === 0 && <div className="rb-ss-empty">Ничего не найдено</div>}
+      </div>
+    </>
+  );
+}
+
+// Название шаблона по умолчанию — из коротких имён специальностей: в МИС они
+// длинные («Флебология, сердечно-сосудистая хирургия»), а в строке выбора
+// нужна суть. Эталон впереди стрелкой — так и читается: «кого прикрывают кем».
+function defaultPresetName(catalog, selectedIds, anchorId, excluded) {
+  const short = (id) => (catalog.professions.find(p => p.id === id)?.name || '').split(/[,(]/)[0].trim();
+  const rest = selectedIds.filter(id => id !== anchorId).map(short);
+  const base = anchorId ? `${short(anchorId)} → ${rest.join(' + ')}` : rest.join(' + ');
+  // «Выборочно» — когда галочки снимал сам человек; служебные записи вроде
+  // КТГ, снятые для всех ещё до шаблонов, выбором не считаются
+  const saved = new Set(Object.values(catalog.savedExcluded || {}).flat().map(String));
+  const partial = selectedIds.some(pid => catalog.professions.find(p => p.id === pid)?.doctors.some(d => excluded.has(d.id) && !saved.has(d.id)));
+  return partial ? `${base}, выборочно` : base;
+}
+
+function PresetsTab({ catalog, selectedIds, anchorId, excluded, presets, activePreset, onApplyPreset, onSavePreset, onRenamePreset, onDeletePreset, onApplied }) {
+  const [name, setName] = useState(() => defaultPresetName(catalog, selectedIds, anchorId, excluded));
+  const [editing, setEditing] = useState(null); // { id, name }
+  const shortList = (ids) => ids.map(id => catalog.professions.find(p => p.id === id)?.name.split(/[,(]/)[0].trim() || '—').join(', ');
+
+  const save = () => {
+    const n = name.trim();
+    if (!n) return;
+    onSavePreset(n);
+  };
+  const commitRename = () => {
+    if (editing?.name.trim()) onRenamePreset(editing.id, editing.name.trim());
+    setEditing(null);
+  };
+
+  return (
+    <div>
+      {/* Сохранить можно только то, чего ещё нет: второй такой же шаблон
+          отличался бы от первого лишь именем */}
+      {!activePreset && (
+        <div style={{ display: 'flex', gap: 6, padding: 10, borderBottom: '1px solid var(--rb-border)' }}>
+          <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()}
+            placeholder="Название шаблона" className="rb-input"
+            style={{ flex: 1, minWidth: 0, padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontFamily: 'inherit', fontSize: 13, background: 'var(--n-0)', color: 'var(--rb-text)' }} />
+          <button type="button" onClick={save} disabled={!name.trim()} className="rb-btn rb-btn-primary"
+            style={{ padding: '6px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>
+            Сохранить выбор
+          </button>
         </div>
       )}
+      <div style={{ maxHeight: 400, overflowY: 'auto', padding: '4px 0' }}>
+        {presets.length === 0 && <div className="rb-ss-empty">Шаблонов пока нет</div>}
+        {presets.map(p => {
+          const isActive = activePreset?.id === p.id;
+          if (editing?.id === p.id) {
+            return (
+              <div key={p.id} style={{ display: 'flex', gap: 6, padding: '6px 10px' }}>
+                <input autoFocus value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })}
+                  onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { e.stopPropagation(); setEditing(null); } }}
+                  onBlur={commitRename}
+                  style={{ flex: 1, minWidth: 0, padding: '5px 8px', border: '1px solid var(--rb-primary)', borderRadius: 6, fontFamily: 'inherit', fontSize: 13, background: 'var(--n-0)', color: 'var(--rb-text)' }} />
+              </div>
+            );
+          }
+          return (
+            <div key={p.id} className="rb-ss-item" style={{ gap: 8, background: isActive ? 'var(--accent-50)' : undefined }}
+              onClick={() => { onApplyPreset(p); onApplied(); }}>
+              <span style={{ display: 'grid', gap: 1, minWidth: 0, flex: 1 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: isActive ? 600 : 400 }}>
+                  {p.anchor && <Star size={12} style={{ color: 'var(--amber-500)', fill: 'var(--amber-500)', flexShrink: 0 }} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  {isActive && <Check size={13} style={{ color: 'var(--rb-primary)', flexShrink: 0 }} />}
+                </span>
+                <span style={{ fontSize: 11, ...mutedStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortList(p.professionIds)}</span>
+              </span>
+              <button type="button" title="Переименовать" onClick={e => { e.stopPropagation(); setEditing({ id: p.id, name: p.name }); }} style={presetIconBtn}>
+                <Pencil size={13} />
+              </button>
+              <button type="button" title="Удалить" onClick={e => { e.stopPropagation(); onDeletePreset(p.id); }} style={presetIconBtn}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
+const presetIconBtn = { border: 'none', background: 'none', padding: 4, display: 'flex', cursor: 'pointer', color: 'var(--rb-text-secondary)', flexShrink: 0 };
 const linkBtn = { border: 'none', background: 'none', padding: 0, color: 'var(--rb-primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 };
 
 // Чей врач — логотипами медцентров. Больше трёх не помещается в строку, и
@@ -431,7 +652,7 @@ function NetworkMark({ size = 24 }) {
 function CalendarGrid({ report, selected, onSelect }) {
   const cols = [
     { key: 'all', name: 'Вся сеть', data: report.network },
-    ...report.clinics.map(c => ({ key: c.key, name: c.name, clinic: c, data: report.cells[c.key] })),
+    ...visibleClinics(report).map(c => ({ key: c.key, name: c.name, clinic: c, data: report.cells[c.key] })),
   ];
   const CELL_W = 36, CELL_H = 26;
 
@@ -467,7 +688,7 @@ function CalendarGrid({ report, selected, onSelect }) {
                     <td key={col.key}>
                       <button
                         onClick={() => clickable && onSelect(col.key, d)}
-                        title={cellTitle(col.name, d, c)}
+                        title={cellTitle(report, col.name, d, c)}
                         style={{
                           width: CELL_W, height: CELL_H, border: c.status === 'unplanned' ? '1px dashed var(--rb-border-dark)' : 'none',
                           borderRadius: 6, padding: 0, fontFamily: 'inherit', fontSize: 12, fontWeight: 600, display: 'block',
@@ -476,7 +697,7 @@ function CalendarGrid({ report, selected, onSelect }) {
                           outline: isSel ? '2px solid var(--rb-primary)' : 'none', outlineOffset: 1,
                         }}
                       >
-                        {c.status === 'closed' ? '–' : c.status === 'unplanned' ? '' : c.doctors}
+                        {c.status === 'closed' || c.status === 'idle' ? '–' : c.status === 'unplanned' ? '' : c.doctors}
                       </button>
                     </td>
                   );
@@ -486,30 +707,33 @@ function CalendarGrid({ report, selected, onSelect }) {
           </tbody>
         </table>
       </div>
-      <Legend />
+      <Legend report={report} />
     </div>
   );
 }
 
-function cellTitle(name, date, c) {
+function cellTitle(report, name, date, c) {
+  const anchor = report.mode === 'anchor';
   const head = `${name} · ${dateLong(date)}`;
   if (c.status === 'closed') return `${head}\nМедцентр закрыт`;
+  if (c.status === 'idle') return `${head}\nЭталон не принимает`;
   if (c.status === 'unplanned') return `${head}\nГрафик ещё не заведён`;
-  const lines = [head, `Врачей: ${c.doctors}`];
-  for (const g of c.gaps || []) lines.push(`Без врача ${range(g.from, g.to)}${g.cause === 'cancel' ? ' — из-за отмены' : ''}`);
-  if (c.single) lines.push('Весь день держится на одном враче');
+  const lines = [head, anchor ? `Смежных в часы эталона: ${c.doctors}` : `Врачей: ${c.doctors}`];
+  for (const g of c.gaps || []) lines.push(`${anchor ? 'Без смежных' : 'Без врача'} ${range(g.from, g.to)}${g.cause === 'cancel' ? ' — из-за отмены' : ''}`);
+  if (c.single) lines.push(anchor ? 'Приём эталона прикрывает один врач' : 'Весь день держится на одном враче');
   return lines.join('\n');
 }
 
-function Legend() {
+function Legend({ report }) {
   const item = (bg, label, extra = {}) => (
     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{ width: 14, height: 14, borderRadius: 4, background: bg, flexShrink: 0, ...extra }} />{label}
     </span>
   );
+  const keys = report.mode === 'anchor' ? ['none', 'gap', 'single', 'ok', 'idle'] : ['none', 'gap', 'single', 'ok', 'closed'];
   return (
     <div style={{ display: 'grid', gap: 6, marginTop: 12, fontSize: 11, ...mutedStyle }}>
-      {['none', 'gap', 'single', 'ok', 'closed'].map(k => <span key={k}>{item(STATUS[k].bg, STATUS[k].label)}</span>)}
+      {keys.map(k => <span key={k}>{item(STATUS[k].bg, statusLabel(report, k))}</span>)}
       {item(`${HATCH}, var(--amber-200)`, 'Из-за отмены')}
       {item('transparent', STATUS.unplanned.label, { border: '1px dashed var(--rb-border-dark)' })}
     </div>
@@ -517,6 +741,16 @@ function Legend() {
 }
 
 // ── Расписание дня ───────────────────────────────────────────────────────────
+
+// Цвет смены — по специальности, чтобы в сводном графике УЗИ отличалось от
+// флеболога с первого взгляда. Красный и зелёный заняты дырами и покрытием,
+// поэтому в наборе их нет; эталон всегда получает первый цвет.
+const PROFESSION_COLORS = ['var(--rb-primary)', 'var(--violet-500)', 'var(--cyan-500)', 'var(--pink-500)', 'var(--amber-500)', 'var(--n-500)'];
+function professionColors(report) {
+  const ids = (report.professions || []).map(p => p.id);
+  const ordered = report.anchor ? [report.anchor, ...ids.filter(id => id !== report.anchor)] : ids;
+  return Object.fromEntries(ordered.map((id, i) => [id, PROFESSION_COLORS[i % PROFESSION_COLORS.length]]));
+}
 
 function DayDetail({ report, clinic, date, onDate }) {
   const isNet = clinic === 'all';
@@ -546,6 +780,11 @@ function DayDetail({ report, clinic, date, onDate }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [prev, next, onDate]);
 
+  const anchorMode = report.mode === 'anchor';
+  const multi = report.professions?.length > 1;
+  const professionColor = useMemo(() => professionColors(report), [report]);
+  const professionName = (id) => (report.professions || []).find(p => p.id === id)?.name.split(/[,(]/)[0].trim() || '';
+
   const lanes = useMemo(() => {
     const doctors = Object.fromEntries(report.doctors.map(d => [d.id, d]));
     const byUser = new Map();
@@ -557,15 +796,31 @@ function DayDetail({ report, clinic, date, onDate }) {
         if (prevLane) {
           prevLane.work = [...prevLane.work, ...l.work];
           prevLane.cancel = [...prevLane.cancel, ...l.cancel];
+          if (!prevLane.clinics.includes(c)) prevLane.clinics.push(c);
         } else {
-          byUser.set(l.userId, { userId: l.userId, work: [...l.work], cancel: [...l.cancel], name: doctors[l.userId]?.name || `#${l.userId}` });
+          const profession = doctors[l.userId]?.professions?.[0] || null;
+          byUser.set(l.userId, {
+            userId: l.userId, work: [...l.work], cancel: [...l.cancel], clinics: [c], profession,
+            name: doctors[l.userId]?.name || `#${l.userId}`,
+            lead: anchorMode && profession === report.anchor,
+          });
         }
       }
     }
-    return [...byUser.values()].sort((a, b) => (Math.min(...a.work.map(w => w[0])) || 0) - (Math.min(...b.work.map(w => w[0])) || 0));
-  }, [report, date, isNet, clinicInfo]);
+    // Эталон сверху, дальше — специальностями в порядке выбора, внутри — по
+    // началу смены: в сводном графике врачи одной специальности стоят рядом
+    const order = new Map((report.professions || []).map((p, i) => [p.id, i]));
+    const start = (l) => Math.min(...l.work.map(w => w[0]));
+    return [...byUser.values()].sort((a, b) =>
+      (b.lead - a.lead)
+      || ((order.get(a.profession) ?? 99) - (order.get(b.profession) ?? 99))
+      || ((start(a) || 0) - (start(b) || 0)));
+  }, [report, date, isNet, clinicInfo, anchorMode]);
 
   const win = cell.window || { from: 8 * 60, to: 20 * 60 };
+  // С эталоном «должно быть покрыто» — не сплошные часы медцентра, а его смены
+  const windows = cell.windows || [[win.from, win.to]];
+  const clinicName = (key) => report.clinics.find(c => c.key === key)?.name || key;
   let lo = win.from, hi = win.to;
   for (const l of lanes) for (const [s, e] of l.work) { lo = Math.min(lo, s); hi = Math.max(hi, e); }
   lo = Math.floor(lo / 60) * 60;
@@ -576,7 +831,7 @@ function DayDetail({ report, clinic, date, onDate }) {
   for (let h = lo; h <= hi; h += 60) ticks.push(h);
   const tickStep = hi - lo > 14 * 60 ? 2 : 1;
 
-  const LABEL_W = 170;
+  const LABEL_W = 210;
   const track = { position: 'relative', height: 22, flex: 1, borderRadius: 5, background: 'var(--n-50)' };
   const arrow = (target, dir) => (
     <button onClick={() => target && onDate(target)} disabled={!target}
@@ -620,44 +875,70 @@ function DayDetail({ report, clinic, date, onDate }) {
 
           {/* Итог: где никого */}
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, fontWeight: 600 }}>Без врача</div>
+            <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, fontWeight: 600 }}>{anchorMode ? 'Без смежных' : 'Без врача'}</div>
             <div style={track}>
-              <div style={{ position: 'absolute', left: pct(win.from), width: width(win.from, win.to), top: 0, bottom: 0, background: 'var(--green-100)', borderRadius: 5 }} />
+              {windows.map(([a, b], i) => (
+                <div key={`w${i}`} style={{ position: 'absolute', left: pct(a), width: width(a, b), top: 0, bottom: 0, background: 'var(--green-100)', borderRadius: 5 }} />
+              ))}
               {(cell.gaps || []).map((g, i) => (
-                <div key={i} title={`${range(g.from, g.to)}${g.cause === 'cancel' ? ' — из-за отмены' : ''}`}
+                <div key={i} title={[
+                  `${range(g.from, g.to)}${g.cause === 'cancel' ? ' — из-за отмены' : ''}`,
+                  g.elsewhere?.length ? `${g.elsewhereFull ? 'Можно направить' : 'Частично есть'}: ${g.elsewhere.map(e => clinicName(e.clinic)).join(', ')}` : '',
+                ].filter(Boolean).join('\n')}
                   style={{ position: 'absolute', left: pct(g.from), width: width(g.from, g.to), top: 0, bottom: 0, borderRadius: 5, background: g.cause === 'cancel' ? `${HATCH}, var(--red-500)` : 'var(--red-500)', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                   {range(g.from, g.to)}
                 </div>
               ))}
-              {!(cell.gaps || []).length && <span style={{ position: 'absolute', left: 8, top: 3, fontSize: 11, color: 'var(--green-800)' }}>все часы работы покрыты</span>}
+              {!(cell.gaps || []).length && <span style={{ position: 'absolute', left: 8, top: 3, fontSize: 11, color: 'var(--green-800)' }}>{anchorMode ? 'весь приём эталона прикрыт' : 'все часы работы покрыты'}</span>}
             </div>
           </div>
 
           <div style={{ height: 1, background: 'var(--rb-border)', margin: '4px 0' }} />
 
           {lanes.length === 0 && <div style={{ fontSize: 13, ...mutedStyle, padding: '6px 0' }}>В графике на этот день никого нет</div>}
-          {lanes.map(l => (
-            <div key={l.userId} style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.name}>
-                {shortName(l.name)}
+          {lanes.map(l => {
+            const color = (multi && professionColor[l.profession]) || 'var(--rb-primary)';
+            return (
+              <div key={l.userId} style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ width: LABEL_W, flexShrink: 0, paddingRight: 8, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  {/* Логотип — где врач принимал в этот день; в сети их бывает два */}
+                  <span style={{ display: 'flex', gap: 2, flexShrink: 0 }} title={l.clinics.map(c => c.name).join(', ')}>
+                    {l.clinics.slice(0, 2).map(c => <ClinicLogo key={c.key} clinic={c} size={18} />)}
+                  </span>
+                  <span style={{ display: 'grid', minWidth: 0, lineHeight: 1.2 }}>
+                    <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: l.lead ? 600 : 400 }} title={l.name}>
+                      {l.lead && <Star size={10} style={{ color: 'var(--amber-500)', fill: 'var(--amber-500)', marginRight: 3, verticalAlign: -1 }} />}
+                      {shortName(l.name)}
+                    </span>
+                    {multi && (
+                      <span style={{ fontSize: 10.5, color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {professionName(l.profession)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div style={track}>
+                  <div style={{ position: 'absolute', left: pct(win.from), width: width(win.from, win.to), top: 0, bottom: 0, border: '1px dashed var(--rb-border)', borderRadius: 5 }} />
+                  {l.work.map(([a, b], j) => (
+                    <div key={j} title={`Смена ${range(a, b)}`}
+                      style={{ position: 'absolute', left: pct(a), width: width(a, b), top: 3, bottom: 3, borderRadius: 4, background: color, opacity: 0.85 }} />
+                  ))}
+                  {l.cancel.map(([a, b], j) => (
+                    <div key={`c${j}`} title={`Отмена ${range(a, b)}`}
+                      style={{ position: 'absolute', left: pct(a), width: width(a, b), top: 3, bottom: 3, borderRadius: 4, background: `${HATCH}, var(--red-400)` }} />
+                  ))}
+                </div>
               </div>
-              <div style={track}>
-                <div style={{ position: 'absolute', left: pct(win.from), width: width(win.from, win.to), top: 0, bottom: 0, border: '1px dashed var(--rb-border)', borderRadius: 5 }} />
-                {l.work.map(([s, e], j) => (
-                  <div key={j} title={`Смена ${range(s, e)}`}
-                    style={{ position: 'absolute', left: pct(s), width: width(s, e), top: 3, bottom: 3, borderRadius: 4, background: 'var(--rb-primary)', opacity: 0.85 }} />
-                ))}
-                {l.cancel.map(([s, e], j) => (
-                  <div key={`c${j}`} title={`Отмена ${range(s, e)}`}
-                    style={{ position: 'absolute', left: pct(s), width: width(s, e), top: 3, bottom: 3, borderRadius: 4, background: `${HATCH}, var(--red-400)` }} />
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 16, marginTop: 12, fontSize: 12, ...mutedStyle, flexWrap: 'wrap' }}>
-        <span><span style={{ display: 'inline-block', width: 14, height: 8, borderRadius: 3, background: 'var(--rb-primary)', marginRight: 6 }} />смена</span>
+        {multi
+          ? report.professions.map(p => (
+            <span key={p.id}><span style={{ display: 'inline-block', width: 14, height: 8, borderRadius: 3, background: professionColor[p.id], marginRight: 6 }} />{p.id === report.anchor && '★ '}{professionName(p.id)}</span>
+          ))
+          : <span><span style={{ display: 'inline-block', width: 14, height: 8, borderRadius: 3, background: 'var(--rb-primary)', marginRight: 6 }} />смена</span>}
         <span><span style={{ display: 'inline-block', width: 14, height: 8, borderRadius: 3, background: `${HATCH}, var(--red-400)`, marginRight: 6 }} />отмена поверх смены</span>
         <span><span style={{ display: 'inline-block', width: 14, height: 8, borderRadius: 3, border: '1px dashed var(--rb-border-dark)', marginRight: 6 }} />часы работы</span>
       </div>
@@ -685,6 +966,8 @@ function Findings({ report, onSelect }) {
   }, [report, only]);
   const list = only ? report.findings.filter(f => f.clinic === only) : report.findings;
   const who = (ids) => ids.map(id => shortName(names[id] || `#${id}`)).join(', ');
+  const clinicByKey = useMemo(() => Object.fromEntries(report.clinics.map(c => [c.key, c])), [report]);
+  const clinicName = (key) => clinicByKey[key]?.name || key;
 
   return (
     <div style={{ ...panelStyle, flex: '1 1 0', minHeight: 220, display: 'flex', flexDirection: 'column' }}>
@@ -699,12 +982,14 @@ function Findings({ report, onSelect }) {
       )}
       {report.findings.length === 0 && (
         <div style={{ padding: '18px 0', fontSize: 13, color: 'var(--green-700)' }}>
-          Направление покрыто во все часы работы — дыр длиннее {hours(report.minGap)} нет.
+          {report.mode === 'anchor'
+            ? `Приём эталона прикрыт смежными — дыр длиннее ${hours(report.minGap)} нет.`
+            : `Направление покрыто во все часы работы — дыр длиннее ${hours(report.minGap)} нет.`}
         </div>
       )}
       <div style={{ display: 'grid', alignContent: 'start', overflowY: 'auto', flex: '1 1 auto', minHeight: 0, marginRight: -8, paddingRight: 8 }}>
         {list.map((f, i) => {
-          const { title, detail } = describeFinding(f, who);
+          const { title, detail } = describeFinding(f, who, { anchor: report.mode === 'anchor' });
           const sev = SEVERITY[Math.min(3, f.severity)] || SEVERITY[1];
           const clinic = report.clinics.find(c => c.key === f.clinic);
           return (
@@ -717,10 +1002,20 @@ function Findings({ report, onSelect }) {
                   {clinic ? <ClinicLogo clinic={clinic} size={22} /> : <NetworkMark size={22} />}
                 </span>
               )}
-              <span style={{ display: 'grid', gap: 2 }}>
+              <span style={{ display: 'grid', gap: 2, flex: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 13 }}>{title}</span>
                 {detail && <span style={{ fontSize: 12, ...mutedStyle }}>{detail}</span>}
               </span>
+              {/* Куда направить, пока здесь никого: свой медцентр важнее, но
+                  соседний лучше, чем ничего. Бледнее — когда закрывает не всё */}
+              {f.elsewhere?.length > 0 && (
+                <span title={describeElsewhere(f, clinicName)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginTop: 1, opacity: f.elsewhereFull ? 1 : 0.5, ...mutedStyle, fontSize: 12 }}>
+                  →
+                  {f.elsewhere.slice(0, 3).map(k => clinicByKey[k] && <ClinicLogo key={k} clinic={clinicByKey[k]} size={18} />)}
+                  {f.elsewhere.length > 3 && <span style={{ fontSize: 11 }}>+{f.elsewhere.length - 3}</span>}
+                </span>
+              )}
             </button>
           );
         })}
@@ -755,7 +1050,7 @@ function ClinicFilter({ report, value, onChange }) {
   for (const f of report.findings) counts[f.clinic] = (counts[f.clinic] || 0) + 1;
   const options = [
     { key: null, label: 'Все медцентры', mark: <NetworkMark size={18} />, n: report.findings.length },
-    ...report.clinics.map(c => ({ key: c.key, label: c.name, mark: <ClinicLogo clinic={c} size={18} />, n: counts[c.key] || 0 })),
+    ...visibleClinics(report).map(c => ({ key: c.key, label: c.name, mark: <ClinicLogo clinic={c} size={18} />, n: counts[c.key] || 0 })),
   ];
   const current = options.find(o => o.key === value) || options[0];
 

@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
 import { mis, reviews, botSubscribers, scheduleCoverage } from '../../../services/api';
-import { LS_EXCLUDED, readLs, storedProfessions, excludedFor, isoLocal } from '../../Statistics/components/scheduleCoverageText';
+import { LS_EXCLUDED, LS_ANCHOR, readLs, storedProfessions, excludedFor, isoLocal } from '../../Statistics/components/scheduleCoverageText';
 import { useAuth } from '../../../context/AuthContext';
 import { KPI_TAB_PERM, PDF_SECTION_PERM, canSeeStatTab, visibleTabs } from '../../Statistics/statisticsAccess';
 import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics, TabRefundsAnalytics } from '../../Statistics/components/Directories';
@@ -2199,8 +2199,10 @@ async function gatherSchedules(periodStart, periodEnd) {
   const ids = storedProfessions(list);
   if (!ids.length) return null;
   const exclude = [...excludedFor(ids, readLs(LS_EXCLUDED, {}), data?.savedExcluded)].join(',');
-  const res = await scheduleCoverage.report({ from, to, professionIds: ids.join(','), exclude, minGap: 60 });
-  return { report: res.data, professionName: ids.map(id => list.find(p => p.id === id)?.name).join(' + ') };
+  const anchor = readLs(LS_ANCHOR, '');
+  const res = await scheduleCoverage.report({ from, to, professionIds: ids.join(','), exclude, anchor: ids.includes(anchor) ? anchor : undefined, minGap: 60 });
+  const name = (id) => `${id === res.data.anchor ? '★ ' : ''}${list.find(p => p.id === id)?.name}`;
+  return { report: res.data, professionName: ids.map(name).join(' + ') };
 }
 
 // Сбор данных ботов для PDF: подписчики за период + экосистема + дельта к пред. периоду.
