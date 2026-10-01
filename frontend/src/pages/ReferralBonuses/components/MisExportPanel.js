@@ -303,7 +303,7 @@ function JobProgress({ job, now }) {
           else if (f.left != null) note = f.left > 5 ? `≈ ${fmtDuration(f.left)}` : 'почти готово';
           else note = fmtDuration(f.elapsed || 0);
           if (p.status === 'running' && p.current?.attempt > 1) note = `повтор · ${note}`;
-          if (p.status === 'running' && p.chunksTotal > 1) note = `месяц ${p.chunksDone + 1} из ${p.chunksTotal} · ${note}`;
+          if (p.status === 'running' && p.chunksTotal > 1) note = `часть ${p.chunksDone + 1} из ${p.chunksTotal} · ${note}`;
 
           const indeterminate = p.status === 'running' && f.frac == null;
           return (

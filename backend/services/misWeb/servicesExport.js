@@ -95,6 +95,29 @@ function defaultLabel(dateFrom, dateTo) {
   return `${client.toMisDate(dateFrom)} – ${client.toMisDate(dateTo)}`;
 }
 
+/**
+ * Строки, которые выгрузка «по дате оплаты» теряет: визиты VIP-пациентов со
+ * скидкой 100 %. Платить по такому счёту нечего, дата оплаты у него пустая, и
+ * МИС в выгрузку по оплате его не берёт. А врачу за визит платить надо.
+ * Поэтому по тем же клиникам и тому же периоду делается вторая выгрузка — по
+ * дате выставления, — и из неё берутся только такие строки. Пустая дата
+ * оплаты гарантирует, что в выгрузку по оплате строка не попала, так что
+ * задвоений нет.
+ *
+ * Значения сравниваются без учёта регистра, пробелов и точек: в выгрузке
+ * «физ. лицо» и «20%», но надеяться, что МИС никогда не напишет «Физ.лицо»
+ * или «100 %», не стоит.
+ */
+function isUnpaidFullDiscount(row) {
+  const pay = row['Дата оплаты счета'];
+  if (pay != null && String(pay).trim() !== '') return false;
+  const type = String(row['Тип счета'] ?? '').toLowerCase().replace(/[\s.]/g, '');
+  if (type !== 'физлицо') return false;
+  const discount = row['Скидка'];
+  if (typeof discount === 'number') return discount === 100;
+  return Number(String(discount ?? '').replace(/[\s%]/g, '').replace(',', '.')) === 100;
+}
+
 function cellValue(v) {
   if (v == null) return null;
   // Формулы и форматированный текст в выгрузке МИС не встречались, но если
@@ -120,14 +143,17 @@ function cellValue(v) {
  * Возвращает число строк по каждому файлу — из него вкладка показывает, сколько
  * услуг пришло по каждой клинике.
  */
-async function mergeXlsx(files, outPath) {
+async function mergeXlsx(inputs, outPath) {
   const writer = new ExcelJS.stream.xlsx.WorkbookWriter({ filename: outPath, useStyles: false, useSharedStrings: false });
   const sheet = writer.addWorksheet('Выгрузка по услугам');
   let header = null;
   let rows = 0;
   const perFile = [];
 
-  for (const file of files) {
+  for (const input of inputs) {
+    // Вход — путь к файлу или { file, filter }: фильтр получает строку как
+    // объект «название колонки → значение» и решает, брать ли её.
+    const { file, filter } = typeof input === 'string' ? { file: input } : input;
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(file);
     // В выгрузке МИС один лист; если их станет больше, берём первый.
@@ -150,6 +176,7 @@ async function mergeXlsx(files, outPath) {
         return;
       }
       if (values.every(v => v == null || v === '')) return;
+      if (filter && !filter(Object.fromEntries(header.map((name, i) => [name, values[i] ?? null])))) return;
       sheet.addRow(Array.from({ length: header.length }, (_, i) => values[i] ?? null)).commit();
       count++;
     });
@@ -219,14 +246,14 @@ function publicState() {
 
 class CancelledError extends Error {}
 
-async function fetchRange(jar, job, part, range, depth, signal, onLog) {
+async function fetchRange(jar, job, part, range, dateType, depth, signal, onLog) {
   if (signal.aborted) throw new CancelledError();
-  const file = path.join(job.tmpDir, `${part.clinicId}_${range.dateFrom}_${range.dateTo}.xlsx`);
+  const file = path.join(job.tmpDir, `${part.clinicId}_${dateType}_${range.dateFrom}_${range.dateTo}.xlsx`);
   let lastErr;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       part.current = { ...range, attempt };
-      const buf = await client.downloadServices(jar, { ...range, dateType: job.params.dateType, clinicId: part.clinicId, signal });
+      const buf = await client.downloadServices(jar, { ...range, dateType, clinicId: part.clinicId, signal });
       await fs.promises.writeFile(file, buf);
       return [file];
     } catch (err) {
@@ -240,8 +267,8 @@ async function fetchRange(jar, job, part, range, depth, signal, onLog) {
   const halves = depth < MAX_SPLIT_DEPTH ? halve(range) : null;
   if (!halves) throw lastErr;
   onLog(`${part.name}: делю отрезок пополам и пробую частями`);
-  const a = await fetchRange(jar, job, part, halves[0], depth + 1, signal, onLog);
-  const b = await fetchRange(jar, job, part, halves[1], depth + 1, signal, onLog);
+  const a = await fetchRange(jar, job, part, halves[0], dateType, depth + 1, signal, onLog);
+  const b = await fetchRange(jar, job, part, halves[1], dateType, depth + 1, signal, onLog);
   return [...a, ...b];
 }
 
@@ -255,22 +282,29 @@ async function run(jar, user) {
     for (const part of job.parts) {
       part.status = 'running';
       part.startedAt = new Date().toISOString();
-      const partFiles = [];
+      const partFiles = [];   // [{ file, filter? }]
       const ranges = planRanges(job.params.dateFrom, job.params.dateTo);
+      // «По дате оплаты» — это два прохода: сама выгрузка по оплате и добор
+      // неоплаченных VIP-визитов по дате выставления (см. isUnpaidFullDiscount).
+      const passes = job.params.dateType === 2
+        ? [{ dateType: 2 }, { dateType: 1, filter: isUnpaidFullDiscount }]
+        : [{ dateType: job.params.dateType }];
       // МИС не сообщает, сколько осталось до готовности файла, поэтому честный
-      // прогресс внутри клиники — только по месяцам: сколько кусков уже
-      // скачано из скольких.
-      part.chunksTotal = ranges.length;
+      // прогресс внутри клиники — только по кускам: сколько уже скачано.
+      part.chunksTotal = ranges.length * passes.length;
       part.chunksDone = 0;
-      for (const range of ranges) {
-        partFiles.push(...await fetchRange(jar, job, part, range, 0, signal, log));
-        part.chunksDone++;
+      for (const pass of passes) {
+        for (const range of ranges) {
+          const got = await fetchRange(jar, job, part, range, pass.dateType, 0, signal, log);
+          partFiles.push(...got.map(file => ({ file, filter: pass.filter })));
+          part.chunksDone++;
+        }
       }
-      files.push(...partFiles.map(file => ({ file, part })));
+      files.push(...partFiles.map(f => ({ ...f, part })));
       const secs = (Date.now() - new Date(part.startedAt)) / 1000;
       await rememberSpeed(part.clinicId, secs / daysBetween(job.params.dateFrom, job.params.dateTo));
       part.bytes = 0;
-      for (const f of partFiles) part.bytes += (await fs.promises.stat(f)).size;
+      for (const f of partFiles) part.bytes += (await fs.promises.stat(f.file)).size;
       part.current = null;
       part.status = 'done';
       part.finishedAt = new Date().toISOString();
@@ -278,7 +312,7 @@ async function run(jar, user) {
 
     job.status = 'merging';
     const out = path.join(job.tmpDir, 'merged.xlsx');
-    const { rows, perFile } = await mergeXlsx(files.map(f => f.file), out);
+    const { rows, perFile } = await mergeXlsx(files.map(({ file, filter }) => ({ file, filter })), out);
     job.parts.forEach(p => { p.rows = 0; });
     perFile.forEach((n, i) => { files[i].part.rows += n; });
     const data = await fs.promises.readFile(out);
@@ -382,6 +416,7 @@ module.exports = {
   halve,
   defaultLabel,
   mergeXlsx,
+  isUnpaidFullDiscount,
   start,
   cancel,
   state: publicState,

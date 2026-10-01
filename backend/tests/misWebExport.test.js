@@ -154,3 +154,49 @@ test('склейка отказывается от файлов с разной 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ── Добор VIP-визитов со скидкой 100 % (выгрузка «по дате оплаты») ──────────
+
+const vip = (over = {}) => ({ 'Дата оплаты счета': null, 'Тип счета': 'физ. лицо', 'Скидка': '100%', ...over });
+
+test('неоплаченный счёт физлица со скидкой 100 % добирается', () => {
+  assert.equal(exporter.isUnpaidFullDiscount(vip()), true);
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Дата оплаты счета': '' })), true);
+  // Написание МИС может поплыть — регистр, пробелы, точка
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Тип счета': 'Физ.лицо', 'Скидка': '100 %' })), true);
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Скидка': 100 })), true);
+});
+
+test('всё остальное из выгрузки по выставлению не берётся', () => {
+  // Оплаченный — уже есть в выгрузке по оплате, взять его значит задвоить
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Дата оплаты счета': '05.09.2026' })), false);
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Скидка': '20%' })), false);
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Скидка': null })), false);
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Тип счета': 'юр. компания' })), false);
+  // Просто неоплаченный без скидки — это долг, а не VIP
+  assert.equal(exporter.isUnpaidFullDiscount(vip({ 'Скидка': '' })), false);
+});
+
+test('склейка с фильтром: из второго файла только отобранные строки, сразу за первым', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mis-merge-test-'));
+  try {
+    const head = ['№ счета', 'Дата оплаты счета', 'Тип счета', 'Скидка'];
+    await writeXlsx(path.join(dir, 'paid.xlsx'), [head, [1, '02.09.2026', 'физ. лицо', '20%']]);
+    await writeXlsx(path.join(dir, 'issued.xlsx'), [head,
+      [1, '02.09.2026', 'физ. лицо', '20%'],   // оплачен — уже есть, не берём
+      [2, null, 'физ. лицо', '100%'],          // VIP — берём
+      [3, null, 'физ. лицо', null],            // долг — не берём
+      [4, null, 'юр. компания', '100%'],       // юрлицо — не берём
+    ]);
+    const out = path.join(dir, 'out.xlsx');
+    const r = await exporter.mergeXlsx([
+      path.join(dir, 'paid.xlsx'),
+      { file: path.join(dir, 'issued.xlsx'), filter: exporter.isUnpaidFullDiscount },
+    ], out);
+    assert.deepEqual(r.perFile, [1, 1]);
+    const rows = await readXlsx(out);
+    assert.deepEqual(rows.map(row => row[0]), ['№ счета', 1, 2]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

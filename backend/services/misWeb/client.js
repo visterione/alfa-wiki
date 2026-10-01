@@ -156,8 +156,13 @@ function extractLoginError(html) {
   return out.join('. ');
 }
 
+// Мёртвую сессию МИС отправляет не только на /site/login, но и на
+// /site/logout — так она закрывает сессии сама, не дожидаясь 30 дней, на
+// которые выставлены куки (замечено 01.10.2026: вход накануне, наутро —
+// logout). Без второго адреса выгрузка падала с «МИС вернула не файл»
+// вместо честного «войдите заново».
 function isLoginRedirect(res) {
-  return res.status >= 300 && res.status < 400 && /\/site\/login/.test(res.headers.location || '');
+  return res.status >= 300 && res.status < 400 && /\/site\/(login|logout)/.test(res.headers.location || '');
 }
 
 /**
