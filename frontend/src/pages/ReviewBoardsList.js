@@ -7,6 +7,7 @@ import { reviews, reviewCollector } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { fileUrl } from '../utils/fileUrl';
+import MyReviewsStrip from '../components/MyReviewsStrip';
 import './ReviewBoardsList.css';
 
 /**
@@ -127,6 +128,9 @@ const ReviewBoardsList = () => {
         </div>
       </div>
 
+      {/* Свои отзывы со всех досок — первым делом при входе в раздел (ver. 9.18) */}
+      <MyReviewsStrip />
+
       {boards.length === 0 ? (
         <div className="reviews-boards-empty">
           <MessageSquare size={64} strokeWidth={1} />
@@ -165,9 +169,11 @@ const ReviewBoardsList = () => {
 
               <div className="board-card-footer">
                 <div className="board-actions">
-                  <span className="stat">
+                  {/* Без слова «отзывов»: в четверть ширины оно выталкивало
+                      «Открыть» за край карточки */}
+                  <span className="stat" title="Отзывов на доске">
                     <MessageSquare size={16} />
-                    {board.reviewCount || 0} отзывов
+                    {board.reviewCount || 0}
                   </span>
                   {board.avgRating && (
                     <span className="stat rating">
