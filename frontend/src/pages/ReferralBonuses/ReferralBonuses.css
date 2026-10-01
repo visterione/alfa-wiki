@@ -1168,3 +1168,15 @@
   .rb-mis-btn-dot, .rb-mis-state.running::before, .rb-mis-bar.active .rb-mis-bar-fill::after,
   .rb-mis-bar.indeterminate .rb-mis-bar-fill, .rb-mis-menu { animation: none; }
 }
+
+/* Тумблер «по услугам / по дням» над таблицами услуг отчёта */
+.rb-view-switch-bar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.rb-view-switch { display: inline-flex; padding: 2px; gap: 2px; background: var(--n-100); border: 1px solid var(--rb-border); border-radius: 7px; }
+.rb-view-switch button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0; border: none; border-radius: 5px; background: transparent; color: var(--rb-text-secondary); cursor: pointer; transition: background 0.15s, color 0.15s; }
+.rb-view-switch button:hover { color: var(--rb-text); }
+.rb-view-switch button.active { background: var(--n-0); color: var(--rb-primary); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.rb-day-table th { white-space: nowrap; }
+.rb-day-header > td { background: var(--n-50) !important; padding: 6px 10px; }
+.rb-day-date { font-weight: 700; color: var(--rb-text); }
+.rb-day-weekday { margin-left: 6px; color: var(--rb-text-secondary); }
+.rb-day-summary { float: right; color: var(--rb-text-secondary); font-weight: 500; }

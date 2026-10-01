@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
+import { List, CalendarDays } from 'lucide-react';
 
 function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
 function fmtMethod(m) { return m === 'cash' ? 'наличные' : (m === 'mixed' ? 'смешанно' : 'карта'); }
@@ -73,6 +74,174 @@ function PatientDetailTable({ details }) {
   );
 }
 
+// Режим просмотра таблиц услуг: «по услугам» (основной) или «по дням». Режим
+// общий на весь отчёт — врач, сверяющий месяц со своей тетрадкой, хочет видеть
+// по дням все разделы сразу, а не щёлкать тумблер у каждой таблицы. Поэтому это
+// маленькое внешнее хранилище, а не useState в таблице; в localStorage режим
+// живёт как личное удобство и при недоступном хранилище просто не запоминается.
+const SERVICE_VIEW_KEY = 'rb.report.serviceView';
+let serviceView = (() => {
+  try { return localStorage.getItem(SERVICE_VIEW_KEY) === 'days' ? 'days' : 'services'; } catch { return 'services'; }
+})();
+const serviceViewListeners = new Set();
+function setServiceView(next) {
+  serviceView = next;
+  try { localStorage.setItem(SERVICE_VIEW_KEY, next); } catch { /* приватное окно — не запоминаем */ }
+  serviceViewListeners.forEach(fn => fn());
+}
+function useServiceView() {
+  return useSyncExternalStore(
+    fn => { serviceViewListeners.add(fn); return () => serviceViewListeners.delete(fn); },
+    () => serviceView,
+  );
+}
+
+const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+const NO_DATE = 'Без даты';
+
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+// patientDetails хранит дату строкой ДД.ММ.ГГГГ (toLocaleDateString ru-RU), а
+// _dateSort есть не во всех сохранённых записях — сортируем по самой строке.
+function dayKey(date) {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date || '');
+  return m ? `${m[3]}${m[2]}${m[1]}` : null;
+}
+
+// Раскладка услуг таблицы по дням оказания. Услуги из старых записей, где
+// детализации по пациентам нет, уходят в «Без даты» своим общим количеством —
+// иначе итог по дням разошёлся бы с итогом по услугам, а ради сверки этот вид
+// и сделан.
+function groupServicesByDay(services) {
+  const days = new Map();
+  const push = (key, label, row) => {
+    if (!days.has(key)) days.set(key, { key, label, rows: [], count: 0, sum: 0 });
+    const day = days.get(key);
+    day.rows.push(row);
+    day.count += row.count;
+    day.sum += row.sum;
+  };
+  services.forEach(s => {
+    const details = Array.isArray(s.patientDetails) ? s.patientDetails : [];
+    if (details.length === 0) {
+      push('~', NO_DATE, { code: s.code, name: s.name, count: s.count || 1, sum: s.cost || 0 });
+      return;
+    }
+    details.forEach(d => {
+      const key = dayKey(d.date);
+      push(key || '~', key ? d.date : NO_DATE, {
+        code: s.code, name: s.name,
+        patientCard: d.patientCard, patientId: d.patientId, patientName: d.patientName, corp: d.corp,
+        count: d.count || 1, sum: d.sum || 0,
+      });
+    });
+  });
+  const byCode = (a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ru', { numeric: true })
+    || String(a.patientName || '').localeCompare(String(b.patientName || ''), 'ru');
+  return [...days.values()]
+    .sort((a, b) => (a.key === '~') - (b.key === '~') || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    .map(day => ({ ...day, rows: day.rows.sort(byCode) }));
+}
+
+function weekdayOf(date) {
+  const key = dayKey(date);
+  if (!key) return '';
+  return WEEKDAYS[new Date(+key.slice(0, 4), +key.slice(4, 6) - 1, +key.slice(6, 8)).getDay()];
+}
+
+function DayTable({ services }) {
+  const days = groupServicesByDay(services);
+  return (
+    <table className="rb-report-table rb-report-table--bordered rb-day-table">
+      <thead>
+        <tr>
+          <th>Код</th>
+          <th>Услуга</th>
+          <th>№ карты</th>
+          <th>ФИО пациента</th>
+          <th>К-во</th>
+          <th>Сумма, руб</th>
+        </tr>
+      </thead>
+      <tbody>
+        {days.map(day => (
+          <React.Fragment key={day.key}>
+            <tr className="rb-day-header">
+              <td colSpan={6}>
+                <span className="rb-day-date">{day.label}</span>
+                {weekdayOf(day.label) && <span className="rb-day-weekday">{weekdayOf(day.label)}</span>}
+                <span className="rb-day-summary">
+                  {day.count} {plural(day.count, 'услуга', 'услуги', 'услуг')} · {fmtRub(day.sum)}
+                </span>
+              </td>
+            </tr>
+            {day.rows.map((r, i) => (
+              <tr key={i}>
+                <td style={{ textAlign: 'center' }}>{r.code || '—'}</td>
+                <td>{r.name || '—'}</td>
+                <td style={{ textAlign: 'center' }}>
+                  {r.patientCard
+                    ? (r.patientId
+                        ? <a href={patientCardUrl(r.patientId)} target="_blank" rel="noopener noreferrer" className="rb-patient-link" title="Открыть карточку пациента в МИС">{r.patientCard}</a>
+                        : r.patientCard)
+                    : '—'}
+                </td>
+                <td>
+                  {r.corp && <span className="rb-corp-asterisk" title={`Оплачено юр. компанией / ДМС${r.corp.company ? `: ${r.corp.company}` : ''}`}>*</span>}
+                  {r.patientName || '—'}
+                </td>
+                <td style={{ textAlign: 'center' }}>{r.count}</td>
+                <td style={{ textAlign: 'right' }}>{r.sum.toFixed(2)} ₽</td>
+              </tr>
+            ))}
+          </React.Fragment>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// Обёртка таблицы услуг с тумблером режима. Тумблер появляется, только если
+// хоть у одной услуги есть детализация по пациентам: в старых записях её нет,
+// и вид по дням свёлся бы к одной группе «Без даты».
+function ServiceViewFrame({ services, children }) {
+  const view = useServiceView();
+  const hasDays = services.some(s => Array.isArray(s.patientDetails) && s.patientDetails.length > 0);
+  if (!hasDays) return children;
+  return (
+    <div>
+      <div className="rb-view-switch-bar">
+        <div className="rb-view-switch" role="group" aria-label="Режим просмотра">
+          <button
+            type="button"
+            className={view === 'services' ? 'active' : ''}
+            onClick={() => setServiceView('services')}
+            title="По услугам"
+            aria-pressed={view === 'services'}
+          >
+            <List size={13} strokeWidth={2.2} />
+          </button>
+          <button
+            type="button"
+            className={view === 'days' ? 'active' : ''}
+            onClick={() => setServiceView('days')}
+            title="По дням"
+            aria-pressed={view === 'days'}
+          >
+            <CalendarDays size={13} strokeWidth={2.2} />
+          </button>
+        </div>
+      </div>
+      {view === 'days' ? <DayTable services={services} /> : children}
+    </div>
+  );
+}
+
 // Раскрытие строки услуги до списка пациентов — тот же приём, что у врача в
 // ServiceTable, но для таблиц ассистента, медсестры и анестезиолога. Старые
 // сохранённые записи деталей не содержат, и тогда строка просто не раскрывается.
@@ -113,6 +282,7 @@ function ServiceTable({ sections, columns, negative }) {
   const totalBonus = sections.reduce((s, x) => s + (x.bonusAmount || 0), 0);
   const hasCost    = sections.some(x => (x.cost || 0) !== 0);
   return (
+    <ServiceViewFrame services={sections}>
     <div style={{ position: 'relative' }}>
       <table className="rb-report-table rb-report-table--bordered">
         <thead
@@ -182,6 +352,7 @@ function ServiceTable({ sections, columns, negative }) {
         </div>
       )}
     </div>
+    </ServiceViewFrame>
   );
 }
 
@@ -192,6 +363,7 @@ function RoleServiceTable({ services, aValueRenderer }) {
   const totalIncome = services.reduce((s, x) => s + (x.income || 0), 0);
   const hasCost     = services.some(x => (x.cost || 0) !== 0);
   return (
+    <ServiceViewFrame services={services}>
     <div style={{ position: 'relative' }}>
       <table className="rb-report-table rb-report-table--bordered">
         <thead
@@ -240,6 +412,7 @@ function RoleServiceTable({ services, aValueRenderer }) {
         </div>
       )}
     </div>
+    </ServiceViewFrame>
   );
 }
 
@@ -248,6 +421,7 @@ function AnesthTable({ services }) {
   const totalCount  = services.reduce((s, x) => s + (x.count || 1), 0);
   const totalIncome = services.reduce((s, x) => s + (x.income || 0), 0);
   return (
+    <ServiceViewFrame services={services}>
     <div style={{ position: 'relative' }}>
       <table className="rb-report-table rb-report-table--bordered">
         <thead
@@ -296,6 +470,7 @@ function AnesthTable({ services }) {
         </div>
       )}
     </div>
+    </ServiceViewFrame>
   );
 }
 
