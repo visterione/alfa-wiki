@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Boxes, Maximize2, Minimize2, ListTodo
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, vacancies as vacanciesApi, mail as mailApi } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi, tasks as tasksApi, vacancies as vacanciesApi, mail as mailApi, openLine as openLineApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -444,6 +444,57 @@ function QuickAccessButtons({ onClose }) {
     window.addEventListener('mail-changed', load);
     return () => { alive = false; window.removeEventListener('mail-changed', load); };
   }, []);
+
+  /**
+   * Значок открытой линии (ver. 9.23). До этого его не было вовсе: очередь
+   * копилась, а в панели ни отметки.
+   *
+   * Яркое число — то же, что внутри раздела: ничьё в очереди линий, где
+   * человек на смене, и свои обращения с неотвеченным. Приглушённое — ждут на
+   * линиях, где смена не начата: внутри раздела такую очередь не видно, и
+   * значок здесь — единственный способ узнать, что смену пора начинать.
+   *
+   * Перечитывается по сигналу линии (он приходит сокетом на каждое движение в
+   * своих линиях) и раз в минуту — для очереди вне смены: о ней сигналы не
+   * приходят, они идут только тем, кто на смене.
+   */
+  const [openLineBadge, setOpenLineBadge] = useState({ total: 0, offShiftQueue: 0 });
+
+  useEffect(() => {
+    if (!canAccessOpenLine) return undefined;
+    let alive = true;
+    let pending = null;
+
+    const load = async () => {
+      try {
+        const { data } = await openLineApi.badge();
+        if (alive) setOpenLineBadge(data);
+      } catch {
+        // Молча: значок подождёт следующего такта.
+      }
+    };
+    // Сигналы приходят пачкой — передача чата шлёт их обеим линиям, — и
+    // спрашивать сервер на каждый незачем.
+    const onSignal = () => {
+      clearTimeout(pending);
+      pending = setTimeout(load, 400);
+    };
+
+    load();
+    const timer = setInterval(load, 60000);
+    window.addEventListener('openline-changed', onSignal);
+    // Подталкивание от самой страницы раздела: прочтение и взятие чата
+    // сигнала по сокету не шлют, а число на значке меняют.
+    window.addEventListener('openline-badge-refresh', onSignal);
+    return () => {
+      alive = false;
+      clearTimeout(pending);
+      clearInterval(timer);
+      window.removeEventListener('openline-changed', onSignal);
+      window.removeEventListener('openline-badge-refresh', onSignal);
+    };
+  }, [canAccessOpenLine]);
+
   // Маркетинг (ver. 8.22) пришёл на место «Анонсов»: те стали его вкладкой.
   // Кнопка видна, если открыта хотя бы одна вкладка — модуль сам решит, какую
   // показать первой. Рассылки, отделившиеся от анонсов в 8.43, ходят под тем же
@@ -721,6 +772,16 @@ function QuickAccessButtons({ onClose }) {
       >
         <Headphones size={20} />
         {!canAccessOpenLine && <Lock size={10} className="quick-access-lock" />}
+        {canAccessOpenLine && openLineBadge.total > 0 && (
+          <span className="quick-access-badge">
+            {openLineBadge.total > 99 ? '99+' : openLineBadge.total}
+          </span>
+        )}
+        {canAccessOpenLine && !openLineBadge.total && openLineBadge.offShiftQueue > 0 && (
+          <span className="quick-access-badge muted" title="Ждут на линиях, где смена не начата">
+            {openLineBadge.offShiftQueue > 99 ? '99+' : openLineBadge.offShiftQueue}
+          </span>
+        )}
       </button>
 
       {/* Мишень, а не мегафон (ver. 8.31). Мегафоном в этом же модуле помечена

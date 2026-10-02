@@ -1,0 +1,123 @@
+/* Аватар собеседника открытой линии и знак медцентра (в круге аватара с 9.23).
+
+   Вынесены из pages/OpenLine.css в 9.23: тот же аватар рисует всплывающая
+   карточка о реплике пациента (OpenLineNotification), а она показывается на
+   любой странице портала — там, где стили раздела не загружены.
+
+   Цвета — семантические токены, кроме фирменных цветов мессенджеров и
+   медцентров: чужую айдентику рампами проекта подменять нельзя. */
+
+/* ── Аватар канала ─────────────────────────────────────────────────────── */
+
+.ol-avatar {
+  position: relative;
+  display: inline-block;
+  width: var(--ol-avatar-size, 48px);
+  height: var(--ol-avatar-size, 48px);
+  flex-shrink: 0;
+}
+
+.ol-avatar-face {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--msg-bubble-border, var(--border-light));
+  box-shadow: 0 1px 3px rgba(20, 29, 45, .1);
+}
+
+.ol-avatar-face svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Подложка силуэта. Серая, а не фирменного цвета канала (ver. 8.09): цвет на
+   аватаре теперь один и он у значка, а плейсхолдер — это отсутствие лица, и
+   кричать им незачем. Токен рампы, а не значение: в тёмной теме n-400
+   темнеет сам, и белый силуэт остаётся читаемым в обеих. */
+.ol-avatar-ground { fill: var(--n-400); }
+
+/* Значок мессенджера вынесен поверх круга — внутри него он оказался бы вдвое
+   мельче и превратился бы в точку.
+   Цветной кружок с белым знаком (ver. 8.09): до этого было наоборот — белый
+   кружок с цветным знаком поверх цветной подложки, — и знак терялся дважды, на
+   светлой подложке и в общей пестроте списка. Кольцо цвета панели, а не белое:
+   на тёмной теме белое кольцо выглядит наклейкой. */
+.ol-avatar-badge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: calc(var(--ol-avatar-size, 48px) * .4);
+  height: calc(var(--ol-avatar-size, 48px) * .4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ol-avatar-mark, var(--primary));
+  box-shadow: 0 0 0 1.5px var(--msg-bar-base, var(--bg-primary)),
+              0 1px 3px rgba(20, 29, 45, .2);
+  color: #fff;
+}
+
+.ol-avatar-badge svg {
+  display: block;
+  width: 72%;
+  height: 72%;
+}
+
+/* ── Знак медцентра (ver. 9.23) ────────────────────────────────────────── */
+
+/* Общая основа: логотип на белой плашке — логотипы рисуются под светлый фон, и
+   на тёмной теме без подложки половина из них пропадает. Нет логотипа — буква
+   на фирменном цвете медцентра. Размер и место задают классы гнёзд ниже. */
+.ol-mc-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #fff;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.ol-mc-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ol-mc-mark.is-letter { background: var(--ol-mc-color, var(--primary)); }
+
+/* На аватаре — весь круг (ver. 9.23): логотип медцентра заменил серый
+   силуэт. Отступ внутри — потому что круг обрезает углы, и логотип, вписанный
+   впритык, лишился бы краёв надписи. Рамку и тень даёт сам круг
+   (.ol-avatar-face), здесь своих нет. Буква без логотипа — крупная, это лицо, а
+   не значок. */
+.ol-avatar-mc {
+  width: 100%;
+  height: 100%;
+  padding: 14%;
+  font-size: calc(var(--ol-avatar-size, 48px) * .42);
+}
+
+/* Буква на цвете заполняет круг целиком — отступ нужен только картинке. */
+.ol-avatar-mc.is-letter { padding: 0; }
+
+/* В строке меню — рядом с названием, крупнее значка на аватаре: здесь это
+   главный признак строки, а не уточнение к чужому лицу. */
+.ol-mc-row {
+  width: 22px;
+  height: 22px;
+  padding: 1px;
+  font-size: 11px;
+  border: 1px solid var(--border-light);
+}
+

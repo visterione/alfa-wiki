@@ -55,65 +55,9 @@
   height: 100%;
 }
 
-/* ── Аватар канала ─────────────────────────────────────────────────────── */
-
-.ol-avatar {
-  position: relative;
-  display: inline-block;
-  width: var(--ol-avatar-size, 48px);
-  height: var(--ol-avatar-size, 48px);
-  flex-shrink: 0;
-}
-
-.ol-avatar-face {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 1px solid var(--msg-bubble-border, var(--border-light));
-  box-shadow: 0 1px 3px rgba(20, 29, 45, .1);
-}
-
-.ol-avatar-face svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-/* Подложка силуэта. Серая, а не фирменного цвета канала (ver. 8.09): цвет на
-   аватаре теперь один и он у значка, а плейсхолдер — это отсутствие лица, и
-   кричать им незачем. Токен рампы, а не значение: в тёмной теме n-400
-   темнеет сам, и белый силуэт остаётся читаемым в обеих. */
-.ol-avatar-ground { fill: var(--n-400); }
-
-/* Значок мессенджера вынесен поверх круга — внутри него он оказался бы вдвое
-   мельче и превратился бы в точку.
-   Цветной кружок с белым знаком (ver. 8.09): до этого было наоборот — белый
-   кружок с цветным знаком поверх цветной подложки, — и знак терялся дважды, на
-   светлой подложке и в общей пестроте списка. Кольцо цвета панели, а не белое:
-   на тёмной теме белое кольцо выглядит наклейкой. */
-.ol-avatar-badge {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: calc(var(--ol-avatar-size, 48px) * .4);
-  height: calc(var(--ol-avatar-size, 48px) * .4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--ol-avatar-mark, var(--primary));
-  box-shadow: 0 0 0 1.5px var(--msg-bar-base, var(--bg-primary)),
-              0 1px 3px rgba(20, 29, 45, .2);
-  color: #fff;
-}
-
-.ol-avatar-badge svg {
-  display: block;
-  width: 72%;
-  height: 72%;
-}
+/* Аватар канала и знак медцентра живут в components/openline/ChannelAvatar.css
+   (ver. 9.23): тот же аватар рисует всплывающая карточка о реплике пациента, а
+   она показывается на любой странице портала, где этого файла нет. */
 
 /* Гнёзда мессенджера рассчитаны на картинку и обрезают всё по кругу — значок
    канала торчит наружу, поэтому обрезку здесь снимаем. */
@@ -209,11 +153,6 @@
   text-overflow: ellipsis;
 }
 
-.ol-tag.new {
-  background: var(--primary);
-  color: #fff;
-  font-weight: 600;
-}
 
 /* ── Шапка переписки ───────────────────────────────────────────────────── */
 
@@ -251,6 +190,21 @@
   box-shadow: var(--msg-control-shadow);
 }
 
+/* Кнопки-значки в шапке (ver. 9.23): «Взять себе» и «Передать» нажимаются
+   десятки раз за смену и узнаются по знаку, а подписи занимали полшапки.
+   Круглые — как кнопка отправки, из того же материала. */
+.ol-page .ol-head-btn.ol-head-icon {
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+
+.ol-page .ol-head-btn.ol-head-icon.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 /* Заголовок переписки: имя занимает всё, значок МИС держит своё место справа.
    .chat-main-name из мессенджера обрезает содержимое многоточием, и без
    отдельной обёртки многоточие съело бы значок, а не хвост имени. */
@@ -267,28 +221,88 @@
   white-space: nowrap;
 }
 
-/* Кнопка в карточку пациента (ver. 8.09). Зелёная «R» — знак Renovatio, и
-   зелёный здесь не из наших рамп намеренно: это отсылка к чужой системе, как
-   фирменные цвета мессенджеров у аватара. Ссылкой сделан значок, а не имя
+/* Кнопка в карточку пациента (ver. 8.09). Ссылкой сделан значок, а не имя
    целиком: заголовок оператор выделяет мышью, чтобы скопировать телефон, и
-   каждое такое выделение уводило бы его в МИС. */
+   каждое такое выделение уводило бы его в МИС.
+
+   С 9.23 это сам логотип Renovatio без подложки и рамки — тот же, что на
+   аватарках связанных с МИС сотрудников. Самодельная зелёная «R» была
+   намёком на знак, а сам знак узнаётся без намёков. */
 .ol-mis-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  background: #12a150;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
+  width: 22px;
+  height: 22px;
   text-decoration: none;
-  transition: background var(--transition-fast), transform var(--transition-fast);
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
 }
-.ol-mis-link:hover { background: #0e8442; transform: translateY(-1px); }
+.ol-mis-link img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.ol-mis-link:hover { transform: translateY(-1px) scale(1.08); }
+
+/* ── Отбор по линии (ver. 9.23) ────────────────────────────────────────── */
+
+/* Заголовок сайдбара делит строку с отбором: заголовок уступает место, а не
+   отбор, — что это «Открытая линия», оператор знает и так. */
+.ol-sidebar-header { gap: 12px; }
+.ol-sidebar-header h2 { min-width: 0; white-space: nowrap; overflow: hidden; }
+
+.ol-line-filter { position: relative; flex-shrink: 1; min-width: 0; }
+
+.ol-line-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid var(--msg-control-border, var(--border));
+  border-radius: 100px;
+  background: var(--msg-control-bg, var(--bg-primary));
+  box-shadow: var(--msg-control-shadow);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.ol-line-filter-btn > svg:first-child { margin-left: 4px; color: var(--text-secondary); }
+.ol-line-filter-btn > svg:last-child { color: var(--text-tertiary); flex-shrink: 0; }
+.ol-line-filter-btn:hover { box-shadow: var(--msg-control-shadow-hover, var(--msg-control-shadow)); }
+.ol-line-filter-btn.active { border-color: var(--primary); }
+
+.ol-line-filter-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Панель отбора раскрывается вниз: кнопка стоит в шапке сайдбара. */
+.ol-line-filter-pop {
+  top: calc(100% + 8px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+  width: 280px;
+}
+
+.ol-line-filter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.ol-line-filter-check { color: var(--primary); flex-shrink: 0; }
 
 /* ── Передача обращения и быстрые ответы ───────────────────────────────── */
 
@@ -417,7 +431,9 @@
 .ol-pop-row:hover:not(:disabled) { background: var(--bg-hover); }
 .ol-pop-row:disabled { opacity: .6; cursor: default; }
 .ol-pop-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ol-pop-row em { font-style: normal; font-size: 12px; color: var(--success); }
+.ol-pop-row em { font-style: normal; font-size: 12px; color: var(--success); white-space: nowrap; }
+/* Пустая линия — не запрет, а предупреждение: обращение подождёт в очереди. */
+.ol-pop-row em.off { color: var(--text-tertiary); }
 
 .ol-shift-dot { color: var(--text-disabled); fill: currentColor; flex-shrink: 0; }
 .ol-shift-dot.on { color: var(--success); }
@@ -573,13 +589,23 @@
   background: none;
   resize: none;
   max-height: 140px;
+  /* Прокрутку включает fitField, когда текст упрётся в max-height (ver. 9.23):
+     до этого полоса висела и в пустом поле. */
+  overflow-y: hidden;
   color: var(--text-primary);
   font-family: inherit;
   font-size: 15px;
   line-height: 1.4;
 }
 
-.ol-field::placeholder { color: var(--text-tertiary); }
+.ol-field::placeholder {
+  color: var(--text-tertiary);
+  /* Длинная подсказка у закрытого обращения переносилась на вторую строку,
+     которой у поля в одну строку нет. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .ol-field:disabled { color: var(--text-disabled); cursor: not-allowed; }
 
 /* ── Вложения ──────────────────────────────────────────────────────────── */
@@ -653,4 +679,10 @@
   .ol-field { font-size: 16px; }  /* иначе iOS зумит поле и обратно не отъезжает */
   .ol-head-actions { gap: 6px; }
   .ol-page .ol-head-btn { padding: 8px 12px; }
+  .ol-page .ol-head-btn.ol-head-icon { padding: 0; }
+  /* Мессенджер на телефоне прячет шапку сайдбара целиком, а отбор по линиям
+     живёт в ней — возвращаем её поджатой, но только когда отбор есть. */
+  .ol-page .ol-sidebar-header.has-filter { display: flex; padding: 10px 12px; }
+  .ol-page .ol-sidebar-header h2 { font-size: 16px; }
+  .ol-line-filter-pop { width: calc(100vw - 24px); max-width: 280px; }
 }

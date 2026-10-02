@@ -48,6 +48,11 @@ const DEFAULT_OFFLINE_REPLY =
 const RATING_REQUEST =
   'Спасибо за обращение! Оцените, пожалуйста, работу сотрудника — от 1 до 5.';
 
+// Медцентр линии в ответах оператору (ver. 9.23). Логотип и цвет — не для
+// красоты: на аватаре обращения знак медцентра заменил подпись под именем, и
+// без логотипа по нему нечем отличить один филиал от другого.
+const MED_CENTER_FIELDS = ['id', 'name', 'logoUrl', 'logoSquareUrl', 'color'];
+
 class OpenLineError extends Error {
   constructor(code, message) {
     super(message);
@@ -183,6 +188,14 @@ async function shiftState(userId) {
     OmniConversation.count({ where: { assigneeUserId: userId, status: 'assigned' } })
   ]);
 
+  const mcIds = [...new Set(rows.map(r => r.line.medCenterId).filter(Boolean))];
+  const medCenters = new Map(
+    (mcIds.length
+      ? await MedCenter.findAll({ where: { id: { [Op.in]: mcIds } }, attributes: MED_CENTER_FIELDS })
+      : []
+    ).map(m => [m.id, m.get({ plain: true })])
+  );
+
   return {
     isOperator: rows.length > 0,
     onShift,
@@ -192,7 +205,15 @@ async function shiftState(userId) {
     // Старший хотя бы на одной линии — значит вкладку «Архив» ему показывать
     // (ver. 8.10). Интерфейс узнаёт это отсюда, а не гадает по составу.
     canSeeArchive: rows.some(r => r.isSenior),
-    lines: rows.map(r => ({ id: r.lineId, name: r.line.name, onShift: r.onShift, isSenior: r.isSenior })),
+    // Медцентр линии едет вместе с ней (ver. 9.23): отбор по линиям в списке
+    // обращений подписан логотипом, а не одним названием линии.
+    lines: rows.map(r => ({
+      id: r.lineId,
+      name: r.line.name,
+      onShift: r.onShift,
+      isSenior: r.isSenior,
+      medCenter: medCenters.get(r.line.medCenterId) || null
+    })),
     lineIds
   };
 }
@@ -212,10 +233,11 @@ async function shiftState(userId) {
 async function acceptIncoming({ bot, subscriber, text, attachments = [], externalMessageId }) {
   if (!bot.lineId) return null;
 
-  const line = await OmniLine.findByPk(bot.lineId);
-  if (!line || !line.isActive) return null;
+  const botLine = await OmniLine.findByPk(bot.lineId);
+  if (!botLine || !botLine.isActive) return null;
 
   const now = new Date();
+  let line = botLine;
 
   const result = await sequelize.transaction(async (tx) => {
     let conversation = await OmniConversation.findOne({
@@ -223,6 +245,24 @@ async function acceptIncoming({ bot, subscriber, text, attachments = [], externa
       transaction: tx,
       lock: tx.LOCK.UPDATE
     });
+
+    let session = conversation
+      ? await OmniSession.findOne({
+        where: { conversationId: conversation.id, closedAt: null },
+        order: [['openedAt', 'DESC']],
+        transaction: tx
+      })
+      : null;
+
+    // Линия открытого обращения важнее линии бота (ver. 9.23). Обращение могли
+    // передать на линию другого медцентра — человек написал не по адресу, — и
+    // следующая же его реплика не должна утащить чат обратно туда, откуда его
+    // только что отправили. Новое обращение, как и раньше, ложится на линию
+    // бота: передача касалась одного вопроса, а не человека навсегда.
+    if (session && session.lineId !== botLine.id) {
+      const sessionLine = await OmniLine.findByPk(session.lineId, { transaction: tx });
+      if (sessionLine && sessionLine.isActive) line = sessionLine;
+    }
 
     if (!conversation) {
       conversation = await OmniConversation.create({
@@ -246,12 +286,6 @@ async function acceptIncoming({ bot, subscriber, text, attachments = [], externa
       }
       await conversation.update(patch, { transaction: tx });
     }
-
-    let session = await OmniSession.findOne({
-      where: { conversationId: conversation.id, closedAt: null },
-      order: [['openedAt', 'DESC']],
-      transaction: tx
-    });
 
     const isNew = !session;
     if (isNew) {
@@ -281,9 +315,63 @@ async function acceptIncoming({ bot, subscriber, text, attachments = [], externa
 
   // Сигнал операторам (ver. 8.27). io здесь нет и быть не может: мы в процессе
   // забора обновлений, он уйдёт через базу.
-  await announce(null, result.conversation, 'openline:incoming', { isNew: result.isNew });
+  await announce(null, result.conversation, 'openline:incoming', {
+    isNew: result.isNew,
+    card: await incomingCard(subscriber.id, line, text, attachments)
+  });
 
   return { ...result, line };
+}
+
+/**
+ * Что показать во всплывающей карточке о реплике пациента (ver. 9.23).
+ *
+ * Карточка устроена как у мессенджера: аватар, имя, начало текста, — и по
+ * щелчку открывает этот самый чат. До этого приходило безличное «Открытая
+ * линия: ответ пациента», и чтобы узнать, кто и о чём, надо было идти в раздел
+ * и искать глазами.
+ *
+ * Собирается здесь, а не запросом с клиента по приходу сигнала: карточка
+ * должна появиться сразу, а не после второго похода на сервер, — и сведения
+ * все под рукой. Подписчика перечитываем: карточку МИС только что обновили, и
+ * ФИО могло появиться ровно сейчас.
+ *
+ * Текст обрезан: сигнал из процесса забора идёт через pg_notify, а у него
+ * потолок в 8 КБ на всё сообщение.
+ */
+const CARD_TEXT_MAX = 200;
+
+async function incomingCard(subscriberId, line, text, attachments) {
+  try {
+    const [s, medCenter] = await Promise.all([
+      BotSubscriber.findByPk(subscriberId, {
+        attributes: ['platform', 'phone', 'firstName', 'lastName', 'username', 'patientName']
+      }),
+      line.medCenterId ? MedCenter.findByPk(line.medCenterId, { attributes: MED_CENTER_FIELDS }) : null
+    ]);
+
+    const name = s && (s.patientName
+      || (s.phone ? `+${s.phone}` : '')
+      || [s.lastName, s.firstName].filter(Boolean).join(' ')
+      || s.username);
+
+    const body = String(text || '').trim();
+    return {
+      name: name || 'Пациент',
+      platform: s ? s.platform : null,
+      text: body.length > CARD_TEXT_MAX ? `${body.slice(0, CARD_TEXT_MAX)}…` : body,
+      // Файл к этому моменту ещё не скачан — он приезжает следом, — поэтому
+      // пустой текст и означает вложение: пустых реплик мессенджеры не шлют.
+      hasAttachment: !body || (attachments || []).length > 0,
+      medCenter: medCenter ? medCenter.get({ plain: true }) : null,
+      lineName: line.name
+    };
+  } catch (err) {
+    // Карточка — удобство: без неё сигнал всё равно уйдёт, и интерфейс покажет
+    // общую надпись.
+    console.error('[open-line] карточка сигнала:', err.message);
+    return null;
+  }
 }
 
 /**
@@ -337,7 +425,7 @@ function conversationInclude(search) {
   const like = { [Op.iLike]: `%${q}%` };
 
   return [
-    { model: OmniLine, as: 'line', include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }] },
+    { model: OmniLine, as: 'line', include: [{ model: MedCenter, as: 'medCenter', attributes: MED_CENTER_FIELDS }] },
     {
       model: BotSubscriber,
       as: 'subscriber',
@@ -367,10 +455,63 @@ function conversationInclude(search) {
  * будет число, не совпадающее с тем, что в ней лежит.
  */
 function scopeWhere(userId, scope, lines) {
-  if (scope === 'mine') return { assigneeUserId: userId, status: 'assigned' };
+  if (scope === 'mine') {
+    // Отбор по линии сужает и «мои» (ver. 9.23): lines.only заполнен ровно
+    // тогда, когда оператор выбрал одну линию из нескольких.
+    return lines.only
+      ? { assigneeUserId: userId, status: 'assigned', lineId: lines.only }
+      : { assigneeUserId: userId, status: 'assigned' };
+  }
   if (scope === 'closed') return { lineId: { [Op.in]: lines.senior }, status: 'closed' };
   return { lineId: { [Op.in]: lines.onShift }, status: 'queued' };
 }
+
+/**
+ * Оставляет от линий оператора одну выбранную (ver. 9.23).
+ *
+ * Сужаем сами наборы, а не дописываем условие к каждой выборке: по этим же
+ * наборам считаются счётчики на вкладках, и отбор, применённый к списку, но не
+ * к числу над ним, дал бы «Очередь 5» над тремя строками. Чужая линия в
+ * запросе — не ошибка, а устаревший выбор из браузера: отбор тогда просто не
+ * действует.
+ */
+function narrowToLine(lines, lineId) {
+  if (!lineId || !lines.all.includes(lineId)) return lines;
+  const keep = (ids) => ids.filter(id => id === lineId);
+  return { all: keep(lines.all), onShift: keep(lines.onShift), senior: keep(lines.senior), only: lineId };
+}
+
+/**
+ * Что лежит на каждой линии оператора — для выпадающего отбора (ver. 9.23).
+ *
+ * Без этих чисел отбор прятал бы ровно то, ради чего на линию смотрят: выбрав
+ * один медцентр, оператор не узнал бы, что в соседнем пациент ждёт ответа.
+ * Одним запросом с FILTER, а не по запросу на линию и вкладку.
+ */
+async function countsByLine(userId, lines) {
+  const rows = await sequelize.query(`
+    SELECT c."lineId",
+           COUNT(*) FILTER (WHERE c.status = 'queued' AND c."lineId" IN (:onShift))::int AS queue,
+           COUNT(*) FILTER (WHERE c.status = 'assigned' AND c."assigneeUserId" = :userId)::int AS mine,
+           COUNT(*) FILTER (
+             WHERE c.status = 'assigned' AND c."assigneeUserId" = :userId
+               AND c."lastIncomingAt" IS NOT NULL
+               AND (c."operatorReadAt" IS NULL OR c."lastIncomingAt" > c."operatorReadAt")
+           )::int AS "mineUnread"
+    FROM omni_conversations c
+    WHERE c."lineId" IN (:all) AND c.status IN ('queued', 'assigned')
+    GROUP BY c."lineId"
+  `, {
+    // Пустой IN в Postgres — синтаксическая ошибка, поэтому вместо пустого
+    // набора подставляем заведомо несуществующий идентификатор.
+    replacements: { userId, all: lines.all, onShift: lines.onShift.length ? lines.onShift : [NO_LINE] },
+    type: sequelize.QueryTypes.SELECT
+  });
+
+  return Object.fromEntries(rows.map(r => [r.lineId, { queue: r.queue, mine: r.mine, mineUnread: r.mineUnread }]));
+}
+
+const NO_LINE = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Списки для экрана оператора:
@@ -388,9 +529,10 @@ function scopeWhere(userId, scope, lines) {
  * не «сколько нашлось по фамилии Иванов». Иначе набранная в поиске буква
  * обнуляла бы соседние вкладки.
  */
-async function listConversations(userId, { scope = 'queue', limit = 50, offset = 0, q = '' } = {}) {
-  const lines = await operatorLineIds(userId);
-  if (!lines.all.length) throw new OpenLineError('not_operator', 'Вы не заведены ни в одну линию');
+async function listConversations(userId, { scope = 'queue', limit = 50, offset = 0, q = '', lineId = null } = {}) {
+  const ownLines = await operatorLineIds(userId);
+  if (!ownLines.all.length) throw new OpenLineError('not_operator', 'Вы не заведены ни в одну линию');
+  const lines = narrowToLine(ownLines, lineId);
 
   // Архив закрыт для тех, кто не старший ни на одной линии. Проверка на
   // сервере, а не только скрытая вкладка: вкладку прячет интерфейс, а адрес
@@ -423,12 +565,17 @@ async function listConversations(userId, { scope = 'queue', limit = 50, offset =
     // всего, и подменять это непрочитанным значило бы менять смысл числа на
     // ходу. Интерфейсу оно нужно для точки на вкладке — чтобы реплика пациента
     // не прошла мимо того, кто стоит в «Очереди».
-    mineUnread: await countUnreadMine(userId)
+    mineUnread: await countUnreadMine(userId, lines.only)
   };
 
   // Строка списка показывает последнюю реплику — как в мессенджере. Одним
   // запросом на всю страницу, а не по запросу на строку.
-  return { items: await withPreviews(rows, userId), counts, canSeeArchive: lines.senior.length > 0 };
+  return {
+    items: await withPreviews(rows, userId),
+    counts,
+    byLine: ownLines.all.length > 1 ? await countsByLine(userId, ownLines) : {},
+    canSeeArchive: ownLines.senior.length > 0
+  };
 }
 
 /**
@@ -439,7 +586,39 @@ async function listConversations(userId, { scope = 'queue', limit = 50, offset =
  * что-то новое», а десять реплик одного пациента — это один разговор, к
  * которому надо вернуться, а не десять дел.
  */
-async function countUnreadMine(userId) {
+/**
+ * Число на значке раздела в боковой панели (ver. 9.23).
+ *
+ * До этого значка не было вовсе: очередь копилась, а в панели ни отметки, и
+ * узнать о ней можно было только зайдя в раздел. Считаем то же, что и на
+ * вкладках раздела, — ничьё в очереди линий, где человек на смене, плюс свои
+ * обращения с неотвеченным, — иначе число в панели и числа внутри разошлись
+ * бы.
+ *
+ * Отдельно — сколько ждёт на линиях, где он сейчас не на смене. Этого он внутри
+ * раздела не увидит (очередь показывается только на смене), а знать, что его
+ * ждут, должен: значок тогда горит приглушённо, как приглашение начать смену,
+ * а не как «вам не ответили».
+ */
+async function badge(userId) {
+  const lines = await operatorLineIds(userId);
+  if (!lines.all.length) return { total: 0, queue: 0, mineUnread: 0, offShiftQueue: 0 };
+
+  const offShift = lines.all.filter(id => !lines.onShift.includes(id));
+  const [queue, mineUnread, offShiftQueue] = await Promise.all([
+    lines.onShift.length
+      ? OmniConversation.count({ where: { lineId: { [Op.in]: lines.onShift }, status: 'queued' } })
+      : 0,
+    countUnreadMine(userId),
+    offShift.length
+      ? OmniConversation.count({ where: { lineId: { [Op.in]: offShift }, status: 'queued' } })
+      : 0
+  ]);
+
+  return { total: queue + mineUnread, queue, mineUnread, offShiftQueue };
+}
+
+async function countUnreadMine(userId, lineId = null) {
   const [row] = await sequelize.query(`
     SELECT COUNT(*)::int AS n
     FROM omni_conversations c
@@ -447,7 +626,8 @@ async function countUnreadMine(userId) {
       AND c.status = 'assigned'
       AND c."lastIncomingAt" IS NOT NULL
       AND (c."operatorReadAt" IS NULL OR c."lastIncomingAt" > c."operatorReadAt")
-  `, { replacements: { userId }, type: sequelize.QueryTypes.SELECT });
+      ${lineId ? 'AND c."lineId" = :lineId' : ''}
+  `, { replacements: { userId, lineId }, type: sequelize.QueryTypes.SELECT });
 
   return row ? row.n : 0;
 }
@@ -490,7 +670,27 @@ async function withPreviews(rows, userId) {
       GROUP BY m."conversationId"
     `, { replacements: { mine }, type: sequelize.QueryTypes.SELECT })
     : [];
-  const unreadById = new Map(unread.map(r => [r.conversationId, r.unread]));
+  // В очереди число тоже нужно (ver. 9.23) — вместо плашки «новое», которая
+  // стояла одинаковой на вопросе в одну строку и на десяти репликам подряд.
+  // Считаем реплики пациента после последнего ответа сотрудника, а не после
+  // отметки прочтения: отметку ставит только исполнитель, и в обращении,
+  // вернувшемся в очередь, она принадлежит тому, кто его уже не ведёт.
+  const queued = rows.filter(r => r.status === 'queued').map(r => r.id);
+  const waiting = queued.length
+    ? await sequelize.query(`
+      SELECT m."conversationId", COUNT(*)::int AS unread
+      FROM omni_messages m
+      WHERE m."conversationId" IN (:queued)
+        AND m.direction = 'in'
+        AND m."createdAt" > COALESCE((
+          SELECT MAX(o."createdAt") FROM omni_messages o
+          WHERE o."conversationId" = m."conversationId" AND o.direction = 'out'
+        ), '-infinity'::timestamptz)
+      GROUP BY m."conversationId"
+    `, { replacements: { queued }, type: sequelize.QueryTypes.SELECT })
+    : [];
+
+  const unreadById = new Map([...unread, ...waiting].map(r => [r.conversationId, r.unread]));
 
   return rows.map(row => {
     const plain = row.get({ plain: true });
@@ -884,11 +1084,104 @@ async function transferTargets(userId, conversationId) {
   });
   const shiftIds = new Set(onShift.map(r => r.userId));
 
-  return rows
+  const users = rows
     .filter(r => r.user && r.userId !== userId)
     .map(r => ({ ...r.user.get({ plain: true }), onShift: shiftIds.has(r.userId) }))
     .sort((a, b) => (Number(b.onShift) - Number(a.onShift))
       || String(a.displayName || a.username).localeCompare(String(b.displayName || b.username), 'ru'));
+
+  // Линии — все рабочие, а не только те, где состоит сам передающий (ver. 9.23):
+  // переадресуют как раз туда, где он не работает, — человек написал не в тот
+  // медцентр. Сколько там сейчас на смене, показываем, но передавать на пустую
+  // линию не запрещаем: обращение дождётся в её очереди первого, кто заступит.
+  const lines = await OmniLine.findAll({
+    where: { isActive: true, id: { [Op.ne]: conversation.lineId } },
+    attributes: ['id', 'name'],
+    include: [{ model: MedCenter, as: 'medCenter', attributes: MED_CENTER_FIELDS }]
+  });
+  const onShiftByLine = new Map();
+  if (lines.length) {
+    const shiftRows = await OmniLineOperator.findAll({
+      where: { lineId: { [Op.in]: lines.map(l => l.id) }, onShift: true },
+      attributes: ['lineId']
+    });
+    shiftRows.forEach(r => onShiftByLine.set(r.lineId, (onShiftByLine.get(r.lineId) || 0) + 1));
+  }
+
+  return {
+    users,
+    lines: lines
+      .map(l => ({ ...l.get({ plain: true }), onShift: onShiftByLine.get(l.id) || 0 }))
+      .sort((a, b) => String(a.medCenter?.name || a.name).localeCompare(String(b.medCenter?.name || b.name), 'ru'))
+  };
+}
+
+/**
+ * Передать обращение на другую линию (ver. 9.23).
+ *
+ * Обычный случай — человек написал не по адресу: спросил про медцентр, бот
+ * которого ему не принадлежит. Отдавать такой чат конкретному сотруднику чужого
+ * филиала незачем, да часто и некому: там лучше знают, кто сейчас свободен, а
+ * на линии в этот момент может не быть вовсе никого. Поэтому обращение уходит
+ * в очередь линии ничьим и ждёт там, как только что пришедшее.
+ *
+ * Меняется и линия текущей сессии: обращение доводит и засчитывает себе уже
+ * принявшая линия. Переписка остаётся привязанной к своему боту — отвечать
+ * пациенту можно только оттуда, куда он писал.
+ *
+ * Передавший теряет доступ к чату, если на новой линии не состоит, — это и
+ * есть смысл передачи, а не побочный эффект.
+ */
+async function transferToLine(userId, conversationId, targetLineId, io = null) {
+  const conversation = await loadForOperator(userId, conversationId);
+
+  if (conversation.status === 'closed') {
+    throw new OpenLineError('not_yours', 'Обращение закрыто — передавать нечего');
+  }
+  if (conversation.assigneeUserId && conversation.assigneeUserId !== userId) {
+    throw new OpenLineError('not_yours', 'Обращение ведёт другой сотрудник');
+  }
+  if (String(targetLineId) === String(conversation.lineId)) {
+    throw new OpenLineError('not_found', 'Обращение и так на этой линии');
+  }
+
+  const target = await OmniLine.findByPk(targetLineId, {
+    include: [{ model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] }]
+  });
+  if (!target || !target.isActive) throw new OpenLineError('not_found', 'Линия не найдена или выключена');
+
+  const fromLineId = conversation.lineId;
+  const session = await currentSession(conversationId);
+  const from = await User.findByPk(userId, { attributes: ['id', 'username', 'displayName'] });
+
+  await sequelize.transaction(async (tx) => {
+    await conversation.update({
+      lineId: target.id,
+      status: 'queued',
+      assigneeUserId: null,
+      assignedAt: null,
+      operatorReadAt: null
+    }, { transaction: tx });
+    if (session) {
+      await session.update({ lineId: target.id, assigneeUserId: null, assignedAt: null }, { transaction: tx });
+    }
+    await OmniMessage.create({
+      conversationId,
+      sessionId: session ? session.id : null,
+      direction: 'sys',
+      authorUserId: userId,
+      text: `${from ? (from.displayName || from.username) : 'Сотрудник'} передал обращение на линию «${target.medCenter?.name || target.name}»`
+    }, { transaction: tx });
+  });
+
+  // Оповещаем обе линии: у принявшей чат появился в очереди, у отдавшей — если
+  // он стоял в очереди — исчез. Без второго соседи по смене смотрели бы на
+  // строку, которая при щелчке отвечает «вы не работаете на этой линии».
+  const before = await events.recipients({ lineId: fromLineId, assigneeUserId: null }, [userId]);
+  await announce(io, conversation, 'openline:changed', {}, before);
+
+  const stillMine = await OmniLineOperator.count({ where: { lineId: target.id, userId } });
+  return { ok: true, lineId: target.id, visible: stillMine > 0 };
 }
 
 /**
@@ -1190,6 +1483,7 @@ module.exports = {
   offlineNoticeFor,
   hasOperatorsOnShift,
   listConversations,
+  badge,
   getConversation,
   assign,
   close,
@@ -1202,6 +1496,7 @@ module.exports = {
   reply,
   replyWithFile,
   transfer,
+  transferToLine,
   transferTargets,
   stats
 };

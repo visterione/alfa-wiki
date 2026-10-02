@@ -103,9 +103,23 @@ router.get('/conversations', authenticate, async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const offset = Number(req.query.offset) || 0;
     const q = String(req.query.q || '').slice(0, 100);
-    res.json(await openLine.listConversations(req.user.id, { scope, limit, offset, q }));
+    // Отбор по одной линии (ver. 9.23). Проверка, что линия своя, — в сервисе:
+    // чужая молча не действует, а не роняет список.
+    const lineId = req.query.lineId ? String(req.query.lineId) : null;
+    res.json(await openLine.listConversations(req.user.id, { scope, limit, offset, q, lineId }));
   } catch (err) {
     fail(res, err, 'GET /conversations');
+  }
+});
+
+// Число на значке раздела в боковой панели (ver. 9.23). Тому, кто ни в одной
+// линии не состоит, — нули, а не ошибка: панель спрашивает у всех, кому раздел
+// открыт, и красная строка в консоли на каждый опрос никому не нужна.
+router.get('/badge', authenticate, async (req, res) => {
+  try {
+    res.json(await openLine.badge(req.user.id));
+  } catch (err) {
+    fail(res, err, 'GET /badge');
   }
 });
 
@@ -211,7 +225,7 @@ router.post('/conversations/:id/files', authenticate, uploadFile, async (req, re
   }
 });
 
-// Кому можно передать это обращение — состав его линии.
+// Кому можно передать это обращение: состав его линии и другие линии сети.
 router.get('/conversations/:id/transfer-targets', authenticate, async (req, res) => {
   try {
     res.json(await openLine.transferTargets(req.user.id, req.params.id));
@@ -223,7 +237,13 @@ router.get('/conversations/:id/transfer-targets', authenticate, async (req, res)
 router.post('/conversations/:id/transfer', authenticate, async (req, res) => {
   try {
     const userId = req.body && req.body.userId;
-    if (!userId) return res.status(400).json({ error: 'Не выбран сотрудник' });
+    const lineId = req.body && req.body.lineId;
+    // Передача либо сотруднику своей линии, либо на чужую линию целиком
+    // (ver. 9.23) — сотрудника там выберут сами.
+    if (lineId) {
+      return res.json(await openLine.transferToLine(req.user.id, req.params.id, String(lineId), req.app.get('io')));
+    }
+    if (!userId) return res.status(400).json({ error: 'Не выбрано, кому передать' });
     res.json(await openLine.transfer(req.user.id, req.params.id, userId, req.app.get('io')));
   } catch (err) {
     fail(res, err, 'POST /transfer');

@@ -1495,9 +1495,13 @@ export default api;
 // Смена одна на все линии сотрудника — очередь у него общая.
 export const openLine = {
   state: () => api.get('/open-line/state'),
+  // Число на значке раздела в боковой панели (ver. 9.23).
+  badge: () => api.get('/open-line/badge'),
   shift: (on) => api.post('/open-line/shift', { on }),
 
-  conversations: (scope = 'queue', q = '') => api.get('/open-line/conversations', { params: { scope, q } }),
+  // lineId — отбор по одной линии (ver. 9.23); пусто — все линии сотрудника.
+  conversations: (scope = 'queue', q = '', lineId = null) =>
+    api.get('/open-line/conversations', { params: lineId ? { scope, q, lineId } : { scope, q } }),
   conversation: (id) => api.get(`/open-line/conversations/${id}`),
   // Дочитал до конца (ver. 8.27). Зовётся только когда чат открыт и вкладка
   // на переднем плане — см. OpenLine.js.
@@ -1529,6 +1533,8 @@ export const openLine = {
 
   transferTargets: (id) => api.get(`/open-line/conversations/${id}/transfer-targets`),
   transfer: (id, userId) => api.post(`/open-line/conversations/${id}/transfer`, { userId }),
+  // На другую линию целиком, без выбора сотрудника (ver. 9.23).
+  transferToLine: (id, lineId) => api.post(`/open-line/conversations/${id}/transfer`, { lineId }),
 
   // Быстрые ответы: комплект один на сеть, правит их сам оператор.
   quickReplies: () => api.get('/open-line/quick-replies'),

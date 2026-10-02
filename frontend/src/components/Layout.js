@@ -4,6 +4,7 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import ChatNotification from './ChatNotification';
 import TaskNotification from './TaskNotification';
+import OpenLineNotification from './openline/OpenLineNotification';
 import ReleaseNoteModal from './ReleaseNoteModal';
 import { useSocket } from '../context/SocketContext';
 import { releaseNotes as releaseNotesApi } from '../services/api';
@@ -15,7 +16,8 @@ export default function Layout() {
   const {
     notifications, removeNotification, pendingChatNavigation, clearPendingNavigation,
     latestReleaseNote, setLatestReleaseNote, setReleaseUnreadCount,
-    taskNotifications, removeTaskNotification
+    taskNotifications, removeTaskNotification,
+    openLineNotifications, removeOpenLineNotification
   } = useSocket();
   const [importantNotes, setImportantNotes] = useState([]);
   const navigate = useNavigate();
@@ -102,6 +104,27 @@ export default function Layout() {
   // Filter notifications: don't show if we're already on dashboard
   const shouldShowNotifications = location.pathname !== '/';
 
+  // Карточки открытой линии (ver. 9.23) скрываются в самом разделе — там то же
+  // самое стоит строкой в списке, — а при входе в него убираются совсем:
+  // вышедший обратно оператор всё это уже видел, и возвращаться им незачем.
+  const isOnOpenLine = location.pathname.startsWith('/open-line');
+  useEffect(() => {
+    if (isOnOpenLine) openLineNotifications.forEach(n => removeOpenLineNotification(n.id));
+  }, [isOnOpenLine, openLineNotifications, removeOpenLineNotification]);
+
+  // Щелчок открывает сам чат, а не раздел вообще. Вкладку страница выберет по
+  // состоянию обращения: ничьё — в «Очереди», своё — в «Моих».
+  const handleOpenLineClick = (notification) => {
+    removeOpenLineNotification(notification.id);
+    navigate('/open-line', {
+      state: {
+        openConversationId: notification.conversationId,
+        scope: notification.assigneeUserId ? 'mine' : 'queue',
+        lineId: notification.lineId
+      }
+    });
+  };
+
   return (
     <div className="layout">
       <Header
@@ -126,15 +149,25 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* Chat Notifications - Show only when not on dashboard */}
-      {shouldShowNotifications && (
+      {/* Карточки мессенджера — не на главной (там сам мессенджер); карточки
+          открытой линии — не в её разделе. Стопка общая: событие одно и то
+          же — тебе написали. */}
+      {(shouldShowNotifications || (!isOnOpenLine && openLineNotifications.length > 0)) && (
         <div className="chat-notifications-container">
-          {notifications.map(notification => (
+          {shouldShowNotifications && notifications.map(notification => (
             <ChatNotification
               key={notification.id}
               notification={notification}
               onClose={() => removeNotification(notification.id)}
               onClick={() => handleNotificationClick(notification)}
+            />
+          ))}
+          {!isOnOpenLine && openLineNotifications.map(notification => (
+            <OpenLineNotification
+              key={notification.id}
+              notification={notification}
+              onClose={() => removeOpenLineNotification(notification.id)}
+              onClick={() => handleOpenLineClick(notification)}
             />
           ))}
         </div>

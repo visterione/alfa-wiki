@@ -68,6 +68,9 @@ export default function ShiftWidget({ open, onNavigate }) {
     try {
       const { data } = await openLineApi.shift(!state?.onShift);
       setState(data);
+      // Значок раздела в боковой панели считает очередь по смене — начатая или
+      // законченная смена меняет его сразу, а не через минуту опроса.
+      window.dispatchEvent(new CustomEvent('openline-changed'));
       if (data.returnedToQueue > 0) {
         toast(`Возвращено в очередь: ${data.returnedToQueue}`, { icon: '↩️' });
       } else {

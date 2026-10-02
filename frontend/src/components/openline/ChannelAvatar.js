@@ -1,5 +1,7 @@
 import React from 'react';
 import { CHANNEL_BRANDS, brandGlyph } from './channelBrands';
+import MedCenterMark from './MedCenterMark';
+import './ChannelAvatar.css';
 
 /**
  * Аватар собеседника открытой линии (ver. 7.99).
@@ -18,6 +20,13 @@ import { CHANNEL_BRANDS, brandGlyph } from './channelBrands';
  * было тем труднее, чем ярче подложка. Теперь цветной только значок, и он же
  * единственное, что цвет здесь означает; сам человек — серый, потому что
  * плейсхолдер и есть отсутствие лица.
+ *
+ * ЛИЦО — МЕДЦЕНТР (ver. 9.23). Силуэт в круге ничего не сообщал: он был
+ * одинаковым у всех пациентов. Теперь круг заполняет логотип медцентра, чья это
+ * линия, а силуэт остался только там, где медцентр неизвестен (проверочная
+ * линия без филиала). Сначала логотип пробовали маленьким значком в правом
+ * верхнем углу, зеркально каналу, — два значка на одном аватаре вокруг пустого
+ * силуэта смотрелись перегруженно, а главное место в круге пропадало зря.
  *
  * Значок вынесен отдельным элементом поверх круга, а не нарисован внутри него:
  * круг обрезан по границе (overflow: hidden), и значок внутри пришлось бы
@@ -42,7 +51,7 @@ function Mark({ platform }) {
   );
 }
 
-export default function ChannelAvatar({ platform, size = 48, className = '' }) {
+export default function ChannelAvatar({ platform, size = 48, className = '', medCenter = null }) {
   const key = platform === 'max' ? 'max' : 'telegram';
   const channel = CHANNELS[key];
   // Идентификатор обрезки: у каждого канала свой, иначе два аватара на странице
@@ -56,23 +65,27 @@ export default function ChannelAvatar({ platform, size = 48, className = '' }) {
       title={`Пишет из ${channel.title}`}
     >
       <span className="ol-avatar-face">
-        <svg viewBox="0 0 48 48" aria-hidden="true">
-          <defs>
-            <clipPath id={clipId}>
-              <circle cx="24" cy="24" r="24" />
-            </clipPath>
-          </defs>
-          {/* Подложка серая и задаётся из CSS (класс, а не атрибут fill):
-              оттенок должен меняться вместе с темой, а атрибут про тему не
-              знает. */}
-          <circle cx="24" cy="24" r="24" className="ol-avatar-ground" />
-          {/* Силуэт обрезан по кругу: плечи шире знака и без обрезки вылезли бы
-              за него углами. */}
-          <g clipPath={`url(#${clipId})`} fill="#FFFFFF" fillOpacity=".92">
-            <circle cx="24" cy="19" r="7.6" />
-            <ellipse cx="24" cy="43" rx="14.2" ry="11.4" />
-          </g>
-        </svg>
+        {medCenter ? (
+          <MedCenterMark medCenter={medCenter} className="ol-avatar-mc" />
+        ) : (
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <defs>
+              <clipPath id={clipId}>
+                <circle cx="24" cy="24" r="24" />
+              </clipPath>
+            </defs>
+            {/* Подложка серая и задаётся из CSS (класс, а не атрибут fill):
+                оттенок должен меняться вместе с темой, а атрибут про тему не
+                знает. */}
+            <circle cx="24" cy="24" r="24" className="ol-avatar-ground" />
+            {/* Силуэт обрезан по кругу: плечи шире знака и без обрезки вылезли бы
+                за него углами. */}
+            <g clipPath={`url(#${clipId})`} fill="#FFFFFF" fillOpacity=".92">
+              <circle cx="24" cy="19" r="7.6" />
+              <ellipse cx="24" cy="43" rx="14.2" ry="11.4" />
+            </g>
+          </svg>
+        )}
       </span>
       <span className="ol-avatar-badge">
         <Mark platform={key} />

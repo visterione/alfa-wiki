@@ -1,23 +1,31 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { UserCheck, Circle } from 'lucide-react';
+import { Forward, Circle } from 'lucide-react';
 import { openLine as openLineApi } from '../../services/api';
+import MedCenterMark from './MedCenterMark';
 import toast from 'react-hot-toast';
 
 /**
- * Передать обращение другому сотруднику (ver. 8.09).
+ * Передать обращение (ver. 8.09, линии — 9.23).
  *
- * До этого передать чат было нечем: взявший его либо доводил разговор сам, либо
+ * До 8.09 передать чат было нечем: взявший его либо доводил разговор сам, либо
  * закрывал обращение — а закрытие отправляет пациенту просьбу оценить работу,
- * которой ещё не было. Оператор, у которого кончилась смена или который не
- * знает ответа, оставался с чужим вопросом на руках.
+ * которой ещё не было.
  *
- * Список — состав линии этого обращения, а не все сотрудники портала: передать
- * можно только тому, кто эту линию видит, иначе чат уедет человеку, который его
- * даже не откроет. Спрашивается он у сервера в момент открытия меню: состав
- * меняется редко, а держать его загруженным на каждом обращении незачем.
+ * Передают двумя способами, и первый в списке — тот, что нужен чаще (9.23):
  *
- * Кто сейчас на смене — показано, но не ограничивает: передать вечернему
- * сотруднику вопрос, ответ на который нужен утром, вполне разумно.
+ *   • на линию другого медцентра — человек написал не по адресу. Конкретного
+ *     сотрудника там выбирать незачем, да часто и некого: обращение уходит в
+ *     очередь той линии ничьим, и его возьмёт первый, кто на ней работает. На
+ *     пустую линию передать тоже можно — дождётся, пока кто-нибудь заступит;
+ *   • сотруднику своей линии — у передающего кончается смена или он не знает
+ *     ответа. Список — состав линии этого обращения, а не все сотрудники
+ *     портала: иначе чат уедет человеку, который его даже не откроет.
+ *
+ * Кто на смене — показано, но не ограничивает: передать вечернему сотруднику
+ * вопрос, ответ на который нужен утром, вполне разумно.
+ *
+ * Кнопка — значком «переслать», как в мессенджерах (9.23): подпись «Передать»
+ * рядом с «Закрыть» занимала полшапки, а знак пересылки узнаётся и без неё.
  */
 export default function TransferMenu({ conversationId, onDone }) {
   const [open, setOpen] = useState(false);
@@ -39,8 +47,8 @@ export default function TransferMenu({ conversationId, onDone }) {
       const { data } = await openLineApi.transferTargets(conversationId);
       setTargets(data);
     } catch {
-      setTargets([]);
-      toast.error('Не удалось получить состав линии');
+      setTargets({ users: [], lines: [] });
+      toast.error('Не удалось получить, кому передать');
     }
   }, [conversationId]);
 
@@ -52,14 +60,14 @@ export default function TransferMenu({ conversationId, onDone }) {
     if (next) { setTargets(null); load(); }
   };
 
-  const pass = async (user) => {
+  const run = async (request, message, result) => {
     if (busy) return;
     setBusy(true);
     try {
-      await openLineApi.transfer(conversationId, user.id);
-      toast.success(`Обращение передано: ${user.displayName || user.username}`);
+      const { data } = await request();
+      toast.success(message);
       setOpen(false);
-      onDone?.();
+      onDone?.(result(data));
     } catch (err) {
       toast.error(err.response?.data?.error || 'Не удалось передать обращение');
     } finally {
@@ -67,39 +75,91 @@ export default function TransferMenu({ conversationId, onDone }) {
     }
   };
 
+  const toUser = (user) => run(
+    () => openLineApi.transfer(conversationId, user.id),
+    `Обращение передано: ${user.displayName || user.username}`,
+    () => ({ kind: 'user' })
+  );
+
+  const toLine = (line) => run(
+    () => openLineApi.transferToLine(conversationId, line.id),
+    `Обращение передано на линию «${lineTitle(line)}»`,
+    // Видно ли обращение после передачи, знает сервер: передавший мог состоять
+    // и на новой линии, и тогда закрывать ему чат незачем.
+    (data) => ({ kind: 'line', visible: Boolean(data?.visible) })
+  );
+
+  const users = targets?.users || [];
+  const lines = targets?.lines || [];
+
   return (
     <div className="ol-transfer" ref={boxRef}>
-      <button type="button" className="btn ol-head-btn" onClick={toggle} title="Передать другому сотруднику">
-        <UserCheck size={15} /> Передать
+      <button
+        type="button"
+        className={`btn ol-head-btn ol-head-icon ${open ? 'active' : ''}`}
+        onClick={toggle}
+        title="Передать на другую линию или сотруднику"
+        aria-label="Передать обращение"
+      >
+        <Forward size={18} />
       </button>
 
       {open && (
         <div className="ol-pop ol-transfer-pop">
-          <div className="ol-pop-title">Кому передать</div>
+          {targets === null && <div className="ol-pop-note">Загружаем, кому можно передать…</div>}
 
-          {targets === null && <div className="ol-pop-note">Загружаем состав линии…</div>}
+          {targets && (
+            <>
+              <div className="ol-pop-title">На линию</div>
+              {lines.length === 0 && (
+                <div className="ol-pop-note">Других линий в сети нет.</div>
+              )}
+              {lines.map(l => (
+                <button
+                  key={l.id}
+                  type="button"
+                  className="ol-pop-row"
+                  disabled={busy}
+                  onClick={() => toLine(l)}
+                >
+                  <MedCenterMark medCenter={l.medCenter || { name: l.name }} className="ol-mc-row" />
+                  <span className="ol-pop-row-name">{lineTitle(l)}</span>
+                  {l.onShift > 0
+                    ? <em>на смене {l.onShift}</em>
+                    : <em className="off" title="Обращение подождёт в очереди линии">никого на смене</em>}
+                </button>
+              ))}
 
-          {targets && targets.length === 0 && (
-            <div className="ol-pop-note">
-              На этой линии больше никого нет. Состав задаёт администратор в настройках линий.
-            </div>
+              <div className="ol-pop-sep" />
+
+              <div className="ol-pop-title">Сотруднику этой линии</div>
+              {users.length === 0 && (
+                <div className="ol-pop-note">
+                  На этой линии больше никого нет. Состав задаёт администратор в настройках линий.
+                </div>
+              )}
+              {users.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  className="ol-pop-row"
+                  disabled={busy}
+                  onClick={() => toUser(u)}
+                >
+                  <Circle size={8} className={`ol-shift-dot ${u.onShift ? 'on' : ''}`} />
+                  <span className="ol-pop-row-name">{u.displayName || u.username}</span>
+                  {u.onShift && <em>на смене</em>}
+                </button>
+              ))}
+            </>
           )}
-
-          {targets && targets.map(u => (
-            <button
-              key={u.id}
-              type="button"
-              className="ol-pop-row"
-              disabled={busy}
-              onClick={() => pass(u)}
-            >
-              <Circle size={8} className={`ol-shift-dot ${u.onShift ? 'on' : ''}`} />
-              <span className="ol-pop-row-name">{u.displayName || u.username}</span>
-              {u.onShift && <em>на смене</em>}
-            </button>
-          ))}
         </div>
       )}
     </div>
   );
+}
+
+/** Линия называется медцентром: «Линия Альфа Кидс» оператору ничего не добавляет. */
+function lineTitle(line) {
+  return line.medCenter?.name || line.name;
 }

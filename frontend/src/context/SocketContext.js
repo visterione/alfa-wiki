@@ -99,6 +99,9 @@ export function SocketProvider({ children }) {
   // Уведомления модуля «Задачи» — отдельной стопкой от чатовых: у них другая
   // форма (заголовок события вместо отправителя) и другая жизнь (гаснут сами).
   const [taskNotifications, setTaskNotifications] = useState([]);
+  // Карточки о репликах пациентов (ver. 9.23) — в той же стопке, что и
+  // сообщения мессенджера, см. OpenLineNotification.
+  const [openLineNotifications, setOpenLineNotifications] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   // Счётчик непрочитанных нововведений (Центр обновлений)
   const [releaseUnreadCount, setReleaseUnreadCount] = useState(0);
@@ -436,14 +439,18 @@ export function SocketProvider({ children }) {
       if (!ring || !mine) return;
 
       playNotificationSound();
-      if (!window.location.pathname.startsWith('/open-line')) {
-        toast(
-          (t) => React.createElement('span', {
-            style: { cursor: 'pointer' },
-            onClick: () => { window.location.assign('/open-line'); toast.dismiss(t.id); },
-          }, data?.assigneeUserId ? 'Открытая линия: ответ пациента' : 'Открытая линия: новое обращение'),
-          { icon: '💬', duration: 8000 },
-        );
+
+      // Карточка вместо безличного «Открытая линия: ответ пациента» (ver. 9.23).
+      // В самом разделе её нет: там то же самое уже стоит строкой в списке.
+      //
+      // Одна карточка на переписку: пациент, написавший пять строк подряд, —
+      // это один разговор, а не пять. Новая реплика заменяет прежнюю карточку
+      // и встаёт наверх стопки.
+      if (!window.location.pathname.startsWith('/open-line') && data?.conversationId) {
+        setOpenLineNotifications(prev => [
+          ...prev.filter(n => n.conversationId !== data.conversationId),
+          { id: `ol-${data.conversationId}-${Date.now()}`, ...data },
+        ]);
       }
     };
 
@@ -505,6 +512,10 @@ export function SocketProvider({ children }) {
     setTaskNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
+  const removeOpenLineNotification = useCallback((id) => {
+    setOpenLineNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
   const removeNotification = (id) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
@@ -529,6 +540,8 @@ export function SocketProvider({ children }) {
     clearAllNotifications,
     taskNotifications,
     removeTaskNotification,
+    openLineNotifications,
+    removeOpenLineNotification,
     userStatuses,
     pendingChatNavigation,
     clearPendingNavigation,
