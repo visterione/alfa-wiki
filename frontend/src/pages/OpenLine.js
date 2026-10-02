@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Inbox, MessageCircle, Archive, Send, Search, ArrowLeft,
-  AlertTriangle, Paperclip, Headphones, Star, CornerDownRight, UserCheck, Grab
+  AlertTriangle, Paperclip, Headphones, Star, CornerDownRight, UserCheck, Grab,
+  CornerUpLeft, Copy, Edit2, Trash2, X
 } from 'lucide-react';
 import { openLine as openLineApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -295,6 +296,20 @@ export default function OpenLine() {
   const fieldRef = useRef(null);
   const fileRef = useRef(null);
 
+  /**
+   * Меню по правой кнопке на сообщении (ver. 9.30) — как во внутреннем
+   * мессенджере и в Telegram: ответить с цитатой, скопировать, исправить или
+   * удалить своё у пациента. Значки при наведении пробовали не делать: на
+   * каждом пузыре они мешают читать, а правка нужна раз в смену.
+   */
+  const [menu, setMenu] = useState(null);           // { x, y, message }
+  const [replyTo, setReplyTo] = useState(null);     // сообщение, на которое отвечаем
+  const [editing, setEditing] = useState(null);     // своё сообщение, которое правим
+  const menuRef = useRef(null);
+  // Набранный ответ на время правки: правка занимает то же поле, и
+  // недописанное не должно пропасть из-за того, что поправили опечатку выше.
+  const stashRef = useRef('');
+
   // Открытая переписка и её подпись — в ссылках, а не в зависимостях загрузки
   // списка: список перечитывается каждые пять секунд, и упоминание activeId в
   // его зависимостях пересоздавало бы таймер на каждом переключении чата.
@@ -408,9 +423,39 @@ export default function OpenLine() {
   // отрисовки нового значения: до этого scrollHeight у него ещё прежний.
   useEffect(() => {
     setDraft(loadDraft(activeId));
+    // Ответ и правка принадлежат переписке — в соседнюю они не переезжают.
+    setReplyTo(null);
+    setEditing(null);
+    setMenu(null);
     const timer = setTimeout(fitField, 0);
     return () => clearTimeout(timer);
   }, [activeId, fitField]);
+
+  // Меню закрывается щелчком мимо, Escape и прокруткой ленты: висящее над
+  // уехавшим сообщением меню относилось бы уже не к нему.
+  useEffect(() => {
+    if (!menu) return undefined;
+    const away = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenu(null); };
+    const esc = (e) => { if (e.key === 'Escape') setMenu(null); };
+    const scroll = () => setMenu(null);
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    document.addEventListener('scroll', scroll, true);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+      document.removeEventListener('scroll', scroll, true);
+    };
+  }, [menu]);
+
+  // Меню у края окна сдвигаем внутрь — тот же приём, что в мессенджере.
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!menu || !el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 10) el.style.left = `${window.innerWidth - rect.width - 10}px`;
+    if (rect.bottom > window.innerHeight - 10) el.style.top = `${window.innerHeight - rect.height - 10}px`;
+  }, [menu]);
 
   // Линию, выбранную в отборе, могли убрать из состава сотрудника — тогда
   // возвращаемся ко всем линиям, а не показываем пустоту по несуществующей.
@@ -660,9 +705,25 @@ export default function OpenLine() {
     const text = draft.trim();
     if (!text || sending || !activeId) return;
 
+    if (editing) {
+      setSending(true);
+      try {
+        await openLineApi.editMessage(editing.id, text);
+        finishEdit();
+        await loadThread(activeId);
+        toast.success('Сообщение исправлено у пациента');
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Не удалось исправить сообщение');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     setSending(true);
     try {
-      const { data } = await openLineApi.send(activeId, text);
+      const { data } = await openLineApi.send(activeId, text, replyTo?.id || null);
+      setReplyTo(null);
       setDraft('');
       saveDraft(activeId, '');
       // Высоту сбрасываем руками: она выставлена стилем, и очистка значения сама
@@ -678,6 +739,78 @@ export default function OpenLine() {
     } finally {
       setSending(false);
     }
+  };
+
+  // ── Действия с сообщением (ver. 9.30) ───────────────────────────────────
+
+  const startReply = (m) => {
+    setMenu(null);
+    if (editing) finishEdit();
+    setReplyTo(m);
+    setTimeout(() => fieldRef.current?.focus(), 0);
+  };
+
+  const startEdit = (m) => {
+    setMenu(null);
+    setReplyTo(null);
+    stashRef.current = editing ? stashRef.current : draft;
+    setEditing(m);
+    setDraft(m.text || '');
+    setTimeout(() => { fieldRef.current?.focus(); fitField(); }, 0);
+  };
+
+  // Выход из правки возвращает в поле то, что было набрано до неё.
+  const finishEdit = () => {
+    setEditing(null);
+    setDraft(stashRef.current);
+    stashRef.current = '';
+    setTimeout(fitField, 0);
+  };
+
+  const copyText = async (m) => {
+    setMenu(null);
+    try {
+      await navigator.clipboard.writeText(m.text || '');
+      toast.success('Текст скопирован');
+    } catch {
+      toast.error('Браузер не дал скопировать');
+    }
+  };
+
+  // Удаление переспрашиваем: в отличие от правки, его не исправить следующим
+  // действием — у пациента сообщение исчезнет насовсем.
+  const removeMessage = async (m) => {
+    setMenu(null);
+    if (!window.confirm('Удалить это сообщение у пациента? В переписке портала оно останется с пометкой «удалено».')) return;
+    try {
+      await openLineApi.deleteMessage(m.id);
+      if (editing?.id === m.id) finishEdit();
+      await loadThread(activeId);
+      toast.success('Сообщение удалено у пациента');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Не удалось удалить сообщение');
+    }
+  };
+
+  // Своё, дошедшее до мессенджера, не удалённое — его и можно трогать у
+  // пациента. Те же условия проверяет сервер; здесь — чтобы не показывать
+  // пункты, которые заведомо откажут.
+  const isOwnSent = (m) => m.direction === 'out'
+    && String(m.authorUserId || m.author?.id || '') === String(user?.id || '')
+    && !m.deletedAt && m.externalMessageId && !m.deliveryError;
+
+  const openMenu = (e, m) => {
+    if (m.deletedAt) return;
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, message: m });
+  };
+
+  const scrollToMessage = (id) => {
+    const el = document.querySelector(`[data-ol-mid="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ol-msg-flash');
+    setTimeout(() => el.classList.remove('ol-msg-flash'), 1600);
   };
 
   // ── Лента ───────────────────────────────────────────────────────────────
@@ -986,9 +1119,15 @@ export default function OpenLine() {
 
                     const own = m.direction === 'out';
                     const hasAttachments = (m.attachments || []).length > 0;
+                    const quote = m.replyTo;
 
                     return (
-                      <div key={row.key} className={`message ${own ? 'own' : ''}`}>
+                      <div
+                        key={row.key}
+                        data-ol-mid={m.id}
+                        className={`message ${own ? 'own' : ''} ${m.deletedAt ? 'ol-msg-deleted' : ''} ${editing?.id === m.id ? 'ol-msg-editing' : ''}`}
+                        onContextMenu={(e) => openMenu(e, m)}
+                      >
                         {!own && (
                           <div className="message-avatar ol-message-avatar">
                             <ChannelAvatar platform={subscriber?.platform} medCenter={conversation.line?.medCenter} size={32} />
@@ -998,6 +1137,20 @@ export default function OpenLine() {
                           {own && m.author && (
                             <div className="message-sender">{userName(m.author)}</div>
                           )}
+                          {/* Цитата (ver. 9.30): на что отвечали — с любой
+                              стороны. Щелчок ведёт к самому сообщению. */}
+                          {quote && (
+                            <div className="reply-quote" onClick={() => scrollToMessage(quote.id)}>
+                              <div className="reply-quote-sender">
+                                {quote.direction === 'out' ? (userName(quote.author) || 'Оператор') : personShort(subscriber)}
+                              </div>
+                              <div className="reply-quote-content">
+                                {quote.deletedAt
+                                  ? 'Сообщение удалено'
+                                  : (quote.text ? `${quote.text.slice(0, 100)}${quote.text.length > 100 ? '…' : ''}` : 'Вложение')}
+                              </div>
+                            </div>
+                          )}
                           {hasAttachments && (
                             <div className="ol-msg-files">
                               {m.attachments.map((a, i) => renderAttachment(a, i, state?.fileToken))}
@@ -1005,6 +1158,15 @@ export default function OpenLine() {
                           )}
                           {m.text && <div className="message-content">{m.text}</div>}
                           <div className="message-meta">
+                            {/* «Изменено» — как у пациента в мессенджере; что
+                                было написано сначала, видно в подсказке. */}
+                            {m.editedAt && !m.deletedAt && (
+                              <span
+                                className="message-edited"
+                                title={`Исправлено ${new Date(m.editedAt).toLocaleString('ru-RU')}${m.originalText ? `\nСначала было: ${m.originalText}` : ''}`}
+                              >изменено</span>
+                            )}
+                            {m.deletedAt && <span className="ol-msg-deleted-mark">удалено у пациента</span>}
                             <span className="message-time">{timeLabel(m.createdAt)}</span>
                             {m.deliveryError && (
                               <span className="ol-msg-error" title={m.deliveryError}>
@@ -1018,6 +1180,28 @@ export default function OpenLine() {
                   })}
                   <div ref={bottomRef} />
                 </div>
+
+                {replyTo && !editing && (
+                  <div className="reply-banner">
+                    <div className="reply-banner-info">
+                      <CornerUpLeft size={16} />
+                      <span>
+                        Ответ <strong>{replyTo.direction === 'out' ? (userName(replyTo.author) || 'оператору') : personShort(subscriber)}</strong>
+                        {replyTo.text ? `: ${replyTo.text.slice(0, 60)}${replyTo.text.length > 60 ? '…' : ''}` : ''}
+                      </span>
+                    </div>
+                    <button type="button" onClick={() => setReplyTo(null)}><X size={16} /></button>
+                  </div>
+                )}
+                {editing && (
+                  <div className="editing-message-banner">
+                    <div className="editing-message-info">
+                      <Edit2 size={16} />
+                      <span>Исправление сообщения — у пациента оно изменится на месте</span>
+                    </div>
+                    <button type="button" onClick={finishEdit}><X size={16} /></button>
+                  </div>
+                )}
 
                 <form className="chat-input" onSubmit={send}>
                   <QuickReplyPicker onPick={insertQuick} disabled={!canWrite || sending} />
@@ -1052,26 +1236,30 @@ export default function OpenLine() {
                         // изменение draft: обработчик знает, какой переписке
                         // принадлежит текст, а эффект сработал бы уже после
                         // смены activeId и положил бы набранное в чужой чат.
-                        saveDraft(activeId, e.target.value);
+                        // Правка в черновик не пишется: это не новый ответ.
+                        if (!editing) saveDraft(activeId, e.target.value);
                         fitField();
                       }}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e); }
+                        if (e.key === 'Escape' && editing) { e.preventDefault(); finishEdit(); }
                       }}
                       placeholder={
                         conversation.status === 'closed'
                           ? 'Обращение закрыто — ответить можно, когда пациент напишет снова'
                           : canWrite ? 'Ответ пациенту…' : 'Обращение ведёт другой сотрудник'
                       }
-                      disabled={!canWrite || sending}
+                      // Своё сообщение можно исправить и там, где писать уже
+                      // нельзя, — в закрытом обращении опечатка та же.
+                      disabled={(!canWrite && !editing) || sending}
                       rows={1}
                     />
                   </div>
                   <button
                     type="submit"
                     className="btn btn-primary btn-icon"
-                    disabled={!canWrite || sending || !draft.trim()}
-                    title="Отправить"
+                    disabled={(!canWrite && !editing) || sending || !draft.trim()}
+                    title={editing ? 'Сохранить исправление' : 'Отправить'}
                   >
                     <Send size={20} />
                   </button>
@@ -1081,6 +1269,43 @@ export default function OpenLine() {
           </div>
         </div>
       </div>
+
+      {/* Меню сообщения (ver. 9.30). Оформление — мессенджера
+          (.message-context-menu из Dashboard.css), набор пунктов — свой: то,
+          что умеют боты. Пункт показывается, только если действие пройдёт. */}
+      {menu && (() => {
+        const m = menu.message;
+        const mine = isOwnSent(m);
+        const canReply = canWrite && !m.deletedAt;
+        const canEdit = mine && !(m.attachments || []).length;
+        return (
+          <div ref={menuRef} className="message-context-menu" style={{ top: menu.y, left: menu.x }}>
+            {canReply && (
+              <button onClick={() => startReply(m)}>
+                <CornerUpLeft size={16} /> Ответить
+              </button>
+            )}
+            {m.text && (
+              <button onClick={() => copyText(m)}>
+                <Copy size={16} /> Копировать текст
+              </button>
+            )}
+            {mine && (
+              <>
+                <div className="context-menu-divider" />
+                {canEdit && (
+                  <button onClick={() => startEdit(m)}>
+                    <Edit2 size={16} /> Исправить
+                  </button>
+                )}
+                <button className="danger" onClick={() => removeMessage(m)}>
+                  <Trash2 size={16} /> Удалить у пациента
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
