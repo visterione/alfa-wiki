@@ -232,7 +232,8 @@ function imobisRoute(names, config, texts) {
 const CONSENT_RETRY_MS = 60 * 1000;
 
 async function deliver(item, clinicId = null, medCenterId = null) {
-  if (!await safety.allowedByPilot(item.phone)) {
+  // Пилотные номера — свои у медцентра визита (ver. 9.23).
+  if (!await safety.allowedByPilot(item.phone, medCenterId)) {
     return item.update({ status: 'skipped', error: 'пилот: телефон вне списка проверочных номеров' });
   }
 

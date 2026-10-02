@@ -45,8 +45,18 @@
  * решение, а не наследство. Сообщение без опознанного филиала тоже не уходит
  * наружу — пускать его по чужому разрешению нельзя.
  *
- * Пилотные номера остались общими: это список проверочных телефонов, к филиалу
- * он не привязан.
+ * ПИЛОТНЫЕ НОМЕРА ПО МЕДЦЕНТРАМ (ver. 9.23). В 9.21 их оставили общими — как
+ * список проверочных телефонов, к филиалу не привязанный. На деле запуск идёт
+ * так: у одного медцентра сняты все предохранители, но отправка только на один
+ * номер, а у другого — свой номер или вся сеть. С общим списком выбор
+ * медцентра на экране менял провайдеров, но не номера, и поле телефона у всех
+ * медцентров показывало одно и то же.
+ *
+ * Перенос тот же, что у провайдеров, — без миграции и без ослабления: медцентр
+ * без своего списка живёт по прежнему общему (pilotPhones). Свой список
+ * появляется только при сохранении у этого медцентра, и пустой свой список —
+ * это осознанное «вся сеть», а не отсутствие настройки. Поэтому пустые списки
+ * здесь, в отличие от провайдеров, хранятся.
  */
 
 const { Setting, MedCenter } = require('../../models');
@@ -99,6 +109,21 @@ let cache = { at: 0, value: null };
 
 const onlyKnown = (list) => (Array.isArray(list) ? list : []).filter(p => EXTERNAL_PROVIDERS.includes(p));
 
+const normalizePhones = (list) => (Array.isArray(list) ? list : [])
+  .map(p => misClient.normalizePhone(String(p).trim())).filter(Boolean);
+
+/**
+ * Пилотные номера по медцентрам. Пустой список сохраняется: у медцентра это
+ * «вся сеть», выбранное осознанно, а отсутствие записи — «как в общем списке».
+ */
+function cleanPilots(map) {
+  const out = {};
+  for (const [id, list] of Object.entries(map || {})) {
+    if (id && Array.isArray(list)) out[id] = [...new Set(normalizePhones(list))];
+  }
+  return out;
+}
+
 /** Пустые списки не храним: филиал без записи и филиал с [] — одно и то же. */
 function cleanBranches(map) {
   const out = {};
@@ -124,7 +149,9 @@ async function read() {
     // прежний общий список (см. шапку).
     branches: split ? (isLocked() ? {} : cleanBranches(value.branches)) : null,
     legacy: isLocked() ? [] : onlyKnown(value.allowExternal),
-    pilotPhones: (value.pilotPhones || []).map(p => misClient.normalizePhone(p)).filter(Boolean),
+    // Общий список: действует у медцентров, не сохранивших свой (см. шапку).
+    pilotPhones: normalizePhones(value.pilotPhones),
+    pilotByBranch: cleanPilots(value.pilotByBranch),
     changedBy: value.changedBy || null,
     changedAt: value.changedAt || null,
     locked: isLocked()
@@ -142,11 +169,27 @@ function allowedFor(state, medCenterId) {
 }
 
 /**
+ * Пилотные номера медцентра по уже прочитанному состоянию: свои, если
+ * сохранены, иначе общий список. Сообщение без опознанного медцентра проверяем
+ * по общему — наружу оно всё равно не уйдёт (allowedFor), а для наших ботов
+ * общий список остаётся прежним ограничением.
+ */
+function pilotFor(state, medCenterId) {
+  const own = medCenterId ? state.pilotByBranch[String(medCenterId)] : undefined;
+  return {
+    phones: own !== undefined ? own : state.pilotPhones,
+    own: own !== undefined
+  };
+}
+
+/**
  * @param {Object} patch
  * @param {{medCenterId:string, allowExternal:string[]}} [patch.branch] Правим по
  *   одному филиалу, а не всей картой: два администратора, включающие разные
  *   филиалы, не должны затирать друг друга.
- * @param {string[]} [patch.pilotPhones]
+ * @param {string[]} [patch.pilotPhones] общий список — для медцентров без своего
+ * @param {{medCenterId:string, phones:string[]}} [patch.pilot] пилотные номера
+ *   одного медцентра (ver. 9.23); тоже по одному, по той же причине
  */
 async function write(patch, user) {
   if (isLocked() && patch.branch && (patch.branch.allowExternal || []).length) {
@@ -177,11 +220,17 @@ async function write(patch, user) {
     branches[String(patch.branch.medCenterId)] = patch.branch.allowExternal || [];
   }
 
+  const pilotByBranch = { ...current.pilotByBranch };
+  if (patch.pilot && patch.pilot.medCenterId) {
+    pilotByBranch[String(patch.pilot.medCenterId)] = normalizePhones(patch.pilot.phones);
+  }
+
   const value = {
     branches: cleanBranches(branches),
     pilotPhones: patch.pilotPhones !== undefined
-      ? (patch.pilotPhones || []).map(p => misClient.normalizePhone(String(p).trim())).filter(Boolean)
+      ? normalizePhones(patch.pilotPhones)
       : current.pilotPhones,
+    pilotByBranch: cleanPilots(pilotByBranch),
     // Кто и когда снял предохранитель. Записывается всегда, а не только при
     // снятии: вопрос «кто это включил» задают через неделю, и ответ должен быть
     // в самой настройке, а не в чьей-то памяти.
@@ -204,11 +253,14 @@ async function allowsProvider(provider, medCenterId) {
   return allowedFor(await read(), medCenterId).includes(provider);
 }
 
-/** Пустой список пилотных номеров означает «без ограничения», а не «никому». */
-async function allowedByPilot(phone) {
-  const { pilotPhones } = await read();
-  if (!pilotPhones.length) return true;
-  return pilotPhones.includes(misClient.normalizePhone(phone || ''));
+/**
+ * Пустой список пилотных номеров означает «без ограничения», а не «никому».
+ * Список — медцентра, по визиту которого сообщение (ver. 9.23).
+ */
+async function allowedByPilot(phone, medCenterId = null) {
+  const { phones } = pilotFor(await read(), medCenterId);
+  if (!phones.length) return true;
+  return phones.includes(misClient.normalizePhone(phone || ''));
 }
 
 function forget() {
@@ -217,5 +269,5 @@ function forget() {
 
 module.exports = {
   SAFETY_KEY, EXTERNAL_PROVIDERS,
-  read, write, forget, allowsProvider, allowedFor, allowedByPilot, isLocked
+  read, write, forget, allowsProvider, allowedFor, allowedByPilot, pilotFor, isLocked
 };

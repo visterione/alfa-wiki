@@ -340,7 +340,7 @@ async function runOne(request) {
     return request.update({ status: 'skipped', error: allowed.reason });
   }
 
-  if (!await safety.allowedByPilot(request.phone)) {
+  if (!await safety.allowedByPilot(request.phone, request.medCenterId)) {
     return request.update({ status: 'skipped', error: 'пилот: телефон вне списка проверочных номеров' });
   }
   if (!await safety.allowsProvider(PROVIDER, request.medCenterId)) {

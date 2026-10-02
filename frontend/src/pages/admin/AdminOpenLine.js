@@ -2753,21 +2753,30 @@ function CallsLog() {
 function SafetyPanel({ safety, branchId, onChange }) {
   const [confirming, setConfirming] = useState(null);
   const [word, setWord] = useState('');
-  const [pilot, setPilot] = useState((safety.pilotPhones || []).join(', '));
   const [busy, setBusy] = useState(false);
 
   // Набор свой у каждого медцентра (ver. 9.21); панель показывает тот, что
   // выбран в шапке страницы. Подтверждение, начатое на одном медцентре, при
   // смене выбора закрываем — иначе «Включить» открыло бы не тот, который видно.
   const branch = (safety.branches || []).find(b => b.id === branchId) || null;
+
+  // Пилотные номера тоже свои у медцентра (ver. 9.23). До этого поле было общим:
+  // выбор медцентра в шапке менял провайдеров, но не номера, и у всех
+  // медцентров в поле стояло одно и то же. Поле перечитываем при смене
+  // медцентра и после сохранения — иначе набранное для одного медцентра
+  // уехало бы в другой.
+  const branchPhones = (branch?.pilotPhones || []).join(', ');
+  const [pilot, setPilot] = useState(branchPhones);
   useEffect(() => { setConfirming(null); setWord(''); }, [branchId]);
+  useEffect(() => { setPilot(branchPhones); }, [branchId, branchPhones]);
 
   if (!branch) return null;
 
   const allowed = branch.allowExternal || [];
   const providers = (safety.providers || []).map(p => ({ ...p, allowed: allowed.includes(p.name) }));
   const open = providers.filter(p => p.allowed);
-  const piloted = (safety.pilotPhones || []).length > 0;
+  const pilotPhones = branch.pilotPhones || [];
+  const piloted = pilotPhones.length > 0;
   const CONFIRM = 'ОТПРАВЛЯТЬ';
 
   const apply = async (patch) => {
@@ -2793,10 +2802,12 @@ function SafetyPanel({ safety, branchId, onChange }) {
 
   const savePilot = () => {
     const list = pilot.split(',').map(s => s.trim()).filter(Boolean);
-    apply({ pilotPhones: list });
+    apply({ pilot: { medCenterId: branch.id, phones: list } });
   };
 
-  const pilotDirty = pilot !== (safety.pilotPhones || []).join(', ');
+  // Пока свой список не сохранён, медцентр живёт по общему — сохранить его
+  // как есть тоже имеет смысл: это закрепляет номера за медцентром.
+  const pilotDirty = pilot !== branchPhones || !branch.pilotOwn;
 
   return (
     <section className={`ola-card ola-safety ${open.length ? 'live' : (piloted ? 'safe' : '')}`}>
@@ -2841,8 +2852,11 @@ function SafetyPanel({ safety, branchId, onChange }) {
 
         <div className="ola-field">
           <label>
-            Только эти номера
+            Только эти номера — для «{branch.name}»
             {!piloted && <span className="ola-badge warn">не сужено — вся сеть</span>}
+            {/* Свой список у медцентра ещё не сохраняли — действует общий,
+                оставшийся с тех пор, когда номера были одни на сеть. */}
+            {!branch.pilotOwn && <span className="ola-badge">общий список сети</span>}
           </label>
           <div className="ola-row">
             <input
@@ -2865,7 +2879,7 @@ function SafetyPanel({ safety, branchId, onChange }) {
               <p>
                 После этого уведомления пойдут живым пациентам этого медцентра
                 {piloted
-                  ? ` — пока только на ${safety.pilotPhones.length} проверочны${safety.pilotPhones.length === 1 ? 'й номер' : 'х номера'}.`
+                  ? ` — пока только на ${pilotPhones.length} проверочны${pilotPhones.length === 1 ? 'й номер' : 'х номера'}.`
                   : ': круг получателей не сужен.'}
                 {' '}Убедитесь, что в МИС у этой клиники сняты галки «Отправлять
                 сообщение», иначе пациент получит два уведомления об одном событии.

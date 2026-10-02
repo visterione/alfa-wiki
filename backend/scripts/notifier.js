@@ -175,7 +175,12 @@ const aiCall = require('../services/notifications/aiCall');
     : (Object.entries(state.branches).map(([id, list]) => `${id}: ${list.join(', ')}`).join('; ')
       || 'НИКОМУ (только наши боты)');
   console.log(`Отправка наружу разрешена: ${external}${state.locked ? '   ЗАМОК НА СЕРВЕРЕ' : ''}` +
-    `   пилотных телефонов: ${state.pilotPhones.length || 'БЕЗ ОГРАНИЧЕНИЯ (вся сеть)'}\n`);
+    `   пилотных телефонов (общий список): ${state.pilotPhones.length || 'БЕЗ ОГРАНИЧЕНИЯ (вся сеть)'}` +
+    // Свои списки медцентров (ver. 9.23) — поимённо: запуск с одним открытым
+    // филиалом без своего ограничения должен быть виден при старте.
+    (Object.keys(state.pilotByBranch).length
+      ? `   свои: ${Object.entries(state.pilotByBranch).map(([id, list]) => `${id}: ${list.length || 'вся сеть'}`).join('; ')}`
+      : '') + '\n');
 
   for (const row of rows) {
     const normalized = misClient.normalizePhone(row.phone || '');

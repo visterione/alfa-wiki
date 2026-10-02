@@ -92,11 +92,18 @@ async function safetyState() {
     })),
     // Свой набор у каждого медцентра (ver. 9.21): запуск идёт по одному
     // филиалу, а не всей сетью разом. Экран показывает набор выбранного.
-    branches: medCenters.map(mc => ({
-      id: mc.id,
-      name: mc.name,
-      allowExternal: safety.allowedFor(state, mc.id)
-    })),
+    branches: medCenters.map(mc => {
+      const pilot = safety.pilotFor(state, mc.id);
+      return {
+        id: mc.id,
+        name: mc.name,
+        allowExternal: safety.allowedFor(state, mc.id),
+        // Пилотные номера — тоже свои у медцентра (ver. 9.23). pilotOwn=false:
+        // свой список ещё не сохраняли, действует общий.
+        pilotPhones: pilot.phones,
+        pilotOwn: pilot.own
+      };
+    }),
     // Ограничение круга получателей — вторая половина безопасного режима, и о
     // ней экран раньше не говорил вовсе.
     pilotPhones: state.pilotPhones,
@@ -808,10 +815,10 @@ router.get('/safety', authenticate, requireAdmin, async (req, res) => {
 
 router.put('/safety', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { pilotPhones, branch } = req.body || {};
+    const { pilotPhones, branch, pilot } = req.body || {};
 
     const before = await safety.read();
-    await safety.write({ pilotPhones, branch }, req.user);
+    await safety.write({ pilotPhones, branch, pilot }, req.user);
     const after = await safety.read();
 
     // Снятие пишем в журнал сервера отдельной строкой: по логам восстанавливают
@@ -820,6 +827,9 @@ router.put('/safety', authenticate, requireAdmin, async (req, res) => {
       const was = safety.allowedFor(before, branch.medCenterId);
       const opened = safety.allowedFor(after, branch.medCenterId).filter(p => !was.includes(p));
       if (opened.length) {
+        const phones = safety.pilotFor(after, branch.medCenterId).phones;
+        console.warn(`[notifications] пилотные номера филиала ${branch.medCenterId}: ` +
+          `${phones.length ? phones.join(', ') : 'БЕЗ ОГРАНИЧЕНИЯ'}`);
         console.warn(`[notifications] ОТПРАВКА НАРУЖУ ВКЛЮЧЕНА для филиала ${branch.medCenterId}: ` +
           `${opened.join(', ')} — ${req.user.displayName || req.user.username} (${req.user.id})`);
       }
