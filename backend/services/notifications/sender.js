@@ -148,6 +148,16 @@ async function cascadeOfEvent(event, medCenterId) {
   return picked;
 }
 
+/**
+ * Каскад строки: свой у события, иначе у филиала, иначе общий — тот же порядок,
+ * что у deliver. Нужен и журналу (ver. 9.23): по нему рисуется цепочка каналов
+ * у строк, где пути по каскаду не записано, — ещё не отправленных и ушедших
+ * до 9.23.
+ */
+async function cascadeOf(event, medCenterId) {
+  return settings.cascadeFor({ eventCascade: await cascadeOfEvent(event, medCenterId), medCenterId });
+}
+
 // Филиал портала по клинике визита — общим сопоставлением модуля (ver. 8.17),
 // по id клиники МИС с запасным вариантом по имени. Своё сопоставление по имени
 // жило здесь до 8.17 и расходилось со справочником ровно там же, где остальные
@@ -292,8 +302,9 @@ async function deliver(item, clinicId = null, medCenterId = null) {
    *   sent    — ушло этой ступенью (боты, Fromni);
    *   handed  — передано провайдеру с его собственным каскадом (Имобис): какой
    *             канал доставил, скажет его отчёт, см. /report;
-   *   failed  — не прошло, причина в error;
-   *   quiet   — ступень промолчала в тихие часы.
+   *   failed    — не прошло, причина в error;
+   *   quiet     — ступень промолчала в тихие часы;
+   *   unreached — до ступени очередь не дошла: раньше уже ушло.
    *
    * Хранится путь последнего прохода, а не всех: отложенная до утра строка
    * проходит каскад заново, и вечерняя попытка утром уже ничего не объясняет.
@@ -305,6 +316,17 @@ async function deliver(item, clinicId = null, medCenterId = null) {
     }
   };
   const fail = (steps, error) => { lastError = error; note(steps, 'failed', error); };
+  // Каналы каскада, до которых очередь не дошла, — тоже в путь (ver. 9.23):
+  // журнал рисует цепочку целиком, и «SMS доставлена с первого раза, Telegram
+  // и MAX не понадобились» должно быть видно, а не выглядеть каскадом из одной
+  // ступени. После успеха это 'unreached', после общей неудачи — 'failed':
+  // ступень, которую не смогли даже попробовать, тоже не прошла.
+  const finish = (rest, error = null) => {
+    for (const step of order) {
+      if (!attempts.some(a => a.step === step)) note(step, rest, error);
+    }
+    return attempts;
+  };
 
   for (const group of groups) {
     // Ступень молчит в тихие часы — пропускаем её, но помним: если промолчали
@@ -351,7 +373,7 @@ async function deliver(item, clinicId = null, medCenterId = null) {
         const options = buttons.length ? { buttons } : {};
         await channel.sendText(found.bot, found.subscriber.externalUserId, body, options);
         note(platform, 'sent');
-        return item.update({ status: 'sent', channel: platform, sentAt: new Date(), error: null, attempts });
+        return item.update({ status: 'sent', channel: platform, sentAt: new Date(), error: null, attempts: finish('unreached') });
       } catch (err) {
         fail(platform, `${platform}: ${err.message}`);
         if (err.code === 'blocked') {
@@ -419,7 +441,7 @@ async function deliver(item, clinicId = null, medCenterId = null) {
           externalMessageId: sent.externalMessageId,
           sentAt: new Date(),
           error: null,
-          attempts
+          attempts: finish('unreached')
         });
       } catch (err) {
         fail(audible, `Имобис: ${err.message}`);
@@ -438,8 +460,9 @@ async function deliver(item, clinicId = null, medCenterId = null) {
 
       const sent = await fromni.sendText(organization, item.phone,
         { default: texts.long, 'sms+webchat': texts.sms, sms: texts.sms }, names);
-      note(sent.channel || names, 'sent');
-      return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null, attempts });
+      // Свой каскад у Fromni тоже внутри провайдера — как у Имобиса.
+      note(names, names.length > 1 ? 'handed' : 'sent');
+      return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null, attempts: finish('unreached') });
     } catch (err) {
       fail(audible, `Fromni: ${err.message}`);
     }
@@ -457,7 +480,11 @@ async function deliver(item, clinicId = null, medCenterId = null) {
     });
   }
 
-  return item.update({ status: 'failed', error: lastError || 'ни одна ступень каскада не сработала', attempts });
+  return item.update({
+    status: 'failed',
+    error: lastError || 'ни одна ступень каскада не сработала',
+    attempts: finish('failed', 'ступень пропущена')
+  });
 }
 
 /**
@@ -695,6 +722,6 @@ async function runOnce(limit = 100) {
 }
 
 module.exports = {
-  runOnce, deliver, sendTest, subscriberFor, organizationFor,
+  runOnce, deliver, sendTest, subscriberFor, organizationFor, cascadeOf,
   CLINIC_ORG_KEY, safety, consent
 };

@@ -10,6 +10,7 @@ import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
 } from '../../services/api';
 import ChannelLogo, { ChannelGlyph } from '../../components/openline/ChannelLogo';
+import { CHANNEL_BRANDS } from '../../components/openline/channelBrands';
 import MedCenterMark from '../../components/openline/MedCenterMark';
 import WidgetTab from './WidgetTab';
 import toast from 'react-hot-toast';
@@ -2450,28 +2451,63 @@ const STEP_RESULT_VIEW = {
   handed:      { cls: 'wait',  label: 'передано провайдеру, ждём отчёт' },
   failed:      { cls: 'bad',   label: 'не прошло' },
   undelivered: { cls: 'bad',   label: 'не доставлено' },
-  quiet:       { cls: 'muted', label: 'промолчал в тихие часы' }
+  quiet:       { cls: 'muted', label: 'промолчал в тихие часы' },
+  // Серые — до канала очередь не дошла: раньше уже ушло, или сообщение ещё не
+  // отправлялось, или отправка не начиналась вовсе (пилот, отказ от оповещений).
+  unreached:   { cls: 'muted', label: 'до этого канала не дошло' },
+  unused:      { cls: 'muted', label: 'не понадобился — доставил предыдущий' },
+  waiting:     { cls: 'muted', label: 'ещё не отправлялось' },
+  skipped:     { cls: 'muted', label: 'не отправлялось' }
 };
 
 /**
- * Путь строки по каскаду (ver. 9.23).
+ * Путь строки по каскаду (ver. 9.23) — всегда весь каскад, а не только
+ * ступени, которые пробовали: «MAX не прошёл → Telegram не прошёл → SMS
+ * доставлена», а если ушло с первого раза — остальные серые.
  *
- * С 9.23 отправщик пишет каждую ступень в attempts. У строк, ушедших раньше,
- * пути нет — для них восстанавливаем, что можем, по столбцу channel: это
- * маршрут, которым ушло, без неудачных ступеней перед ним.
+ * С 9.23 отправщик пишет путь целиком в attempts. У строк без пути — ещё не
+ * отправленных и ушедших раньше — сервер отдаёт каскад события (cascade), и
+ * цепочка восстанавливается по нему: каналы до того, которым ушло, не прошли
+ * (каскад идёт дальше, только когда предыдущий не сработал), после — не
+ * понадобились. Каскад это нынешний, а не тогдашний: если его с тех пор
+ * меняли, восстановленная цепочка приблизительна, и подсказка об этом говорит.
  */
+const sameChannel = (a, b) => a === b || textKeyOfStep(a) === textKeyOfStep(b);
+
 function chainOf(row) {
   const attempts = Array.isArray(row.attempts) ? row.attempts : [];
-  if (attempts.length) return attempts.filter(a => a.result !== 'unused');
+  if (attempts.length) return attempts;
 
-  if (!row.channel) return [];
-  const steps = String(row.channel).split('→');
-  if (steps.length > 1) return steps.map(step => ({ step, result: 'handed' }));
+  const cascade = Array.isArray(row.cascade) ? row.cascade : [];
+  const guess = (step, result, error = null) => ({ step, result, error, restored: true });
+
+  if (row.status === 'pending') return cascade.map(step => guess(step, 'waiting'));
+  if (row.status === 'skipped') return cascade.map(step => guess(step, 'skipped', row.error));
+
+  const routed = row.channel ? String(row.channel).split('→') : [];
+  if (row.status !== 'sent' || !routed.length) {
+    return cascade.length
+      ? cascade.map(step => guess(step, 'failed', row.error))
+      : routed.map(step => guess(step, 'failed', row.error));
+  }
+
+  // Чем кончился канал, которым ушло. Маршрут из нескольких ступеней — это
+  // каскад внутри провайдера, и какая из них сработала, без отчёта неизвестно.
   const delivery = String(row.deliveryStatus || '');
-  const result = ['delivered', 'read'].includes(delivery) ? 'delivered'
-    : (['rejected', 'undelivered', 'expired', 'deleted', 'error'].includes(delivery) ? 'undelivered'
-      : (row.status === 'sent' ? 'sent' : 'failed'));
-  return [{ step: steps[0], result }];
+  const outcome = routed.length > 1 ? 'handed'
+    : (['delivered', 'read'].includes(delivery) ? 'delivered'
+      : (['rejected', 'undelivered', 'expired', 'deleted', 'error'].includes(delivery) ? 'undelivered' : 'sent'));
+
+  const first = cascade.findIndex(step => sameChannel(step, routed[0]));
+  if (first < 0) return routed.map(step => guess(step, outcome));   // каскад с тех пор поменяли
+
+  const out = [];
+  cascade.forEach((step, i) => {
+    if (i < first) out.push(guess(step, 'failed'));
+    else if (routed.some(r => sameChannel(r, step))) out.push(guess(step, outcome));
+    else out.push(guess(step, 'unreached'));
+  });
+  return out;
 }
 
 /**
@@ -2498,9 +2534,16 @@ function sentText(row) {
 }
 
 /**
- * Цепочка каскада: знаки каналов в кружках цвета исхода, через стрелки
- * (ver. 9.23). Читается слева направо, как шло сообщение: «Telegram не прошёл
- * → MAX не прошёл → SMS доставлена». Причина неудачи — в подсказке у кружка.
+ * Цепочка каскада (ver. 9.23). Читается слева направо, как шло сообщение:
+ * «MAX не прошёл → Telegram не прошёл → SMS доставлена». Причина неудачи — в
+ * подсказке у кружка.
+ *
+ * Кружок — цвета своего канала, как его знают все (Telegram голубой, MAX
+ * фиолетовый), а исход — обводкой с просветом, как непросмотренная история в
+ * соцсетях: зелёная — ушло, красная — не прошло, жёлтая — ждём отчёт, серая —
+ * не дошло. Сначала исход был заливкой кружка, но тогда цепочка из трёх
+ * красных кружков не говорила, какие это каналы, пока не вглядишься в знаки.
+ * Не дошедший канал ещё и приглушён: в нём ничего не происходило.
  */
 function CascadeChain({ row }) {
   const chain = chainOf(row);
@@ -2510,12 +2553,17 @@ function CascadeChain({ row }) {
       {chain.map((a, i) => {
         const view = STEP_RESULT_VIEW[a.result] || STEP_RESULT_VIEW.handed;
         const key = glyphOfStep(a.step);
-        const title = `${STEP_TITLES[key] || a.step}: ${view.label}${a.error ? ` — ${a.error}` : ''}`;
+        const title = `${STEP_TITLES[key] || a.step}: ${view.label}${a.error ? ` — ${a.error}` : ''}`
+          + (a.restored ? '\n(восстановлено по нынешнему каскаду: эта отправка была до записи пути)' : '');
         return (
           <React.Fragment key={`${a.step}-${i}`}>
-            {i > 0 && <ChevronRight size={12} className="ola-chain-arrow" />}
-            <span className={`ola-chain-step ${view.cls}`} title={title}>
-              <ChannelGlyph channel={key} size={13} />
+            {i > 0 && <ChevronRight size={15} className="ola-chain-arrow" />}
+            <span
+              className={`ola-chain-step ch-${key} ${view.cls}`}
+              style={CHANNEL_BRANDS[key] ? { '--chain-ch': CHANNEL_BRANDS[key].color } : undefined}
+              title={title}
+            >
+              <ChannelGlyph channel={key} size={16} />
             </span>
           </React.Fragment>
         );

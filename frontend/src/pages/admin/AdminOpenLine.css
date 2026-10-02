@@ -1054,27 +1054,42 @@ button.ola-add { display: inline-flex; align-items: center; gap: 6px; }
   font-size: 11px;
 }
 
-/* Цепочка каскада: кружок цвета исхода, белый знак канала, стрелки между. */
+/* Цепочка каскада: кружок цвета канала, исход — обводкой с просветом, как у
+   историй в соцсетях (ver. 9.23). Просвет — цветом карточки: без него обводка
+   сливалась бы с кружком того же оттенка (жёлтая обводка у SMS). */
 .ola-chain {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  padding: 4px;
 }
 .ola-chain-step {
+  --chain-ring: var(--n-300);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
+  margin: 0 2px;
   border-radius: 50%;
+  background: var(--chain-ch, var(--cyan-600));
   color: #fff;
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4.5px var(--chain-ring);
   cursor: help;
+  transition: opacity 0.15s;
 }
 .ola-chain-step svg { display: block; }
-.ola-chain-step.ok    { background: var(--green-500); }
-.ola-chain-step.bad   { background: var(--red-500); }
-.ola-chain-step.wait  { background: var(--amber-500); }
-.ola-chain-step.muted { background: var(--n-400); }
+
+/* SMS и Notify своей марки не имеют — те же токены, что у их знаков в
+   редакторе каскада (.ch-logo-sms, .ch-logo-notify). */
+.ola-chain-step.ch-sms    { --chain-ch: var(--amber-500); }
+.ola-chain-step.ch-notify { --chain-ch: var(--cyan-600); }
+
+.ola-chain-step.ok    { --chain-ring: var(--green-500); }
+.ola-chain-step.bad   { --chain-ring: var(--red-500); }
+.ola-chain-step.wait  { --chain-ring: var(--amber-400); }
+.ola-chain-step.muted { --chain-ring: var(--n-300); opacity: .45; }
+.ola-chain-step.muted:hover { opacity: .8; }
 .ola-chain-arrow { color: var(--text-tertiary); }
 
 /* ── Свой выпадающий список фильтров (ver. 9.23) ───────────────────────── */

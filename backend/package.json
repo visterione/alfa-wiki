@@ -110,6 +110,7 @@
     "notifier:outbox": "node scripts/notifier.js --outbox",
     "notifier:calls": "node scripts/notifier.js --calls",
     "notifier:reset": "node scripts/notifier.js --reset",
+    "notifier:requeue-pilot": "node scripts/requeuePilotSkipped.js",
     "migrate:7.87": "node scripts/runSqlMigration.js 7.87",
     "migrate:7.87:check": "node scripts/runSqlMigration.js 7.87 --check",
     "migrate:7.88": "node scripts/runSqlMigration.js 7.88",

@@ -529,8 +529,8 @@ function withReport(attempts, report, status) {
   target.at = new Date().toISOString();
   if (outcome === 'undelivered') target.error = report.error || report.error_code || `провайдер: ${status}`;
   // Ступени до сработавшей — не доставили, иначе каскад до неё не дошёл бы. А
-  // после неё — не понадобились: журнал их не рисует, запасной канал, до
-  // которого дело не дошло, в пути сообщения не участвовал.
+  // после неё — не понадобились: журнал рисует их серыми, как каналы, до
+  // которых каскад не дошёл.
   if (outcome === 'delivered') {
     let after = false;
     for (const a of handed) {
@@ -1242,13 +1242,28 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       }
       mcByAppt.set(a.apptId, pair);
     }
-    const out = rows.map(r => {
+    // Каскад строки — для цепочки каналов там, где пути не записано: у ещё
+    // не отправленных и у ушедших до 9.23 (ver. 9.23). Это каскад по текущим
+    // настройкам, а не исторический: если его меняли, у старой строки цепочка
+    // восстановится приблизительно, — журнал об этом предупреждает.
+    const cascades = new Map();
+    const cascadeFor = async (event, medCenterId) => {
+      const key = `${event}|${medCenterId || ''}`;
+      if (!cascades.has(key)) cascades.set(key, await sender.cascadeOf(event, medCenterId).catch(() => []));
+      return cascades.get(key);
+    };
+
+    const out = [];
+    for (const r of rows) {
       const plain = r.get({ plain: true });
       const mc = mcByAppt.get(plain.apptId);
       plain.medCenterId = mc ? mc.medCenterId : null;
       plain.medCenter = mc ? mc.medCenter : null;
-      return plain;
-    });
+      if (!(Array.isArray(plain.attempts) && plain.attempts.length)) {
+        plain.cascade = await cascadeFor(plain.event, plain.medCenterId);
+      }
+      out.push(plain);
+    }
 
     // Сводка за сутки — то, на что смотрят первым делом. Она намеренно не
     // считается по фильтру: это состояние рассылки, а не итог выборки, и
