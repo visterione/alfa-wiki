@@ -524,6 +524,33 @@
 .ola-chip .ola-senior.on svg { fill: currentColor; }
 .ola-chip.senior { border-color: var(--amber-300); }
 
+/* Исключённые из линии (ver. 9.23). Приглушённые и пунктиром: человек не в
+   составе, а рядом с ним — чтобы было видно, что его убрали намеренно. */
+.ola-excluded {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ola-excluded-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ola-chip.excluded {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+/* Вернуть — не удаление, красным при наведении не горит. */
+.ola-chip .ola-restore:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
 /* Кнопка-подстановка в тексте шаблона. Моноширинная: это код, а не слово. */
 .ola-token {
   padding: 4px 9px;

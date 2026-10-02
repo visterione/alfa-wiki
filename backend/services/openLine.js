@@ -173,6 +173,49 @@ async function endDay(userId, io = null) {
   return { onShift: false, returnedToQueue: returned.length };
 }
 
+/**
+ * Сотрудника сняли с линии — исключили или убрали руками (ver. 9.23).
+ *
+ * Смена на этой линии закрывается, а его незакрытые обращения этой линии
+ * возвращаются в очередь — ровно как при «закончить смену», только по одной
+ * линии. Без этого чат остался бы у человека, который его больше не видит:
+ * линии в его составе нет, и открыть переписку ему уже нельзя.
+ */
+async function leaveLine(userId, lineId, io = null) {
+  const now = new Date();
+
+  const returned = await sequelize.transaction(async (tx) => {
+    await OmniShift.update(
+      { endedAt: now },
+      { where: { userId, lineId, endedAt: null }, transaction: tx }
+    );
+
+    const open = await OmniConversation.findAll({
+      where: { assigneeUserId: userId, lineId, status: 'assigned' },
+      attributes: ['id', 'lineId'],
+      transaction: tx
+    });
+    if (open.length) {
+      const ids = open.map(c => c.id);
+      await OmniConversation.update(
+        { status: 'queued', assigneeUserId: null, assignedAt: null },
+        { where: { id: { [Op.in]: ids } }, transaction: tx }
+      );
+      await OmniSession.update(
+        { assigneeUserId: null, assignedAt: null },
+        { where: { conversationId: { [Op.in]: ids }, closedAt: null }, transaction: tx }
+      );
+    }
+    return open.map(c => c.get({ plain: true }));
+  });
+
+  for (const row of returned) {
+    await announce(io, { id: row.id, lineId: row.lineId, status: 'queued', assigneeUserId: null },
+      'openline:changed', {}, [userId]);
+  }
+  return { returnedToQueue: returned.length };
+}
+
 async function shiftState(userId) {
   const rows = await linesOfUser(userId);
   const onShift = rows.some(r => r.onShift);
@@ -372,6 +415,28 @@ async function incomingCard(subscriberId, line, text, attachments) {
     console.error('[open-line] карточка сигнала:', err.message);
     return null;
   }
+}
+
+/**
+ * Та же карточка, собранная по обращению, — для интерфейса, получившего сигнал
+ * без неё (ver. 9.23).
+ *
+ * Так бывает, когда сигнал отправил процесс забора обновлений, запущенный до
+ * выката: он живёт отдельно от портала (npm run poller), сам не
+ * перезапускается и шлёт сигнал по-старому. Ждать от каждого выката, что про
+ * второй процесс не забудут, — значит однажды снова увидеть безличное
+ * «Открытая линия: ответ пациента». Текст берём из последней реплики пациента.
+ */
+async function conversationCard(userId, conversationId) {
+  const conversation = await loadForOperator(userId, conversationId);
+  const last = await OmniMessage.findOne({
+    where: { conversationId, direction: 'in' },
+    order: [['createdAt', 'DESC']],
+    attributes: ['text', 'attachments']
+  });
+  const line = await OmniLine.findByPk(conversation.lineId);
+  if (!line) throw new OpenLineError('not_found', 'Линия обращения не найдена');
+  return incomingCard(conversation.subscriberId, line, last ? last.text : '', last ? last.attachments : []);
 }
 
 /**
@@ -1477,12 +1542,14 @@ module.exports = {
   DEFAULT_OFFLINE_REPLY,
   startDay,
   endDay,
+  leaveLine,
   shiftState,
   linesOfUser,
   acceptIncoming,
   offlineNoticeFor,
   hasOperatorsOnShift,
   listConversations,
+  conversationCard,
   badge,
   getConversation,
   assign,

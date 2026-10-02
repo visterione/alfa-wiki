@@ -63,15 +63,18 @@ export default function LineFilter({ lines, value, onChange, byLine }) {
           </button>
           <div className="ol-pop-sep" />
           {lines.map(l => {
-            const c = byLine[l.id];
             return (
               <button key={l.id} type="button" className="ol-pop-row" onClick={() => pick(l.id)}>
                 <MedCenterMark medCenter={l.medCenter || { name: l.name }} className="ol-mc-row" />
                 <span className="ol-pop-row-name">{lineTitle(l)}</span>
-                {/* Очередь числом, непрочитанное в своих — точкой: тот же язык,
-                    что у вкладок над списком. */}
-                {c?.mineUnread > 0 && <span className="ol-scope-dot" title="Есть непрочитанное в ваших обращениях" />}
-                {c?.queue > 0 && <span className="ol-scope-count" title="В очереди">{c.queue}</span>}
+                {/* Один знак на строку — сколько там ждёт: очередь и свои
+                    неотвеченные вместе. Два знака рядом (число и точка)
+                    читались как одно и то же, сказанное дважды. */}
+                {waitingOn(l.id) > 0 && (
+                  <span className="ol-scope-count" title="Ждут ответа: в очереди и в ваших обращениях">
+                    {waitingOn(l.id)}
+                  </span>
+                )}
                 {current?.id === l.id && <Check size={15} className="ol-line-filter-check" />}
               </button>
             );

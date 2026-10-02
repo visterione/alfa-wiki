@@ -4,7 +4,7 @@ import {
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
   Star, FlaskConical, Building2, ChevronDown, ChevronLeft, ChevronRight,
-  ShieldCheck, MonitorSmartphone, Copy, RotateCcw, Trash2, UserPlus, PhoneCall
+  ShieldCheck, MonitorSmartphone, Copy, RotateCcw, Trash2, UserPlus, PhoneCall, UserMinus
 } from 'lucide-react';
 import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
@@ -443,15 +443,39 @@ function LinesTab({ creating, setCreating }) {
   const addOperator = guard((line, userId) => lineApi.addOperator(line.id, userId), 'Не удалось добавить сотрудника');
   const addOperators = guard((line, userIds) => lineApi.addOperators(line.id, userIds), 'Не удалось добавить сотрудников');
 
-  // Подходящего под правило сервер не убирает, а переводит на правило: иначе
-  // правило вернуло бы его при первой синхронизации. Об этом и говорим.
-  const removeOperator = async (line, userId) => {
+  /**
+   * Снять сотрудника с линии.
+   *
+   * Подходящего под правило сервер исключает (ver. 9.23): иначе правило
+   * вернуло бы его при первой синхронизации. До этого такого человека снять
+   * было нельзя вовсе — и администраторы со всеми ролями сидели во всех линиях,
+   * получали сигналы о пациентах и стояли в списке «кому передать».
+   *
+   * Исключение переспрашиваем: оно переживает и смену роли, и правку правил, и
+   * забытое где-то исключение потом долго ищут, почему человека нет в линии.
+   */
+  const removeOperator = async (line, operator) => {
+    const name = operator.user ? (operator.user.displayName || operator.user.username) : 'сотрудника';
+    if (operator.viaRule && !window.confirm(
+      `Исключить ${name} из линии «${line.name}»? Правила состава перестанут заводить его в эту линию, пока исключение не снимут.`
+    )) return;
     try {
-      const { data } = await lineApi.removeOperator(line.id, userId);
-      if (data && data.keptByRule) toast('Сотрудник подходит под правило линии и остаётся в составе');
+      const { data } = await lineApi.removeOperator(line.id, operator.userId);
+      const back = data?.returnedToQueue ? `, его обращения вернулись в очередь: ${data.returnedToQueue}` : '';
+      toast.success(data?.excluded ? `Исключён из линии${back}` : `Убран из состава${back}`);
       load();
     } catch {
       toast.error('Не удалось убрать сотрудника');
+    }
+  };
+
+  const restoreExcluded = async (line, userId) => {
+    try {
+      const { data } = await lineApi.removeExclusion(line.id, userId);
+      toast.success(data?.added ? 'Исключение снято, сотрудник снова в линии' : 'Исключение снято');
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Не удалось снять исключение');
     }
   };
 
@@ -598,12 +622,16 @@ function LinesTab({ creating, setCreating }) {
                           : 'Сделать старшим — откроется архив обращений линии'}
                         onClick={() => setSenior(line, o)}
                       ><Star size={12} /></button>
-                      {/* Заведённого правилом руками не убирают: вернётся при
-                          первой синхронизации. Уходит он вместе с правилом или
-                          со сменой роли и медцентра (ver. 9.09). */}
+                      {/* Заведённого правилом снять нельзя — вернётся при первой
+                          синхронизации, — поэтому у него вместо крестика
+                          исключение (ver. 9.23). Щит рядом остаётся: по нему
+                          видно, откуда человек в составе. */}
+                      {o.viaRule && (
+                        <span className="ola-chip-rule" title="В составе по правилу"><ShieldCheck size={12} /></span>
+                      )}
                       {o.viaRule
-                        ? <span className="ola-chip-rule" title="В составе по правилу"><ShieldCheck size={12} /></span>
-                        : <button title="Убрать из состава" onClick={() => removeOperator(line, o.userId)}><X size={12} /></button>}
+                        ? <button title="Исключить из линии — правила перестанут его заводить" onClick={() => removeOperator(line, o)}><UserMinus size={12} /></button>
+                        : <button title="Убрать из состава" onClick={() => removeOperator(line, o)}><X size={12} /></button>}
                     </span>
                   ))}
                   <StaffPicker
@@ -612,6 +640,27 @@ function LinesTab({ creating, setCreating }) {
                     onPickMany={userIds => addOperators(line, userIds)}
                   />
                 </div>
+
+                {/* Исключённые (ver. 9.23): подходят под правило, но в линию
+                    не заводятся. Видны здесь же, у состава, — исключение,
+                    которое нигде не видно, через полгода выглядит как сбой
+                    правил. Вернуть — кнопкой; добавить его руками тоже снимает
+                    исключение. */}
+                {(line.exclusions || []).length > 0 && (
+                  <div className="ola-excluded">
+                    <span className="ola-excluded-label"><UserMinus size={12} /> Исключены:</span>
+                    {line.exclusions.map(ex => (
+                      <span key={ex.userId} className="ola-chip excluded">
+                        {ex.user ? (ex.user.displayName || ex.user.username) : ex.userId}
+                        <button
+                          className="ola-restore"
+                          title="Снять исключение — правила снова заведут его в линию"
+                          onClick={() => restoreExcluded(line, ex.userId)}
+                        ><RotateCcw size={12} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="ola-block">

@@ -1503,6 +1503,8 @@ export const openLine = {
   conversations: (scope = 'queue', q = '', lineId = null) =>
     api.get('/open-line/conversations', { params: lineId ? { scope, q, lineId } : { scope, q } }),
   conversation: (id) => api.get(`/open-line/conversations/${id}`),
+  // Карточка всплывающего уведомления, если сигнал пришёл без неё (ver. 9.23).
+  conversationCard: (id) => api.get(`/open-line/conversations/${id}/card`),
   // Дочитал до конца (ver. 8.27). Зовётся только когда чат открыт и вкладка
   // на переднем плане — см. OpenLine.js.
   markRead: (id) => api.post(`/open-line/conversations/${id}/read`),
@@ -1560,6 +1562,8 @@ export const openLine = {
   addAccessRule: (lineId, rule) => api.post(`/open-line/lines/${lineId}/access-rules`, rule),
   removeAccessRule: (lineId, ruleId) => api.delete(`/open-line/lines/${lineId}/access-rules/${ruleId}`),
   removeOperator: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/operators/${userId}`),
+  // Снять исключение из состава линии (ver. 9.23).
+  removeExclusion: (lineId, userId) => api.delete(`/open-line/lines/${lineId}/exclusions/${userId}`),
   // Старший оператор линии: единственное отличие — ему виден архив обращений.
   setSenior: (lineId, userId, isSenior) =>
     api.put(`/open-line/lines/${lineId}/operators/${userId}`, { isSenior }),

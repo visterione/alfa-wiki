@@ -3666,6 +3666,20 @@ const OmniLineAccessRule = sequelize.define('OmniLineAccessRule', {
   createdBy: { type: DataTypes.UUID, allowNull: true }
 }, { tableName: 'omni_line_access_rules', timestamps: true });
 
+// Исключение из состава линии (ver. 9.23): правило мимо этого человека
+// проходит. Нужно для тех, кто попадает под широкое правило, но на линии не
+// работает, — администраторов со всеми ролями. Ручное добавление его снимает.
+const OmniLineExclusion = sequelize.define('OmniLineExclusion', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  lineId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'omni_line_exclusions',
+  timestamps: true,
+  indexes: [{ unique: true, fields: ['lineId', 'userId'] }]
+});
+
 const OmniConversation = sequelize.define('OmniConversation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   lineId: { type: DataTypes.UUID, allowNull: false },
@@ -3853,6 +3867,8 @@ OmniLine.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 OmniLine.hasMany(OmniLineAccessRule, { foreignKey: 'lineId', as: 'accessRules' });
 OmniLineAccessRule.belongsTo(MedCenter, { foreignKey: 'medCenterId', as: 'medCenter' });
 OmniLineAccessRule.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
+OmniLine.hasMany(OmniLineExclusion, { foreignKey: 'lineId', as: 'exclusions' });
+OmniLineExclusion.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 OmniConversation.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 OmniConversation.belongsTo(BotSubscriber, { foreignKey: 'subscriberId', as: 'subscriber' });
@@ -5389,6 +5405,7 @@ module.exports = {
   OmniLine,
   OmniLineOperator,
   OmniLineAccessRule,
+  OmniLineExclusion,
   OmniConversation,
   OmniBroadcast,
   OmniBroadcastTarget,

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { useAuth } from './AuthContext';
-import { BASE_URL, chat as chatApi, releaseNotes as releaseNotesApi, isPublicPath } from '../services/api';
+import { BASE_URL, chat as chatApi, releaseNotes as releaseNotesApi, isPublicPath, openLine as openLineApi } from '../services/api';
 
 // Tauri detection
 const isTauri = () => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
@@ -447,10 +447,24 @@ export function SocketProvider({ children }) {
       // это один разговор, а не пять. Новая реплика заменяет прежнюю карточку
       // и встаёт наверх стопки.
       if (!window.location.pathname.startsWith('/open-line') && data?.conversationId) {
+        const id = `ol-${data.conversationId}-${Date.now()}`;
         setOpenLineNotifications(prev => [
           ...prev.filter(n => n.conversationId !== data.conversationId),
-          { id: `ol-${data.conversationId}-${Date.now()}`, ...data },
+          { id, ...data },
         ]);
+
+        // Сигнал без карточки — от процесса забора, запущенного до 9.23: он
+        // живёт отдельно (npm run poller) и сам не перезапускается. Карточку
+        // тогда дозапрашиваем, иначе вместо имени и текста висело бы
+        // безличное «Открытая линия: ответ пациента».
+        if (!data.card) {
+          openLineApi.conversationCard(data.conversationId)
+            .then(({ data: card }) => {
+              if (!card) return;
+              setOpenLineNotifications(prev => prev.map(n => (n.id === id ? { ...n, card } : n)));
+            })
+            .catch(() => { /* останется общая надпись — беды нет */ });
+        }
       }
     };
 

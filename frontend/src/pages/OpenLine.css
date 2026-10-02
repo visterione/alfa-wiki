@@ -283,8 +283,12 @@
   white-space: nowrap;
 }
 
-/* Панель отбора раскрывается вниз: кнопка стоит в шапке сайдбара. */
-.ol-line-filter-pop {
+/* Панель отбора раскрывается вниз: кнопка стоит в шапке сайдбара.
+
+   Селектор двойной намеренно: это правило стоит в файле раньше общего .ol-pop,
+   и при равном весе тот перебивал bottom и left — у панели оказывались заданы
+   и top, и bottom разом, и высота схлопывалась в полоску. */
+.ol-pop.ol-line-filter-pop {
   top: calc(100% + 8px);
   bottom: auto;
   left: auto;
@@ -684,5 +688,5 @@
      живёт в ней — возвращаем её поджатой, но только когда отбор есть. */
   .ol-page .ol-sidebar-header.has-filter { display: flex; padding: 10px 12px; }
   .ol-page .ol-sidebar-header h2 { font-size: 16px; }
-  .ol-line-filter-pop { width: calc(100vw - 24px); max-width: 280px; }
+  .ol-pop.ol-line-filter-pop { width: calc(100vw - 24px); max-width: 280px; }
 }

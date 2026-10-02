@@ -11,7 +11,7 @@ const express = require('express');
 const multer = require('multer');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { sequelize, OmniLine, OmniLineOperator, OmniLineAccessRule, OmniConversation, OmniShift, MessengerBot, MedCenter, Role, User, OmniQuickReply } = require('../models');
+const { sequelize, OmniLine, OmniLineOperator, OmniLineAccessRule, OmniLineExclusion, OmniConversation, OmniShift, MessengerBot, MedCenter, Role, User, OmniQuickReply } = require('../models');
 const openLine = require('../services/openLine');
 const openLineAccess = require('../services/openLineAccess');
 const fileAccess = require('../services/fileAccess');
@@ -159,6 +159,16 @@ router.get('/conversations/:id', authenticate, async (req, res) => {
     res.json(await openLine.getConversation(req.user.id, req.params.id));
   } catch (err) {
     fail(res, err, 'GET /conversations/:id');
+  }
+});
+
+// Карточка для всплывающего уведомления, когда сигнал пришёл без неё (ver. 9.23):
+// его мог отправить процесс забора, запущенный до выката.
+router.get('/conversations/:id/card', authenticate, async (req, res) => {
+  try {
+    res.json(await openLine.conversationCard(req.user.id, req.params.id));
+  } catch (err) {
+    fail(res, err, 'GET /card');
   }
 });
 
@@ -419,6 +429,12 @@ router.get('/lines', authenticate, requireAdmin, async (req, res) => {
             { model: MedCenter, as: 'medCenter', attributes: ['id', 'name'] },
             { model: Role, as: 'role', attributes: ['id', 'name'] }
           ]
+        },
+        // Исключённые из линии (ver. 9.23) — чтобы их можно было вернуть.
+        {
+          model: OmniLineExclusion,
+          as: 'exclusions',
+          include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
         }
       ],
       order: [['name', 'ASC']]
@@ -554,6 +570,10 @@ router.post('/lines/:id/operators', authenticate, requireAdmin, async (req, res)
         { viaRule: false },
         { where: { lineId: line.id, userId: ids, viaRule: true }, transaction }
       );
+      // Добавить руками исключённого — значит передумать (ver. 9.23):
+      // исключение снимается тем же действием, а не отдельной кнопкой где-то
+      // ещё.
+      await OmniLineExclusion.destroy({ where: { lineId: line.id, userId: ids }, transaction });
     });
     res.status(201).json({ ok: true, added: ids.length });
   } catch (err) {
@@ -577,21 +597,56 @@ router.put('/lines/:id/operators/:userId', authenticate, requireAdmin, async (re
   }
 });
 
-// Сотрудника, который подходит под правило линии, убрать руками нельзя — правило
-// вернуло бы его при первой же синхронизации, и снятие выглядело бы как сбой.
-// Ручная строка такого человека переходит на правило; убрать его совсем можно,
-// только поменяв правило или его роль и медцентр.
+// Снять сотрудника с линии.
+//
+// До 9.23 сотрудника, подходящего под правило, убрать было нельзя: правило
+// вернуло бы его при первой же синхронизации, и строка просто переходила на
+// правило. Широкие правила при этом заводили в линию людей, которым там делать
+// нечего, — администраторов со всеми ролями, — и они получали сигналы о
+// пациентах и стояли в списке «кому передать». Теперь снятие такого человека
+// исключает его из линии: правило мимо него проходит, пока исключение не
+// снимут.
+//
+// Обращения, которые он вёл на этой линии, возвращаются в очередь — иначе они
+// остались бы у того, кто их больше не видит.
 router.delete('/lines/:id/operators/:userId', authenticate, requireAdmin, async (req, res) => {
   try {
-    const where = { lineId: req.params.id, userId: req.params.userId };
-    if (await openLineAccess.matchesLine(req.params.id, req.params.userId)) {
-      await OmniLineOperator.update({ viaRule: true }, { where });
-      return res.json({ ok: true, keptByRule: true });
-    }
-    await OmniLineOperator.destroy({ where });
-    res.json({ ok: true });
+    const lineId = req.params.id;
+    const userId = req.params.userId;
+    const excluded = await openLineAccess.matchesLine(lineId, userId);
+
+    await sequelize.transaction(async (transaction) => {
+      if (excluded) {
+        await OmniLineExclusion.findOrCreate({
+          where: { lineId, userId },
+          defaults: { lineId, userId, createdBy: req.user.id },
+          transaction
+        });
+      }
+      await OmniLineOperator.destroy({ where: { lineId, userId }, transaction });
+    });
+
+    const result = await openLine.leaveLine(userId, lineId, req.app.get('io'));
+    res.json({ ok: true, excluded, ...result });
   } catch (err) {
     fail(res, err, 'DELETE /operators');
+  }
+});
+
+// Вернуть исключённого (ver. 9.23): исключение снимается, и правило, если он
+// под него подходит, заводит его обратно сразу же — не дожидаясь следующей
+// правки карточки.
+router.delete('/lines/:id/exclusions/:userId', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const removed = await OmniLineExclusion.destroy({
+      where: { lineId: req.params.id, userId: req.params.userId }
+    });
+    if (!removed) return res.status(404).json({ error: 'Сотрудник не исключён из этой линии' });
+
+    const result = await openLineAccess.syncLine(req.params.id);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    fail(res, err, 'DELETE /exclusions');
   }
 });
 
