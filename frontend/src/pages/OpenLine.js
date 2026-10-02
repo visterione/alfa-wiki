@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Inbox, MessageCircle, Archive, Send, Search, ArrowLeft,
-  AlertTriangle, Paperclip, Headphones, Star, CornerDownRight, UserCheck
+  AlertTriangle, Paperclip, Headphones, Star, CornerDownRight, UserCheck, Grab
 } from 'lucide-react';
 import { openLine as openLineApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +10,8 @@ import ChannelAvatar from '../components/openline/ChannelAvatar';
 import TransferMenu from '../components/openline/TransferMenu';
 import CloseMenu from '../components/openline/CloseMenu';
 import QuickReplyPicker from '../components/openline/QuickReplyPicker';
+import LineFilter from '../components/openline/LineFilter';
+import renovatioLogo from '../assets/images/renovatio.png';
 import toast from 'react-hot-toast';
 // Оформление берём у мессенджера целиком, а не повторяем своим набором классов:
 // это одна и та же работа, только собеседник другой — сотрудник там, пациент
@@ -115,6 +118,31 @@ function saveDraft(conversationId, text) {
     localStorage.setItem(DRAFTS_KEY, JSON.stringify(map));
   } catch {
     // Место кончилось или запись запрещена — работать это не мешает.
+  }
+}
+
+/**
+ * Выбранная линия в отборе (ver. 9.23). Запоминается в браузере: оператор
+ * обычно сидит на одном медцентре всю смену, и сбрасывать его выбор на «все
+ * линии» при каждом заходе значило бы заставлять выбирать заново. Это его
+ * личное удобство, на сервере ему не место.
+ */
+const LINE_FILTER_KEY = 'ol-line-filter';
+
+function loadLineFilter() {
+  try {
+    return localStorage.getItem(LINE_FILTER_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLineFilter(lineId) {
+  try {
+    if (lineId) localStorage.setItem(LINE_FILTER_KEY, lineId);
+    else localStorage.removeItem(LINE_FILTER_KEY);
+  } catch {
+    // Не запомнилось — выбрать заново дело одного щелчка.
   }
 }
 
@@ -244,6 +272,8 @@ function Stars({ value }) {
 
 export default function OpenLine() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [state, setState] = useState(null);          // смена и линии сотрудника
   const [scope, setScope] = useState('queue');
   const [query, setQuery] = useState('');
@@ -252,6 +282,9 @@ export default function OpenLine() {
   // запросом: числа нужны на всех вкладках сразу, иначе «Очередь» молчит ровно
   // тогда, когда в ней что-то появилось.
   const [counts, setCounts] = useState({ queue: 0, mine: 0, closed: 0, mineUnread: 0 });
+  // Отбор по линии и что лежит на каждой из них (ver. 9.23), см. LineFilter.
+  const [lineFilter, setLineFilter] = useState(loadLineFilter);
+  const [byLine, setByLine] = useState({});
   const [activeId, setActiveId] = useState(null);
   const [thread, setThread] = useState(null);        // { conversation, messages, sessions }
   const [draft, setDraft] = useState('');
@@ -281,6 +314,12 @@ export default function OpenLine() {
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
+    // Полоса прокрутки — только когда текст упёрся в потолок (ver. 9.23). До
+    // этого она висела и в пустом поле: прокрутка у textarea включена по
+    // умолчанию, а высота строки (15 × 1.4) дробная, и округления хватало,
+    // чтобы браузер решил, что содержимое не влезает.
+    const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
   }, []);
 
   // ── Загрузка ────────────────────────────────────────────────────────────
@@ -322,9 +361,13 @@ export default function OpenLine() {
 
   const loadList = useCallback(async () => {
     try {
-      const { data } = await openLineApi.conversations(scope, query.trim());
+      const { data } = await openLineApi.conversations(scope, query.trim(), lineFilter);
       setConversations(data.items);
       setCounts(data.counts);
+      setByLine(data.byLine || {});
+      // Значок раздела в боковой панели (ver. 9.23). Прочтение и взятие чата
+      // сигнала по сокету не шлют, а число на значке от них меняется.
+      window.dispatchEvent(new CustomEvent('openline-badge-refresh'));
 
       // Переписка перечитывается только тогда, когда в ней что-то изменилось.
       //
@@ -340,7 +383,7 @@ export default function OpenLine() {
     } finally {
       setLoading(false);
     }
-  }, [scope, query, loadThread]);
+  }, [scope, query, lineFilter, loadThread]);
 
   // Состояние перечитываем и по таймеру: вместе с ним приезжает токен доступа к
   // вложениям, а он живёт сутки — у оператора, не закрывавшего вкладку смену
@@ -368,6 +411,48 @@ export default function OpenLine() {
     const timer = setTimeout(fitField, 0);
     return () => clearTimeout(timer);
   }, [activeId, fitField]);
+
+  // Линию, выбранную в отборе, могли убрать из состава сотрудника — тогда
+  // возвращаемся ко всем линиям, а не показываем пустоту по несуществующей.
+  // Так же, если линия осталась одна: отбора тогда не видно, и сбросить его
+  // было бы нечем.
+  useEffect(() => {
+    if (!state || !lineFilter) return;
+    const lines = state.lines || [];
+    if (lines.length < 2 || !lines.some(l => l.id === lineFilter)) {
+      setLineFilter(null);
+      saveLineFilter(null);
+    }
+  }, [state, lineFilter]);
+
+  /**
+   * Переход из всплывающей карточки о реплике пациента (ver. 9.23): открыть
+   * сразу этот чат, а не раздел вообще.
+   *
+   * Отбор по линии снимаем, если он прячет нужное обращение: человек нажал на
+   * конкретного пациента и должен увидеть именно его, а не пустой список с
+   * загадкой, куда тот делся. Состояние перехода затираем — иначе обновление
+   * страницы через час снова открывало бы этот же чат.
+   */
+  useEffect(() => {
+    const st = location.state;
+    if (!st?.openConversationId) return;
+
+    if (st.scope) setScope(st.scope);
+    const saved = loadLineFilter();
+    if (saved && st.lineId && saved !== st.lineId) {
+      setLineFilter(null);
+      saveLineFilter(null);
+    }
+    setActiveId(st.openConversationId);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
+
+  const changeLineFilter = (lineId) => {
+    setLineFilter(lineId);
+    saveLineFilter(lineId);
+    setLoading(true);
+  };
 
   // Право на архив могли снять, пока человек в нём стоял, — возвращаем его в
   // очередь, а не оставляем на вкладке, которой больше нет.
@@ -479,6 +564,26 @@ export default function OpenLine() {
       toast.error(err.response?.data?.error || 'Не удалось взять обращение');
       loadList();
     }
+  };
+
+  /**
+   * Обращение передано (ver. 9.23).
+   *
+   * Переданное на линию, где передавший не работает, ему больше не видно — и
+   * держать его открытым нельзя: следующее же перечитывание ответило бы
+   * ошибкой доступа. Закрываем чат и прибираем черновик — дописывать его
+   * некому.
+   */
+  const afterTransfer = (id, result) => {
+    if (result?.kind === 'line' && !result.visible) {
+      saveDraft(id, '');
+      setActiveId(null);
+      setThread(null);
+      loadList();
+      return;
+    }
+    loadList();
+    loadThread(id);
   };
 
   /**
@@ -645,6 +750,10 @@ export default function OpenLine() {
 
   const conversation = thread?.conversation;
   const isMine = conversation?.assigneeUserId === user?.id;
+  const headStatus = !conversation ? ''
+    : conversation.status === 'queued' ? 'В очереди'
+      : conversation.status === 'closed' ? 'Обращение закрыто'
+        : !isMine ? `Ведёт ${userName(conversation.assignee)}` : '';
   const canWrite = conversation && conversation.status !== 'closed' && (isMine || !conversation.assigneeUserId);
   const subscriber = conversation?.subscriber;
 
@@ -653,8 +762,16 @@ export default function OpenLine() {
       <div className="ol-chat">
         <div className="alfa-chat">
           <div className={`chat-sidebar ${activeId ? 'mobile-hidden' : ''}`}>
-            <div className="chat-sidebar-header">
+            <div className={`chat-sidebar-header ol-sidebar-header ${(state?.lines || []).length > 1 ? 'has-filter' : ''}`}>
               <h2><Headphones size={20} /> Открытая линия</h2>
+              {(state?.lines || []).length > 1 && (
+                <LineFilter
+                  lines={state.lines}
+                  value={lineFilter}
+                  onChange={changeLineFilter}
+                  byLine={byLine}
+                />
+              )}
             </div>
 
             <div className="chat-search-row">
@@ -713,7 +830,7 @@ export default function OpenLine() {
                   onClick={() => setActiveId(c.id)}
                 >
                   <div className="chat-item-avatar-wrap">
-                    <ChannelAvatar platform={c.subscriber?.platform} size={48} />
+                    <ChannelAvatar platform={c.subscriber?.platform} medCenter={c.line?.medCenter} size={48} />
                   </div>
                   <div className="chat-item-content">
                     <div className="chat-item-name">{personShort(c.subscriber)}</div>
@@ -726,10 +843,11 @@ export default function OpenLine() {
                   <div className="chat-item-right">
                     <div className="chat-item-time">{timeLabel(c.lastMessageAt)}</div>
                     <div className="chat-item-right-meta">
-                      {c.status === 'queued' && <span className="ol-tag new">новое</span>}
                       {/* Сколько реплик пациента ждут ответа (ver. 8.27). Значок
                           из мессенджера — в списке взятых обращений он означает
-                          ровно то же самое. */}
+                          ровно то же самое. С 9.23 он же и в очереди, вместо
+                          плашки «новое»: та стояла одинаковой и на вопросе в
+                          одну строку, и на десяти репликах подряд. */}
                       {c.unread > 0 && (
                         <div className="chat-item-unread">{c.unread > 99 ? '99+' : c.unread}</div>
                       )}
@@ -757,7 +875,7 @@ export default function OpenLine() {
                     <ArrowLeft size={20} />
                   </button>
                   <div className="chat-main-avatar ol-head-avatar">
-                    <ChannelAvatar platform={subscriber?.platform} size={40} />
+                    <ChannelAvatar platform={subscriber?.platform} medCenter={conversation.line?.medCenter} size={40} />
                   </div>
                   <div className="chat-main-info">
                     <div className="chat-main-name ol-head-name">
@@ -776,31 +894,42 @@ export default function OpenLine() {
                           target="_blank"
                           rel="noreferrer"
                           title="Открыть карточку пациента в Renovatio"
-                        >R</a>
+                          aria-label="Открыть карточку пациента в Renovatio"
+                        >
+                          {/* Знак Renovatio вместо самодельной «R» (ver. 9.23):
+                              тот же логотип, что у связанных с МИС сотрудников,
+                              и узнаётся он без подсказки. */}
+                          <img src={renovatioLogo} alt="" draggable={false} />
+                        </a>
                       )}
                     </div>
-                    <div className="chat-main-status">
-                      {conversation.line?.medCenter?.name || conversation.line?.name}
-                      {conversation.status === 'queued' && ' · в очереди'}
-                      {/* «У вас» здесь не пишем: своё обращение оператор открыл
-                          сам и из списка «Мои», а строка под именем пациента
-                          нужна для того, чего он не знает, — какой это медцентр
-                          и кто ведёт разговор, если не он. */}
-                      {conversation.status === 'assigned' && !isMine && ` · ведёт ${userName(conversation.assignee)}`}
-                      {conversation.status === 'closed' && ' · обращение закрыто'}
-                    </div>
+                    {/* Медцентр здесь больше не подписывается (ver. 9.23) — его
+                        знак стоит в углу аватара, как и в списке. «У вас» тоже
+                        не пишем: своё обращение оператор открыл сам из «Моих».
+                        Строка остаётся для того, чего он не знает, — в очереди
+                        ли чат и кто его ведёт, если не он, — и пропадает, когда
+                        сказать нечего. */}
+                    {headStatus && <div className="chat-main-status">{headStatus}</div>}
                   </div>
 
                   <div className="ol-head-actions">
+                    {/* Значком «взять в руку», а не подписью (ver. 9.23): кнопка
+                        нажимается десятки раз за смену, и узнаётся она по
+                        месту и знаку, а не по чтению. */}
                     {conversation.status === 'queued' && (
-                      <button className="btn btn-primary ol-head-btn" onClick={() => take(conversation.id)}>
-                        Взять себе
+                      <button
+                        className="btn btn-primary ol-head-btn ol-head-icon"
+                        onClick={() => take(conversation.id)}
+                        title="Взять себе"
+                        aria-label="Взять обращение себе"
+                      >
+                        <Grab size={18} />
                       </button>
                     )}
                     {canWrite && (
                       <TransferMenu
                         conversationId={conversation.id}
-                        onDone={() => { loadList(); loadThread(conversation.id); }}
+                        onDone={(result) => afterTransfer(conversation.id, result)}
                       />
                     )}
                     {conversation.status === 'assigned' && isMine && (
@@ -864,7 +993,7 @@ export default function OpenLine() {
                       <div key={row.key} className={`message ${own ? 'own' : ''}`}>
                         {!own && (
                           <div className="message-avatar ol-message-avatar">
-                            <ChannelAvatar platform={subscriber?.platform} size={32} />
+                            <ChannelAvatar platform={subscriber?.platform} medCenter={conversation.line?.medCenter} size={32} />
                           </div>
                         )}
                         <div className={`message-bubble ${hasAttachments ? 'has-attachments' : ''}`}>
