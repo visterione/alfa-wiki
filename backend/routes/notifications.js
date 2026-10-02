@@ -17,7 +17,8 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { NotifTemplate, NotifOutbox, NotifCallRequest, MedCenter, NotifBranchSettings, MessengerBot } = require('../models');
+const { NotifTemplate, NotifOutbox, NotifCallRequest, MedCenter, NotifBranchSettings, MessengerBot, sequelize } = require('../models');
+const branches = require('../services/notifications/branches');
 const { getChannel } = require('../services/messengers');
 const templates = require('../services/notifications/templates');
 const sender = require('../services/notifications/sender');
@@ -1082,9 +1083,60 @@ const DELIVERY_FILTERS = {
   none: { [Op.is]: null }
 };
 
+/**
+ * Медцентр строки журнала (ver. 9.23).
+ *
+ * В самой очереди медцентра нет: он определяется по визиту — клиника МИС, а
+ * за ней филиал портала, — тем же правилом, что у отправщика
+ * (notifications/branches.js: сначала id клиники, затем название). Сопоставлять
+ * своим способом нельзя: журнал показал бы одно, а сообщение ушло бы по
+ * другому, и разбор жалобы начинался бы с неверного филиала.
+ *
+ * Разных пар «id клиники + название» в визитах — десятки, а строк — сотни
+ * тысяч. Поэтому сопоставляем пары, а не строки, и держим ответ несколько
+ * минут: справочник медцентров правят редко.
+ */
+const CLINIC_MAP_TTL = 5 * 60 * 1000;
+let clinicMap = { at: 0, pairs: null };
+
+async function clinicPairs() {
+  if (clinicMap.pairs && Date.now() - clinicMap.at < CLINIC_MAP_TTL) return clinicMap.pairs;
+
+  const rows = await sequelize.query(
+    'SELECT DISTINCT clinic_id AS "clinicId", clinic_name AS "clinicName" FROM notif_appointments',
+    { type: sequelize.QueryTypes.SELECT }
+  );
+  const pairs = [];
+  for (const row of rows) {
+    const mc = await branches.find(row);
+    pairs.push({ ...row, medCenterId: mc ? mc.id : null, medCenterName: mc ? mc.name : null });
+  }
+  clinicMap = { at: Date.now(), pairs };
+  return pairs;
+}
+
+const pairKey = (clinicId, clinicName) => `${clinicId ?? ''}|${clinicName ?? ''}`;
+
 router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
   try {
     const where = {};
+    // Отбор по медцентру (ver. 9.23): визиты, чьи клиники сопоставились с
+    // выбранным филиалом. Строки без визита (проверочные отправки) под отбор
+    // не попадают — медцентра у них нет.
+    if (req.query.medCenterId) {
+      const pairs = (await clinicPairs()).filter(p => String(p.medCenterId) === String(req.query.medCenterId));
+      if (!pairs.length) {
+        where.id = null;   // медцентр без единого визита — пустой ответ, а не весь журнал
+      } else {
+        // Значения — через escape: это id и названия клиник из нашей же базы,
+        // но склеивать их в SQL как есть нельзя всё равно.
+        const esc = (v) => (v === null || v === undefined ? 'NULL' : sequelize.escape(v));
+        const match = pairs
+          .map(p => `(clinic_id IS NOT DISTINCT FROM ${esc(p.clinicId)} AND clinic_name IS NOT DISTINCT FROM ${esc(p.clinicName)})`)
+          .join(' OR ');
+        where.apptId = { [Op.in]: sequelize.literal(`(SELECT appt_id FROM notif_appointments WHERE ${match})`) };
+      }
+    }
     if (['pending', 'sent', 'failed', 'skipped'].includes(req.query.status)) {
       where.status = req.query.status;
     }
@@ -1119,16 +1171,58 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       where, order: [['createdAt', 'DESC']], limit, offset
     });
 
+    // Медцентр каждой строки — подписью в журнале (ver. 9.23), тем же
+    // сопоставлением, что и отбор.
+    const apptIds = [...new Set(rows.map(r => r.apptId).filter(Boolean))];
+    const appts = apptIds.length
+      ? await sequelize.query(
+        'SELECT appt_id AS "apptId", clinic_id AS "clinicId", clinic_name AS "clinicName" FROM notif_appointments WHERE appt_id IN (:apptIds)',
+        { replacements: { apptIds }, type: sequelize.QueryTypes.SELECT }
+      )
+      : [];
+    const byPair = new Map((await clinicPairs()).map(p => [pairKey(p.clinicId, p.clinicName), p]));
+    const mcByAppt = new Map();
+    for (const a of appts) {
+      let pair = byPair.get(pairKey(a.clinicId, a.clinicName));
+      // Клиника появилась позже, чем собиралась карта, — сопоставляем на месте.
+      if (!pair) {
+        const mc = await branches.find(a);
+        pair = { medCenterId: mc ? mc.id : null, medCenterName: mc ? mc.name : null };
+      }
+      mcByAppt.set(a.apptId, pair);
+    }
+    const out = rows.map(r => {
+      const plain = r.get({ plain: true });
+      const mc = mcByAppt.get(plain.apptId);
+      plain.medCenterId = mc ? mc.medCenterId : null;
+      plain.medCenterName = mc ? mc.medCenterName : null;
+      return plain;
+    });
+
     // Сводка за сутки — то, на что смотрят первым делом. Она намеренно не
     // считается по фильтру: это состояние рассылки, а не итог выборки, и
     // меняться от того, что в поиске набрали номер, не должна.
+    //
+    // Кроме медцентра (ver. 9.23): он не сужает выборку, а выбирает, чью
+    // рассылку смотрим, — и сводка по всей сети над журналом одного филиала
+    // читалась бы как его собственная.
     const since = new Date(Date.now() - 24 * 3600 * 1000);
     const counts = {};
     for (const status of ['sent', 'failed', 'skipped', 'pending']) {
-      counts[status] = await NotifOutbox.count({ where: { status, createdAt: { [Op.gte]: since } } });
+      const countWhere = { status, createdAt: { [Op.gte]: since } };
+      if (where.apptId) countWhere.apptId = where.apptId;
+      if (where.id === null) countWhere.id = null;
+      counts[status] = await NotifOutbox.count({ where: countWhere });
     }
 
-    res.json({ rows, counts, total: count, limit, offset });
+    // Справочник для отбора — те же филиалы, что на остальных вкладках.
+    const medCenters = await MedCenter.findAll({
+      attributes: ['id', 'name'],
+      where: { servesPatients: true, isActive: true },
+      order: [['name', 'ASC']]
+    });
+
+    res.json({ rows: out, counts, total: count, limit, offset, medCenters });
   } catch (err) {
     console.error('[notifications] GET /outbox:', err);
     res.status(500).json({ error: 'Internal server error' });

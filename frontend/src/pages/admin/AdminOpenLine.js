@@ -2370,7 +2370,69 @@ const CHANNEL_FILTER_VIEW = [
 ];
 
 const PAGE_SIZE = 50;
-const EMPTY_FILTERS = { status: '', event: '', channel: '', delivery: '', phone: '', from: '', to: '' };
+const EMPTY_FILTERS = { status: '', event: '', channel: '', delivery: '', phone: '', from: '', to: '', medCenterId: '' };
+
+// Подписи текстов каналов в журнале — те же, что в редакторе шаблонов.
+const TEXT_LABELS = { telegram: 'Telegram', max: 'MAX', sms: 'SMS', notify: 'ВКонтакте / Viber' };
+
+/**
+ * Ключ текста, по которому ушла ступень маршрута. Повторяет выбор отправщика
+ * (sender.js, textFor и imobisRoute): боты берут текст своей платформы, SMS —
+ * короткий, ВКонтакте и Viber — текст Notify. Fromni называет ступени по-своему
+ * («sms+webchat», «notify+vk»), но делит так же: SMS — короткий, остальное —
+ * длинный.
+ */
+function textKeyOfStep(step) {
+  const name = String(step || '').replace(/^imobis:/, '');
+  if (name === 'telegram' || name === 'max') return name;
+  if (name.startsWith('sms')) return 'sms';
+  return 'notify';
+}
+
+/**
+ * Какой текст показать в строке журнала (ver. 9.23).
+ *
+ * До 9.23 журнал показывал общее поле text строки, а отправщик с 8.03 берёт
+ * текст своего канала из channelTexts — и в журнале стоял текст, которого
+ * никто не получал. Теперь показываем ровно то, что выбрал бы отправщик:
+ *
+ *   • ушло — тексты ступеней маршрута, которым ушло (у каскада Имобиса их
+ *     может быть два: ВКонтакте и запасная SMS — доставит одна из них);
+ *   • ещё не ушло или не ушло вовсе — тексты всех каналов шаблона: каким
+ *     уйдёт, решится только при отправке.
+ *
+ * Строки, заведённые до 8.03, channelTexts не имеют — для них остаётся text.
+ */
+function shownTexts(row) {
+  const byChannel = row.channelTexts && typeof row.channelTexts === 'object' ? row.channelTexts : {};
+  const textOf = (key) => {
+    const own = byChannel[key];
+    if (own && String(own).trim()) return own;
+    return key === 'sms' && row.smsText ? row.smsText : null;
+  };
+
+  let keys;
+  if (row.channel) {
+    keys = [...new Set(String(row.channel).split('→').map(textKeyOfStep))];
+  } else {
+    keys = Object.keys(byChannel).filter(k => String(byChannel[k] || '').trim());
+    if (row.smsText && !keys.includes('sms')) keys.push('sms');
+  }
+
+  const out = [];
+  const seen = new Map();
+  for (const key of keys) {
+    const text = textOf(key);
+    if (!text) continue;
+    // Одинаковый текст у двух каналов показываем одним блоком с двумя
+    // подписями — повтор слово в слово только удлиняет ленту.
+    if (seen.has(text)) { seen.get(text).labels.push(TEXT_LABELS[key] || key); continue; }
+    const item = { labels: [TEXT_LABELS[key] || key], text };
+    seen.set(text, item);
+    out.push(item);
+  }
+  return out.length ? out : (row.text ? [{ labels: [], text: row.text }] : []);
+}
 
 /**
  * Журнал: сообщения и звонки (ver. 8.52).
@@ -2413,7 +2475,7 @@ function MessagesLog() {
     setPage(0);
   };
 
-  const { status, event, channel, delivery, phone, from, to } = filters;
+  const { status, event, channel, delivery, phone, from, to, medCenterId } = filters;
 
   useEffect(() => {
     // Поиск по номеру ждёт паузы в наборе: журнал за всё время — сотни тысяч
@@ -2428,6 +2490,7 @@ function MessagesLog() {
       if (phone.replace(/\D/g, '')) params.phone = phone.replace(/\D/g, '');
       if (from) params.from = from;
       if (to) params.to = to;
+      if (medCenterId) params.medCenterId = medCenterId;
 
       notifApi.outbox(params)
         .then(({ data }) => setLog(data))
@@ -2436,7 +2499,7 @@ function MessagesLog() {
     }, phone ? 350 : 0);
 
     return () => clearTimeout(timer);
-  }, [status, event, channel, delivery, phone, from, to, page]);
+  }, [status, event, channel, delivery, phone, from, to, medCenterId, page]);
 
   const total = log?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -2444,12 +2507,22 @@ function MessagesLog() {
 
   return (
     <>
-      <div className="ola-log-head">
+      {/* Сводка, поиск и фильтры — одной полосой (ver. 9.23). До этого плитки
+          с поиском стояли отдельным рядом, а фильтры с подписями — отдельной
+          панелью под ними, и до первой строки журнала было полэкрана.
+          Подписи над полями ушли в их же пустые пункты («Медцентр: все»): в
+          одну строку с подписями сверху поля не помещаются, а без подписи
+          поле даты или «любой» читаются загадкой.
+
+          Сводка за сутки следует только за медцентром: выбрав филиал, смотрят
+          его рассылку, и цифры всей сети над ней читались бы как его. */}
+      <div className="ola-log-bar">
         {Object.entries(STATUS_VIEW).map(([key, view]) => (
           <button
             key={key}
             className={`ola-stat ${view.cls} ${status === key ? 'active' : ''}`}
             onClick={() => setFilter({ status: status === key ? '' : key })}
+            title={`За сутки: ${view.label}. Нажмите, чтобы показать только их`}
           >
             <span className="value">{log ? (log.counts[key] ?? 0) : '—'}</span>
             <span className="label">{view.label}</span>
@@ -2457,59 +2530,56 @@ function MessagesLog() {
         ))}
 
         <div className="ola-log-search">
-          <Search size={16} />
+          <Search size={15} />
           <input
             placeholder="Поиск по номеру"
             value={phone}
             onChange={e => setFilter({ phone: e.target.value })}
           />
         </div>
-      </div>
 
-      <div className="ola-log-filters">
-        <label className="ola-log-filter">
-          <span>Событие</span>
-          <select className="ola-select" value={event} onChange={e => setFilter({ event: e.target.value })}>
-            <option value="">любое</option>
-            {Object.keys(EVENT_VIEW).map(key => (
-              <option key={key} value={key}>{EVENT_VIEW[key].title}</option>
-            ))}
-          </select>
-        </label>
+        <select
+          className="ola-select ola-log-select"
+          value={medCenterId}
+          onChange={e => setFilter({ medCenterId: e.target.value })}
+          title="Медцентр"
+        >
+          <option value="">Медцентр: все</option>
+          {(log?.medCenters || []).map(mc => (
+            <option key={mc.id} value={mc.id}>{mc.name}</option>
+          ))}
+        </select>
 
-        <label className="ola-log-filter">
-          <span>Канал</span>
-          <select className="ola-select" value={channel} onChange={e => setFilter({ channel: e.target.value })}>
-            <option value="">любой</option>
-            {CHANNEL_FILTER_VIEW.map(item => (
-              <option key={item.key} value={item.key}>{item.label}</option>
-            ))}
-          </select>
-        </label>
+        <select className="ola-select ola-log-select" value={event} onChange={e => setFilter({ event: e.target.value })} title="Событие">
+          <option value="">Событие: любое</option>
+          {Object.keys(EVENT_VIEW).map(key => (
+            <option key={key} value={key}>{EVENT_VIEW[key].title}</option>
+          ))}
+        </select>
 
-        <label className="ola-log-filter">
-          <span>Отчёт провайдера</span>
-          <select className="ola-select" value={delivery} onChange={e => setFilter({ delivery: e.target.value })}>
-            <option value="">любой</option>
-            {DELIVERY_FILTER_VIEW.map(item => (
-              <option key={item.key} value={item.key}>{item.label}</option>
-            ))}
-          </select>
-        </label>
+        <select className="ola-select ola-log-select" value={channel} onChange={e => setFilter({ channel: e.target.value })} title="Канал">
+          <option value="">Канал: любой</option>
+          {CHANNEL_FILTER_VIEW.map(item => (
+            <option key={item.key} value={item.key}>{item.label}</option>
+          ))}
+        </select>
 
-        <label className="ola-log-filter">
-          <span>С даты</span>
-          <input className="ola-input" type="date" value={from} onChange={e => setFilter({ from: e.target.value })} />
-        </label>
+        <select className="ola-select ola-log-select" value={delivery} onChange={e => setFilter({ delivery: e.target.value })} title="Отчёт провайдера">
+          <option value="">Отчёт: любой</option>
+          {DELIVERY_FILTER_VIEW.map(item => (
+            <option key={item.key} value={item.key}>{item.label}</option>
+          ))}
+        </select>
 
-        <label className="ola-log-filter">
-          <span>По дату</span>
-          <input className="ola-input" type="date" value={to} onChange={e => setFilter({ to: e.target.value })} />
-        </label>
+        <span className="ola-log-dates" title="Период: по дате заведения события">
+          <input className="ola-input" type="date" value={from} onChange={e => setFilter({ from: e.target.value })} aria-label="С даты" />
+          <span>—</span>
+          <input className="ola-input" type="date" value={to} onChange={e => setFilter({ to: e.target.value })} aria-label="По дату" />
+        </span>
 
         {filtered && (
-          <button className="ola-btn ola-log-reset" onClick={() => { setFilters(EMPTY_FILTERS); setPage(0); }}>
-            <RotateCcw size={14} /> Сбросить
+          <button className="ola-btn ola-log-reset" onClick={() => { setFilters(EMPTY_FILTERS); setPage(0); }} title="Сбросить фильтры">
+            <RotateCcw size={14} />
           </button>
         )}
       </div>
@@ -2544,6 +2614,7 @@ function MessagesLog() {
               <span className={`ola-card-icon small ${eview?.tone || 'accent'}`}><EIcon size={14} /></span>
               <span className="event">{eventTitle(row.event)}</span>
               <span className="phone">{row.phone || 'без телефона'}</span>
+              {row.medCenterName && <span className="ola-badge">{row.medCenterName}</span>}
               {row.channel && <span className="ola-badge">{row.channel}</span>}
               {row.postponedFrom && <span className="ola-badge warn">отложено</span>}
               <span className={`ola-row-status ${view.cls}`}><Icon size={13} /> {view.label}</span>
@@ -2555,7 +2626,28 @@ function MessagesLog() {
               )}
               <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
             </div>
-            <div className="ola-row-text">{row.text}</div>
+            {(() => {
+              const texts = shownTexts(row);
+              const block = (t, i) => (
+                <div key={i} className="ola-row-text">
+                  {t.labels.length > 0 && <span className="ola-row-text-channel">{t.labels.join(', ')}</span>}
+                  {t.text}
+                </div>
+              );
+              // У неотправленной строки канал ещё не выбран, и текстов столько,
+              // сколько каналов у шаблона. Все сразу растягивали бы журнал вчетверо
+              // — первый на виду, остальные по щелчку.
+              if (row.channel || texts.length < 2) return texts.map(block);
+              return (
+                <>
+                  {block(texts[0], 0)}
+                  <details className="ola-row-more">
+                    <summary>Тексты других каналов ({texts.length - 1})</summary>
+                    {texts.slice(1).map((t, i) => block(t, i + 1))}
+                  </details>
+                </>
+              );
+            })()}
             {row.error && <div className="ola-row-error">{row.error}</div>}
           </article>
         );
