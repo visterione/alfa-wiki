@@ -612,6 +612,34 @@
 }
 .ol-field:disabled { color: var(--text-disabled); cursor: not-allowed; }
 
+/* ── Действия с сообщением (ver. 9.30) ───────────────────────────────────
+ *
+ * Меню, цитата, «изменено» и плашки над полем — классы мессенджера из
+ * Dashboard.css. Своё здесь только то, чего там нет: удалённое у пациента и
+ * подсветка сообщения, к которому перешли по цитате.
+ */
+
+/* Удалённое у пациента остаётся в нашей ленте — для разбора жалоб, — но
+   читается как убранное: зачёркнуто и приглушено. */
+.ol-page .message.ol-msg-deleted .message-bubble { opacity: .55; }
+.ol-page .message.ol-msg-deleted .message-content { text-decoration: line-through; }
+.ol-msg-deleted-mark { font-style: italic; }
+
+/* Сообщение, которое сейчас исправляют, — обведено: видно, что именно правишь. */
+.ol-page .message.ol-msg-editing .message-bubble {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* Переход по цитате: сообщение коротко подсвечивается, иначе среди соседних
+   его не найти глазами. */
+.ol-page .message.ol-msg-flash .message-bubble {
+  animation: ol-flash 1.6s ease-out;
+}
+@keyframes ol-flash {
+  0%, 40% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 55%, transparent); }
+  100%    { box-shadow: 0 0 0 3px transparent; }
+}
+
 /* ── Вложения ──────────────────────────────────────────────────────────── */
 
 .ol-msg-files { display: flex; flex-wrap: wrap; gap: 6px; }

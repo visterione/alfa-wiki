@@ -205,12 +205,33 @@ router.post('/conversations/:id/messages', authenticate, async (req, res) => {
     const text = (req.body && req.body.text || '').trim();
     if (!text) return res.status(400).json({ error: 'Пустое сообщение' });
 
-    const result = await openLine.reply(req.user.id, req.params.id, text, req.app.get('io'));
+    // Ответ с цитатой (ver. 9.30): id сообщения этой же переписки.
+    const replyToId = req.body && req.body.replyToId ? String(req.body.replyToId) : null;
+    const result = await openLine.reply(req.user.id, req.params.id, text, req.app.get('io'), replyToId);
     // Недоставленное сообщение — не ошибка запроса: оно сохранено в переписке с
     // пометкой, и оператор должен это увидеть, а не получить пустой отказ.
     res.json(result);
   } catch (err) {
     fail(res, err, 'POST /messages');
+  }
+});
+
+// Правка и удаление своего сообщения у пациента (ver. 9.30). Отказ мессенджера
+// (Telegram не удаляет старше 48 часов) приходит с кодом 'invalid' — 400 с
+// объяснением, а не пятисотка.
+router.put('/messages/:id', authenticate, async (req, res) => {
+  try {
+    res.json(await openLine.editMessage(req.user.id, req.params.id, req.body && req.body.text, req.app.get('io')));
+  } catch (err) {
+    fail(res, err, 'PUT /messages/:id');
+  }
+});
+
+router.delete('/messages/:id', authenticate, async (req, res) => {
+  try {
+    res.json(await openLine.deleteMessage(req.user.id, req.params.id, req.app.get('io')));
+  } catch (err) {
+    fail(res, err, 'DELETE /messages/:id');
   }
 });
 

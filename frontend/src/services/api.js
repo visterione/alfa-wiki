@@ -1512,7 +1512,12 @@ export const openLine = {
   // Закрытие несёт тему обращения (ver. 8.29): без неё показатели отвечают на
   // «как быстро», но не на «о чём».
   close: (id, topicId = null) => api.post(`/open-line/conversations/${id}/close`, { topicId }),
-  send: (id, text) => api.post(`/open-line/conversations/${id}/messages`, { text }),
+  // replyToId — ответ с цитатой на сообщение этой переписки (ver. 9.30).
+  send: (id, text, replyToId = null) =>
+    api.post(`/open-line/conversations/${id}/messages`, replyToId ? { text, replyToId } : { text }),
+  // Правка и удаление своего сообщения у пациента (ver. 9.30).
+  editMessage: (messageId, text) => api.put(`/open-line/messages/${messageId}`, { text }),
+  deleteMessage: (messageId) => api.delete(`/open-line/messages/${messageId}`),
 
   // Файл от оператора (ver. 8.09). Заголовок обязателен, хотя границу multipart
   // в итоге проставляет браузер: у нашего экземпляра axios по умолчанию стоит

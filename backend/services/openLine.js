@@ -273,7 +273,7 @@ async function shiftState(userId) {
  *   бот не привязан к линии (например проверочный): тогда обращению просто
  *   некуда лечь.
  */
-async function acceptIncoming({ bot, subscriber, text, attachments = [], externalMessageId }) {
+async function acceptIncoming({ bot, subscriber, text, attachments = [], externalMessageId, replyToExternalId = null }) {
   if (!bot.lineId) return null;
 
   const botLine = await OmniLine.findByPk(bot.lineId);
@@ -340,13 +340,25 @@ async function acceptIncoming({ bot, subscriber, text, attachments = [], externa
       }, { transaction: tx });
     }
 
+    // Пациент ответил с цитатой (ver. 9.30): ищем это сообщение в его же
+    // переписке. Не нашлось — старое, до нас или чужое, — реплика ляжет без
+    // цитаты, как и раньше.
+    const quoted = replyToExternalId
+      ? await OmniMessage.findOne({
+        where: { conversationId: conversation.id, externalMessageId: String(replyToExternalId) },
+        attributes: ['id'],
+        transaction: tx
+      })
+      : null;
+
     const message = await OmniMessage.create({
       conversationId: conversation.id,
       sessionId: session.id,
       direction: 'in',
       text: text || '',
       attachments,
-      externalMessageId
+      externalMessageId,
+      replyToId: quoted ? quoted.id : null
     }, { transaction: tx });
 
     return { conversation, session, message, isNew };
@@ -708,7 +720,7 @@ async function withPreviews(rows, userId) {
   const ids = rows.map(r => r.id);
   const last = await sequelize.query(`
     SELECT DISTINCT ON ("conversationId")
-           "conversationId", direction, text, attachments, "createdAt"
+           "conversationId", direction, text, attachments, "createdAt", "deletedAt"
     FROM omni_messages
     WHERE "conversationId" IN (:ids)
       -- Служебные отметки (передача чата) в превью не годятся: строка списка
@@ -763,7 +775,9 @@ async function withPreviews(rows, userId) {
     plain.preview = m
       ? {
         direction: m.direction,
-        text: m.text || ((m.attachments || []).length ? 'Вложение' : ''),
+        // Удалённое у пациента (ver. 9.30) в превью не показываем: строка списка
+        // говорит о том, что сейчас в переписке у него, а этого там уже нет.
+        text: m.deletedAt ? 'Сообщение удалено' : (m.text || ((m.attachments || []).length ? 'Вложение' : '')),
         createdAt: m.createdAt
       }
       : null;
@@ -794,7 +808,16 @@ async function getConversation(userId, conversationId) {
   const [messages, sessions] = await Promise.all([
     OmniMessage.findAll({
       where: { conversationId },
-      include: [{ model: User, as: 'author', attributes: ['id', 'username', 'displayName', 'avatar'] }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        // Цитата в пузыре (ver. 9.30): кто и что сказал, коротко.
+        {
+          model: OmniMessage,
+          as: 'replyTo',
+          attributes: ['id', 'direction', 'text', 'attachments', 'deletedAt'],
+          include: [{ model: User, as: 'author', attributes: ['id', 'username', 'displayName'] }]
+        }
+      ],
       order: [['createdAt', 'ASC']]
     }),
     OmniSession.findAll({
@@ -1039,7 +1062,7 @@ async function prepareReply(userId, conversationId) {
  * ушедшим и с пометкой: оператор должен узнать об этом от нас, а не по молчанию
  * пациента.
  */
-async function recordOutgoing({ conversation, session, userId, text, attachments, sent, deliveryError, io }) {
+async function recordOutgoing({ conversation, session, userId, text, attachments, sent, deliveryError, io, replyToId = null }) {
   const message = await OmniMessage.create({
     conversationId: conversation.id,
     sessionId: session ? session.id : null,
@@ -1048,7 +1071,8 @@ async function recordOutgoing({ conversation, session, userId, text, attachments
     text: text || '',
     attachments: attachments || [],
     externalMessageId: sent ? sent.externalMessageId : null,
-    deliveryError
+    deliveryError,
+    replyToId
   });
 
   // Время первого живого ответа — то, ради чего пациент ждёт. Считаем только
@@ -1074,18 +1098,129 @@ async function deliveryFailure(err, subscriber) {
   return err.message;
 }
 
-async function reply(userId, conversationId, text, io = null) {
+async function reply(userId, conversationId, text, io = null, replyToId = null) {
   const { conversation, session, subscriber, bot, channel } = await prepareReply(userId, conversationId);
+
+  // Ответ с цитатой (ver. 9.30). Цитировать можно только сообщение этой же
+  // переписки, — чужой id молча не действует. Цитата у пациента получится,
+  // только если у сообщения есть номер в мессенджере; у нас она будет в
+  // любом случае.
+  const quoted = replyToId
+    ? await OmniMessage.findOne({ where: { id: replyToId, conversationId }, attributes: ['id', 'externalMessageId'] })
+    : null;
 
   let sent = null;
   let deliveryError = null;
   try {
-    sent = await channel.sendText(bot, subscriber.externalUserId, text);
+    sent = await channel.sendText(bot, subscriber.externalUserId, text,
+      quoted && quoted.externalMessageId ? { replyTo: quoted.externalMessageId } : {});
   } catch (err) {
     deliveryError = await deliveryFailure(err, subscriber);
   }
 
-  return recordOutgoing({ conversation, session, userId, text, sent, deliveryError, io });
+  return recordOutgoing({ conversation, session, userId, text, sent, deliveryError, io, replyToId: quoted ? quoted.id : null });
+}
+
+/**
+ * Своё отправленное сообщение — для правки и удаления (ver. 9.30).
+ *
+ * Только своё: оператор отвечает за то, что написал сам, и править чужой ответ
+ * пациенту от имени коллеги — подлог, а не исправление опечатки. Только
+ * дошедшее до мессенджера: у недоставленного там нечего править, а правка у
+ * нас одних разошлась бы с тем, что видит пациент.
+ */
+async function ownSentMessage(userId, messageId) {
+  const message = await OmniMessage.findByPk(messageId);
+  if (!message) throw new OpenLineError('not_found', 'Сообщение не найдено');
+
+  // Доступ к переписке — тем же правилом, что и всё остальное: линия в составе.
+  const conversation = await loadForOperator(userId, message.conversationId);
+
+  if (message.direction !== 'out') throw new OpenLineError('not_yours', 'Править и удалять можно только ответы оператора');
+  if (String(message.authorUserId) !== String(userId)) {
+    throw new OpenLineError('not_yours', 'Это сообщение написал другой сотрудник');
+  }
+  if (message.deletedAt) throw new OpenLineError('not_found', 'Сообщение уже удалено');
+  if (!message.externalMessageId || message.deliveryError) {
+    throw new OpenLineError('not_found', 'Сообщение не дошло до пациента — исправлять у него нечего');
+  }
+
+  const subscriber = await BotSubscriber.findByPk(conversation.subscriberId);
+  const bot = await MessengerBot.findByPk(conversation.botId);
+  if (!subscriber || !bot) throw new OpenLineError('not_found', 'Бот этого обращения больше не подключён');
+
+  return { message, conversation, subscriber, bot, channel: getChannel(bot.platform) };
+}
+
+/**
+ * Отказ мессенджера — словами для оператора. Сырое «Bad Request: message
+ * can't be edited» объясняет программисту, а не тому, кто правит опечатку.
+ */
+function platformRefusal(err, action) {
+  const raw = String(err && err.message || '');
+  if (/can't be (edited|deleted)|too old|48/i.test(raw)) {
+    return `Мессенджер не дал ${action}: сообщение слишком старое (Telegram разрешает это только в первые 48 часов)`;
+  }
+  if (err && err.code === 'blocked') return `Мессенджер не дал ${action}: пациент заблокировал бота`;
+  return `Мессенджер не дал ${action}: ${raw || 'причина не названа'}`;
+}
+
+/**
+ * Поправить своё сообщение у пациента (ver. 9.30).
+ *
+ * Сначала мессенджер, потом мы: если он откажет, наша лента не должна
+ * показывать текст, которого пациент не видит. Первоначальный текст
+ * сохраняется один раз — при первой правке: при разборе жалобы важно, что
+ * человек прочитал сначала, а не череда промежуточных вариантов.
+ *
+ * Только текст: у сообщения с файлом правится подпись, а не текст, и у двух
+ * мессенджеров это устроено по-разному, — пока не делаем.
+ */
+async function editMessage(userId, messageId, text, io = null) {
+  const body = String(text || '').trim();
+  if (!body) throw new OpenLineError('invalid', 'Пустое сообщение — если оно не нужно, удалите его');
+
+  const { message, conversation, subscriber, bot, channel } = await ownSentMessage(userId, messageId);
+  if ((message.attachments || []).length) {
+    throw new OpenLineError('invalid', 'Сообщение с файлом не правится — удалите его и отправьте заново');
+  }
+  if (body === message.text) return message;
+
+  try {
+    await channel.editText(bot, subscriber.externalUserId, message.externalMessageId, body);
+  } catch (err) {
+    throw new OpenLineError('invalid', platformRefusal(err, 'исправить сообщение'));
+  }
+
+  await message.update({
+    text: body,
+    originalText: message.originalText || message.text,
+    editedAt: new Date()
+  });
+  await announce(io, conversation, 'openline:changed');
+  return message;
+}
+
+/**
+ * Удалить своё сообщение у пациента (ver. 9.30): ответ не тому человеку,
+ * лишняя ссылка, сообщение по ошибке.
+ *
+ * У нас строка остаётся — с пометкой, кто и когда удалил. Переписка с
+ * пациентом — это то, что поднимают при разборе жалобы, и «у нас ничего не
+ * было» на месте удалённого ответа было бы неправдой.
+ */
+async function deleteMessage(userId, messageId, io = null) {
+  const { message, conversation, subscriber, bot, channel } = await ownSentMessage(userId, messageId);
+
+  try {
+    await channel.deleteMessage(bot, subscriber.externalUserId, message.externalMessageId);
+  } catch (err) {
+    throw new OpenLineError('invalid', platformRefusal(err, 'удалить сообщение'));
+  }
+
+  await message.update({ deletedAt: new Date(), deletedBy: userId });
+  await announce(io, conversation, 'openline:changed');
+  return message;
 }
 
 /**
@@ -1644,6 +1779,8 @@ module.exports = {
   rate,
   reply,
   replyWithFile,
+  editMessage,
+  deleteMessage,
   transfer,
   transferToLine,
   transferTargets,

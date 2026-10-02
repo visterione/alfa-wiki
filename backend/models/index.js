@@ -3791,7 +3791,14 @@ const OmniMessage = sequelize.define('OmniMessage', {
   deliveryError: { type: DataTypes.TEXT, allowNull: true },
   // К какому обращению относится реплика. Лента при этом одна: по сессии в ней
   // рисуется разделитель «обращение от такого-то числа» и оценка под ним.
-  sessionId: { type: DataTypes.UUID, allowNull: true }
+  sessionId: { type: DataTypes.UUID, allowNull: true },
+  // Правка и удаление отправленного, ответ с цитатой (ver. 9.30). Зачем каждое
+  // поле — в migrations/ver. 9.30 open-line-message-actions.sql.
+  editedAt: { type: DataTypes.DATE, allowNull: true },
+  originalText: { type: DataTypes.TEXT, allowNull: true },
+  deletedAt: { type: DataTypes.DATE, allowNull: true },
+  deletedBy: { type: DataTypes.UUID, allowNull: true },
+  replyToId: { type: DataTypes.UUID, allowNull: true }
 }, {
   tableName: 'omni_messages',
   timestamps: true,
@@ -3885,6 +3892,7 @@ OmniSession.belongsTo(OmniConversation, { foreignKey: 'conversationId', as: 'con
 OmniSession.belongsTo(User, { foreignKey: 'assigneeUserId', as: 'assignee' });
 OmniSession.belongsTo(OmniLine, { foreignKey: 'lineId', as: 'line' });
 OmniMessage.belongsTo(OmniSession, { foreignKey: 'sessionId', as: 'session' });
+OmniMessage.belongsTo(OmniMessage, { foreignKey: 'replyToId', as: 'replyTo' });
 OmniSession.belongsTo(OmniTopic, { foreignKey: 'topicId', as: 'topic' });
 
 OmniShift.belongsTo(User, { foreignKey: 'userId', as: 'user' });

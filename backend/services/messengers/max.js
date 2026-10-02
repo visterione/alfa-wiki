@@ -109,12 +109,32 @@ async function sendText(bot, userId, text, options = {}) {
     params: { user_id: Number(userId) },
     body: {
       text,
-      attachments: attachment ? [attachment] : undefined
+      attachments: attachment ? [attachment] : undefined,
+      // Ответ с цитатой (ver. 9.30) — у MAX это ссылка на сообщение.
+      link: options.replyTo ? { type: 'reply', mid: String(options.replyTo) } : undefined
     }
   });
 
   const id = result && result.message && result.message.body && result.message.body.mid;
   return { externalMessageId: id ? String(id) : null };
+}
+
+/**
+ * Поправить текст своего сообщения (ver. 9.30). Тот же PUT /messages, что
+ * снимает кнопки, — но с новым текстом. Ответы оператора без вложений, и
+ * вложения здесь не передаются вовсе: передать пустой список значило бы
+ * стереть их, будь они.
+ */
+async function editText(bot, chatId, messageId, text) {
+  await call(bot.token, 'PUT', '/messages', {
+    params: { message_id: String(messageId) },
+    body: { text }
+  });
+}
+
+/** Удалить своё сообщение у пациента (ver. 9.30). */
+async function deleteMessage(bot, chatId, messageId) {
+  await call(bot.token, 'DELETE', '/messages', { params: { message_id: String(messageId) } });
 }
 
 /**
@@ -308,6 +328,9 @@ function parseUpdate(update) {
       chatId: userId,
       externalUserId: userId,
       externalMessageId: m.body && m.body.mid ? String(m.body.mid) : null,
+      // Пациент ответил на конкретное сообщение (ver. 9.30).
+      replyToExternalId: m.link && m.link.type === 'reply' && m.link.message && m.link.message.mid
+        ? String(m.link.message.mid) : null,
       from: senderOf(m.sender)
     };
 
@@ -446,6 +469,8 @@ module.exports = {
   sendDocument,
   answerCallback,
   removeButtons,
+  editText,
+  deleteMessage,
   parseUpdate,
   getMe,
   getUpdates,

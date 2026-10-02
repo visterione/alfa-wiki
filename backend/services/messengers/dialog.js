@@ -372,7 +372,8 @@ async function handleText(channel, bot, update) {
     bot,
     subscriber,
     text: update.text || '',
-    externalMessageId: update.externalMessageId
+    externalMessageId: update.externalMessageId,
+    replyToExternalId: update.replyToExternalId || null
   });
 
   // Бот не привязан к линии — обращению некуда лечь. Так живёт проверочный бот,

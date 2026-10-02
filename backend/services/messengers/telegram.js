@@ -137,6 +137,13 @@ async function sendText(bot, chatId, text, options = {}) {
     payload.reply_markup = { remove_keyboard: true };
   }
 
+  // Ответ с цитатой (ver. 9.30). allow_sending_without_reply: пациент мог
+  // удалить своё сообщение, и тогда ответ всё равно должен уйти — без цитаты,
+  // а не отказом.
+  if (options.replyTo) {
+    payload.reply_parameters = { message_id: Number(options.replyTo), allow_sending_without_reply: true };
+  }
+
   const result = await call(bot.token, 'sendMessage', payload);
   return { externalMessageId: String(result.message_id) };
 }
@@ -256,6 +263,38 @@ async function answerCallback(bot, callbackId, text) {
  * текст заново, а Telegram отдаёт его в обновлении без разметки — сообщение с
  * HTML внутри после такой правки развалилось бы.
  */
+/**
+ * Поправить текст своего сообщения (ver. 9.30): у пациента оно меняется на
+ * месте, с отметкой «изменено». Разметка та же, что при отправке ответа
+ * оператора (HTML по умолчанию в sendText), — иначе правленое сообщение
+ * выглядело бы иначе, чем неправленое.
+ *
+ * «message is not modified» — не ошибка для нас: текст и так такой.
+ */
+async function editText(bot, chatId, messageId, text) {
+  try {
+    await call(bot.token, 'editMessageText', {
+      chat_id: chatId,
+      message_id: Number(messageId),
+      text,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true
+    });
+  } catch (err) {
+    if (/not modified/i.test(err.message)) return;
+    throw err;
+  }
+}
+
+/**
+ * Удалить своё сообщение у пациента (ver. 9.30). Telegram удаляет только
+ * сообщения моложе 48 часов — на старшее ответит отказом, и оператор увидит его
+ * причину.
+ */
+async function deleteMessage(bot, chatId, messageId) {
+  await call(bot.token, 'deleteMessage', { chat_id: chatId, message_id: Number(messageId) });
+}
+
 async function removeButtons(bot, chatId, messageId) {
   if (!chatId || !messageId) return false;
   try {
@@ -316,6 +355,9 @@ function parseUpdate(update) {
       chatId: String(m.chat.id),
       externalUserId: String(m.from.id),
       externalMessageId: String(m.message_id),
+      // Пациент ответил на конкретное сообщение (ver. 9.30) — оператору видно,
+      // на что именно.
+      replyToExternalId: m.reply_to_message ? String(m.reply_to_message.message_id) : null,
       from: {
         username: m.from.username || null,
         firstName: m.from.first_name || null,
@@ -457,6 +499,8 @@ module.exports = {
   sendDocument,
   answerCallback,
   removeButtons,
+  editText,
+  deleteMessage,
   parseUpdate,
   previewSize,
   getMe,
