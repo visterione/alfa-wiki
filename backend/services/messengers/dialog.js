@@ -14,7 +14,7 @@
  * читается целиком и чинится за минуту.
  */
 
-const { BotSubscriber } = require('../../models');
+const { BotSubscriber, MedCenter, OmniLine } = require('../../models');
 const misClient = require('../misClient');
 const openLine = require('../openLine');
 const openLineFiles = require('../openLineFiles');
@@ -23,8 +23,14 @@ const broadcasts = require('../broadcasts');
 const visitRatings = require('../notifications/visitRatings');
 const aiCall = require('../notifications/aiCall');
 
-const GREETING =
-  'Здравствуйте! Это бот медцентра «Альфа».\n\n' +
+/**
+ * Приветствие после /start. Название медцентра — своё у каждого бота
+ * (ver. 9.23): до этого во всех ботах стояло «медцентра «Альфа»», в том числе у
+ * «3К», в названии которого Альфы нет вовсе. Без названия — «нашего
+ * медцентра»: лучше общее слово, чем чужое имя.
+ */
+const greeting = (brand) =>
+  `Здравствуйте! Это бот ${brand ? `медцентра «${brand}»` : 'нашего медцентра'}.\n\n` +
   'Здесь можно получать напоминания о визитах и задавать вопросы колл-центру.\n\n' +
   'Чтобы мы вас узнали, нажмите кнопку ниже и поделитесь номером телефона — ' +
   'тем самым, на который оформлена карта.\n\n' +
@@ -217,9 +223,57 @@ async function upsertSubscriber(bot, update, patch = {}) {
 
 // ── Обработчики ───────────────────────────────────────────────────────────
 
+/**
+ * Название медцентра бота для приветствия (ver. 9.23).
+ *
+ * Ищем по ключу организации бота: тот же ключ записан у медцентра в
+ * справочнике (botOrgKey), и это прямое «чей бот», заданное при заведении.
+ * Линия бота — запасной путь: её медцентр отвечает на вопрос «куда уходят
+ * обращения», и у проверочного бота, привязанного к рабочей линии, он дал бы
+ * чужое имя, — поэтому только когда по ключу не нашлось.
+ *
+ * Берём «Полное название» (displayName) как есть — так решил заказчик: оно
+ * заполняется под пациента («Альфа», «Альфа Дети», «3К»), а короткое «Название»
+ * (name) служит порталу и пациенту ничего не говорит («Кидс»). Пустое полное —
+ * тогда короткое, лишь бы не чужое имя.
+ *
+ * Справочник меняется редко, а /start приходит от каждого нового подписчика —
+ * держим ответ в памяти несколько минут.
+ */
+const BRAND_TTL = 5 * 60 * 1000;
+const brandCache = new Map();
+
+async function brandOf(bot) {
+  const key = String(bot.id || bot.organization || '');
+  const hit = brandCache.get(key);
+  if (hit && Date.now() - hit.at < BRAND_TTL) return hit.name;
+
+  let name = null;
+  try {
+    if (bot.organization && bot.organization !== 'test') {
+      const mc = await MedCenter.findOne({ where: { botOrgKey: bot.organization }, attributes: ['name', 'displayName'] });
+      name = mc ? (mc.displayName || mc.name) : null;
+    }
+    if (!name && bot.lineId) {
+      const line = await OmniLine.findByPk(bot.lineId, {
+        attributes: ['id'],
+        include: [{ model: MedCenter, as: 'medCenter', attributes: ['name', 'displayName'] }]
+      });
+      name = line && line.medCenter ? (line.medCenter.displayName || line.medCenter.name) : null;
+    }
+  } catch (err) {
+    // Без названия приветствие всё равно уйдёт — общими словами.
+    console.error(`[dialog] название медцентра бота @${bot.username}:`, err.message);
+    return null;
+  }
+
+  brandCache.set(key, { at: Date.now(), name });
+  return name;
+}
+
 async function handleStart(channel, bot, update) {
   await upsertSubscriber(bot, update);
-  await channel.sendText(bot, update.chatId, GREETING, {
+  await channel.sendText(bot, update.chatId, greeting(await brandOf(bot)), {
     requestContact: '📱 Поделиться номером телефона'
   });
 }
