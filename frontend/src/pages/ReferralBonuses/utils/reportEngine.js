@@ -349,6 +349,41 @@ export async function buildReport({
     return hrs > 0 ? amt * hrs : amt;
   }
 
+  // ── Ставка анестезиолога «на каждую услугу счёта» ──
+  // Болюсное контрастирование на КТ заводят в счёт одной строкой, сколько бы областей ни
+  // снимали с контрастом, а по договору доплата идёт за каждую: КТ брюшной полости и КТ
+  // грудной в одном счёте с КТ05-003 — это два исследования по 550, а не два по 500 и одно
+  // по 550. Поэтому у такой услуги ставка умножается на число остальных строк того же счёта,
+  // где этот же человек стоит анестезиологом. Строки других «счётных» услуг не считаются,
+  // иначе две строки контраста в одном счёте умножали бы друг друга. Если колонки номера
+  // счёта нет или других строк не нашлось, платим один раз — как было до признака.
+  const _invoiceIndex = new Map();
+  if (colMap.invoiceNum) {
+    rows.forEach(r => {
+      const num = String(r[colMap.invoiceNum] || '').trim();
+      if (!num) return;
+      if (!_invoiceIndex.has(num)) _invoiceIndex.set(num, []);
+      _invoiceIndex.get(num).push(r);
+    });
+  }
+  function perInvoiceAnestCodes(execData) {
+    const codes = new Set();
+    Object.values(execData?.roleServices?.anesthesiologist || {}).forEach(arr =>
+      (arr || []).forEach(e => { if (e.perInvoice && e.serviceCode) codes.add(rbNormalizeName(e.serviceCode)); })
+    );
+    return codes;
+  }
+  function anestInvoiceUnits(invoiceNum, anestName, perInvoiceCodes) {
+    const num = String(invoiceNum || '').trim();
+    if (!num || !colMap.anesthesiologist) return 1;
+    const n = (_invoiceIndex.get(num) || []).filter(r => {
+      const code = colMap.serviceCode ? rbNormalizeName(String(r[colMap.serviceCode] || '')) : '';
+      if (code && perInvoiceCodes.has(code)) return false;
+      return splitPersonNames(r[colMap.anesthesiologist]).some(n2 => rbNamesMatch(anestName, n2));
+    }).length;
+    return n || 1;
+  }
+
   // ── Filter relevant rows ──
   const allRelevant = rows.filter(r => {
     const isRef  = colMap.referrer && rbNamesMatch(doctorName, r[colMap.referrer]);
@@ -742,6 +777,7 @@ export async function buildReport({
         assistant: colMap.assistant ? String(r[colMap.assistant] || '').trim() : '',
         anesthesiologist: colMap.anesthesiologist ? String(r[colMap.anesthesiologist] || '').trim() : '',
         nurse: colMap.nurse ? String(r[colMap.nurse] || '').trim() : '',
+        invoiceNum: colMap.invoiceNum ? String(r[colMap.invoiceNum] || '').trim() : '',
         serviceSpec: colMap.serviceSpec ? String(r[colMap.serviceSpec] || '').trim() : '',
         patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
         patientId: colMap.patientId ? String(r[colMap.patientId] || '').trim() : '',
@@ -939,9 +975,14 @@ export async function buildReport({
                 if (anestOwnData) {
                   let nameBonus = 0, nameRule = null;
                   const roleMatch = findRoleService(anestOwnData.roleServices, 'anesthesiologist', s.code);
+                  let units = 1;
                   if (roleMatch) {
                     const val = parseFloat(roleMatch.value) || 0;
-                    if (val > 0) nameBonus = roleMatch.valueType === 'rub' ? val : effectiveCost * val / 100;
+                    // Вычет обязан совпасть с тем, что анестезиолог получит в своём листке,
+                    // поэтому «счётная» ставка умножается здесь так же, как в его доходе.
+                    if (roleMatch.perInvoice && roleMatch.valueType === 'rub')
+                      units = anestInvoiceUnits(row.invoiceNum, anesthesiologistName, perInvoiceAnestCodes(anestOwnData));
+                    if (val > 0) nameBonus = roleMatch.valueType === 'rub' ? val * units : effectiveCost * val / 100;
                   } else if ((anestOwnData.anesthesiologistRules || []).length) {
                     // Fallback на старую систему (текстовый поиск)
                     const svcSpec = row.serviceSpec || '';
@@ -963,7 +1004,7 @@ export async function buildReport({
                         ruleContains: nameRule?.contains, aValue: nameRule?.value, aValueType: nameRule?.valueType,
                       };
                     anesthesiologistPayments[anesthesiologistName].services[svcKey].income += nameBonus;
-                    anesthesiologistPayments[anesthesiologistName].services[svcKey].count++;
+                    anesthesiologistPayments[anesthesiologistName].services[svcKey].count += units;
                   }
                 }
               }
@@ -1183,13 +1224,15 @@ export async function buildReport({
           svcRows.forEach(row2 => {
             const eCS2 = execData2Anest ? rbGetClinicSettings(execData2Anest, row2.cId) : null;
             if (_roleCorpExclude(row2._raw, eCS2)) return;
-            let inc = 0, aValue, aValueType, ruleContains;
+            let inc = 0, aValue, aValueType, ruleContains, units = 1;
             if (hasAnestRoleServices) {
               // Новая система: точный код услуги
               const match = findMyRoleService('anesthesiologist', row2.svcCode, row2.cId);
               if (!match) return;
               const val = parseFloat(match.value) || 0;
-              inc = match.valueType === 'rub' ? val : row2.cost * val / 100;
+              if (match.perInvoice && match.valueType === 'rub' && colMap.invoiceNum)
+                units = anestInvoiceUnits(row2._raw[colMap.invoiceNum], doctorName, perInvoiceAnestCodes(execSettings));
+              inc = match.valueType === 'rub' ? val * units : row2.cost * val / 100;
               aValue = match.value; aValueType = match.valueType;
             } else {
               // Старая система: правила (текстовый поиск)
@@ -1206,9 +1249,11 @@ export async function buildReport({
             if (!svcBreakdown2[k2])
               svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains, aValue, aValueType, _rows: [] };
             svcBreakdown2[k2].cost   += row2.cost;
-            svcBreakdown2[k2].count++;
+            // Количество в единицах ставки, а не в строках: у «счётной» услуги одна строка
+            // даёт несколько оплат, и в листке «К-во × Ставка» должно сходиться с «Итого».
+            svcBreakdown2[k2].count  += units;
             svcBreakdown2[k2].income += inc;
-            svcBreakdown2[k2]._rows.push(rbRolePatientRow(row2._raw, colMap, row2.cost));
+            svcBreakdown2[k2]._rows.push({ ...rbRolePatientRow(row2._raw, colMap, row2.cost), qty: units });
           });
           if (secTotal !== 0) {
             anesthesiologistIncomeSections.push({ execName, total: secTotal, services: rbRoleServicesWithDetails(svcBreakdown2) });

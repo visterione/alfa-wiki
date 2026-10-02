@@ -118,6 +118,24 @@ function CategoryDropdown({ onSelect }) {
 
 // ─── Role service panel (Ассистент / Медсестра / Анестезиолог) ───────────────
 
+// Признак «на каждую услугу счёта» есть только у анестезиолога и только у рублёвой ставки:
+// так оплачивают болюсное контрастирование на КТ, которое заводят в счёт одной строкой на
+// все исследования. Процент от стоимости строки умножать не на что, а у остальных ролей
+// такой практики нет — лишняя галочка там только сбивала бы.
+const PER_INVOICE_HINT = 'Ставка начисляется за каждую другую услугу того же счёта, где сотрудник указан анестезиологом';
+
+function PerInvoiceToggle({ checked, onChange }) {
+  return (
+    <label className="rb-toggle-item" title={PER_INVOICE_HINT}>
+      <span className="rb-toggle-switch">
+        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+        <span className="rb-toggle-slider" />
+      </span>
+      <span className="rb-toggle-label">На каждую услугу счёта</span>
+    </label>
+  );
+}
+
 function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinicTabRef, clinicSlider, misUserId, doctorName, execData, onExecDataChange, readOnly }) {
   const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
   const services = execData?.roleServices?.[role]?.[dbClinicId] || [];
@@ -129,6 +147,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
   const [selectedSvc, setSelectedSvc]     = useState(null);
   const [valueType, setValueType]         = useState('percent');
   const [value, setValue]                 = useState('');
+  const [perInvoice, setPerInvoice]       = useState(false);
   const [saving, setSaving]               = useState(false);
   // Category
   const [catServices, setCatServices]     = useState([]);
@@ -142,7 +161,9 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
   const [editingCode, setEditingCode]     = useState(null);
   const [editType, setEditType]           = useState('percent');
   const [editValue, setEditValue]         = useState('');
+  const [editPerInvoice, setEditPerInvoice] = useState(false);
   const [editSaving, setEditSaving]       = useState(false);
+  const canPerInvoice = role === 'anesthesiologist';
   const searchTimerRef = useRef(null);
 
   // Reset form when clinic or role changes
@@ -181,8 +202,8 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
   const handleSelectSvc = (svc) => {
     setSelectedSvc(svc); setSearchQuery(''); setSearchResults([]);
     const existing = services.find(s => s.serviceCode === svcCode(svc));
-    if (existing) { setValue(String(existing.value)); setValueType(existing.valueType === 'rub' ? 'rub' : 'percent'); }
-    else { setValue(''); setValueType('percent'); }
+    if (existing) { setValue(String(existing.value)); setValueType(existing.valueType === 'rub' ? 'rub' : 'percent'); setPerInvoice(!!existing.perInvoice); }
+    else { setValue(''); setValueType('percent'); setPerInvoice(false); }
   };
 
   const saveEntries = async (entries, successMsg) => {
@@ -207,6 +228,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
     const val = parseFloat(value);
     if (isNaN(val) || val <= 0) { toast.error('Введите корректное значение'); return; }
     const newEntry = { serviceCode: svcCode(selectedSvc), serviceName: selectedSvc.title || '', value: val, valueType };
+    if (canPerInvoice && valueType === 'rub' && perInvoice) newEntry.perInvoice = true;
     setSaving(true);
     try {
       await saveEntries([newEntry], 'Сохранено');
@@ -234,12 +256,14 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
     if (isNaN(val) || val <= 0) { toast.error('Укажите ставку'); return; }
     setCatSaving(true);
     try {
-      const entries = activeServices.map(s => ({
-        serviceCode: s.code || String(s.service_id || ''),
-        serviceName: s.title || '',
-        value: val,
-        valueType: catBulkType,
-      }));
+      // Массовая ставка не должна молча снимать «на каждую услугу счёта» с услуг, где он
+      // уже стоит: признак переносится, пока ставка остаётся рублёвой.
+      const entries = activeServices.map(s => {
+        const code = s.code || String(s.service_id || '');
+        const e = { serviceCode: code, serviceName: s.title || '', value: val, valueType: catBulkType };
+        if (catBulkType === 'rub' && services.find(x => x.serviceCode === code)?.perInvoice) e.perInvoice = true;
+        return e;
+      });
       await saveEntries(entries, `Применено к ${entries.length} услуг${entries.length === 1 ? 'е' : 'ам'}`);
       setCatBulkValue('');
     } catch { toast.error('Ошибка сохранения'); }
@@ -267,6 +291,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
     setEditingCode(s.serviceCode);
     setEditType(s.valueType === 'rub' ? 'rub' : 'percent');
     setEditValue(String(s.value));
+    setEditPerInvoice(!!s.perInvoice);
   };
   const cancelEdit = () => { setEditingCode(null); setEditValue(''); };
   const handleSaveEdit = async (s) => {
@@ -274,16 +299,16 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
     if (isNaN(val) || val <= 0) { toast.error('Введите корректное значение'); return; }
     setEditSaving(true);
     try {
-      await saveEntries(
-        [{ serviceCode: s.serviceCode, serviceName: s.serviceName, value: val, valueType: editType }],
-        'Сохранено',
-      );
+      const entry = { serviceCode: s.serviceCode, serviceName: s.serviceName, value: val, valueType: editType };
+      if (canPerInvoice && editType === 'rub' && editPerInvoice) entry.perInvoice = true;
+      await saveEntries([entry], 'Сохранено');
       setEditingCode(null); setEditValue('');
     } catch { toast.error('Ошибка сохранения'); }
     finally { setEditSaving(false); }
   };
 
   const fmtVal = (s) => s.valueType === 'rub' ? `${s.value} ₽` : `${s.value}%`;
+  const showPerInvoice = (s) => canPerInvoice && s.perInvoice && s.valueType === 'rub';
 
   return (
     <>
@@ -448,6 +473,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                   value={value} onChange={e => setValue(e.target.value)}
                   style={{ width: 90, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 13, textAlign: 'right' }}
                 />
+                {canPerInvoice && valueType === 'rub' && <PerInvoiceToggle checked={perInvoice} onChange={setPerInvoice} />}
                 <button onClick={handleSave} disabled={saving}
                   style={{ padding: '5px 14px', background: 'var(--rb-primary)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                 >{saving ? '...' : 'Сохранить'}</button>
@@ -467,7 +493,7 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
             <tr>
               <th>Код</th>
               <th>Услуга</th>
-              <th style={{ width: editingCode ? 180 : 100, textAlign: 'center' }}>Ставка</th>
+              <th style={{ width: editingCode ? (canPerInvoice ? 260 : 180) : (canPerInvoice ? 150 : 100), textAlign: 'center' }}>Ставка</th>
               {!readOnly && <th style={{ width: 80 }} />}
             </tr>
           </thead>
@@ -492,8 +518,16 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
                         onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(s); if (e.key === 'Escape') cancelEdit(); }}
                         style={{ width: 70, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 13, textAlign: 'right' }}
                       />
+                      {canPerInvoice && editType === 'rub' && <PerInvoiceToggle checked={editPerInvoice} onChange={setEditPerInvoice} />}
                     </div>
-                  ) : fmtVal(s)}
+                  ) : (
+                    <>
+                      {fmtVal(s)}
+                      {showPerInvoice(s) && (
+                        <div title={PER_INVOICE_HINT} style={{ fontSize: 11, fontWeight: 500, color: 'var(--rb-text-secondary)' }}>на каждую услугу счёта</div>
+                      )}
+                    </>
+                  )}
                 </td>
                 {!readOnly && (
                   <td style={{ padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
