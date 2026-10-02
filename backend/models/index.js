@@ -3626,6 +3626,9 @@ const OmniLine = sequelize.define('OmniLine', {
   // Ответ, когда на линии никого нет. Отправляется один раз за обращение:
   // человек, написавший ночью три строки, не должен получить три извинения.
   offlineReply: { type: DataTypes.TEXT, allowNull: true },
+  // Через сколько часов тишины с обеих сторон обращение закрывается само
+  // (ver. 9.23). 0 — не закрывать. См. openLine.autoCloseIdle.
+  autoCloseHours: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 8 },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, { tableName: 'omni_lines', timestamps: true });
 
@@ -4167,6 +4170,10 @@ const NotifOutbox = sequelize.define('NotifOutbox', {
   // «Отправили» и «дошло» — разные вопросы. Наш status отвечает на первый,
   // этот — на второй, и приходит он отчётом от провайдера.
   deliveryStatus: { type: DataTypes.STRING(20), allowNull: true, field: 'delivery_status' },
+  // Путь по каскаду (ver. 9.23): [{ step, result, error, at }] — какие
+  // ступени пробовали и чем каждая кончилась. Журнал рисует по нему цепочку
+  // каналов. Подробности — в sender.js, deliver().
+  attempts: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   deliveredAt: { type: DataTypes.DATE, allowNull: true, field: 'delivered_at' }
 }, {
   tableName: 'notif_outbox',

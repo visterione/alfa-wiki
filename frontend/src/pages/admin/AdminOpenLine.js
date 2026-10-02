@@ -9,7 +9,8 @@ import {
 import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
 } from '../../services/api';
-import ChannelLogo from '../../components/openline/ChannelLogo';
+import ChannelLogo, { ChannelGlyph } from '../../components/openline/ChannelLogo';
+import MedCenterMark from '../../components/openline/MedCenterMark';
 import WidgetTab from './WidgetTab';
 import toast from 'react-hot-toast';
 import './AdminOpenLine.css';
@@ -381,6 +382,8 @@ function LinesTab({ creating, setCreating }) {
   const [staff, setStaff] = useState([]);
   const [draft, setDraft] = useState({ name: '', medCenterId: '' });
   const [replies, setReplies] = useState({});
+  // Набранный, ещё не сохранённый срок автозакрытия по линиям (ver. 9.23).
+  const [idleHours, setIdleHours] = useState({});
 
   const load = useCallback(async () => {
     try {
@@ -692,6 +695,55 @@ function LinesTab({ creating, setCreating }) {
                     Сохранить
                   </button>
                 </div>
+              </div>
+
+              {/* Автозакрытие после тишины (ver. 9.23). Своё у линии: где-то
+                  разговор естественно тянется до вечера, где-то кончается за
+                  час. Ноль выключает. Что именно закрывается, а что нет, —
+                  в подсказке под полем: «неотвеченное не трогаем» здесь
+                  важнее самого числа. */}
+              <div className="ola-block">
+                <h4><Clock size={13} /> Автозакрытие обращений</h4>
+                {(() => {
+                  const saved = line.autoCloseHours ?? 8;
+                  const value = idleHours[line.id] !== undefined ? idleHours[line.id] : String(saved);
+                  const n = Number(value);
+                  const valid = value.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 720;
+                  return (
+                    <>
+                      <div className="ola-row ola-idle-row">
+                        <span>Закрывать, если</span>
+                        <input
+                          className="ola-input ola-idle-input"
+                          type="number"
+                          min={0}
+                          max={720}
+                          value={value}
+                          onChange={e => setIdleHours(h => ({ ...h, [line.id]: e.target.value }))}
+                        />
+                        <span>ч никто не пишет — ни пациент, ни оператор</span>
+                        <button
+                          className="ola-btn primary"
+                          disabled={!valid || n === saved}
+                          onClick={async () => {
+                            await update(line, { autoCloseHours: n });
+                            setIdleHours(h => { const next = { ...h }; delete next[line.id]; return next; });
+                          }}
+                        >
+                          Сохранить
+                        </button>
+                      </div>
+                      <p className="ola-hint">
+                        {saved > 0
+                          ? `Сейчас: через ${saved} ч тишины. `
+                          : 'Сейчас выключено. '}
+                        0 — не закрывать. Обращение, на которое оператор ещё не ответил, само не
+                        закрывается никогда: это пациент, который ждёт. Просьба оценить работу при
+                        автозакрытии не уходит.
+                      </p>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </section>
@@ -2361,26 +2413,22 @@ const DELIVERY_FILTER_VIEW = [
   { key: 'none', label: 'отчёта нет' }
 ];
 
+// ВКонтакте и Viber убраны из отбора (ver. 9.23): этих каналов в каскадах сети
+// нет, и пункт, по которому никогда ничего не найдётся, только мешает.
 const CHANNEL_FILTER_VIEW = [
   { key: 'telegram', label: 'Telegram' },
   { key: 'max', label: 'MAX' },
-  { key: 'sms', label: 'SMS' },
-  { key: 'vk', label: 'ВКонтакте' },
-  { key: 'viber', label: 'Viber' }
+  { key: 'sms', label: 'SMS' }
 ];
 
 const PAGE_SIZE = 50;
 const EMPTY_FILTERS = { status: '', event: '', channel: '', delivery: '', phone: '', from: '', to: '', medCenterId: '' };
 
-// Подписи текстов каналов в журнале — те же, что в редакторе шаблонов.
-const TEXT_LABELS = { telegram: 'Telegram', max: 'MAX', sms: 'SMS', notify: 'ВКонтакте / Viber' };
-
 /**
  * Ключ текста, по которому ушла ступень маршрута. Повторяет выбор отправщика
  * (sender.js, textFor и imobisRoute): боты берут текст своей платформы, SMS —
- * короткий, ВКонтакте и Viber — текст Notify. Fromni называет ступени по-своему
- * («sms+webchat», «notify+vk»), но делит так же: SMS — короткий, остальное —
- * длинный.
+ * короткий, остальное — текст Notify. Fromni называет ступени по-своему
+ * («sms+webchat», «notify+vk»), но делит так же.
  */
 function textKeyOfStep(step) {
   const name = String(step || '').replace(/^imobis:/, '');
@@ -2389,49 +2437,151 @@ function textKeyOfStep(step) {
   return 'notify';
 }
 
+/** Знак ступени в цепочке: telegram | max | sms | notify. */
+const glyphOfStep = (step) => textKeyOfStep(step);
+
+const STEP_TITLES = { telegram: 'Telegram', max: 'MAX', sms: 'SMS', notify: 'Notify' };
+
+// Исход ступени — цветом кружка. «Передано» — у каскада Имобиса, пока его
+// отчёт не сказал, какой канал сработал.
+const STEP_RESULT_VIEW = {
+  sent:        { cls: 'ok',    label: 'ушло этим каналом' },
+  delivered:   { cls: 'ok',    label: 'доставлено этим каналом' },
+  handed:      { cls: 'wait',  label: 'передано провайдеру, ждём отчёт' },
+  failed:      { cls: 'bad',   label: 'не прошло' },
+  undelivered: { cls: 'bad',   label: 'не доставлено' },
+  quiet:       { cls: 'muted', label: 'промолчал в тихие часы' }
+};
+
 /**
- * Какой текст показать в строке журнала (ver. 9.23).
+ * Путь строки по каскаду (ver. 9.23).
  *
- * До 9.23 журнал показывал общее поле text строки, а отправщик с 8.03 берёт
- * текст своего канала из channelTexts — и в журнале стоял текст, которого
- * никто не получал. Теперь показываем ровно то, что выбрал бы отправщик:
- *
- *   • ушло — тексты ступеней маршрута, которым ушло (у каскада Имобиса их
- *     может быть два: ВКонтакте и запасная SMS — доставит одна из них);
- *   • ещё не ушло или не ушло вовсе — тексты всех каналов шаблона: каким
- *     уйдёт, решится только при отправке.
- *
- * Строки, заведённые до 8.03, channelTexts не имеют — для них остаётся text.
+ * С 9.23 отправщик пишет каждую ступень в attempts. У строк, ушедших раньше,
+ * пути нет — для них восстанавливаем, что можем, по столбцу channel: это
+ * маршрут, которым ушло, без неудачных ступеней перед ним.
  */
-function shownTexts(row) {
+function chainOf(row) {
+  const attempts = Array.isArray(row.attempts) ? row.attempts : [];
+  if (attempts.length) return attempts.filter(a => a.result !== 'unused');
+
+  if (!row.channel) return [];
+  const steps = String(row.channel).split('→');
+  if (steps.length > 1) return steps.map(step => ({ step, result: 'handed' }));
+  const delivery = String(row.deliveryStatus || '');
+  const result = ['delivered', 'read'].includes(delivery) ? 'delivered'
+    : (['rejected', 'undelivered', 'expired', 'deleted', 'error'].includes(delivery) ? 'undelivered'
+      : (row.status === 'sent' ? 'sent' : 'failed'));
+  return [{ step: steps[0], result }];
+}
+
+/**
+ * Текст, который фактически ушёл (ver. 9.23): текст канала, которым сообщение
+ * доставлено, либо — пока отчёта нет — которым оно запущено. У неотправленной
+ * строки такого текста нет, и выдумывать его по шаблону незачем: журнал
+ * отвечает на вопрос «что получил человек», а не «что могло бы уйти».
+ *
+ * Строки до 8.03 текстов по каналам не имеют — для них общий text.
+ */
+function sentText(row) {
+  const chain = chainOf(row);
+  const launched = chain.find(a => a.result === 'delivered')
+    || chain.find(a => a.result === 'sent')
+    || chain.find(a => a.result === 'handed');
+  if (!launched) return null;
+
   const byChannel = row.channelTexts && typeof row.channelTexts === 'object' ? row.channelTexts : {};
-  const textOf = (key) => {
-    const own = byChannel[key];
-    if (own && String(own).trim()) return own;
-    return key === 'sms' && row.smsText ? row.smsText : null;
-  };
+  const key = textKeyOfStep(launched.step);
+  const own = byChannel[key];
+  if (own && String(own).trim()) return own;
+  if (key === 'sms' && row.smsText) return row.smsText;
+  return Object.keys(byChannel).length ? null : row.text;
+}
 
-  let keys;
-  if (row.channel) {
-    keys = [...new Set(String(row.channel).split('→').map(textKeyOfStep))];
-  } else {
-    keys = Object.keys(byChannel).filter(k => String(byChannel[k] || '').trim());
-    if (row.smsText && !keys.includes('sms')) keys.push('sms');
-  }
+/**
+ * Цепочка каскада: знаки каналов в кружках цвета исхода, через стрелки
+ * (ver. 9.23). Читается слева направо, как шло сообщение: «Telegram не прошёл
+ * → MAX не прошёл → SMS доставлена». Причина неудачи — в подсказке у кружка.
+ */
+function CascadeChain({ row }) {
+  const chain = chainOf(row);
+  if (!chain.length) return null;
+  return (
+    <span className="ola-chain">
+      {chain.map((a, i) => {
+        const view = STEP_RESULT_VIEW[a.result] || STEP_RESULT_VIEW.handed;
+        const key = glyphOfStep(a.step);
+        const title = `${STEP_TITLES[key] || a.step}: ${view.label}${a.error ? ` — ${a.error}` : ''}`;
+        return (
+          <React.Fragment key={`${a.step}-${i}`}>
+            {i > 0 && <ChevronRight size={12} className="ola-chain-arrow" />}
+            <span className={`ola-chain-step ${view.cls}`} title={title}>
+              <ChannelGlyph channel={key} size={13} />
+            </span>
+          </React.Fragment>
+        );
+      })}
+    </span>
+  );
+}
 
-  const out = [];
-  const seen = new Map();
-  for (const key of keys) {
-    const text = textOf(key);
-    if (!text) continue;
-    // Одинаковый текст у двух каналов показываем одним блоком с двумя
-    // подписями — повтор слово в слово только удлиняет ленту.
-    if (seen.has(text)) { seen.get(text).labels.push(TEXT_LABELS[key] || key); continue; }
-    const item = { labels: [TEXT_LABELS[key] || key], text };
-    seen.set(text, item);
-    out.push(item);
-  }
-  return out.length ? out : (row.text ? [{ labels: [], text: row.text }] : []);
+/**
+ * Выпадающий список фильтра журнала (ver. 9.23).
+ *
+ * Свой, а не системный select: у системного не нарисовать логотип медцентра и
+ * знак канала рядом с пунктом, а без них список медцентров — столбик коротких
+ * слов, которые путаются. Пустое значение подписано по-человечески
+ * («Медцентр: все»), выбранное — со своим знаком.
+ */
+function FilterSelect({ label, allLabel, value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  const current = options.find(o => o.value === value) || null;
+  const pick = (v) => { onChange(v); setOpen(false); };
+
+  return (
+    <div className={`ola-fsel ${current ? 'chosen' : ''}`} ref={boxRef}>
+      <button type="button" className={`ola-fsel-btn ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
+        {current?.icon}
+        <span className="ola-fsel-text">
+          {current ? current.label : <><span className="ola-fsel-label">{label}:</span> {allLabel}</>}
+        </span>
+        <ChevronDown size={14} className="ola-fsel-caret" />
+      </button>
+      {open && (
+        <div className="ola-fsel-pop" role="listbox">
+          <button type="button" className={`ola-fsel-opt ${!current ? 'on' : ''}`} onClick={() => pick('')}>
+            <span className="ola-fsel-opt-text">{allLabel[0].toUpperCase() + allLabel.slice(1)}</span>
+            {!current && <Check size={14} />}
+          </button>
+          {options.map(o => (
+            <button
+              key={o.value}
+              type="button"
+              className={`ola-fsel-opt ${o.value === value ? 'on' : ''}`}
+              onClick={() => pick(o.value)}
+            >
+              {o.icon}
+              <span className="ola-fsel-opt-text">{o.label}</span>
+              {o.value === value && <Check size={14} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -2538,38 +2688,52 @@ function MessagesLog() {
           />
         </div>
 
-        <select
-          className="ola-select ola-log-select"
+        <FilterSelect
+          label="Медцентр"
+          allLabel="все"
           value={medCenterId}
-          onChange={e => setFilter({ medCenterId: e.target.value })}
-          title="Медцентр"
-        >
-          <option value="">Медцентр: все</option>
-          {(log?.medCenters || []).map(mc => (
-            <option key={mc.id} value={mc.id}>{mc.name}</option>
-          ))}
-        </select>
+          onChange={v => setFilter({ medCenterId: v })}
+          options={(log?.medCenters || []).map(mc => ({
+            value: mc.id,
+            label: mc.name,
+            icon: <MedCenterMark medCenter={mc} className="ola-fsel-mc" />
+          }))}
+        />
 
-        <select className="ola-select ola-log-select" value={event} onChange={e => setFilter({ event: e.target.value })} title="Событие">
-          <option value="">Событие: любое</option>
-          {Object.keys(EVENT_VIEW).map(key => (
-            <option key={key} value={key}>{EVENT_VIEW[key].title}</option>
-          ))}
-        </select>
+        <FilterSelect
+          label="Событие"
+          allLabel="любое"
+          value={event}
+          onChange={v => setFilter({ event: v })}
+          options={Object.keys(EVENT_VIEW).map(key => {
+            const EIcon = EVENT_VIEW[key].icon || FileText;
+            return {
+              value: key,
+              label: EVENT_VIEW[key].title,
+              icon: <span className={`ola-card-icon small ${EVENT_VIEW[key].tone || 'accent'}`}><EIcon size={12} /></span>
+            };
+          })}
+        />
 
-        <select className="ola-select ola-log-select" value={channel} onChange={e => setFilter({ channel: e.target.value })} title="Канал">
-          <option value="">Канал: любой</option>
-          {CHANNEL_FILTER_VIEW.map(item => (
-            <option key={item.key} value={item.key}>{item.label}</option>
-          ))}
-        </select>
+        <FilterSelect
+          label="Канал"
+          allLabel="любой"
+          value={channel}
+          onChange={v => setFilter({ channel: v })}
+          options={CHANNEL_FILTER_VIEW.map(item => ({
+            value: item.key,
+            label: item.label,
+            icon: <ChannelLogo channel={item.key} size={18} />
+          }))}
+        />
 
-        <select className="ola-select ola-log-select" value={delivery} onChange={e => setFilter({ delivery: e.target.value })} title="Отчёт провайдера">
-          <option value="">Отчёт: любой</option>
-          {DELIVERY_FILTER_VIEW.map(item => (
-            <option key={item.key} value={item.key}>{item.label}</option>
-          ))}
-        </select>
+        <FilterSelect
+          label="Отчёт"
+          allLabel="любой"
+          value={delivery}
+          onChange={v => setFilter({ delivery: v })}
+          options={DELIVERY_FILTER_VIEW.map(item => ({ value: item.key, label: item.label }))}
+        />
 
         <span className="ola-log-dates" title="Период: по дате заведения события">
           <input className="ola-input" type="date" value={from} onChange={e => setFilter({ from: e.target.value })} aria-label="С даты" />
@@ -2608,47 +2772,36 @@ function MessagesLog() {
         const Icon = view.icon;
         const eview = EVENT_VIEW[row.event];
         const EIcon = eview?.icon || FileText;
+        const text = sentText(row);
         return (
-          <article key={row.id} className={`ola-row-card ${view.cls}`}>
-            <div className="ola-row-top">
-              <span className={`ola-card-icon small ${eview?.tone || 'accent'}`}><EIcon size={14} /></span>
-              <span className="event">{eventTitle(row.event)}</span>
-              <span className="phone">{row.phone || 'без телефона'}</span>
-              {row.medCenterName && <span className="ola-badge">{row.medCenterName}</span>}
-              {row.channel && <span className="ola-badge">{row.channel}</span>}
-              {row.postponedFrom && <span className="ola-badge warn">отложено</span>}
-              <span className={`ola-row-status ${view.cls}`}><Icon size={13} /> {view.label}</span>
-              {/* Отчёт провайдера рядом с нашим исходом, а не вместо него: «мы
-                  отправили» и «дошло» — разные утверждения, и подменять одно
-                  другим значит терять как раз спорные строки. */}
-              {row.deliveryStatus && (
-                <span className="ola-badge" title="Отчёт провайдера о доставке">{row.deliveryStatus}</span>
-              )}
-              <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
+          <article key={row.id} className={`ola-row-card ola-msg-card ${view.cls}`}>
+            <div className="ola-msg-main">
+              <div className="ola-row-top">
+                <span className={`ola-card-icon small ${eview?.tone || 'accent'}`}><EIcon size={14} /></span>
+                <span className="event">{eventTitle(row.event)}</span>
+                <span className="phone">{row.phone || 'без телефона'}</span>
+                {/* Медцентр — знаком, а не плашкой с названием (ver. 9.23):
+                    название в подсказке. */}
+                {row.medCenter && <MedCenterMark medCenter={row.medCenter} className="ola-row-mc" />}
+                {row.postponedFrom && <span className="ola-badge warn">отложено</span>}
+              </div>
+              {text && <div className="ola-row-text">{text}</div>}
+              {row.error && <div className="ola-row-error">{row.error}</div>}
             </div>
-            {(() => {
-              const texts = shownTexts(row);
-              const block = (t, i) => (
-                <div key={i} className="ola-row-text">
-                  {t.labels.length > 0 && <span className="ola-row-text-channel">{t.labels.join(', ')}</span>}
-                  {t.text}
-                </div>
-              );
-              // У неотправленной строки канал ещё не выбран, и текстов столько,
-              // сколько каналов у шаблона. Все сразу растягивали бы журнал вчетверо
-              // — первый на виду, остальные по щелчку.
-              if (row.channel || texts.length < 2) return texts.map(block);
-              return (
-                <>
-                  {block(texts[0], 0)}
-                  <details className="ola-row-more">
-                    <summary>Тексты других каналов ({texts.length - 1})</summary>
-                    {texts.slice(1).map((t, i) => block(t, i + 1))}
-                  </details>
-                </>
-              );
-            })()}
-            {row.error && <div className="ola-row-error">{row.error}</div>}
+
+            {/* Справа: когда, каким путём и чем кончилось (ver. 9.23). Итог —
+                значком в нижнем углу, без подписи: подпись в подсказке, а цвет
+                и знак те же, что у плиток сводки. */}
+            <div className="ola-msg-side">
+              <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
+              <CascadeChain row={row} />
+              <span
+                className={`ola-msg-status ${view.cls}`}
+                title={`${view.label}${row.deliveryStatus ? ` · отчёт провайдера: ${row.deliveryStatus}` : ''}`}
+              >
+                <Icon size={14} />
+              </span>
+            </div>
           </article>
         );
       })}

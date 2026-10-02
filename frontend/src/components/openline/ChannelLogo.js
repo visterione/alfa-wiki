@@ -52,6 +52,20 @@ function Glyph({ channel }) {
 }
 
 /**
+ * Только знак канала, без фирменной плитки (ver. 9.23): для цепочки каскада в
+ * журнале рассылки, где цвет кружка означает исход ступени, а не марку. Знак
+ * рисуется цветом текста (currentColor) — белым на цветном кружке.
+ */
+export function ChannelGlyph({ channel, size = 14 }) {
+  const key = ['telegram', 'max', 'sms'].includes(channel) ? channel : 'notify';
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" style={{ color: 'currentColor' }}>
+      <Glyph channel={key} />
+    </svg>
+  );
+}
+
+/**
  * @param {string} channel  telegram | max | sms | notify | иное
  * @param {number} size     сторона плитки в пикселях
  */

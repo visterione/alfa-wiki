@@ -666,6 +666,9 @@ async function startServer() {
       require('./cron/submissionsRetryCron');
       require('./cron/competitorPricesCron');
       require('./cron/vacancySlaCron');
+      // Автозакрытие обращений после тишины (ver. 9.23) — с сокетом, чтобы
+      // закрытое пропало у операторов с экрана сразу.
+      require('./cron/openLineAutoCloseCron').start(io);
 
       const { initMissedCallsBot } = require('./services/notificationService');
       await initMissedCallsBot();

@@ -282,10 +282,38 @@ async function deliver(item, clinicId = null, medCenterId = null) {
   let lastError = null;
   let silencedAll = groups.length > 0;
 
+  /**
+   * Путь сообщения по каскаду (ver. 9.23): каждая ступень, до которой дошла
+   * очередь, и чем она кончилась. До этого строка помнила только маршрут, которым
+   * сообщение в итоге ушло, и последнюю ошибку — что Telegram не прошёл, потому
+   * что человек не подписан, а MAX — потому что заблокировал бота, из журнала
+   * было не узнать. Журнал рисует по этому списку цепочку каналов.
+   *
+   *   sent    — ушло этой ступенью (боты, Fromni);
+   *   handed  — передано провайдеру с его собственным каскадом (Имобис): какой
+   *             канал доставил, скажет его отчёт, см. /report;
+   *   failed  — не прошло, причина в error;
+   *   quiet   — ступень промолчала в тихие часы.
+   *
+   * Хранится путь последнего прохода, а не всех: отложенная до утра строка
+   * проходит каскад заново, и вечерняя попытка утром уже ничего не объясняет.
+   */
+  const attempts = [];
+  const note = (steps, result, error = null) => {
+    for (const step of [].concat(steps)) {
+      attempts.push({ step, result, error, at: new Date().toISOString() });
+    }
+  };
+  const fail = (steps, error) => { lastError = error; note(steps, 'failed', error); };
+
   for (const group of groups) {
     // Ступень молчит в тихие часы — пропускаем её, но помним: если промолчали
     // все, сообщение надо отложить, а не потерять.
     const audible = group.steps.filter(step => !settings.quietFor(quiet, step));
+    if (settings.isQuiet(quiet, now)) {
+      const silent = group.steps.filter(step => !audible.includes(step));
+      if (silent.length) note(silent, 'quiet');
+    }
     if (settings.isQuiet(quiet, now) && !audible.length) continue;
     silencedAll = false;
 
@@ -296,7 +324,7 @@ async function deliver(item, clinicId = null, medCenterId = null) {
 
       const body = textFor(item, platform);
       if (!body) {
-        lastError = `для ${platform} не задан текст`;
+        fail(platform, `для ${platform} не задан текст`);
         continue;
       }
 
@@ -305,7 +333,7 @@ async function deliver(item, clinicId = null, medCenterId = null) {
         // Причину записываем обязательно. Молчаливый continue был здесь самой
         // дорогой строкой модуля: ступень бота пропускалась без следа, и
         // «почему не пришло в телеграм» приходилось выяснять по базе.
-        lastError = `${platform}: по этому номеру нет подписки на наш бот`;
+        fail(platform, `${platform}: по этому номеру нет подписки на наш бот`);
         continue;
       }
 
@@ -322,9 +350,10 @@ async function deliver(item, clinicId = null, medCenterId = null) {
         if (item.withRating) buttons.push(visitRatings.buttonRow(item.id));
         const options = buttons.length ? { buttons } : {};
         await channel.sendText(found.bot, found.subscriber.externalUserId, body, options);
-        return item.update({ status: 'sent', channel: platform, sentAt: new Date(), error: null });
+        note(platform, 'sent');
+        return item.update({ status: 'sent', channel: platform, sentAt: new Date(), error: null, attempts });
       } catch (err) {
-        lastError = err.message;
+        fail(platform, `${platform}: ${err.message}`);
         if (err.code === 'blocked') {
           // Канал закрыт навсегда — помечаем подписку, чтобы следующий раз
           // даже не пробовать.
@@ -335,20 +364,20 @@ async function deliver(item, clinicId = null, medCenterId = null) {
     }
 
     if (!item.phone) {
-      lastError = 'нет телефона пациента';
+      fail(audible, 'нет телефона пациента');
       continue;
     }
 
     // Предохранитель — здесь, до любого внешнего провайдера. Внутри ветки он
     // защищал только её, а провайдеров стало два.
     if (!await safety.allowsProvider(group.provider, medCenterId)) {
-      lastError = `${group.provider}: отправка наружу выключена предохранителем филиала`;
+      fail(audible, `${group.provider}: отправка наружу выключена предохранителем филиала`);
       continue;
     }
 
     if (group.provider === 'imobis') {
       if (!texts.sms) {
-        lastError = 'для SMS не задан текст';
+        fail(audible, 'для SMS не задан текст');
         continue;
       }
       try {
@@ -359,15 +388,20 @@ async function deliver(item, clinicId = null, medCenterId = null) {
         // счёта другого юрлица — обнаруживалось это счётом в конце месяца, а не
         // в журнале.
         if (!String(config.token || '').trim()) {
-          lastError = 'у филиала не задан свой токен Имобиса';
+          fail(audible, 'у филиала не задан свой токен Имобиса');
           continue;
         }
 
         const route = imobisRoute(group.names.filter(n => audible.includes(`imobis:${n}`)), config, texts);
         if (!route.length) {
-          lastError = 'у ступеней Имобиса нет имени отправителя или группы ВК';
+          fail(audible, 'у ступеней Имобиса нет имени отправителя или группы ВК');
           continue;
         }
+        // Ступень без реквизитов выпадает из маршрута молча (imobisRoute) — здесь
+        // она получает свою отметку, иначе в цепочке её просто не было бы.
+        const routed = route.map(r => `imobis:${r.channel}`);
+        const dropped = audible.filter(step => !routed.includes(step));
+        if (dropped.length) note(dropped, 'failed', 'нет имени отправителя или группы ВК');
 
         const sent = await imobis.send(organization, route, {
           phone: item.phone,
@@ -378,15 +412,17 @@ async function deliver(item, clinicId = null, medCenterId = null) {
         });
         // Статус пока «принято»: доставку подтвердит отчёт, который Имобис
         // пришлёт на наш адрес.
+        note(routed, 'handed');
         return item.update({
           status: 'sent',
-          channel: route.map(r => `imobis:${r.channel}`).join('→'),
+          channel: routed.join('→'),
           externalMessageId: sent.externalMessageId,
           sentAt: new Date(),
-          error: null
+          error: null,
+          attempts
         });
       } catch (err) {
-        lastError = `Имобис: ${err.message}`;
+        fail(audible, `Имобис: ${err.message}`);
         continue;
       }
     }
@@ -402,9 +438,10 @@ async function deliver(item, clinicId = null, medCenterId = null) {
 
       const sent = await fromni.sendText(organization, item.phone,
         { default: texts.long, 'sms+webchat': texts.sms, sms: texts.sms }, names);
-      return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null });
+      note(sent.channel || names, 'sent');
+      return item.update({ status: 'sent', channel: sent.channel, sentAt: new Date(), error: null, attempts });
     } catch (err) {
-      lastError = `Fromni: ${err.message}`;
+      fail(audible, `Fromni: ${err.message}`);
     }
   }
 
@@ -415,11 +452,12 @@ async function deliver(item, clinicId = null, medCenterId = null) {
     return item.update({
       plannedAt: at,
       postponedFrom: item.postponedFrom || now,
-      error: `тихие часы, отложено до ${at.toLocaleString('ru-RU')}`
+      error: `тихие часы, отложено до ${at.toLocaleString('ru-RU')}`,
+      attempts
     });
   }
 
-  return item.update({ status: 'failed', error: lastError || 'ни одна ступень каскада не сработала' });
+  return item.update({ status: 'failed', error: lastError || 'ни одна ступень каскада не сработала', attempts });
 }
 
 /**

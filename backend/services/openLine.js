@@ -1326,6 +1326,87 @@ async function transfer(userId, conversationId, targetUserId, io = null) {
 }
 
 /**
+ * Автозакрытие обращений после тишины (ver. 9.23).
+ *
+ * Разговор, в котором уже давно никто не пишет — ни пациент, ни оператор, —
+ * закрывается сам: иначе он висит в «Моих» и в очереди, пока его не закроют
+ * руками, а закрывать забывают — последняя реплика «спасибо» ответа не требует.
+ * Срок — свой у линии (autoCloseHours), 0 — не закрывать.
+ *
+ * Тишина с обеих сторон — это время последнего сообщения в переписке
+ * (lastMessageAt): его двигают и входящие, и ответы оператора.
+ *
+ * Чего автозакрытие не делает, и почему:
+ *
+ *   • не закрывает обращение, на которое ещё никто не ответил
+ *     (firstReplyAt пуст). Это не угасший разговор, а пациент, который ждёт:
+ *     вопрос, пришедший в девять вечера, к утренней смене тихо исчез бы из
+ *     очереди;
+ *   • не просит оценить работу. Просьба уходит, когда разговор закончил
+ *     оператор; после восьми часов тишины она пришла бы ни к чему и выглядела
+ *     бы как напоминание о себе;
+ *   • не требует темы — выбирать её некому. Такие обращения в показателях
+ *     остаются без темы, как закрытые до справочника.
+ *
+ * Новая реплика пациента после автозакрытия открывает новое обращение в той же
+ * переписке — как после обычного закрытия.
+ */
+const AUTO_CLOSE_BATCH = 200;
+
+async function autoCloseIdle(io = null) {
+  const rows = await sequelize.query(`
+    SELECT c.id, c."lastMessageAt", s.id AS "sessionId", l."autoCloseHours"
+    FROM omni_conversations c
+    JOIN omni_lines l ON l.id = c."lineId"
+    JOIN omni_sessions s ON s."conversationId" = c.id AND s."closedAt" IS NULL
+    WHERE c.status IN ('queued', 'assigned')
+      AND l."autoCloseHours" > 0
+      AND s."firstReplyAt" IS NOT NULL
+      AND c."lastMessageAt" < NOW() - make_interval(hours => l."autoCloseHours")
+    ORDER BY c."lastMessageAt"
+    LIMIT ${AUTO_CLOSE_BATCH}
+  `, { type: sequelize.QueryTypes.SELECT });
+
+  let closed = 0;
+  for (const row of rows) {
+    const now = new Date();
+    const done = await sequelize.transaction(async (tx) => {
+      // Условие на lastMessageAt — защита от гонки: если пациент написал между
+      // выборкой и закрытием, обращение живо, и закрывать его нельзя.
+      const [changed] = await OmniConversation.update(
+        { status: 'closed', closedAt: now, closedBy: null },
+        {
+          where: { id: row.id, status: { [Op.in]: ['queued', 'assigned'] }, lastMessageAt: row.lastMessageAt },
+          transaction: tx
+        }
+      );
+      if (!changed) return false;
+
+      await OmniSession.update(
+        { closedAt: now, closedBy: null },
+        { where: { id: row.sessionId, closedAt: null }, transaction: tx }
+      );
+      // Отметка в ленте: без неё закрытое без оператора обращение выглядело бы
+      // так, будто его закрыл тот, кто вёл, — а он этого не делал.
+      await OmniMessage.create({
+        conversationId: row.id,
+        sessionId: row.sessionId,
+        direction: 'sys',
+        text: `Обращение закрыто автоматически: ${row.autoCloseHours} ч без сообщений`
+      }, { transaction: tx });
+      return true;
+    });
+
+    if (done) {
+      closed++;
+      const conversation = await OmniConversation.findByPk(row.id);
+      if (conversation) await announce(io, conversation, 'openline:changed');
+    }
+  }
+  return { closed, more: rows.length === AUTO_CLOSE_BATCH };
+}
+
+/**
  * Отметить переписку прочитанной (ver. 8.27).
  *
  * Отдельным вызовом, а не побочным действием загрузки переписки: чат остаётся
@@ -1555,6 +1636,7 @@ module.exports = {
   assign,
   close,
   markRead,
+  autoCloseIdle,
   listTopics,
   createTopic,
   updateTopic,

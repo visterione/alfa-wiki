@@ -491,12 +491,25 @@ router.put('/lines/:id', authenticate, requireAdmin, async (req, res) => {
     const line = await OmniLine.findByPk(req.params.id);
     if (!line) return res.status(404).json({ error: 'Линия не найдена' });
 
-    const { name, medCenterId, offlineReply, isActive } = req.body || {};
+    const { name, medCenterId, offlineReply, isActive, autoCloseHours } = req.body || {};
+
+    // Срок автозакрытия (ver. 9.23): целые часы, 0 — выключено. Потолок —
+    // месяц: больше уже не «через сколько закрыть», а «никогда», и для этого
+    // есть ноль.
+    let hours = line.autoCloseHours;
+    if (autoCloseHours !== undefined) {
+      hours = Number(autoCloseHours);
+      if (!Number.isInteger(hours) || hours < 0 || hours > 720) {
+        return res.status(400).json({ error: 'Срок автозакрытия — целое число часов от 0 до 720' });
+      }
+    }
+
     await line.update({
       name: name !== undefined ? name : line.name,
       medCenterId: medCenterId !== undefined ? medCenterId : line.medCenterId,
       offlineReply: offlineReply !== undefined ? offlineReply : line.offlineReply,
-      isActive: isActive !== undefined ? isActive : line.isActive
+      isActive: isActive !== undefined ? isActive : line.isActive,
+      autoCloseHours: hours
     });
     res.json(line);
   } catch (err) {

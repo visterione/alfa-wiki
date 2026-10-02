@@ -502,6 +502,48 @@ const DELIVERED = ['delivered', 'read'];
 const FAILED = ['rejected', 'undelivered', 'expired', 'deleted', 'error'];
 
 /**
+ * Отчёт провайдера — в путь по каскаду (ver. 9.23).
+ *
+ * Каскад Имобиса (ВКонтакте → SMS) прогоняет сам Имобис, и у нас его ступени
+ * отмечены «передано» (handed). Если отчёт называет канал, которым дошло или не дошло,
+ * отмечаем ровно его, а ступени до него — непрошедшими: каскад идёт дальше,
+ * только когда предыдущая не доставила. Без канала в отчёте и при маршруте из
+ * одной ступени исход относится к ней; иначе какой канал сработал — неизвестно,
+ * и выдумывать это нельзя: ступени остаются «передано», а итог виден значком
+ * доставки.
+ */
+function withReport(attempts, report, status) {
+  const list = Array.isArray(attempts) ? attempts.map(a => ({ ...a })) : [];
+  const handed = list.filter(a => a.result === 'handed' || a.result === 'delivered' || a.result === 'undelivered');
+  if (!handed.length) return list;
+
+  const outcome = DELIVERED.includes(status) ? 'delivered' : (FAILED.includes(status) ? 'undelivered' : null);
+  if (!outcome) return list;
+
+  const channel = String(report.channel || report.channel_type || report.type || '').toLowerCase();
+  let target = channel ? handed.find(a => a.step === `imobis:${channel}`) : null;
+  if (!target && handed.length === 1) target = handed[0];
+  if (!target) return list;
+
+  target.result = outcome;
+  target.at = new Date().toISOString();
+  if (outcome === 'undelivered') target.error = report.error || report.error_code || `провайдер: ${status}`;
+  // Ступени до сработавшей — не доставили, иначе каскад до неё не дошёл бы. А
+  // после неё — не понадобились: журнал их не рисует, запасной канал, до
+  // которого дело не дошло, в пути сообщения не участвовал.
+  if (outcome === 'delivered') {
+    let after = false;
+    for (const a of handed) {
+      if (a === target) { after = true; continue; }
+      if (a.result !== 'handed') continue;
+      if (after) a.result = 'unused';
+      else { a.result = 'undelivered'; a.error = a.error || 'каскад перешёл к следующему каналу'; }
+    }
+  }
+  return list;
+}
+
+/**
  * Приёмник статусов доставки. Адрес передаётся провайдеру в самом запросе на
  * отправку — этим прямое подключение и отличается от агрегатора, у которого
  * судьба сообщения оставалась невидимой.
@@ -534,6 +576,7 @@ router.all('/report/:secret', express.json(), express.urlencoded({ extended: tru
       await item.update({
         deliveryStatus: status,
         deliveredAt: DELIVERED.includes(status) ? new Date() : item.deliveredAt,
+        attempts: withReport(item.attempts, report, status),
         // Причину отказа сохраняем в тот же столбец, где живут наши ошибки:
         // оператору всё равно, на каком этапе не сложилось.
         error: FAILED.includes(status)
@@ -541,7 +584,9 @@ router.all('/report/:secret', express.json(), express.urlencoded({ extended: tru
           : item.error
       });
 
-      console.log(`[report] ${item.id} → ${status}`);
+      // Отчёт целиком — один раз в лог (ver. 9.23): формат Имобиса у нас не
+      // описан, и есть ли в нём канал доставки, видно только отсюда.
+      console.log(`[report] ${item.id} → ${status}`, JSON.stringify(report).slice(0, 500));
     }
   } catch (err) {
     console.error('[report] не смог разобрать отчёт:', err.message);
@@ -1109,11 +1154,17 @@ async function clinicPairs() {
   const pairs = [];
   for (const row of rows) {
     const mc = await branches.find(row);
-    pairs.push({ ...row, medCenterId: mc ? mc.id : null, medCenterName: mc ? mc.name : null });
+    pairs.push({ ...row, medCenterId: mc ? mc.id : null, medCenter: brief(mc) });
   }
   clinicMap = { at: Date.now(), pairs };
   return pairs;
 }
+
+// Медцентр строки для журнала — с логотипом: в строке он показывается знаком,
+// а не названием (ver. 9.23).
+const brief = (mc) => (mc
+  ? { id: mc.id, name: mc.name, logoUrl: mc.logoUrl || null, logoSquareUrl: mc.logoSquareUrl || null, color: mc.color || null }
+  : null);
 
 const pairKey = (clinicId, clinicName) => `${clinicId ?? ''}|${clinicName ?? ''}`;
 
@@ -1187,7 +1238,7 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       // Клиника появилась позже, чем собиралась карта, — сопоставляем на месте.
       if (!pair) {
         const mc = await branches.find(a);
-        pair = { medCenterId: mc ? mc.id : null, medCenterName: mc ? mc.name : null };
+        pair = { medCenterId: mc ? mc.id : null, medCenter: brief(mc) };
       }
       mcByAppt.set(a.apptId, pair);
     }
@@ -1195,7 +1246,7 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       const plain = r.get({ plain: true });
       const mc = mcByAppt.get(plain.apptId);
       plain.medCenterId = mc ? mc.medCenterId : null;
-      plain.medCenterName = mc ? mc.medCenterName : null;
+      plain.medCenter = mc ? mc.medCenter : null;
       return plain;
     });
 
@@ -1217,7 +1268,7 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
 
     // Справочник для отбора — те же филиалы, что на остальных вкладках.
     const medCenters = await MedCenter.findAll({
-      attributes: ['id', 'name'],
+      attributes: ['id', 'name', 'logoUrl', 'logoSquareUrl', 'color'],
       where: { servesPatients: true, isActive: true },
       order: [['name', 'ASC']]
     });
