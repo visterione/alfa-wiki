@@ -497,52 +497,9 @@ router.post('/templates/preview', authenticate, requireAdmin, async (req, res) =
 
 // ── Отчёты о доставке ─────────────────────────────────────────────────────
 
-// Соответствие статусов провайдера нашим. «sent» у них означает «передано
-// оператору, окончательный статус не получен» — это ещё не доставка.
-const DELIVERED = ['delivered', 'read'];
-const FAILED = ['rejected', 'undelivered', 'expired', 'deleted', 'error'];
-
-/**
- * Отчёт провайдера — в путь по каскаду (ver. 9.23).
- *
- * Каскад Имобиса (ВКонтакте → SMS) прогоняет сам Имобис, и у нас его ступени
- * отмечены «передано» (handed). Если отчёт называет канал, которым дошло или не дошло,
- * отмечаем ровно его, а ступени до него — непрошедшими: каскад идёт дальше,
- * только когда предыдущая не доставила. Без канала в отчёте и при маршруте из
- * одной ступени исход относится к ней; иначе какой канал сработал — неизвестно,
- * и выдумывать это нельзя: ступени остаются «передано», а итог виден значком
- * доставки.
- */
-function withReport(attempts, report, status) {
-  const list = Array.isArray(attempts) ? attempts.map(a => ({ ...a })) : [];
-  const handed = list.filter(a => a.result === 'handed' || a.result === 'delivered' || a.result === 'undelivered');
-  if (!handed.length) return list;
-
-  const outcome = DELIVERED.includes(status) ? 'delivered' : (FAILED.includes(status) ? 'undelivered' : null);
-  if (!outcome) return list;
-
-  const channel = String(report.channel || report.channel_type || report.type || '').toLowerCase();
-  let target = channel ? handed.find(a => a.step === `imobis:${channel}`) : null;
-  if (!target && handed.length === 1) target = handed[0];
-  if (!target) return list;
-
-  target.result = outcome;
-  target.at = new Date().toISOString();
-  if (outcome === 'undelivered') target.error = report.error || report.error_code || `провайдер: ${status}`;
-  // Ступени до сработавшей — не доставили, иначе каскад до неё не дошёл бы. А
-  // после неё — не понадобились: журнал рисует их серыми, как каналы, до
-  // которых каскад не дошёл.
-  if (outcome === 'delivered') {
-    let after = false;
-    for (const a of handed) {
-      if (a === target) { after = true; continue; }
-      if (a.result !== 'handed') continue;
-      if (after) a.result = 'unused';
-      else { a.result = 'undelivered'; a.error = a.error || 'каскад перешёл к следующему каналу'; }
-    }
-  }
-  return list;
-}
+// Разбор отчёта провайдера — в services/notifications/deliveryReport.js
+// (вынесен в 9.34 ради тестов): от него зависит, что журнал считает доставленным.
+const { DELIVERED, FAILED, withReport, statusAfterReport } = require('../services/notifications/deliveryReport');
 
 /**
  * Приёмник статусов доставки. Адрес передаётся провайдеру в самом запросе на
@@ -574,10 +531,12 @@ router.all('/report/:secret', express.json(), express.urlencoded({ extended: tru
       const item = await Outbox.findOne({ where });
       if (!item) continue;
 
+      const attempts = withReport(item.attempts, report, status);
       await item.update({
+        status: statusAfterReport(item.status, attempts, status),
         deliveryStatus: status,
         deliveredAt: DELIVERED.includes(status) ? new Date() : item.deliveredAt,
-        attempts: withReport(item.attempts, report, status),
+        attempts,
         // Причину отказа сохраняем в тот же столбец, где живут наши ошибки:
         // оператору всё равно, на каком этапе не сложилось.
         error: FAILED.includes(status)
@@ -1279,7 +1238,12 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       plain.medCenterId = mc ? mc.medCenterId : null;
       plain.medCenter = mc ? mc.medCenter : null;
       if (!(Array.isArray(plain.attempts) && plain.attempts.length)) {
-        plain.cascade = await cascadeFor(plain.event, plain.medCenterId);
+        // Проверочная отправка идёт мимо каскада — на ступень, названную явно
+        // (sendTest). Восстанавливать её цепочку по каскаду сети значило бы
+        // рисовать каналы, которых она не касалась (ver. 9.34).
+        plain.cascade = plain.event === 'test'
+          ? (plain.channel ? String(plain.channel).split('→') : [])
+          : await cascadeFor(plain.event, plain.medCenterId);
       }
       out.push(plain);
     }

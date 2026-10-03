@@ -2571,6 +2571,24 @@ function sentText(row) {
 }
 
 /**
+ * Сколько SMS стоило сообщение (ver. 9.34). Считается по тексту, который
+ * фактически ушёл SMS, с подставленными полями, — во вкладке «Тексты» тот же
+ * счётчик приблизителен, потому что длина имени и даты там ещё неизвестна.
+ *
+ * Только у ступени, которой SMS действительно отправлена: доставлена, ушла или
+ * не дошла до абонента — платим во всех трёх случаях. Ступени, до которой
+ * каскад не дошёл, платить не за что, и цифра у неё вводила бы в заблуждение.
+ */
+const SMS_BILLED = ['delivered', 'sent', 'undelivered'];
+
+function smsPartsOf(row) {
+  const byChannel = row.channelTexts && typeof row.channelTexts === 'object' ? row.channelTexts : {};
+  const text = (byChannel.sms && String(byChannel.sms).trim()) ? byChannel.sms
+    : (row.smsText || (Object.keys(byChannel).length ? '' : row.text));
+  return text ? smsCost(text).parts : 0;
+}
+
+/**
  * Цепочка каскада (ver. 9.23). Читается слева направо, как шло сообщение:
  * «MAX не прошёл → Telegram не прошёл → SMS доставлена». Причина неудачи — в
  * подсказке у кружка.
@@ -2590,7 +2608,9 @@ function CascadeChain({ row }) {
       {chain.map((a, i) => {
         const view = STEP_RESULT_VIEW[a.result] || STEP_RESULT_VIEW.handed;
         const key = glyphOfStep(a.step);
+        const parts = key === 'sms' && SMS_BILLED.includes(a.result) ? smsPartsOf(row) : 0;
         const title = `${STEP_TITLES[key] || a.step}: ${view.label}${a.error ? ` — ${a.error}` : ''}`
+          + (parts ? `\n${parts} SMS к оплате` : '')
           + (a.restored ? '\n(восстановлено по нынешнему каскаду: эта отправка была до записи пути)' : '');
         return (
           <React.Fragment key={`${a.step}-${i}`}>
@@ -2601,6 +2621,7 @@ function CascadeChain({ row }) {
               title={title}
             >
               <ChannelGlyph channel={key} size={16} />
+              {parts > 0 && <span className="ola-chain-parts">{parts}</span>}
             </span>
           </React.Fragment>
         );
@@ -2878,14 +2899,18 @@ function MessagesLog() {
                 значком в нижнем углу, без подписи: подпись в подсказке, а цвет
                 и знак те же, что у плиток сводки. */}
             <div className="ola-msg-side">
-              <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
-              <CascadeChain row={row} />
-              <span
-                className={`ola-msg-status ${view.cls}`}
-                title={`${view.label}${row.deliveryStatus ? ` · отчёт провайдера: ${row.deliveryStatus}` : ''}`}
-              >
-                <Icon size={14} />
+              {/* Итог — рядом со временем (ver. 9.34): «когда и чем кончилось»
+                  читается одним взглядом, а цепочка под ними объясняет как. */}
+              <span className="ola-msg-when">
+                <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
+                <span
+                  className={`ola-msg-status ${view.cls}`}
+                  title={`${view.label}${row.deliveryStatus ? ` · отчёт провайдера: ${row.deliveryStatus}` : ''}`}
+                >
+                  <Icon size={13} />
+                </span>
               </span>
+              <CascadeChain row={row} />
             </div>
           </article>
         );

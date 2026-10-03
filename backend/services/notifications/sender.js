@@ -325,7 +325,17 @@ async function deliver(item, clinicId = null, medCenterId = null) {
     for (const step of order) {
       if (!attempts.some(a => a.step === step)) note(step, rest, error);
     }
-    return attempts;
+    return inOrder();
+  };
+  // Путь сохраняется в порядке каскада, а не в порядке записи (ver. 9.34).
+  // Записываются ступени не всегда по очереди: выпавшая из маршрута Имобиса
+  // (Notify без группы ВК) и промолчавшая в тихие часы отмечаются раньше
+  // переданных провайдеру. Каскад «SMS → Notify» из-за этого ложился в журнал
+  // как «Notify → SMS» — ровно наоборот тому, что настроено.
+  const inOrder = () => attempts.sort((a, b) => rank(a.step) - rank(b.step));
+  const rank = (step) => {
+    const i = order.indexOf(step);
+    return i < 0 ? order.length : i;
   };
 
   for (const group of groups) {
@@ -476,7 +486,7 @@ async function deliver(item, clinicId = null, medCenterId = null) {
       plannedAt: at,
       postponedFrom: item.postponedFrom || now,
       error: `тихие часы, отложено до ${at.toLocaleString('ru-RU')}`,
-      attempts
+      attempts: inOrder()
     });
   }
 

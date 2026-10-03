@@ -239,6 +239,8 @@
     "migrate:9.30:check": "node scripts/runSqlMigration.js 9.30 --check",
     "migrate:9.33": "node scripts/runSqlMigration.js 9.33",
     "migrate:9.33:check": "node scripts/runSqlMigration.js 9.33 --check",
+    "migrate:9.34": "node scripts/migrate-9.34-outbox.js",
+    "migrate:9.34:check": "node scripts/migrate-9.34-outbox.js --check",
     "mail:sync": "node scripts/mailSync.js",
     "mail:account": "node scripts/mailAccount.js"
   },
