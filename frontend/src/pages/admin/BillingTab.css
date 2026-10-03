@@ -1,81 +1,68 @@
 /* Счета Имобиса (ver. 9.33).
  *
- * Цвета серий — проверенная категориальная палитра на шесть слотов (порядок
- * менять нельзя: проверка различимости шла по соседним парам). Тёмная тема —
- * те же оттенки, подобранные под тёмный фон, а не автоматическое
- * переворачивание светлых. */
-
-.bill-tab {
-  --bill-s1: #2a78d6;
-  --bill-s2: #eb6834;
-  --bill-s3: #1baf7a;
-  --bill-s4: #eda100;
-  --bill-s5: #e87ba4;
-  --bill-s6: #008300;
-  /* Зазор между сегментами стека — цвета подложки карточки. */
-  --bill-surface: var(--bg-primary);
-}
-
-:root[data-theme='dark'] .bill-tab {
-  --bill-s1: #3987e5;
-  --bill-s2: #d95926;
-  --bill-s3: #199e70;
-  --bill-s4: #c98500;
-  --bill-s5: #d55181;
-  --bill-s6: #008300;
-}
+ * Цвета серий — фирменные цвета медцентров из их настроек, приходят с данными
+ * (см. BillingTab.js). Своей палитры у вкладки нет. */
 
 /* ── Верхняя строка ───────────────────────────────────────────────────────*/
 
 .bill-toolbar {
   display: flex;
   align-items: center;
-  gap: 28px;
-  flex-wrap: wrap;
-  margin-bottom: 18px;
-}
-
-.bill-stat { display: flex; flex-direction: column; gap: 2px; }
-.bill-stat span {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-.bill-stat b {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.bill-toolbar-side {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
+  justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  margin-bottom: 18px;
 }
 
 .bill-muted { font-size: 12px; color: var(--text-tertiary); }
 
 /* ── График ───────────────────────────────────────────────────────────────*/
 
-.bill-legend {
+.bill-chart {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  margin-bottom: 10px;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.bill-chart-plot { flex: 1; min-width: 0; }
+
+/* Легенда — столбцом слева и кнопками: нажатие прячет медцентр с графика. */
+.bill-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 176px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .bill-legend-item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
 }
+
+.bill-legend-item:hover { background: var(--bg-secondary); }
+.bill-legend-item:focus-visible { outline: none; border-color: var(--accent-400); }
+
+/* Спрятанный медцентр не исчезает из легенды — иначе его нечем вернуть. */
+.bill-legend-item.off { opacity: 0.4; }
+.bill-legend-item.off .bill-legend-name { text-decoration: line-through; }
+
+.bill-legend-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .bill-dot {
   display: inline-block;
@@ -84,7 +71,25 @@
   border-radius: 3px;
   flex-shrink: 0;
 }
-.bill-dot.lg { width: 11px; height: 11px; border-radius: 4px; }
+
+/* Знак медцентра — логотип или буква на фирменном цвете (MedCenterMark) — в
+   кольце цвета серии: по нему логотип связывается со столбиками графика. */
+.bill-ring {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--bill-ring);
+}
+
+.bill-mark {
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+  font-size: 10px;
+}
+.bill-mark.is-letter { padding: 0; }
+.bill-ring.lg .bill-mark { width: 26px; height: 26px; font-size: 12px; }
 
 .bill-tip {
   min-width: 190px;
@@ -110,10 +115,17 @@
 
 .bill-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
 .bill-grid .ola-card { margin-bottom: 0; }
+
+/* «Пополнять не нужно» — значком в правом углу шапки. */
+.bill-head-ok {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--green-600, var(--green-700));
+}
 
 .bill-figures {
   display: flex;
@@ -138,14 +150,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
   margin-top: 14px;
 }
 
 .bill-amount { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
-.bill-amount .ola-input { width: 130px; font-variant-numeric: tabular-nums; }
-
-.bill-rec { font-variant-numeric: tabular-nums; }
+.bill-amount .ola-input { width: 150px; font-variant-numeric: tabular-nums; }
 
 .bill-job { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
 .bill-job.wait { color: var(--amber-700); }
@@ -172,9 +181,17 @@
 .bill-loading { display: flex; justify-content: center; padding: 48px 0; color: var(--text-tertiary); }
 .bill-empty { color: var(--text-secondary); font-size: 13.5px; }
 
+@media (max-width: 1180px) {
+  .bill-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 768px) {
-  .bill-toolbar { gap: 18px; }
-  .bill-toolbar-side { margin-left: 0; width: 100%; }
-  .bill-toolbar-side .ola-btn.primary { flex: 1; justify-content: center; }
+  .bill-toolbar .ola-btn.primary { flex: 1; justify-content: center; }
   .bill-grid { grid-template-columns: 1fr; }
+
+  /* На телефоне легенде слева места нет — она уходит над графиком строкой. */
+  .bill-chart { flex-direction: column; gap: 10px; }
+  .bill-legend { width: auto; flex-direction: row; flex-wrap: wrap; }
+  .bill-legend li { flex: 0 0 auto; }
+  .bill-legend-item { width: auto; padding: 4px 8px; }
 }

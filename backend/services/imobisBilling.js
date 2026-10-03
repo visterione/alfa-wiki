@@ -101,7 +101,7 @@ function cabinetPassword(cabinetConfig) {
 /** Филиалы, у которых есть хоть что-то от Имобиса: токен или вход в кабинет. */
 async function accounts() {
   const medCenters = await MedCenter.findAll({
-    attributes: ['id', 'name', 'color'],
+    attributes: ['id', 'name', 'color', 'logoUrl', 'logoSquareUrl'],
     where: { servesPatients: true },
     order: [['name', 'ASC']]
   });
@@ -116,6 +116,8 @@ async function accounts() {
         medCenterId: mc.id,
         name: mc.name,
         color: mc.color || null,
+        logoUrl: mc.logoUrl || null,
+        logoSquareUrl: mc.logoSquareUrl || null,
         token: own.token || '',
         sandbox: !!own.sandbox,
         login: cab.login || '',
@@ -353,6 +355,8 @@ async function overview() {
       medCenterId: a.medCenterId,
       name: a.name,
       color: a.color,
+      logoUrl: a.logoUrl,
+      logoSquareUrl: a.logoSquareUrl,
       login: a.login,
       cabinetReady: !!(a.login && a.cabinet.passwordEnc),
       balance,
