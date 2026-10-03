@@ -1030,15 +1030,16 @@ button.ola-add { display: inline-flex; align-items: center; gap: 6px; }
   white-space: nowrap;
 }
 
-/* Итог — значком в нижнем углу, без подписи. */
+/* Итог — значком сразу после времени отправки (ver. 9.34), без подписи. */
+.ola-msg-when { display: inline-flex; align-items: center; gap: 8px; }
 .ola-msg-status {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-top: auto;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 .ola-msg-status.ok    { background: var(--green-100); color: var(--green-700); }
 .ola-msg-status.wait  { background: var(--amber-100); color: var(--amber-700); }
@@ -1079,6 +1080,28 @@ button.ola-add { display: inline-flex; align-items: center; gap: 6px; }
   transition: opacity 0.15s;
 }
 .ola-chain-step svg { display: block; }
+
+/* Сколько SMS стоило сообщение (ver. 9.34) — цифрой в правом верхнем углу
+   кружка SMS, как счётчик на значке приложения. */
+.ola-chain-step { position: relative; }
+.ola-chain-parts {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
 
 /* SMS и Notify своей марки не имеют — те же токены, что у их знаков в
    редакторе каскада (.ch-logo-sms, .ch-logo-notify). */
@@ -1189,7 +1212,7 @@ button.ola-add { display: inline-flex; align-items: center; gap: 6px; }
   .ola-fsel-btn { width: 100%; max-width: none; }
   .ola-row-card.ola-msg-card { flex-direction: column; gap: 8px; }
   .ola-msg-side { flex-direction: row; align-items: center; }
-  .ola-msg-status { margin-top: 0; margin-left: auto; }
+  .ola-msg-when { margin-left: auto; order: 2; }
 }
 
 /* ══ Добавлено в 8.03 ═════════════════════════════════════════════════════
