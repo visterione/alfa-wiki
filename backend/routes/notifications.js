@@ -30,6 +30,7 @@ const doctorBlocklist = require('../services/notifications/doctorBlocklist');
 const aiCall = require('../services/notifications/aiCall');
 const lptracker = require('../services/notifications/lptracker');
 const imobis = require('../services/messengers/imobis');
+const imobisBilling = require('../services/imobisBilling');
 const { NotifOutbox: Outbox } = require('../models');
 
 const router = express.Router();
@@ -776,10 +777,7 @@ router.get('/branches/:medCenterId/imobis', authenticate, requireAdmin, async (r
     }
 
     const data = balanceResult.value;
-    // Ответ у них не типизирован: в разных версиях приходило и число, и строка,
-    // и объект. Приводим к числу здесь, чтобы интерфейс не гадал.
-    const raw = data && (data.balance != null ? data.balance : data.result);
-    const value = Number(String(raw).replace(',', '.'));
+    const value = imobis.balanceValue(data);
 
     const senders = sendersResult.status === 'fulfilled'
       ? sendersResult.value
@@ -797,7 +795,7 @@ router.get('/branches/:medCenterId/imobis', authenticate, requireAdmin, async (r
       : [];
 
     res.json({
-      balance: Number.isFinite(value) ? value : null,
+      balance: value,
       currency: (data && data.currency) || 'RUB',
       sandbox: !!config.sandbox,
       templates,
@@ -974,7 +972,12 @@ router.get('/branches', authenticate, requireAdmin, async (req, res) => {
           vkGroup: ownImobis.vkGroup || null,
           sandbox: !!ownImobis.sandbox,
           tokenSet: !!ownImobis.token,
-          tokenTail: ownImobis.token ? `…${String(ownImobis.token).slice(-6)}` : ''
+          tokenTail: ownImobis.token ? `…${String(ownImobis.token).slice(-6)}` : '',
+          // Вход в кабинет для вкладки «Счета» (ver. 9.33). Логин не секрет —
+          // его видно в номере каждого счёта; пароль, как и токен, только
+          // признаком.
+          cabinetLogin: (ownImobis.cabinet && ownImobis.cabinet.login) || '',
+          cabinetPasswordSet: !!(ownImobis.cabinet && ownImobis.cabinet.passwordEnc)
         },
         // Каким путём филиал получает каждое событие (ver. 8.25). Отдаём
         // полную карту, а не только отличия: интерфейсу нужно показать выбор
@@ -1056,6 +1059,22 @@ router.put('/branches/:medCenterId', authenticate, requireAdmin, async (req, res
       }
       if (imobis.sandbox !== undefined) {
         if (imobis.sandbox) next.sandbox = true; else delete next.sandbox;
+      }
+      // Вход в кабинет (ver. 9.33): нужен вкладке «Счета» — API провайдера
+      // не умеет ни счетов, ни расходов. Пароль шифруется, и правило у него то
+      // же, что у токена: стирает только явно присланная пустая строка.
+      if (imobis.cabinetLogin !== undefined || imobis.cabinetPassword !== undefined) {
+        const cabinet = { ...(next.cabinet || {}) };
+        if (imobis.cabinetLogin !== undefined) {
+          const value = String(imobis.cabinetLogin || '').trim().slice(0, 100);
+          if (value) cabinet.login = value; else delete cabinet.login;
+        }
+        if (imobis.cabinetPassword !== undefined) {
+          const value = String(imobis.cabinetPassword || '');
+          for (const k of ['passwordEnc', 'passwordIv', 'passwordTag', 'keyVersion']) delete cabinet[k];
+          if (value) Object.assign(cabinet, imobisBilling.encryptCabinetPassword(value));
+        }
+        if (Object.keys(cabinet).length) next.cabinet = cabinet; else delete next.cabinet;
       }
       patch.imobis = Object.keys(next).length ? next : null;
     }

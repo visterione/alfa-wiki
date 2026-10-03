@@ -4,7 +4,7 @@ import {
   Check, AlertTriangle, Clock, Ban, ArrowUp, ArrowDown, Moon, Send,
   Search, Wallet, Inbox, CalendarPlus, CalendarClock, CalendarX, BellRing,
   Star, FlaskConical, Building2, ChevronDown, ChevronLeft, ChevronRight,
-  ShieldCheck, MonitorSmartphone, Copy, RotateCcw, Trash2, UserPlus, PhoneCall, UserMinus
+  ShieldCheck, MonitorSmartphone, Copy, RotateCcw, Trash2, UserPlus, PhoneCall, UserMinus, Receipt
 } from 'lucide-react';
 import {
   openLine as lineApi, notifications as notifApi, users as usersApi, mis as misApi
@@ -13,6 +13,7 @@ import ChannelLogo, { ChannelGlyph } from '../../components/openline/ChannelLogo
 import { CHANNEL_BRANDS } from '../../components/openline/channelBrands';
 import MedCenterMark from '../../components/openline/MedCenterMark';
 import WidgetTab from './WidgetTab';
+import BillingTab from './BillingTab';
 import toast from 'react-hot-toast';
 import './AdminOpenLine.css';
 
@@ -57,7 +58,10 @@ const TABS = [
   { key: 'log',      label: 'Журнал',   icon: ScrollText },
   // Виджет стоит здесь, а не отдельным разделом: он ведёт в те же боты, что и
   // линия, и заводит его тот же человек, что настраивает их.
-  { key: 'widget',   label: 'Виджет',   icon: MonitorSmartphone }
+  { key: 'widget',   label: 'Виджет',   icon: MonitorSmartphone },
+  // Счета Имобиса (ver. 9.33): деньги той же рассылки, что настраивается во
+  // вкладке «Рассылка», — и вход в кабинет вписывается там же, в карточке филиала.
+  { key: 'billing',  label: 'Счета',    icon: Receipt }
 ];
 
 // Событие узнаётся по значку раньше, чем по названию: карточек на вкладке семь,
@@ -1679,6 +1683,10 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
   const [sender, setSender] = useState(branch.imobis.sender || '');
   const [vkGroup, setVkGroup] = useState(branch.imobis.vkGroup ?? '');
   const [token, setToken] = useState('');
+  // Вход в кабинет — для вкладки «Счета» (ver. 9.33). Пароль, как и токен,
+  // наружу не отдаётся: поле пустое всегда, и уходит он только вписанным заново.
+  const [cabinetLogin, setCabinetLogin] = useState(branch.imobis.cabinetLogin || '');
+  const [cabinetPassword, setCabinetPassword] = useState('');
   const [account, setAccount] = useState(null);
   const [checking, setChecking] = useState(false);
 
@@ -1692,7 +1700,8 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
 
   const senderDirty = sender !== (branch.imobis.sender || '');
   const groupDirty = String(vkGroup) !== String(branch.imobis.vkGroup ?? '');
-  const dirty = senderDirty || groupDirty || !!token.trim();
+  const loginDirty = cabinetLogin.trim() !== (branch.imobis.cabinetLogin || '');
+  const dirty = senderDirty || groupDirty || !!token.trim() || loginDirty || !!cabinetPassword;
 
   const crmDirty = crmProject !== (branch.aiCall?.ownProject ? String(branch.aiCall.projectId) : '')
     || crmFunnel !== (branch.aiCall?.ownProject && branch.aiCall?.funnelId ? String(branch.aiCall.funnelId) : '');
@@ -1711,8 +1720,11 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
     // всегда, и пустая строка на каждом сохранении уносила бы доступ вместе с
     // правкой имени отправителя.
     if (token.trim()) patch.imobis.token = token.trim();
+    if (loginDirty) patch.imobis.cabinetLogin = cabinetLogin.trim();
+    if (cabinetPassword) patch.imobis.cabinetPassword = cabinetPassword;
     await onSave(branch.medCenterId, patch);
     setToken('');
+    setCabinetPassword('');
     setAccount(null);
   };
 
@@ -1822,6 +1834,31 @@ function BranchCard({ branch, open, onToggleOpen, onSave, onChanged }) {
                   checked={!!branch.imobis.sandbox}
                   onChange={v => onSave(branch.medCenterId, { imobis: { sandbox: v } })}
                 >песочница</Switch>
+              </div>
+            </div>
+
+            <div className="ola-row">
+              <div className="ola-field">
+                <label>Логин кабинета</label>
+                <input
+                  className="ola-input" autoComplete="off" placeholder="ns…"
+                  value={cabinetLogin}
+                  onChange={e => setCabinetLogin(e.target.value)}
+                />
+              </div>
+              <div className="ola-field">
+                <label>
+                  Пароль кабинета
+                  {branch.imobis.cabinetPasswordSet
+                    ? <span className="ola-badge">задан</span>
+                    : <span className="ola-badge warn">не задан</span>}
+                </label>
+                <input
+                  className="ola-input" type="password" autoComplete="new-password"
+                  placeholder={branch.imobis.cabinetPasswordSet ? 'впишите новый, чтобы заменить' : 'для вкладки «Счета»'}
+                  value={cabinetPassword}
+                  onChange={e => setCabinetPassword(e.target.value)}
+                />
               </div>
             </div>
 
@@ -3314,6 +3351,7 @@ export default function AdminOpenLine() {
         )}
         {tab === 'log' && <LogTab />}
         {tab === 'widget' && <WidgetTab />}
+        {tab === 'billing' && <BillingTab />}
       </div>
     </div>
   );

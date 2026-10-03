@@ -4129,6 +4129,34 @@ const NotifBranchSettings = sequelize.define('NotifBranchSettings', {
   isEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
 }, { tableName: 'notif_branch_settings', timestamps: true });
 
+// Расход счёта Имобиса по дням (ver. 9.33). API провайдера отдаёт только
+// остаток, поэтому день берётся из краткого отчёта кабинета: строка на филиал ×
+// сутки, сумма в рублях. По операторам — для разбора «куда ушли деньги», в
+// интерфейсе пока только сумма.
+const ImobisSpendDay = sequelize.define('ImobisSpendDay', {
+  medCenterId: { type: DataTypes.UUID, primaryKey: true },
+  day: { type: DataTypes.DATEONLY, primaryKey: true },
+  cost: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+  messages: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  byOperator: { type: DataTypes.JSONB, allowNull: true }
+}, { tableName: 'imobis_spend_days', timestamps: true, createdAt: false });
+
+// Счёт на пополнение, выписанный из портала (ver. 9.33). Живёт неделю: старые
+// заказчику не нужны — при надобности они лежат в кабинете Имобиса. PDF хранится
+// в строке, а не файлом: их шесть в неделю по 50 КБ, и удаляться они должны
+// вместе с записью, а не отдельной уборкой в uploads.
+const ImobisInvoice = sequelize.define('ImobisInvoice', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  medCenterId: { type: DataTypes.UUID, allowNull: false },
+  number: { type: DataTypes.STRING(64), allowNull: false },
+  amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
+  payer: { type: DataTypes.STRING(255), allowNull: true },
+  pdf: { type: DataTypes.BLOB, allowNull: true },
+  paid: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  statusText: { type: DataTypes.STRING(64), allowNull: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, { tableName: 'imobis_invoices', timestamps: true });
+
 // Очередь и журнал в одной таблице: строка создаётся в pending и остаётся
 // навсегда с исходом. На вопрос «почему человек не получил напоминание»
 // отвечать всё равно по ней.
@@ -5433,6 +5461,8 @@ module.exports = {
   NotifAppointment,
   NotifTemplate,
   NotifBranchSettings,
+  ImobisSpendDay,
+  ImobisInvoice,
   NotifOutbox,
   NotifCallRequest,
   NotifVisitRating,

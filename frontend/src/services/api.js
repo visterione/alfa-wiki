@@ -1668,6 +1668,14 @@ export const notifications = {
   checkImobis: (medCenterId) => api.get(`/notifications/branches/${medCenterId}/imobis`)
 };
 
+// Счета Имобиса (ver. 9.33): остатки, расходы по дням, выписка счетов.
+export const imobisBilling = {
+  overview: () => api.get('/imobis-billing'),
+  sync: () => api.post('/imobis-billing/sync'),
+  createInvoices: (items) => api.post('/imobis-billing/invoices', { items }),
+  invoicePdf: (id) => api.get(`/imobis-billing/invoices/${id}/pdf`, { responseType: 'blob' })
+};
+
 // ── Почта (ver. 8.58) ──────────────────────────────────────────────────────
 //
 // Зеркало IMAP-ящиков сети. Ящики заводит администратор, человек получает

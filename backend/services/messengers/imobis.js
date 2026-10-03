@@ -129,6 +129,17 @@ const balance = (organization, sandbox, token) => call(organization, 'POST', '/b
 const info = (organization, sandbox, token) => call(organization, 'POST', '/info', {}, { sandbox, token });
 
 /**
+ * Остаток числом. Ответ /balance у них не типизирован: в разных версиях
+ * приходило и число, и строка с запятой, и объект. Приводим здесь, чтобы
+ * карточка филиала и вкладка «Счета» (ver. 9.33) не разбирали его каждая по-своему.
+ */
+function balanceValue(data) {
+  const raw = data && typeof data === 'object' ? (data.balance != null ? data.balance : data.result) : data;
+  const value = Number(String(raw).replace(',', '.'));
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
  * Имена отправителя, зарегистрированные на аккаунте. Без них SMS не уйдёт, а
  * подобрать имя наугад нельзя: оно проходит модерацию у операторов.
  */
@@ -158,6 +169,7 @@ module.exports = {
   ChannelError,
   send,
   balance,
+  balanceValue,
   info,
   senders,
   templates,

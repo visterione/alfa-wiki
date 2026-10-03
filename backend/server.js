@@ -481,6 +481,7 @@ app.use('/api/mail', require('./routes/mail'));
 app.use('/api/broadcasts', require('./routes/broadcasts'));
 app.use('/api/site-widgets', require('./routes/site-widgets'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/imobis-billing', require('./routes/imobis-billing'));
 // Приём событий от МИС (ver. 7.88). Маршрут публичный намеренно: Renovatio
 // ходит без нашего токена, подлинность проверяется секретом в самом пути.
 app.use('/api/mis-events', require('./routes/mis-events'));
@@ -666,6 +667,7 @@ async function startServer() {
       require('./cron/submissionsRetryCron');
       require('./cron/competitorPricesCron');
       require('./cron/vacancySlaCron');
+      require('./cron/imobisBillingCron');
       // Автозакрытие обращений после тишины (ver. 9.23) — с сокетом, чтобы
       // закрытое пропало у операторов с экрана сразу.
       require('./cron/openLineAutoCloseCron').start(io);
