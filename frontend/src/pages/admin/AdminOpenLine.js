@@ -14,6 +14,14 @@ import { CHANNEL_BRANDS } from '../../components/openline/channelBrands';
 import MedCenterMark from '../../components/openline/MedCenterMark';
 import { PieChart, Pie, Cell, Tooltip } from 'recharts';
 import renovatioLogo from '../../assets/images/renovatio.png';
+import mtsLogo from '../../assets/operators/mts.png';
+import beelineLogo from '../../assets/operators/beeline.png';
+import megafonLogo from '../../assets/operators/megafon.png';
+import t2Logo from '../../assets/operators/t2.png';
+import yotaLogo from '../../assets/operators/yota.png';
+import rostelecomLogo from '../../assets/operators/rostelecom.png';
+import sberLogo from '../../assets/operators/sbermobile.png';
+import tmobileLogo from '../../assets/operators/tmobile.png';
 import WidgetTab from './WidgetTab';
 import BillingTab from './BillingTab';
 import toast from 'react-hot-toast';
@@ -2903,33 +2911,46 @@ const medCenterOptions = (list) => (list || []).map(mc => ({
 
 // ── Диаграммы над журналом (ver. 9.34) ────────────────────────────────────
 
-// Операторам цвет закреплён за именем, а не за местом в списке: доли меняются
-// от дня к дню, и МТС не должен перекрашиваться оттого, что сегодня его
-// обогнал Билайн. Оттенки — из той же проверенной палитры, что у счетов;
-// всё, чего здесь нет, — серым «прочим».
-const OPERATOR_COLORS = {
-  'МТС': 'var(--jt-op-1)',
-  'Билайн': 'var(--jt-op-2)',
-  'Мегафон/Yota': 'var(--jt-op-3)',
-  'TELE2': 'var(--jt-op-4)',
-  'Тинькофф Мобайл': 'var(--jt-op-5)',
-  'Ростелеком': 'var(--jt-op-6)'
-};
+// Операторы SMS (ver. 9.34) — восемь брендов и «прочие», как их сводит
+// справочник (backend/scripts/importDefRegistry.js).
+//
+// Цвета — проверенная категориальная палитра на восемь мест, разложенная по
+// брендам с оглядкой на фирменные: МТС красный, МегаФон зелёный, Билайн жёлтый.
+// Восемь — предел: девятый оттенок уже не отличить, поэтому всё остальное —
+// серые «прочие».
+//
+// Порядок в круге — порядок палитры, а не по убыванию доли: различимость
+// проверена именно для этих соседей, а красный рядом с зелёным при
+// дальтонизме сливается. Легенда — по значимости (legend), сначала большая
+// четвёрка: с кругом её связывают логотип и кольцо цвета, а не место в списке.
+const OPERATOR_VIEW = [
+  { key: 'Yota',       logo: yotaLogo,       color: 'var(--jt-op-yota)' },
+  { key: 'Ростелеком', logo: rostelecomLogo, color: 'var(--jt-op-rt)' },
+  { key: 'СберМобайл', logo: sberLogo,       color: 'var(--jt-op-sber)' },
+  { key: 'Билайн',     logo: beelineLogo,    color: 'var(--jt-op-beeline)' },
+  { key: 'Т2',         logo: t2Logo,         color: 'var(--jt-op-t2)' },
+  { key: 'МегаФон',    logo: megafonLogo,    color: 'var(--jt-op-megafon)' },
+  { key: 'Т-Мобайл',   logo: tmobileLogo,    color: 'var(--jt-op-tmobile)' },
+  { key: 'МТС',        logo: mtsLogo,        color: 'var(--jt-op-mts)' },
+  { key: 'Прочие',     logo: null,           color: 'var(--n-400)' }
+];
+const OPERATOR_LEGEND = ['МТС', 'МегаФон', 'Билайн', 'Т2', 'Yota', 'Ростелеком', 'СберМобайл', 'Т-Мобайл', 'Прочие'];
 
 function DonutTip({ active, payload, sum }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
     <div className="jt-tip">
-      <span className="jt-dot" style={{ background: d.color }} />
+      {d.logo ? <img className="jt-op-logo" src={d.logo} alt="" style={{ '--jt-ring': d.color }} /> : <span className="jt-dot" style={{ background: d.color }} />}
       {d.label}: <b>{d.value.toLocaleString('ru-RU')}</b> · {Math.round(d.value / sum * 100)}%
     </div>
   );
 }
 
-function Donut({ title, data, empty }) {
+function Donut({ title, data, empty, legend = null }) {
   const rows = data.filter(d => d.value > 0);
   const sum = rows.reduce((s, d) => s + d.value, 0);
+  const listed = legend ? legend.map(key => rows.find(d => d.key === key)).filter(Boolean) : rows;
   return (
     <section className="jt-donut">
       <h4>{title}</h4>
@@ -2949,9 +2970,14 @@ function Donut({ title, data, empty }) {
             <span className="jt-donut-sum">{sum.toLocaleString('ru-RU')}</span>
           </div>
           <ul className="jt-donut-legend">
-            {rows.map(d => (
+            {listed.map(d => (
               <li key={d.key}>
-                <span className="jt-dot" style={{ background: d.color }} />
+                {/* Логотип — в кольце цвета своего сегмента: по нему легенда
+                    связывается с кругом, а цвет без знака оператора при
+                    дальтонизме не отличить от соседнего. */}
+                {d.logo
+                  ? <img className="jt-op-logo" src={d.logo} alt="" style={{ '--jt-ring': d.color }} />
+                  : <span className="jt-dot" style={{ background: d.color }} />}
                 <span className="jt-lg-name">{d.label}</span>
                 <span className="jt-lg-val">{d.value.toLocaleString('ru-RU')}</span>
                 <span className="jt-lg-pct">{Math.round(d.value / sum * 100)}%</span>
@@ -2991,19 +3017,24 @@ function MessageStats({ from, to, medCenterId, event }) {
     // Каскад Имобиса без отчёта: ушло, но каким из его каналов — неизвестно.
     { key: 'unknown',  label: 'ждём отчёт', value: stats.unknownChannel || 0,  color: 'var(--n-300)' }
   ];
-  const ops = Object.entries(stats.operators || {}).sort((a, b) => b[1] - a[1]);
-  const known = ops.filter(([name]) => OPERATOR_COLORS[name]);
-  const other = ops.filter(([name]) => !OPERATOR_COLORS[name]).reduce((s, [, n]) => s + n, 0);
-  const operators = [
-    ...known.map(([name, n]) => ({ key: name, label: name, value: n, color: OPERATOR_COLORS[name] })),
-    { key: 'other', label: 'прочие', value: other, color: 'var(--n-400)' }
-  ];
+  // Оператор, которого нет среди четырёх (справочник поправят), — в «прочие»,
+  // а не новым цветом: девятый оттенок здесь не придумывается.
+  const ops = { ...(stats.operators || {}) };
+  const known = new Set(OPERATOR_VIEW.map(o => o.key));
+  const stray = Object.entries(ops).filter(([name]) => !known.has(name)).reduce((s, [, n]) => s + n, 0);
+  const operators = OPERATOR_VIEW.map(o => ({
+    key: o.key,
+    label: o.key,
+    logo: o.logo,
+    color: o.color,
+    value: (ops[o.key] || 0) + (o.key === 'Прочие' ? stray : 0)
+  }));
 
   return (
     <div className="jt-donuts">
       <Donut title="Статусы" data={statuses} empty="Отправок нет" />
       <Donut title="Каналы доставки" data={channels} empty="Доставленных нет" />
-      <Donut title="Операторы SMS" data={operators} empty="Отчёт кабинета Имобиса приходит на следующий день" />
+      <Donut title="Операторы SMS" data={operators} legend={OPERATOR_LEGEND} empty="SMS не отправлялись" />
     </div>
   );
 }

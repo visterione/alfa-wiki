@@ -4,23 +4,28 @@
  * а фильтры шапки встают строкой над списком — у таблицы так не выйдет без
  * второй разметки. */
 
-/* Цвета операторов SMS — проверенная категориальная палитра, светлая и тёмная
-   ступени (та же, что была у графиков счетов). */
+/* Цвета операторов SMS (ver. 9.34) — проверенная категориальная палитра на
+   восемь мест в закреплённом порядке круга (см. OPERATOR_VIEW). Тёмная тема —
+   свои ступени тех же оттенков, проверенные на тёмном фоне. */
 .jt-donuts {
-  --jt-op-1: #e34948;
-  --jt-op-2: #eda100;
-  --jt-op-3: #008300;
-  --jt-op-4: #2a78d6;
-  --jt-op-5: #4a3aa7;
-  --jt-op-6: #eb6834;
+  --jt-op-yota: #2a78d6;
+  --jt-op-rt: #eb6834;
+  --jt-op-sber: #1baf7a;
+  --jt-op-beeline: #eda100;
+  --jt-op-t2: #e87ba4;
+  --jt-op-megafon: #008300;
+  --jt-op-tmobile: #4a3aa7;
+  --jt-op-mts: #e34948;
 }
 :root[data-theme='dark'] .jt-donuts {
-  --jt-op-1: #e66767;
-  --jt-op-2: #c98500;
-  --jt-op-3: #008300;
-  --jt-op-4: #3987e5;
-  --jt-op-5: #9085e9;
-  --jt-op-6: #d95926;
+  --jt-op-yota: #3987e5;
+  --jt-op-rt: #d95926;
+  --jt-op-sber: #199e70;
+  --jt-op-beeline: #c98500;
+  --jt-op-t2: #d55181;
+  --jt-op-megafon: #008300;
+  --jt-op-tmobile: #9085e9;
+  --jt-op-mts: #e66767;
 }
 
 /* ── Диаграммы ────────────────────────────────────────────────────────────*/
@@ -49,7 +54,10 @@
   color: var(--text-secondary);
 }
 
-.jt-donut-body { display: flex; align-items: center; gap: 14px; }
+/* Карточки ряда одной высоты (её задаёт легенда операторов в девять строк) —
+   содержимое по центру, чтобы у двух соседних не висела пустота снизу. */
+.jt-donut { display: flex; flex-direction: column; }
+.jt-donut-body { display: flex; align-items: center; gap: 14px; flex: 1; }
 
 .jt-donut-chart { position: relative; flex-shrink: 0; width: 124px; height: 124px; }
 .jt-donut-sum {
@@ -79,7 +87,22 @@
 
 .jt-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 
+/* Логотип оператора вместо точки цвета, в кольце цвета сегмента. */
+.jt-op-logo {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  /* Скруглённый квадрат, а не круг: знак МТС квадратный, и круг срезал бы
+     ему буквы по углам. */
+  border-radius: 5px;
+  object-fit: cover;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px var(--bg-primary), 0 0 0 3px var(--jt-ring);
+  margin: 0 3px;
+}
+
 .jt-donut-empty {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;

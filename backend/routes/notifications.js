@@ -17,13 +17,14 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { NotifTemplate, NotifOutbox, NotifCallRequest, MedCenter, NotifBranchSettings, MessengerBot, ImobisSpendDay, sequelize } = require('../models');
+const { NotifTemplate, NotifOutbox, NotifCallRequest, MedCenter, NotifBranchSettings, MessengerBot, sequelize } = require('../models');
 const branches = require('../services/notifications/branches');
 const { getChannel } = require('../services/messengers');
 const templates = require('../services/notifications/templates');
 const sender = require('../services/notifications/sender');
 const safety = require('../services/notifications/safety');
 const notifSettings = require('../services/notifications/settings');
+const mobileOperators = require('../services/notifications/mobileOperators');
 const doctorBlocklist = require('../services/notifications/doctorBlocklist');
 // ИИ-звонки: состав лида и словарь исходов — в aiCall, доступ к API партнёра — в
 // lptracker (ver. 8.95).
@@ -1324,16 +1325,29 @@ function succeededChannel(row) {
 }
 
 /**
+ * Отправлена ли строка как SMS — то есть стоила ли она SMS. Ступень SMS
+ * доставлена, ушла или не дошла до абонента; у строк до 9.23 без пути —
+ * маршрут из одной ступени SMS.
+ */
+function smsBilled(row) {
+  const attempts = Array.isArray(row.attempts) ? row.attempts : [];
+  if (attempts.length) {
+    return attempts.some(a => channelKey(a.step) === 'sms' && ['delivered', 'sent', 'undelivered'].includes(a.result));
+  }
+  const route = String(row.channel || '').split('→').filter(Boolean);
+  return route.length === 1 && channelKey(route[0]) === 'sms';
+}
+
+/**
  * Сводка для диаграмм над журналом (ver. 9.34): статусы, каналы успешной
- * доставки и операторы SMS — за даты и медцентр таблицы.
+ * доставки и операторы SMS — за даты, медцентр и событие таблицы.
  *
  * Ждущие отправки в статусы не входят намеренно: это не исход, а очередь, и
  * в доле «как прошла рассылка» она только размывает картину.
  *
- * Операторы — из краткого отчёта кабинета Имобиса (imobis_spend_days, 9.33):
- * отчёт о доставке оператора не называет. Отчёт кабинета приходит на
- * следующий день и событий не различает, поэтому у диаграммы операторов нет
- * отбора по событию, а за сегодня она пуста.
+ * Операторы — по коду номера (services/notifications/mobileOperators.js).
+ * Сначала брались из отчёта кабинета Имобиса, но он приходит на следующий день,
+ * и за сегодня — а журнал открывается на сегодня — диаграмма была пуста.
  */
 router.get('/outbox/stats', authenticate, requireAdmin, async (req, res) => {
   try {
@@ -1347,33 +1361,25 @@ router.get('/outbox/stats', authenticate, requireAdmin, async (req, res) => {
     });
     const statuses = Object.fromEntries(byStatus.map(r => [r.status, Number(r.n)]));
 
-    const sent = await NotifOutbox.findAll({
-      attributes: ['attempts', 'channel'],
-      where: { ...where, status: 'sent' },
+    const done = await NotifOutbox.findAll({
+      attributes: ['status', 'attempts', 'channel', 'phone'],
+      where: { ...where, status: { [Op.in]: ['sent', 'failed'] } },
       raw: true
     });
     const channels = {};
-    let unknown = 0;
-    for (const row of sent) {
-      const key = succeededChannel(row);
-      if (key) channels[key] = (channels[key] || 0) + 1;
-      else unknown++;
-    }
-
-    const spendWhere = {};
-    if (isDay(req.query.from) || isDay(req.query.to)) {
-      spendWhere.day = {};
-      if (isDay(req.query.from)) spendWhere.day[Op.gte] = req.query.from;
-      if (isDay(req.query.to)) spendWhere.day[Op.lte] = req.query.to;
-    }
-    if (req.query.medCenterId) spendWhere.medCenterId = req.query.medCenterId;
-    const spend = await ImobisSpendDay.findAll({ attributes: ['byOperator'], where: spendWhere, raw: true });
     const operators = {};
-    for (const day of spend) {
-      for (const [name, v] of Object.entries(day.byOperator || {})) {
-        // До 9.34 по оператору лежали только рубли числом — такие дни штук не дают.
-        const n = v && typeof v === 'object' ? Number(v.messages) || 0 : 0;
-        if (n) operators[name] = (operators[name] || 0) + n;
+    let unknown = 0;
+    for (const row of done) {
+      if (row.status === 'sent') {
+        const key = succeededChannel(row);
+        if (key) channels[key] = (channels[key] || 0) + 1;
+        else unknown++;
+      }
+      // Оператор — у каждого сообщения, за которое заплатили как за SMS,
+      // включая не дошедшие до абонента: диаграмма отвечает «куда уходят SMS».
+      if (smsBilled(row)) {
+        const op = mobileOperators.operatorOf(row.phone);
+        if (op) operators[op] = (operators[op] || 0) + 1;
       }
     }
 
