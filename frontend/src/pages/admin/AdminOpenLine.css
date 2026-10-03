@@ -1197,7 +1197,11 @@ button.ola-add { display: inline-flex; align-items: center; gap: 6px; }
  * открывается — ряды полей должны складываться, а не резаться.
  */
 @media (max-width: 900px) {
-  .ola-tabs { display: flex; overflow-x: auto; }
+  /* contain: inline-size — иначе строка вкладок растягивает на свою ширину
+     всю страницу, а не прокручивается: блок содержимого портала подстраивается
+     под самое широкое, что в нём есть. С «Счетами» (9.33) вкладок семь, и на
+     телефоне вся админка уезжала вправо. */
+  .ola-tabs { display: flex; overflow-x: auto; width: 100%; contain: inline-size; box-sizing: border-box; }
   /* Строка вкладок складывается: на планшете пять вкладок и кнопка рядом не
      помещаются, а ужимать переключатель до нечитаемого нельзя. */
   .ola-bar { flex-wrap: wrap; }

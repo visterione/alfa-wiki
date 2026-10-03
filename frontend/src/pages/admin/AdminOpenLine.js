@@ -12,10 +12,13 @@ import {
 import ChannelLogo, { ChannelGlyph } from '../../components/openline/ChannelLogo';
 import { CHANNEL_BRANDS } from '../../components/openline/channelBrands';
 import MedCenterMark from '../../components/openline/MedCenterMark';
+import { PieChart, Pie, Cell, Tooltip } from 'recharts';
+import renovatioLogo from '../../assets/images/renovatio.png';
 import WidgetTab from './WidgetTab';
 import BillingTab from './BillingTab';
 import toast from 'react-hot-toast';
 import './AdminOpenLine.css';
+import './JournalTable.css';
 
 /**
  * Настройки открытой линии и оповещений (ver. 8.02, филиалы и каналы — 8.03).
@@ -2420,47 +2423,46 @@ function DeliveryTab({ templates, safety, branchId, onSafetyChange }) {
 // ══ Вкладка «Журнал» ══════════════════════════════════════════════════════
 
 /**
- * Журнал отправок (ver. 8.31).
+ * Журнал отправок (ver. 8.31, таблицей — 9.34).
  *
  * Хранится в базе он весь и всегда — строка заводится в pending и остаётся с
  * исходом навсегда. До 8.31 наружу отдавались последние 50 строк, и по сети с
  * тысячей отправок в сутки это означало «журнал за последний час»: вчерашний
  * день открыть было нечем. Отсюда страницы.
  *
- * Фильтров стало шесть, и они разного рода:
+ * С 9.34 журнал — таблица, и фильтры стоят в её шапке, каждый над своим
+ * столбцом. До того над журналом была полоса из плиток сводки, поиска и пяти
+ * выпадающих списков: до первой строки — полэкрана, и какой фильтр к чему
+ * относится, приходилось соображать. Плитки сводки стали круговыми
+ * диаграммами над таблицей. Тексты сообщений свёрнуты под шеврон: в списке они
+ * занимали больше места, чем всё остальное, а читают их по одному.
  *
- *   • плитки состояния — это одновременно сводка за сутки и фильтр по нашему
- *     исходу. Цифры на них считаются за сутки всегда, а не по выбранному
- *     периоду: это состояние рассылки, и меняться от того, что в поиске набрали
- *     номер, оно не должно — иначе «ноль недоставленных» значит «ничего не
- *     нашлось», а не «всё хорошо»;
- *   • отчёт провайдера — отдельно от нашего исхода. «Мы отправили» и «человек
- *     получил» разные вопросы: принятая Имобисом SMS лежит у нас как sent, а
- *     через минуту приходит отчёт rejected, и разбирают в журнале как раз такие
- *     строки;
- *   • период — по времени заведения, а не отправки: у пропущенных и ждущих
- *     строк отправки не было вовсе, и по её дате они бы не нашлись.
- *
- * Фильтр сбрасывает страницу на первую: иначе после сужения выборки экран
+ * По умолчанию — сегодняшний день: журнал открывают посмотреть, как идёт
+ * рассылка сейчас. Период — по времени заведения, а не отправки: у пропущенных
+ * и ждущих строк отправки не было вовсе, и по её дате они бы не нашлись.
+ * Любой фильтр сбрасывает страницу на первую: иначе после сужения выборки экран
  * оставался пустым на седьмой странице того, чего больше нет.
  */
 
-const DELIVERY_FILTER_VIEW = [
-  { key: 'delivered', label: 'дошло до человека' },
-  { key: 'failed', label: 'провайдер отказал' },
-  { key: 'none', label: 'отчёта нет' }
-];
-
-// ВКонтакте и Viber убраны из отбора (ver. 9.23): этих каналов в каскадах сети
-// нет, и пункт, по которому никогда ничего не найдётся, только мешает.
 const CHANNEL_FILTER_VIEW = [
   { key: 'telegram', label: 'Telegram' },
   { key: 'max', label: 'MAX' },
+  { key: 'notify', label: 'Notify' },
   { key: 'sms', label: 'SMS' }
 ];
 
 const PAGE_SIZE = 50;
-const EMPTY_FILTERS = { status: '', event: '', channel: '', delivery: '', phone: '', from: '', to: '', medCenterId: '' };
+
+// Сегодня по Москве: сутки журнала на сервере тоже московские (ver. 9.34).
+const todayMsk = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
+function shiftDay(day, n) {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+const emptyMessageFilters = () => ({ status: '', event: '', channel: '', q: '', from: todayMsk(), to: todayMsk(), medCenterId: '' });
+const emptyCallFilters = () => ({ status: '', q: '', from: todayMsk(), to: todayMsk(), medCenterId: '' });
 
 /**
  * Ключ текста, по которому ушла ступень маршрута. Повторяет выбор отправщика
@@ -2638,7 +2640,7 @@ function CascadeChain({ row }) {
  * слов, которые путаются. Пустое значение подписано по-человечески
  * («Медцентр: все»), выбранное — со своим знаком.
  */
-function FilterSelect({ label, allLabel, value, options, onChange }) {
+function FilterSelect({ label, allLabel, value, options, onChange, head = false }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
 
@@ -2658,11 +2660,13 @@ function FilterSelect({ label, allLabel, value, options, onChange }) {
   const pick = (v) => { onChange(v); setOpen(false); };
 
   return (
-    <div className={`ola-fsel ${current ? 'chosen' : ''}`} ref={boxRef}>
+    <div className={`ola-fsel ${current ? 'chosen' : ''} ${head ? 'head' : ''}`} ref={boxRef}>
       <button type="button" className={`ola-fsel-btn ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
         {current?.icon}
         <span className="ola-fsel-text">
-          {current ? current.label : <><span className="ola-fsel-label">{label}:</span> {allLabel}</>}
+          {/* В шапке таблицы (ver. 9.34) без выбора стоит название столбца:
+              «Статус: все» над каждым столбцом читалось бы как строка данных. */}
+          {current ? current.label : (head ? label : <><span className="ola-fsel-label">{label}:</span> {allLabel}</>)}
         </span>
         <ChevronDown size={14} className="ola-fsel-caret" />
       </button>
@@ -2720,30 +2724,315 @@ function LogTab() {
   );
 }
 
+// ── Ячейки и фильтры таблиц журнала (ver. 9.34) ───────────────────────────
+
+// Карточка пациента в МИС. Адрес тот же, что в открытой линии и зарплатном
+// модуле; держится в каждом разделе своей строкой — см. OpenLine.js.
+const MIS_WEB_BASE = 'https://rnova.medcentralfa.ru:3010';
+const misCardUrl = (patientId) => `${MIS_WEB_BASE}/patients/default/detail/id/${patientId}`;
+
+/** 79002862752 → +7 (900) 286-27-52. Не похожее на российский мобильный — как есть. */
+function formatPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 11 && /^[78]/.test(d)) {
+    return `+7 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9, 11)}`;
+  }
+  return raw || '';
+}
+
+/** «Стеценко Владислав Викторович» → «Стеценко В. В.» */
+function shortName(full) {
+  const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '';
+  return [parts[0], ...parts.slice(1).map(w => `${w[0].toUpperCase()}.`)].join(' ');
+}
+
+/** Дата и время без секунд; год — только когда он не нынешний. */
+function fmtWhen(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleString('ru-RU', {
+    day: '2-digit', month: '2-digit', ...(sameYear ? {} : { year: 'numeric' }),
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+/**
+ * Получатель: номер карты, фамилия с инициалами и кнопка карточки в
+ * Renovatio, под ними телефон (ver. 9.34). До того в журнале был один телефон,
+ * и чтобы понять, кому ушло, номер приходилось искать в МИС.
+ */
+function Recipient({ patient, phone }) {
+  const name = shortName(patient?.name);
+  const number = patient?.number ? String(patient.number).replace(/^№\s*/, '') : '';
+  return (
+    <div className="jt-recipient">
+      {(number || name || patient?.id) && (
+        <div className="jt-rc-top">
+          {number && <span className="jt-rc-num">№{number}</span>}
+          {name && <span className="jt-rc-name">{name}</span>}
+          {patient?.id && (
+            <a
+              className="jt-mis"
+              href={misCardUrl(patient.id)}
+              target="_blank"
+              rel="noreferrer"
+              title="Открыть карточку пациента в Renovatio"
+              aria-label="Открыть карточку пациента в Renovatio"
+              onClick={e => e.stopPropagation()}
+            >
+              <img src={renovatioLogo} alt="" draggable={false} />
+            </a>
+          )}
+        </div>
+      )}
+      <div className="jt-rc-phone">{formatPhone(phone) || 'без телефона'}</div>
+    </div>
+  );
+}
+
+/** Поиск по получателю: телефон, номер карты или фамилия. */
+function SearchFilter({ value, onChange }) {
+  return (
+    <label className={`jt-search ${value ? 'chosen' : ''}`}>
+      <Search size={14} />
+      <input placeholder="Получатель" value={value} onChange={e => onChange(e.target.value)} />
+      {value && (
+        <button type="button" className="jt-search-clear" onClick={() => onChange('')} aria-label="Очистить">
+          <X size={13} />
+        </button>
+      )}
+    </label>
+  );
+}
+
+const RANGE_PRESETS = [
+  { key: 'today',     label: 'Сегодня',    range: (t) => [t, t] },
+  { key: 'yesterday', label: 'Вчера',      range: (t) => [shiftDay(t, -1), shiftDay(t, -1)] },
+  { key: 'week',      label: '7 дней',     range: (t) => [shiftDay(t, -6), t] },
+  { key: 'month',     label: '30 дней',    range: (t) => [shiftDay(t, -29), t] },
+  { key: 'all',       label: 'Всё время',  range: () => ['', ''] }
+];
+
+const shortDay = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : '…');
+
+/**
+ * Период в шапке столбца даты: готовые промежутки и два поля для своего.
+ * Кнопка подписана словами («Сегодня», «7 дней»), пока период совпадает с
+ * готовым, — «03.10 — 03.10» над столбцом читалось бы хуже.
+ */
+function DateRangeFilter({ from, to, onChange }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  const today = todayMsk();
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  const preset = RANGE_PRESETS.find(p => {
+    const [f, t] = p.range(today);
+    return f === from && t === to;
+  });
+  const label = preset ? preset.label : (from === to ? shortDay(from) : `${shortDay(from)} — ${shortDay(to)}`);
+
+  return (
+    <div className={`ola-fsel head ${preset?.key === 'today' ? '' : 'chosen'}`} ref={boxRef}>
+      <button type="button" className={`ola-fsel-btn ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
+        <CalendarClock size={14} />
+        <span className="ola-fsel-text">{label}</span>
+        <ChevronDown size={14} className="ola-fsel-caret" />
+      </button>
+      {open && (
+        <div className="ola-fsel-pop jt-range-pop">
+          {RANGE_PRESETS.map(p => (
+            <button
+              key={p.key}
+              type="button"
+              className={`ola-fsel-opt ${preset?.key === p.key ? 'on' : ''}`}
+              onClick={() => { const [f, t] = p.range(today); onChange({ from: f, to: t }); setOpen(false); }}
+            >
+              <span className="ola-fsel-opt-text">{p.label}</span>
+              {preset?.key === p.key && <Check size={14} />}
+            </button>
+          ))}
+          <div className="jt-range-own">
+            <input className="ola-input" type="date" value={from} max={to || undefined}
+              onChange={e => onChange({ from: e.target.value, to })} aria-label="С даты" />
+            <span>—</span>
+            <input className="ola-input" type="date" value={to} min={from || undefined}
+              onChange={e => onChange({ from, to: e.target.value })} aria-label="По дату" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Pager({ page, pages, setPage }) {
+  if (pages <= 1) return null;
+  return (
+    <div className="ola-log-pager">
+      <button className="ola-btn" disabled={page === 0} onClick={() => setPage(0)}>Начало</button>
+      <button className="ola-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+        <ChevronLeft size={15} /> Назад
+      </button>
+      <span className="ola-log-pager-state">{page + 1} из {pages}</span>
+      <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)}>
+        Вперёд <ChevronRight size={15} />
+      </button>
+      <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>Конец</button>
+    </div>
+  );
+}
+
+const medCenterOptions = (list) => (list || []).map(mc => ({
+  value: mc.id,
+  label: mc.name,
+  icon: <MedCenterMark medCenter={mc} className="ola-fsel-mc" />
+}));
+
+// ── Диаграммы над журналом (ver. 9.34) ────────────────────────────────────
+
+// Операторам цвет закреплён за именем, а не за местом в списке: доли меняются
+// от дня к дню, и МТС не должен перекрашиваться оттого, что сегодня его
+// обогнал Билайн. Оттенки — из той же проверенной палитры, что у счетов;
+// всё, чего здесь нет, — серым «прочим».
+const OPERATOR_COLORS = {
+  'МТС': 'var(--jt-op-1)',
+  'Билайн': 'var(--jt-op-2)',
+  'Мегафон/Yota': 'var(--jt-op-3)',
+  'TELE2': 'var(--jt-op-4)',
+  'Тинькофф Мобайл': 'var(--jt-op-5)',
+  'Ростелеком': 'var(--jt-op-6)'
+};
+
+function DonutTip({ active, payload, sum }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="jt-tip">
+      <span className="jt-dot" style={{ background: d.color }} />
+      {d.label}: <b>{d.value.toLocaleString('ru-RU')}</b> · {Math.round(d.value / sum * 100)}%
+    </div>
+  );
+}
+
+function Donut({ title, data, empty }) {
+  const rows = data.filter(d => d.value > 0);
+  const sum = rows.reduce((s, d) => s + d.value, 0);
+  return (
+    <section className="jt-donut">
+      <h4>{title}</h4>
+      {sum > 0 ? (
+        <div className="jt-donut-body">
+          <div className="jt-donut-chart">
+            <PieChart width={124} height={124}>
+              <Pie
+                data={rows} dataKey="value" nameKey="label"
+                innerRadius={40} outerRadius={60} paddingAngle={rows.length > 1 ? 2 : 0}
+                stroke="var(--bg-primary)" strokeWidth={1} isAnimationActive={false}
+              >
+                {rows.map(d => <Cell key={d.key} fill={d.color} />)}
+              </Pie>
+              <Tooltip content={<DonutTip sum={sum} />} />
+            </PieChart>
+            <span className="jt-donut-sum">{sum.toLocaleString('ru-RU')}</span>
+          </div>
+          <ul className="jt-donut-legend">
+            {rows.map(d => (
+              <li key={d.key}>
+                <span className="jt-dot" style={{ background: d.color }} />
+                <span className="jt-lg-name">{d.label}</span>
+                <span className="jt-lg-val">{d.value.toLocaleString('ru-RU')}</span>
+                <span className="jt-lg-pct">{Math.round(d.value / sum * 100)}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : <div className="jt-donut-empty">{empty}</div>}
+    </section>
+  );
+}
+
+function MessageStats({ from, to, medCenterId, event }) {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    const params = {};
+    if (from) params.from = from;
+    if (to) params.to = to;
+    if (medCenterId) params.medCenterId = medCenterId;
+    if (event) params.event = event;
+    notifApi.outboxStats(params).then(({ data }) => setStats(data)).catch(() => setStats(null));
+  }, [from, to, medCenterId, event]);
+
+  if (!stats) return <div className="jt-donuts" />;
+
+  const statuses = [
+    { key: 'sent',    label: 'Доставлено',    value: stats.statuses.sent || 0,    color: 'var(--green-500)' },
+    { key: 'failed',  label: 'Не доставлено', value: stats.statuses.failed || 0,  color: 'var(--red-500)' },
+    { key: 'skipped', label: 'Пропущено',     value: stats.statuses.skipped || 0, color: 'var(--n-400)' }
+  ];
+  const channels = [
+    { key: 'telegram', label: 'Telegram', value: stats.channels.telegram || 0, color: CHANNEL_BRANDS.telegram?.color || '#2aabee' },
+    { key: 'max',      label: 'MAX',      value: stats.channels.max || 0,      color: CHANNEL_BRANDS.max?.color || '#7c3aed' },
+    { key: 'notify',   label: 'Notify',   value: stats.channels.notify || 0,   color: 'var(--cyan-600)' },
+    { key: 'sms',      label: 'SMS',      value: stats.channels.sms || 0,      color: 'var(--amber-500)' },
+    // Каскад Имобиса без отчёта: ушло, но каким из его каналов — неизвестно.
+    { key: 'unknown',  label: 'ждём отчёт', value: stats.unknownChannel || 0,  color: 'var(--n-300)' }
+  ];
+  const ops = Object.entries(stats.operators || {}).sort((a, b) => b[1] - a[1]);
+  const known = ops.filter(([name]) => OPERATOR_COLORS[name]);
+  const other = ops.filter(([name]) => !OPERATOR_COLORS[name]).reduce((s, [, n]) => s + n, 0);
+  const operators = [
+    ...known.map(([name, n]) => ({ key: name, label: name, value: n, color: OPERATOR_COLORS[name] })),
+    { key: 'other', label: 'прочие', value: other, color: 'var(--n-400)' }
+  ];
+
+  return (
+    <div className="jt-donuts">
+      <Donut title="Статусы" data={statuses} empty="Отправок нет" />
+      <Donut title="Каналы доставки" data={channels} empty="Доставленных нет" />
+      <Donut title="Операторы SMS" data={operators} empty="Отчёт кабинета Имобиса приходит на следующий день" />
+    </div>
+  );
+}
+
+// ── Сообщения ─────────────────────────────────────────────────────────────
+
 function MessagesLog() {
   const [log, setLog] = useState(null);
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filters, setFilters] = useState(emptyMessageFilters);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState(null);
 
   const setFilter = (patch) => {
     setFilters(f => ({ ...f, ...patch }));
     setPage(0);
   };
 
-  const { status, event, channel, delivery, phone, from, to, medCenterId } = filters;
+  const { status, event, channel, q, from, to, medCenterId } = filters;
 
   useEffect(() => {
-    // Поиск по номеру ждёт паузы в наборе: журнал за всё время — сотни тысяч
-    // строк, и запрос на каждую цифру гонял бы их впустую.
+    // Поиск ждёт паузы в наборе: запрос на каждую букву гонял бы журнал впустую.
     setLoading(true);
     const timer = setTimeout(() => {
       const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       if (status) params.status = status;
       if (event) params.event = event;
       if (channel) params.channel = channel;
-      if (delivery) params.delivery = delivery;
-      if (phone.replace(/\D/g, '')) params.phone = phone.replace(/\D/g, '');
+      if (q.trim()) params.q = q.trim();
       if (from) params.from = from;
       if (to) params.to = to;
       if (medCenterId) params.medCenterId = medCenterId;
@@ -2752,186 +3041,135 @@ function MessagesLog() {
         .then(({ data }) => setLog(data))
         .catch(() => toast.error('Не удалось загрузить журнал'))
         .finally(() => setLoading(false));
-    }, phone ? 350 : 0);
+    }, q ? 350 : 0);
 
     return () => clearTimeout(timer);
-  }, [status, event, channel, delivery, phone, from, to, medCenterId, page]);
+  }, [status, event, channel, q, from, to, medCenterId, page]);
 
   const total = log?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const filtered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
+  const filtered = JSON.stringify(filters) !== JSON.stringify(emptyMessageFilters());
 
   return (
     <>
-      {/* Сводка, поиск и фильтры — одной полосой (ver. 9.23). До этого плитки
-          с поиском стояли отдельным рядом, а фильтры с подписями — отдельной
-          панелью под ними, и до первой строки журнала было полэкрана.
-          Подписи над полями ушли в их же пустые пункты («Медцентр: все»): в
-          одну строку с подписями сверху поля не помещаются, а без подписи
-          поле даты или «любой» читаются загадкой.
+      <MessageStats from={from} to={to} medCenterId={medCenterId} event={event} />
 
-          Сводка за сутки следует только за медцентром: выбрав филиал, смотрят
-          его рассылку, и цифры всей сети над ней читались бы как его. */}
-      <div className="ola-log-bar">
-        {Object.entries(STATUS_VIEW).map(([key, view]) => (
-          <button
-            key={key}
-            className={`ola-stat ${view.cls} ${status === key ? 'active' : ''}`}
-            onClick={() => setFilter({ status: status === key ? '' : key })}
-            title={`За сутки: ${view.label}. Нажмите, чтобы показать только их`}
-          >
-            <span className="value">{log ? (log.counts[key] ?? 0) : '—'}</span>
-            <span className="label">{view.label}</span>
-          </button>
-        ))}
-
-        <div className="ola-log-search">
-          <Search size={15} />
-          <input
-            placeholder="Поиск по номеру"
-            value={phone}
-            onChange={e => setFilter({ phone: e.target.value })}
-          />
+      <div className="jt-table jt-messages" role="table">
+        <div className="jt-head" role="row">
+          <div className="jt-h st">
+            <FilterSelect
+              head label="Статус" allLabel="любой" value={status}
+              onChange={v => setFilter({ status: v })}
+              options={Object.entries(STATUS_VIEW).map(([key, view]) => {
+                const SIcon = view.icon;
+                return { value: key, label: view.label, icon: <span className={`ola-msg-status ${view.cls}`}><SIcon size={12} /></span> };
+              })}
+            />
+          </div>
+          <div className="jt-h mc">
+            <FilterSelect
+              head label="Медцентр" allLabel="все" value={medCenterId}
+              onChange={v => setFilter({ medCenterId: v })}
+              options={medCenterOptions(log?.medCenters)}
+            />
+          </div>
+          <div className="jt-h ev">
+            <FilterSelect
+              head label="Событие" allLabel="любое" value={event}
+              onChange={v => setFilter({ event: v })}
+              options={Object.keys(EVENT_VIEW).map(key => {
+                const EIcon = EVENT_VIEW[key].icon || FileText;
+                return {
+                  value: key,
+                  label: EVENT_VIEW[key].title,
+                  icon: <span className={`ola-card-icon small ${EVENT_VIEW[key].tone || 'accent'}`}><EIcon size={12} /></span>
+                };
+              })}
+            />
+          </div>
+          <div className="jt-h rc"><SearchFilter value={q} onChange={v => setFilter({ q: v })} /></div>
+          <div className="jt-h wh"><DateRangeFilter from={from} to={to} onChange={range => setFilter(range)} /></div>
+          <div className="jt-h ca">
+            <FilterSelect
+              head label="Каскад" allLabel="любой" value={channel}
+              onChange={v => setFilter({ channel: v })}
+              options={CHANNEL_FILTER_VIEW.map(item => ({
+                value: item.key,
+                label: item.label,
+                icon: <ChannelLogo channel={item.key} size={18} />
+              }))}
+            />
+          </div>
+          <div className="jt-h ch">
+            {filtered && (
+              <button className="ola-icon-btn" onClick={() => { setFilters(emptyMessageFilters()); setPage(0); }} title="Сбросить фильтры">
+                <RotateCcw size={14} />
+              </button>
+            )}
+          </div>
         </div>
 
-        <FilterSelect
-          label="Медцентр"
-          allLabel="все"
-          value={medCenterId}
-          onChange={v => setFilter({ medCenterId: v })}
-          options={(log?.medCenters || []).map(mc => ({
-            value: mc.id,
-            label: mc.name,
-            icon: <MedCenterMark medCenter={mc} className="ola-fsel-mc" />
-          }))}
-        />
-
-        <FilterSelect
-          label="Событие"
-          allLabel="любое"
-          value={event}
-          onChange={v => setFilter({ event: v })}
-          options={Object.keys(EVENT_VIEW).map(key => {
-            const EIcon = EVENT_VIEW[key].icon || FileText;
-            return {
-              value: key,
-              label: EVENT_VIEW[key].title,
-              icon: <span className={`ola-card-icon small ${EVENT_VIEW[key].tone || 'accent'}`}><EIcon size={12} /></span>
-            };
-          })}
-        />
-
-        <FilterSelect
-          label="Канал"
-          allLabel="любой"
-          value={channel}
-          onChange={v => setFilter({ channel: v })}
-          options={CHANNEL_FILTER_VIEW.map(item => ({
-            value: item.key,
-            label: item.label,
-            icon: <ChannelLogo channel={item.key} size={18} />
-          }))}
-        />
-
-        <FilterSelect
-          label="Отчёт"
-          allLabel="любой"
-          value={delivery}
-          onChange={v => setFilter({ delivery: v })}
-          options={DELIVERY_FILTER_VIEW.map(item => ({ value: item.key, label: item.label }))}
-        />
-
-        <span className="ola-log-dates" title="Период: по дате заведения события">
-          <input className="ola-input" type="date" value={from} onChange={e => setFilter({ from: e.target.value })} aria-label="С даты" />
-          <span>—</span>
-          <input className="ola-input" type="date" value={to} onChange={e => setFilter({ to: e.target.value })} aria-label="По дату" />
-        </span>
-
-        {filtered && (
-          <button className="ola-btn ola-log-reset" onClick={() => { setFilters(EMPTY_FILTERS); setPage(0); }} title="Сбросить фильтры">
-            <RotateCcw size={14} />
-          </button>
+        {log && log.rows.length === 0 && (
+          <div className="jt-empty">
+            <Inbox size={28} />
+            {loading ? 'Ищем…' : 'Отправок не нашлось'}
+          </div>
         )}
-      </div>
 
-      {log && (
-        <div className="ola-log-count">
-          {loading
-            ? 'Ищем…'
-            : (total === 0
-              ? 'Ничего не нашлось'
-              : `${total.toLocaleString('ru-RU')} ${plural(total, 'отправка', 'отправки', 'отправок')}`
-                + (pages > 1 ? ` · страница ${page + 1} из ${pages}` : ''))}
-        </div>
-      )}
-
-      {log && log.rows.length === 0 && (
-        <div className="ola-empty">
-          <Inbox size={34} />
-          <h3>Отправок не нашлось</h3>
-          <p>{filtered ? 'Снимите фильтры или расширьте период.' : 'Детектор ещё не находил событий.'}</p>
-        </div>
-      )}
-
-      {(log?.rows || []).map(row => {
-        const view = STATUS_VIEW[row.status] || STATUS_VIEW.pending;
-        const Icon = view.icon;
-        const eview = EVENT_VIEW[row.event];
-        const EIcon = eview?.icon || FileText;
-        const text = sentText(row);
-        return (
-          <article key={row.id} className={`ola-row-card ola-msg-card ${view.cls}`}>
-            <div className="ola-msg-main">
-              <div className="ola-row-top">
-                <span className={`ola-card-icon small ${eview?.tone || 'accent'}`}><EIcon size={14} /></span>
-                <span className="event">{eventTitle(row.event)}</span>
-                <span className="phone">{row.phone || 'без телефона'}</span>
-                {/* Медцентр — знаком, а не плашкой с названием (ver. 9.23):
-                    название в подсказке. */}
-                {row.medCenter && <MedCenterMark medCenter={row.medCenter} className="ola-row-mc" />}
-                {row.postponedFrom && <span className="ola-badge warn">отложено</span>}
-              </div>
-              {text && <div className="ola-row-text">{text}</div>}
-              {row.error && <div className="ola-row-error">{row.error}</div>}
-            </div>
-
-            {/* Справа: когда, каким путём и чем кончилось (ver. 9.23). Итог —
-                значком в нижнем углу, без подписи: подпись в подсказке, а цвет
-                и знак те же, что у плиток сводки. */}
-            <div className="ola-msg-side">
-              {/* Итог — рядом со временем (ver. 9.34): «когда и чем кончилось»
-                  читается одним взглядом, а цепочка под ними объясняет как. */}
-              <span className="ola-msg-when">
-                <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
+        {(log?.rows || []).map(row => {
+          const view = STATUS_VIEW[row.status] || STATUS_VIEW.pending;
+          const Icon = view.icon;
+          const eview = EVENT_VIEW[row.event];
+          const EIcon = eview?.icon || FileText;
+          const open = openId === row.id;
+          const text = open ? sentText(row) : null;
+          return (
+            <div key={row.id} className={`jt-row ${open ? 'open' : ''}`} role="row" onClick={() => setOpenId(open ? null : row.id)}>
+              <div className="jt-c st">
                 <span
                   className={`ola-msg-status ${view.cls}`}
-                  title={`${view.label}${row.deliveryStatus ? ` · отчёт провайдера: ${row.deliveryStatus}` : ''}`}
+                  title={`${view.label}${row.deliveryStatus ? ` · отчёт провайдера: ${row.deliveryStatus}` : ''}${row.error ? `\n${row.error}` : ''}`}
                 >
                   <Icon size={13} />
                 </span>
-              </span>
-              <CascadeChain row={row} />
-            </div>
-          </article>
-        );
-      })}
+              </div>
+              <div className="jt-c mc">
+                {row.medCenter && <MedCenterMark medCenter={row.medCenter} className="ola-row-mc" />}
+              </div>
+              <div className="jt-c ev">
+                <span className={`ola-card-icon small ${eview?.tone || 'accent'}`}><EIcon size={13} /></span>
+                <span className="jt-ev-title">{eventTitle(row.event)}</span>
+                {row.postponedFrom && <span className="ola-badge warn">отложено</span>}
+              </div>
+              <div className="jt-c rc"><Recipient patient={row.patient} phone={row.phone} /></div>
+              <div className="jt-c wh">{fmtWhen(row.sentAt || row.plannedAt)}</div>
+              <div className="jt-c ca"><CascadeChain row={row} /></div>
+              <div className="jt-c ch">
+                <span className={`jt-chev ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
+              </div>
 
-      {pages > 1 && (
-        <div className="ola-log-pager">
-          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(0)}>Начало</button>
-          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-            <ChevronLeft size={15} /> Назад
-          </button>
-          <span className="ola-log-pager-state">{page + 1} из {pages}</span>
-          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)}>
-            Вперёд <ChevronRight size={15} />
-          </button>
-          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>Конец</button>
+              {open && (
+                <div className="jt-detail" onClick={e => e.stopPropagation()}>
+                  {text ? <div className="ola-row-text">{text}</div> : <div className="jt-muted">Текст не уходил — сообщение не отправлено</div>}
+                  {row.error && <div className="ola-row-error">{row.error}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {log && total > 0 && (
+        <div className="ola-log-count">
+          {`${total.toLocaleString('ru-RU')} ${plural(total, 'отправка', 'отправки', 'отправок')}`}
         </div>
       )}
+      <Pager page={page} pages={pages} setPage={setPage} />
     </>
   );
 }
+
+// ── Звонки ────────────────────────────────────────────────────────────────
 
 // Те же четыре исхода, что и у сообщений, но названные по-своему. «Доставлено»
 // у заявки означало бы, что человеку позвонили, а мы знаем лишь то, что лид
@@ -2960,127 +3198,143 @@ const CALL_RESULT_VIEW = {
 
 function CallsLog() {
   const [log, setLog] = useState(null);
-  const [status, setStatus] = useState('');
-  const [phone, setPhone] = useState('');
+  const [filters, setFilters] = useState(emptyCallFilters);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState(null);
+
+  const setFilter = (patch) => {
+    setFilters(f => ({ ...f, ...patch }));
+    setPage(0);
+  };
+  const { status, q, from, to, medCenterId } = filters;
 
   useEffect(() => {
     setLoading(true);
     const timer = setTimeout(() => {
       const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       if (status) params.status = status;
-      if (phone.replace(/\D/g, '')) params.phone = phone.replace(/\D/g, '');
+      if (q.trim()) params.q = q.trim();
+      if (from) params.from = from;
+      if (to) params.to = to;
+      if (medCenterId) params.medCenterId = medCenterId;
 
       notifApi.callRequests(params)
         .then(({ data }) => setLog(data))
         .catch(() => toast.error('Не удалось загрузить заявки на звонок'))
         .finally(() => setLoading(false));
-    }, phone ? 350 : 0);
+    }, q ? 350 : 0);
 
     return () => clearTimeout(timer);
-  }, [status, phone, page]);
+  }, [status, q, from, to, medCenterId, page]);
 
   const total = log?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const filtered = JSON.stringify(filters) !== JSON.stringify(emptyCallFilters());
 
   return (
     <>
-      <div className="ola-log-head">
-        {Object.entries(CALL_STATUS_VIEW).map(([key, view]) => (
-          <button
-            key={key}
-            className={`ola-stat ${view.cls} ${status === key ? 'active' : ''}`}
-            onClick={() => { setStatus(status === key ? '' : key); setPage(0); }}
-          >
-            <span className="value">{log ? (log.counts[key] ?? 0) : '—'}</span>
-            <span className="label">{view.label}</span>
-          </button>
-        ))}
-
-        <div className="ola-log-search">
-          <Search size={16} />
-          <input
-            placeholder="Поиск по номеру"
-            value={phone}
-            onChange={e => { setPhone(e.target.value); setPage(0); }}
-          />
+      <div className="jt-table jt-calls" role="table">
+        <div className="jt-head" role="row">
+          <div className="jt-h st">
+            <FilterSelect
+              head label="Статус" allLabel="любой" value={status}
+              onChange={v => setFilter({ status: v })}
+              options={Object.entries(CALL_STATUS_VIEW).map(([key, view]) => {
+                const SIcon = view.icon;
+                return { value: key, label: view.label, icon: <span className={`ola-msg-status ${view.cls}`}><SIcon size={12} /></span> };
+              })}
+            />
+          </div>
+          <div className="jt-h mc">
+            <FilterSelect
+              head label="Медцентр" allLabel="все" value={medCenterId}
+              onChange={v => setFilter({ medCenterId: v })}
+              options={medCenterOptions(log?.medCenters)}
+            />
+          </div>
+          <div className="jt-h rc"><SearchFilter value={q} onChange={v => setFilter({ q: v })} /></div>
+          <div className="jt-h vi"><span className="jt-h-label">Визит</span></div>
+          <div className="jt-h wh"><DateRangeFilter from={from} to={to} onChange={range => setFilter(range)} /></div>
+          <div className="jt-h rs"><span className="jt-h-label">Итог звонка</span></div>
+          <div className="jt-h ch">
+            {filtered && (
+              <button className="ola-icon-btn" onClick={() => { setFilters(emptyCallFilters()); setPage(0); }} title="Сбросить фильтры">
+                <RotateCcw size={14} />
+              </button>
+            )}
+          </div>
         </div>
+
+        {log && log.rows.length === 0 && (
+          <div className="jt-empty">
+            <PhoneCall size={28} />
+            {loading ? 'Ищем…' : 'Заявок на звонок не нашлось'}
+          </div>
+        )}
+
+        {(log?.rows || []).map(row => {
+          const view = CALL_STATUS_VIEW[row.status] || CALL_STATUS_VIEW.pending;
+          const Icon = view.icon;
+          const open = openId === row.id;
+          const problems = [row.misError, row.error].filter(Boolean);
+          return (
+            <div key={row.id} className={`jt-row ${open ? 'open' : ''}`} role="row" onClick={() => setOpenId(open ? null : row.id)}>
+              <div className="jt-c st">
+                <span className={`ola-msg-status ${view.cls}`} title={`${view.label}${problems.length ? `\n${problems.join('\n')}` : ''}`}>
+                  <Icon size={13} />
+                </span>
+              </div>
+              <div className="jt-c mc">
+                {row.medCenter && <MedCenterMark medCenter={row.medCenter} className="ola-row-mc" />}
+              </div>
+              <div className="jt-c rc"><Recipient patient={row.patient} phone={row.phone} /></div>
+              {/* Время приёма здесь важнее времени заявки: по нему видно, был ли
+                  смысл звонить вообще, а именно это и спрашивают у журнала. */}
+              <div className="jt-c vi">
+                <div className="jt-two">
+                  <span>{row.visitAt ? fmtWhen(row.visitAt) : '—'}</span>
+                  {row.doctorName && <span className="jt-muted">{row.doctorName}</span>}
+                </div>
+              </div>
+              <div className="jt-c wh">{fmtWhen(row.sentAt || row.plannedAt)}</div>
+              {/* Итог разговора (ver. 8.95) вместе с тем, что из него вышло в
+                  МИС: «пациент отказался» и «отказ записан в МИС» — разные
+                  утверждения, и журнал должен отвечать на второе тоже. */}
+              <div className="jt-c rs">
+                {row.result ? (
+                  <div className="jt-two">
+                    <span>{CALL_RESULT_VIEW[row.result] || row.result}</span>
+                    {row.misStatus === 'confirmed' && <span className="jt-muted">подтверждён в МИС</span>}
+                    {row.misStatus === 'cancelled' && <span className="jt-muted">отменён в МИС</span>}
+                  </div>
+                ) : <span className="jt-muted">—</span>}
+              </div>
+              <div className="jt-c ch">
+                <span className={`jt-chev ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
+              </div>
+
+              {open && (
+                <div className="jt-detail" onClick={e => e.stopPropagation()}>
+                  <div className="jt-muted">
+                    Визит {row.apptId || '—'}
+                    {row.attempts > 1 ? ` · попыток передачи: ${row.attempts}` : ''}
+                    {row.resultAt ? ` · итог получен ${fmtWhen(row.resultAt)}` : ''}
+                  </div>
+                  {problems.map((p, i) => <div key={i} className="ola-row-error">{p}</div>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {log && (
+      {log && total > 0 && (
         <div className="ola-log-count">
-          {loading
-            ? 'Ищем…'
-            : (total === 0
-              ? 'Ничего не нашлось'
-              : `${total.toLocaleString('ru-RU')} ${plural(total, 'заявка', 'заявки', 'заявок')}`
-                + (pages > 1 ? ` · страница ${page + 1} из ${pages}` : ''))}
+          {`${total.toLocaleString('ru-RU')} ${plural(total, 'заявка', 'заявки', 'заявок')}`}
         </div>
       )}
-
-      {log && log.rows.length === 0 && (
-        <div className="ola-empty">
-          <PhoneCall size={34} />
-          <h3>Заявок на звонок нет</h3>
-          <p>
-            Заявка заводится по напоминанию с кнопкой «Подтверждаю», у которого
-            задан срок звонка. Проверьте событие «Напоминание о визите» на вкладке
-            «Тексты».
-          </p>
-        </div>
-      )}
-
-      {(log?.rows || []).map(row => {
-        const view = CALL_STATUS_VIEW[row.status] || CALL_STATUS_VIEW.pending;
-        const Icon = view.icon;
-        return (
-          <article key={row.id} className={`ola-row-card ${view.cls}`}>
-            <div className="ola-row-top">
-              <span className="ola-card-icon small accent"><PhoneCall size={14} /></span>
-              <span className="event">{row.patientName || 'без имени'}</span>
-              <span className="phone">{row.phone || 'без телефона'}</span>
-              {row.attempts > 1 && <span className="ola-badge warn">попыток {row.attempts}</span>}
-              <span className={`ola-row-status ${view.cls}`}><Icon size={13} /> {view.label}</span>
-              <span className="time">{new Date(row.sentAt || row.plannedAt).toLocaleString('ru-RU')}</span>
-            </div>
-            {/* Время приёма здесь важнее времени заявки: по нему видно, был ли
-                смысл звонить вообще, а именно это и спрашивают у журнала. */}
-            <div className="ola-row-text">
-              Визит {row.apptId || '—'}
-              {row.visitAt ? ` · приём ${new Date(row.visitAt).toLocaleString('ru-RU')}` : ''}
-              {row.doctorName ? ` · ${row.doctorName}` : ''}
-            </div>
-            {/* Итог разговора (ver. 8.95). Показываем вместе с тем, что из него
-                вышло в МИС: «пациент отказался» и «отказ записан в МИС» — разные
-                утверждения, и журнал должен отвечать на второе тоже. */}
-            {row.result && (
-              <div className="ola-row-text">
-                Итог звонка: {CALL_RESULT_VIEW[row.result] || row.result}
-                {row.misStatus === 'confirmed' && ' · визит подтверждён в МИС'}
-                {row.misStatus === 'cancelled' && ' · визит отменён в МИС'}
-                {row.resultAt ? ` · ${new Date(row.resultAt).toLocaleString('ru-RU')}` : ''}
-              </div>
-            )}
-            {row.misError && <div className="ola-row-error">{row.misError}</div>}
-            {row.error && <div className="ola-row-error">{row.error}</div>}
-          </article>
-        );
-      })}
-
-      {pages > 1 && (
-        <div className="ola-log-pager">
-          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(0)}>Начало</button>
-          <button className="ola-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-            <ChevronLeft size={15} /> Назад
-          </button>
-          <span className="ola-log-pager-state">{page + 1} из {pages}</span>
-          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)}>
-            Вперёд <ChevronRight size={15} />
-          </button>
-          <button className="ola-btn" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>Конец</button>
-        </div>
-      )}
+      <Pager page={page} pages={pages} setPage={setPage} />
     </>
   );
 }
@@ -3301,9 +3555,13 @@ export default function AdminOpenLine() {
   // Недоставленное за сутки — цифрой на вкладке журнала. Иначе о том, что
   // рассылка встала (кончился баланс, отвалился токен), узнаёшь, только если
   // заглянешь в журнал по своей воле, а заглядывают туда по жалобе.
+  // С 9.34 — за сегодня, как и журнал по умолчанию: сводки «за сутки» в
+  // ответе журнала больше нет, а цифра на вкладке должна совпадать с тем, что
+  // увидят, открыв её.
   useEffect(() => {
-    notifApi.outbox({ status: 'failed', limit: 1 })
-      .then(({ data }) => setFailed(data.counts?.failed || 0))
+    const today = todayMsk();
+    notifApi.outbox({ status: 'failed', from: today, to: today, limit: 1 })
+      .then(({ data }) => setFailed(data.total || 0))
       .catch(() => {});
   }, [tab]);
 

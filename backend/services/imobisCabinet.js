@@ -357,7 +357,8 @@ function splitCsvLine(line) {
 }
 
 /**
- * Краткий отчёт → расход по дням { 'YYYY-MM-DD': { cost, messages, operators } }.
+ * Краткий отчёт → расход по дням
+ * { 'YYYY-MM-DD': { cost, messages, operators: { МТС: { cost, messages } } } }.
  *
  * Столбцы ищутся по названию, а не по номеру: отчёт выгружается для людей, и
  * столбец туда добавят, не спросив нас. День — по «Времени старта»: трафик API
@@ -385,12 +386,17 @@ function parseSpendReport(text) {
     const bucket = days[day] || (days[day] = { cost: 0, messages: 0, operators: {} });
     bucket.cost += cost;
     bucket.messages += iCount >= 0 ? Math.round(toNumber(cells[iCount])) : 0;
+    // По оператору — и рубли, и штуки (ver. 9.34): журнал рассылки рисует долю
+    // операторов в SMS, и считать её деньгами значило бы завысить тех, у кого
+    // тариф дороже.
     const op = (iOperator >= 0 && cells[iOperator]) || 'другие';
-    bucket.operators[op] = (bucket.operators[op] || 0) + cost;
+    const slot = bucket.operators[op] || (bucket.operators[op] = { cost: 0, messages: 0 });
+    slot.cost += cost;
+    slot.messages += iCount >= 0 ? Math.round(toNumber(cells[iCount])) : 0;
   }
   for (const b of Object.values(days)) {
     b.cost = Math.round(b.cost * 100) / 100;
-    for (const k of Object.keys(b.operators)) b.operators[k] = Math.round(b.operators[k] * 100) / 100;
+    for (const slot of Object.values(b.operators)) slot.cost = Math.round(slot.cost * 100) / 100;
   }
   return days;
 }

@@ -61,7 +61,7 @@ test('отчёт складывается по дням, копейки чере
   assert.deepEqual(Object.keys(days), ['2026-09-01', '2026-09-02']);
   assert.equal(days['2026-09-01'].cost, 991.28);
   assert.equal(days['2026-09-01'].messages, 100);
-  assert.equal(days['2026-09-01'].operators['МТС'], 858.28);
+  assert.deepEqual(days['2026-09-01'].operators['МТС'], { cost: 858.28, messages: 86 });
   assert.equal(days['2026-09-02'].cost, 10.5);
 });
 

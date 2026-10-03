@@ -17,7 +17,7 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { NotifTemplate, NotifOutbox, NotifCallRequest, MedCenter, NotifBranchSettings, MessengerBot, sequelize } = require('../models');
+const { NotifTemplate, NotifOutbox, NotifCallRequest, MedCenter, NotifBranchSettings, MessengerBot, ImobisSpendDay, sequelize } = require('../models');
 const branches = require('../services/notifications/branches');
 const { getChannel } = require('../services/messengers');
 const templates = require('../services/notifications/templates');
@@ -1146,53 +1146,80 @@ const brief = (mc) => (mc
 
 const pairKey = (clinicId, clinicName) => `${clinicId ?? ''}|${clinicName ?? ''}`;
 
+// Сутки журнала — московские (ver. 9.34): «сегодня» у таблицы означает день
+// администратора, а сервер может жить в UTC, и тогда утренние три часа уезжали
+// бы во вчера.
+const mskStart = (day) => new Date(`${day}T00:00:00+03:00`);
+const mskEnd = (day) => new Date(`${day}T23:59:59.999+03:00`);
+const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+
+// Канал в отборе — как его называет таблица; в столбце channel лежит маршрут
+// провайдера, где Notify записан своим техническим именем.
+const CHANNEL_MATCH = { telegram: 'telegram', max: 'max', sms: 'sms', notify: 'vk' };
+
+/**
+ * Отбор журнала по фильтрам шапки таблицы (ver. 9.34, раньше — полоса над
+ * журналом). only — какие фильтры учитывать: сводке для диаграмм нужны только
+ * дата, медцентр и событие, иначе круг статусов при выбранном статусе
+ * превращался бы в одно сплошное кольцо.
+ */
+async function outboxWhere(query, only = null) {
+  const use = (key) => !only || only.includes(key);
+  const where = {};
+  const apptFilters = [];
+  const esc = (v) => (v === null || v === undefined ? 'NULL' : sequelize.escape(v));
+
+  // Отбор по медцентру (ver. 9.23): визиты, чьи клиники сопоставились с
+  // выбранным филиалом. Строки без визита (проверочные отправки) под отбор
+  // не попадают — медцентра у них нет.
+  if (use('medCenterId') && query.medCenterId) {
+    const pairs = (await clinicPairs()).filter(p => String(p.medCenterId) === String(query.medCenterId));
+    if (!pairs.length) return { id: null };   // медцентр без единого визита — пустой ответ, а не весь журнал
+    apptFilters.push(pairs
+      .map(p => `(clinic_id IS NOT DISTINCT FROM ${esc(p.clinicId)} AND clinic_name IS NOT DISTINCT FROM ${esc(p.clinicName)})`)
+      .join(' OR '));
+  }
+  if (use('status') && ['pending', 'sent', 'failed', 'skipped'].includes(query.status)) {
+    where.status = query.status;
+  }
+  if (use('event') && (EVENTS.includes(query.event) || query.event === 'test')) {
+    where.event = query.event;
+  }
+  // Получатель (ver. 9.34): телефон, номер карты или фамилия — что под рукой
+  // у того, кто разбирает жалобу. Цифры ищем и в телефоне, и в номере карты.
+  if (use('q') && String(query.q || '').trim()) {
+    const q = String(query.q).trim().slice(0, 64);
+    const digits = q.replace(/\D/g, '');
+    const inAppt = [`patient_name ILIKE ${esc(`%${q}%`)}`];
+    if (digits) inAppt.push(`patient_number ILIKE ${esc(`%${digits}%`)}`);
+    const or = [{ apptId: { [Op.in]: sequelize.literal(`(SELECT appt_id FROM notif_appointments WHERE ${inAppt.join(' OR ')})`) } }];
+    if (digits.length >= 3) or.push({ phone: { [Op.iLike]: `%${digits}%` } });
+    where[Op.or] = or;
+  }
+  // Канал ищем вхождением: в столбце лежит весь маршрут каскада через «→»
+  // («imobis:sms→imobis:vk»), а спрашивают про одну ступень из него.
+  if (use('channel') && CHANNEL_MATCH[query.channel]) {
+    where.channel = { [Op.iLike]: `%${CHANNEL_MATCH[query.channel]}%` };
+  }
+  if (use('delivery') && DELIVERY_FILTERS[query.delivery]) {
+    where.deliveryStatus = DELIVERY_FILTERS[query.delivery];
+  }
+  // Ищем по времени заведения, а не отправки: у пропущенных и ждущих строк
+  // sent_at пустой, и по дате отправки они бы не нашлись вовсе.
+  if (use('dates') && (isDay(query.from) || isDay(query.to))) {
+    where.createdAt = {};
+    if (isDay(query.from)) where.createdAt[Op.gte] = mskStart(query.from);
+    if (isDay(query.to)) where.createdAt[Op.lte] = mskEnd(query.to);
+  }
+  if (apptFilters.length) {
+    where.apptId = { [Op.in]: sequelize.literal(`(SELECT appt_id FROM notif_appointments WHERE ${apptFilters.join(' AND ')})`) };
+  }
+  return where;
+}
+
 router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
   try {
-    const where = {};
-    // Отбор по медцентру (ver. 9.23): визиты, чьи клиники сопоставились с
-    // выбранным филиалом. Строки без визита (проверочные отправки) под отбор
-    // не попадают — медцентра у них нет.
-    if (req.query.medCenterId) {
-      const pairs = (await clinicPairs()).filter(p => String(p.medCenterId) === String(req.query.medCenterId));
-      if (!pairs.length) {
-        where.id = null;   // медцентр без единого визита — пустой ответ, а не весь журнал
-      } else {
-        // Значения — через escape: это id и названия клиник из нашей же базы,
-        // но склеивать их в SQL как есть нельзя всё равно.
-        const esc = (v) => (v === null || v === undefined ? 'NULL' : sequelize.escape(v));
-        const match = pairs
-          .map(p => `(clinic_id IS NOT DISTINCT FROM ${esc(p.clinicId)} AND clinic_name IS NOT DISTINCT FROM ${esc(p.clinicName)})`)
-          .join(' OR ');
-        where.apptId = { [Op.in]: sequelize.literal(`(SELECT appt_id FROM notif_appointments WHERE ${match})`) };
-      }
-    }
-    if (['pending', 'sent', 'failed', 'skipped'].includes(req.query.status)) {
-      where.status = req.query.status;
-    }
-    if (EVENTS.includes(req.query.event) || req.query.event === 'test') {
-      where.event = req.query.event;
-    }
-    if (req.query.phone) {
-      where.phone = { [Op.iLike]: `%${String(req.query.phone).replace(/\D/g, '')}%` };
-    }
-    // Канал ищем вхождением: в столбце лежит весь маршрут каскада через «→»
-    // («imobis:sms→imobis:vk»), а спрашивают про одну ступень из него.
-    if (req.query.channel) {
-      where.channel = { [Op.iLike]: `%${String(req.query.channel).slice(0, 32)}%` };
-    }
-    if (DELIVERY_FILTERS[req.query.delivery]) {
-      where.deliveryStatus = DELIVERY_FILTERS[req.query.delivery];
-    }
-    // Ищем по времени заведения, а не отправки: у пропущенных и ждущих строк
-    // sent_at пустой, и по дате отправки они бы не нашлись вовсе.
-    const from = req.query.from ? new Date(`${req.query.from}T00:00:00`) : null;
-    const to = req.query.to ? new Date(`${req.query.to}T23:59:59.999`) : null;
-    if ((from && !isNaN(from)) || (to && !isNaN(to))) {
-      where.createdAt = {};
-      if (from && !isNaN(from)) where.createdAt[Op.gte] = from;
-      if (to && !isNaN(to)) where.createdAt[Op.lte] = to;
-    }
-
+    const where = await outboxWhere(req.query);
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
@@ -1200,17 +1227,21 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       where, order: [['createdAt', 'DESC']], limit, offset
     });
 
-    // Медцентр каждой строки — подписью в журнале (ver. 9.23), тем же
-    // сопоставлением, что и отбор.
+    // Медцентр и пациент каждой строки — из снимка визита: медцентр знаком,
+    // пациент номером карты и ФИО (ver. 9.34; до того в журнале был один
+    // телефон, и узнать, кому ушло, можно было только поиском по МИС).
     const apptIds = [...new Set(rows.map(r => r.apptId).filter(Boolean))];
     const appts = apptIds.length
       ? await sequelize.query(
-        'SELECT appt_id AS "apptId", clinic_id AS "clinicId", clinic_name AS "clinicName" FROM notif_appointments WHERE appt_id IN (:apptIds)',
+        `SELECT appt_id AS "apptId", clinic_id AS "clinicId", clinic_name AS "clinicName",
+                patient_id AS "patientId", patient_name AS "patientName", patient_number AS "patientNumber"
+           FROM notif_appointments WHERE appt_id IN (:apptIds)`,
         { replacements: { apptIds }, type: sequelize.QueryTypes.SELECT }
       )
       : [];
     const byPair = new Map((await clinicPairs()).map(p => [pairKey(p.clinicId, p.clinicName), p]));
     const mcByAppt = new Map();
+    const apptById = new Map(appts.map(a => [a.apptId, a]));
     for (const a of appts) {
       let pair = byPair.get(pairKey(a.clinicId, a.clinicName));
       // Клиника появилась позже, чем собиралась карта, — сопоставляем на месте.
@@ -1235,8 +1266,12 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
     for (const r of rows) {
       const plain = r.get({ plain: true });
       const mc = mcByAppt.get(plain.apptId);
+      const appt = apptById.get(plain.apptId);
       plain.medCenterId = mc ? mc.medCenterId : null;
       plain.medCenter = mc ? mc.medCenter : null;
+      plain.patient = appt
+        ? { id: appt.patientId || plain.patientId || null, name: appt.patientName || null, number: appt.patientNumber || null }
+        : (plain.patientId ? { id: plain.patientId, name: null, number: null } : null);
       if (!(Array.isArray(plain.attempts) && plain.attempts.length)) {
         // Проверочная отправка идёт мимо каскада — на ступень, названную явно
         // (sendTest). Восстанавливать её цепочку по каскаду сети значило бы
@@ -1248,22 +1283,6 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       out.push(plain);
     }
 
-    // Сводка за сутки — то, на что смотрят первым делом. Она намеренно не
-    // считается по фильтру: это состояние рассылки, а не итог выборки, и
-    // меняться от того, что в поиске набрали номер, не должна.
-    //
-    // Кроме медцентра (ver. 9.23): он не сужает выборку, а выбирает, чью
-    // рассылку смотрим, — и сводка по всей сети над журналом одного филиала
-    // читалась бы как его собственная.
-    const since = new Date(Date.now() - 24 * 3600 * 1000);
-    const counts = {};
-    for (const status of ['sent', 'failed', 'skipped', 'pending']) {
-      const countWhere = { status, createdAt: { [Op.gte]: since } };
-      if (where.apptId) countWhere.apptId = where.apptId;
-      if (where.id === null) countWhere.id = null;
-      counts[status] = await NotifOutbox.count({ where: countWhere });
-    }
-
     // Справочник для отбора — те же филиалы, что на остальных вкладках.
     const medCenters = await MedCenter.findAll({
       attributes: ['id', 'name', 'logoUrl', 'logoSquareUrl', 'color'],
@@ -1271,9 +1290,96 @@ router.get('/outbox', authenticate, requireAdmin, async (req, res) => {
       order: [['name', 'ASC']]
     });
 
-    res.json({ rows: out, counts, total: count, limit, offset, medCenters });
+    res.json({ rows: out, total: count, limit, offset, medCenters });
   } catch (err) {
     console.error('[notifications] GET /outbox:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** Ступень → канал, как его знает таблица: telegram | max | sms | notify. */
+function channelKey(step) {
+  const name = String(step || '').replace(/^imobis:/, '');
+  if (name === 'telegram' || name === 'max') return name;
+  if (name.startsWith('sms')) return 'sms';
+  return 'notify';
+}
+
+/**
+ * Каким каналом сообщение дошло. Ступень с отчётом «доставлено» или ушедшая
+ * сама (боты); без отчёта — единственная переданная провайдеру. Каскад
+ * Имобиса, по которому отчёта ещё нет, не засчитывается никуда: какой из
+ * его каналов сработал, неизвестно, а угадывать в диаграмме нельзя.
+ */
+function succeededChannel(row) {
+  const attempts = Array.isArray(row.attempts) ? row.attempts : [];
+  if (attempts.length) {
+    const hit = attempts.find(a => a.result === 'delivered') || attempts.find(a => a.result === 'sent');
+    if (hit) return channelKey(hit.step);
+    const handed = attempts.filter(a => a.result === 'handed');
+    return handed.length === 1 ? channelKey(handed[0].step) : null;
+  }
+  const route = String(row.channel || '').split('→').filter(Boolean);
+  return route.length === 1 ? channelKey(route[0]) : null;
+}
+
+/**
+ * Сводка для диаграмм над журналом (ver. 9.34): статусы, каналы успешной
+ * доставки и операторы SMS — за даты и медцентр таблицы.
+ *
+ * Ждущие отправки в статусы не входят намеренно: это не исход, а очередь, и
+ * в доле «как прошла рассылка» она только размывает картину.
+ *
+ * Операторы — из краткого отчёта кабинета Имобиса (imobis_spend_days, 9.33):
+ * отчёт о доставке оператора не называет. Отчёт кабинета приходит на
+ * следующий день и событий не различает, поэтому у диаграммы операторов нет
+ * отбора по событию, а за сегодня она пуста.
+ */
+router.get('/outbox/stats', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const where = await outboxWhere(req.query, ['medCenterId', 'event', 'dates']);
+
+    const byStatus = await NotifOutbox.findAll({
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
+      where: { ...where, status: { [Op.ne]: 'pending' } },
+      group: ['status'],
+      raw: true
+    });
+    const statuses = Object.fromEntries(byStatus.map(r => [r.status, Number(r.n)]));
+
+    const sent = await NotifOutbox.findAll({
+      attributes: ['attempts', 'channel'],
+      where: { ...where, status: 'sent' },
+      raw: true
+    });
+    const channels = {};
+    let unknown = 0;
+    for (const row of sent) {
+      const key = succeededChannel(row);
+      if (key) channels[key] = (channels[key] || 0) + 1;
+      else unknown++;
+    }
+
+    const spendWhere = {};
+    if (isDay(req.query.from) || isDay(req.query.to)) {
+      spendWhere.day = {};
+      if (isDay(req.query.from)) spendWhere.day[Op.gte] = req.query.from;
+      if (isDay(req.query.to)) spendWhere.day[Op.lte] = req.query.to;
+    }
+    if (req.query.medCenterId) spendWhere.medCenterId = req.query.medCenterId;
+    const spend = await ImobisSpendDay.findAll({ attributes: ['byOperator'], where: spendWhere, raw: true });
+    const operators = {};
+    for (const day of spend) {
+      for (const [name, v] of Object.entries(day.byOperator || {})) {
+        // До 9.34 по оператору лежали только рубли числом — такие дни штук не дают.
+        const n = v && typeof v === 'object' ? Number(v.messages) || 0 : 0;
+        if (n) operators[name] = (operators[name] || 0) + n;
+      }
+    }
+
+    res.json({ statuses, channels, unknownChannel: unknown, operators });
+  } catch (err) {
+    console.error('[notifications] GET /outbox/stats:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1429,10 +1535,26 @@ router.get('/call-requests', authenticate, requireAdmin, async (req, res) => {
     if (['pending', 'sent', 'failed', 'skipped'].includes(req.query.status)) {
       where.status = req.query.status;
     }
-    if (req.query.phone) {
-      where.phone = { [Op.iLike]: `%${String(req.query.phone).replace(/\D/g, '')}%` };
-    }
     if (req.query.medCenterId) where.medCenterId = req.query.medCenterId;
+    // Получатель — как у сообщений (ver. 9.34): телефон, фамилия или номер
+    // карты. Номера карты в заявке нет, он в снимке визита.
+    if (String(req.query.q || '').trim()) {
+      const q = String(req.query.q).trim().slice(0, 64);
+      const digits = q.replace(/\D/g, '');
+      const or = [{ patientName: { [Op.iLike]: `%${q}%` } }];
+      if (digits.length >= 3) or.push({ phone: { [Op.iLike]: `%${digits}%` } });
+      if (digits) {
+        or.push({ apptId: { [Op.in]: sequelize.literal(
+          `(SELECT appt_id FROM notif_appointments WHERE patient_number ILIKE ${sequelize.escape(`%${digits}%`)})`
+        ) } });
+      }
+      where[Op.or] = or;
+    }
+    if (isDay(req.query.from) || isDay(req.query.to)) {
+      where.createdAt = {};
+      if (isDay(req.query.from)) where.createdAt[Op.gte] = mskStart(req.query.from);
+      if (isDay(req.query.to)) where.createdAt[Op.lte] = mskEnd(req.query.to);
+    }
 
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
@@ -1447,15 +1569,30 @@ router.get('/call-requests', authenticate, requireAdmin, async (req, res) => {
       offset
     });
 
-    // Сводка за сутки — по тем же правилам, что и у сообщений: это состояние
-    // модуля, а не итог выборки, и от набранного в поиске номера не зависит.
-    const since = new Date(Date.now() - 24 * 3600 * 1000);
-    const counts = {};
-    for (const status of ['sent', 'failed', 'skipped', 'pending']) {
-      counts[status] = await NotifCallRequest.count({ where: { status, createdAt: { [Op.gte]: since } } });
-    }
+    const apptIds = [...new Set(rows.map(r => r.apptId).filter(Boolean))];
+    const numbers = apptIds.length
+      ? await sequelize.query(
+        'SELECT appt_id AS "apptId", patient_number AS "patientNumber" FROM notif_appointments WHERE appt_id IN (:apptIds)',
+        { replacements: { apptIds }, type: sequelize.QueryTypes.SELECT }
+      )
+      : [];
+    const numberOf = new Map(numbers.map(n => [n.apptId, n.patientNumber]));
 
-    res.json({ rows, counts, total: count, limit, offset });
+    const medCenters = await MedCenter.findAll({
+      attributes: ['id', 'name', 'logoUrl', 'logoSquareUrl', 'color'],
+      where: { servesPatients: true, isActive: true },
+      order: [['name', 'ASC']]
+    });
+    const mcById = new Map(medCenters.map(mc => [mc.id, brief(mc)]));
+
+    const out = rows.map(r => {
+      const plain = r.get({ plain: true });
+      plain.medCenter = mcById.get(plain.medCenterId) || null;
+      plain.patient = { id: plain.patientId || null, name: plain.patientName || null, number: numberOf.get(plain.apptId) || null };
+      return plain;
+    });
+
+    res.json({ rows: out, total: count, limit, offset, medCenters });
   } catch (err) {
     console.error('[notifications] GET /call-requests:', err);
     res.status(500).json({ error: 'Internal server error' });

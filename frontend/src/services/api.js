@@ -1630,6 +1630,7 @@ export const notifications = {
   deleteTemplate: (id) => api.delete(`/notifications/templates/${id}`),
   preview: (text) => api.post('/notifications/templates/preview', { text }),
   outbox: (params) => api.get('/notifications/outbox', { params }),
+  outboxStats: (params) => api.get('/notifications/outbox/stats', { params }),
   // Заявки на догоняющий ИИ-звонок (ver. 8.52). Отдельно от журнала сообщений,
   // потому что отвечают на другой вопрос: не «дошло ли», а «почему не
   // позвонили», и причин не звонить больше, чем причин позвонить.

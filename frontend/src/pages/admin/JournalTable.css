@@ -1,0 +1,336 @@
+/* Журнал таблицей (ver. 9.34): сообщения и звонки.
+ *
+ * Сетка, а не <table>: на узком экране строка складывается в несколько рядов,
+ * а фильтры шапки встают строкой над списком — у таблицы так не выйдет без
+ * второй разметки. */
+
+/* Цвета операторов SMS — проверенная категориальная палитра, светлая и тёмная
+   ступени (та же, что была у графиков счетов). */
+.jt-donuts {
+  --jt-op-1: #e34948;
+  --jt-op-2: #eda100;
+  --jt-op-3: #008300;
+  --jt-op-4: #2a78d6;
+  --jt-op-5: #4a3aa7;
+  --jt-op-6: #eb6834;
+}
+:root[data-theme='dark'] .jt-donuts {
+  --jt-op-1: #e66767;
+  --jt-op-2: #c98500;
+  --jt-op-3: #008300;
+  --jt-op-4: #3987e5;
+  --jt-op-5: #9085e9;
+  --jt-op-6: #d95926;
+}
+
+/* ── Диаграммы ────────────────────────────────────────────────────────────*/
+
+.jt-donuts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  min-height: 170px;
+  margin-bottom: 14px;
+}
+
+.jt-donut {
+  padding: 14px 16px;
+  border: 1px solid var(--ola-line, var(--border-light));
+  border-radius: 16px;
+  background: var(--bg-primary);
+}
+
+.jt-donut h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.jt-donut-body { display: flex; align-items: center; gap: 14px; }
+
+.jt-donut-chart { position: relative; flex-shrink: 0; width: 124px; height: 124px; }
+.jt-donut-sum {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.jt-donut-legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; }
+.jt-donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  font-size: 12.5px;
+}
+.jt-lg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.jt-lg-val { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.jt-lg-pct { width: 34px; text-align: right; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+.jt-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+
+.jt-donut-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 124px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.jt-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  box-shadow: 0 8px 24px rgba(var(--overlay-ink), 0.14);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.jt-tip b { color: var(--text-primary); }
+
+/* ── Таблица ──────────────────────────────────────────────────────────────*/
+
+.jt-table {
+  border: 1px solid var(--ola-line, var(--border-light));
+  border-radius: 16px;
+  background: var(--bg-primary);
+}
+
+.jt-messages { --jt-cols: 88px 104px minmax(150px, 1fr) minmax(220px, 1.3fr) 124px 196px 32px; }
+.jt-calls    { --jt-cols: 88px 104px minmax(220px, 1.3fr) minmax(160px, 1fr) 124px minmax(160px, 1fr) 32px; }
+
+.jt-head,
+.jt-row {
+  display: grid;
+  grid-template-columns: var(--jt-cols);
+  align-items: center;
+  column-gap: 10px;
+  padding: 0 14px;
+}
+
+.jt-head {
+  min-height: 52px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  border-radius: 16px 16px 0 0;
+}
+
+.jt-h { min-width: 0; }
+.jt-h-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Фильтр в шапке выглядит заголовком столбца, пока не выбран: рамка у пяти
+   заголовков подряд превращала бы шапку во вторую панель фильтров. */
+.ola-fsel.head .ola-fsel-btn {
+  height: 32px;
+  max-width: 100%;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.ola-fsel.head .ola-fsel-btn:hover { border-color: var(--border-light); background: var(--bg-primary); }
+.ola-fsel.head.chosen .ola-fsel-btn {
+  border-color: var(--accent-400);
+  background: var(--accent-50);
+  color: var(--text-primary);
+}
+.ola-fsel.head .ola-fsel-btn .ola-msg-status { width: 18px; height: 18px; }
+
+.jt-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--text-tertiary);
+  transition: border-color .15s, background .15s;
+}
+.jt-search:hover,
+.jt-search:focus-within { border-color: var(--border-light); background: var(--bg-primary); }
+.jt-search.chosen { border-color: var(--accent-400); background: var(--accent-50); }
+.jt-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.jt-search input::placeholder { color: var(--text-secondary); }
+.jt-search-clear {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.jt-range-pop { min-width: 240px; }
+.jt-range-own {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px 4px 4px;
+  border-top: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+}
+.jt-range-own .ola-input { height: 34px; padding: 4px 8px; font-size: 12.5px; }
+
+/* ── Строки ───────────────────────────────────────────────────────────────*/
+
+.jt-row {
+  min-height: 58px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background .12s;
+}
+.jt-row:last-child { border-bottom: none; border-radius: 0 0 16px 16px; }
+.jt-row:hover { background: var(--bg-secondary); }
+.jt-row.open { background: color-mix(in srgb, var(--accent-50) 55%, transparent); }
+
+.jt-c { min-width: 0; font-size: 13px; color: var(--text-primary); }
+.jt-c.st, .jt-c.mc { display: flex; align-items: center; padding-left: 8px; }
+.jt-c.ev { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.jt-ev-title {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+.jt-c.wh { font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+.jt-c.ca .ola-chain { padding: 4px 0; flex-wrap: wrap; }
+.jt-c.ch { display: flex; justify-content: center; }
+
+.jt-chev { display: inline-flex; color: var(--text-tertiary); transition: transform .15s; }
+.jt-chev.open { transform: rotate(180deg); color: var(--accent-600); }
+
+.jt-recipient { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jt-rc-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.jt-rc-num { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jt-rc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.jt-rc-phone { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Кнопка карточки в Renovatio — знак МИС, как в открытой линии. */
+.jt-mis {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  transition: transform .15s;
+}
+.jt-mis img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.jt-mis:hover { transform: scale(1.12); }
+
+.jt-two { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jt-two span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jt-muted { font-size: 12.5px; color: var(--text-tertiary); }
+
+.jt-detail {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  cursor: default;
+}
+.jt-detail .ola-row-text { margin: 0; white-space: pre-wrap; }
+.jt-detail .ola-row-error { margin: 0; }
+
+.jt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 0;
+  color: var(--text-tertiary);
+  font-size: 13.5px;
+}
+
+/* ── Узкие экраны ─────────────────────────────────────────────────────────
+ *
+ * Шапка становится строкой фильтров, строка — карточкой в три ряда:
+ * значки и событие, получатель, время с каскадом. */
+@media (max-width: 1100px) {
+  .jt-donuts { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .jt-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+  }
+  .jt-head .jt-h { flex: 1 1 calc(50% - 6px); }
+  .jt-head .jt-h.ch:empty,
+  .jt-head .jt-h.vi,
+  .jt-head .jt-h.rs { display: none; }
+  .jt-head .ola-fsel.head .ola-fsel-btn { border-color: var(--border-light); background: var(--bg-primary); }
+  .jt-head .jt-search { border-color: var(--border-light); background: var(--bg-primary); }
+
+  .jt-messages .jt-row {
+    grid-template-columns: 26px 26px minmax(0, 1fr) auto 20px;
+    grid-template-areas:
+      "st mc ev wh ch"
+      "rc rc rc rc rc"
+      "ca ca ca ca ca";
+    row-gap: 6px;
+    column-gap: 8px;
+  }
+  .jt-calls .jt-row {
+    grid-template-columns: 26px 26px minmax(0, 1fr) auto 20px;
+    grid-template-areas:
+      "st mc rc wh ch"
+      "vi vi vi rs rs";
+    row-gap: 6px;
+    column-gap: 8px;
+  }
+  .jt-c.st { grid-area: st; padding-left: 0; }
+  .jt-c.mc { grid-area: mc; padding-left: 0; }
+  .jt-c.ev { grid-area: ev; }
+  .jt-c.rc { grid-area: rc; }
+  .jt-c.wh { grid-area: wh; }
+  .jt-c.ca { grid-area: ca; }
+  .jt-c.ch { grid-area: ch; }
+  .jt-c.vi { grid-area: vi; }
+  .jt-c.rs { grid-area: rs; }
+}
